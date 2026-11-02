@@ -1,12 +1,18 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
 project Wallpaper is
    for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor", "../../userspace/lib/image",
-     "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat");
+     "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat", "../../userspace/ccl/src");
    for Source_Files use ("main.adb",
-     "desktop_backdrop_style.ads", "desktop_wallpaper.ads", "desktop_wallpaper.adb", "desktop_wallpaper_store.ads", "desktop_wallpaper_store.adb", "cubit-qoi.ads", "cubit-qoi.adb", "cubit.ads", "cubit-appearance.ads",
+     "desktop_backdrop_style.ads", "desktop_wallpaper.ads", "desktop_wallpaper.adb", "desktop_wallpaper_store.ads", "desktop_wallpaper_store.adb",
+     "desktop_wallpaper_store-rasters.ads", "desktop_wallpaper_store-rasters.adb", "desktop_heap_objects.ads", "desktop_heap_objects.adb",
+     "desktop_wallpaper_catalog.ads", "desktop_wallpaper_catalog.adb", "ccl.ads", "ccl-asset_codecs.ads",
+     "ccl-asset_codecs-wallpaper.ads", "ccl-asset_codecs-wallpaper.adb", "cubit-canonical_readers.ads", "cubit-canonical_readers.adb",
+     "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
+     "cubit-qoi.ads", "cubit-qoi.adb", "cubit.ads", "cubit-appearance.ads",
      "cubit-appearance.adb", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
      "compositor_backdrop_strips.ads", "compositor_backdrop_strips.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb",
      "compositor_sampling.ads", "compositor_sampling.adb", "compositor_text.ads",
-     "compositor_text.adb", "compositor_affine.ads", "compositor_affine.adb");
+     "compositor_text.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_affine.ads", "compositor_affine.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");

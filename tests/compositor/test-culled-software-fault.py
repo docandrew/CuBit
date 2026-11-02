@@ -32,7 +32,7 @@ assert private_main.count(needle)==1
 private_main=private_main.replace(needle,needle+'\n         Test_Begin_Pass;')
 (w/'src').mkdir();(w/'src/main.adb').write_text(private_main)
 project=w/'fault.gpr'
-project.write_text('project Fault extends "'+str(r/'userspace/services/desktop/desktop.gpr')+'" is for Source_Dirs use ("src"); for Object_Dir use "obj"; for Exec_Dir use "."; for Runtime ("Ada") use "'+str(r/'userspace/runtime')+'"; package Linker is for Default_Switches ("Ada") use ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=16777216", "-lgnat-user", "-T", "'+str(r/'userspace/c/link.ld')+'", "'+str(r/'userspace/c/build/crt0.o')+'", "'+str(r/'userspace/services/desktop/build/manifest.o')+'", "'+str(r/'userspace/services/desktop/build/wallpaper.o')+'", "'+str(r/'userspace/services/desktop/build/wallpaper_cubie.o')+'"); end Linker; end Fault;')
+project.write_text('project Fault extends "'+str(r/'userspace/services/desktop/desktop.gpr')+'" is for Source_Dirs use ("src"); for Object_Dir use "obj"; for Exec_Dir use "."; for Runtime ("Ada") use "'+str(r/'userspace/runtime')+'"; package Linker is for Default_Switches ("Ada") use ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=16777216", "-lgnat-user", "-T", "'+str(r/'userspace/c/link.ld')+'", "'+str(r/'userspace/c/build/crt0.o')+'", "'+str(r/'userspace/services/desktop/build/manifest.o')+'"); end Linker; end Fault;')
 exe=w/'desktop-vulkan-link.svc'
 with (r/'coordination/build.lock').open('a') as lock:
  fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)

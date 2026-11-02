@@ -1,19 +1,22 @@
 # Desktop wallpaper GPU preparation
 
 Desktop_Backdrop_Style is shared by the existing software wallpaper painter
-and Desktop_GPU_Scene.Backdrop. Capture emits an opaque physical-output fill
-and, for Wallpaper or Cubie, one Fill/Fit/Center image command. Missing sources
+and Desktop_GPU_Scene.Backdrop: a resolved backdrop (a catalog wallpaper at
+its decoded size, or a solid colour). Capture emits an opaque physical-output
+fill and, for an image, one Fill/Fit/Center image command. Missing sources
 and command overflow invalidate the complete scene rather than presenting a
 background-only prefix. Output DPI/origin do not alter physical wallpaper
 placement. The existing software fallback remains the everyday Desktop path.
 
-Desktop_Backdrop_Owner is a limited owner for one immutable embedded asset and
-one caller-reserved general slot (128..135). Acquire admits at most one backing
+Desktop_Backdrop_Owner is a limited owner for one decoded wallpaper (any
+catalog entry, at its own size) in one backdrop slot; the compositor keeps
+two slots (the desktop's and a Settings preview) and evicts the one drawn
+least recently, only while the renderer is idle and nothing pins it. Acquire admits at most one backing
 allocation and one upload chunk. Poll observes one fence and admits at most one
 next chunk. Resident acquisitions reuse the source without uploading pixels.
 Full confirmed coverage is required for import. Close requires both explicit
 retirement of CPU captures and a healthy idle renderer. Pending or uncertain
-work retains storage; there is no eviction, unbounded queue, or internal wait.
+work retains storage; there is no unbounded queue or internal wait.
 Callers must reserve distinct slots and keep owners alive for all captured
 source references. These are same-process immutable assets, not client imports.
 

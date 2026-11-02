@@ -3,9 +3,9 @@
 --  make -C kernel setting-kinds after changing the catalog.
 pragma Ada_2022;
 with CCL.Interfaces.Calc_Types;
+with CCL.Interfaces.Desktop_Display;
 with CCL.Interfaces.Desktop_Launch;
 with CCL.Interfaces.Desktop_Input;
-with CCL.Interfaces.Desktop_Display;
 with CCL.Interfaces.GPU_Power;
 with CCL.Interfaces.Net_Interface;
 
@@ -15,6 +15,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
    type Setting_Kind is
      (Untyped,
       Calc_Options_Setting,
+      Appearance_Setting,
       Launch_Entry_Setting,
       Key_Repeat_Setting,
       Display_Scale_Setting,
@@ -30,6 +31,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
 
    function Kind_Of (Key : String) return Setting_Kind is
      (if Key = "calculator.options" then Calc_Options_Setting
+      elsif Key = "desktop.appearance.v2" then Appearance_Setting
       elsif Starts (Key, "desktop.launch.") then Launch_Entry_Setting
       elsif Key = "desktop.input.key-repeat" then Key_Repeat_Setting
       elsif Key = "desktop.display.scale" then Display_Scale_Setting
@@ -44,6 +46,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
    function Schema (Kind : Setting_Kind) return String is
      (case Kind is
          when Calc_Options_Setting => CCL.Interfaces.Calc_Types.TYPE_SOURCE,
+         when Appearance_Setting => CCL.Interfaces.Desktop_Display.APPEARANCE_TYPE_SOURCE,
          when Launch_Entry_Setting => CCL.Interfaces.Desktop_Launch.TYPE_SOURCE,
          when Key_Repeat_Setting => CCL.Interfaces.Desktop_Input.TYPE_SOURCE,
          when Display_Scale_Setting => CCL.Interfaces.Desktop_Display.TYPE_SOURCE,
@@ -56,6 +59,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
    function Root_Name (Kind : Setting_Kind) return String is
      (case Kind is
          when Calc_Options_Setting => "Calc_Options",
+         when Appearance_Setting => "Appearance",
          when Launch_Entry_Setting => "Launch_Entry",
          when Key_Repeat_Setting => "Key_Repeat",
          when Display_Scale_Setting => "Display_Scale",

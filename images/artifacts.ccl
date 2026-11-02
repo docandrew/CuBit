@@ -82,8 +82,9 @@
   (artifact "ccl-function-clock-label" repository "userspace/ccl/samples/function-clock-label.ccl")
   (artifact "ccl-monotonic-clock" repository "userspace/ccl/samples/monotonic-clock.ccl")
   (artifact "sameboy-test" repository "userspace/ports/sameboy/build/test.gb")
-  (artifact "wallpaper-cubes" repository "kernel/build/Assets/cubit-wallpapers/1/cubes.qoi")
-  (artifact "wallpaper-cubie" repository "kernel/build/Assets/cubit-wallpapers/1/cubie.qoi")
+  # The wallpaper package as built: its catalog and whatever pictures the
+  # source list (assets/wallpapers/wallpapers.ccl) declares.
+  (artifact "wallpapers" repository-tree "kernel/build/Assets/cubit-wallpapers/2")
   (artifact "icons-applications" repository "kernel/build/Assets/cubit-icons/4/applications.qoi")
   (artifact "lexicon-english" repository "kernel/build/Assets/cubit-lexicon/1/english.lexicon")
   (artifact "lexicon-notice" repository "kernel/build/Assets/cubit-lexicon/1/LEXICON-NOTICE")

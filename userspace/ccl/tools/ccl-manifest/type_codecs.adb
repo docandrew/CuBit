@@ -5,6 +5,7 @@
 pragma Ada_2022;
 with Ada.Characters.Handling;
 with Ada.Strings.Fixed;
+with Ada.Text_IO;
 with Interfaces;
 with CCL.Language;
 with CCL.Types;
@@ -333,4 +334,58 @@ package body Type_Codecs is
       Item.Root_Default := To_Unbounded_String (Default_Of (Root));
       Item.Root_Reader := To_Unbounded_String ("Read_" & Root_Name);
    end Generate;
+
+   procedure Write_Codec
+     (Item : Generated; Package_Name, File_Base, Root_Name, Header, Summary : String)
+   is
+      procedure Write (Path, Text : String) is
+         Output : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Create (Output, Ada.Text_IO.Out_File, Path);
+         Ada.Text_IO.Put (Output, Text);
+         Ada.Text_IO.Close (Output);
+      end Write;
+   begin
+      Write
+        (File_Base & ".ads",
+         Header &
+         (if Item.Integer_Field then "with Interfaces;" & LF else "") &
+         "with " & Readers & ";" & LF & LF &
+         Summary &
+         "package " & Package_Name & " with SPARK_Mode, Pure is" & LF &
+         "   subtype Text is " & Readers & ".Text;" & LF &
+         To_String (Item.Spec) & LF &
+         "   --  Item is the value when Success: Source is exactly the canonical" & LF &
+         "   --  source of a " & Root_Name & ". Otherwise Item is " & To_String (Item.Root_Default) & "." & LF &
+         "   procedure Decode (Source : String; Item : out " & To_String (Item.Root_Type) &
+         "; Success : out Boolean)" & LF &
+         "   with Global => null, Always_Terminates;" & LF &
+         "end " & Package_Name & ";" & LF);
+      Write
+        (File_Base & ".adb",
+         Header &
+         (if Item.Integer_Read and then not Item.Integer_Field then "with Interfaces;" & LF else "") & LF &
+         "package body " & Package_Name & " with SPARK_Mode is" & LF &
+         "   package R renames " & Readers & ";" & LF & LF &
+         To_String (Item.Bodies) &
+         "   procedure Decode (Source : String; Item : out " & To_String (Item.Root_Type) &
+         "; Success : out Boolean) is" & LF &
+         "   begin" & LF &
+         "      Item := " & To_String (Item.Root_Default) & ";" & LF &
+         "      Success := R.Readable (Source) and then Source'Length in 1 .. R.Maximum_Canonical;" & LF &
+         "      if not Success then" & LF &
+         "         return;" & LF &
+         "      end if;" & LF &
+         "      declare" & LF &
+         "         Position : Positive := Source'First;" & LF &
+         "      begin" & LF &
+         "         " & To_String (Item.Root_Reader) & " (Source, Position, Success, Item);" & LF &
+         "         R.Finish (Source, Position, Success);" & LF &
+         "      end;" & LF &
+         "      if not Success then" & LF &
+         "         Item := " & To_String (Item.Root_Default) & ";" & LF &
+         "      end if;" & LF &
+         "   end Decode;" & LF &
+         "end " & Package_Name & ";" & LF);
+   end Write_Codec;
 end Type_Codecs;

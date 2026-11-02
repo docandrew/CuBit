@@ -8,19 +8,26 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 package body Desktop_Wallpaper is
-   use CuBit.Appearance;
+   package Style_Of renames Desktop_Backdrop_Style;
+   subtype Preferences is Style_Of.Backdrop;
    package Store renames Desktop_Wallpaper_Store;
    type Pixels is array (Natural range <>) of Unsigned_32
      with Convention => C;
-   --  A decoded raster is only drawn once it is Ready; until then (or if its
-   --  file is unavailable) the backdrop is its flat theme colour.
+   --  A decoded raster is only drawn once it is Ready and is the size the
+   --  style was resolved with; until then (or if its file is unavailable)
+   --  the backdrop is its flat colour.
    function Image_Ready (Style : Preferences) return Boolean is
-     (Desktop_Backdrop_Style.Has_Image (Style.Backdrop) and then
-      Store.Ready (Style.Backdrop));
+     (Style_Of.Has_Image (Style) and then Store.Ready (Style.Image) and then
+      Store.Width (Style.Image) = Style.Width and then Store.Height (Style.Image) = Style.Height);
    --  The address of Style's raster, or a null address when it has none.
    function Raster (Style : Preferences) return System.Address is
-     (if Image_Ready (Style) then Store.Pixels (Style.Backdrop)
+     (if Image_Ready (Style) then Store.Pixels (Style.Image)
       else System.Null_Address);
+   --  The sampled image's size (1 x 1 when there is none: never read).
+   function Image_Width (Style : Preferences) return Positive is
+     (if Image_Ready (Style) then Style.Width else 1);
+   function Image_Height (Style : Preferences) return Positive is
+     (if Image_Ready (Style) then Style.Height else 1);
 
    function Blend (A, B : Unsigned_32; Fraction : Natural)
      return Unsigned_32
@@ -52,23 +59,21 @@ package body Desktop_Wallpaper is
      (Target : System.Address;
       Width, Height, Pitch : Positive;
       X, Y, W, H : Natural;
-      Style : Preferences := Default)
+      Style : Desktop_Backdrop_Style.Backdrop := Desktop_Backdrop_Style.Flat)
    is
       package S renames Compositor_Image_Sampling;
       package Strips renames Compositor_Backdrop_Strips;
-      Image_Width : constant S.Extent :=
-        Desktop_Backdrop_Style.Width (Style.Backdrop);
-      Image_Height : constant S.Extent :=
-        Desktop_Backdrop_Style.Height (Style.Backdrop);
+      Source_Width : constant S.Extent := Image_Width (Style);
+      Source_Height : constant S.Extent := Image_Height (Style);
       Has_Image : constant Boolean := Image_Ready (Style);
       Background : constant Unsigned_32 :=
         Desktop_Backdrop_Style.Color (Style);
-      Source : constant Pixels (0 .. Image_Width * Image_Height - 1)
+      Source : constant Pixels (0 .. Source_Width * Source_Height - 1)
         with Import, Address => Raster (Style);
       Plan : S.Layout;
       First : Natural := X;
       function Sample (X, Y : S.Index) return Unsigned_32 is
-        (Source (Y * Image_Width + X)) with Inline;
+        (Source (Y * Source_Width + X)) with Inline;
    begin
       -- Output extents and clipping belong to the validated display geometry.
       -- Reject invalid callers before computing offsets or touching memory.
@@ -77,7 +82,7 @@ package body Desktop_Wallpaper is
         X >= Width or else Y >= Height or else W = 0 or else H = 0 or else
         W > Width - X or else H > Height - Y
       then return; end if;
-      Plan := S.Prepare (S.Extent (Width), S.Extent (Height), Image_Width, Image_Height,
+      Plan := S.Prepare (S.Extent (Width), S.Extent (Height), Source_Width, Source_Height,
         Desktop_Backdrop_Style.Placement (Style.Position));
       while First < X + W loop
          declare
@@ -115,7 +120,7 @@ package body Desktop_Wallpaper is
       Screen : CuBit.Display_Geometry.Output;
       Bounds : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : Preferences := Default)
+      Style : Desktop_Backdrop_Style.Backdrop := Desktop_Backdrop_Style.Flat)
    is
       package G renames CuBit.Display_Geometry;
       package S renames Compositor_Image_Sampling;
@@ -123,8 +128,8 @@ package body Desktop_Wallpaper is
       W : constant S.Wide := S.Wide (Bounds.Right) - S.Wide (Bounds.Left);
       H : constant S.Wide := S.Wide (Bounds.Bottom) - S.Wide (Bounds.Top);
       Area : constant G.Physical_Rectangle := Compositor_Text.Clip (Screen, Bounds, Damage);
-      IW : constant S.Extent := Desktop_Backdrop_Style.Width (Style.Backdrop);
-      IH : constant S.Extent := Desktop_Backdrop_Style.Height (Style.Backdrop);
+      IW : constant S.Extent := Image_Width (Style);
+      IH : constant S.Extent := Image_Height (Style);
       Background : constant Unsigned_32 :=
         Desktop_Backdrop_Style.Color (Style);
       Has_Image : constant Boolean := Image_Ready (Style);

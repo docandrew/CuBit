@@ -1,8 +1,23 @@
 with CuBit.Handles.Fixture;
+with CuBit.Appearance;
 with Ada.Text_IO; with System; with System.Storage_Elements;
 with Interfaces; with Vulkan_Device_Mock;
 procedure Desktop_GPU_Scene.Backdrop.Tests is
    use CuBit.Appearance;
+   --  Images of three sizes (any catalog wallpaper) and the solid colours.
+   type Test_Backdrop is (Wide, Tall, Third, Slate_Fill, Ocean_Fill);
+   subtype Test_Image is Test_Backdrop range Wide .. Third;
+   Widths : constant array (Test_Image) of Positive := [2048, 2048, 1000];
+   Heights : constant array (Test_Image) of Positive := [576, 1152, 750];
+   function Style (Item : Test_Backdrop; Scheme : Color_Scheme; Position : Placement)
+     return Desktop_Backdrop_Style.Backdrop is
+     (case Item is
+        when Test_Image => (Scheme => Scheme, Image => Test_Backdrop'Pos (Item) + 1, Width => Widths (Item),
+                            Height => Heights (Item), Position => Position, Color => Slate),
+        when Slate_Fill => (Desktop_Backdrop_Style.Flat with delta Scheme => Scheme, Position => Position),
+        when Ocean_Fill => (Desktop_Backdrop_Style.Flat with delta Scheme => Scheme, Position => Position,
+                                                                    Color => Ocean));
+   Image_Style : constant Desktop_Backdrop_Style.Backdrop := Style (Wide, Alloy_Light, Fill);
    use type Interfaces.Unsigned_32, V.Layer_Kind, V.A.G.Logical_Rectangle,
      V.A.Word, V.A.G.Logical_Coordinate, D.Source_Result, System.Address;
    procedure Reset with Import, Convention => C, External_Name => "submission_mock_reset";
@@ -22,20 +37,21 @@ begin
    D.Prepare_Pipeline (OK); pragma Assert (OK);
    D.Import_Owned_Source (Vulkan_Submission.Backdrop_Slot'First, Address, Source, Imported); pragma Assert (Imported = D.Source_Accepted);
    for Scheme in Color_Scheme loop
-      for Background in CuBit.Appearance.Background loop
+      for Background in Test_Backdrop loop
          for Position in Placement loop
             for Rotation in V.A.G.Orientation loop
                for Scale in 4 .. 6 loop
                   Begin_Frame (S, (32, 24, Rotation, (V.A.G.Scale_Component (Scale), 4), -20, 10), 0, OK); pragma Assert (OK);
-                  Capture (S, (Scheme, Background, Position), Source, (0, 0, 32, 24), OK); pragma Assert (OK);
+                  Capture (S, Style (Background, Scheme, Position), Source, (0, 0, 32, 24), OK); pragma Assert (OK);
                   pragma Assert (V.Item (S.Scene, 1).Kind = V.Set_Physical_Clip);
                   pragma Assert (V.Item (S.Scene, 2).Kind = V.Physical_Solid);
                   pragma Assert (V.Item (S.Scene, 2).Surface = (0, 0, 32, 24));
                   pragma Assert (V.Item (S.Scene, 2).Tint =
-                    (if Background = Ocean then 16#FF204058# elsif Scheme = Alloy_Dark then 16#FF20282E# else 16#FF545D63#));
-                  if Background in Wallpaper | Cubie then
+                    (if Background = Ocean_Fill then 16#FF204058# elsif Scheme = Alloy_Dark then 16#FF20282E# else 16#FF545D63#));
+                  if Background in Test_Image then
                      pragma Assert (Layer_Count (S) = 3);
-                     pragma Assert (V.Item (S.Scene, 3).Surface = (0, 0, 2048, (if Background = Cubie then 1152 else 576)));
+                     pragma Assert (V.Item (S.Scene, 3).Surface =
+                       (0, 0, V.A.G.Logical_Coordinate (Widths (Background)), V.A.G.Logical_Coordinate (Heights (Background))));
                      pragma Assert (V.Item (S.Scene, 3).Kind = (case Position is when Fill => V.Backdrop_Fill, when Fit => V.Backdrop_Fit, when Center => V.Backdrop_Center));
                   else pragma Assert (Layer_Count (S) = 2); end if;
                   Discard (S, Result); pragma Assert (Result = Retry); Cases := Cases + 1;
@@ -46,24 +62,24 @@ begin
    end loop;
    -- A missing image must not submit the already appended background fill.
    Begin_Frame (S, (32, 24, V.A.G.Unrotated, (1, 1), 0, 0), 0, OK); pragma Assert (OK);
-   Capture (S, Default, Vulkan_Submission.No_Source, (0, 0, 32, 24), OK); pragma Assert (not OK);
+   Capture (S, Image_Style, Vulkan_Submission.No_Source, (0, 0, 32, 24), OK); pragma Assert (not OK);
    Finish (S, Result); pragma Assert (Result = Rejected and Calls (2) = 0);
    -- Exhausting the layer bound between the fill and image rejects all work.
    Begin_Frame (S, (32, 24, V.A.G.Unrotated, (1, 1), 0, 0), 0, OK); pragma Assert (OK);
    for I in 1 .. V.Maximum_Layers - 2 loop
       Append (S, (Kind => V.Solid, Surface => (0, 0, 1, 1), others => <>), OK); pragma Assert (OK);
    end loop;
-   Capture (S, Default, Source, (0, 0, 32, 24), OK); pragma Assert (not OK);
+   Capture (S, Image_Style, Source, (0, 0, 32, 24), OK); pragma Assert (not OK);
    Finish (S, Result); pragma Assert (Result = Rejected and Calls (2) = 0);
    -- NUC artifact (wallpaper bar over "Apps"): a second repair box's
    -- wallpaper must be clipped to that box, never to the clip the previous
    -- box left behind (the cursor footprint drawn last in box 1).
    Begin_Frame (S, (32, 24, V.A.G.Unrotated, (1, 1), 0, 0), 0, OK); pragma Assert (OK);
-   Capture (S, Default, Source, (0, 0, 16, 24), OK); pragma Assert (OK);
+   Capture (S, Image_Style, Source, (0, 0, 16, 24), OK); pragma Assert (OK);
    Set_Clip (S, (3, 18, 7, 24), OK); pragma Assert (OK);   -- box 1: cursor footprint
    Append (S, (Kind => V.Solid, Surface => (3, 18, 7, 24), others => <>), OK); pragma Assert (OK);
    declare First : constant Positive := Positive (Layer_Count (S)) + 1; begin
-      Capture (S, Default, Source, (16, 0, 32, 24), OK); pragma Assert (OK);   -- box 2
+      Capture (S, Image_Style, Source, (16, 0, 32, 24), OK); pragma Assert (OK);   -- box 2
       pragma Assert (V.Item (S.Scene, First).Kind = V.Set_Physical_Clip);
       pragma Assert (V.Item (S.Scene, First).Surface = (16, 0, 32, 24));
    end;

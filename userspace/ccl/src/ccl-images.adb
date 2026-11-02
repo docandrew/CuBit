@@ -80,11 +80,12 @@ package body CCL.Images with SPARK_Mode => On is
          Read_Text (Item.Name, True);
          Read_Symbol (Reader, Name);
          if Matches (Name, "repository") then Item.Kind := Repository_File;
+         elsif Matches (Name, "repository-tree") then Item.Kind := Repository_Tree;
          elsif Matches (Name, "supplied-file") then Item.Kind := Supplied_File;
          elsif Matches (Name, "supplied-tree") then Item.Kind := Supplied_Tree;
          else Fail (Invalid_Value);
          end if;
-         Read_Text (Item.Source, Item.Kind /= Repository_File);
+         Read_Text (Item.Source, Item.Kind not in Repository_File | Repository_Tree);
          for Old of Result.Plan.Artifacts (1 .. Result.Plan.Artifact_Count) loop
             if Old.Name = Item.Name then Fail (Duplicate_Name); end if;
          end loop;
@@ -255,7 +256,7 @@ package body CCL.Images with SPARK_Mode => On is
          for Input of Catalog.Artifacts (1 .. Catalog.Artifact_Count) loop
             if Item.Artifact_Name = Input.Name then
                Found := True;
-               if Input.Kind = Supplied_Tree and then
+               if Input.Kind in Supplied_Tree | Repository_Tree and then
                  (Item.Role /= Content or else Item.Region /= Optical)
                then Diagnostic := Invalid_Placement; return; end if;
             end if;

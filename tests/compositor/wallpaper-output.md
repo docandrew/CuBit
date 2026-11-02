@@ -67,12 +67,12 @@ output checksums were required. Median CPU milliseconds per full wallpaper:
 
 | Mode | Scalar | Strip cache | Reduction |
 | --- | ---: | ---: | ---: |
-| Wallpaper Fill | 6.422 | 6.056 | 5.7% |
-| Wallpaper Fit | 2.578 | 2.565 | 0.5% |
-| Wallpaper Center | 6.104 | 5.737 | 6.0% |
-| Cubie Fill | 6.239 | 5.540 | 11.2% |
-| Cubie Fit | 4.811 | 4.169 | 13.3% |
-| Cubie Center | 6.313 | 5.375 | 14.9% |
+| 2048x576 Fill | 6.422 | 6.056 | 5.7% |
+| 2048x576 Fit | 2.578 | 2.565 | 0.5% |
+| 2048x576 Center | 6.104 | 5.737 | 6.0% |
+| 2048x1152 Fill | 6.239 | 5.540 | 11.2% |
+| 2048x1152 Fit | 4.811 | 4.169 | 13.3% |
+| 2048x1152 Center | 6.313 | 5.375 | 14.9% |
 
 Fit's 0.5% difference is effectively unchanged. These are hosted process CPU
 measurements, not quiet-host wall times, NUC frame timings, GPU measurements or

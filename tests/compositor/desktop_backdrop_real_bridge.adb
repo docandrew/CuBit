@@ -1,7 +1,7 @@
 with CuBit.Handles.Fixture;
 with Desktop_GPU_Scene.Backdrop; with Desktop_Vulkan_Startup;
-with Desktop_Backdrop_Owner; with Desktop_Wallpaper;
-with CuBit.Appearance; with Vulkan_Submission; with System;
+with Desktop_Backdrop_Owner; with Desktop_Wallpaper; with Desktop_Backdrop_Style;
+with CuBit.Appearance; with Vulkan_Submission; with System; with Wallpaper_Assets;
 with Vulkan_Device_Owner; with Vulkan_Scene;
 package body Desktop_Backdrop_Real_Bridge is
    package D renames Desktop_Vulkan_Startup;
@@ -14,9 +14,12 @@ package body Desktop_Backdrop_Real_Bridge is
    function Held_Pending return Interfaces.C.int is (Interfaces.C.int (D.Presentation_Pending.Buffer));
    Scene : G.State;
    Owners : array (0 .. 1) of O.State;
-   Style : A.Preferences;
+   package WA renames Wallpaper_Assets;
+   --  Two wallpapers of different sizes and the two solid colours.
+   Backdrops : constant array (0 .. 3) of WA.Test_Backdrop := [WA.Wide, WA.Slate, WA.Ocean, WA.Tall];
+   Style : Desktop_Backdrop_Style.Backdrop;
    Version, Selected : Natural := 0;
-   use type Interfaces.C.int, Vulkan_Scene.A.G.Logical_Coordinate, A.Background, G.Outcome, G.Phase, O.Outcome, Vulkan_Device_Owner.Phase;
+   use type Interfaces.C.int, Vulkan_Scene.A.G.Logical_Coordinate, G.Outcome, G.Phase, O.Outcome, Vulkan_Device_Owner.Phase;
    function Open return Interfaces.C.int is
       OK : Boolean;
    begin
@@ -30,10 +33,11 @@ package body Desktop_Backdrop_Real_Bridge is
       Source : Vulkan_Submission.Source_Ticket; Result : O.Outcome;
    begin
       Desktop_Backdrop_Real_Bridge.Version := Natural (Version);
-      Style := (A.Color_Scheme'Val (N / 12), A.Background'Val ((N / 3) mod 4), A.Placement'Val (N mod 3));
-      if Style.Backdrop not in A.Wallpaper | A.Cubie then return 0; end if;
-      Selected := (if Style.Backdrop = A.Cubie then 1 else 0);
-      O.Acquire (Owners (Selected), O.Slot (128 + Selected), Style.Backdrop, Source, Result);
+      Style := WA.Style (Backdrops ((N / 3) mod 4), A.Color_Scheme'Val (N / 12), A.Placement'Val (N mod 3));
+      if not Desktop_Backdrop_Style.Has_Image (Style) then return 0; end if;
+      Selected := (if Style.Image = WA.Index (WA.Tall) then 1 else 0);
+      O.Acquire (Owners (Selected), (if Selected = 0 then O.Slot'First else O.Slot'Last), Style.Image,
+                 Style.Width, Style.Height, Source, Result);
       return (case Result is when O.Available => 0, when O.Pending => 1, when others => -1);
    end Start;
    function Clip return Vulkan_Scene.A.G.Physical_Rectangle is
@@ -44,15 +48,16 @@ package body Desktop_Backdrop_Real_Bridge is
       Source : Vulkan_Submission.Source_Ticket := Vulkan_Submission.No_Source;
       Result : O.Outcome; OK : Boolean; Released : System.Address;
    begin
-      if Style.Backdrop in A.Wallpaper | A.Cubie then
-         O.Acquire (Owners (Selected), O.Slot (128 + Selected), Style.Backdrop, Source, Result);
+      if Desktop_Backdrop_Style.Has_Image (Style) then
+         O.Acquire (Owners (Selected), (if Selected = 0 then O.Slot'First else O.Slot'Last), Style.Image,
+                    Style.Width, Style.Height, Source, Result);
          if Result /= O.Available then return 1; end if;
       end if;
       G.Begin_Frame (Scene, (96, 64, Vulkan_Scene.A.G.Orientation'Val (Version / 96),
         Scales ((Version / 24) mod 4), -20, 10), 0, OK); if not OK then return 2; end if;
       G.Set_Clip (Scene, Clip, OK); if not OK then return 7; end if;
       G.Backdrop.Capture (Scene, Style, Source, OK); if not OK then return 3; end if;
-      if Style.Backdrop in A.Wallpaper | A.Cubie then
+      if Desktop_Backdrop_Style.Has_Image (Style) then
          if G.Image_Reader_Count (Scene) /= 1 or else not D.Source_Pinned (Source) then return 4; end if;
          -- Actual provider release must be blocked before submission, while
          -- only the CPU snapshot (not a GPU fence) protects this image.

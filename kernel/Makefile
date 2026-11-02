@@ -628,7 +628,7 @@ test-qoi: wallpaper-assets icon-assets
 
 prove-qoi:
 	$(ALR) gnatprove -P ../tests/qoi/qoi.gpr -u cubit-qoi.adb --mode=all --level=1 --timeout=10 -j2
-	$(ALR) gnatprove -P ../tests/qoi/store.gpr -u desktop_wallpaper_store.adb --mode=all --level=1 --timeout=10 -j2
+	$(ALR) gnatprove -P ../tests/qoi/store.gpr -u desktop_wallpaper_store.adb --mode=all --level=2 --timeout=30 -j2
 	$(ALR) gnatprove -P ../tests/qoi/icon_store.gpr -u desktop_icon_store.adb --mode=all --level=2 --timeout=15 -j2
 
 .PHONY: test-appearance prove-appearance
@@ -1031,6 +1031,13 @@ setting-kinds: ccl-manifest
 	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_manifest.gpr
 	../userspace/ccl/build/manifest/ccl-manifest --setting-codecs ../userspace/ccl/src \
 	  --schema ../userspace/ccl/interfaces/executable-manifest.ccl
+
+# The asset catalogs' entry decoders (CCL.Asset_Codecs: the wallpaper
+# package's catalog lines), generated from their CCL types and kept in the
+# tree like the setting codecs (tests/wallpaper-catalog compares them).
+.PHONY : asset-codecs
+asset-codecs: ccl-manifest
+	../userspace/ccl/build/manifest/ccl-manifest --asset-codecs ../userspace/ccl/src
 
 .PHONY : ccl-manifest
 ccl-manifest:
@@ -1972,16 +1979,21 @@ desktop: user_runtime ccl-manifest ui-fonts-native time-zones
 # image's system volume. ASSET_ROOT is the one place the root is spelled for
 # the disk builders; Desktop reads it from the system.assets.root setting.
 ASSET_ROOT := Assets
-WALLPAPER_PACKAGE := $(ASSET_ROOT)/cubit-wallpapers/1
-WALLPAPER_ASSETS := build/$(WALLPAPER_PACKAGE)/cubes.qoi build/$(WALLPAPER_PACKAGE)/cubie.qoi
-WALLPAPER_SOURCES := ../assets/wallpapers/wallpaper2.png \
-	../assets/wallpapers/cubit-girl-wallpaper-4k-3840x2160.png
-WALLPAPER_DISK_FILES = $(foreach f,$(WALLPAPER_ASSETS),--file "$(WALLPAPER_PACKAGE)/$(notdir $(f))=$(f)")
+WALLPAPER_PACKAGE := $(ASSET_ROOT)/cubit-wallpapers/2
+# The package is whatever its source list declares (assets/wallpapers/
+# wallpapers.ccl): its catalog.ccl and one <name>.qoi per wallpaper. Make
+# names no picture: the stamp stands for the whole directory, and the disk
+# placements list the files the build wrote (expanded when a recipe runs).
+WALLPAPER_STAMP := build/$(ASSET_ROOT)/.cubit-wallpapers-2.stamp
+WALLPAPER_ASSETS := $(WALLPAPER_STAMP)
+WALLPAPER_SOURCES := ../assets/wallpapers/wallpapers.ccl $(wildcard ../assets/wallpapers/*.png)
+WALLPAPER_DISK_FILES = $(foreach f,$(sort $(wildcard build/$(WALLPAPER_PACKAGE)/*)),--file "$(WALLPAPER_PACKAGE)/$(notdir $(f))=$(f)")
 
 .PHONY : wallpaper-assets
 wallpaper-assets: $(WALLPAPER_ASSETS)
-$(WALLPAPER_ASSETS) &: $(WALLPAPER_SOURCES) ../tools/build_wallpaper_assets.py ../tools/qoi.py
+$(WALLPAPER_STAMP): $(WALLPAPER_SOURCES) ../tools/build_wallpaper_assets.py ../tools/qoi.py | ccl-manifest
 	$(ALR) python3 ../tools/build_wallpaper_assets.py ../assets/wallpapers build/$(WALLPAPER_PACKAGE)
+	touch $@
 
 # Desktop's application icon atlas (Desktop_Icon_Assets): the CuBit icon
 # PNGs at every exported edge, in Desktop_Icons.Icon_ID order, packed by

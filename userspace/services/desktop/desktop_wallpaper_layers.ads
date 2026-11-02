@@ -1,5 +1,5 @@
 with System;
-with CuBit.Appearance;
+with Desktop_Backdrop_Style;
 --  Retained wallpaper layers (docs/assets.md): one private, pre-scaled copy
 --  of the backdrop per output, so repainting damage is row copies instead of
 --  resampling the wallpaper for every damaged pixel. A layer is rebuilt only
@@ -15,7 +15,7 @@ package Desktop_Wallpaper_Layers is
    procedure Paint
      (Layer : Layer_Index; Target : System.Address;
       Width, Height, Pitch : Positive; X, Y, W, H : Natural;
-      Style : CuBit.Appearance.Preferences);
+      Style : Desktop_Backdrop_Style.Backdrop);
 
    --  Free Layer's memory (output teardown). Painting rebuilds it.
    procedure Release (Layer : Layer_Index);

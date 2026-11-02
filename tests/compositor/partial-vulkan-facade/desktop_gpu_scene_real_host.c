@@ -123,9 +123,6 @@ uint32_t __wrap_cubit_font_raster_mask(const struct font_request *r,void *pixels
 }
 extern int facade_frame(int),facade_pump(void),facade_wrong_writer(void);
 extern uint32_t facade_pixel(int);
-/* These assets are not drawn by this fill-only facade oracle. */
-const uint32_t cubit_desktop_wallpaper[2048*576]={0};
-const uint32_t cubit_desktop_wallpaper_cubie[2048*1152]={0};
 static int rejected_readback_regions(void){
  const struct cubit_vulkan_readback_region good={1,1,4,4};
  const struct cubit_vulkan_readback_region invalid[]={

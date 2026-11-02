@@ -3,7 +3,7 @@ with Compositor_Damage;
 with Desktop_Vulkan_Startup;
 with Compositor_Text;
 with Compositor_Backend_Selection;
-with CuBit.Appearance;
+with Desktop_Backdrop_Style;
 with System;
 with Compositor_Formats;
 with Desktop_Composition;
@@ -70,7 +70,7 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initialize
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
      with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),
        Pre => Valid and Desktop_Vulkan_Startup.Valid,
@@ -79,7 +79,7 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initialize
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Bounds : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
      with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),
        Pre => Valid and Desktop_Vulkan_Startup.Valid,

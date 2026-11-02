@@ -1,7 +1,9 @@
 # Desktop's settings (userspace/services/desktop): its appearance, Apps menu,
 # input, displays and the GPU power policy it hands the driver.
 (Setting_Catalog settings => [
-  (Setting "desktop.appearance.v1" Shape.Key Value.Text Class.Application_State "")
+  (Setting "desktop.appearance.v2" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.Desktop_Display.APPEARANCE_TYPE_SOURCE" "Appearance"))
+    Class.Application_State "Desktop_Appearance_Settings")
   (Setting "desktop.appearance.theme.light" Shape.Key Value.Text Class.Declaration_Managed "")
   (Setting "desktop.appearance.theme.dark" Shape.Key Value.Text Class.Declaration_Managed "")
   (Setting "desktop.launch." Shape.Family

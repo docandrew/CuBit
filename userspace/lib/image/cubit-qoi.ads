@@ -77,6 +77,20 @@ package CuBit.QOI with SPARK_Mode, Pure is
       Trailing_Data,      --  bytes after the marker
       Truncated);         --  the stream ended before the marker (Finish)
 
+   --  A stream's header alone (its first Header_Bytes), checked exactly as
+   --  Feed checks it but against no caller limit: a reader learns the
+   --  image's size, and can size its buffer, before it decodes the pixels.
+   type Header_Info is record
+      Error : Failure := No_Failure;
+      Width, Height : Natural := 0;
+   end record;
+   function Inspect (Header : Byte_Array) return Header_Info
+     with Pre  => Header'Length = Header_Bytes,
+          Post => (if Inspect'Result.Error = No_Failure then
+                     Inspect'Result.Width in Side and then Inspect'Result.Height in Side
+                   else Inspect'Result.Error in Bad_Magic | Bad_Size | Bad_Channels | Bad_Colorspace
+                        and then Inspect'Result.Width = 0 and then Inspect'Result.Height = 0);
+
    type Decoder is private;
 
    function Limit (D : Decoder) return Pixel_Limit;

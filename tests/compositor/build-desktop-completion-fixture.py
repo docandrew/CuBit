@@ -104,8 +104,7 @@ def main():
     for path in (source / "userspace/runtime/adalib").iterdir():
         if path.is_file():
             remember(path)
-    seed_paths = [DESKTOP / "build" / name for name in
-                  ("manifest.o", "wallpaper.o", "wallpaper_cubie.o")]
+    seed_paths = [DESKTOP / "build" / "manifest.o"]
     seed_paths += [source / "userspace/rust/build/font-native/libcubit_fonts.a"]
     for path in seed_paths:
         remember(path)

@@ -31,7 +31,7 @@ s=s.replace('      N : constant Natural := Natural (Version) mod 24;','')
 a=s.index('      Style :=');b=s.index('      O.Acquire',a)
 s=s[:a]+'      Selected := Natural (Version) mod 2;\n'+s[b:]
 s=s.replace('O.Slot (128 + Selected), Style.Backdrop','O.Slot (130 + Selected), Family')
-s=s.replace('      if Style.Backdrop in A.Wallpaper | A.Cubie then','      if True then')
+s=s.replace('      if Desktop_Backdrop_Style.Has_Image (Style) then','      if True then')
 s=s.replace('         if G.Image_Reader_Count (Scene) /= 1', '         if Clip.Left >= Clip.Right or else Clip.Top >= Clip.Bottom then\n            return (if G.Image_Reader_Count (Scene) = 0 then 0 else 9);\n         end if;\n         if G.Image_Reader_Count (Scene) /= 1')
 s=s.replace('      G.Backdrop.Capture (Scene, Style, Source, OK); if not OK then return 3; end if;', '''      G.Drawing.Image_Region (Scene, Source, (-12, 18, 12, 42), Clip,
         I.Atlases.Region (Item), OK, Over => True, Straight_Alpha => True);

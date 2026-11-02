@@ -4,6 +4,7 @@ with CuBit.UI; use CuBit.UI;
 with CuBit.Appearance;
 with CuBit.Display_Layouts;
 with Desktop_Settings;
+with Desktop_Wallpaper_Catalog;
 with Time_Zones;
 with CuBit.Output_Modes;
 procedure Renderer_Tests is
@@ -45,19 +46,45 @@ procedure Renderer_Tests is
    Layout : CuBit.Display_Layouts.Layout;
    View : Desktop_Settings.State;
    Before : Natural;
+   --  A catalog of five wallpapers: the list is sized to it.
+   Wallpapers : constant := 5;
+   function Wallpaper_Name (N : Positive) return String is ("picture-" & Character'Val (Character'Pos ('0') + N));
+   function Catalog_Text return String is
+      Text : String (1 .. 0);
+      function Line (N : Positive) return String is
+        ("(Wallpaper name => """ & Wallpaper_Name (N) & """ label => ""Label" & N'Image & """ file => """ &
+         Wallpaper_Name (N) & ".qoi"" attribution => ""test"")" & ASCII.LF);
+      function Lines (From : Positive) return String is
+        (if From > Wallpapers then "" else Line (From) & Lines (From + 1));
+   begin
+      return Text & Lines (1);
+   end Catalog_Text;
+   Loaded : Desktop_Wallpaper_Catalog.Load_Result;
+   --  The appearances the pages are drawn with: the default wallpaper, each
+   --  wallpaper by name, and the two solid colours.
+   function Appearance (Scheme : A.Color_Scheme; Choice : Natural; Placement : A.Placement)
+     return A.Preferences is
+     (if Choice = 0 then (A.Default with delta Scheme => Scheme, Position => Placement)
+      elsif Choice <= Wallpapers then
+        (A.Default with delta Scheme => Scheme, Image => A.To_Image_Name (Wallpaper_Name (Choice)),
+                              Position => Placement)
+      else (A.Default with delta Scheme => Scheme, Kind => A.Solid, Position => Placement,
+                               Color => (if Choice = Wallpapers + 1 then A.Slate else A.Ocean)));
 begin
+   Desktop_Wallpaper_Catalog.Load (Catalog_Text, Loaded);
+   pragma Assert (Desktop_Wallpaper_Catalog.Count = Wallpapers);
    Layout.Count := 2;
    Layout.Items (1) := (1, (1024, 768, others => <>));
    Layout.Items (2) := (2, (Width => 1280, Height => 720, X => 1024, others => <>));
    for Page in Desktop_Settings.Page loop
       for Scheme in A.Color_Scheme loop
-         for Backdrop in A.Background loop
+         for Backdrop in 0 .. Wallpapers + 2 loop
             for Placement in A.Placement loop
                for Clip in 1 .. 4 loop
                   C.clip := (case Clip is when 1 => (100, 100, 744, 400),
                     when 2 => (300, 180, 80, 40), when 3 => (0, 0, 1, 1), when others => (100, 100, 744, 400));
                   --  The fourth pass: a user-chosen (not automatic) scale.
-                  Desktop_Settings.Open (View, (Scheme, Backdrop, Placement), Layout, 1, Auto_Scale => Clip /= 4,
+                  Desktop_Settings.Open (View, Appearance (Scheme, Backdrop, Placement), Layout, 1, Auto_Scale => Clip /= 4,
                     Zone => Time_Zones.Zone_America_Denver);
                   View.Current_Page := Page;
                   Before := Calls;
@@ -237,6 +264,88 @@ begin
       S.Set_Monitor (View, (others => <>));
       View.Trial_Open := False;
       Render (View, C, Window);
+      Cases := Cases + 1;
+   end;
+   --  Appearance: the wallpaper list, one row per catalog wallpaper, by
+   --  keyboard and pointer; the solid colours; Revert and Apply.
+   declare
+      use type A.Backdrop_Kind, A.Image_Name, A.Solid_Color, A.Preferences;
+      use type Desktop_Settings.Control;
+      package S renames Desktop_Settings;
+      Window : constant Rect := (100, 100, 744, 400);
+      Apply : Boolean;
+      Scan_Enter : constant := 16#1C#;
+      Scan_Down : constant := 16#50#;
+      Scan_Page_Down : constant := 16#51#;
+      Scan_Home : constant := 16#47#;
+      Scan_End : constant := 16#4F#;
+      Scan_Tab : constant := 16#0F#;
+      --  The list in this window: page left 132, right column +280, list +154.
+      List_X : constant := 100 + 132 + 280 + 10;
+      List_Row_Y : constant := 100 + 154 + 5;
+      Row_Height : constant := 22;
+      --  Its Up and Down buttons, right of the list.
+      Button_X : constant := 100 + 132 + 280 + 232 + 8 + 10;
+      Up_Y : constant := 100 + 154 + 10;
+      Down_Y : constant := 100 + 154 + 3 * Row_Height - 10;
+      procedure Click (X, Y : Natural) is
+      begin
+         S.Pointer (View, Window, (X, Y, True, True, False, True), Apply);
+         S.Pointer (View, Window, (X, Y, False, False, True, True), Apply);
+      end Click;
+      function Chosen_Name return String is (A.Name (View.Pending.Image));
+   begin
+      pragma Assert (S.Wallpaper_Rows = Wallpapers);
+      for Row in 1 .. Wallpapers loop
+         pragma Assert (S.Wallpaper_Label (Row) = "Label" & Row'Image);
+      end loop;
+      S.Open (View, A.Default, Layout, 1, Auto_Scale => True, Zone => Time_Zones.Zone_UTC);
+      pragma Assert (S.Chosen_Wallpaper (View) = 1 and View.Wallpaper_Top = 1, "no name: the default row");
+      --  A row click chooses that wallpaper by its catalog name.
+      S.Pointer (View, Window, (List_X, List_Row_Y + 1 * Row_Height, True, True, False, True), Apply);
+      pragma Assert (Chosen_Name = Wallpaper_Name (2) and View.Focused = S.Wallpaper_List);
+      pragma Assert (S.Chosen_Wallpaper (View) = 2 and View.Pending /= View.Applied);
+      S.Key (View, Scan_Down, False, Apply);
+      pragma Assert (Chosen_Name = Wallpaper_Name (3));
+      S.Key (View, Scan_End, False, Apply);
+      pragma Assert (Chosen_Name = Wallpaper_Name (Wallpapers) and View.Wallpaper_Top = Wallpapers - 2,
+                     "the last row scrolls into view");
+      Render (View, C, Window);
+      S.Key (View, Scan_Home, False, Apply);
+      pragma Assert (Chosen_Name = Wallpaper_Name (1) and View.Wallpaper_Top = 1);
+      S.Key (View, Scan_Page_Down, False, Apply);
+      pragma Assert (Chosen_Name = Wallpaper_Name (4) and View.Wallpaper_Top = 2);
+      S.Key (View, Scan_Down, False, Apply);
+      S.Key (View, Scan_Down, False, Apply);
+      pragma Assert (Chosen_Name = Wallpaper_Name (Wallpapers), "stops at the last row");
+      --  The Up and Down buttons page the list without choosing.
+      Click (Button_X, Up_Y);
+      pragma Assert (View.Wallpaper_Top = 1 and Chosen_Name = Wallpaper_Name (Wallpapers));
+      Click (Button_X, Down_Y);
+      pragma Assert (View.Wallpaper_Top = Wallpapers - 2);
+      --  A row of the scrolled list.
+      S.Pointer (View, Window, (List_X, List_Row_Y, True, True, False, True), Apply);
+      pragma Assert (Chosen_Name = Wallpaper_Name (Wallpapers - 2));
+      --  A solid colour, then back to a wallpaper keeps both choices.
+      View.Focused := S.Ocean;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Pending.Kind = A.Solid and View.Pending.Color = A.Ocean and S.Chosen_Wallpaper (View) = 0);
+      Render (View, C, Window);
+      View.Focused := S.Wallpaper_List;
+      S.Key (View, Scan_Home, False, Apply);
+      pragma Assert (View.Pending.Kind = A.Image and Chosen_Name = Wallpaper_Name (1) and
+                     View.Pending.Color = A.Ocean);
+      --  Tab reaches the list and its buttons between the colours and placement.
+      View.Focused := S.Dark;
+      for Expected in S.Control range S.Slate .. S.Apply loop
+         S.Key (View, Scan_Tab, False, Apply);
+         pragma Assert (View.Focused = Expected, "tab order " & Expected'Image);
+      end loop;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (Apply);
+      View.Focused := S.Revert;
+      S.Key (View, Scan_Enter, False, Apply);
+      pragma Assert (View.Pending = View.Applied and S.Chosen_Wallpaper (View) = 1);
       Cases := Cases + 1;
    end;
    Ada.Text_IO.Put_Line ("PASS Settings callback-only rendering:" & Cases'Image &

@@ -1,17 +1,13 @@
 with Desktop_Backdrop_Style;
 with System;
-with CuBit.Appearance;
 with CuBit.Display_Geometry;
 
 package Desktop_Wallpaper is
-   Source_Width : constant := Desktop_Backdrop_Style.Wallpaper_Width;
-   Source_Height : constant := Desktop_Backdrop_Style.Wallpaper_Height;
-   Cubie_Width : constant := Desktop_Backdrop_Style.Cubie_Width;
-   Cubie_Height : constant := Desktop_Backdrop_Style.Cubie_Height;
-   --  Render the decoded wallpaper (Desktop_Wallpaper_Store) into a private,
-   --  validated display buffer. Aspect-fill scaling crops centrally without
-   --  stretching or bars. An image that is not loaded is drawn as its flat
-   --  theme colour. No file I/O or additional full-screen allocation here.
+   --  Render a decoded wallpaper (Desktop_Wallpaper_Store, whatever its
+   --  size) into a private, validated display buffer. Aspect-fill scaling
+   --  crops centrally without stretching or bars. An image that is not
+   --  Ready, or whose raster is not the size the style says, is drawn as the
+   --  flat colour. No file I/O or additional full-screen allocation here.
    procedure Render
      (Target : System.Address;
       Width, Height, Pitch : Positive);
@@ -22,7 +18,7 @@ package Desktop_Wallpaper is
      (Target : System.Address;
       Width, Height, Pitch : Positive;
       X, Y, W, H : Natural;
-      Style : CuBit.Appearance.Preferences := CuBit.Appearance.Default);
+      Style : Desktop_Backdrop_Style.Backdrop := Desktop_Backdrop_Style.Flat);
    -- Caller owns Pitch * Screen.Height writable bytes in the acquired target.
    -- Samples the decoded raster directly; no intermediate preview allocation.
    procedure Paint_Output
@@ -30,6 +26,6 @@ package Desktop_Wallpaper is
       Screen : CuBit.Display_Geometry.Output;
       Bounds : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences := CuBit.Appearance.Default)
+      Style : Desktop_Backdrop_Style.Backdrop := Desktop_Backdrop_Style.Flat)
      with Pre => Pitch / 4 >= Natural (Screen.Width);
 end Desktop_Wallpaper;

@@ -26,27 +26,32 @@ begin
         Shift_Left (Unsigned_32 (I mod 251), 16) or
         Shift_Left (Unsigned_32 ((I / 2048) mod 241), 8) or Unsigned_32 (I mod 239);
    end loop;
-   for I in Wallpaper_Assets.Cubie'Range loop
-      Wallpaper_Assets.Cubie (I) := 16#FF00_0000# or
+   for I in Wallpaper_Assets.Tall_Image'Range loop
+      Wallpaper_Assets.Tall_Image (I) := 16#FF00_0000# or
         Shift_Left (Unsigned_32 ((I / 2048) mod 233), 16) or
         Shift_Left (Unsigned_32 (I mod 229), 8) or Unsigned_32 (I mod 227);
    end loop;
+   for I in Wallpaper_Assets.Third_Image'Range loop
+      Wallpaper_Assets.Third_Image (I) := 16#FF00_0000# or
+        Shift_Left (Unsigned_32 ((I / 1000) mod 211), 16) or
+        Shift_Left (Unsigned_32 (I mod 199), 8) or Unsigned_32 (I mod 197);
+   end loop;
    for Scheme in A.Color_Scheme loop
-      for Backdrop in A.Background loop
+      for Backdrop in Wallpaper_Assets.Test_Backdrop loop
          for Placement in A.Placement loop
             for Density of Densities loop
                for Rotation in G.Orientation loop
                   Screen := (64, 48, Rotation, Density, -9, 3);
                   Whole := (others => Sentinel); Tiled := Whole;
                   Desktop_Wallpaper.Paint_Output (Whole (1)'Address, Stride * 4,
-                    Screen, Bounds, (0, 0, 64, 48), (Scheme, Backdrop, Placement));
+                    Screen, Bounds, (0, 0, 64, 48), Wallpaper_Assets.Style (Backdrop, Scheme, Placement));
                   for Y in 0 .. 1 loop
                      for X in 0 .. 1 loop
                         Desktop_Wallpaper.Paint_Output (Tiled (1)'Address, Stride * 4,
                           Screen, Bounds,
                           (G.Pixel_Edge (X * 32), G.Pixel_Edge (Y * 24),
                            G.Pixel_Edge ((X + 1) * 32), G.Pixel_Edge ((Y + 1) * 24)),
-                          (Scheme, Backdrop, Placement));
+                          Wallpaper_Assets.Style (Backdrop, Scheme, Placement));
                      end loop;
                   end loop;
                   pragma Assert (Whole = Tiled);
@@ -70,9 +75,9 @@ begin
             Screen := (64, 48, others => <>);
             Whole := (others => Sentinel); Legacy := Whole;
             Desktop_Wallpaper.Paint_Output (Whole (1)'Address, Stride * 4, Screen,
-              (0, 0, 32, 24), (0, 0, 64, 48), (Scheme, Backdrop, Placement));
+              (0, 0, 32, 24), (0, 0, 64, 48), Wallpaper_Assets.Style (Backdrop, Scheme, Placement));
             Desktop_Wallpaper.Paint (Legacy (1)'Address, 32, 24, Stride * 4,
-              0, 0, 32, 24, (Scheme, Backdrop, Placement));
+              0, 0, 32, 24, Wallpaper_Assets.Style (Backdrop, Scheme, Placement));
             pragma Assert (Whole = Legacy);
          end loop;
       end loop;

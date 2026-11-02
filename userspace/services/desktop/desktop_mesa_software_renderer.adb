@@ -101,7 +101,7 @@ package body Desktop_Mesa_Software_Renderer with SPARK_Mode,
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
      with Refined_Global => (Proof_In => Text) is
       pragma Unreferenced (Target, Target_Bytes, Style, Secondary);
@@ -113,7 +113,7 @@ package body Desktop_Mesa_Software_Renderer with SPARK_Mode,
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Bounds : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) is
       pragma Unreferenced (Target, Target_Bytes, Bounds, Damage, Style, Secondary);
    begin

@@ -1309,9 +1309,16 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
         # Desktop's asset packages (docs/assets.md), from the current build:
-        # the wallpapers and the application icon atlas.
+        # the whole wallpaper package (its catalog and whatever pictures it
+        # names) and the application icon atlas.
         debugfs -w -R "mkdir Assets" "$TEMP_DISK" >/dev/null 2>&1
-        for ASSET_ITEM in cubit-wallpapers/1/cubes.qoi cubit-wallpapers/1/cubie.qoi \
+        WALLPAPER_PACKAGE=cubit-wallpapers/2
+        if [ ! -f "$KERNEL_DIR/build/Assets/$WALLPAPER_PACKAGE/catalog.ccl" ]; then
+            echo "headless: build wallpaper-assets first: $KERNEL_DIR/build/Assets/$WALLPAPER_PACKAGE" >&2
+            exit 1
+        fi
+        WALLPAPER_ITEMS=$(cd "$KERNEL_DIR/build/Assets" && find "$WALLPAPER_PACKAGE" -maxdepth 1 -type f | sort)
+        for ASSET_ITEM in $WALLPAPER_ITEMS \
           cubit-icons/4/applications.qoi cubit-lexicon/1/english.lexicon cubit-lexicon/1/LEXICON-NOTICE; do
             ASSET_PACKAGE="Assets/${ASSET_ITEM%/*}"
             debugfs -w -R "mkdir ${ASSET_PACKAGE%/*}" "$TEMP_DISK" >/dev/null 2>&1
@@ -5757,7 +5764,8 @@ mixer: HDA period IRQ active
     desktop-display)
         required_markers="
 display: gpu not primary, using linear-fb
-desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/1/cubes.qoi
+desktop: wallpaper catalog @nvme:0/Assets/cubit-wallpapers/2/catalog.ccl loaded 1 wallpaper(s)
+desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/2/cubes.qoi size= 2048 x 576
 desktop: icons loaded @nvme:0/Assets/cubit-icons/4/applications.qoi
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active

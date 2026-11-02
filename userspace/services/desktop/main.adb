@@ -131,6 +131,8 @@ with Clipboard_Store;
 with Clipboard_Menu;
 with Key_Repeat;
 with Desktop_Display_Scale_Settings;
+with Desktop_Appearance_Settings;
+with Desktop_Backdrop_Style;
 with Desktop_Display_Modeset_Settings;
 with Desktop_Display_Mode_Settings;
 with Desktop_Mode_Trial;
@@ -1293,14 +1295,24 @@ procedure main is
       end loop;
    end Load_Theme;
 
+   --  desktop.appearance.v2 (Desktop_Appearance_Settings). Absent means the
+   --  default; an invalid value is reported and keeps it. A wallpaper the
+   --  catalog no longer holds is settled to the default one, with a warning
+   --  (Desktop_Wallpaper_Assets.Settle), so the catalog is read first.
    procedure Read_Appearance is
       use all type CuBit.Settings.Outcome;
-      Stored : constant Startup.Settings.Desktop_Appearance_V1.Reading :=
-        Startup.Settings.Desktop_Appearance_V1.Read;
+      package Setting renames Startup.Settings.Desktop_Appearance_V2;
+      Stored : constant Setting.Reading := Setting.Read;
    begin
-      if Stored.Kind = Present and then CuBit.Appearance.Valid (CuBit.Settings.Image (Stored.Item)) then
-         appearance := CuBit.Appearance.Decode (CuBit.Settings.Image (Stored.Item));
+      if Stored.Kind = Present then
+         appearance := Stored.Item;
+      elsif Stored.Kind /= Absent then
+         Desktop_Logs.Warn ("desktop: " & Setting.Setting_Key & " " & CuBit.Settings.Outcome'Image (Stored.Kind) &
+                            "; using the default appearance");
       end if;
+      Desktop_Wallpaper_Assets.Settle (appearance);
+      debugPrint ("desktop: appearance " & Desktop_Appearance_Settings.Encode (appearance) &
+                  (if Stored.Kind = Present then " (configured)" else " (default)") & LF);
       Load_Theme;
    end Read_Appearance;
 
@@ -4029,7 +4041,7 @@ procedure main is
       Area : Rect := (0, 0, fbWidth, fbHeight);
       --  The appearance's backdrop, or its flat colour while its image file
       --  is unavailable (loaded on first use; docs/assets.md).
-      shown : CuBit.Appearance.Preferences;
+      shown : Desktop_Backdrop_Style.Backdrop;
    begin
       Desktop_Wallpaper_Assets.Resolve (appearance, shown);
       if nativeOutputPass then
@@ -5340,7 +5352,7 @@ procedure main is
       P : constant CuBit.UI.Rect := CuBit.UI.Clamp_Rect (C, Bounds);
       O : Output_Presentation renames presentations (activeOutput);
       Drawn, Must_Restart : Boolean;
-      Shown : CuBit.Appearance.Preferences;
+      Shown : Desktop_Backdrop_Style.Backdrop;
    begin
       if P.w = 0 or else P.h = 0 then return; end if;
       Desktop_Wallpaper_Assets.Resolve (Style, Shown);
@@ -5508,8 +5520,12 @@ procedure main is
                if nativeOutputPass then
                   renderSettings (settingsView, C, (bounds.x, bounds.y, bounds.w, bounds.h));
                else
-                  Desktop_Wallpaper_Assets.Prepare (settingsView.Pending.Backdrop);
-                  Desktop_Settings.Draw (settingsView, C, (bounds.x, bounds.y, bounds.w, bounds.h));
+                  declare
+                     Preview : Desktop_Backdrop_Style.Backdrop;
+                  begin
+                     Desktop_Wallpaper_Assets.Resolve (settingsView.Pending, Preview);
+                     Desktop_Settings.Draw (settingsView, C, (bounds.x, bounds.y, bounds.w, bounds.h), Preview);
+                  end;
                end if;
             end;
          when others =>
@@ -9968,7 +9984,7 @@ procedure main is
    end Apply_Arrangement;
 
    procedure Apply_Appearance (damage : in out Rect) is
-      Text : constant CuBit.Appearance.Encoding := CuBit.Appearance.Encode (settingsView.Pending);
+      Text : constant String := Desktop_Appearance_Settings.Encode (settingsView.Pending);
       Status : CuBit.Settings.Change_Outcome;
       use all type CuBit.Settings.Change_Outcome;
    begin
@@ -9976,7 +9992,7 @@ procedure main is
       appearance := settingsView.Pending;
       Load_Theme;
       themeRevision := themeRevision + 1;
-      Startup.Settings.Desktop_Appearance_V1.Write (CuBit.Settings.To_Text (Text), Status);
+      Startup.Settings.Desktop_Appearance_V2.Write (settingsView.Pending, Status);
       settingsView.Applied := appearance;
       settingsView.Status := (if Status = Done then Desktop_Settings.Saved_In_Config
                               else Desktop_Settings.Session_Only);
@@ -9987,7 +10003,7 @@ procedure main is
             queueConfigure (S.id, Unsigned_64 (S.w), Unsigned_64 (S.h));
          end if;
       end loop;
-      debugPrint ("desktop: appearance applied" & LF);
+      debugPrint ("desktop: appearance applied " & Text & LF);
    end Apply_Appearance;
 
    --  Settings > Date & Time: clock.time-zone, which the clock service reads
@@ -13261,8 +13277,9 @@ begin
    if ret = Unsigned_64'Last then
       debugPrint ("desktop: register failed" & LF);
    end if;
+   Desktop_Wallpaper_Assets.Load_Catalog;
    Read_Appearance;
-   Desktop_Wallpaper_Assets.Prepare (appearance.Backdrop);
+   Desktop_Wallpaper_Assets.Prepare (appearance);
    Desktop_Icon_Assets.Load;
    Read_Trace_Configuration;
    Load_Launch_Menu;

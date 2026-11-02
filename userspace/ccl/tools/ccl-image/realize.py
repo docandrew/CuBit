@@ -124,7 +124,7 @@ def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROO
             raise ValueError("invalid destination")
         if any(other[0] == region and conflict(destination, other[5]) for other in rows[:index]):
             raise ValueError("overlapping placement roots")
-        if kind == "REPOSITORY_FILE":
+        if kind in ("REPOSITORY_FILE", "REPOSITORY_TREE"):
             path = (root / source).resolve(strict=True)
             if not path.is_relative_to(root):
                 raise ValueError("repository artifact escapes repository")
@@ -135,7 +135,7 @@ def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROO
             path = inputs[source].resolve(strict=True)
         else:
             raise ValueError("unknown artifact source kind")
-        if kind == "SUPPLIED_TREE":
+        if kind in ("SUPPLIED_TREE", "REPOSITORY_TREE"):
             if region != "OPTICAL" or role != "CONTENT" or not path.is_dir():
                 raise ValueError("invalid tree input")
             children = []

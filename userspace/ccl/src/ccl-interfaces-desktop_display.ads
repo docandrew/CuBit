@@ -44,4 +44,21 @@ package CCL.Interfaces.Desktop_Display with SPARK_Mode, Pure is
      "(refresh_millihertz Refresh_Millihertz))) " &
      "(type Display_Mode (variant (Auto) (Fixed Display_Mode_Choice)))";
    MODE_ROOT_TYPE_NAME : constant String := "Display_Mode";
+
+   --  `desktop.appearance.v2` is one Appearance: what the desktop's outputs
+   --  show, read back and written, with the decoder generated from these
+   --  declarations (CCL.Setting_Codecs.Appearance), by the desktop
+   --  (Desktop_Appearance_Settings). The backdrop is data, not a list of
+   --  pictures: a solid colour, or a wallpaper named by its catalog name
+   --  (CCL.Interfaces.Wallpapers) and how it is placed. A name the wallpaper
+   --  catalog does not hold (a picture since removed) is still a well-typed
+   --  value: the desktop shows its default wallpaper instead and says so.
+   APPEARANCE_TYPE_SOURCE : constant String :=
+     "(type Color_Scheme (enum Alloy_Light Alloy_Dark)) " &
+     "(type Solid_Color (enum Slate Ocean)) " &
+     "(type Placement (enum Fill Fit Center)) " &
+     "(type Wallpaper_Choice (record (name String) (placement Placement Placement.Fill))) " &
+     "(type Backdrop (variant (Image Wallpaper_Choice) (Solid Solid_Color))) " &
+     "(type Appearance (record (scheme Color_Scheme Color_Scheme.Alloy_Light) (backdrop Backdrop)))";
+   APPEARANCE_ROOT_TYPE_NAME : constant String := "Appearance";
 end CCL.Interfaces.Desktop_Display;

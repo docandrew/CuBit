@@ -168,24 +168,29 @@ procedure QOI_Tests is
                 " decoded," & Rejected'Image & " rejected");
    end Flip_Fixture;
 
-   procedure Asset (Name : String; W, H : Positive) is
+   --  One wallpaper of the built package, whatever its size: the header
+   --  (Inspect) says it, the decoder must agree, and the pixels must be the
+   --  raster the build wrote.
+   procedure Asset (Name : String) is
       Path : constant String := Assets & "/" & Name & ".qoi";
       Reference : constant String := References & "/" & Name & ".rgba";
    begin
-      if Assets = "" or else not Ada.Directories.Exists (Path) or else
-        not Ada.Directories.Exists (Reference)
-      then
-         Put_Line ("skip asset " & Name & " (not built)");
+      if not Ada.Directories.Exists (Reference) then
+         Put_Line ("skip asset " & Name & " (no reference raster)");
          return;
       end if;
       declare
          Data : constant Bytes_Access := Load (Path);
          RGBA : constant Bytes_Access := Load (Reference);
+         Info : constant Header_Info := Inspect (Data (1 .. Header_Bytes));
+         W : constant Positive := Natural'Max (1, Info.Width);
+         H : constant Positive := Natural'Max (1, Info.Height);
          Count : constant Positive := W * H;
          Output : constant Pixels_Access := new Pixel_Buffer (0 .. Count - 1);
          D : Decoder;
          Same : Boolean := True;
       begin
+         Check (Info.Error = No_Failure and then RGBA'Length = Count * 4, Name & " header gives the raster's size");
          Decode (Data.all, Count, 65_536, Output.all, D);
          Check (Current (D) = Complete and then Width (D) = W and then
                 Height (D) = H, Name & " asset decodes");
@@ -232,8 +237,45 @@ begin
       end;
    end loop;
    Close (Manifest);
-   Asset ("cubes", 2048, 576);
-   Asset ("cubie", 2048, 1152);
+   --  Inspect: the header alone, checked as the decoder checks it.
+   declare
+      Good : constant Byte_Array := [Magic_Q, Magic_O, Magic_I, Magic_F, 0, 0, 8, 0, 0, 0, 2, 64,
+                                     Channels_RGB, Colorspace_SRGB];
+      Bad : Byte_Array := Good;
+   begin
+      Check (Inspect (Good) = (No_Failure, 2048, 576), "inspect a valid header");
+      Bad (1) := 0;
+      Check (Inspect (Bad) = (Bad_Magic, 0, 0), "inspect a bad magic number");
+      Bad := Good; Bad (5 .. 8) := [0, 0, 0, 0];
+      Check (Inspect (Bad) = (Bad_Size, 0, 0), "inspect a zero width");
+      Bad := Good; Bad (9 .. 12) := [0, 0, 16#40#, 1];
+      Check (Inspect (Bad) = (Bad_Size, 0, 0), "inspect a height over the side limit");
+      Bad := Good; Bad (13) := 5;
+      Check (Inspect (Bad) = (Bad_Channels, 0, 0), "inspect bad channels");
+      Bad := Good; Bad (14) := 2;
+      Check (Inspect (Bad) = (Bad_Colorspace, 0, 0), "inspect a bad colour space");
+      Check (Inspect (Byte_Array'(1 .. Header_Bytes => 0)) = (Bad_Magic, 0, 0), "inspect zeros");
+   end;
+   --  Every wallpaper the build wrote: no name or size is listed here.
+   if Assets /= "" and then Ada.Directories.Exists (Assets) then
+      declare
+         use Ada.Directories;
+         Search : Search_Type;
+         Found : Directory_Entry_Type;
+         Seen : Natural := 0;
+      begin
+         Start_Search (Search, Assets, "*.qoi", [Ordinary_File => True, others => False]);
+         while More_Entries (Search) loop
+            Get_Next_Entry (Search, Found);
+            Asset (Base_Name (Simple_Name (Found)));
+            Seen := Seen + 1;
+         end loop;
+         End_Search (Search);
+         Check (Seen > 0 and then Exists (Assets & "/catalog.ccl"), "the package has its catalog and wallpapers");
+      end;
+   else
+      Put_Line ("skip assets (not built)");
+   end if;
    Put_Line ("QOI tests:" & Checks'Image & " checks," & Failures'Image & " failures");
    if Failures > 0 then
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);

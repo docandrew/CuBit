@@ -63,7 +63,7 @@ procedure Draw_Fill
 procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
   with Pre => Valid and Desktop_Vulkan_Startup.Valid,
     Post => Valid and Desktop_Vulkan_Startup.Valid;
@@ -143,13 +143,13 @@ procedure Forget_Targets (Result : out Target_Release)
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Bounds : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
   with Pre => Valid and Desktop_Vulkan_Startup.Valid,
     Post => Valid and Desktop_Vulkan_Startup.Valid;
 end GPU;
 
-package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atlases, Copy, Opened, Captured, Destination, Capacity, Held_Writer, Geometry, Copy_Repair, Asset_Cold, Retried, Cells_Prepared)) is
+package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Last_Use, Use_Clock, Evicting, Atlases, Copy, Opened, Captured, Destination, Capacity, Held_Writer, Geometry, Copy_Repair, Asset_Cold, Retried, Cells_Prepared)) is
    use type Interfaces.Unsigned_64;
 
    package G renames Desktop_GPU_Scene;
@@ -162,8 +162,17 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
    Scene : G.State;
    Sources : R.State;
    package B renames Desktop_Backdrop_Owner;
-   use type B.Phase, B.Outcome, G.Phase, CuBit.Appearance.Background;
+   use type B.Phase, B.Outcome, G.Phase;
    Backdrops : array (B.Slot) of B.State;
+   --  Any catalog wallpaper may use either backdrop slot: one shows the
+   --  desktop's, the other a Settings preview of another. When a third is
+   --  asked for, the slot drawn least recently is evicted at the next frame
+   --  start, while the renderer is idle (Evict_Backdrops), and the frame
+   --  retries.
+   type Use_Stamp is mod 2**64;
+   Last_Use : array (B.Slot) of Use_Stamp := [others => 0];
+   Use_Clock : Use_Stamp := 0;
+   Evicting : array (B.Slot) of Boolean := [others => False];
    package IA renames Desktop_Icon_Atlas_Owner;
    use type IA.Phase, IA.Outcome;
    Atlases : array (Desktop_Icon_Pixels.Family) of IA.State;
@@ -198,6 +207,54 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
    function Matches (Target : Compositor_Formats.Image; Bytes : Compositor_Formats.Byte_Count;
       Secondary : Boolean) return Boolean is
      (Opened and not Secondary and Target = Destination and Bytes = Capacity);
+   --  The slot that holds Asset, else a free one; else mark the slot drawn
+   --  least recently for eviction (Found is False: retry the frame).
+   procedure Choose_Slot (Asset : B.Image_Index; Index : out B.Slot; Found : out Boolean)
+     with Global => (Input => (Backdrops, Last_Use), In_Out => Evicting)
+   is
+      Oldest : B.Slot := B.Slot'First;
+   begin
+      Index := B.Slot'First;
+      Found := False;
+      for I in B.Slot loop
+         if B.Current (Backdrops (I)) not in B.Fresh | B.Closed and then B.Asset_Of (Backdrops (I)) = Asset then
+            Index := I; Found := True; return;
+         end if;
+      end loop;
+      for I in B.Slot loop
+         if B.Current (Backdrops (I)) = B.Fresh then
+            Index := I; Found := True; Evicting (I) := False; return;
+         end if;
+      end loop;
+      for I in B.Slot loop
+         if Last_Use (I) < Last_Use (Oldest) then Oldest := I; end if;
+      end loop;
+      Evicting (Oldest) := True;
+   end Choose_Slot;
+   procedure Note_Use (Index : B.Slot)
+     with Global => (In_Out => (Last_Use, Use_Clock))
+   is
+   begin
+      Use_Clock := Use_Clock + 1;
+      Last_Use (Index) := Use_Clock;
+   end Note_Use;
+   --  At a frame start, with the renderer idle: free the slots marked for
+   --  eviction that can be freed without disturbing it.
+   procedure Evict_Backdrops
+     with Global => (In_Out => (Backdrops, Evicting, Desktop_Vulkan_Startup.Engine)),
+       Pre => (for all Index in B.Slot => B.Valid (Backdrops (Index))) and Desktop_Vulkan_Startup.Valid,
+       Post => (for all Index in B.Slot => B.Valid (Backdrops (Index))) and Desktop_Vulkan_Startup.Valid
+   is
+      Safe : Boolean;
+   begin
+      for I in B.Slot loop
+         pragma Loop_Invariant ((for all Index in B.Slot => B.Valid (Backdrops (Index))) and Desktop_Vulkan_Startup.Valid);
+         if Evicting (I) and then B.Evictable (Backdrops (I)) then
+            B.Evict (Backdrops (I), Safe);
+            if Safe then Evicting (I) := False; end if;
+         end if;
+      end loop;
+   end Evict_Backdrops;
    procedure Begin_Output
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Writer : Compositor_Pool.Ticket; Screen : CuBit.Display_Geometry.Output;
@@ -210,9 +267,7 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
       -- Asset uploads are row-chunked. Reject an impossible configuration
       -- before opening a scene or acquiring backing; it cannot make progress
       -- merely by retrying. Startup may provision more staging before retry.
-      if D.Upload_Capacity < 4 * Natural'Max
-        (Desktop_Backdrop_Style.Wallpaper_Width, Desktop_Backdrop_Style.Cubie_Width)
-      then return; end if;
+      if D.Upload_Capacity < 4 * Desktop_Backdrop_Style.Widest_Row_Pixels then return; end if;
       if Opened or else Secondary or else Writer = Compositor_Pool.None or else
          Writer.Buffer = 0 or else Writer.Epoch = 0 or else Writer.Serial = 0 or else
          Target.Writable /= 1 or else
@@ -225,6 +280,7 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
       D.Drive_Uploads;
       if D.Admit_Capture (Screen) = D.Capture_Busy then Result := Deferred; return; end if;
       if not Compositor_Damage.Valid (Repaint) then return; end if;
+      Evict_Backdrops;
       -- Only new scene changes dirty every GPU target. A target's historical
       -- repair is returned for this capture, never fed back as new damage.
       for I in 1 .. Compositor_Damage.Count (Repaint) loop
@@ -264,25 +320,29 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) is
       Source : Vulkan_Submission.Source_Ticket := Vulkan_Submission.No_Source;
       Status : B.Outcome;
-      Index : constant B.Slot :=
-        (if Style.Backdrop = CuBit.Appearance.Cubie then B.Slot'Last else B.Slot'First);
+      Index : B.Slot;
+      Found : Boolean;
       OK : Boolean;
-      use type CuBit.Appearance.Background;
    begin
       Must_Restart := not Matches (Target, Target_Bytes, Secondary);
       Drawn := True;
       if Must_Restart or not Captured then return; end if;
-      if Desktop_Backdrop_Style.Has_Image (Style.Backdrop) then
-         B.Acquire (Backdrops (Index), Index, Style.Backdrop, Source, Status);
+      if Desktop_Backdrop_Style.Has_Image (Style) then
+         Choose_Slot (Style.Image, Index, Found);
+         if not Found then
+            Captured := False; Asset_Cold := True; return;
+         end if;
+         B.Acquire (Backdrops (Index), Index, Style.Image, Style.Width, Style.Height, Source, Status);
          if Status /= B.Available then
             Captured := False; Asset_Cold := True;
             Must_Restart := Status = B.Unsafe;
             return;
          end if;
+         Note_Use (Index);
       end if;
       G.Backdrop.Capture (Scene, Style, Source, Damage, OK);
       Captured := OK;
@@ -520,22 +580,27 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atl
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Bounds : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) is
       Source : Vulkan_Submission.Source_Ticket := Vulkan_Submission.No_Source;
       Status : B.Outcome;
-      Index : constant B.Slot :=
-        (if Style.Backdrop = CuBit.Appearance.Cubie then B.Slot'Last else B.Slot'First);
+      Index : B.Slot;
+      Found : Boolean;
       OK : Boolean;
    begin
       Must_Restart := not Matches (Target, Target_Bytes, Secondary);
       Drawn := True;
       if Must_Restart or not Captured then return; end if;
-      if Desktop_Backdrop_Style.Has_Image (Style.Backdrop) then
-         B.Acquire (Backdrops (Index), Index, Style.Backdrop, Source, Status);
+      if Desktop_Backdrop_Style.Has_Image (Style) then
+         Choose_Slot (Style.Image, Index, Found);
+         if not Found then
+            Captured := False; Asset_Cold := True; return;
+         end if;
+         B.Acquire (Backdrops (Index), Index, Style.Image, Style.Width, Style.Height, Source, Status);
          if Status /= B.Available then
             Captured := False; Asset_Cold := True; Must_Restart := Status = B.Unsafe; return;
          end if;
+         Note_Use (Index);
       end if;
       G.Set_Clip (Scene, Damage, OK);
       if OK then G.Backdrop.Capture_Preview (Scene, Style, Source, Bounds, OK); end if;
@@ -623,7 +688,7 @@ end Draw_Fill;
 procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) is
 begin
 if Use_GPU then GPU.Draw_Backdrop (Target, Target_Bytes, Damage, Style, Secondary, Drawn, Must_Restart); else CPU.Draw_Backdrop (Target, Target_Bytes, Damage, Style, Secondary, Drawn, Must_Restart); end if;
@@ -738,7 +803,7 @@ end Forget_Targets;
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Bounds : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Style : CuBit.Appearance.Preferences; Secondary : Boolean;
+      Style : Desktop_Backdrop_Style.Backdrop; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) is
 begin
  if Use_GPU then GPU.Draw_Preview (Target, Target_Bytes, Bounds, Damage, Style, Secondary, Drawn, Must_Restart);

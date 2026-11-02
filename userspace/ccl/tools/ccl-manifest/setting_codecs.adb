@@ -32,14 +32,6 @@ package body Setting_Codecs is
       Generated : Boolean;
       Detail : Unbounded_String;
 
-      procedure Write (Path, Text : String) is
-         Output : Ada.Text_IO.File_Type;
-      begin
-         Ada.Text_IO.Create (Output, Ada.Text_IO.Out_File, Path);
-         Ada.Text_IO.Put (Output, Text);
-         Ada.Text_IO.Close (Output);
-      end Write;
-
       Header : constant String :=
         "--  Generated from userspace/ccl/interfaces/settings/ by" & LF &
         "--  ccl-manifest --setting-codecs (CAP-003); do not edit. Regenerate with" & LF &
@@ -55,51 +47,13 @@ package body Setting_Codecs is
             To_String (Detail));
          return;
       end if;
-      Write
-        (File_Base & ".ads",
-         Header &
-         (if Item.Integer_Field then "with Interfaces;" & LF else "") &
-         "with " & Readers & ";" & LF & LF &
+      Type_Codecs.Write_Codec
+        (Item, Package_Name, File_Base, Root_Name, Header,
          "--  The typed setting " & Setting_Catalogs.Image (Setting.Key) &
          (if Setting.Form = Family then "<member>" else "") &
          ": a CCL " & Root_Name & " (" & Setting_Catalogs.Image (Setting.Source) & ")," & LF &
          "--  as Ada types, and Decode, which reads its canonical source" & LF &
-         "--  (CCL.Typed_Settings renders it; " & Readers & ")." & LF &
-         "package " & Package_Name & " with SPARK_Mode, Pure is" & LF &
-         "   subtype Text is " & Readers & ".Text;" & LF &
-         To_String (Item.Spec) & LF &
-         "   --  Item is the value when Success: Source is exactly the canonical" & LF &
-         "   --  source of a " & Root_Name & ". Otherwise Item is " & To_String (Item.Root_Default) & "." & LF &
-         "   procedure Decode (Source : String; Item : out " & To_String (Item.Root_Type) &
-         "; Success : out Boolean)" & LF &
-         "   with Global => null, Always_Terminates;" & LF &
-         "end " & Package_Name & ";" & LF);
-      Write
-        (File_Base & ".adb",
-         Header &
-         (if Item.Integer_Read and then not Item.Integer_Field then "with Interfaces;" & LF else "") & LF &
-         "package body " & Package_Name & " with SPARK_Mode is" & LF &
-         "   package R renames " & Readers & ";" & LF & LF &
-         To_String (Item.Bodies) &
-         "   procedure Decode (Source : String; Item : out " & To_String (Item.Root_Type) &
-         "; Success : out Boolean) is" & LF &
-         "   begin" & LF &
-         "      Item := " & To_String (Item.Root_Default) & ";" & LF &
-         "      Success := R.Readable (Source) and then Source'Length in 1 .. R.Maximum_Canonical;" & LF &
-         "      if not Success then" & LF &
-         "         return;" & LF &
-         "      end if;" & LF &
-         "      declare" & LF &
-         "         Position : Positive := Source'First;" & LF &
-         "      begin" & LF &
-         "         " & To_String (Item.Root_Reader) & " (Source, Position, Success, Item);" & LF &
-         "         R.Finish (Source, Position, Success);" & LF &
-         "      end;" & LF &
-         "      if not Success then" & LF &
-         "         Item := " & To_String (Item.Root_Default) & ";" & LF &
-         "      end if;" & LF &
-         "   end Decode;" & LF &
-         "end " & Package_Name & ";" & LF);
+         "--  (CCL.Typed_Settings renders it; " & Readers & ")." & LF);
    end Emit_One;
 
    procedure Emit

@@ -2,6 +2,7 @@
 --  ccl-manifest --setting-codecs (CAP-003); do not edit.
 pragma Ada_2022;
 with CCL.Setting_Codecs.Calc_Options;
+with CCL.Setting_Codecs.Appearance;
 with CCL.Setting_Codecs.Launch_Entry;
 with CCL.Setting_Codecs.Key_Repeat;
 with CCL.Setting_Codecs.Display_Scale;
@@ -25,6 +26,12 @@ package body CCL.Setting_Codecs.Checks with SPARK_Mode is
                Item : Calc_Options.Calc_Options_Value;
             begin
                Calc_Options.Decode (Source, Item, OK);
+            end;
+         when Kinds.Appearance_Setting =>
+            declare
+               Item : Appearance.Appearance_Value;
+            begin
+               Appearance.Decode (Source, Item, OK);
             end;
          when Kinds.Launch_Entry_Setting =>
             declare

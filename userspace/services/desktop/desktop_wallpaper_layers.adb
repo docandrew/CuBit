@@ -6,7 +6,7 @@ with Desktop_Wallpaper;
 
 package body Desktop_Wallpaper_Layers is
    use type System.Address;
-   use type CuBit.Appearance.Preferences;
+   use type Desktop_Backdrop_Style.Backdrop;
 
    Pixel_Bytes : constant := 4;
    Page_Bytes  : constant := 4_096;
@@ -19,7 +19,7 @@ package body Desktop_Wallpaper_Layers is
       Bytes  : Unsigned_64 := 0;          --  whole pages
       Width  : Natural := 0;
       Height : Natural := 0;
-      Style  : CuBit.Appearance.Preferences := CuBit.Appearance.Default;
+      Style  : Desktop_Backdrop_Style.Backdrop := Desktop_Backdrop_Style.Flat;
       Built  : Boolean := False;
    end record;
    Layers : array (Layer_Index) of Retained;
@@ -46,7 +46,7 @@ package body Desktop_Wallpaper_Layers is
 
    --  Make Layer hold Style at Width x Height; False if it cannot.
    function Ensure (Layer : Layer_Index; Width, Height : Positive;
-                    Style : CuBit.Appearance.Preferences) return Boolean
+                    Style : Desktop_Backdrop_Style.Backdrop) return Boolean
    is
       L : Retained renames Layers (Layer);
       Needed : constant Unsigned_64 :=
@@ -89,7 +89,7 @@ package body Desktop_Wallpaper_Layers is
    procedure Paint
      (Layer : Layer_Index; Target : System.Address;
       Width, Height, Pitch : Positive; X, Y, W, H : Natural;
-      Style : CuBit.Appearance.Preferences)
+      Style : Desktop_Backdrop_Style.Backdrop)
    is
       Ignore : System.Address;
    begin

@@ -64,7 +64,7 @@ project Desktop_GPU_Scene_Native is
       "desktop_gpu_scene-drawing.ads", "desktop_gpu_scene-drawing.adb", "desktop_gpu_scene.ads",
       "desktop_vulkan_startup.adb",
       "desktop_vulkan_startup.ads",
-      "desktop_wallpaper.adb", "desktop_wallpaper_store.ads", "desktop_wallpaper_store.adb", "cubit-qoi.ads", "cubit-qoi.adb",
+      "desktop_wallpaper.adb", "desktop_wallpaper_store.ads", "desktop_wallpaper_store.adb", "desktop_wallpaper_store-rasters.ads", "desktop_wallpaper_store-rasters.adb", "cubit-qoi.ads", "cubit-qoi.adb",
       "desktop_wallpaper.ads",
       "mesa_service.adb",
       "mesa_service.ads",

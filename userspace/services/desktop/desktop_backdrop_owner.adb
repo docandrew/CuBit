@@ -1,9 +1,8 @@
-with Desktop_Backdrop_Style;
 with Desktop_Backdrop_Upload;
 with Interfaces;
 with System;
 package body Desktop_Backdrop_Owner with SPARK_Mode is
-   use type V.Source_Slot, D.Source_Result, D.Poll_Result, CuBit.Appearance.Background, System.Address;
+   use type V.Source_Slot, D.Source_Result, D.Poll_Result, System.Address;
    procedure Advance (S : in out State; Result : out Outcome)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid and Current (S) = Ready_To_Upload,
        Post => Valid (S) and D.Valid and (if Result = Available then Current (S) = Resident)
@@ -17,7 +16,7 @@ package body Desktop_Backdrop_Owner with SPARK_Mode is
       elsif Reply = D.Source_Unsafe then S.Status := Quarantined; Result := Unsafe; return;
       elsif Reply = D.Source_Busy then Result := Deferred; return;
       end if;
-      Desktop_Backdrop_Upload.Start (S.Index, S.Lease, S.Asset, Reply);
+      Desktop_Backdrop_Upload.Start (S.Index, S.Lease, S.Asset, S.Width, S.Height, Reply);
       case Reply is
          when D.Source_Accepted => S.Status := Uploading; Result := Pending;
          when D.Source_Busy => Result := Deferred;
@@ -26,7 +25,7 @@ package body Desktop_Backdrop_Owner with SPARK_Mode is
       end case;
    end Advance;
    procedure Acquire
-     (S : in out State; Index : Slot; Asset : CuBit.Appearance.Background;
+     (S : in out State; Index : Slot; Asset : Image_Index; Width, Height : Positive;
       Source : out V.Source_Ticket; Result : out Outcome)
    is
       Reply : D.Source_Result;
@@ -34,13 +33,12 @@ package body Desktop_Backdrop_Owner with SPARK_Mode is
    begin
       Source := V.No_Source; Result := Rejected;
       if S.Status = Quarantined then Result := Unsafe; return; end if;
-      if S.Status = Closed or else not Desktop_Backdrop_Style.Has_Image (Asset) then return; end if;
+      if S.Status = Closed or else Asset = Desktop_Backdrop_Style.No_Image then return; end if;
       if S.Status = Fresh then
-         D.Allocate_Backing (Index,
-           Interfaces.Unsigned_32 (Desktop_Backdrop_Style.Width (Asset)),
-           Interfaces.Unsigned_32 (Desktop_Backdrop_Style.Height (Asset)), False, Lease, Reply);
+         D.Allocate_Backing (Index, Interfaces.Unsigned_32 (Width), Interfaces.Unsigned_32 (Height),
+           False, Lease, Reply);
          if Lease /= A.No_Ticket then
-            S.Index := Index; S.Asset := Asset; S.Lease := Lease;
+            S.Index := Index; S.Asset := Asset; S.Width := Width; S.Height := Height; S.Lease := Lease;
             S.Status := (if Reply = D.Source_Accepted then Ready_To_Upload else Quarantined);
          end if;
          if Reply /= D.Source_Accepted or Lease = A.No_Ticket then
@@ -48,7 +46,7 @@ package body Desktop_Backdrop_Owner with SPARK_Mode is
             elsif Reply = D.Source_Busy then Result := Deferred; end if;
             return;
          end if;
-      elsif S.Index /= Index or S.Asset /= Asset then return;
+      elsif S.Index /= Index or S.Asset /= Asset or S.Width /= Width or S.Height /= Height then return;
       end if;
       if S.Status = Ready_To_Upload then Advance (S, Result); end if;
       if S.Status = Uploading then Result := Pending;
@@ -76,6 +74,19 @@ package body Desktop_Backdrop_Owner with SPARK_Mode is
       end if;
       if S.Status = Ready_To_Upload then Advance (S, Result); end if;
    end Poll;
+   function Evictable (S : State) return Boolean is
+     (S.Status = Fresh or else
+      (S.Status in Ready_To_Upload | Resident and then D.Can_Retire_Readers and then
+       (S.Source = V.No_Source or else not D.Source_Pinned (S.Source))));
+   procedure Evict (S : in out State; Safe : out Boolean) is
+   begin
+      Safe := S.Status = Fresh;
+      if Safe or else not Evictable (S) then return; end if;
+      Close (S, True, Safe);
+      if Safe then
+         S.Status := Fresh; S.Asset := Desktop_Backdrop_Style.No_Image;
+      end if;
+   end Evict;
    procedure Close (S : in out State; Capture_Retired : Boolean; Safe : out Boolean) is
       Released : System.Address;
       Freed : Boolean;

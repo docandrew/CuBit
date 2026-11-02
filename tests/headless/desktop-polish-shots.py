@@ -273,10 +273,11 @@ if "workbench" in sections:
 
 if "dark" in sections:
     # Settings opens on Appearance with Light focused: Tab to Dark, choose
-    # it, Tab on to Apply (Image, Cubie, Slate, Ocean, Fill, Fit, Center).
+    # it, Tab on to Apply (Slate, Ocean, the wallpaper list, its Up and
+    # Down, Fill, Fit, Center).
     launch("settings")
     keys("tab", "spc")
-    keys(*(["tab"] * 8), "ret")
+    keys(*(["tab"] * 9), "ret")
     time.sleep(1.5)
     shot("dark-settings-greyed-maximize")
     workbench_menus("dark-workbench-")

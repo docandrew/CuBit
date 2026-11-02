@@ -52,6 +52,25 @@ package body CuBit.QOI with SPARK_Mode is
       D := (Capacity => Capacity, others => <>);
    end Start;
 
+   function Inspect (Header : Byte_Array) return Header_Info is
+      H : constant Header_Data := Header;
+      Columns : constant Unsigned_32 := Big_Endian (H, Width_At);
+      Rows    : constant Unsigned_32 := Big_Endian (H, Height_At);
+   begin
+      if H (Magic_At) /= Magic_Q or else H (Magic_At + 1) /= Magic_O or else
+        H (Magic_At + 2) /= Magic_I or else H (Magic_At + 3) /= Magic_F
+      then
+         return (Error => Bad_Magic, others => 0);
+      elsif Columns not in 1 .. Maximum_Side or else Rows not in 1 .. Maximum_Side then
+         return (Error => Bad_Size, others => 0);
+      elsif H (Channels_At) not in Channels_RGB | Channels_RGBA then
+         return (Error => Bad_Channels, others => 0);
+      elsif H (Colorspace_At) not in Colorspace_SRGB | Colorspace_Linear then
+         return (Error => Bad_Colorspace, others => 0);
+      end if;
+      return (Error => No_Failure, Width => Natural (Columns), Height => Natural (Rows));
+   end Inspect;
+
    --  The fourteenth header byte has arrived.
    procedure Read_Header (D : in out Decoder)
      with Pre  => D.State = Reading_Header and then D.Problem = No_Failure and then
@@ -60,24 +79,14 @@ package body CuBit.QOI with SPARK_Mode is
           Post => Valid (D) and then D.Capacity = D'Old.Capacity and then
                   D.Done = 0 and then D.State in Reading_Pixels | Failed
    is
-      H : Header_Data renames D.Header;
-      Columns : constant Unsigned_32 := Big_Endian (H, Width_At);
-      Rows    : constant Unsigned_32 := Big_Endian (H, Height_At);
+      Info : constant Header_Info := Inspect (D.Header);
    begin
-      if H (Magic_At) /= Magic_Q or else H (Magic_At + 1) /= Magic_O or else
-        H (Magic_At + 2) /= Magic_I or else H (Magic_At + 3) /= Magic_F
-      then
-         Fail (D, Bad_Magic);
-      elsif Columns not in 1 .. Maximum_Side or else Rows not in 1 .. Maximum_Side then
-         Fail (D, Bad_Size);
-      elsif H (Channels_At) not in Channels_RGB | Channels_RGBA then
-         Fail (D, Bad_Channels);
-      elsif H (Colorspace_At) not in Colorspace_SRGB | Colorspace_Linear then
-         Fail (D, Bad_Colorspace);
+      if Info.Error /= No_Failure then
+         Fail (D, Info.Error);
       else
          declare
-            W : constant Side := Side (Columns);
-            R : constant Side := Side (Rows);
+            W : constant Side := Info.Width;
+            R : constant Side := Info.Height;
          begin
             --  Both sides are at most 2**14: the product fits a Natural.
             if W > D.Capacity / R then

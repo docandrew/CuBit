@@ -101,8 +101,7 @@ class Images(unittest.TestCase):
                                                             "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "teapots.app",
                                                             "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app",
                                                             "calculator.app", "lexicon.svc", "dictionary.app",
-                                                            "Assets/cubit-wallpapers/1/cubes.qoi",
-                                                            "Assets/cubit-wallpapers/1/cubie.qoi",
+                                                            "Assets/cubit-wallpapers/2",
                                                             "Assets/cubit-icons/4/applications.qoi",
                                                             "Assets/cubit-lexicon/1/english.lexicon",
                                                             "Assets/cubit-lexicon/1/LEXICON-NOTICE"})
@@ -236,12 +235,15 @@ class Images(unittest.TestCase):
           (artifact "kernel" repository "kernel")
           (artifact "menu" repository "menu")
           (artifact "start" repository "start.ccl")
-          (artifact "tree" supplied-tree "tree"))'''
+          (artifact "tree" supplied-tree "tree")
+          (artifact "package" repository-tree "package"))'''
         profile = PROFILE.replace("bootstrap-only", "optical")[:-1] + '''
           (kernel "kernel") (boot-menu "menu") (startup "start")
           (file optical "a" "boot/initrd.img"))'''
         self.reject(profile, catalog, "INVALID_PLACEMENT")
         self.reject(PROFILE[:-1] + '(file bootstrap "tree" "tree"))', catalog, "INVALID_PLACEMENT")
+        # A repository tree (an asset package the build wrote) is optical too.
+        self.reject(PROFILE[:-1] + '(file bootstrap "package" "package"))', catalog, "INVALID_PLACEMENT")
 
     def test_missing_unknown_and_trailing_fields(self):
         self.reject(PROFILE.replace('(settings "settings")', ""), diagnostic="MISSING_FIELD")
@@ -374,6 +376,32 @@ class Images(unittest.TestCase):
         (private / "a private title.gb").write_bytes(b"short")
         with self.assertRaisesRegex(ValueError, "too small"):
             self.prepare(inputs, private_roms=private)
+
+    def test_repository_tree_places_whatever_the_build_wrote(self):
+        inputs = self.optical_fixture()
+        package = self.root / "build" / "package"
+        package.mkdir(parents=True)
+        (package / "catalog.ccl").write_text("first\n")
+        (package / "one.qoi").write_bytes(b"1")
+        self.catalog.write_text(self.catalog.read_text()[:-1] +
+                                '(artifact "package" repository-tree "build/package"))')
+        self.profile.write_text(self.profile.read_text()[:-1] +
+                                '(file optical "package" "apps/Assets/package/2"))')
+        files, _ = self.prepare(inputs)
+        placed = {f.destination: f.data for f in files if f.artifact == "package"}
+        self.assertEqual(placed, {"apps/Assets/package/2/catalog.ccl": b"first\n",
+                                  "apps/Assets/package/2/one.qoi": b"1"})
+        # A second picture in the package needs no image declaration change.
+        (package / "two.qoi").write_bytes(b"2")
+        files, _ = self.prepare(inputs)
+        self.assertEqual(len([f for f in files if f.artifact == "package"]), 3)
+        # Not a supplied input: binding one is an unused input.
+        with self.assertRaisesRegex(ValueError, "unused supplied inputs"):
+            self.prepare({**inputs, "package": package})
+        for child in package.iterdir():
+            child.unlink()
+        with self.assertRaisesRegex(ValueError, "empty tree input"):
+            self.prepare(inputs)
 
     def test_supplied_tree_escape_and_conflicts(self):
         inputs = self.optical_fixture()

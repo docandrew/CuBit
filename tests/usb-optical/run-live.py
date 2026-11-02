@@ -781,7 +781,9 @@ with (run / 'qemu.log').open('w') as log:
             time.sleep(1)
             hmp(f'screendump {run}/settings-light.ppm')
             key('tab'); key('ret')  # Select Alloy Dark, still only a preview.
-            for _ in range(8): key('tab')
+            # On to Apply: Slate, Ocean, the wallpaper list and its Up/Down,
+            # Fill, Fit, Center (Desktop_Settings.Control order).
+            for _ in range(9): key('tab')
             key('ret')
             wait_for('desktop: appearance applied')
             time.sleep(2)
@@ -799,24 +801,26 @@ with (run / 'qemu.log').open('w') as log:
                 raise RuntimeError('existing Files client did not repaint with the dark palette')
             if serial.read_text(errors='replace').count('desktop: CCL theme loaded') < 4:
                 raise RuntimeError('missing startup and Apply CCL theme-loading evidence')
-            # Apply currently has focus. Select Cubie, then apply it live.
-            for _ in range(6): key('shift-tab')
+            # Apply currently has focus. Select the solid Ocean background
+            # (back over Center, Fit, Fill, the wallpaper list's Down/Up and
+            # the list), then apply it live.
+            for _ in range(7): key('shift-tab')
             key('ret')
-            for _ in range(6): key('tab')
+            for _ in range(7): key('tab')
             key('ret')
             time.sleep(2)
-            hmp(f'screendump {run}/settings-cubie.ppm')
-            cubie = Image.open(run / 'settings-cubie.ppm').convert('RGB')
+            hmp(f'screendump {run}/settings-ocean.ppm')
+            ocean = Image.open(run / 'settings-ocean.ppm').convert('RGB')
             background = (dark.width - 10, 10)
-            if cubie.getpixel(background) == dark.getpixel(background):
-                raise RuntimeError('Cubie Apply did not change the wallpaper')
-            if cubie.getpixel(point) != dark.getpixel(point):
+            if ocean.getpixel(background) == dark.getpixel(background):
+                raise RuntimeError('Ocean Apply did not change the wallpaper')
+            if ocean.getpixel(point) != dark.getpixel(point):
                 raise RuntimeError('wallpaper change unexpectedly changed the theme')
             # Reopen an already-running Workbench to inspect its repainted UI.
             key('meta_l'); key('ret')
             time.sleep(2)
             hmp(f'screendump {run}/workbench-dark.ppm')
-            print('SETTINGS PASS: keyboard selection, Apply, live palette and Cubie wallpaper.', flush=True)
+            print('SETTINGS PASS: keyboard selection, Apply, live palette and Ocean background.', flush=True)
         if args.eject:
             qmp('eject', {'device': 'cd', 'force': True})
             launch('Devices')

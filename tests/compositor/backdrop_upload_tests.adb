@@ -2,7 +2,7 @@ with CuBit.Handles.Fixture;
 with Ada.Text_IO; with Ada.Command_Line; with Interfaces;
 with Desktop_Backdrop_Upload; with Desktop_Vulkan_Startup;
 with Vulkan_Owned_Targets; with Vulkan_Submission; with Vulkan_Device_Mock;
-with Wallpaper_Assets; with CuBit.Appearance; with System;
+with Wallpaper_Assets; with System;
 procedure Backdrop_Upload_Tests is
    package D renames Desktop_Vulkan_Startup;
    subtype U32 is Interfaces.Unsigned_32; subtype U64 is Interfaces.Unsigned_64;
@@ -27,14 +27,14 @@ begin
    for Chunk in 1 .. 72 loop
       D.Import_Backing (128, Lease, Source, Result);
       pragma Assert (Result /= D.Source_Accepted and Source = Vulkan_Submission.No_Source);
-      Desktop_Backdrop_Upload.Start (128, Lease, CuBit.Appearance.Wallpaper, Result);
+      Desktop_Backdrop_Upload.Start (128, Lease, Wallpaper_Assets.Index (Wallpaper_Assets.Wide), 2048, 576, Result);
       if Scenario = 1 then
          pragma Assert (Result = D.Source_Rejected and Calls (2) = 0);
          D.Release_Backing (128, Lease, OK); pragma Assert (OK); D.Stop;
          Ada.Text_IO.Put_Line ("PASS mismatched wallpaper shape cancels without submission"); return;
       end if;
       pragma Assert (Result = D.Source_Accepted);
-      Desktop_Backdrop_Upload.Start (128, Lease, CuBit.Appearance.Wallpaper, Result);
+      Desktop_Backdrop_Upload.Start (128, Lease, Wallpaper_Assets.Index (Wallpaper_Assets.Wide), 2048, 576, Result);
       pragma Assert (Result = D.Source_Busy);
       if Scenario = 2 then
          Set (3, 2); D.Poll_Upload (Poll); pragma Assert (Poll = D.GPU_Failed);

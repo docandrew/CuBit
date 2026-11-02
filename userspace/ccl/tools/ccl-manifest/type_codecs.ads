@@ -41,4 +41,11 @@ package Type_Codecs is
    procedure Generate
      (Declarations, Root_Name : String;
       Item : out Generated; Success : out Boolean; Detail : out Unbounded_String);
+
+   --  Write Item as the Ada package Package_Name (File_Base.ads and .adb):
+   --  its types and Decode, which reads the root's whole canonical source.
+   --  Header heads both files (where they were generated from); Summary is
+   --  the spec's comment on what the value is.
+   procedure Write_Codec
+     (Item : Generated; Package_Name, File_Base, Root_Name, Header, Summary : String);
 end Type_Codecs;

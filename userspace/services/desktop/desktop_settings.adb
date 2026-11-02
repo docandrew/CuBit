@@ -11,8 +11,10 @@ package body Desktop_Settings is
    use type CuBit.Appearance.Preferences;
    package A renames CuBit.Appearance;
    use type A.Color_Scheme;
-   use type A.Background;
+   use type A.Backdrop_Kind;
+   use type A.Solid_Color;
    use type A.Placement;
+   package WC_Catalog renames Desktop_Wallpaper_Catalog;
    package L renames CuBit.Display_Layouts;
    package G renames L.G;
    use type L.Layout;
@@ -84,6 +86,48 @@ package body Desktop_Settings is
       end loop;
       return From;
    end Next_Starting;
+
+   --  The Appearance page's wallpaper list: Wallpaper_List_Rows rows of
+   --  Wallpaper_Row_Height pixels, scrolled by its Up/Down buttons and keys.
+   Wallpaper_List_Rows : constant := 3;
+   Wallpaper_Row_Height : constant := 22;
+   Wallpaper_List_Width : constant := 232;
+   Wallpaper_Text_Inset : constant := 8;
+   Wallpaper_Button_Width : constant := 52;
+   Wallpaper_Button_Height : constant := 28;
+   Wallpaper_Button_Gap : constant := 8;
+   Right_Column : constant := 280;
+   Background_Top : constant := 98;
+   Solid_Top : constant := 118;
+   Wallpaper_List_Top : constant := 154;
+   Placement_Label_Top : constant := 226;
+   Placement_Top : constant := 244;
+   --  The two help lines span the page, below the placement buttons.
+   Help_Top : constant := 288;
+   Help_Line : constant := 18;
+   function Wallpaper_List_Box (C : Rect) return Rect is
+     (C.x + Right_Column, C.y + Wallpaper_List_Top, Wallpaper_List_Width,
+      Wallpaper_List_Rows * Wallpaper_Row_Height);
+   function Wallpaper_Scrolled_To (Top, Row : WC_Catalog.Wallpaper_Index) return WC_Catalog.Wallpaper_Index is
+     (if Row < Top then Row
+      elsif Row >= Top + Wallpaper_List_Rows then Row - (Wallpaper_List_Rows - 1)
+      else Top);
+   function Chosen_Wallpaper (View : State) return Wallpaper_Row is
+     (if View.Pending.Kind /= A.Image or else Wallpaper_Rows = 0 then 0
+      elsif View.Pending.Image.Length = 0 then WC_Catalog.Default_Wallpaper
+      else WC_Catalog.Find (View.Pending.Image));
+   procedure Choose_Wallpaper (View : in out State; Row : WC_Catalog.Wallpaper_Index) is
+   begin
+      View.Pending.Kind := A.Image;
+      View.Pending.Image := WC_Catalog.Name (Row);
+      View.Wallpaper_Top := Wallpaper_Scrolled_To (View.Wallpaper_Top, Row);
+   end Choose_Wallpaper;
+   --  The wallpaper Rows away from the chosen one (or from the first),
+   --  stopping at the ends.
+   function Moved_Wallpaper (View : State; Rows : Integer) return WC_Catalog.Wallpaper_Index is
+     (WC_Catalog.Wallpaper_Index
+        (Integer'Max (1, Integer'Min (Wallpaper_Rows,
+           Integer (Natural'Max (1, Chosen_Wallpaper (View))) + Rows))));
 
    --  The Monitor page's mode list: an Auto row, then each listed mode.
    package OM renames CuBit.Output_Modes;
@@ -227,15 +271,21 @@ package body Desktop_Settings is
          when Zone_List => return Zone_List_Box (C);
          when Zone_Previous => return (C.x + 412, C.y + 56, 84, 28);
          when Zone_Next => return (C.x + 412, C.y + 92, 84, 28);
-         when Light => return (C.x + 280, C.y + 56, 140, 30);
+         when Light => return (C.x + Right_Column, C.y + 56, 140, 30);
          when Dark => return (C.x + 430, C.y + 56, 140, 30);
-         when Image => return (C.x + 280, C.y + 128, 68, 30);
-         when Cubie => return (C.x + 354, C.y + 128, 68, 30);
-         when Slate => return (C.x + 428, C.y + 128, 68, 30);
-         when Ocean => return (C.x + 502, C.y + 128, 70, 30);
-         when Fill => return (C.x + 280, C.y + 200, 92, 30);
-         when Fit => return (C.x + 380, C.y + 200, 92, 30);
-         when Center => return (C.x + 480, C.y + 200, 92, 30);
+         when Slate => return (C.x + Right_Column, C.y + Solid_Top, 92, 30);
+         when Ocean => return (C.x + 380, C.y + Solid_Top, 92, 30);
+         when Wallpaper_List => return Wallpaper_List_Box (C);
+         when Wallpaper_Previous =>
+            return (C.x + Right_Column + Wallpaper_List_Width + Wallpaper_Button_Gap, C.y + Wallpaper_List_Top,
+                    Wallpaper_Button_Width, Wallpaper_Button_Height);
+         when Wallpaper_Next =>
+            return (C.x + Right_Column + Wallpaper_List_Width + Wallpaper_Button_Gap,
+                    C.y + Wallpaper_List_Top + Wallpaper_List_Rows * Wallpaper_Row_Height - Wallpaper_Button_Height,
+                    Wallpaper_Button_Width, Wallpaper_Button_Height);
+         when Fill => return (C.x + Right_Column, C.y + Placement_Top, 92, 30);
+         when Fit => return (C.x + 380, C.y + Placement_Top, 92, 30);
+         when Center => return (C.x + 480, C.y + Placement_Top, 92, 30);
          when Apply => return (C.x + 366, C.y + 334, 100, 30);
          when Revert => return (C.x + 476, C.y + 334, 100, 30);
          when Mode_List => return Mode_List_Box (C);
@@ -266,6 +316,9 @@ package body Desktop_Settings is
                Pending_Zone => Zone, Applied_Zone => Zone,
                Zone_Top => Scrolled_To (TZ.Time_Zone'First, Zone),
                Selected => (if Layout.Count > 0 then 1 else 0), others => <>);
+      if Chosen_Wallpaper (View) > 0 then
+         View.Wallpaper_Top := Wallpaper_Scrolled_To (1, Chosen_Wallpaper (View));
+      end if;
    end Open;
 
    function Line_Of (Text : String; Available : Boolean := False) return Monitor_Line is
@@ -316,14 +369,15 @@ package body Desktop_Settings is
         (case Item is when Appearance_Tab => "Appearance", when Displays_Tab => "Displays",
          when Date_Time_Tab => "Date & Time", when Monitor_Tab => "Monitor", when Zone_Previous => "Up", when Zone_Next => "Down",
          when Light => "Alloy Light", when Dark => "Alloy Dark",
-         when Image => "Cubes", when Cubie => "Cubie", when Slate => "Slate",
-         when Ocean => "Ocean", when Fill => "Fill", when Fit => "Fit",
+         when Slate => "Slate", when Ocean => "Ocean",
+         when Wallpaper_Previous => "Up", when Wallpaper_Next => "Down",
+         when Fill => "Fill", when Fit => "Fit",
          when Center => "Center", when Apply => "Apply", when Revert => "Revert",
          when Make_Primary => "Make primary",
          when Scale_Down => "-", when Scale_Up => "+", when Scale_Auto => "Auto",
          when Mode_Previous => "Up", when Mode_Next => "Down",
          when Keep_Mode => "Keep", when Revert_Mode => "Revert",
-         when None | Zone_List | Mode_List => "");
+         when None | Zone_List | Mode_List | Wallpaper_List => "");
       function Selected (Item : Control) return Boolean is
         (case Item is
          when Appearance_Tab => View.Current_Page = Appearance,
@@ -332,10 +386,8 @@ package body Desktop_Settings is
          when Monitor_Tab => View.Current_Page = Monitor,
          when Light => View.Pending.Scheme = A.Alloy_Light,
          when Dark => View.Pending.Scheme = A.Alloy_Dark,
-         when Image => View.Pending.Backdrop = A.Wallpaper,
-         when Cubie => View.Pending.Backdrop = A.Cubie,
-         when Slate => View.Pending.Backdrop = A.Slate,
-         when Ocean => View.Pending.Backdrop = A.Ocean,
+         when Slate => View.Pending.Kind = A.Solid and then View.Pending.Color = A.Slate,
+         when Ocean => View.Pending.Kind = A.Solid and then View.Pending.Color = A.Ocean,
          when Fill => View.Pending.Position = A.Fill,
          when Fit => View.Pending.Position = A.Fit,
          when Center => View.Pending.Position = A.Center,
@@ -345,9 +397,6 @@ package body Desktop_Settings is
       begin
          Draw_UI_Text (C, Bounds.x + X, Bounds.y + Y, Value, Colors.text, Colors.face);
       end Text;
-      use type A.Color_Scheme;
-      use type A.Background;
-      use type A.Placement;
    begin
       Fill_Rect (C, Window_Bounds, Colors.face);
       Fill_Rect (C, (Window_Bounds.x, Window_Bounds.y, Sidebar_Width - 5,
@@ -552,10 +601,40 @@ package body Desktop_Settings is
             else "Resolutions stay unchanged"));
          return;
       end if;
-      Text (280, 32, "Alloy theme");
-      Text (280, 104, "Background");
-      Text (280, 176, "Wallpaper placement");
+      Text (Right_Column, 32, "Alloy theme");
+      Text (Right_Column, Background_Top, "Background");
+      Text (Right_Column, Placement_Label_Top, "Wallpaper placement");
       Paint_Wallpaper (C, Preview, View.Pending);
+      declare
+         List : constant Rect := Wallpaper_List_Box (Bounds);
+         Rows : constant Canvas := With_Clip (C, List);
+         Chosen : constant Wallpaper_Row := Chosen_Wallpaper (View);
+      begin
+         Fill_Rect (C, List, Colors.field);
+         if Wallpaper_Rows = 0 then
+            Draw_UI_Text (Rows, List.x + Wallpaper_Text_Inset, List.y + 3, "No wallpapers",
+                          Colors.muted, Colors.field);
+         end if;
+         for Line in 0 .. Wallpaper_List_Rows - 1 loop
+            exit when View.Wallpaper_Top + Line > Wallpaper_Rows;
+            declare
+               Row : constant WC_Catalog.Wallpaper_Index := View.Wallpaper_Top + Line;
+               Box_Of_Row : constant Rect :=
+                 (List.x, List.y + Line * Wallpaper_Row_Height, List.w, Wallpaper_Row_Height);
+               Back : constant Color := (if Row = Chosen then Colors.selection else Colors.field);
+               Ink : constant Color := (if Row = Chosen then Colors.selectionText else Colors.text);
+            begin
+               if Row = Chosen then Fill_Rect (Rows, Box_Of_Row, Back); end if;
+               Draw_UI_Text (Rows, Box_Of_Row.x + Wallpaper_Text_Inset,
+                 Box_Of_Row.y + (Wallpaper_Row_Height - Natural'Min (Wallpaper_Row_Height, UI_Text_Height)) / 2,
+                 Wallpaper_Label (Row), Ink, Back);
+            end;
+         end loop;
+         Stroke_Rect (C, List, Colors.shadow, Colors.highlight);
+         if View.Focused = Wallpaper_List then
+            Stroke_Rect (C, (List.x + 2, List.y + 2, List.w - 4, List.h - 4), Colors.shadow, Colors.shadow);
+         end if;
+      end;
       Stroke_Rect (C, Preview, Colors.shadow, Colors.highlight);
       declare
          package WC renames CuBit.UI.Window_Chrome;
@@ -580,9 +659,12 @@ package body Desktop_Settings is
            Preview_Colors, Button_Normal, "Preview");
       end;
       Text (20, 218, "Preview");
-      Text (20, 262, "Changes apply to this desktop and shared-toolkit applications.");
-      Text (20, 286, "Apply reloads theme CCL from Config. No restart needed.");
+      Text (20, Help_Top, "Changes apply to this desktop and shared-toolkit applications.");
+      Text (20, Help_Top + Help_Line, "Apply reloads theme CCL from Config. No restart needed.");
       for Item in Control range Light .. Revert loop
+         if Item = Wallpaper_List then
+            goto Next_Button;
+         end if;
          Draw_Button (C, Box (Item, Window_Bounds), Colors,
            (if Item = View.Pressed and Item = View.Hovered then Button_Pressed
             elsif Selected (Item) then Button_Active
@@ -593,6 +675,7 @@ package body Desktop_Settings is
                  Colors.shadow, Colors.shadow);
             end;
          end if;
+         <<Next_Button>>
       end loop;
       if View.Pending /= View.Applied then
          Text (20, 340, "Unapplied changes");
@@ -605,29 +688,31 @@ package body Desktop_Settings is
       end if;
    end Render;
 
-   procedure Paint_Legacy_Wallpaper
-     (C : Canvas; Bounds : Rect; Style : CuBit.Appearance.Preferences)
-   is
-      P : constant Rect := Clamp_Rect (C, Bounds);
-   begin
-      if not Is_Empty (P) then
-         Desktop_Wallpaper.Paint
-           (C.addr + Storage_Offset (Bounds.y * C.pitch + Bounds.x * 4),
-            Bounds.w, Bounds.h, C.pitch,
-            P.x - Bounds.x, P.y - Bounds.y, P.w, P.h, Style);
-      end if;
-   end Paint_Legacy_Wallpaper;
+   procedure Draw (View : State; C : Canvas; Window_Bounds : Rect;
+                   Preview : Desktop_Backdrop_Style.Backdrop) is
+      --  The preview is Pending, already resolved (Preview).
+      procedure Paint_Legacy_Wallpaper
+        (C : Canvas; Bounds : Rect; Style : CuBit.Appearance.Preferences)
+      is
+         pragma Unreferenced (Style);
+         P : constant Rect := Clamp_Rect (C, Bounds);
+      begin
+         if not Is_Empty (P) then
+            Desktop_Wallpaper.Paint
+              (C.addr + Storage_Offset (Bounds.y * C.pitch + Bounds.x * 4),
+               Bounds.w, Bounds.h, C.pitch,
+               P.x - Bounds.x, P.y - Bounds.y, P.w, P.h, Preview);
+         end if;
+      end Paint_Legacy_Wallpaper;
 
-   procedure Draw_Legacy is new Render
-     (Fill_Rect => CuBit.UI.Fill_Rect,
-      Stroke_Rect => CuBit.UI.Stroke_Rect,
-      Fill_Vertical_Gradient => CuBit.UI.Fill_Vertical_Gradient,
-      Draw_UI_Text => CuBit.UI.Draw_UI_Text,
-      Draw_Button => CuBit.UI.Draw_Button,
-      Draw_Tab => CuBit.UI.Draw_Tab,
-      Paint_Wallpaper => Paint_Legacy_Wallpaper);
-
-   procedure Draw (View : State; C : Canvas; Window_Bounds : Rect) is
+      procedure Draw_Legacy is new Render
+        (Fill_Rect => CuBit.UI.Fill_Rect,
+         Stroke_Rect => CuBit.UI.Stroke_Rect,
+         Fill_Vertical_Gradient => CuBit.UI.Fill_Vertical_Gradient,
+         Draw_UI_Text => CuBit.UI.Draw_UI_Text,
+         Draw_Button => CuBit.UI.Draw_Button,
+         Draw_Tab => CuBit.UI.Draw_Tab,
+         Paint_Wallpaper => Paint_Legacy_Wallpaper);
    begin
       Draw_Legacy (View, C, Window_Bounds);
    end Draw;
@@ -653,10 +738,18 @@ package body Desktop_Settings is
          when Revert_Mode => View.Answer := Revert_Response;
          when Light => View.Pending.Scheme := A.Alloy_Light;
          when Dark => View.Pending.Scheme := A.Alloy_Dark;
-         when Image => View.Pending.Backdrop := A.Wallpaper;
-         when Cubie => View.Pending.Backdrop := A.Cubie;
-         when Slate => View.Pending.Backdrop := A.Slate;
-         when Ocean => View.Pending.Backdrop := A.Ocean;
+         when Slate => View.Pending.Kind := A.Solid; View.Pending.Color := A.Slate;
+         when Ocean => View.Pending.Kind := A.Solid; View.Pending.Color := A.Ocean;
+         when Wallpaper_List =>
+            if Wallpaper_Rows > 0 then Choose_Wallpaper (View, Moved_Wallpaper (View, 0)); end if;
+         when Wallpaper_Previous =>
+            View.Wallpaper_Top := (if View.Wallpaper_Top > Wallpaper_List_Rows
+                                   then View.Wallpaper_Top - Wallpaper_List_Rows else 1);
+         when Wallpaper_Next =>
+            if Wallpaper_Rows >= Wallpaper_List_Rows then
+               View.Wallpaper_Top := WC_Catalog.Wallpaper_Index'Min
+                 (View.Wallpaper_Top + Wallpaper_List_Rows, Wallpaper_Rows - (Wallpaper_List_Rows - 1));
+            end if;
          when Fill => View.Pending.Position := A.Fill;
          when Fit => View.Pending.Position := A.Fit;
          when Center => View.Pending.Position := A.Center;
@@ -754,6 +847,21 @@ package body Desktop_Settings is
             return;
          end;
       end if;
+      if View.Current_Page = Appearance and then Pointer.pressed and then
+        Point_In_Rect (Pointer.x, Pointer.y, Wallpaper_List_Box (Page_Bounds (Bounds)))
+      then
+         declare
+            Row : constant Natural :=
+              View.Wallpaper_Top + (Pointer.y - Wallpaper_List_Box (Page_Bounds (Bounds)).y) / Wallpaper_Row_Height;
+         begin
+            if Row in 1 .. Wallpaper_Rows then
+               Choose_Wallpaper (View, Row);
+            end if;
+            View.Focused := Wallpaper_List;
+            View.Pressed := None;
+            return;
+         end;
+      end if;
       if View.Current_Page = Monitor and then not View.Trial_Open and then Pointer.pressed and then
         Point_In_Rect (Pointer.x, Pointer.y, Mode_List_Box (Page_Bounds (Bounds)))
       then
@@ -796,7 +904,7 @@ package body Desktop_Settings is
          end if;
       end if;
       for Item in Control range Appearance_Tab .. Control'Last loop
-         if Visible (View, Item) and then Item not in Zone_List | Mode_List and then
+         if Visible (View, Item) and then Item not in Zone_List | Mode_List | Wallpaper_List and then
            Point_In_Rect (Pointer.x, Pointer.y, Box (Item, Bounds)) and then
            Point_In_Rect (Pointer.x, Pointer.y, Bounds)
          then Hit := Item; end if;
@@ -836,6 +944,17 @@ package body Desktop_Settings is
               when Scan_Page_Down => Moved (View.Pending_Zone, Zone_Rows),
               when Scan_Home => TZ.Time_Zone'First,
               when others => TZ.Time_Zone'Last));
+      elsif View.Focused = Wallpaper_List and then Wallpaper_Rows > 0 and then
+        Scan_Code in Scan_Up | Scan_Down | Scan_Page_Up | Scan_Page_Down | Scan_Home | Scan_End
+      then
+         Choose_Wallpaper (View,
+           (case Scan_Code is
+              when Scan_Up => Moved_Wallpaper (View, -1),
+              when Scan_Down => Moved_Wallpaper (View, 1),
+              when Scan_Page_Up => Moved_Wallpaper (View, -Wallpaper_List_Rows),
+              when Scan_Page_Down => Moved_Wallpaper (View, Wallpaper_List_Rows),
+              when Scan_Home => 1,
+              when others => Wallpaper_Rows));
       elsif View.Focused = Mode_List and then
         Scan_Code in Scan_Up | Scan_Down | Scan_Page_Up | Scan_Page_Down | Scan_Home | Scan_End
       then

@@ -1,5 +1,7 @@
 with CuBit.Appearance;
 with CuBit.UI;
+with Desktop_Backdrop_Style;
+with Desktop_Wallpaper_Catalog;
 with CuBit.Display_Layouts;
 with CuBit.Output_Modes;
 with Time_Zones;
@@ -7,15 +9,24 @@ with Time_Zones;
 --  Desktop-owned appearance, display, date & time and monitor pages. No IPC
 --  handlers or file authority. The time-zone list is the bundled IANA
 --  database (Time_Zones), so Settings can only store a zone the clock
---  service knows. Uses shared toolkit drawing/hit semantics, separate from
---  compositor state.
+--  service knows; likewise the wallpaper list is the wallpaper catalog
+--  (Desktop_Wallpaper_Catalog), one row per wallpaper whatever their number,
+--  so Settings can only store a wallpaper the desktop can show. Uses shared
+--  toolkit drawing/hit semantics, separate from compositor state.
 package Desktop_Settings is
-   type Control is (None, Appearance_Tab, Displays_Tab, Date_Time_Tab, Monitor_Tab, Light, Dark, Image, Cubie, Slate, Ocean,
+   type Control is (None, Appearance_Tab, Displays_Tab, Date_Time_Tab, Monitor_Tab, Light, Dark, Slate, Ocean,
+                    Wallpaper_List, Wallpaper_Previous, Wallpaper_Next,
                     Fill, Fit, Center, Apply, Revert, Make_Primary, Scale_Down, Scale_Up, Scale_Auto,
                     Zone_List, Zone_Previous, Zone_Next, Mode_List, Mode_Previous, Mode_Next,
                     Keep_Mode, Revert_Mode);
    subtype Tab_Control is Control range Appearance_Tab .. Monitor_Tab;
    type Page is (Appearance, Displays, Date_Time, Monitor);
+   --  The Appearance page's wallpaper list: a row per catalog wallpaper
+   --  (Desktop_Wallpaper_Catalog.Count of them), labelled from the catalog.
+   subtype Wallpaper_Row is Desktop_Wallpaper_Catalog.Wallpaper_Count;
+   function Wallpaper_Rows return Wallpaper_Row renames Desktop_Wallpaper_Catalog.Count;
+   function Wallpaper_Label (Row : Desktop_Wallpaper_Catalog.Wallpaper_Index) return String
+     renames Desktop_Wallpaper_Catalog.Label;
    --  The Monitor page (DISP-005/016): what the primary output's monitor
    --  says (EDID through display.svc) and its modes with the GPU's verdict,
    --  sorted (CuBit.Output_Modes.Before) under an Auto row (the driver's
@@ -68,6 +79,8 @@ package Desktop_Settings is
       Applied : CuBit.Appearance.Preferences := CuBit.Appearance.Default;
       Hovered, Pressed : Control := None;
       Focused : Control := Light;
+      --  The first row the wallpaper list shows.
+      Wallpaper_Top : Desktop_Wallpaper_Catalog.Wallpaper_Index := 1;
       Status : Save_Status := Unchanged;
       Pending_Layout, Applied_Layout, Drag_Original : CuBit.Display_Layouts.Layout;
       Pending_Primary, Applied_Primary : CuBit.Display_Layouts.Named_Display_ID := 1;
@@ -129,7 +142,15 @@ package Desktop_Settings is
         (C : CuBit.UI.Canvas; Bounds : CuBit.UI.Rect; Style : CuBit.Appearance.Preferences);
    procedure Render (View : State; C : CuBit.UI.Canvas; Window_Bounds : CuBit.UI.Rect);
 
-   procedure Draw (View : State; C : CuBit.UI.Canvas; Window_Bounds : CuBit.UI.Rect);
+   --  The software canvas rendering; Preview is View.Pending resolved
+   --  against the catalog (Desktop_Wallpaper_Assets.Resolve) for the preview.
+   procedure Draw (View : State; C : CuBit.UI.Canvas; Window_Bounds : CuBit.UI.Rect;
+                   Preview : Desktop_Backdrop_Style.Backdrop);
+   --  The wallpaper row View.Pending selects (0: a solid colour, or none).
+   function Chosen_Wallpaper (View : State) return Wallpaper_Row;
+   --  Choose wallpaper Row (Pending shows it) and scroll it into view.
+   procedure Choose_Wallpaper (View : in out State; Row : Desktop_Wallpaper_Catalog.Wallpaper_Index)
+     with Pre => Row <= Wallpaper_Rows;
    procedure Pointer
      (View : in out State; Bounds : CuBit.UI.Rect;
       Pointer : CuBit.UI.Pointer_State; Apply_Requested : out Boolean);

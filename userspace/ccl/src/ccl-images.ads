@@ -14,7 +14,9 @@ package CCL.Images with SPARK_Mode => On is
    function Safe_Path (Path : String) return Boolean;
    function Overlaps (Left, Right : Text) return Boolean;
 
-   type Source_Kind is (Repository_File, Supplied_File, Supplied_Tree);
+   --  Repository_Tree: a directory the repository build produces whose
+   --  files are whatever that build wrote (an asset package), placed whole.
+   type Source_Kind is (Repository_File, Repository_Tree, Supplied_File, Supplied_Tree);
    type Region_Kind is (Bootstrap, Optical);
    type Layout_Kind is (Bootstrap_Only, Optical_Image);
    type Role_Kind is (Content, Startup, Settings, Kernel, Boot_Menu);

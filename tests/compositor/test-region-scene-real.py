@@ -12,9 +12,6 @@ s=(root/'tests/compositor/desktop_backdrop_real_bridge.adb').read_text()
 s='with Desktop_GPU_Scene.Drawing; with Desktop_Backdrop_Style; with Compositor_Sampling;\n'+s
 s=s.replace('   Scene : G.State;','''   Scene : G.State;
    Active_Output : Vulkan_Scene.A.G.Output;
-   type Asset_Pixels is array (Natural range <>) of Interfaces.Unsigned_32;
-   Wallpaper : constant Asset_Pixels (0 .. 2048 * 576 - 1) with Import, Convention => C, External_Name => "cubit_desktop_wallpaper";
-   Cubie : constant Asset_Pixels (0 .. 2048 * 1152 - 1) with Import, Convention => C, External_Name => "cubit_desktop_wallpaper_cubie";
 ''')
 a='''      G.Begin_Frame (Scene, (96, 64, Vulkan_Scene.A.G.Orientation'Val (Version / 96),
         Scales ((Version / 24) mod 4), -20, 10), 0, OK);'''
@@ -22,9 +19,9 @@ assert s.count(a)==1;s=s.replace(a,'''      Active_Output := (96, 64, Vulkan_Sce
       G.Begin_Frame (Scene, Active_Output, 0, OK);''')
 a='      G.Backdrop.Capture (Scene, Style, Source, OK); if not OK then return 3; end if;'
 assert s.count(a)==1;s=s.replace(a,a+'''
-      if Style.Backdrop in A.Wallpaper | A.Cubie then
+      if Desktop_Backdrop_Style.Has_Image (Style) then
          G.Drawing.Image_Region (Scene, Source, (-12, 18, -4, 26), Clip,
-           (137, 29, 7, 9, 2048, Interfaces.Unsigned_32 (Desktop_Backdrop_Style.Height (Style.Backdrop))), OK);
+           (137, 29, 7, 9, Interfaces.Unsigned_32 (Style.Width), Interfaces.Unsigned_32 (Style.Height)), OK);
          if not OK then return 8; end if;
       end if;''')
 s=s.replace('      Area : constant Vulkan_Scene.A.G.Physical_Rectangle := Clip;', '''      Area : constant Vulkan_Scene.A.G.Physical_Rectangle := Clip;
@@ -32,7 +29,7 @@ s=s.replace('      Area : constant Vulkan_Scene.A.G.Physical_Rectangle := Clip;'
         (96, 64, Vulkan_Scene.A.G.Orientation'Val (Version / 96),
          (case (Version / 24) mod 4 is when 0 => (1, 1), when 1 => (5, 4), when 2 => (3, 2), when others => (2, 1)), -20, 10);''')
 a='   end Reference;';assert s.count(a)==1
-s=s.replace(a,'''      if Style.Backdrop in A.Wallpaper | A.Cubie then
+s=s.replace(a,'''      if Desktop_Backdrop_Style.Has_Image (Style) then
          for Y in Natural (Area.Top) .. Natural (Area.Bottom) - 1 loop
             for X in Natural (Area.Left) .. Natural (Area.Right) - 1 loop
                declare
@@ -41,9 +38,9 @@ s=s.replace(a,'''      if Style.Backdrop in A.Wallpaper | A.Cubie then
                      (-12, 18, -4, 26), 7, 9);
                begin
                   if M.Valid then
-                     Pixels (Y * 96 + X) := (if Style.Backdrop = A.Cubie then
-                       Cubie ((29 + Natural (M.Y)) * 2048 + 137 + Natural (M.X)) else
-                       Wallpaper ((29 + Natural (M.Y)) * 2048 + 137 + Natural (M.X)));
+                     Pixels (Y * 96 + X) := (if Style.Image = WA.Index (WA.Tall) then
+                       WA.Tall_Image ((29 + Natural (M.Y)) * Style.Width + 137 + Natural (M.X)) else
+                       WA.Wallpaper ((29 + Natural (M.Y)) * Style.Width + 137 + Natural (M.X)));
                   end if;
                end;
             end loop;

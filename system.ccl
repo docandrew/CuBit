@@ -5,7 +5,7 @@
   (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
   (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
   # Where read-only asset packages live (docs/assets.md): Desktop reads its
-  # wallpapers from <root>cubit-wallpapers/1/.
+  # wallpapers from <root>cubit-wallpapers/2/.
   (setting "system.assets.root" "@nvme:0/Assets/")
   # The desktop's Apps menu, in key order (userspace/services/desktop/
   # desktop_launch.ads). Entries name programs; what they may do is decided

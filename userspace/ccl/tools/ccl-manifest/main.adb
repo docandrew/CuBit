@@ -16,6 +16,7 @@ with CuBit.Startup_Tables;
 with CCL.Language;
 with Setting_Catalogs;
 with Setting_Codecs;
+with Asset_Catalogs;
 with Parameter_Bindings;
 with CuBit.Parameter_Signatures;
 with SPARKNaCl;
@@ -1073,6 +1074,73 @@ procedure Main is
       Emit_Startup_Body (Identity);
    end Emit_Startup;
 begin
+   --  ccl-manifest --wallpaper-catalog SOURCES.ccl CATALOG: check the
+   --  wallpaper source list and write the package catalog; the raster plan
+   --  goes to stdout (Asset_Catalogs).
+   if Argument_Count = 3 and then Argument (1) = "--wallpaper-catalog" then
+      declare
+         Built : Boolean := False;
+         Why : CuBit.Failures.Failure;
+         Plan : Ada.Strings.Unbounded.Unbounded_String;
+      begin
+         declare
+            task Generation with Storage_Size => 256 * 1024 * 1024;
+            task body Generation is
+               Text : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+               Last : Natural;
+            begin
+               Read_Source (Argument (2), Text, Last);
+               Asset_Catalogs.Build_Wallpapers
+                 (Text (1 .. Last), Argument (2),
+                  Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Argument (2))),
+                  Argument (3), Plan, Built, Why);
+            exception
+               when Ada.Streams.Stream_IO.Use_Error | Ada.Streams.Stream_IO.Name_Error =>
+                  Why := CuBit.Failures.Failed
+                    (CuBit.Failures.Invalid_Argument,
+                     Argument (2) & ": unreadable or longer than" &
+                     Natural'Image (CCL.Language.MAX_SOURCE_LENGTH) & " characters");
+            end Generation;
+         begin
+            null;
+         end;
+         if Built then
+            declare
+               Text : constant String := Ada.Strings.Unbounded.To_String (Plan);
+            begin
+               --  One line per wallpaper; Put_Line ends the last one.
+               Put_Line (Text (Text'First .. Text'Last - 1));
+            end;
+         else
+            Put_Line (Standard_Error, Why.Detail (1 .. Why.Detail_Length) &
+                      (if Why.Remedy_Length > 0 then ": " & Why.Remedy (1 .. Why.Remedy_Length) else ""));
+            Set_Exit_Status (Failure);
+         end if;
+      end;
+      return;
+   end if;
+   --  ccl-manifest --asset-codecs DIRECTORY: the asset catalogs' decoders.
+   if Argument_Count = 2 and then Argument (1) = "--asset-codecs" then
+      declare
+         Generated : Boolean := False;
+         Why : CuBit.Failures.Failure;
+      begin
+         declare
+            task Generation with Storage_Size => 256 * 1024 * 1024;
+            task body Generation is
+            begin
+               Asset_Catalogs.Emit_Codecs (Argument (2), Generated, Why);
+            end Generation;
+         begin
+            null;
+         end;
+         if not Generated then
+            Put_Line (Standard_Error, Why.Detail (1 .. Why.Detail_Length));
+            Set_Exit_Status (Failure);
+         end if;
+      end;
+      return;
+   end if;
    --  ccl-manifest --setting-kinds OUTPUT [--settings DIR] [--schema FILE]
    if Argument_Count >= 2 and then Argument (1) = "--setting-kinds" then
       declare

@@ -4,6 +4,7 @@
 --  One decoder per CCL-typed setting, generated from its type at build
 --  time (tools/ccl-manifest/setting_codecs.ads):
 --    CCL.Setting_Codecs.Calc_Options: calculator.options
+--    CCL.Setting_Codecs.Appearance: desktop.appearance.v2
 --    CCL.Setting_Codecs.Launch_Entry: desktop.launch.
 --    CCL.Setting_Codecs.Key_Repeat: desktop.input.key-repeat
 --    CCL.Setting_Codecs.Display_Scale: desktop.display.scale
