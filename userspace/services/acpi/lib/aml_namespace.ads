@@ -86,9 +86,11 @@ package AML_Namespace with SPARK_Mode is
    use type Definition_Identity;
    No_Definition : constant Definition_Identity := Definition_Identity (AML_Identity.No_Identity);
    function Has_Definition (Item : Definition_Identity) return Boolean is (Item /= No_Definition);
-   type State is private;
+   type State (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) is private;
+   type Audit_Model (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) is private;
    -- High-water slot count. During execution, removed temporary slots below a
    -- live slot remain reserved; Present/Child distinguish these from live nodes.
+   function Make_Audit (Tree : State; Import, Preparation : Natural) return Audit_Model;
    function Count (Tree : State) return Node_ID;
    function Last_Incarnation (Tree : State) return AML_References.Node_Incarnation;
    -- Exact state frame except the nonrewinding incarnation issuer. No namespace
@@ -109,9 +111,14 @@ package AML_Namespace with SPARK_Mode is
                    else Parent'Result < Node);
    function Name (Tree : State; Node : Node_ID) return AML_Names.Segment
      with Pre => Node > Root and then Node <= Count (Tree);
-   function Empty return State with Post => Count (Empty'Result) = 0
+   function Empty (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects;
+      Byte_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Bytes;
+      Element_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Elements) return State with Post => Count (Empty'Result) = 0
      and then Method_Usage (Empty'Result) = 0
      and then Value_Usage (Empty'Result) = AML_Objects.Usage'(others => 0);
+
+   function Empty_Like (Tree : State) return State;
+   function Same_Capacities (Left, Right : State) return Boolean;
 
    function Child
      (Tree : State; Scope : Node_ID; Part : AML_Names.Segment) return Node_ID
@@ -411,8 +418,10 @@ package Owned with SPARK_Mode is
    use type AML_Objects.Allocation_Status;
    use type AML_Decode.Byte;
    use type AML_Objects.Byte_References.Result_Status;
-   type Arena is limited private with Default_Initial_Condition =>
-     Valid (Arena) and then not Initialized (Arena) and then Snapshot (Arena) = Empty
+   type Arena (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects;
+      Byte_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Bytes;
+      Element_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Elements) is limited private with Default_Initial_Condition =>
+     Valid (Arena) and then not Initialized (Arena) and then Snapshot (Arena) = Empty_Like (Snapshot (Arena))
        and then Node_Count (Arena) = 0 and then Methods_Used (Arena) = 0
        and then Values_Used (Arena) = AML_Objects.Usage'(others => 0)
        and then Frame_Root_Count (Arena) = 0;
@@ -424,11 +433,20 @@ package Owned with SPARK_Mode is
    use type AML_Execute.Datum_Kind;
    use type AML_Objects.Package_References.Result_Status;
    function Valid (A : Arena) return Boolean;
+   -- Terminal local-owner operation, never an IPC action. The caller retires
+   -- serving before release; this neither cancels nor reconciles provider IO.
+   -- Busy frames or an uncertain Field observation refuse release unchanged.
+   function Storage_Released (A : Arena) return Boolean;
+   function Can_Release_Storage (A : Arena) return Boolean;
+   procedure Release_Storage (A : in out Arena; Released : out Boolean)
+     with Pre => Storage_Released (A) or else Valid (A),
+       Post => Released = Storage_Released (A)
+         and then (if Released then not Valid (A) else Valid (A));
 
-   function Frame_Root_Count (A : Arena) return Natural;
+   function Frame_Root_Count (A : Arena) return Natural with Pre => Valid (A);
    subtype Root_Values is AML_Execute.Expression_Values;
    subtype Object_Root_Set is AML_Objects.Reachability.Keep_Set;
-   type Root_Workspace is limited private;
+   type Root_Workspace (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects) is limited private;
    type Root_Trace_Status is (Roots_Traced, Uninitialized_Owner,
       Invalid_Root_Value, Invalid_Pending_Root, Invalid_Expression_Root);
    -- Read-only closure of live namespace data, published pins, pending package
@@ -452,7 +470,7 @@ package Owned with SPARK_Mode is
       Persistent_Invalid_Edge, Persistent_Census_Incomplete,
       Persistent_Owner_Found, No_Persistent_Owner_Found,
       Persistent_Scan_Collecting, Persistent_Invalid_Sequence);
-   type Semantic_Owner_Workspace is limited private;
+   type Semantic_Owner_Workspace (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects) is limited private;
    -- Synchronous nonescaping census: no arena mutation, allocation, collection,
    -- callbacks, or nested execution between Begin/Add/Finish. Token/source
    -- validation is not a universal mutation epoch. Execute must enumerate all
@@ -498,8 +516,8 @@ package Owned with SPARK_Mode is
    type Retain_Status is (Retained, Invalid_Value, Root_Limit, Identity_Exhausted);
    type Release_Status is (Released, Invalid_Root);
    type Retention_State is private;
-   function Retention_Model (A : Arena) return Retention_State with Ghost;
-   function Fatal_Observation (A : Arena) return AML_Fatal.Observation;
+   function Retention_Model (A : Arena) return Retention_State with Pre => Valid (A), Ghost;
+   function Fatal_Observation (A : Arena) return AML_Fatal.Observation with Pre => Valid (A);
    type Module_Error_Count is range 0 .. 2 ** 32 - 1;
    type Module_Error_Kind is (Module_Division_By_Zero);
    -- Descriptive history only. Definition identities never confer authority.
@@ -511,16 +529,16 @@ package Owned with SPARK_Mode is
       Definition : Definition_Identity := No_Definition;
       Resume_Offset, Charged : Natural := 0;
    end record;
-   function Module_Errors (A : Arena) return Module_Error_Observation;
-   function Retained_Count (A : Arena) return Retained_Root_Count;
+   function Module_Errors (A : Arena) return Module_Error_Observation with Pre => Valid (A);
+   function Retained_Count (A : Arena) return Retained_Root_Count with Pre => Valid (A);
    function Retention_Added (A : Arena; Before : Retention_State;
-                             Root : Retained_Root; Value : AML_Execute.Datum) return Boolean with Ghost;
+                             Root : Retained_Root; Value : AML_Execute.Datum) return Boolean with Pre => Valid (A), Ghost;
    function Retention_Removed (A : Arena; Before : Retention_State;
-                               Root : Retained_Root) return Boolean with Ghost;
-   function Retention_Cleared (A : Arena; Before : Retention_State) return Boolean with Ghost;
+                               Root : Retained_Root) return Boolean with Pre => Valid (A), Ghost;
+   function Retention_Cleared (A : Arena; Before : Retention_State) return Boolean with Pre => Valid (A), Ghost;
    function Retention_Read (A : Arena; Root : Retained_Root;
                             Value : AML_Execute.Datum;
-                            Status : AML_Execute.Execution_Status) return Boolean with Ghost;
+                            Status : AML_Execute.Execution_Status) return Boolean with Pre => Valid (A), Ghost;
    procedure Retain (A : in out Arena; Value : AML_Execute.Datum;
                      Root : out Retained_Root; Status : out Retain_Status) with
      Pre => Valid (A), Post => Valid (A) and then
@@ -544,56 +562,56 @@ package Owned with SPARK_Mode is
           and then Retention_Removed (A, Retention_Model (A)'Old, Root'Old)
          else Root = Root'Old and then Retention_Model (A) = Retention_Model (A)'Old);
 
-   function Invocation_Count (A : Arena) return AML_Frame_Handles.Invocation_Serial;
-   function Generation (A : Arena) return AML_Identity.Identity with Ghost;
-   function Initialized (A : Arena) return Boolean with
+   function Invocation_Count (A : Arena) return AML_Frame_Handles.Invocation_Serial with Pre => Valid (A);
+   function Generation (A : Arena) return AML_Identity.Identity with Pre => Valid (A), Ghost;
+   function Initialized (A : Arena) return Boolean with Pre => Valid (A),
      Post => Initialized'Result = (Generation (A) /= AML_Identity.No_Identity);
-   function Model (A : Arena) return AML_Objects.State with Ghost;
+   function Model (A : Arena) return AML_Objects.State with Pre => Valid (A), Ghost;
    function Matches (A : Arena; R : Reference) return Boolean with Pre => Valid (A);
    function Target (R : Reference) return AML_Objects.Object_ID with Ghost;
    function Offset (R : Reference) return Natural with Ghost;
    function Byte_At (A : Arena; R : Reference) return AML_Decode.Byte with Ghost,
      Pre => Valid (A) and then Matches (A, R)
        and then AML_References.Kind (R) = AML_References.Byte_Slot;
-   function Snapshot (A : Arena) return State;
-   function Node_Count (A : Arena) return Node_ID with
+   function Snapshot (A : Arena) return State with Pre => Valid (A);
+   function Node_Count (A : Arena) return Node_ID with Pre => Valid (A),
      Post => Node_Count'Result = Count (Snapshot (A));
    function Present (A : Arena; Node : Node_ID) return Boolean with
-     Pre => Node <= Node_Count (A),
+     Pre => Valid (A) and then (Node <= Node_Count (A)),
      Post => Present'Result = Present (Snapshot (A), Node);
    function Kind (A : Arena; Node : Node_ID) return Object_Kind with
-     Pre => Node <= Node_Count (A),
+     Pre => Valid (A) and then (Node <= Node_Count (A)),
      Post => Kind'Result = Kind (Snapshot (A), Node);
    function Mutex_Data (A : Arena; Node : Node_ID) return Mutex_Metadata with
-     Pre => Initialized (A) and then Node > Root and then Node <= Node_Count (A)
-       and then Present (A, Node) and then Kind (A, Node) = Mutex_Object;
+     Pre => Valid (A) and then (Initialized (A) and then Node > Root and then Node <= Node_Count (A)
+       and then Present (A, Node) and then Kind (A, Node) = Mutex_Object);
    function Processor_Data (A : Arena; Node : Node_ID) return Processor_Attributes with
-     Pre => Node > Root and then Node <= Node_Count (A)
-       and then Present (A, Node) and then Kind (A, Node) = Processor_Object;
+     Pre => Valid (A) and then (Node > Root and then Node <= Node_Count (A)
+       and then Present (A, Node) and then Kind (A, Node) = Processor_Object);
    function Power_Data (A : Arena; Node : Node_ID) return Power_Attributes with
-     Pre => Node > Root and then Node <= Node_Count (A)
-       and then Present (A, Node) and then Kind (A, Node) = Power_Resource_Object;
+     Pre => Valid (A) and then (Node > Root and then Node <= Node_Count (A)
+       and then Present (A, Node) and then Kind (A, Node) = Power_Resource_Object);
    function Operation_Region_Data (A : Arena; Node : Node_ID) return Operation_Region_Attributes
-     with Pre => Node > Root and then Node <= Node_Count (A)
-       and then Present (A, Node) and then Kind (A, Node) = Operation_Region_Object,
+     with Pre => Valid (A) and then (Node > Root and then Node <= Node_Count (A)
+       and then Present (A, Node) and then Kind (A, Node) = Operation_Region_Object),
        Post => Operation_Region_Data'Result = Operation_Region_Data (Snapshot (A), Node);
    function Region_Field_Data (A : Arena; Node : Node_ID) return Region_Field_Attributes
-     with Pre => Node > Root and then Node <= Node_Count (A)
-       and then Present (A, Node) and then Kind (A, Node) = Region_Field_Object,
+     with Pre => Valid (A) and then (Node > Root and then Node <= Node_Count (A)
+       and then Present (A, Node) and then Kind (A, Node) = Region_Field_Object),
        Post => Region_Field_Data'Result = Region_Field_Data (Snapshot (A), Node);
    function Region_Data (A : Arena; Node : Node_ID) return Table_Region with
-     Pre => Node > Root and then Node <= Node_Count (A)
-       and then Present (A, Node) and then Kind (A, Node) = Table_Region_Object,
+     Pre => Valid (A) and then (Node > Root and then Node <= Node_Count (A)
+       and then Present (A, Node) and then Kind (A, Node) = Table_Region_Object),
      Post => Region_Data'Result = Region_Data (Snapshot (A), Node);
    function Field_Data (A : Arena; Node : Node_ID) return Table_Field with
-     Pre => Node > Root and then Node <= Node_Count (A)
-       and then Present (A, Node) and then Kind (A, Node) = Table_Field_Object,
+     Pre => Valid (A) and then (Node > Root and then Node <= Node_Count (A)
+       and then Present (A, Node) and then Kind (A, Node) = Table_Field_Object),
      Post => Field_Data'Result = Field_Data (Snapshot (A), Node)
        and then AML_Field_Data.Fits (Field_Data'Result.Region.Extent,
          Field_Data'Result.Offset, Field_Data'Result.Bits);
-   function Values_Used (A : Arena) return AML_Objects.Usage with
+   function Values_Used (A : Arena) return AML_Objects.Usage with Pre => Valid (A),
      Post => Values_Used'Result = Value_Usage (Snapshot (A));
-   function Methods_Used (A : Arena) return Aggregate_Method_Count with
+   function Methods_Used (A : Arena) return Aggregate_Method_Count with Pre => Valid (A),
      Post => Methods_Used'Result = Method_Usage (Snapshot (A));
    procedure Load (A : in out Arena; Data : AML_Decode.Bytes;
      Width : AML_Decode.Integer_Width; Result : out Load_Status)
@@ -601,7 +619,7 @@ package Owned with SPARK_Mode is
      Post => Valid (A) and then Generation (A) = Generation (A)'Old
        and then (if Result /= Loaded then Snapshot (A) = Snapshot (A)'Old);
    function Pending_Members (A : Arena) return Natural
-     with Post => Pending_Members'Result = AML_Namespace.Pending_Members (Snapshot (A));
+     with Pre => Valid (A), Post => Pending_Members'Result = AML_Namespace.Pending_Members (Snapshot (A));
    procedure Initialize_Members (A : in out Arena; Report : out Initialization_Report)
      with Pre => Valid (A), Post => Valid (A)
        and then Generation (A) = Generation (A)'Old
@@ -613,7 +631,7 @@ package Owned with SPARK_Mode is
        (if Success then Generation (A) /= AML_Identity.No_Identity
           and then Generation (A) /= Generation (A)'Old
           and then AML_Objects.Live_Count (Model (A)) = 0
-          and then Snapshot (A) = Empty
+          and then Snapshot (A) = Empty_Like (Snapshot (A))
           and then Invocation_Count (A) = 0
           and then Retention_Cleared (A, Retention_Model (A)'Old)
         else Retention_Model (A) = Retention_Model (A)'Old and then Invocation_Count (A) = Invocation_Count (A)'Old and then Generation (A) = Generation (A)'Old and then Model (A) = Model (A)'Old
@@ -815,8 +833,8 @@ package Owned with SPARK_Mode is
    -- Rebuild value metadata from authenticated arena storage, not cached IDs,
    -- type codes or conversions supplied by an evaluator operand.
    -- Authenticated namespace metadata value; grants no data-cell authority.
-   function Metadata_Matches (A : Arena; Item : AML_Execute.Metadata_Value) return Boolean;
-   function Semantic_Reference_Readable (A : Arena; R : Reference) return Boolean;
+   function Metadata_Matches (A : Arena; Item : AML_Execute.Metadata_Value) return Boolean with Pre => Valid (A);
+   function Semantic_Reference_Readable (A : Arena; R : Reference) return Boolean with Pre => Valid (A);
    procedure Describe_Metadata_Value
      (A : Arena; Item : AML_Execute.Metadata_Value; Result : out AML_Execute.Reference_Metadata)
      with Pre => Valid (A) and then not Result'Constrained;
@@ -1314,7 +1332,7 @@ package Owned with SPARK_Mode is
      (Result_Retained, No_Root_Required, Result_Root_Limit,
       Result_Identity_Exhausted, Invalid_Result, Invocation_Busy);
    function Retention_Reservation_Discarded (A : Arena; Before : Retention_State)
-     return Boolean with Ghost;
+     return Boolean with Pre => Valid (A), Ghost;
    -- Reserves a private published integer placeholder before any AML effects.
    -- Compound results fill that slot before method/frame cleanup. Integer,
    -- no-return and error results release it without rewinding the pin issuer.
@@ -1363,14 +1381,16 @@ package Owned with SPARK_Mode is
    generic
    package Collecting is
       pragma Unevaluated_Use_Of_Old (Allow);
-      type Arena is limited private;
+      type Arena (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects;
+      Byte_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Bytes;
+      Element_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Elements) is limited private;
       type Value_Handle is private;
       function No_Value return Value_Handle;
       type Phase is (Uninitialized, Loading, Ready);
       type Preparation_State is (Bare_Namespace, Firmware_Initial_State);
       type Preparation_Outcome is (Preparation_Not_Attempted, Preparation_Rejected,
         Firmware_Prepared, Namespace_Capacity_Exceeded, Value_Capacity_Exceeded);
-      function Current_Preparation (A : Arena) return Preparation_State;
+      function Current_Preparation (A : Arena) return Preparation_State with Pre => Valid (A);
       type Import_State is (Import_Undecided, Legacy_Import, Module_Active,
         Module_Complete, Module_Failed);
       type Module_Outcome is (Catalog_Rejected, Modules_Completed, Module_Rejected);
@@ -1389,10 +1409,10 @@ package Owned with SPARK_Mode is
          Failure : AML_Execute.Execution_Failure := AML_Execute.No_Return;
          Fatal : AML_Fatal.Observation;
       end record;
-      function Module_Errors (A : Arena) return Module_Error_Observation;
-      function Import_Model (A : Arena) return Import_State with Ghost;
-      function Module_Transient_Free (A : Arena) return Boolean with Ghost;
-      function Invocation_Model (A : Arena) return AML_Frame_Handles.Invocation_Serial with Ghost;
+      function Module_Errors (A : Arena) return Module_Error_Observation with Pre => Valid (A);
+      function Import_Model (A : Arena) return Import_State with Pre => Valid (A), Ghost;
+      function Module_Transient_Free (A : Arena) return Boolean with Pre => Valid (A), Ghost;
+      function Invocation_Model (A : Arena) return AML_Frame_Handles.Invocation_Serial with Pre => Valid (A), Ghost;
 
       type Access_Status is (Available, Invalid_Value, Uninitialized_Element,
          Wrong_Kind, Out_Of_Bounds, Root_Limit, Identity_Exhausted, Busy, Wrong_Phase);
@@ -1432,20 +1452,29 @@ package Owned with SPARK_Mode is
          end case;
       end record;
       function Valid (A : Arena) return Boolean;
-      function Retention_Model (A : Arena) return Retention_State with Ghost;
+   -- Terminal local-owner operation, never an IPC action. The caller retires
+   -- serving before release; this neither cancels nor reconciles provider IO.
+   -- Busy frames or an uncertain Field observation refuse release unchanged.
+   function Storage_Released (A : Arena) return Boolean;
+   function Can_Release_Storage (A : Arena) return Boolean;
+   procedure Release_Storage (A : in out Arena; Released : out Boolean)
+     with Pre => Storage_Released (A) or else Valid (A),
+       Post => Released = Storage_Released (A)
+         and then (if Released then not Valid (A) else Valid (A));
+      function Retention_Model (A : Arena) return Retention_State with Pre => Valid (A), Ghost;
       function Pin_Added (A : Arena; Before : Retention_State;
-         Handle : Value_Handle) return Boolean with Ghost;
+         Handle : Value_Handle) return Boolean with Pre => Valid (A), Ghost;
       function Pin_Removed (A : Arena; Before : Retention_State;
-         Handle : Value_Handle) return Boolean with Ghost;
-      function Pins_Cleared (A : Arena; Before : Retention_State) return Boolean with Ghost;
+         Handle : Value_Handle) return Boolean with Pre => Valid (A), Ghost;
+      function Pins_Cleared (A : Arena; Before : Retention_State) return Boolean with Pre => Valid (A), Ghost;
       type Collection_Count is new AML_Decode.Integer_Value;
       type Collection_Statistics is record
          Attempted, Completed, Rejected : Collection_Count := 0;
          Freed_Objects, Freed_Bytes, Freed_Elements : Collection_Count := 0;
       end record;
       -- Lifetime cumulative saturating counters; Reset does not erase evidence.
-      function Reclamation_Metrics (A : Arena) return Collection_Statistics;
-      function Notification_Model (A : Arena) return Notification_State with Ghost;
+      function Reclamation_Metrics (A : Arena) return Collection_Statistics with Pre => Valid (A);
+      function Notification_Model (A : Arena) return Notification_State with Pre => Valid (A), Ghost;
       -- Trusted service interest; not an AML or wire operation. Existing entries
       -- survive disabling. Configuration and dequeue reject same-arena reentry.
       procedure Configure_Notifications (A : in out Arena; Enabled : Boolean;
@@ -1456,7 +1485,7 @@ package Owned with SPARK_Mode is
           and then (if Status /= Available then
             Notification_Model (A) = Notification_Model (A)'Old);
       -- Read-only count remains available during invocation.
-      function Pending_Notifications (A : Arena) return Notification_Count;
+      function Pending_Notifications (A : Arena) return Notification_Count with Pre => Valid (A);
       procedure Take_Notification (A : in out Arena; Item : out Notification_Observation;
          Present : out Boolean; Status : out Access_Status)
         with Pre => Valid (A), Post => Valid (A)
@@ -1465,9 +1494,9 @@ package Owned with SPARK_Mode is
           and then (if Status /= Available then not Present and then
             Notification_Model (A) = Notification_Model (A)'Old);
 
-      function Current (A : Arena) return Phase;
-      function Retained_Count (A : Arena) return Retained_Root_Count;
-      function Node_Count (A : Arena) return Node_ID;
+      function Current (A : Arena) return Phase with Pre => Valid (A);
+      function Retained_Count (A : Arena) return Retained_Root_Count with Pre => Valid (A);
+      function Node_Count (A : Arena) return Node_ID with Pre => Valid (A);
       -- Authenticated physical binding description; not an AML value or owner.
       -- Revalidate after every invocation: numeric positions are not identities.
       type Node_Descriptor is private;
@@ -1513,30 +1542,30 @@ package Owned with SPARK_Mode is
             else Description = No_Field_Description and then Key = No_Field_Key);
 
       -- Node selectors are current-arena metadata, not durable identities.
-      function Present (A : Arena; Node : Node_ID) return Boolean;
+      function Present (A : Arena; Node : Node_ID) return Boolean with Pre => Valid (A);
       -- Detached equality-only audit data: no inspection or import operation.
-      type Audit_Value is private;
-      function Audit (A : Arena) return Audit_Value;
+      subtype Audit_Value is Audit_Model;
+      function Audit (A : Arena) return Audit_Value with Pre => Valid (A);
       function Namespace_Equal (Current, Prior : Audit_Value) return Boolean with Ghost;
       function Initialization_Frame (Current, Prior : Audit_Value) return Boolean with Ghost;
       function Table_Initialization_Frame
         (Current, Prior : Audit_Value; Input : AML_Table_Backing.State) return Boolean with Ghost;
-      function Generation (A : Arena) return AML_Identity.Identity with Ghost;
+      function Generation (A : Arena) return AML_Identity.Identity with Pre => Valid (A), Ghost;
       type Usage_Description is record
          Nodes : Node_ID := Root;
          Values : AML_Objects.Usage := (others => 0);
          Methods : Aggregate_Method_Count := 0;
          Pending : Natural := 0;
       end record;
-      function Observe_Usage (A : Arena) return Usage_Description;
+      function Observe_Usage (A : Arena) return Usage_Description with Pre => Valid (A);
       -- Physical lexical child selector; Root denotes an absent binding.
       -- Use Find_Object for semantic selection through aliases.
       procedure Find_Child (A : Arena; Parent : Node_ID; Part : AML_Names.Segment;
-         Node : out Node_ID; Status : out Access_Status);
+         Node : out Node_ID; Status : out Access_Status) with Pre => Valid (A);
       -- Canonical object selector, including alias parents. Found Root is a
       -- valid namespace object and remains distinct from Not_Found.
       procedure Find_Object (A : Arena; Parent : Node_ID; Part : AML_Names.Segment;
-         Result : out Lookup_Result; Status : out Access_Status);
+         Result : out Lookup_Result; Status : out Access_Status) with Pre => Valid (A);
       -- Read-only semantic path lookup from an authenticated current scope.
       -- Empty paths denote that scope; callers implement omitted-operand defaults.
       -- A failed lookup returns No_Node, never a namespace-root descriptor.
@@ -1548,13 +1577,13 @@ package Owned with SPARK_Mode is
              Current_Node (A, Item) else Item = No_Node);
       procedure Bind_Table_Region (A : in out Arena; Scope : Node_ID;
          Part : AML_Names.Segment; Region : Table_Region; Node : out Node_ID;
-         Outcome : out Bind_Status; Status : out Access_Status; Owner : Node_ID := Root);
+         Outcome : out Bind_Status; Status : out Access_Status; Owner : Node_ID := Root) with Pre => Valid (A);
       procedure Bind_Table_Field (A : in out Arena; Scope : Node_ID;
          Part : AML_Names.Segment; Region_Node : Node_ID; Offset, Bits : Natural;
          Node : out Node_ID; Outcome : out Bind_Status; Status : out Access_Status;
-         Owner : Node_ID := Root);
+         Owner : Node_ID := Root) with Pre => Valid (A);
       procedure Read_Table_Field (A : Arena; Node : Node_ID;
-         Field : out Table_Field; Status : out Access_Status);
+         Field : out Table_Field; Status : out Access_Status) with Pre => Valid (A);
       -- Typed read-only metadata; selectors belong to the current arena.
       -- Use Find_Object first when selecting through an alias.
       procedure Read_Processor_Metadata (A : Arena; Node : Node_ID;
@@ -1616,7 +1645,7 @@ package Owned with SPARK_Mode is
          Outcome : out Result; Status : out Access_Status)
          with Pre => Valid (A) and then not Outcome'Constrained;
       procedure Initialize (A : in out Arena; Status : out Access_Status)
-        with Post => (if Status = Available then Current_Preparation (A) = Bare_Namespace);
+        with Pre => Valid (A), Post => (if Status = Available then Current_Preparation (A) = Bare_Namespace);
       procedure Reset (A : in out Arena; Status : out Access_Status) with
          Pre => Valid (A), Post => Valid (A) and then
            (if Status = Available then Current (A) = Loading
@@ -1625,7 +1654,7 @@ package Owned with SPARK_Mode is
             else Retention_Model (A) = Retention_Model (A)'Old
               and then Current (A) = Current (A)'Old);
       Firmware_Seed_Count : constant Positive := 7;
-      function Canonical_Firmware_Initial_State (A : Arena) return Boolean with Ghost;
+      function Canonical_Firmware_Initial_State (A : Arena) return Boolean with Pre => Valid (A), Ghost;
       procedure Prepare_Firmware_Namespace (A : in out Arena;
          Outcome : out Preparation_Outcome; Status : out Access_Status)
         with Pre => Valid (A), Post => Valid (A)
@@ -1721,12 +1750,12 @@ package Owned with SPARK_Mode is
                  else Import_Model (A) = Module_Failed));
       procedure Load (A : in out Arena; Data : AML_Decode.Bytes;
          Width : AML_Decode.Integer_Width; Outcome : out Load_Status;
-         Status : out Access_Status);
+         Status : out Access_Status) with Pre => Valid (A);
       procedure Seal (A : in out Arena; Report : out Initialization_Report;
-         Status : out Access_Status);
+         Status : out Access_Status) with Pre => Valid (A);
       -- Resolve static table descriptors only against owned immutable bytes.
       procedure Seal_With_Tables (A : in out Arena; Input : aliased AML_Table_Backing.State;
-         Report : out Initialization_Report; Status : out Access_Status);
+         Report : out Initialization_Report; Status : out Access_Status) with Pre => Valid (A);
       -- Exclusive-owner invocation using the same registry as retained appends.
       procedure Invoke_Registered (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
          Input : aliased AML_Table_Backing.State; Node : Node_ID; Args : Arguments; Count : Argument_Count;
@@ -1835,57 +1864,57 @@ package Owned with SPARK_Mode is
          procedure Add_Region_Register
            (A : Arena; IO : IO_Context; Region : Node_Descriptor;
             Target : AML_Field_Access.Target; Allow_Read, Allow_Write : Boolean;
-            Items : in out Binding_Set; Status : out Access_Status);
+            Items : in out Binding_Set; Status : out Access_Status) with Pre => Valid (A);
          procedure Add_Binding
            (A : Arena; IO : IO_Context; Key : Field_Key;
             Target : AML_Field_Access.Target; Items : in out Binding_Set;
-            Status : out Access_Status);
+            Status : out Access_Status) with Pre => Valid (A);
          -- Ordered explicit named targets for bounded Integer/Buffer reads.
          -- Read associations alone never enable writes.
          procedure Add_Read_Binding
            (A : Arena; IO : IO_Context; Key : Field_Key;
             Targets : AML_Field_Targets.Vector; Count : AML_Field_Plans.Datum_Count;
-            Items : in out Binding_Set; Status : out Access_Status);
+            Items : in out Binding_Set; Status : out Access_Status) with Pre => Valid (A);
          -- Trusted opt-in using existing named whole-register permissions.
          -- NoLock update rules; no multi-operation atomicity or authority mint.
          procedure Add_Write_Binding
            (A : Arena; IO : IO_Context; Key : Field_Key;
             Targets : AML_Field_Targets.Vector; Count : AML_Field_Plans.Datum_Count;
-            Items : in out Binding_Set; Status : out Access_Status);
+            Items : in out Binding_Set; Status : out Access_Status) with Pre => Valid (A);
 
          procedure Invoke_Registered
            (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; IO : in out IO_Context;
             Items : Binding_Set; Input : aliased AML_Table_Backing.State; Node : Node_ID;
-            Args : Arguments; Count : Argument_Count; Budget : Natural; Outcome : out Result; Status : out Access_Status);
+            Args : Arguments; Count : Argument_Count; Budget : Natural; Outcome : out Result; Status : out Access_Status) with Pre => Valid (A);
          procedure Invoke_Registered
            (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; IO : in out IO_Context;
             Item : Binding; Input : aliased AML_Table_Backing.State; Node : Node_ID;
-            Args : Arguments; Count : Argument_Count; Budget : Natural; Outcome : out Result; Status : out Access_Status);
+            Args : Arguments; Count : Argument_Count; Budget : Natural; Outcome : out Result; Status : out Access_Status) with Pre => Valid (A);
          procedure Evaluate_Registered
            (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; IO : in out IO_Context;
             Items : Binding_Set; Input : aliased AML_Table_Backing.State; Item : Node_Descriptor;
-            Width : AML_Decode.Integer_Width; Budget : Natural; Outcome : out Result; Status : out Access_Status);
+            Width : AML_Decode.Integer_Width; Budget : Natural; Outcome : out Result; Status : out Access_Status) with Pre => Valid (A);
          procedure Bind
            (A : Arena; IO : IO_Context; Key : Field_Key; Target : AML_Field_Access.Target;
-            Item : out Binding; Status : out Access_Status);
-         function Uncertain (A : Arena) return AML_Field_Access.Observation;
+            Item : out Binding; Status : out Access_Status) with Pre => Valid (A);
+         function Uncertain (A : Arena) return AML_Field_Access.Observation with Pre => Valid (A);
          -- Historical attribution only, never authority after Reset.
-         function Original_Field (A : Arena) return Reference;
-         function Original_Region (A : Arena) return Reference;
+         function Original_Field (A : Arena) return Reference with Pre => Valid (A);
+         function Original_Region (A : Arena) return Reference with Pre => Valid (A);
          procedure Reconcile
            (A : in out Arena; IO : IO_Context; Expected : AML_Field_Access.Observation;
-            Status : out Access_Status);
+            Status : out Access_Status) with Pre => Valid (A);
          procedure Invoke
            (A : in out Arena; IO : in out IO_Context; Item : Binding;
             Input : aliased AML_Table_Backing.State; Node : Node_ID;
             Args : Arguments; Count : Argument_Count; Budget : Natural;
-            Outcome : out Result; Status : out Access_Status);
+            Outcome : out Result; Status : out Access_Status) with Pre => Valid (A);
 
          procedure Invoke
            (A : in out Arena; IO : in out IO_Context; Items : Binding_Set;
             Input : aliased AML_Table_Backing.State; Node : Node_ID;
             Args : Arguments; Count : Argument_Count; Budget : Natural;
-            Outcome : out Result; Status : out Access_Status);
+            Outcome : out Result; Status : out Access_Status) with Pre => Valid (A);
          -- Full named result; method and direct Region_Field reads share the
          -- authenticated binding engine. Compound results remain caller-owned.
          procedure Evaluate_Named
@@ -1953,7 +1982,7 @@ package Owned with SPARK_Mode is
             else Handle = Handle'Old and then Retention_Model (A) = Retention_Model (A)'Old);
       procedure Describe (A : Arena; Handle : Value_Handle;
          Description : out Value_Description; Status : out Access_Status)
-         with Pre => not Description'Constrained;
+         with Pre => Valid (A) and then (not Description'Constrained);
       -- Copies bytes, never a storage view. Offset is zero based.
       procedure Read_Bytes (A : Arena; Handle : Value_Handle; Offset : Natural;
          Data : out AML_Decode.Bytes; Copied : out Natural; Status : out Access_Status)
@@ -2001,16 +2030,15 @@ package Owned with SPARK_Mode is
          Definition : Definition_Identity := No_Definition;
       end record
         with Type_Invariant => Append_Attempt.Used = Has_Definition (Append_Attempt.Definition);
-      type Audit_Value is record
-         Tree : State;
-         Import : Import_State;
-         Preparation : Preparation_State;
-      end record;
+      type Arena_Owner is access Owned.Arena;
+      function Allocate_Inner (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) return Arena_Owner;
       type Value_Handle is record
          Root : Retained_Root := No_Retained_Root;
       end record;
-   type Arena is limited record
-         Inner : Owned.Arena;
+   type Arena (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects;
+      Byte_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Bytes;
+      Element_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Elements) is limited record
+         Inner : Arena_Owner := Allocate_Inner (Object_Capacity, Byte_Capacity, Element_Capacity);
          State : Phase := Uninitialized;
          Import : Import_State := Import_Undecided;
          Preparation : Preparation_State := Bare_Namespace;
@@ -2021,22 +2049,22 @@ package Owned with SPARK_Mode is
 
 private
    type Semantic_Scan_Phase is (Scan_Idle, Scan_Collecting, Scan_Finished);
-   type Semantic_Owner_Workspace is limited record
+   type Semantic_Owner_Workspace (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects) is limited record
       Phase : Semantic_Scan_Phase := Scan_Idle;
       Owner : AML_Identity.Identity := AML_Identity.No_Identity;
       Source : AML_References.Object_Handle := AML_References.No_Object_Handle;
       Problem : Persistent_Owner_Result := Persistent_Scan_Collecting;
       Incomplete : Boolean := False;
-      Seeds, Keep, Invalid_Edges, Ambiguous_Edges : Object_Root_Set := [others => False];
-      Targets : AML_Objects.Reachability.Reference_Targets :=
+      Seeds, Keep, Invalid_Edges, Ambiguous_Edges : Object_Root_Set (1 .. Object_Capacity) := [others => False];
+      Targets : AML_Objects.Reachability.Reference_Targets (1 .. Object_Capacity) :=
         [others => AML_Object_Identifiers.No_Address];
-      Walk : AML_Objects.Reachability.Workspace;
+      Walk : AML_Objects.Reachability.Workspace (Object_Capacity);
    end record;
-   type Root_Workspace is limited record
-      Seeds : Object_Root_Set := [others => False];
-      Targets : AML_Objects.Reachability.Reference_Targets :=
+   type Root_Workspace (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects) is limited record
+      Seeds : Object_Root_Set (1 .. Object_Capacity) := [others => False];
+      Targets : AML_Objects.Reachability.Reference_Targets (1 .. Object_Capacity) :=
         [others => AML_Object_Identifiers.No_Address];
-      Walk : AML_Objects.Reachability.Workspace;
+      Walk : AML_Objects.Reachability.Workspace (Object_Capacity);
    end record;
    package Frame_Pins is new AML_Frame_Roots
      (AML_Execute.Datum, (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer), Max_Frame_Roots);
@@ -2112,15 +2140,18 @@ private
       Location : ACPI_PCI_Config_Reads.Location;
    end record;
    type PCI_Setup_Array is array (Node_ID) of PCI_Setup_Work;
+   type State_Owner is access State;
 
-   type Arena is limited record
+   type Arena (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects;
+      Byte_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Bytes;
+      Element_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Elements) is limited record
       Token : AML_Identity.Identity := AML_Identity.No_Identity;
-      Tree : State := Empty;
+      Tree : State_Owner := new State'(Empty (Object_Capacity, Byte_Capacity, Element_Capacity));
       Invocation_Issued : AML_Frame_Handles.Invocation_Serial := 0;
       PCI_Work : PCI_Setup_Array;
       PCI_Issued : AML_Execute.Field_Context_Ticket := 0;
       Retention : Pins.State;
-      Frame_Roots : Frame_Pins.State := Frame_Pins.Empty;
+      Frame_Roots : Frame_Pins.State (Object_Capacity) := Frame_Pins.Empty (Object_Capacity);
       Notifications : Notification_State;
       Last_Fatal : AML_Fatal.Observation;
       Recovered_Module_Errors : Module_Error_Observation;
@@ -2223,7 +2254,7 @@ private
         Field_Bit_Position'Last - Nodes (N).Region_Field_Info.Offset);
    package Pending is new AML_Pending_Members
      (Node_ID, Max_Pending_Members, Max_Pending_Segments);
-   type State is record
+   type State (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) is record
       Module_Frames : AML_Module_Frames.State := AML_Module_Frames.Empty;
       Journal : Pending.State := Pending.Empty;
       Timer_State : AML_Clock.State := AML_Clock.Fresh;
@@ -2233,7 +2264,8 @@ private
       Items : Entries;
       -- Root is a physical scope; this optional semantic payload is never an Items index.
       Root_Value : AML_Objects.Object_ID := 0;
-      Values : AML_Objects.State := AML_Objects.Empty;
+      Values : AML_Objects.State (Object_Capacity, Byte_Capacity, Element_Capacity) := AML_Objects.Empty
+        (Object_Capacity => Object_Capacity, Byte_Capacity => Byte_Capacity, Element_Capacity => Element_Capacity);
       Code : AML_Decode.Bytes (1 .. Aggregate_Method_Capacity) := [others => 0];
       Code_Used : Aggregate_Method_Count := 0;
    end record
@@ -2294,4 +2326,8 @@ private
                    when Metadata_Value_Object => AML_Objects.Metadata_Snapshot_Object,
                    when Event_Object => AML_Objects.Event_Object,
                    when others => AML_Objects.Package_Object)));
+   type Audit_Model (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) is record
+      Tree : State (Object_Capacity, Byte_Capacity, Element_Capacity);
+      Import, Preparation : Natural;
+   end record;
 end AML_Namespace;

@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with Interfaces;
+with ACPI_Allocation_Diagnostics;
 with ACPI_Requests;
 with ACPI_Bootstrap;
 with ACPI_Fatal_Diagnostics;
@@ -20,14 +21,20 @@ package ACPI_Snapshot_Startup is
       Revision : R.F.Byte := 0;
       Extent : Count := 0;
    end record;
-   type State_Access is access ACPI_Requests.State;
+   type State_Access is access all ACPI_Requests.State;
+   -- Retire AML/serving before release. Refuses unchanged if execution/provider
+   -- state is still live or uncertain. Uses the matching raw allocator, never
+   -- Ada.Unchecked_Deallocation on a manually constructed owner.
+   procedure Release_Owner (Owner : in out State_Access; Released : out Boolean);
    type Outcome is
      (Loaded, Source_Refused, Inventory_Not_Ready, Invalid_Inventory,
-      Representation_Limit, Invalid_Description, Inventory_Mismatch,
+      Representation_Limit, Allocation_Refused, Invalid_Description, Inventory_Mismatch,
       Clock_Unavailable, Clock_Reversed, Deadline_Expired,
       Copy_Refused, Admission_Refused, Startup_Refused, Startup_Already_Consumed);
    type Report is record
       Status : Outcome := Invalid_Inventory;
+      Allocation : ACPI_Allocation_Diagnostics.Report;
+      Values : ACPI_Allocation_Diagnostics.Value_Sample;
       Source_Status : R.Copy_Status := R.Copy_OK;
       Catalog : Inventory;
       Table : Natural := 0;
@@ -53,12 +60,15 @@ package ACPI_Snapshot_Startup is
    procedure Load
      (Deadline : R.Tick; Owner : out State_Access; Result : out Report);
    -- Owner is published only after complete local admission and initialization.
-   -- On every refusal it is null and temporary bytes/partial arena are released.
+   -- On typed refusal it is null; completed candidate owners and temporary
+   -- table bytes are released. An allocation refusal terminates startup.
    -- Caller invokes once and retains successful Owner for the process lifetime.
    -- Adapters must return normally with explicit statuses, remain bound to
    -- one immutable inventory, and never reenter or retain a buffer. Resource
-   -- exhaustion and trusted-callback violations are terminal runtime failures,
-   -- not Report outcomes. Never serve or retry a partially failed attempt.
+   -- exhaustion of an outer reservation returns Allocation_Refused with copied
+   -- diagnostics; nested Ada allocations remain runtime-fatal on exhaustion.
+   -- Trusted-callback violations remain fatal. Never serve or retry a partially
+   -- failed startup; the native caller logs the outcome and stops.
 private
    -- Shared implementation only. Public default Load always uses a local,
    -- hardware-free completion and releases failed owners as before.

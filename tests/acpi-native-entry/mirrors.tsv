@@ -1,3 +1,5 @@
+tests/acpi-native-entry/fixtures/actual/acpi_allocation_diagnostics.adb	userspace/services/acpi/acpi_allocation_diagnostics.adb
+tests/acpi-native-entry/fixtures/actual/acpi_allocation_diagnostics.ads	userspace/services/acpi/acpi_allocation_diagnostics.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_binding_types.ads	userspace/services/acpi/backend/acpi_backend_binding_types.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_bindings.adb	userspace/services/acpi/backend/acpi_backend_bindings.adb
 tests/acpi-native-entry/fixtures/actual/acpi_backend_bindings.ads	userspace/services/acpi/backend/acpi_backend_bindings.ads
@@ -94,6 +96,8 @@ tests/acpi-native-entry/fixtures/actual/acpi_fadt-sleep_registers.adb	userspace/
 tests/acpi-native-entry/fixtures/actual/acpi_fadt-sleep_registers.ads	userspace/services/acpi/lib/acpi_fadt-sleep_registers.ads
 tests/acpi-native-entry/fixtures/actual/acpi_fadt-transactions.ads	userspace/services/acpi/lib/acpi_fadt-transactions.ads
 tests/acpi-native-entry/fixtures/actual/acpi_fadt.ads	userspace/services/acpi/lib/acpi_fadt.ads
+tests/acpi-native-entry/fixtures/actual/acpi_fallible_heap.adb	userspace/services/acpi/acpi_fallible_heap.adb
+tests/acpi-native-entry/fixtures/actual/acpi_fallible_heap.ads	userspace/services/acpi/acpi_fallible_heap.ads
 tests/acpi-native-entry/fixtures/actual/acpi_fatal_diagnostics.ads	userspace/services/acpi/acpi_fatal_diagnostics.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_bindings.adb	userspace/services/acpi/field-client/provider/startup/acpi_field_bindings.adb
 tests/acpi-native-entry/fixtures/actual/acpi_field_bindings.ads	userspace/services/acpi/field-client/provider/startup/acpi_field_bindings.ads
@@ -259,6 +263,7 @@ tests/acpi-native-entry/fixtures/actual/aml_coercions.ads	userspace/services/acp
 tests/acpi-native-entry/fixtures/actual/aml_container_headers.ads	userspace/services/acpi/lib/aml_container_headers.ads
 tests/acpi-native-entry/fixtures/actual/aml_copied_tables.adb	userspace/services/acpi/lib/aml_copied_tables.adb
 tests/acpi-native-entry/fixtures/actual/aml_copied_tables.ads	userspace/services/acpi/lib/aml_copied_tables.ads
+tests/acpi-native-entry/fixtures/actual/aml_data.adb	userspace/services/acpi/lib/aml_data.adb
 tests/acpi-native-entry/fixtures/actual/aml_data.ads	userspace/services/acpi/lib/aml_data.ads
 tests/acpi-native-entry/fixtures/actual/aml_declaration_contexts.ads	userspace/services/acpi/lib/aml_declaration_contexts.ads
 tests/acpi-native-entry/fixtures/actual/aml_decode.ads	userspace/services/acpi/lib/aml_decode.ads
@@ -277,6 +282,7 @@ tests/acpi-native-entry/fixtures/actual/aml_field_layout.ads	userspace/services/
 tests/acpi-native-entry/fixtures/actual/aml_field_plans.ads	userspace/services/acpi/lib/aml_field_plans.ads
 tests/acpi-native-entry/fixtures/actual/aml_field_targets.ads	userspace/services/acpi/lib/aml_field_targets.ads
 tests/acpi-native-entry/fixtures/actual/aml_frame_handles.ads	userspace/services/acpi/lib/aml_frame_handles.ads
+tests/acpi-native-entry/fixtures/actual/aml_frame_roots.adb	userspace/services/acpi/lib/aml_frame_roots.adb
 tests/acpi-native-entry/fixtures/actual/aml_frame_roots.ads	userspace/services/acpi/lib/aml_frame_roots.ads
 tests/acpi-native-entry/fixtures/actual/aml_identity.ads	userspace/services/acpi/lib/aml_identity.ads
 tests/acpi-native-entry/fixtures/actual/aml_index_handles.ads	userspace/services/acpi/lib/aml_index_handles.ads
@@ -292,10 +298,16 @@ tests/acpi-native-entry/fixtures/actual/aml_namespace.adb	userspace/services/acp
 tests/acpi-native-entry/fixtures/actual/aml_namespace.ads	userspace/services/acpi/lib/aml_namespace.ads
 tests/acpi-native-entry/fixtures/actual/aml_object_identifiers.ads	userspace/services/acpi/lib/aml_object_identifiers.ads
 tests/acpi-native-entry/fixtures/actual/aml_objects-byte_references.ads	userspace/services/acpi/lib/aml_objects-byte_references.ads
+tests/acpi-native-entry/fixtures/actual/aml_objects-copies.adb	userspace/services/acpi/lib/aml_objects-copies.adb
+tests/acpi-native-entry/fixtures/actual/aml_objects-copies.ads	userspace/services/acpi/lib/aml_objects-copies.ads
 tests/acpi-native-entry/fixtures/actual/aml_objects-package_references.ads	userspace/services/acpi/lib/aml_objects-package_references.ads
+tests/acpi-native-entry/fixtures/actual/aml_objects-reachability.adb	userspace/services/acpi/lib/aml_objects-reachability.adb
 tests/acpi-native-entry/fixtures/actual/aml_objects-reachability.ads	userspace/services/acpi/lib/aml_objects-reachability.ads
+tests/acpi-native-entry/fixtures/actual/aml_objects-reclamation.adb	userspace/services/acpi/lib/aml_objects-reclamation.adb
 tests/acpi-native-entry/fixtures/actual/aml_objects-reclamation.ads	userspace/services/acpi/lib/aml_objects-reclamation.ads
+tests/acpi-native-entry/fixtures/actual/aml_objects-root_snapshots.adb	userspace/services/acpi/lib/aml_objects-root_snapshots.adb
 tests/acpi-native-entry/fixtures/actual/aml_objects-root_snapshots.ads	userspace/services/acpi/lib/aml_objects-root_snapshots.ads
+tests/acpi-native-entry/fixtures/actual/aml_objects.adb	userspace/services/acpi/lib/aml_objects.adb
 tests/acpi-native-entry/fixtures/actual/aml_objects.ads	userspace/services/acpi/lib/aml_objects.ads
 tests/acpi-native-entry/fixtures/actual/aml_pending_members.ads	userspace/services/acpi/lib/aml_pending_members.ads
 tests/acpi-native-entry/fixtures/actual/aml_references.ads	userspace/services/acpi/lib/aml_references.ads
@@ -304,6 +316,8 @@ tests/acpi-native-entry/fixtures/actual/aml_register_views.ads	userspace/service
 tests/acpi-native-entry/fixtures/actual/aml_retained_identities.ads	userspace/services/acpi/lib/aml_retained_identities.ads
 tests/acpi-native-entry/fixtures/actual/aml_retained_roots.ads	userspace/services/acpi/lib/aml_retained_roots.ads
 tests/acpi-native-entry/fixtures/actual/aml_root_slots.ads	userspace/services/acpi/lib/aml_root_slots.ads
+tests/acpi-native-entry/fixtures/actual/aml_storage_capacities.adb	userspace/services/acpi/lib/aml_storage_capacities.adb
+tests/acpi-native-entry/fixtures/actual/aml_storage_capacities.ads	userspace/services/acpi/lib/aml_storage_capacities.ads
 tests/acpi-native-entry/fixtures/actual/aml_table_backing.ads	userspace/services/acpi/lib/aml_table_backing.ads
 tests/acpi-native-entry/fixtures/actual/aml_table_readers.adb	userspace/services/acpi/lib/aml_table_readers.adb
 tests/acpi-native-entry/fixtures/actual/aml_table_readers.ads	userspace/services/acpi/lib/aml_table_readers.ads

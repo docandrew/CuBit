@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with GNAT.Source_Info;
 with Interfaces;
@@ -115,7 +116,7 @@ procedure Lifecycle_Tests is
      Core.Namespace.Lookup_Status, Core.Values.Module_Outcome, AML_Execute.Execution_Status,
      Core.Values.Value_Kind, AML_Decode.Bytes;
    Fixture_Bytes : constant Positive := 4096;
-   Service : aliased Core.State (1, Fixture_Bytes, Fixture_Bytes, 1);
+   Service : aliased Core.State (1, Fixture_Bytes, Fixture_Bytes, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Bound : B.Report;
    Added : Backend.Add_Report;
    Accepted : Boolean;

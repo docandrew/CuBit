@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Streams;
@@ -207,7 +208,7 @@ procedure EC_Field_Joined_Tests is
    package Fields is new C.Field_IO
      (Provider.Context, Provider.Pending, Provider.Describe, Provider.Dispatch,
       Provider.Reconciled, Authorize_Target => Provider.Authorize);
-   Service : aliased C.State (1, 4096, 4096, 1);
+   Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Provider.Context;
    Reads, Writes : Fields.Binding_Set;
    Evaluations, Releases, Release_Failures : Natural := 0;
@@ -233,7 +234,7 @@ procedure EC_Field_Joined_Tests is
    package Receiver is new ACPI_EC_Event_Receiver (C, Methods, 2);
    use type Receiver.Enrollment, Receiver.Outcome, Receiver.Close_Result;
    Publisher_PID : constant M.Process_ID := CuBit.Process_IDs.From_Word (Interfaces.Unsigned_64 (Sender));
-   Other : aliased C.State (1, 4096, 4096, 1);
+   Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    use type Methods.Invocation_Outcome;
    use type C.Stage_Status, C.Freeze_Status, C.Values.Module_Outcome, C.Values.Access_Status;
    use type AML_Execute.Execution_Status, Lid.Query_Outcome, Lid.Lid_State;

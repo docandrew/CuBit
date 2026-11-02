@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Interfaces; use Interfaces;
 with AML_Decode;
 with AML_Delays;
@@ -211,7 +212,7 @@ begin
       for Case_ID in Scenario loop
          Selected := Case_ID;
          declare
-            S, Other : aliased C.State (1, 4096, 4096, 1);
+            S, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             Context : Controller;
             Run : Regions.Session;
             OK : Boolean;
@@ -297,7 +298,7 @@ begin
    Selected := Ordinary;
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         S : aliased C.State (1, 4096, 4096, 1);
+         S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Context : Controller;
          Region_Run : Regions.Session;
          OK : Boolean;

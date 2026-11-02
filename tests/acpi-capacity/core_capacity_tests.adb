@@ -1,3 +1,4 @@
+with AML_Objects;
 with AML_Delays;
 with Ada.Text_IO;
 with AML_Decode; use AML_Decode;
@@ -17,7 +18,7 @@ procedure Core_Capacity_Tests is
    use type S.Values.Audit_Value;
    use type Firmware_Tables.Byte;
    type State_Access is access S.State;
-   Tree : constant State_Access := new S.State (3, 150000, 100000, 3);
+   Tree : constant State_Access := new S.State (3, 150000, 100000, 3, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Install_Status : S.Install_Status;
    Report : S.Namespace.Initialization_Report;
    Status : S.Values.Access_Status;

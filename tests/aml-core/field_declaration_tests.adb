@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with ACPI_Test_Results;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -51,7 +52,7 @@ procedure Field_Declaration_Tests is
      Method ("TRUN", Field (Skip_Header & Enc ("FLD0")) & [16#A4#,0]) &
      Method ("OVER", Field ([0,16#40#,16#20#] & Named) & [16#A4#,0]) &
      Method ("ACCS", Field (Skip_Header & [1,1,0] & Named) & [16#A4#] & Enc ("FLD0"));
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Installed : Install_Status;
    Region : Namespace.Node_ID;
    Bound : Namespace.Bind_Status;

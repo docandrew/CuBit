@@ -14,8 +14,11 @@ package body AML_Data with SPARK_Mode is
       Width : Integer_Width; Environment : in out Context; ID : out Object_ID;
       Consumed : out Natural; Status : out AML_Decode.Status)
    is
-      Candidate : AML_Objects.State := Store;
-      Candidate_Context : Context := Environment;
+      Candidate : AML_Objects.State := AML_Objects.Empty_Like (Store);
+      Snapshot_Status : AML_Objects.Clone_Status;
+      function Copied_Context (Item : Context) return Context is (Item);
+      pragma No_Inline (Copied_Context);
+      Candidate_Context : Context := Copied_Context (Environment);
       type Frame is record
          Object : Object_ID := 0;
          Limit : Natural := 0;
@@ -36,9 +39,12 @@ package body AML_Data with SPARK_Mode is
       S : String_Span_Result;
       B : AML_Buffer_Layouts.Layout_Result;
       Allocation : Allocation_Status;
+      procedure Execute_Transaction is
    begin
       ID := 0; Consumed := 0; Status := Malformed;
       if not AML_Byte_Sources.Corresponds (Source, Source_First, Data) then return; end if;
+      AML_Objects.Clone (Store, Candidate, Snapshot_Status);
+      if Snapshot_Status /= AML_Objects.Cloned then Status := Limit_Exceeded; return; end if;
       Status := Truncated;
       loop
          pragma Loop_Invariant (Valid (Candidate));
@@ -61,7 +67,7 @@ package body AML_Data with SPARK_Mode is
               (for all K in J .. Depth => Frames (K).Limit <= Frames (J).Limit));
          pragma Loop_Variant (Decreases => Data'Length - Offset, Decreases => Depth);
          if Depth = 0 and Root /= 0 then
-            Store := Candidate; Environment := Candidate_Context; ID := Root; Consumed := Offset; Status := Accepted;
+            AML_Objects.Transfer (Candidate, Store); Environment := Candidate_Context; ID := Root; Consumed := Offset; Status := Accepted;
             return;
          elsif Depth > 0 and then Offset = Frames (Depth).Limit then
             Depth := Depth - 1;
@@ -155,6 +161,10 @@ package body AML_Data with SPARK_Mode is
             end if;
          end if;
       end loop;
+      end Execute_Transaction;
+   begin
+      Execute_Transaction;
+      AML_Objects.Discard (Candidate);
    end Load_Bound_From_Source;
    procedure Load_Bound
      (Store : in out AML_Objects.State; Data : Bytes;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Streams;
@@ -46,7 +47,7 @@ procedure EC_Notes_Tests is
    Table_Capacity : constant := 3;
    Byte_Capacity : constant := 15_000;
    Table_Limit : constant := 5_000;
-   Server : Q.State (Table_Capacity, Byte_Capacity, Table_Limit, Load_Capacity => Table_Capacity, Initial_Revision => 0);
+   Server : Q.State (Table_Capacity, Byte_Capacity, Table_Limit, Load_Capacity => Table_Capacity, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Result : O.Report;
    Reply : Q.Response;
    Checks : Natural := 0;

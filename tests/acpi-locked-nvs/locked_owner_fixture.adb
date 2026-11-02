@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces;
 with Locked_Owner_Model;
@@ -37,7 +38,7 @@ package body Locked_Owner_Fixture is
             for Byte of Raw loop Sum := Sum + Byte; end loop;
             Raw (10) := 0 - Sum; return Raw;
          end Table;
-         Service : aliased C.State (1, 4096, 4096, 1);
+         Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Stage : C.Stage_Status;
          Freeze : C.Freeze_Status;
          Status : C.Values.Access_Status;

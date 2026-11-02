@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Streams.Stream_IO;
 with AML_Copied_Tables;
 with Ada.Text_IO;
@@ -111,7 +112,7 @@ procedure Module_Copied_Field_Tests is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         Service : aliased C.State (1, 4096, 4096, Load_Capacity => 2);
+         Service : aliased C.State (1, 4096, 4096, Load_Capacity => 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Data : constant Bytes := Read_File (Ada.Command_Line.Argument (Natural (Revision)));
          Copied : Bytes := Read_File (Ada.Command_Line.Argument (4));
          Copy_Report : AML_Copied_Tables.Report;

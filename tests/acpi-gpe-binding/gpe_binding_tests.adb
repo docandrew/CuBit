@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Integer_Text_IO;
@@ -44,7 +45,7 @@ procedure GPE_Binding_Tests is
    use type AML_Execute.Execution_Status, AML_Decode.Integer_Value;
    use type M.Resolution_Outcome, M.Invocation_Outcome, M.Action_Result, M.Event_Number;
    use type G.Action_Result, G.Phase, G.Source_State, G.Trigger_Kind;
-   Service, Other : aliased C.State (1, 4096, 4096, 1);
+   Service, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks : Natural := 0;
    Scope : C.Node_Descriptor;
    Edge, Level, Error_Item, Alias_Item, Package_Item, Argument_Item, Fatal_Item, Item : M.Binding;

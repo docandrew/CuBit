@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Service_Core;
 with AML_Decode; use AML_Decode;
@@ -23,7 +24,7 @@ procedure Event_Escape_Tests is
       if not Good then raise Program_Error with Message; end if;
    end Check;
    procedure Run (Table : Bytes; Width : Integer_Width) is
-      Service : aliased S.State (1, 4096, 4096, 1);
+      Service : aliased S.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Stage : S.Stage_Status;
       Frozen : S.Freeze_Status;
       Report : S.Execution_Report;

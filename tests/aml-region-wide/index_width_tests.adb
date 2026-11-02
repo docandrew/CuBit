@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Interfaces;
@@ -171,7 +172,7 @@ procedure Index_Width_Tests is
      Fault_Name : AML_Names.Segment := "RQ80"; Budgets : Boolean := False;
      Revocation : Boolean := False) is
       Raw : constant AML_Decode.Bytes := (if Revision = 1 then Index_Width_Oracle.Table32 else Index_Width_Oracle.Table64);
-      Service : aliased C.State (1, Raw'Length, Raw'Length, 1);
+      Service : aliased C.State (1, Raw'Length, Raw'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : Context;
       Items : F.Binding_Set;
       Staged : C.Stage_Status;

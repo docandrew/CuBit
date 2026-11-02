@@ -18,3 +18,4 @@ userspace/services/acpi/field-client/provider
 userspace/services/acpi/field-client/provider/startup
 userspace/services/acpi/field-client/inventory
 userspace/services/acpi/field-client
+tests/support/acpi-heap

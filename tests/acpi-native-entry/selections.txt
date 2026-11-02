@@ -60,3 +60,5 @@ acpi_snapshot_startup-with_driver.adb
 acpi_native_snapshot_load-with_driver.adb
 acpi_requests.adb
 acpi_service_core.adb
+aml_namespace.adb
+acpi_fallible_heap.adb

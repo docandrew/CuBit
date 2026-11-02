@@ -2,7 +2,7 @@
 
 Run `bash tests/acpi-native-entry/run.sh --mode checked` or `--mode release`
 inside pinned Nix, with TMPDIR=/home/doc/cubit-build-tmp before and inside it.
-Each profile semantically compiles45selections, producing44ALIs and zero objects
+Each profile semantically checks 64 selections, producing 61 ALIs and zero objects
 or executables. It checks main, clock, logger, native owner, observer endpoint/
 runner, event routing/classification/lifetime, snapshot bindings and generic
 local copy/startup units against actual current runtime declarations.

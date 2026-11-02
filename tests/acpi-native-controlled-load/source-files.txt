@@ -52,6 +52,10 @@ tests/acpi-native-controlled-load/models/native_test_control.ads
 tests/acpi-native-controlled-load/models/root_test_support.adb
 tests/acpi-native-controlled-load/models/root_test_support.ads
 tests/acpi-native-controlled-load/models/startup.ads
+tests/support/acpi-heap/acpi_hosted_heap.adb
+tests/support/acpi-heap/acpi_hosted_heap.ads
+userspace/services/acpi/acpi_allocation_diagnostics.adb
+userspace/services/acpi/acpi_allocation_diagnostics.ads
 userspace/services/acpi/acpi_bootstrap.adb
 userspace/services/acpi/acpi_bootstrap.ads
 userspace/services/acpi/acpi_device_initialization.adb
@@ -62,6 +66,8 @@ userspace/services/acpi/acpi_device_status.adb
 userspace/services/acpi/acpi_device_status.ads
 userspace/services/acpi/acpi_endpoint.adb
 userspace/services/acpi/acpi_endpoint.ads
+userspace/services/acpi/acpi_fallible_heap.adb
+userspace/services/acpi/acpi_fallible_heap.ads
 userspace/services/acpi/acpi_fatal_diagnostics.adb
 userspace/services/acpi/acpi_fatal_diagnostics.ads
 userspace/services/acpi/acpi_module_diagnostics.adb
@@ -201,6 +207,8 @@ userspace/services/acpi/lib/aml_simple_targets.adb
 userspace/services/acpi/lib/aml_simple_targets.ads
 userspace/services/acpi/lib/aml_slices.adb
 userspace/services/acpi/lib/aml_slices.ads
+userspace/services/acpi/lib/aml_storage_capacities.adb
+userspace/services/acpi/lib/aml_storage_capacities.ads
 userspace/services/acpi/lib/aml_string_order.adb
 userspace/services/acpi/lib/aml_string_order.ads
 userspace/services/acpi/lib/aml_table_backing.adb

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -35,7 +36,7 @@ procedure Request_Length_Tests is
    Boot : constant Bytes := Read (1);
    Wrapper : constant Bytes := Read (2);
    Expected_Error : constant Revision_Number := Revision_Number'Value (Ada.Command_Line.Argument (3));
-   S : State (2, Boot'Length + Wrapper'Length, Positive'Max (Boot'Length, Wrapper'Length), 2, 0);
+   S : State (2, Boot'Length + Wrapper'Length, Positive'Max (Boot'Length, Wrapper'Length), 2, 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Reply, Fuel : Response;
    Prior : Revision_Number;
    procedure Query (Page : Unsigned_64; Expected : Response_Words) is

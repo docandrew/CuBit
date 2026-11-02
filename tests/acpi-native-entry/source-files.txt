@@ -1,3 +1,5 @@
+tests/acpi-native-entry/fixtures/actual/acpi_allocation_diagnostics.adb
+tests/acpi-native-entry/fixtures/actual/acpi_allocation_diagnostics.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_binding_types.ads
 tests/acpi-native-entry/fixtures/actual/acpi_backend_bindings.adb
 tests/acpi-native-entry/fixtures/actual/acpi_backend_bindings.ads
@@ -147,6 +149,8 @@ tests/acpi-native-entry/fixtures/actual/acpi_fadt-transactions.adb
 tests/acpi-native-entry/fixtures/actual/acpi_fadt-transactions.ads
 tests/acpi-native-entry/fixtures/actual/acpi_fadt.adb
 tests/acpi-native-entry/fixtures/actual/acpi_fadt.ads
+tests/acpi-native-entry/fixtures/actual/acpi_fallible_heap.adb
+tests/acpi-native-entry/fixtures/actual/acpi_fallible_heap.ads
 tests/acpi-native-entry/fixtures/actual/acpi_fatal_diagnostics.adb
 tests/acpi-native-entry/fixtures/actual/acpi_fatal_diagnostics.ads
 tests/acpi-native-entry/fixtures/actual/acpi_field_bindings.adb
@@ -512,6 +516,8 @@ tests/acpi-native-entry/fixtures/actual/aml_simple_targets.adb
 tests/acpi-native-entry/fixtures/actual/aml_simple_targets.ads
 tests/acpi-native-entry/fixtures/actual/aml_slices.adb
 tests/acpi-native-entry/fixtures/actual/aml_slices.ads
+tests/acpi-native-entry/fixtures/actual/aml_storage_capacities.adb
+tests/acpi-native-entry/fixtures/actual/aml_storage_capacities.ads
 tests/acpi-native-entry/fixtures/actual/aml_table_backing.adb
 tests/acpi-native-entry/fixtures/actual/aml_table_backing.ads
 tests/acpi-native-entry/fixtures/actual/aml_table_code.adb

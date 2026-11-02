@@ -8,12 +8,16 @@ package body AML_Objects.Reachability with SPARK_Mode is
        (case Kind (Store, From) is
           when Package_Object => Length (Store, From) > 0 and then
             (for some Index in 0 .. Length (Store, From) - 1 => Element (Store, From, Index) = Into),
-          when Reference_Object => Target (Store, Targets (From)) = Into,
+          when Reference_Object => From in Targets'Range and then Target (Store, Targets (From)) = Into,
           when Integer_Object | String_Object | Buffer_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => False)) with Ghost, Pre => Valid (Store);
    function Exact_Closure
      (Store : State; Seeds : Keep_Set; Targets : Reference_Targets;
       Keep : Keep_Set; Scratch : Workspace) return Boolean is
-     (Scratch.Used <= Live_Count (Store)
+     (Seeds'First = 1 and then Seeds'Last = Store.Object_Capacity
+      and then Targets'First = 1 and then Targets'Last = Store.Object_Capacity
+      and then Keep'First = 1 and then Keep'Last = Store.Object_Capacity
+      and then Scratch.Object_Capacity = Store.Object_Capacity
+      and then Scratch.Used <= Live_Count (Store)
       and then (for all ID in Keep'Range =>
         (if Seeds (ID) then Keep (ID))
         and then (if Keep (ID) then Is_Live (Store, ID)
@@ -22,11 +26,13 @@ package body AML_Objects.Reachability with SPARK_Mode is
           else Scratch.Rank (ID) = 0))
       and then (for all Position in 1 .. Scratch.Used =>
         Scratch.Queue (Position) /= No_Object
+        and then Scratch.Queue (Position) in Keep'Range
         and then Keep (Scratch.Queue (Position))
         and then Scratch.Rank (Scratch.Queue (Position)) = Position
         and then (if Seeds (Scratch.Queue (Position)) then
            Scratch.Parent (Position) = No_Object
          else Scratch.Parent (Position) /= No_Object
+           and then Scratch.Parent (Position) in Scratch.Rank'Range
            and then Scratch.Rank (Scratch.Parent (Position)) in 1 .. Position - 1
            and then Edge (Store, Scratch.Parent (Position), Scratch.Queue (Position), Targets)))
       and then (for all ID in Keep'Range => (if Keep (ID) then
@@ -39,7 +45,7 @@ package body AML_Objects.Reachability with SPARK_Mode is
            when Integer_Object | String_Object | Buffer_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => True))));
    procedure Trace
      (Store : State; Seeds : Keep_Set; Targets : Reference_Targets;
-      Scratch : in out Workspace; Keep : out Keep_Set; Status : out Trace_Status)
+      Scratch : out Workspace; Keep : out Keep_Set; Status : out Trace_Status)
    is
       Scanned : Object_ID := 0;
       Current, Next : Object_ID;
@@ -59,6 +65,11 @@ package body AML_Objects.Reachability with SPARK_Mode is
       Scratch.Rank := [others => No_Object];
       Scratch.Parent := [others => No_Object];
       Keep := [others => False];
+      Status := Invalid_Shape;
+      if not (Seeds'First = 1 and then Seeds'Last = Store.Object_Capacity
+      and then Targets'First = 1 and then Targets'Last = Store.Object_Capacity
+      and then Keep'First = 1 and then Keep'Last = Store.Object_Capacity
+      and then Scratch.Object_Capacity = Store.Object_Capacity) then return; end if;
       Status := Invalid_Seed;
       for ID in Seeds'Range loop
          if Seeds (ID) and then not Is_Live (Store, ID) then return; end if;

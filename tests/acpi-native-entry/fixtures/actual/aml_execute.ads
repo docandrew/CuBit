@@ -237,7 +237,7 @@ package AML_Execute with SPARK_Mode, Pure is
    -- Raw evaluated operands. Conversion, table selection, declaration ownership,
    -- cleanup and readiness belong to the authenticated namespace owner.
    generic
-      type Context is limited private;
+      type Context (<>) is limited private;
       type Read_Context (<>) is limited private;
       with function Context_Valid (Environment : Context) return Boolean;
       with procedure Lookup
@@ -671,7 +671,7 @@ package AML_Execute with SPARK_Mode, Pure is
           Post => Result_Out.Charged <= Budget and then Context_Valid (Environment),
           Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(3));
    generic
-      type Context is limited private;
+      type Context (<>) is limited private;
       with function Context_Valid (Environment : Context) return Boolean;
       with function Lookup
         (Environment : Context; Scope : Natural; Path : AML_Names.Name_Result;
@@ -699,7 +699,7 @@ package AML_Execute with SPARK_Mode, Pure is
             and then Context_Valid (Environment),
           Post => Result_Out.Charged <= Budget and then Context_Valid (Environment);
    generic
-      type Context is limited private;
+      type Context (<>) is limited private;
       with function Context_Valid (Environment : Context) return Boolean;
       with function Lookup
         (Environment : Context; Scope : Natural; Path : AML_Names.Name_Result;
@@ -742,7 +742,7 @@ package AML_Execute with SPARK_Mode, Pure is
             and then Context_Valid (Environment),
           Post => Result_Out.Charged <= Budget and then Context_Valid (Environment);
    generic
-      type Context is private;
+      type Context (<>) is private;
       with function Context_Valid (Environment : Context) return Boolean;
       with function Lookup
         (Environment : Context; Scope : Natural; Path : AML_Names.Name_Result;
@@ -756,7 +756,7 @@ package AML_Execute with SPARK_Mode, Pure is
      with Global => null, Pre => Argument_Count <= 7 and then Context_Valid (Environment),
           Post => Run_Typed'Result.Charged <= Budget;
    generic
-      type Context is private;
+      type Context (<>) is private;
       with function Context_Valid (Environment : Context) return Boolean;
       with function Lookup
         (Environment : Context; Scope : Natural; Path : AML_Names.Name_Result;

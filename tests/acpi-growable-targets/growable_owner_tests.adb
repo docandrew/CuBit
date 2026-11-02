@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Streams;
@@ -16,7 +17,7 @@ procedure Growable_Owner_Tests is
    package Owner renames Locked_Test_Owner;
    package Model renames Locked_Owner_Model;
    package D renames ACPI_Capacity_Diagnostics;
-   Service : C.State (1, 4_096, 4_096, 1);
+   Service : C.State (1, 4_096, 4_096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Stage : C.Stage_Status;
    Freeze : C.Freeze_Status;
    Status : C.Values.Access_Status;

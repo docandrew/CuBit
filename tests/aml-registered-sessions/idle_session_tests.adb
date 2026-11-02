@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -50,7 +51,7 @@ procedure Idle_Session_Tests is
      then Natural'Value (Mode (8 .. Mode'Last)) else 100000);
    Capacity : constant Positive := Boot'Length + Parent'Length + Child'Length + Later'Length;
    Limit : constant Positive := Positive'Max (Positive'Max (Boot'Length, Parent'Length), Positive'Max (Child'Length, Later'Length));
-   Service : aliased C.State (4, Capacity, Limit, 4);
+   Service : aliased C.State (4, Capacity, Limit, 4, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Status : V.Access_Status;
    Execution : C.Execution_Report;
    Initial : N.Initialization_Report;
@@ -131,7 +132,7 @@ begin
       C.Append_Retained_Module (Service, 2, 100000, Report, Status, (V.Selected_Root, Root_Descriptor)); Check (Status = V.Wrong_Phase, "failed append cannot retry");
       Check (C.Retained_Definition (Service, 2) = Parent_ID and then C.Retained_Definition (Service, 3) = Child_ID, "failed identities stable");
       declare
-         Foreign : aliased C.State (4, Capacity, Limit, 4);
+         Foreign : aliased C.State (4, Capacity, Limit, 4, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Foreign_Result : V.Result;
          Foreign_Pin, Saved_Foreign, Duplicate_Pin : V.Value_Handle;
          Foreign_Node, Method_Node : N.Node_ID;

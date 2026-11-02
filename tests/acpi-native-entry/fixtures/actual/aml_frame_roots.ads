@@ -1,4 +1,5 @@
 with AML_Frame_Handles;
+with AML_Object_Identifiers;
 with AML_Root_Slots;
 with AML_Objects.Root_Snapshots;
 generic
@@ -9,8 +10,8 @@ package AML_Frame_Roots with SPARK_Mode, Pure is
    use type AML_Frame_Handles.Frame_Handle;
    subtype Root_Count is Natural range 0 .. Capacity;
    subtype Root_Index is Positive range 1 .. Capacity;
-   type State is private;
-   type Result_Status is (Ready, Root_Limit, Invalid_Frame, Duplicate_Frame, Invalid_Value);
+   type State (Object_Capacity : AML_Objects.Storage_Capacity) is private;
+   type Result_Status is (Ready, Root_Limit, Invalid_Frame, Duplicate_Frame, Invalid_Value, Invalid_Shape);
    type Read_Result is record
       Reserved : Boolean := False;
       Initialized : Boolean := False;
@@ -18,7 +19,7 @@ package AML_Frame_Roots with SPARK_Mode, Pure is
    end record;
    function Valid (Store : State) return Boolean;
    function Count (Store : State) return Root_Count;
-   function Empty return State with Post => Valid (Empty'Result) and then Count (Empty'Result) = 0;
+   function Empty (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects) return State with Post => Valid (Empty'Result) and then Count (Empty'Result) = 0;
    -- Trusted owner admits actual live frames. Full handles, including domain,
    -- are keys; this ledger neither mints nor independently authenticates them.
    function Reserved_Frame (After, Before : State; Frame : AML_Frame_Handles.Frame_Handle)
@@ -80,7 +81,7 @@ private
    type Held_Values is array (AML_Root_Slots.Held_Root) of Value_Type;
    type Held_Flags is array (AML_Root_Slots.Held_Root) of Boolean;
    type Entry_Data is record
-      Snapshot : AML_Objects.Root_Snapshots.Snapshot := AML_Objects.Root_Snapshots.Empty;
+      Snapshot_Header : AML_Objects.Root_Snapshots.Header := AML_Objects.Root_Snapshots.Empty_Header;
       Held_Initialized : Held_Flags := [others => False];
       Held : Held_Values := [others => Empty_Value];
       Frame : AML_Frame_Handles.Frame_Handle := AML_Frame_Handles.No_Frame;
@@ -88,7 +89,11 @@ private
       Values : Cell_Values := [others => Empty_Value];
    end record;
    type Entry_Array is array (Root_Index) of Entry_Data;
-   type State is record
+   type Stamp_Matrix is array (Root_Index range <>, Positive range <>)
+      of AML_Object_Identifiers.Slot_Incarnation;
+   type State (Object_Capacity : AML_Objects.Storage_Capacity) is record
+      Stamps : Stamp_Matrix (1 .. Capacity, 1 .. Object_Capacity) :=
+        [others => [others => AML_Object_Identifiers.No_Incarnation]];
       Used : Root_Count := 0;
       Entries : Entry_Array := [others => <>];
    end record;

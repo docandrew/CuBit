@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Requests; use ACPI_Requests;
@@ -64,7 +65,7 @@ begin
    -- until after module completion. The _INI observation witnesses MARK=1.
    for Indirect in Boolean loop
    declare
-      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
       Module_Effect : constant Bytes := [16#86#] & Enc ("DEV0") & [16#75#] & Enc ("MARK");
       Ini_Effect : constant Bytes := [16#86#] & Enc ("DEV0") & Enc ("MARK");
@@ -82,7 +83,7 @@ begin
    end loop;
    -- Disabled notification admission does not bypass target-type validation.
    declare
-      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
       Raw : constant Bytes := Migration_Tables.Make
         ([16#08#] & Enc ("MARK") & [0,16#86#] & Enc ("MARK") & [1]);
@@ -97,7 +98,7 @@ begin
    end;
    -- Value evaluation is not skipped when notification interest is disabled.
    declare
-      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
       Raw : constant Bytes := Migration_Tables.Make
         (Device & [16#86#] & Enc ("DEV0") & [16#78#,1,0,0,0]);
@@ -113,7 +114,7 @@ begin
    for Enabled in Boolean loop
       for Later_Error in Boolean loop
          declare
-            S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+            S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             Reply : Response;
             Wire : Packet;
             ID, Prior, Node, Incarnation : Unsigned_64;
@@ -185,7 +186,7 @@ begin
       end loop;
    end loop;
    declare
-      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => Max_Revision-4);
+      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => Max_Revision-4, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
    begin
       Send (S,Configure_Notifications,[Revision(S),1,0,0],OK,Reply);
@@ -197,7 +198,7 @@ begin
       Read (S,Read_Notification_State,[0,0,0,0],[Max_Revision,3,1,0]);
    end;
    declare
-      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
    begin
       Send (S,Configure_Notifications,[0,1,0,0],OK,Reply);
@@ -208,7 +209,7 @@ begin
       Send (S,Claim_Notification,[Revision(S),0,0,0],Wrong_Order,Reply);
    end;
    declare
-      S : State (1, 4096, 4096, Load_Capacity => 1, Initial_Revision => 0);
+      S : State (1, 4096, 4096, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
       Many : Bytes (1 .. Notify'Length * 33);
    begin
@@ -226,7 +227,7 @@ begin
       Read (S,Read_Notification_State,[0,0,0,0],[Revision(S),3,0,0]);
    end;
    declare
-      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+      S : State (1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
       Local_Device : constant Bytes := [16#5B#,16#82#,5] & Enc ("TMP0");
    begin

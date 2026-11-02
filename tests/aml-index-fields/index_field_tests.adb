@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Service_Core;
 with ACPI_FADT.Transactions;
@@ -103,7 +104,7 @@ procedure Index_Field_Tests is
    end Authorize;
    package F is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
      Authorize_Target => Authorize);
-   Service : aliased C.State (1, Index_Field_Oracle.Raw_Table'Length, Index_Field_Oracle.Raw_Table'Length, 1);
+   Service : aliased C.State (1, Index_Field_Oracle.Raw_Table'Length, Index_Field_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Context;
    Items : F.Binding_Set;
    Staged : C.Stage_Status;
@@ -179,7 +180,7 @@ procedure Index_Field_Tests is
       Reserved_Access_Code : constant AML_Decode.Byte := 6;
       Checksum_Position : constant Positive := 10;
       Sum : AML_Decode.Byte := 0;
-      Bad : aliased C.State (1, Raw'Length, Raw'Length, 1);
+      Bad : aliased C.State (1, Raw'Length, Raw'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Bad_IO : Context;
       Bad_Items : F.Binding_Set;
       Report : C.Execution_Report;

@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with AML_Delays;
 with AML_Decode; use AML_Decode;
@@ -46,7 +47,7 @@ procedure Match_Core_Tests is
      Method ("BND0", [16#A4#,16#89#,16#12#,3,1,1,0,0,0,0,1]) &
      Method ("CLRM", [16#70#,0] & Name ("MARK") & [16#A4#,0]);
    Data : constant Firmware_Tables.Bytes := Table (Code);
-   Tree : aliased S.State (1, 1024, 1024, 1);
+   Tree : aliased S.State (1, 1024, 1024, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Installed : S.Install_Status;
    Report : S.Namespace.Initialization_Report;
    Access_Result : S.Values.Access_Status;

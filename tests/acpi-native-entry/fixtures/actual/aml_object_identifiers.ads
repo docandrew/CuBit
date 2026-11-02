@@ -1,7 +1,7 @@
 with Interfaces;
 package AML_Object_Identifiers with SPARK_Mode, Pure is
    Max_Objects : constant := 2048;
-   subtype Object_ID is Natural range 0 .. Max_Objects;
+   subtype Object_ID is Natural;
    type Slot_Incarnation is new Interfaces.Unsigned_64;
    No_Incarnation : constant Slot_Incarnation := 0;
    First_Incarnation : constant Slot_Incarnation := 1;

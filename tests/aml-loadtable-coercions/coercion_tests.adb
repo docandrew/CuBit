@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -36,7 +37,7 @@ procedure Coercion_Tests is
    end Read_Table;
    Boot : constant Firmware_Tables.Bytes := Read_Table (1);
    Added : constant Firmware_Tables.Bytes := Read_Table (2);
-   Service : aliased C.State (2, Boot'Length + Added'Length, Positive'Max (Boot'Length, Added'Length), 2);
+   Service : aliased C.State (2, Boot'Length + Added'Length, Positive'Max (Boot'Length, Added'Length), 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Mode : constant String := Ada.Command_Line.Argument (3);
    Baseline : constant Boolean := Ada.Command_Line.Argument (4) = "baseline";
    Want_Load : constant Boolean := Mode = "strings" or Mode = "string-oem" or

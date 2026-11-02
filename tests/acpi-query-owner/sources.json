@@ -186,7 +186,7 @@
     },
     {
       "path": "tests/acpi-query-owner/query_owner_bridge_tests.adb",
-      "sha256": "14429f6e74f796cf3418c927ad1d4aeec682cbe46c72ca40154451919fd057ca",
+      "sha256": "585fb7a6b223f75b735d9aa02ae4d03d56b1e1492fc82e3c60d8f69c7edfbd04",
       "kind": "ada"
     },
     {
@@ -246,12 +246,12 @@
     },
     {
       "path": "userspace/services/acpi/acpi_bootstrap.adb",
-      "sha256": "820954d8d953869aa9e7514cb9b5ff35f9c0f672fdf8598c64aece2abe088125",
+      "sha256": "74dce0c9a07f9a0f378df5166703c5643e76c81adea430a7417843e4ad2451f6",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/acpi_bootstrap.ads",
-      "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1",
+      "sha256": "c81ac82bcc95250678dcad20835bc4b50e99c4561803715816e496a56259d6f6",
       "kind": "ada"
     },
     {
@@ -324,22 +324,22 @@
     },
     {
       "path": "userspace/services/acpi/acpi_requests.adb",
-      "sha256": "f8b0e7dcbb3d3a56b165ea1063458ec90d4e30de5bcc5e0359f10a60ab487719",
+      "sha256": "ce0f3e505f6bdb28487bd5f431930cad8d9e58ac1f24e8c92c65eade90e50beb",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/acpi_requests.ads",
-      "sha256": "7ef7a30966b61bdfd597e4817ac8b8fdd9e7601f0f7760b1f2bd20b33936d088",
+      "sha256": "4beb679bf9ea146826a1780d24019befab34f6250c3b417fcdc183b5503625ef",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.adb",
-      "sha256": "8768a90a0b1cbf2d3a0c82c32f7be35f617f2e5da40ec18d24dc71a8bbd055ab",
+      "sha256": "8992a07cefe2312b4e5507d607d3f58fd120892622f65335b9baad6c505d10ac",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.ads",
-      "sha256": "fbcb9dbfe952328b1be3ee4c410040d3ea2cd74f100f55ae97f7c082598b8bbd",
+      "sha256": "9144f5314b6eec1f0cc5ee67aa29ed81e9f074c6eccabd2f07c8fada369ff9d9",
       "kind": "ada"
     },
     {
@@ -537,12 +537,12 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_data.adb",
-      "sha256": "99c86d0e236053a6a57772f1b78f701c1d94c7a6e8e62208c10694cdfbf73ee1",
+      "sha256": "890f17dd83532f0721b64f7d27dd0ee8d7496a3775c32cd813462d61545fe845",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_data.ads",
-      "sha256": "31a0100147dc2f7012a1b9b263cd1cb38168b0ccd4cfaff5639adb0e1b8dc024",
+      "sha256": "86eb1e0fef56e908aeaf44214e8eb1c2c62d8dd90b4ee3182c90a80f8fd25fbb",
       "kind": "ada"
     },
     {
@@ -612,7 +612,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.ads",
-      "sha256": "7df63a4792523963a0a588010acbf2713486398d58552fa1b632197b70967f78",
+      "sha256": "f6dbf6508c0378b1576f7a7d7f4e52ca82dc51ce57ba3be6270ed0046c045149",
       "kind": "ada"
     },
     {
@@ -707,12 +707,12 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_frame_roots.adb",
-      "sha256": "7f38fbef176bfb5e02de700938957cf39aa72dd1a4d660bb12bdbaae3a3bbdd2",
+      "sha256": "75dcd92f8358dfe28c5bb34c0395b2cf37d583f7895bc746b7226742368a7885",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_frame_roots.ads",
-      "sha256": "b454a661613c7bee703bc8a058fe2ab17f7a59b0c1c84cdc62073785d4a4b793",
+      "sha256": "8005877861b99e46f0c4cbaa06e727cba12b70c3813fbfea8562d653a6dc2169",
       "kind": "ada"
     },
     {
@@ -817,17 +817,17 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "a1b790cc07681aad370c395b260eaf90c3f6985332b91fa2c20b6c6ee2cb5dd4",
+      "sha256": "5e686b38cb449c00ebcf0dafa78febedf15a13ed85c7e691fda78ff9d9e3cf99",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "129a7f8c98493e37580be33dda29daa87508c8e61ac8a83aa2f2dbb6f7f27ffc",
+      "sha256": "d83ba665bba9d7848cad3a4f33ee755f81cdd5d4721c7ac9c6b8a6439c1f6bcf",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
-      "sha256": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba",
+      "sha256": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356",
       "kind": "ada"
     },
     {
@@ -842,12 +842,12 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-      "sha256": "cf262cb314b35a3ea26f01bce8e398af467918c397197cc66b24c3b3561c5660",
+      "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-      "sha256": "85bf98821d2694ad127f6e3c11676d158f374cf6a84587af0821605d8a04e1da",
+      "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4",
       "kind": "ada"
     },
     {
@@ -862,42 +862,42 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-reachability.adb",
-      "sha256": "4760cc417ab80d06e93e8ac06928c9380003f6c4d9fab13eaa16761f48b39427",
+      "sha256": "f827d2df0dfd7a35c0e33b2fd4b4f5e78a418a4b99402b78af18311e5afc3d34",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-reachability.ads",
-      "sha256": "70c3526a1111e7589e673e7a98b68f8810185d58b9df23f570b5314f0d3724d7",
+      "sha256": "f77a33dd1652cb2f6b06aad63f25f2107e43848b8f82affd5e45463b960a2bbd",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-reclamation.adb",
-      "sha256": "723a439d31ead3d4dd6c3efca61fdfcb8bcb046f8e08528e980fbfee21cdb739",
+      "sha256": "de8a14cf86968456bef4897dc1aeb8ddab35006609503fe7cbf75b8b01ae5dbb",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-reclamation.ads",
-      "sha256": "b52eb3acdd0f6923f85477a666979cb1fc3ff2efb69caff681d195eae53e345e",
+      "sha256": "316ea00ecc1870b25b5ef4a38a59b444ffe216adf3b288ba179cf2d0903ac63c",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.adb",
-      "sha256": "1ace625842bc7e84ddbb017be2f60e6ff99edaa125dde4bc116bb313aefe6200",
+      "sha256": "f64c655e52b732d7e84a9f5607ac71de9669bbc954b282ec19144e816c74b45f",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.ads",
-      "sha256": "c977f5774628018fa80a857e5a22f50a1657e58ed35dfcc8c11580e1900d8446",
+      "sha256": "edae83d3c161a04e59615bf5553727f3f660e63f29b357307f6452e50dae0b31",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects.adb",
-      "sha256": "baf3370e9d9d14eb358f3df885eb74c47a4ade781edef94519b5493610d2304f",
+      "sha256": "ef75ea91053c22b0b1cfc5232ebab1110df30de6176de816b36553be3b60a135",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects.ads",
-      "sha256": "c62800fb01bae0ad8ba9d69e28c6a2bee33153afaf7846d3d63fbb2a44cef208",
+      "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd",
       "kind": "ada"
     },
     {
@@ -1399,6 +1399,30 @@
       "path": "userspace/services/acpi/resource-data/acpi_resource_data.ads",
       "sha256": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532",
       "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_storage_capacities.ads",
+      "sha256": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_storage_capacities.adb",
+      "sha256": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_allocation_diagnostics.ads",
+      "sha256": "532ff73565f7851a486e62b2887fe8f1e20be8c52d5c5e6c0c2917785c526bff"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_allocation_diagnostics.adb",
+      "sha256": "31ecdfeeec72795073ca81a34b963b292c48834bf844df852108f791bf59d03c"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+      "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_fallible_heap.adb",
+      "sha256": "3e45a25f57c438a691976044030bc35ec87e3f6157c1b3460a674723ada97815"
     }
   ],
   "cases": {

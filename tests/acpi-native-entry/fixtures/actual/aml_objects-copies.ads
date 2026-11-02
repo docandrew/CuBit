@@ -1,6 +1,7 @@
 pragma Ada_2022;
 package AML_Objects.Copies with SPARK_Mode, Pure is
-   type Copy_Witness is private;
+   type Copy_Witness (Object_Capacity : Storage_Capacity) is private;
+   function Empty_Witness (Object_Capacity : Storage_Capacity := Max_Objects) return Copy_Witness;
    function Valid_Witness
      (Store, Prior : State; Source, Target : Object_ID; Witness : Copy_Witness)
       return Boolean with Ghost,
@@ -49,14 +50,14 @@ package AML_Objects.Copies with SPARK_Mode, Pure is
 private
    type Copy_Link is record
       Original, Copy, Parent : Object_ID := 0;
-      Slot : Natural range 0 .. Max_Elements - 1 := 0;
-      Bytes_After : Natural range 0 .. Max_Bytes := 0;
-      Elements_After : Natural range 0 .. Max_Elements := 0;
+      Slot : Natural := 0;
+      Bytes_After : Natural := 0;
+      Elements_After : Natural := 0;
    end record;
-   type Link_Array is array (Positive range 1 .. Max_Objects) of Copy_Link;
-   type Copy_Witness is record
+   type Link_Array is array (Positive range <>) of Copy_Link;
+   type Copy_Witness (Object_Capacity : Storage_Capacity) is record
       Used : Object_ID := 0;
-      Links : Link_Array := [others => <>];
+      Links : Link_Array (1 .. Object_Capacity) := [others => <>];
    end record;
    function Header_Matches (Store, Prior : State; Original, Copy : Object_ID) return Boolean is
      (Is_Live (Prior, Original)

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line; with Ada.Text_IO; with Interfaces; use Interfaces;
 with ACPI_Service_Core; with ACPI_FADT.Transactions; with AML_Delays;
 with AML_Decode; with AML_Execute; with AML_Field_Access; with AML_Field_Layout;
@@ -85,7 +86,7 @@ procedure Module_Datum_Boundaries is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         Service : aliased C.State (1,4096,4096, Load_Capacity => 1); Data : constant Bytes := Table (Revision);
+         Service : aliased C.State (1,4096,4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements); Data : constant Bytes := Table (Revision);
          IO : Context; Targets : F.Module_Target_Set := [others => A.No_Target];
          Count : F.Module_Target_Count := F.Module_Target_Count (Cell_Count);
          Stage : C.Stage_Status; Frozen : C.Freeze_Status; Report : C.Execution_Report;

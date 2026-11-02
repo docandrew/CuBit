@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -30,7 +31,7 @@ procedure HID_Discovery_Tests is
    use type D.Queries.Call_Count;
    use type D.Resources.R.Byte_Count;
    use type Firmware_Tables.Byte;
-   Service, Other : aliased C.State (1, 4096, 4096, 1);
+   Service, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Run : D.Session;
    Action : D.Action_Result;
    Info : D.Report;

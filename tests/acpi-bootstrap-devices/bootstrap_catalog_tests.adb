@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Bootstrap; use ACPI_Bootstrap;
 with ACPI_Service;
@@ -40,7 +41,7 @@ procedure Bootstrap_Catalog_Tests is
    Prefix_Fuel : Natural;
 begin
    declare
-      Control : State (1, 256, 128, Load_Capacity => 1);
+      Control : State (1, 256, 128, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Accepted : Boolean;
    begin
       Start (Control, 1, Accepted); Check (Accepted);
@@ -52,7 +53,7 @@ begin
    end;
    for Exhausted in Boolean loop
       declare
-         S : State (2, 256, 128, Load_Capacity => 2);
+         S : State (2, 256, 128, Load_Capacity => 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Accepted : Boolean;
          Later : constant Bytes := (if Exhausted then Later_Good else Later_Bad);
       begin
@@ -89,7 +90,7 @@ begin
       First : constant Bytes := Migration_Tables.Make (Code);
       Description : Bytes := Migration_Tables.Make ([16#FE#]);
       Sum : Firmware_Tables.Byte := 0;
-      S : State (2, 1024, 512, Load_Capacity => 2);
+      S : State (2, 1024, 512, Load_Capacity => 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Accepted : Boolean;
    begin
       Description (1 .. 4) := Enc ("TEST"); Description (10) := 0;

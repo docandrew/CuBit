@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Service; use ACPI_Service;
 with AML_Decode;
@@ -8,7 +9,7 @@ procedure Bank_Declaration_Tests is
    use type Values.Access_Status;
    use type AML_Execute.Execution_Status;
    use type AML_Decode.Integer_Value;
-   Service : aliased State (1, Bank_Declaration_Oracle.Raw_Table'Length, Bank_Declaration_Oracle.Raw_Table'Length, Load_Capacity => 1);
+   Service : aliased State (1, Bank_Declaration_Oracle.Raw_Table'Length, Bank_Declaration_Oracle.Raw_Table'Length, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Staged_Result : Stage_Status;
    Frozen : Freeze_Status;
    Status : Values.Access_Status;

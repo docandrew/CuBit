@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Requests; use ACPI_Requests;
 with ACPI_Bootstrap;
@@ -14,7 +15,7 @@ begin
    for Bulk in Boolean loop
       for Bad_AML in Boolean loop
          declare
-            S : State (1, 128, 128, Load_Capacity => 1, Initial_Revision => 7);
+            S : State (1, 128, 128, Load_Capacity => 1, Initial_Revision => 7, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             Reply : Response;
             Data : constant Firmware_Tables.Bytes := Migration_Tables.Make
               ((if Bad_AML then Firmware_Tables.Bytes'[16#FE#]

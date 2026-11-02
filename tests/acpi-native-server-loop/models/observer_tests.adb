@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Exceptions;
 with Interfaces; use Interfaces;
@@ -27,7 +28,7 @@ procedure Observer_Tests is
    use type M.MessageWords;
    use type M.Process_ID;
    use type ACPI_Protocol.Role_Tag;
-   Server : Q.State (2, 4_096, 4_096, 2, 0);
+   Server : Q.State (2, 4_096, 4_096, 2, 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks : Natural := 0;
    Untrusted : constant ACPI_Protocol.Role_Tag := ACPI_Protocol.Observer_Tag xor 1;
    Stamps : constant array (Positive range <>) of ACPI_Protocol.Role_Tag :=

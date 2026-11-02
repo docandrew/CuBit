@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -17,7 +18,7 @@ procedure Source_Tests is
    use type C.Freeze_Status;
    use type R.Outcome;
    use type AML_Names.Parse_Status;
-   Service : aliased C.State (1, 4096, 4096, 1);
+   Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks : Natural := 0;
    procedure Check (Value : Boolean; Text : String) is
    begin Checks := Checks + 1; if not Value then raise Program_Error with Text; end if; end Check;

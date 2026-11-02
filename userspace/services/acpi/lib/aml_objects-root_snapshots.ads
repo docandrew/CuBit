@@ -3,16 +3,28 @@ with AML_Object_Identifiers;
 with AML_Objects.Reclamation;
 package AML_Objects.Root_Snapshots with SPARK_Mode, Pure is
    type Snapshot_Phase is (Vacant, Building, Published, Rejected);
-   type Snapshot is private;
+   type Snapshot (Object_Capacity : Storage_Capacity) is private;
+   -- Representation transport for value-owned ledgers. This is metadata only;
+   -- it does not authenticate a producer or confer object authority.
+   type Header is private;
+   type Stamp_Vector is array (Positive range <>)
+      of AML_Object_Identifiers.Slot_Incarnation;
+   function Empty_Header return Header;
+   function Header_Of (Roots : Snapshot) return Header;
+   function Stamp_At (Roots : Snapshot; Index : Positive)
+      return AML_Object_Identifiers.Slot_Incarnation
+      with Pre => Index <= Roots.Object_Capacity;
+   function From_Parts (Metadata : Header; Stamps : Stamp_Vector) return Snapshot
+      with Pre => Stamps'First = 1 and then Stamps'Length in Storage_Capacity;
    type Result_Status is (Ready, Invalid_Owner, Owner_Mismatch, Wrong_Phase,
-      Invalid_Address, Generation_Conflict, Incomplete_Snapshot, Invalid_Snapshot, Stale_Root);
+      Invalid_Address, Generation_Conflict, Incomplete_Snapshot, Invalid_Snapshot, Stale_Root, Invalid_Shape);
    function Phase (Roots : Snapshot) return Snapshot_Phase;
-   function Empty return Snapshot;
+   function Empty (Object_Capacity : Storage_Capacity := Max_Objects) return Snapshot;
    -- Store-local metadata, not object authority. The producer must authenticate
    -- every source handle/descriptor before inclusion and must not allocate,
    -- collect or reenter while constructing a snapshot. Owner binding prevents
    -- resolving a snapshot against a different arena with colliding slot IDs.
-   procedure Clear (Roots : out Snapshot) with Post => Roots = Empty;
+   procedure Clear (Roots : out Snapshot) with Post => Roots = Empty (Roots.Object_Capacity);
    function Begun (Roots : Snapshot; Owner : AML_Identity.Identity) return Boolean with Ghost;
    procedure Begin_Build (Roots : out Snapshot; Owner : AML_Identity.Identity;
       Status : out Result_Status) with Post => Begun (Roots, Owner)
@@ -37,17 +49,21 @@ package AML_Objects.Root_Snapshots with SPARK_Mode, Pure is
    -- Every failure returns an empty mask; neither input is changed.
    procedure Resolve (Roots : Snapshot; Owner : AML_Identity.Identity; Store : State;
       Keep : out Reclamation.Keep_Set; Status : out Result_Status) with Pre => Valid (Store),
-      Post => Status = Validation (Roots, Owner, Store) and then
+      Post => Status = (if Keep'First = 1 and then Keep'Last = Store.Object_Capacity
+        then Validation (Roots, Owner, Store) else Invalid_Shape) and then
         (if Status = Ready then Resolved (Roots, Owner, Store, Keep)
          else (for all ID in Keep'Range => not Keep (ID)));
 private
    use type AML_Identity.Identity;
-   type Stamp_Array is array (Object_ID range 1 .. Max_Objects)
-      of AML_Object_Identifiers.Slot_Incarnation;
-   type Snapshot is record
+   type Header is record
       Stage : Snapshot_Phase := Vacant;
       Arena : AML_Identity.Identity := AML_Identity.No_Identity;
-      Stamps : Stamp_Array := [others => AML_Object_Identifiers.No_Incarnation];
+   end record;
+   subtype Stamp_Array is Stamp_Vector;
+   type Snapshot (Object_Capacity : Storage_Capacity) is record
+      Stage : Snapshot_Phase := Vacant;
+      Arena : AML_Identity.Identity := AML_Identity.No_Identity;
+      Stamps : Stamp_Array (1 .. Object_Capacity) := [others => AML_Object_Identifiers.No_Incarnation];
    end record;
    function Phase (Roots : Snapshot) return Snapshot_Phase is (Roots.Stage);
 end AML_Objects.Root_Snapshots;

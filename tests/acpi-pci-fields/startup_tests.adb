@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Interfaces;
@@ -124,7 +125,7 @@ procedure Startup_Tests is
          when others => null;
       end case;
    end Exchange;
-   Service : aliased Core.State (1, 4_096, 4_096, 1);
+   Service : aliased Core.State (1, 4_096, 4_096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Staged : Core.Stage_Status;
    Frozen : Core.Freeze_Status;
    Report : Core.Execution_Report;

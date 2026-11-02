@@ -41,12 +41,18 @@ package body ACPI_Bootstrap with SPARK_Mode is
       Regions_Attempted => Item.Regions_Attempted, Region_Status => Item.Region_Status, First_Error_Node => Item.First_Error_Node,
       First_Error => Item.First_Error, Fatal => Item.Fatal, Fatal_Initializer => Item.Fatal_Initializer);
    pragma Unevaluated_Use_Of_Old (Allow);
+   function Storage_Released (Session : State) return Boolean is (ACPI_Service.Storage_Released (Session.Core));
+   procedure Release_Storage (Session : in out State; Released : out Boolean) is
+   begin ACPI_Service.Release_Storage (Session.Core, Released); end Release_Storage;
    function Valid (Session : State) return Boolean is (ACPI_Service.Valid (Session.Core));
    function Core_Model (Session : State) return ACPI_Service.State_Model is
      (ACPI_Service.Model (Session.Core));
    function Model (Session : State) return State_Model is
      (Table_Capacity => Session.Table_Capacity, Byte_Capacity => Session.Byte_Capacity,
       Load_Capacity => Session.Load_Capacity,
+      Value_Object_Capacity => Session.Value_Object_Capacity,
+      Value_Byte_Capacity => Session.Value_Byte_Capacity,
+      Value_Element_Capacity => Session.Value_Element_Capacity,
       Core => Core_Model (Session), Stage => Session.Stage, Required => Session.Required,
       Begun => Session.Begun, Initialized => Session.Initialized,
       Initialization => Session.Initialization, Completion_Data => Session.Completion_Data,
@@ -91,6 +97,7 @@ package body ACPI_Bootstrap with SPARK_Mode is
    function Current (Session : State) return Phase is (Session.Stage);
    function Expected (Session : State) return Natural is (Session.Required);
    function Installed (Session : State) return Natural is (ACPI_Service.Observe (Session.Core).Tables);
+   function Storage_Limits (Session : State) return AML_Storage_Capacities.Limits is (ACPI_Service.Storage_Limits (Session.Core));
    function Observe (Session : State) return ACPI_Service.Metrics is (ACPI_Service.Observe (Session.Core));
    function Audit (Session : State) return ACPI_Service.Values.Audit_Value is (ACPI_Service.Audit (Session.Core));
    function Table_Info (Session : State; Index : Positive) return ACPI_Service.Table_Metadata is

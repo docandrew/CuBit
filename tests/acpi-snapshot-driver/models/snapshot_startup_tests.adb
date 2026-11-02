@@ -1,6 +1,6 @@
 pragma Ada_2022;
+with ACPI_Hosted_Heap;
 with Ada.Text_IO; use Ada.Text_IO;
-with Ada.Unchecked_Deallocation;
 with Interfaces;
 with ACPI_Requests;
 with ACPI_Bootstrap;
@@ -8,6 +8,7 @@ with ACPI_Snapshot_Startup;
 with ACPI_Snapshot_Reader;
 with ACPI_Startup_Diagnostics;
 with Ada.Strings.Fixed;
+pragma Elaborate_All (ACPI_Hosted_Heap);
 procedure Snapshot_Startup_Tests is
    package L renames ACPI_Snapshot_Startup;
    package R renames ACPI_Snapshot_Reader;
@@ -35,7 +36,12 @@ procedure Snapshot_Startup_Tests is
    Checks : Natural := 0;
    Owner : L.State_Access;
    Result : L.Report;
-   procedure Free is new Ada.Unchecked_Deallocation (ACPI_Requests.State, L.State_Access);
+   procedure Free (Owner : in out L.State_Access) is
+      Released : Boolean;
+   begin
+      L.Release_Owner (Owner, Released);
+      if not Released then raise Program_Error with "test attempted release of live owner"; end if;
+   end Free;
    procedure Check (Condition : Boolean; Label : String) is
    begin
       Checks := Checks + 1;

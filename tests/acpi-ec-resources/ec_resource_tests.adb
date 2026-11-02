@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Streams;
@@ -23,7 +24,7 @@ procedure EC_Resource_Tests is
    use type AML_Execute.Execution_Status, AML_Decode.Integer_Value;
    use type Reader.Copy_Status, P.Status, ACPI_Resource_Data.Byte_Count;
    use type Interfaces.Unsigned_8;
-   Service : aliased C.State (1, 8192, 8192, 1);
+   Service : aliased C.State (1, 8192, 8192, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks : Natural := 0;
    procedure Check (Condition : Boolean) is
    begin Checks := Checks + 1; if not Condition then raise Program_Error with "EC resource check" & Checks'Image; end if; end Check;

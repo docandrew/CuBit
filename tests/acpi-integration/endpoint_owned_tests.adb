@@ -1,3 +1,4 @@
+with AML_Objects;
 with ACPI_Requests; use ACPI_Requests;
 with ACPI_Endpoint;
 with ACPI_Service;
@@ -20,7 +21,7 @@ begin
    for Config_ID in 0 .. 2 loop
       for Stamp in Unsigned_64 range 10 .. 12 loop
          declare
-            S : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 0);
+            S : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             Config : constant ACPI_Endpoint.Configuration :=
               (Observer_Tag => (if Config_ID = 1 then 0 else 10),
                Provider_Tag => (if Config_ID = 2 then 10 else 11));

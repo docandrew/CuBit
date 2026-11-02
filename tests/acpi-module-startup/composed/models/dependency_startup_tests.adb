@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line; with Ada.Streams; with Ada.Streams.Stream_IO; with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service_Core; with ACPI_FADT.Transactions;
@@ -100,7 +101,7 @@ procedure Dependency_Startup_Tests is
       Authorize_Target => Authorize, Maximum_Bindings => 12);
    package Budgeted is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirm,
       Authorize_Target => Authorize, Maximum_Bindings => 12, Maximum_Requests => 10);
-   Service : aliased C.State (1, 4096, 4096, Load_Capacity => 1); IO : Context;
+   Service : aliased C.State (1, 4096, 4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements); IO : Context;
    Targets : F.Module_Target_Set := [others => A.No_Target]; Count : F.Module_Target_Count := 11;
    Report : C.Execution_Report; Status : C.Values.Access_Status; Good : Boolean;
 begin

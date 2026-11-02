@@ -50,7 +50,11 @@ for ali in "$out/obj/"*.ali; do
  else grep -Fxq 'A -gnatp' "$ali"; ! grep -Fxq 'A -gnata' "$ali"; fi
  count=$((count + 1))
 done
-test "$count" = 95
+test "$count" = 103
+cmp "$here/compiled-units.txt" <(for ali in "$out/obj/"*.ali; do
+ case "$ali" in */b__*) continue;; esac
+ basename "$ali"
+done | LC_ALL=C sort)
 sha256sum "$out/bin/"* "$out/obj/"*.ali > "$out/artifacts.sha256"
 verify
 printf '%s\n' 'Hosted startup passed; native heap, kernel and hardware remain unvalidated.'

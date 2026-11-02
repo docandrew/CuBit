@@ -1,3 +1,4 @@
+with AML_Objects;
 with ACPI_Bootstrap; use ACPI_Bootstrap;
 with ACPI_Service;
 with Firmware_Tables;
@@ -32,7 +33,7 @@ begin
    Data (10) := 0 - Sum;
    for Count in 0 .. 4 loop
       declare
-         S : State (3, 256, 128, Load_Capacity => 3);
+         S : State (3, 256, 128, Load_Capacity => 3, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          OK : Boolean;
          Status : ACPI_Service.Install_Status;
       begin
@@ -69,7 +70,7 @@ begin
       end;
    end loop;
    declare
-      S : State (2, 256, 128, Load_Capacity => 2);
+      S : State (2, 256, 128, Load_Capacity => 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       OK : Boolean;
       Status : ACPI_Service.Install_Status;
       Bad : Firmware_Tables.Bytes := Data;
@@ -90,7 +91,7 @@ begin
    begin
       for Mode in 0 .. 2 loop
          declare
-            S : State (2, 256, 128, Load_Capacity => 2);
+            S : State (2, 256, 128, Load_Capacity => 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             OK : Boolean;
             Status : ACPI_Service.Install_Status;
             Before : ACPI_Service.Values.Audit_Value;

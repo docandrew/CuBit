@@ -3,12 +3,14 @@ package body AML_Objects.Reclamation with SPARK_Mode is
    use type AML_Identity.Identity;
    use type AML_References.Reference_Kind;
    function Reclaimed_State (Store, Prior : State; Keep : Keep_Set) return Boolean is
-      Bytes : Natural range 0 .. Max_Bytes := 0;
-      Elements : Natural range 0 .. Max_Elements := 0;
+      Bytes : Natural := 0;
+      Elements : Natural := 0;
       Live : Object_ID := 0;
    begin
+      if not Same_Capacities (Store, Prior) or else Keep'First /= 1
+        or else Keep'Last /= Store.Object_Capacity then return False; end if;
       if Store.Used /= Prior.Used or else Store.Generation_Limit /= Prior.Generation_Limit then return False; end if;
-      for I in 1 .. Max_Objects loop
+      for I in 1 .. Store.Object_Capacity loop
          if Store.Objects (I).Occupied /= Keep (I)
            or else Store.Objects (I).Stamp /= Prior.Objects (I).Stamp then return False; end if;
          if not Keep (I) then
@@ -21,14 +23,14 @@ package body AML_Objects.Reclamation with SPARK_Mode is
                   if Store.Objects (I) /= Prior.Objects (I) then return False; end if;
                when String_Object | Buffer_Object =>
                   if Store.Objects (I) /= (Prior.Objects (I) with delta First => Bytes)
-                    or else Prior.Objects (I).Size > Max_Bytes - Bytes then return False; end if;
+                    or else Prior.Objects (I).Size > Store.Byte_Capacity - Bytes then return False; end if;
                   for J in 1 .. Prior.Objects (I).Size loop
                      if Store.Bytes (Bytes + J) /= Prior.Bytes (Prior.Objects (I).First + J) then return False; end if;
                   end loop;
                   Bytes := Bytes + Prior.Objects (I).Size;
                when Package_Object =>
                   if Store.Objects (I) /= (Prior.Objects (I) with delta First => Elements)
-                    or else Prior.Objects (I).Size > Max_Elements - Elements then return False; end if;
+                    or else Prior.Objects (I).Size > Store.Element_Capacity - Elements then return False; end if;
                   for J in 1 .. Prior.Objects (I).Size loop
                      if Store.Elements (Elements + J) /= Prior.Elements (Prior.Objects (I).First + J) then return False; end if;
                   end loop;
@@ -37,15 +39,15 @@ package body AML_Objects.Reclamation with SPARK_Mode is
          end if;
       end loop;
       return Store.Live_Used = Live and then Store.Bytes_Used = Bytes and then Store.Elements_Used = Elements
-        and then (for all I in Bytes + 1 .. Max_Bytes => Store.Bytes (I) = 0)
-        and then (for all I in Elements + 1 .. Max_Elements => Store.Elements (I) = No_Object);
+        and then (for all I in Bytes + 1 .. Store.Byte_Capacity => Store.Bytes (I) = 0)
+        and then (for all I in Elements + 1 .. Store.Element_Capacity => Store.Elements (I) = No_Object);
    end Reclaimed_State;
    procedure Reclaim
      (Store : in out State; Owner : AML_Identity.Identity; Keep : Keep_Set;
       Scratch : in out Workspace; Status : out Reclaim_Status)
    is
-      Bytes : Natural range 0 .. Max_Bytes := 0;
-      Elements : Natural range 0 .. Max_Elements := 0;
+      Bytes : Natural := 0;
+      Elements : Natural := 0;
       Live : Object_ID := 0;
       Container : Object_ID;
       Address : AML_Object_Identifiers.Object_Address;
@@ -55,7 +57,12 @@ package body AML_Objects.Reclamation with SPARK_Mode is
       Status := Invalid_Owner;
       if Owner = AML_Identity.No_Identity then return; end if;
       Status := Invalid_Keep_Set;
-      for I in 1 .. Max_Objects loop
+      if Keep'First /= 1 or else Keep'Last /= Store.Object_Capacity
+        or else Scratch.Object_Capacity /= Store.Object_Capacity
+        or else Scratch.Byte_Capacity /= Store.Byte_Capacity
+        or else Scratch.Element_Capacity /= Store.Element_Capacity
+      then return; end if;
+      for I in 1 .. Store.Object_Capacity loop
          if Keep (I) and then not Is_Live (Store, I) then return; end if;
       end loop;
       for I in 1 .. Store.Used loop
@@ -68,11 +75,11 @@ package body AML_Objects.Reclamation with SPARK_Mode is
                      if Container /= No_Object and then not Keep (Container) then return; end if;
                   end loop;
                   Status := Storage_Limit;
-                  if Store.Objects (I).Size > Max_Elements - Elements then return; end if;
+                  if Store.Objects (I).Size > Store.Element_Capacity - Elements then return; end if;
                   Elements := Elements + Store.Objects (I).Size;
                when String_Object | Buffer_Object =>
                   Status := Storage_Limit;
-                  if Store.Objects (I).Size > Max_Bytes - Bytes then return; end if;
+                  if Store.Objects (I).Size > Store.Byte_Capacity - Bytes then return; end if;
                   Bytes := Bytes + Store.Objects (I).Size;
                when Reference_Object =>
                   R := Store.Objects (I).Reference;
@@ -104,7 +111,7 @@ package body AML_Objects.Reclamation with SPARK_Mode is
       -- no callback or evaluator-visible publication occurs before commit.
       Bytes := 0; Elements := 0;
       Scratch.Bytes := [others => 0]; Scratch.Elements := [others => 0];
-      for I in 1 .. Max_Objects loop
+      for I in 1 .. Store.Object_Capacity loop
          Scratch.Objects (I) := (Stamp => Store.Objects (I).Stamp, others => <>);
          if Keep (I) then
             Scratch.Objects (I) := Store.Objects (I); Live := Live + 1;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -37,7 +38,7 @@ procedure Region_Alias_Tests is
    end Invoke;
    package R is new ACPI_Region_Initialization (C, Context, Handler_Ready, PCI_Root, Invoke);
    use type R.Phase, R.Notice_Result;
-   Service, Foreign : aliased C.State (1, 4096, 4096, 1);
+   Service, Foreign : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Owner : Context;
    Checks : Natural := 0;
    Run : R.Session;

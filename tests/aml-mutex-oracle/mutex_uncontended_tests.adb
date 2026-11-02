@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces;
 with ACPI_Service_Core;
@@ -14,7 +15,7 @@ procedure Mutex_Uncontended_Tests is
    use type C.Values.Access_Status;
    use type C.Values.Module_Outcome;
    use type AML_Execute.Execution_Status;
-   Service : aliased C.State (1, 4096, 4096, 1);
+   Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Stage : C.Stage_Status;
    Frozen : C.Freeze_Status;
    Report : C.Execution_Report;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Requests; use ACPI_Requests;
@@ -55,7 +56,7 @@ procedure Startup_Metrics_Tests is
 begin
    for Failed_Startup in Boolean loop
       declare
-         S : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0);
+         S : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Reply, Fuel : Response;
          Prior : Revision_Number;
       begin
@@ -97,7 +98,7 @@ begin
       end;
    end loop;
    declare
-      S : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0);
+      S : State (1, 256, 256, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply, Fuel : Response;
       -- Root fails at an actually missing name; system-bus initializer still runs.
       Raw : constant Bytes := Migration_Tables.Make

@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Service; use ACPI_Service;
 with AML_Decode;
@@ -17,8 +18,8 @@ procedure Service_Retention_Tests is
    use type Values.Audit_Value;
    subtype Bytes is Firmware_Tables.Bytes;
    type State_Access is access all State;
-   S : constant State_Access := new State (4, 4096, 4096);
-   Other : constant State_Access := new State (4, 4096, 4096);
+   S : constant State_Access := new State (4, 4096, 4096, 4, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
+   Other : constant State_Access := new State (4, 4096, 4096, 4, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Root, Saved : Values.Value_Handle;
    Retention : Values.Access_Status;
    Released : Values.Access_Status;

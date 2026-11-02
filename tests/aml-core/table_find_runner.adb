@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
@@ -9,7 +10,7 @@ procedure Table_Find_Runner is
    use type IO.Count;
    use type Ada.Streams.Stream_Element_Offset;
    use type ACPI_Service.Install_Status;
-   Service : ACPI_Service.State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, ACPI_Service.Max_Tables);
+   Service : ACPI_Service.State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, ACPI_Service.Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Status : ACPI_Service.Install_Status;
    File : IO.File_Type;
    Query : Firmware_Tables.Identifiers.Selection := (Name => "____", others => <>);

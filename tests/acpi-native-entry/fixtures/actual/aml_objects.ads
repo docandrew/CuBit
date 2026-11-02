@@ -21,11 +21,18 @@ package AML_Objects with SPARK_Mode, Pure is
    No_Object : constant Object_ID := 0;
    type Object_Kind is (Integer_Object, String_Object, Buffer_Object, Package_Object, Reference_Object, Metadata_Object, Metadata_Snapshot_Object, Event_Object, Mutex_Object);
    subtype Byte_Kind is Object_Kind range String_Object .. Buffer_Object;
-   type State is private;
+   subtype Storage_Capacity is Positive range 1 .. Natural'Last - 1;
+   -- Dimensions are immutable for each value owner. Copies retain independent
+   -- inline arrays; allocation of the live owner belongs outside this pure unit.
+   type State (Object_Capacity, Byte_Capacity, Element_Capacity : Storage_Capacity) is private;
+   function Same_Capacities (Left, Right : State) return Boolean is
+     (Left.Object_Capacity = Right.Object_Capacity
+      and then Left.Byte_Capacity = Right.Byte_Capacity
+      and then Left.Element_Capacity = Right.Element_Capacity);
    type Usage is record
       Objects : Object_ID;
-      Bytes : Natural range 0 .. Max_Bytes;
-      Elements : Natural range 0 .. Max_Elements;
+      Bytes : Natural;
+      Elements : Natural;
    end record;
    function Usage_Of (Store : State) return Usage;
    function Valid (Store : State) return Boolean;
@@ -36,16 +43,58 @@ package AML_Objects with SPARK_Mode, Pure is
    function Live_Count (Store : State) return Object_ID;
    function Is_Live (Store : State; ID : Object_ID) return Boolean;
    function Last_Incarnation (Store : State; ID : Object_ID)
-      return AML_Object_Identifiers.Slot_Incarnation with Pre => ID /= No_Object;
+      return AML_Object_Identifiers.Slot_Incarnation with Pre => ID /= No_Object and then ID <= Store.Object_Capacity;
    function Incarnation_Limit (Store : State) return AML_Object_Identifiers.Incarnation_Budget;
    function Address_Of (Store : State; ID : Object_ID) return AML_Object_Identifiers.Object_Address;
    function Matches_Address (Store : State; Address : AML_Object_Identifiers.Object_Address) return Boolean;
    function Byte_Count (Store : State) return Natural;
    function Element_Count (Store : State) return Natural;
    function Empty (Max_Incarnation : AML_Object_Identifiers.Incarnation_Budget :=
-      AML_Object_Identifiers.Slot_Incarnation'Last) return State with Post => Valid (Empty'Result) and then Slot_Bound (Empty'Result) = 0
+      AML_Object_Identifiers.Slot_Incarnation'Last;
+      Object_Capacity : Storage_Capacity := Max_Objects; Byte_Capacity : Storage_Capacity := Max_Bytes;
+      Element_Capacity : Storage_Capacity := Max_Elements) return State with Post => Valid (Empty'Result) and then Slot_Bound (Empty'Result) = 0
      and then Usage_Of (Empty'Result) = Usage'(others => 0)
-     and then Incarnation_Limit (Empty'Result) = Max_Incarnation;
+     and then Incarnation_Limit (Empty'Result) = Max_Incarnation
+     and then Empty'Result.Object_Capacity = Object_Capacity
+     and then Empty'Result.Byte_Capacity = Byte_Capacity
+     and then Empty'Result.Element_Capacity = Element_Capacity;
+   function Empty_Like (Store : State) return State
+     with Post => Valid (Empty_Like'Result)
+       and then Same_Capacities (Empty_Like'Result, Store)
+       and then Usage_Of (Empty_Like'Result) = Usage'(others => 0)
+       and then Incarnation_Limit (Empty_Like'Result) = Incarnation_Limit (Store);
+   -- Explicit independent transaction copy. This boundary lets the storage
+   -- representation become owned/growable without turning existing value
+   -- snapshots into aliases. Callers must handle a refused future allocation
+   -- before committing state or performing any later effect.
+   type Clone_Status is (Cloned, Clone_Storage_Unavailable);
+   procedure Clone (Source : State; Target : out State; Status : out Clone_Status)
+     with Pre => Valid (Source)
+       and then Source.Object_Capacity = Target.Object_Capacity
+       and then Source.Byte_Capacity = Target.Byte_Capacity
+       and then Source.Element_Capacity = Target.Element_Capacity,
+       Post => Valid (Target)
+         and then Incarnation_Limit (Target) = Incarnation_Limit (Source)
+         and then (if Status = Cloned then Target = Source
+           else Target = Empty_Like (Source));
+   -- Consume a private transaction snapshot after commit or rollback.
+   -- All authority-bearing references belong to the destination arena; the
+   -- scratch source must have no independently published references.
+   -- Replacement and source retirement require no new allocation.
+   procedure Transfer (Source, Target : in out State)
+     with Pre => Valid (Source) and then Valid (Target) and then Same_Capacities (Source, Target),
+       Post => Valid (Source) and then Valid (Target)
+         and then Target = Source'Old
+         and then Source = Empty_Like (Source'Old);
+   -- Retire only a private transaction owner whose references were never
+   -- independently published. This is not live-arena reclamation: resetting
+   -- slot stamps requires that scratch-owner lifetime to have ended.
+   -- Cleanup is idempotent, retains the configured incarnation budget and
+   -- performs no allocation. Growable storage releases its backing here.
+   procedure Discard (Store : in out State)
+     with Pre => Valid (Store),
+       Post => Valid (Store)
+         and then Store = Empty_Like (Store'Old);
    function Kind (Store : State; ID : Object_ID) return Object_Kind
      with Pre => Is_Live (Store, ID);
    function Length (Store : State; ID : Object_ID) return Natural
@@ -162,7 +211,7 @@ package AML_Objects with SPARK_Mode, Pure is
            and then Length (Store, J) = Length (Store'Old, J)));
    --  Reused slots receive a nonwrapping incarnation; exhausted slots retire.
    --  Zero denotes an uninitialized package element, not an Integer zero.
-   type Allocation_Status is (Allocated, Object_Limit, Generation_Limit, Byte_Limit, Element_Limit, Invalid_Reference, Invalid_Metadata, Invalid_Mutex_Flags, Unsupported_Copy);
+   type Allocation_Status is (Allocated, Object_Limit, Generation_Limit, Byte_Limit, Element_Limit, Invalid_Reference, Invalid_Metadata, Invalid_Mutex_Flags, Unsupported_Copy, Storage_Unavailable, Invalid_Copy_Workspace);
    function Fresh_Allocation (Store, Prior : State; ID : Object_ID) return Boolean
      with Ghost;
    function Reference_Allocated
@@ -423,16 +472,16 @@ private
       First : Natural := 0;
       Size : Natural := 0;
    end record;
-   type Object_Array is array (Positive range 1 .. Max_Objects) of Object_Record;
-   type Element_Array is array (Positive range 1 .. Max_Elements) of Object_ID;
-   type State is record
+   type Object_Array is array (Positive range <>) of Object_Record;
+   type Element_Array is array (Positive range <>) of Object_ID;
+   type State (Object_Capacity, Byte_Capacity, Element_Capacity : Storage_Capacity) is record
       Used : Object_ID := 0;
       Live_Used : Object_ID := 0;
       Generation_Limit : AML_Object_Identifiers.Incarnation_Budget := AML_Object_Identifiers.Slot_Incarnation'Last;
-      Bytes_Used : Natural range 0 .. Max_Bytes := 0;
-      Elements_Used : Natural range 0 .. Max_Elements := 0;
-      Objects : Object_Array;
-      Bytes : AML_Decode.Bytes (1 .. Max_Bytes) := [others => 0];
-      Elements : Element_Array := [others => 0];
+      Bytes_Used : Natural := 0;
+      Elements_Used : Natural := 0;
+      Objects : Object_Array (1 .. Object_Capacity);
+      Bytes : AML_Decode.Bytes (1 .. Byte_Capacity) := [others => 0];
+      Elements : Element_Array (1 .. Element_Capacity) := [others => 0];
    end record;
 end AML_Objects;

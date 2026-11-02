@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -64,7 +65,7 @@ procedure Battery_Cache_Tests is
          B.Publish_Refresh (Target, State, Read_Clock, True, Report);
       end if;
    end Collect_And_Publish;
-   Service : aliased C.State (1, 4096, 4096, 1);
+   Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Device, Setter : C.Node_Descriptor;
    Binding : B.Binding_Result;
    Report : B.Refresh_Report;

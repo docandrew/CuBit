@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
@@ -13,7 +14,7 @@ procedure Field_Data_Runner is
    use type ACPI_Service.Namespace.Bind_Status;
    use type AML_Decode.Status;
    use type AML_Decode.Integer_Value;
-   Service : ACPI_Service.State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, ACPI_Service.Max_Tables);
+   Service : ACPI_Service.State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, ACPI_Service.Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Status : ACPI_Service.Install_Status;
    File : IO.File_Type;
    Result : AML_Field_Data.Read_Result;

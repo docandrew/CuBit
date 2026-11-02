@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces;
 with ACPI_Service; use ACPI_Service;
@@ -130,7 +131,7 @@ procedure Resource_Service_Tests is
    use type Values.Access_Status;
    use type Values.Value_Handle;
    use type Values.Value_Kind;
-   Service : aliased State (1, Resource_Oracle.Raw_Table'Length, Resource_Oracle.Raw_Table'Length, Load_Capacity => 1);
+   Service : aliased State (1, Resource_Oracle.Raw_Table'Length, Resource_Oracle.Raw_Table'Length, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Staged_Result : Stage_Status;
    Frozen : Freeze_Status;
    Access_Result : Values.Access_Status;
@@ -550,7 +551,7 @@ procedure Resource_Service_Tests is
         and then (for all I in 7 .. Data'Last => Data (I) = 0), "retry same retained result");
       Counter_One;
       Check (Retained_Results (Service) = Before + 1, "reader neither releases nor adds roots");
-      declare Other : State (1, Resource_Oracle.Raw_Table'Length, Resource_Oracle.Raw_Table'Length, Load_Capacity => 1); begin
+      declare Other : State (1, Resource_Oracle.Raw_Table'Length, Resource_Oracle.Raw_Table'Length, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements); begin
          Reader.Copy_Template (Other, Handle, Data, Report);
          Check (Report.Status = Reader.Invalid_Result and then Report.Copied = 0
            and then (for all B of Data => B = 0), "wrong service handle rejected");

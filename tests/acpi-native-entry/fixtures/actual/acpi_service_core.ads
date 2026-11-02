@@ -24,6 +24,7 @@ with AML_Execute;
 with AML_Execution_Limits;
 with AML_Events;
 with AML_Objects;
+with AML_Storage_Capacities;
 with AML_Namespace;
 with Firmware_Tables;
 with Firmware_Tables.Snapshots;
@@ -103,9 +104,9 @@ package ACPI_Service_Core with SPARK_Mode is
       Tables : Natural := 0;
       Bytes : Natural := 0;
       Objects : Natural range 0 .. Max_Namespace_Nodes := 0;
-      Value_Objects : Natural range 0 .. AML_Objects.Max_Objects := 0;
-      Value_Bytes : Natural range 0 .. AML_Objects.Max_Bytes := 0;
-      Package_Elements : Natural range 0 .. AML_Objects.Max_Elements := 0;
+      Value_Objects : Natural := 0;
+      Value_Bytes : Natural := 0;
+      Package_Elements : Natural := 0;
       Method_Bytes : Namespace.Aggregate_Method_Count := 0;
       -- Zero means no AML load attempted; otherwise Load_Status'Pos + 1.
       Last_Load_Code : Natural range 0 .. Namespace.Load_Status'Pos (Namespace.Load_Status'Last) + 1 := 0;
@@ -115,24 +116,34 @@ package ACPI_Service_Core with SPARK_Mode is
    -- Capacities are fixed at construction, before any untrusted table import.
    -- No default discriminants: objects must be explicitly constrained or
    -- default initialized, rather than reserving worst-case mutable storage.
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is limited private
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is limited private
      with Default_Initial_Condition => Valid (State) and then Observe (State) = Metrics'(others => <>)
        and then Observe (State).Objects = 0;
+   function Storage_Input_Supported (Table_Bytes : Positive) return Boolean;
+   function Initial_Storage_Limits (Table_Bytes : Positive) return AML_Storage_Capacities.Limits;
+   function Storage_Limits (Service : State) return AML_Storage_Capacities.Limits with Pre => Valid (Service);
    function Valid (Service : State) return Boolean;
-   function Current_Import_Phase (Service : State) return Import_Phase;
-   function Namespace_Load_Phase (Service : State) return Values.Phase with Ghost;
-   function Namespace_Generation (Service : State) return AML_Identity.Identity with Ghost;
-   function Table_Count (Service : State) return Natural with
+   -- Terminal local cleanup after retiring this protocol owner. After success,
+   -- only Storage_Released and idempotent Release_Storage may be called.
+   function Storage_Released (Service : State) return Boolean;
+   procedure Release_Storage (Service : in out State; Released : out Boolean)
+     with Pre => Storage_Released (Service) or else Valid (Service),
+       Post => Released = Storage_Released (Service)
+       and then (if Released then not Valid (Service) else Valid (Service));
+   function Current_Import_Phase (Service : State) return Import_Phase with Pre => Valid (Service);
+   function Namespace_Load_Phase (Service : State) return Values.Phase with Pre => Valid (Service), Ghost;
+   function Namespace_Generation (Service : State) return AML_Identity.Identity with Pre => Valid (Service), Ghost;
+   function Table_Count (Service : State) return Natural with Pre => Valid (Service),
      Post => Table_Count'Result <= Service.Table_Capacity;
-   function Observe (Service : State) return Metrics with
+   function Observe (Service : State) return Metrics with Pre => Valid (Service),
      Post => Observe'Result.Tables = Table_Count (Service)
        and then Observe'Result.Tables <= Service.Table_Capacity
        and then Observe'Result.Bytes <= Service.Byte_Capacity;
-   function Audit (Service : State) return Values.Audit_Value;
+   function Audit (Service : State) return Values.Audit_Value with Pre => Valid (Service);
    -- Physical lexical binding; Root means absent.
    -- Physical lexical binding; Root means absent.
    subtype Node_Descriptor is Values.Node_Descriptor;
-   function Namespace_Node_Count (Service : State) return Namespace.Node_ID;
+   function Namespace_Node_Count (Service : State) return Namespace.Node_ID with Pre => Valid (Service);
    procedure Describe_Node (Service : State; Node : Namespace.Node_ID;
       Item : out Node_Descriptor; Status : out Values.Access_Status)
      with Pre => Valid (Service);
@@ -143,10 +154,10 @@ package ACPI_Service_Core with SPARK_Mode is
    function Current_Node (Service : State; Item : Node_Descriptor) return Boolean
      with Pre => Valid (Service);
    procedure Find_Child (Service : State; Parent : Namespace.Node_ID; Part : AML_Names.Segment;
-      Node : out Namespace.Node_ID; Status : out Values.Access_Status);
+      Node : out Namespace.Node_ID; Status : out Values.Access_Status) with Pre => Valid (Service);
    -- Semantic object selection follows aliases, retaining Found Root.
    procedure Find_Object (Service : State; Parent : Namespace.Node_ID; Part : AML_Names.Segment;
-      Result : out Namespace.Lookup_Result; Status : out Values.Access_Status);
+      Result : out Namespace.Lookup_Result; Status : out Values.Access_Status) with Pre => Valid (Service);
    procedure Resolve_Node (Service : State; Scope : Node_Descriptor;
       Path : AML_Names.Name_Result; Item : out Node_Descriptor;
       Outcome : out Namespace.Lookup_Status; Status : out Values.Access_Status)
@@ -164,59 +175,59 @@ package ACPI_Service_Core with SPARK_Mode is
      with Pre => Valid (Service);
    procedure Observe_Named_Value (Service : in out State; Node : Namespace.Node_ID;
       Result : out Values.Result; Status : out Values.Access_Status)
-      with Pre => not Result'Constrained;
+      with Pre => Valid (Service) and then (not Result'Constrained);
    function Table_Info (Service : State; Index : Positive) return Table_Metadata
-     with Pre => Index <= Table_Count (Service),
+     with Pre => Valid (Service) and then (Index <= Table_Count (Service)),
        Post => Table_Info'Result.Extent <= Service.Table_Byte_Limit;
    -- Read-only descriptions from retained snapshots; no hardware authority.
    function MADT_Info (Service : State; Index : Positive)
-     return Firmware_Tables.MADT.Table_Metadata with Pre => Index <= Observe (Service).Tables;
+     return Firmware_Tables.MADT.Table_Metadata with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function MADT_Record (Service : State; Index : Positive; Record_Index : Natural)
-     return Firmware_Tables.MADT.Record_Result with Pre => Index <= Observe (Service).Tables;
+     return Firmware_Tables.MADT.Record_Result with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function DMAR_Info (Service : State; Index : Positive) return Firmware_Tables.DMAR.Table_Metadata
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function DMAR_Record (Service : State; Index : Positive ; Record_Index : Natural) return Firmware_Tables.DMAR.Record_Result
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function DMAR_Scope (Service : State; Index : Positive ; Record_Index, Scope_Index : Natural) return Firmware_Tables.DMAR.Scope_Result
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function DMAR_Path (Service : State; Index : Positive ; Record_Index, Scope_Index, Path_Index : Natural) return Firmware_Tables.DMAR.Path_Result
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function SRAT_Info (Service : State; Index : Positive)
-     return Firmware_Tables.SRAT.Table_Metadata with Pre => Index <= Observe (Service).Tables;
+     return Firmware_Tables.SRAT.Table_Metadata with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function SRAT_Record (Service : State; Index : Positive; Record_Index : Natural)
-     return Firmware_Tables.SRAT.Record_Result with Pre => Index <= Observe (Service).Tables;
+     return Firmware_Tables.SRAT.Record_Result with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function MCFG_Info (Service : State; Index : Positive) return Firmware_Tables.MCFG.Table_Metadata
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function MCFG_Allocation (Service : State; Index : Positive; Allocation_Index : Natural) return Firmware_Tables.MCFG.Allocation_Result
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function SLIT_Info (Service : State; Index : Positive) return Firmware_Tables.SLIT.Table_Metadata
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function SLIT_Distance (Service : State; Index : Positive; From_Locality, To_Locality : Natural) return Firmware_Tables.SLIT.Distance_Result
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function Table_Byte (Service : State; Index : Positive; Offset : Natural)
       return Firmware_Tables.Byte
-     with Pre => Index <= Table_Count (Service)
-       and then Offset < Table_Info (Service, Index).Extent;
+     with Pre => Valid (Service) and then (Index <= Table_Count (Service)
+       and then Offset < Table_Info (Service, Index).Extent);
    function Fixed_Description (Service : State; Index : Positive) return ACPI_FADT.Result
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    -- Reads an exact bit span in an owned immutable table. Index is local to
    -- this service lifetime; it conveys no authority over physical memory.
    function Table_Field
      (Service : State; Index : Positive; Bit_Offset, Bit_Count : Natural)
       return AML_Field_Data.Read_Result
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function Table_Field_Window
      (Service : State; Index : Positive; Bit_Offset, Bit_Count : Natural;
       First_Byte, Count : Natural) return AML_Table_Backing.Window_Result
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    function Table_Identity (Service : State; Index : Positive)
       return Firmware_Tables.Identifiers.Identity
-     with Pre => Index <= Observe (Service).Tables;
+     with Pre => Valid (Service) and then (Index <= Observe (Service).Tables);
    -- First retained match, or zero. The result is a lifetime-local table index,
    -- never a physical address or capability. OEM selectors have explicit wildcards.
    function Find_Table
      (Service : State; Requested : Firmware_Tables.Identifiers.Selection)
-      return Natural with
+      return Natural with Pre => Valid (Service),
      Post => Find_Table'Result <= Observe (Service).Tables
        and then (if Find_Table'Result > 0 then
          Firmware_Tables.Identifiers.Matches
@@ -227,7 +238,7 @@ package ACPI_Service_Core with SPARK_Mode is
          not Firmware_Tables.Identifiers.Matches (Table_Identity (Service, I), Requested)));
    -- Plain observer data for contracts; never contains reference authority.
    type Catalog_State (Table_Capacity, Byte_Capacity : Positive) is private;
-   function Catalog_Snapshot (Service : State) return Catalog_State with Ghost,
+   function Catalog_Snapshot (Service : State) return Catalog_State with Pre => Valid (Service), Ghost,
      Post => Catalog_Snapshot'Result.Table_Capacity = Service.Table_Capacity
        and then Catalog_Snapshot'Result.Byte_Capacity = Service.Byte_Capacity;
    function Same_Catalog (Service, Prior : State) return Boolean with Ghost;
@@ -240,9 +251,9 @@ package ACPI_Service_Core with SPARK_Mode is
      with Pre => Valid (Service), Post => Valid (Service)
        and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
        and then Audit (Service) = Audit (Service)'Old;
-   function Pending_Notifications (Service : State) return Notification_Count;
+   function Pending_Notifications (Service : State) return Notification_Count with Pre => Valid (Service);
    subtype Module_Error_Observation is Namespace.Owned.Module_Error_Observation;
-   function Module_Errors (Service : State) return Module_Error_Observation;
+   function Module_Errors (Service : State) return Module_Error_Observation with Pre => Valid (Service);
    -- Non-reentrant dequeue: the owning arena rejects calls during invocation.
    -- Observations contain copied descriptive data, never callable authority.
    -- A stale target is reported explicitly rather than redirected after reuse.
@@ -253,11 +264,14 @@ package ACPI_Service_Core with SPARK_Mode is
        and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old
        and then Audit (Service) = Audit (Service)'Old;
    -- Audit-only full state, including identity metadata; never usable as authority.
-   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive) is private with Ghost;
-   function Model (Service : State) return State_Model with Ghost,
+   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is private with Ghost;
+   function Model (Service : State) return State_Model with Pre => Valid (Service), Ghost,
      Post => Model'Result.Table_Capacity = Service.Table_Capacity
        and then Model'Result.Byte_Capacity = Service.Byte_Capacity
-       and then Model'Result.Load_Capacity = Service.Load_Capacity;
+       and then Model'Result.Load_Capacity = Service.Load_Capacity
+       and then Model'Result.Value_Object_Capacity = Service.Value_Object_Capacity
+       and then Model'Result.Value_Byte_Capacity = Service.Value_Byte_Capacity
+       and then Model'Result.Value_Element_Capacity = Service.Value_Element_Capacity;
    -- Internal owner staging only, before catalog execution; no wire operation,
    -- AML execution or hardware authority. IDs are store-local metadata.
    procedure Stage_Copied_Source (Service : in out State; Data : Firmware_Tables.Bytes;
@@ -272,7 +286,7 @@ package ACPI_Service_Core with SPARK_Mode is
    -- result retained until all observations/serialization finish, then release.
    -- Invoke_Retained carries integer arguments; Invoke_With_Arguments borrows only
    -- service-owned retained result handles, never raw AML object identifiers.
-   function Retained_Results (Service : State) return Namespace.Owned.Retained_Root_Count;
+   function Retained_Results (Service : State) return Namespace.Owned.Retained_Root_Count with Pre => Valid (Service);
    procedure Evaluate_Named (Service : aliased in out State; Item : Node_Descriptor;
       Budget : Natural; Result : out Values.Result; Status : out Values.Access_Status)
      with Pre => Valid (Service) and then not Result'Constrained,
@@ -530,18 +544,18 @@ package ACPI_Service_Core with SPARK_Mode is
    end Field_IO;
    procedure Describe_Result (Service : State; Handle : Values.Value_Handle;
       Description : out Values.Value_Description; Status : out Values.Access_Status)
-      with Pre => not Description'Constrained;
+      with Pre => Valid (Service) and then (not Description'Constrained);
    procedure Read_Result_Device (Service : State; Handle : Values.Value_Handle;
       Item : out Node_Descriptor; Status : out Values.Access_Status)
      with Pre => Valid (Service),
      Post => (if Status = Values.Available then Current_Node (Service, Item)
        and then Values.Node_Kind (Item) = Namespace.Device_Object else Item = Values.No_Node);
    procedure Read_Result_Bytes (Service : State; Handle : Values.Value_Handle; Offset : Natural;
-      Data : out AML_Decode.Bytes; Copied : out Natural; Status : out Values.Access_Status);
+      Data : out AML_Decode.Bytes; Copied : out Natural; Status : out Values.Access_Status) with Pre => Valid (Service);
    procedure Read_Result_Element (Service : in out State; Handle : Values.Value_Handle;
-      Index : Natural; Element : out Values.Value_Handle; Status : out Values.Access_Status);
+      Index : Natural; Element : out Values.Value_Handle; Status : out Values.Access_Status) with Pre => Valid (Service);
    procedure Dereference_Result (Service : in out State; Handle : Values.Value_Handle;
-      Value : out Values.Value_Handle; Status : out Values.Access_Status);
+      Value : out Values.Value_Handle; Status : out Values.Access_Status) with Pre => Valid (Service);
    procedure Release_Result (Service : in out State; Handle : in out Values.Value_Handle;
       Status : out Values.Access_Status)
      with Pre => Valid (Service), Post => Valid (Service)
@@ -579,8 +593,8 @@ package ACPI_Service_Core with SPARK_Mode is
        Post => Valid (Service) and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old and then
        (if Result /= Namespace.Bound then Audit (Service) = Audit (Service)'Old);
    function Read_Namespace_Field (Service : State; Node : Namespace.Node_ID)
-      return AML_Field_Data.Read_Result;
-   function Pending_Members (Service : State) return Natural;
+      return AML_Field_Data.Read_Result with Pre => Valid (Service);
+   function Pending_Members (Service : State) return Natural with Pre => Valid (Service);
    function Initialization_Frame (Current, Prior : State_Model) return Boolean with Ghost;
    -- Explicit phase boundary after every initial definition block is installed.
    -- Missing/unsupported members are reported and remain uninitialized.
@@ -736,11 +750,12 @@ private
       Definition : Namespace.Definition_Identity := Namespace.No_Definition;
    end record;
    type Table_Load_Model is array (Positive range <>) of Table_Load_Record_Model;
-   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive) is record
+   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is record
       Catalog : Catalog_State (Table_Capacity, Byte_Capacity);
       Loads : Table_Load_Model (1 .. Load_Capacity);
       Copies : AML_Copied_Tables.Store_Model (Copied_Table_Capacity, Copied_Byte_Capacity);
-      Tree : Values.Audit_Value;
+      Tree : Values.Audit_Value
+        (Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity);
       Notifications : Namespace.Notification_State;
       Errors : Module_Error_Observation;
       Stats : Metrics;
@@ -750,17 +765,19 @@ private
       Generation : AML_Identity.Identity;
    end record;
    use type AML_Definition_Loads.Load_Phase;
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is limited record
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is limited record
       Import_State : Import_Phase := Undecided;
       Loads : AML_Definition_Loads.State (Load_Capacity);
       Copies : AML_Copied_Tables.State (Copied_Table_Capacity, Copied_Byte_Capacity);
-      Tree : Values.Arena;
+      Tree : Values.Arena
+        (Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity);
       Stats : Metrics;
       Catalog : Table_Array (1 .. Table_Capacity);
       Backing : aliased AML_Table_Backing.State (Table_Capacity, Byte_Capacity);
       Width : AML_Decode.Integer_Width := AML_Decode.Bits_64;
    end record with Type_Invariant =>
-     (if State.Stats.Tables = 0 then Values.Node_Count (State.Tree) = Namespace.Root)
+     Storage_Released (State) or else
+       (Values.Valid (State.Tree) and then (if State.Stats.Tables = 0 then Values.Node_Count (State.Tree) = Namespace.Root)
      and then (if State.Import_State = Legacy_Import and then State.Stats.Tables > 0
        then Values.Current (State.Tree) /= Values.Uninitialized)
      and then (if State.Import_State in Catalog_Staging | Catalog_Frozen then
@@ -792,6 +809,6 @@ private
         State.Backing.Tables (I).Extent = State.Catalog (I).Metadata.Extent and then
         State.Catalog (I).Metadata.Extent <= State.Table_Byte_Limit and then
         State.Catalog (I).Offset <= State.Stats.Bytes and then
-        State.Catalog (I).Metadata.Extent <= State.Stats.Bytes - State.Catalog (I).Offset);
+        State.Catalog (I).Metadata.Extent <= State.Stats.Bytes - State.Catalog (I).Offset));
    function Table_Count (Service : State) return Natural is (Service.Stats.Tables);
 end ACPI_Service_Core;

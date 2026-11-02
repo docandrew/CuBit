@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Service_Core;
 with ACPI_FADT.Transactions;
@@ -132,7 +133,7 @@ procedure Bank_Module_Tests is
    begin Accepted := Expected.Present and then not Pending (IO) and then Expected = IO.Confirmed; end Confirmed;
    package F is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
      Maximum_Bindings => 3, Authorize_Target => Authorize);
-   Service : aliased C.State (1, Bank_Module_Oracle.Raw_Table'Length, Bank_Module_Oracle.Raw_Table'Length, 1);
+   Service : aliased C.State (1, Bank_Module_Oracle.Raw_Table'Length, Bank_Module_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Context;
    Items : F.Binding_Set;
    Staged : C.Stage_Status;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Hosted_Heap;
 with Delay_Owner_Model;
 with Ada.Command_Line;
 with Ada.Exceptions;
@@ -12,6 +13,7 @@ with ACPI_Module_Diagnostics;
 with Ada.Strings.Fixed;
 with CuBit.Messages;
 with Owner_Test_Control;
+pragma Elaborate_All (ACPI_Hosted_Heap);
 procedure Owner_Tests is
    package T renames Owner_Test_Control;
    package L renames ACPI_Snapshot_Startup;

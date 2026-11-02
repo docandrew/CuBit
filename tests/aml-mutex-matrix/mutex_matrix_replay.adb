@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with AML_Decode;
 with ACPI_Service_Core;
@@ -33,7 +34,7 @@ procedure Mutex_Matrix_Replay is
    procedure Run_Case (Index : D.Case_Index) is
       -- A fresh public Core/owner/catalog for EVERY table, not each observation.
       -- All six original calls retain ordering and state within this case.
-      Service : aliased C.State (1, 4096, 4096, 1);
+      Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Stage : C.Stage_Status;
       Frozen : C.Freeze_Status;
       Report : C.Execution_Report;

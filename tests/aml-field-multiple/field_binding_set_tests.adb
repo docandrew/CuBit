@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service_Core;
@@ -113,7 +114,7 @@ procedure Field_Binding_Set_Tests is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         S, Other : aliased C.State (1, 4096, 4096, 1);
+         S, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          IO, Foreign : Context;
          Items, Empty, Partial : F.Binding_Set;
          One : F.Binding;

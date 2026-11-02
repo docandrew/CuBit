@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service_Core;
@@ -53,7 +54,7 @@ begin
    for Case_ID in D.Case_Number loop
       declare
          Width : constant T.Access_Width := D.Width (Case_ID);
-         S : aliased C.State (1, 4096, 4096, 1);
+         S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          IO : P.Context;
          Item : F.Binding;
          Configuration : ACPI_Region_Policy.Configuration :=

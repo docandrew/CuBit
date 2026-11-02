@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with ACPI_Hosted_Heap;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Unchecked_Deallocation;
 with Interfaces; use Interfaces;
@@ -10,6 +12,7 @@ with ACPI_Fatal_Diagnostics;
 with ACPI_Module_Diagnostics;
 with ACPI_Snapshot_Startup;
 with Root_Test_Support; use Root_Test_Support;
+pragma Elaborate_All (ACPI_Hosted_Heap);
 procedure Local_Diagnostic_Tests is
    package L renames ACPI_Snapshot_Startup;
    package R renames L.R;
@@ -28,7 +31,12 @@ procedure Local_Diagnostic_Tests is
    subtype Bytes is Firmware_Tables.Bytes;
    type Bytes_Access is access Bytes;
    procedure Free is new Ada.Unchecked_Deallocation (Bytes, Bytes_Access);
-   procedure Free is new Ada.Unchecked_Deallocation (Q.State, L.State_Access);
+   procedure Free (Owner : in out L.State_Access) is
+      Released : Boolean;
+   begin
+      L.Release_Owner (Owner, Released);
+      if not Released then raise Program_Error with "test attempted release of live owner"; end if;
+   end Free;
    Data : Bytes_Access;
    Checks : Natural := 0;
    type Scenario is (No_Fatal, Module_Fatal, Root_Fatal, Bus_Fatal, Device_Fatal,
@@ -87,7 +95,7 @@ begin
               when Ordinary_Error => Block ([16#5B#,16#82#], Enc ("DEV0") & Method ("_INI", [16#FE#])),
               when Unconfigured_Region => [16#5B#,16#80#] & Enc ("REG0") & [3,0,1] &
                 Block ([16#5B#,16#82#], Enc ("DEV0") & Method ("_INI", Fatal)));
-            Reference : Q.State (1, 512, 512, Load_Capacity => 1, Initial_Revision => 0);
+            Reference : Q.State (1, 512, 512, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             Reply : Q.Response;
             Owner : L.State_Access;
             Result : L.Report;

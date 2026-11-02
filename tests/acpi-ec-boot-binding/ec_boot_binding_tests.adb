@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Streams;
@@ -17,7 +18,7 @@ procedure EC_Boot_Binding_Tests is
    use type C.Values.Module_Outcome, C.Node_Descriptor, C.Values.Value_Handle;
    use type AML_Execute.Execution_Status;
    use type Firmware_Tables.Byte, Interfaces.Unsigned_32;
-   Service, Other : aliased C.State (1, 4096, 4096, 1);
+   Service, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks, Calls, Releases, Release_Failures : Natural := 0;
    Overcharge, Unknown, Empty_Handle, Force_Failure : Boolean := False;
    procedure Check (Condition : Boolean) is

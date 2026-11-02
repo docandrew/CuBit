@@ -146,6 +146,9 @@ package body ACPI_Field_Scoped_Provider is
       Result : Scope.Cleanup_Outcome;
    begin
       Completed := False; if IO.Working then return; end if;
+      -- A fresh owner has never initialized its lease scope or acquired any
+      -- authority. Observer-only shutdown needs no native clock or IPC.
+      if not IO.Consumed then Completed := True; return; end if;
       IO.Working := True; Cleanup_Deadline (Deadline);
       Scope.Cleanup (IO.Guard, IO.Channel, Deadline, Result);
       Completed := Scope.Observe (IO.Guard).Depth = 0 and then not Cleanup_Required (IO);

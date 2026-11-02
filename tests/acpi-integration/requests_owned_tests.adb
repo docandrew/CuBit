@@ -1,3 +1,4 @@
+with AML_Objects;
 with ACPI_Requests; use ACPI_Requests;
 with ACPI_Service;
 with Firmware_Tables;
@@ -19,7 +20,7 @@ begin
    Data (10) := 0 - Sum;
    for Bulk in Boolean loop
       declare
-         S : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 0);
+         S : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Reply : Response;
          Request : Packet;
          Source : Firmware_Tables.Bytes := Data;
@@ -96,7 +97,7 @@ begin
    end loop;
    for Initial in Max_Revision - 1 .. Max_Revision loop
       declare
-         S : State (1, 128, 128, Load_Capacity => 1, Initial_Revision => Initial);
+         S : State (1, 128, 128, Load_Capacity => 1, Initial_Revision => Initial, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Reply : Response;
       begin
          Handle (S, Snapshot_Provider, (Label => Start_Snapshot, Data => [Initial, 1, 0, 0], others => <>), Reply);

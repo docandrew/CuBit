@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Firmware_Tables;
@@ -115,7 +116,7 @@ procedure Field_Event_Combined_Tests is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         Service : aliased C.State (1, 4096, 4096, 1);
+         Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Run : Init.Session;
          Accepted : Boolean;
          Parent, Status_Field, Wide_Field, Event_Item, Poll_Item, Counter : C.Node_Descriptor;

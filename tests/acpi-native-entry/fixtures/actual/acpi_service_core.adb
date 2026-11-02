@@ -9,6 +9,16 @@ package body ACPI_Service_Core with SPARK_Mode is
    use type Namespace.Load_Status;
 
    function Method_Storage_Capacity return Positive is (Aggregate_Method_Capacity);
+   function Storage_Input_Supported (Table_Bytes : Positive) return Boolean is
+     (AML_Storage_Capacities.Supported (Table_Bytes, Copied_Byte_Capacity));
+   function Initial_Storage_Limits (Table_Bytes : Positive) return AML_Storage_Capacities.Limits is
+     (AML_Storage_Capacities.For_Input (Table_Bytes, Copied_Byte_Capacity));
+   function Storage_Limits (Service : State) return AML_Storage_Capacities.Limits is
+     (Objects => Service.Value_Object_Capacity, Bytes => Service.Value_Byte_Capacity,
+      Elements => Service.Value_Element_Capacity);
+   function Storage_Released (Service : State) return Boolean is (Values.Storage_Released (Service.Tree));
+   procedure Release_Storage (Service : in out State; Released : out Boolean) is
+   begin Values.Release_Storage (Service.Tree, Released); end Release_Storage;
    function Valid (Service : State) return Boolean is
      (Values.Valid (Service.Tree));
    function Current_Import_Phase (Service : State) return Import_Phase is (Service.Import_State);
@@ -186,6 +196,9 @@ package body ACPI_Service_Core with SPARK_Mode is
    function Model (Service : State) return State_Model is
      (Table_Capacity => Service.Table_Capacity, Byte_Capacity => Service.Byte_Capacity,
       Load_Capacity => Service.Load_Capacity,
+      Value_Object_Capacity => Service.Value_Object_Capacity,
+      Value_Byte_Capacity => Service.Value_Byte_Capacity,
+      Value_Element_Capacity => Service.Value_Element_Capacity,
       Catalog => Catalog_Snapshot (Service), Loads => Load_Model (Service),
       Copies => AML_Copied_Tables.Model (Service.Copies), Tree => Audit (Service),
       Stats => Service.Stats, Width => Service.Width, Table_Limit => Service.Table_Byte_Limit,
@@ -200,7 +213,10 @@ package body ACPI_Service_Core with SPARK_Mode is
    function Pending_Members (Service : State) return Natural is
      (Values.Observe_Usage (Service.Tree).Pending);
    function Initialization_Frame (Current, Prior : State_Model) return Boolean is
-     (Current = (Prior with delta Tree => Current.Tree)
+     (Current.Value_Object_Capacity = Prior.Value_Object_Capacity
+      and then Current.Value_Byte_Capacity = Prior.Value_Byte_Capacity
+      and then Current.Value_Element_Capacity = Prior.Value_Element_Capacity
+      and then Current = (Prior with delta Tree => Current.Tree)
       and then Values.Table_Initialization_Frame (Current.Tree, Prior.Tree, Prior.Catalog.Backing));
    procedure Initialize_Members
      (Service : in out State; Report : out Namespace.Initialization_Report;

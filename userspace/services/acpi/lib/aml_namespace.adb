@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with Ada.Unchecked_Deallocation;
 with AML_Table_Readers;
 with Interfaces;
 with ACPI_Resource_Names;
@@ -46,10 +47,26 @@ package body AML_Namespace with SPARK_Mode is
    use type AML_Execute.Binding_Purpose;
    use type AML_References.Node_Position;
    use type AML_Decode.Bytes;
-   use type AML_Objects.State;
+   use type AML_Objects.State, AML_Objects.Clone_Status;
    use type AML_Execute.Declaration_Status;
    use type AML_Execute.Execution_Status;
    subtype Code_Storage is AML_Decode.Bytes (1 .. Aggregate_Method_Capacity);
+   type Namespace_Snapshot_Owner is access State;
+   procedure Free_Namespace_Snapshot is new Ada.Unchecked_Deallocation
+     (State, Namespace_Snapshot_Owner);
+   -- Native runtime forbids handlers. These nested Ada allocations are fatal
+   -- on exhaustion; all normal/typed-refusal paths still release their scratch.
+   -- Callback adapters must return status normally; unexpected exceptions are
+   -- outside the native contract and terminate the process, without recovery.
+   function Clone_Namespace_Snapshot (Tree : State) return Namespace_Snapshot_Owner
+     with SPARK_Mode => Off
+   is
+      subtype Snapshot_Shape is State
+        (Tree.Object_Capacity, Tree.Byte_Capacity, Tree.Element_Capacity);
+   begin
+      return new Snapshot_Shape'(Tree);
+
+   end Clone_Namespace_Snapshot;
    procedure Append_Code
      (Store : in out Code_Storage; Used : in out Aggregate_Method_Count;
       Data : AML_Decode.Bytes; Start : out Aggregate_Method_Count)
@@ -125,15 +142,27 @@ package body AML_Namespace with SPARK_Mode is
    function Name (Tree : State; Node : Node_ID) return AML_Names.Segment is
      (Tree.Items (Node).Part);
    function Cleanup_Frame (Tree, Prior : State) return Boolean is
-     (Tree.Last_Stamp >= Prior.Last_Stamp
+     (Same_Capacities (Tree, Prior) and then Tree.Last_Stamp >= Prior.Last_Stamp
       and then Tree = (Prior with delta Last_Stamp => Tree.Last_Stamp));
    function Allocating_Cleanup_Frame (Tree, Prior : State) return Boolean is
      (Tree.Last_Stamp >= Prior.Last_Stamp
       and then Tree = (Prior with delta Last_Stamp => Tree.Last_Stamp, Values => Tree.Values)
       and then AML_Objects.Extends (Tree.Values, Prior.Values));
-   function Empty return State is
-     ((Used => 0, Items => [others => (Up => Root, Part => "____", others => <>)],
-       Values => AML_Objects.Empty, others => <>));
+   function Empty (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects;
+      Byte_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Bytes;
+      Element_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Elements) return State is
+     ((Object_Capacity => Object_Capacity, Byte_Capacity => Byte_Capacity,
+       Element_Capacity => Element_Capacity, Used => 0, Items => [others => (Up => Root, Part => "____", others => <>)],
+       Values => AML_Objects.Empty (Object_Capacity => Object_Capacity,
+         Byte_Capacity => Byte_Capacity, Element_Capacity => Element_Capacity), others => <>));
+   function Make_Audit (Tree : State; Import, Preparation : Natural) return Audit_Model is
+     (Object_Capacity => Tree.Object_Capacity, Byte_Capacity => Tree.Byte_Capacity,
+      Element_Capacity => Tree.Element_Capacity, Tree => Tree, Import => Import, Preparation => Preparation);
+   function Empty_Like (Tree : State) return State is
+     (Empty (Tree.Object_Capacity, Tree.Byte_Capacity, Tree.Element_Capacity));
+   function Same_Capacities (Left, Right : State) return Boolean is
+     (Left.Object_Capacity = Right.Object_Capacity and then Left.Byte_Capacity = Right.Byte_Capacity
+      and then Left.Element_Capacity = Right.Element_Capacity);
 
    function Child
      (Tree : State; Scope : Node_ID; Part : AML_Names.Segment) return Node_ID
@@ -255,25 +284,36 @@ package body AML_Namespace with SPARK_Mode is
      (Tree.Current_Definition = Prior.Current_Definition and then Tree.Root_Value = Prior.Root_Value and then Tree.Values = Prior.Values and then Tree.Code = Prior.Code
       and then Tree.Code_Used = Prior.Code_Used and then
       (for all I in 1 .. Prior.Used => Tree.Items (I) = Prior.Items (I)));
+   -- Read-only admission shared with declaration preflight. Recheck against
+   -- the live tree after collection; an earlier admission is not a reservation.
+   function Insertion_Admission
+     (Tree : State; Scope : Node_ID; Part : AML_Names.Segment) return Insert_Status is
+     (if not AML_Names.Valid (Part) then Invalid_Name
+      elsif Child (Tree, Scope, Part) /= Root then Duplicate
+      elsif Tree.Used = Capacity or else Tree.Last_Stamp = Max_Node_Incarnation then Full
+      else Inserted);
+   function Next_Entry
+     (Tree : State; Scope : Node_ID; Part : AML_Names.Segment) return Entry_Record
+     with Pre => Insertion_Admission (Tree, Scope, Part) = Inserted
+   is
+   begin
+      return (Up => Scope, Part => Part, Incarnation => Tree.Last_Stamp + 1,
+        Definition => Tree.Current_Definition, others => <>);
+   end Next_Entry;
    procedure Insert
      (Tree : in out State; Scope : Node_ID; Part : AML_Names.Segment;
       Node : out Node_ID; Result : out Insert_Status)
    is
    begin
       Node := Root;
-      if not AML_Names.Valid (Part) then
-         Result := Invalid_Name;
-      elsif Child (Tree, Scope, Part) /= Root then
-         Result := Duplicate;
-      elsif Tree.Used = Capacity or else Tree.Last_Stamp = Max_Node_Incarnation then
-         Result := Full;
-      else
+      Result := Insertion_Admission (Tree, Scope, Part);
+      if Result = Inserted then
+         declare Item : constant Entry_Record := Next_Entry (Tree, Scope, Part); begin
          Tree.Used := Tree.Used + 1;
          Tree.Last_Stamp := Tree.Last_Stamp + 1;
-         Tree.Items (Tree.Used) := (Up => Scope, Part => Part, Incarnation => Tree.Last_Stamp,
-           Definition => Tree.Current_Definition, others => <>);
+         Tree.Items (Tree.Used) := Item;
          Node := Tree.Used;
-         Result := Inserted;
+         end;
       end if;
    end Insert;
    function Kind (Tree : State; Node : Node_ID) return Object_Kind is
@@ -425,10 +465,35 @@ package body AML_Namespace with SPARK_Mode is
                    when Metadata_Value_Object => AML_Objects.Metadata_Snapshot_Object,
                    when Event_Object => AML_Objects.Event_Object,
                    when others => AML_Objects.Package_Object))));
-   type Count_Context is record
-      Tree : State;
+   type Count_Context (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) is record
+      Tree : State (Object_Capacity, Byte_Capacity, Element_Capacity);
       Scope : Node_ID;
    end record;
+   -- Both values are independent copies. The limited owner only changes
+   -- their storage placement; package-count callbacks still see the original
+   -- namespace and their own pending-member journal until commit.
+   type Namespace_Transaction
+     (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) is limited record
+      Candidate : State (Object_Capacity, Byte_Capacity, Element_Capacity);
+      Environment : Count_Context (Object_Capacity, Byte_Capacity, Element_Capacity);
+   end record;
+   type Namespace_Transaction_Owner is access Namespace_Transaction;
+   procedure Free_Namespace_Transaction is new Ada.Unchecked_Deallocation
+     (Namespace_Transaction, Namespace_Transaction_Owner);
+   function Clone_Namespace_Transaction (Tree : State) return Namespace_Transaction_Owner
+     with SPARK_Mode => Off
+   is
+      subtype Transaction_Shape is Namespace_Transaction
+        (Tree.Object_Capacity, Tree.Byte_Capacity, Tree.Element_Capacity);
+   begin
+      return new Transaction_Shape'
+        (Object_Capacity => Tree.Object_Capacity,
+         Byte_Capacity => Tree.Byte_Capacity,
+         Element_Capacity => Tree.Element_Capacity,
+         Candidate => Tree,
+         Environment => (Tree.Object_Capacity, Tree.Byte_Capacity, Tree.Element_Capacity, Tree, Root));
+
+   end Clone_Namespace_Transaction;
    function Read_Package_Count
      (Environment : Count_Context; Data : AML_Decode.Bytes;
       Width : AML_Decode.Integer_Width) return AML_Data.Count_Result
@@ -846,13 +911,16 @@ package body AML_Namespace with SPARK_Mode is
                end loop;
             else
                declare
-                  Candidate : AML_Objects.State := Tree.Values;
+                  Candidate : AML_Objects.State := AML_Objects.Empty_Like (Tree.Values);
+                  Copied : AML_Objects.Clone_Status;
                   Result_ID : AML_Objects.Object_ID;
                   Allocated : AML_Objects.Allocation_Status;
                begin
+                  AML_Objects.Clone (Tree.Values, Candidate, Copied);
+                  if Copied /= AML_Objects.Cloned then Status := AML_Execute.Value_Limit; return; end if;
                   AML_Objects.New_Bytes (Candidate, AML_Objects.Buffer_Object, Data, Result_ID, Allocated);
                   if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
-                  Tree.Values := Candidate;
+                  AML_Objects.Transfer (Candidate, Tree.Values);
                   Result := (Buffer_Field, Result_ID);
                end;
             end if;
@@ -955,67 +1023,78 @@ package body AML_Namespace with SPARK_Mode is
              and then Tree.Items (Tree.Used).Owner = Lifetime_Owner
              and then Tree.Items (Tree.Used).Alive)
    is
-      Candidate : State := Tree;
-      Environment : Count_Context := (Tree, Root);
-      Base, Node : Node_ID;
-      Added : Insert_Status;
-      ID : AML_Objects.Object_ID;
-      Used : Natural;
-      Parsed : AML_Decode.Status;
-      use type AML_Decode.Status;
-   begin
-      Consumed := 0;
-      Name_Target (Tree, Scope, Lifetime_Owner, Path, Base, Status, Module_Declaration);
-      if Status /= AML_Execute.Returned then return; end if;
-      -- Insert into a candidate: quota/parse failure publishes neither node nor
-      -- incarnation. Member paths bind in the candidate after root attachment.
-      Insert (Candidate, Base, Path.Parts (Path.Count), Node, Added);
-      case Added is
-         when Duplicate => Status := AML_Execute.Duplicate_Name; return;
-         when Full => Status := AML_Execute.Namespace_Limit; return;
-         when Invalid_Name => Status := AML_Execute.Bad_Name; return;
-         when Inserted => null;
-      end case;
-      Environment.Scope := Node_ID (Scope);
-      if not Module_Declaration then Environment.Tree.Journal := Pending.Empty; end if;
-      Load_Bound_Data (Candidate.Values, Data, Source, Source_First, Width, Environment, ID, Used, Parsed);
-      if Parsed /= AML_Decode.Accepted then
-         Status := (case Parsed is
-           when AML_Decode.Truncated => AML_Execute.Truncated,
-           when AML_Decode.Limit_Exceeded => AML_Execute.Value_Limit,
-           when others => AML_Execute.Unsupported_Value);
-         return;
-      end if;
-      if AML_Objects.Kind (Candidate.Values, ID) = AML_Objects.Reference_Object then
-         Status := AML_Execute.Unsupported_Value; return;
-      end if;
-      Candidate.Items (Node).Object_Type :=
-        (case AML_Objects.Kind (Candidate.Values, ID) is
-           when AML_Objects.Integer_Object => Integer_Object,
-           when AML_Objects.String_Object => String_Object,
-           when AML_Objects.Buffer_Object => Buffer_Object,
-           when AML_Objects.Package_Object => Package_Object,
-           when AML_Objects.Event_Object => Event_Object,
-           when AML_Objects.Mutex_Object => Mutex_Object,
-           when AML_Objects.Reference_Object => Reference_Object,
-           when AML_Objects.Metadata_Object | AML_Objects.Metadata_Snapshot_Object => Metadata_Value_Object);
-      Candidate.Items (Node).Owner := Node_ID (Lifetime_Owner);
-      Candidate.Items (Node).Object_Ref := ID;
-      if Candidate.Items (Node).Object_Type = Mutex_Object then
-         Candidate.Items (Node).Mutex_Flags := AML_Objects.Mutex_Flags (Candidate.Values, ID);
-      end if;
-      -- The reserved node becomes resolvable only inside this valid candidate.
-      -- Bind deferred package paths after attaching the completed root object,
-      -- allowing a package to refer to itself without publishing partial state.
-      if Module_Declaration then
-         Candidate.Journal := Environment.Tree.Journal;
-      else
-         Bind_Runtime_Package_Members
-           (Candidate, Tree.Values, Environment.Tree.Journal, Owner, Width,
-            Node, False, Status);
+      Workspace : Namespace_Transaction_Owner := null;
+      procedure Run_With_Transaction (Scratch : in out Namespace_Transaction) is
+         Candidate : State renames Scratch.Candidate;
+         Environment : Count_Context renames Scratch.Environment;
+         Base, Node : Node_ID;
+         Added : Insert_Status;
+         ID : AML_Objects.Object_ID;
+         Used : Natural;
+         Parsed : AML_Decode.Status;
+         use type AML_Decode.Status;
+      begin
+         Consumed := 0;
+         Name_Target (Tree, Scope, Lifetime_Owner, Path, Base, Status, Module_Declaration);
          if Status /= AML_Execute.Returned then return; end if;
+         -- Insert into a candidate: quota/parse failure publishes neither node nor
+         -- incarnation. Member paths bind in the candidate after root attachment.
+         Insert (Candidate, Base, Path.Parts (Path.Count), Node, Added);
+         case Added is
+            when Duplicate => Status := AML_Execute.Duplicate_Name; return;
+            when Full => Status := AML_Execute.Namespace_Limit; return;
+            when Invalid_Name => Status := AML_Execute.Bad_Name; return;
+            when Inserted => null;
+         end case;
+         Environment.Scope := Node_ID (Scope);
+         if not Module_Declaration then Environment.Tree.Journal := Pending.Empty; end if;
+         Load_Bound_Data (Candidate.Values, Data, Source, Source_First, Width, Environment, ID, Used, Parsed);
+         if Parsed /= AML_Decode.Accepted then
+            Status := (case Parsed is
+              when AML_Decode.Truncated => AML_Execute.Truncated,
+              when AML_Decode.Limit_Exceeded => AML_Execute.Value_Limit,
+              when others => AML_Execute.Unsupported_Value);
+            return;
+         end if;
+         if AML_Objects.Kind (Candidate.Values, ID) = AML_Objects.Reference_Object then
+            Status := AML_Execute.Unsupported_Value; return;
+         end if;
+         Candidate.Items (Node).Object_Type :=
+           (case AML_Objects.Kind (Candidate.Values, ID) is
+              when AML_Objects.Integer_Object => Integer_Object,
+              when AML_Objects.String_Object => String_Object,
+              when AML_Objects.Buffer_Object => Buffer_Object,
+              when AML_Objects.Package_Object => Package_Object,
+              when AML_Objects.Event_Object => Event_Object,
+              when AML_Objects.Mutex_Object => Mutex_Object,
+              when AML_Objects.Reference_Object => Reference_Object,
+              when AML_Objects.Metadata_Object | AML_Objects.Metadata_Snapshot_Object => Metadata_Value_Object);
+         Candidate.Items (Node).Owner := Node_ID (Lifetime_Owner);
+         Candidate.Items (Node).Object_Ref := ID;
+         if Candidate.Items (Node).Object_Type = Mutex_Object then
+            Candidate.Items (Node).Mutex_Flags := AML_Objects.Mutex_Flags (Candidate.Values, ID);
+         end if;
+         -- The reserved node becomes resolvable only inside this valid candidate.
+         -- Bind deferred package paths after attaching the completed root object,
+         -- allowing a package to refer to itself without publishing partial state.
+         if Module_Declaration then
+            Candidate.Journal := Environment.Tree.Journal;
+         else
+            Bind_Runtime_Package_Members
+              (Candidate, Tree.Values, Environment.Tree.Journal, Owner, Width,
+               Node, False, Status);
+            if Status /= AML_Execute.Returned then return; end if;
+         end if;
+         Tree := Candidate; Consumed := Used; Status := AML_Execute.Returned;
+      end Run_With_Transaction;
+   begin
+      Workspace := Clone_Namespace_Transaction (Tree);
+      if Workspace = null then
+         Consumed := 0; Status := AML_Execute.Value_Limit; return;
       end if;
-      Tree := Candidate; Consumed := Used; Status := AML_Execute.Returned;
+      Run_With_Transaction (Workspace.all);
+      Free_Namespace_Transaction (Workspace);
+
    end Define_Runtime_Name_For_Context;
 
    procedure Define_Method_For_Context
@@ -1631,38 +1710,51 @@ package body AML_Namespace with SPARK_Mode is
       if not AML_Byte_Sources.Corresponds (Source, Source_First, Data) then return; end if;
       if Kind = AML_Execute.Package_Literal then
          declare
-            Candidate : State := Tree;
-            Bound : AML_Execute.Execution_Status;
-            Loaded : AML_Decode.Status;
-            Consumed : Natural;
-            Environment : Count_Context := (Tree, Node_ID'First);
-            use type AML_Decode.Status;
-         begin
-            Binding := (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Unsupported_Value);
-            if Data'Length = 0 or else Data (Data'First) not in 16#12# | 16#13# then return; end if;
-            if Scope > Tree.Used then return; end if;
-            Environment.Scope := Node_ID (Scope);
-            Environment.Tree.Journal := Pending.Empty;
-            Load_Bound_Data (Candidate.Values, Data, Source, Source_First, Width, Environment, ID, Consumed, Loaded);
-            if Loaded /= AML_Decode.Accepted then
-               if Loaded = AML_Decode.Limit_Exceeded then
-                  Binding := (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Value_Limit);
+            Workspace : Namespace_Transaction_Owner := null;
+            procedure Run_With_Transaction (Scratch : in out Namespace_Transaction) is
+               Candidate : State renames Scratch.Candidate;
+               Bound : AML_Execute.Execution_Status;
+               Loaded : AML_Decode.Status;
+               Consumed : Natural;
+               Environment : Count_Context renames Scratch.Environment;
+               use type AML_Decode.Status;
+            begin
+               Binding := (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Unsupported_Value);
+               if Data'Length = 0 or else Data (Data'First) not in 16#12# | 16#13# then return; end if;
+               if Scope > Tree.Used then return; end if;
+               Environment.Scope := Node_ID (Scope);
+               Environment.Tree.Journal := Pending.Empty;
+               Load_Bound_Data (Candidate.Values, Data, Source, Source_First, Width, Environment, ID, Consumed, Loaded);
+               if Loaded /= AML_Decode.Accepted then
+                  if Loaded = AML_Decode.Limit_Exceeded then
+                     Binding := (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Value_Limit);
+                  end if;
+                  return;
                end if;
+               if Consumed /= Data'Length or else AML_Objects.Kind (Candidate.Values, ID) /= AML_Objects.Package_Object then return; end if;
+               Bind_Runtime_Package_Members
+                 (Candidate, Tree.Values, Environment.Tree.Journal, Owner, Width,
+                  Root, True, Bound);
+               if Bound /= AML_Execute.Returned then
+                  Binding := (Status => AML_Execute.Failed_Binding, Failure => Bound);
+                  return;
+               end if;
+               AML_Objects.Transfer (Candidate.Values, Tree.Values);
+               Binding := (Status => AML_Execute.Non_Integer_Binding,
+                 Object => (Source => AML_References.No_Object_Handle, ID => ID, Type_Code => 4,
+                   Size => AML_Objects.Length (Tree.Values, ID), Conversion_32 => C32, Conversion_64 => C64));
+               return;
+   end Run_With_Transaction;
+         begin
+            Workspace := Clone_Namespace_Transaction (Tree);
+            if Workspace = null then
+               Binding := (AML_Execute.Failed_Binding, AML_Execute.Value_Limit);
                return;
             end if;
-            if Consumed /= Data'Length or else AML_Objects.Kind (Candidate.Values, ID) /= AML_Objects.Package_Object then return; end if;
-            Bind_Runtime_Package_Members
-              (Candidate, Tree.Values, Environment.Tree.Journal, Owner, Width,
-               Root, True, Bound);
-            if Bound /= AML_Execute.Returned then
-               Binding := (Status => AML_Execute.Failed_Binding, Failure => Bound);
-               return;
-            end if;
-            Tree.Values := Candidate.Values;
-            Binding := (Status => AML_Execute.Non_Integer_Binding,
-              Object => (Source => AML_References.No_Object_Handle, ID => ID, Type_Code => 4,
-                Size => AML_Objects.Length (Tree.Values, ID), Conversion_32 => C32, Conversion_64 => C64));
+            Run_With_Transaction (Workspace.all);
+            Free_Namespace_Transaction (Workspace);
             return;
+
          end;
       end if;
       if Kind = AML_Execute.String_Literal then
@@ -2603,7 +2695,7 @@ package body AML_Namespace with SPARK_Mode is
         or else Tree /= (Prior with delta Values => Tree.Values, Journal => Tree.Journal)
         or else After.Bytes /= Before.Bytes or else After.Elements /= Before.Elements
       then return False; end if;
-      for ID in 1 .. AML_Objects.Max_Objects loop
+      for ID in 1 .. Tree.Object_Capacity loop
          if not AML_Objects.Is_Live (Prior.Values, ID) and then AML_Objects.Is_Live (Tree.Values, ID) then
             if AML_Objects.Kind (Tree.Values, ID) /= AML_Objects.Metadata_Object then return False; end if;
             Added := Added + 1;
@@ -2712,47 +2804,49 @@ package body AML_Namespace with SPARK_Mode is
      (Tree : in out State; Owner : AML_Identity.Identity; Report : out Initialization_Report) is
       use type AML_Identity.Identity;
       use type AML_Objects.Allocation_Status;
-      Candidate : State := Tree;
       Located : Lookup_Result;
       Leaf : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
    begin
+      -- This pass reports each member independently and has no whole-pass
+      -- refusal/rollback. Update the sole live owner rather than snapshotting
+      -- its value storage; no externally supplied callback runs in this pass.
       Report := (others => 0);
-      for I in 1 .. Pending.Count (Candidate.Journal) loop
+      for I in 1 .. Pending.Count (Tree.Journal) loop
          declare
-            Member : constant Pending.Member_Result := Pending.Item (Candidate.Journal, I);
+            Member : constant Pending.Member_Result := Pending.Item (Tree.Journal, I);
          begin
             -- All coordinates originated in the transactional loader. Check
             -- again before publication; no journal ID is authority.
-            if Member.Scope > Candidate.Used
-              or else not AML_Objects.Is_Live (Candidate.Values, Member.Package_ID)
-              or else AML_Objects.Kind (Candidate.Values, Member.Package_ID) /= AML_Objects.Package_Object
-              or else Member.Element >= AML_Objects.Length (Candidate.Values, Member.Package_ID)
+            if Member.Scope > Tree.Used
+              or else not AML_Objects.Is_Live (Tree.Values, Member.Package_ID)
+              or else AML_Objects.Kind (Tree.Values, Member.Package_ID) /= AML_Objects.Package_Object
+              or else Member.Element >= AML_Objects.Length (Tree.Values, Member.Package_ID)
             then
                Report.Unsupported := Report.Unsupported + 1;
             else
-               Located := Resolve_Object (Candidate, Member.Scope, Member.Path);
+               Located := Resolve_Object (Tree, Member.Scope, Member.Path);
                if Located.Status /= Found then
                   Report.Missing := Report.Missing + 1;
-               elsif Located.Node = Root or else Kind (Candidate, Located.Node) = Metadata_Value_Object
-                 or else Package_Metadata_Kind (Kind (Candidate, Located.Node)) then
+               elsif Located.Node = Root or else Kind (Tree, Located.Node) = Metadata_Value_Object
+                 or else Package_Metadata_Kind (Kind (Tree, Located.Node)) then
                   if Owner = AML_Identity.No_Identity then
                      Report.Unsupported := Report.Unsupported + 1;
                   else
-                     AML_Objects.New_Metadata (Candidate.Values,
-                       Metadata_Identity_At (Candidate, Owner, Located.Node), Leaf, Allocated);
+                     AML_Objects.New_Metadata (Tree.Values,
+                       Metadata_Identity_At (Tree, Owner, Located.Node), Leaf, Allocated);
                      if Allocated = AML_Objects.Allocated then
-                        AML_Objects.Set_Element (Candidate.Values, Member.Package_ID, Member.Element, Leaf);
+                        AML_Objects.Set_Element (Tree.Values, Member.Package_ID, Member.Element, Leaf);
                         Report.Bound := Report.Bound + 1;
                      else Report.Unsupported := Report.Unsupported + 1; end if;
                   end if;
-               elsif Candidate.Items (Located.Node).Object_Type not in
+               elsif Tree.Items (Located.Node).Object_Type not in
                  Integer_Object | String_Object | Buffer_Object | Package_Object | Reference_Object | Metadata_Value_Object
                then
                   Report.Unsupported := Report.Unsupported + 1;
                else
-                  AML_Objects.Set_Element (Candidate.Values, Member.Package_ID,
-                    Member.Element, Candidate.Items (Located.Node).Object_Ref);
+                  AML_Objects.Set_Element (Tree.Values, Member.Package_ID,
+                    Member.Element, Tree.Items (Located.Node).Object_Ref);
                   Report.Bound := Report.Bound + 1;
                end if;
             end if;
@@ -2760,59 +2854,59 @@ package body AML_Namespace with SPARK_Mode is
       end loop;
       -- Failed entries remain uninitialized and are not retried after later
       -- namespace changes. Repeated initialization is an idempotent no-op.
-      Pending.Clear (Candidate.Journal);
-      Tree := Candidate;
+      Pending.Clear (Tree.Journal);
    end Initialize_Members_With_Owner;
    procedure Resolve_Static_Tables
      (Tree : in out State; Input : aliased AML_Table_Backing.State; Have_Input : Boolean;
       Report : out Initialization_Report) is
-      Candidate : State := Tree;
       Status : AML_Execute.Execution_Status;
       Region : Node_ID;
    begin
+      -- This pass reports each member independently and has no whole-pass
+      -- refusal/rollback. Update the sole live owner rather than snapshotting
+      -- its value storage; no externally supplied callback runs in this pass.
       Report := (others => 0);
-      for I in 1 .. Candidate.Used loop
-         if Candidate.Items (I).Static_Table_Region then
+      for I in 1 .. Tree.Used loop
+         if Tree.Items (I).Static_Table_Region then
             if Have_Input then
                declare
                   Query : constant Firmware_Tables.Identifiers.Selection :=
-                    Candidate.Items (I).Static_Table_Selection;
+                    Tree.Items (I).Static_Table_Selection;
                begin
-                  Complete_Region_Selection (Candidate, Input, I, Query, Status);
+                  Complete_Region_Selection (Tree, Input, I, Query, Status);
                end;
             else Status := AML_Execute.Unsupported_Value; end if;
             if Status = AML_Execute.Returned then Report.Bound := Report.Bound + 1;
             elsif Status = AML_Execute.Unknown_Name then Report.Missing := Report.Missing + 1;
             else Report.Unsupported := Report.Unsupported + 1; end if;
             -- Match existing initialization policy: one attempt, explicit report.
-            Candidate.Items (I).Static_Table_Region := False;
+            Tree.Items (I).Static_Table_Region := False;
          end if;
       end loop;
-      for I in 1 .. Candidate.Used loop
-         if Candidate.Items (I).Static_Table_Field then
-            Region := Candidate.Items (I).Region_Field_Info.Region;
-            if Region = Root or else Region > Candidate.Used
-              or else not Candidate.Items (Region).Alive
-              or else Candidate.Items (Region).Incarnation /= Candidate.Items (I).Region_Field_Info.Incarnation
-              or else Candidate.Items (Region).Object_Type /= Table_Region_Object
+      for I in 1 .. Tree.Used loop
+         if Tree.Items (I).Static_Table_Field then
+            Region := Tree.Items (I).Region_Field_Info.Region;
+            if Region = Root or else Region > Tree.Used
+              or else not Tree.Items (Region).Alive
+              or else Tree.Items (Region).Incarnation /= Tree.Items (I).Region_Field_Info.Incarnation
+              or else Tree.Items (Region).Object_Type /= Table_Region_Object
             then Report.Missing := Report.Missing + 1;
-            elsif Candidate.Items (I).Region_Field_Info.Offset > Field_Bit_Position (Natural'Last)
-              or else not AML_Field_Data.Fits (Candidate.Items (Region).Table_Binding.Region.Extent,
-                Natural (Candidate.Items (I).Region_Field_Info.Offset),
-                Natural (Candidate.Items (I).Region_Field_Info.Bits))
+            elsif Tree.Items (I).Region_Field_Info.Offset > Field_Bit_Position (Natural'Last)
+              or else not AML_Field_Data.Fits (Tree.Items (Region).Table_Binding.Region.Extent,
+                Natural (Tree.Items (I).Region_Field_Info.Offset),
+                Natural (Tree.Items (I).Region_Field_Info.Bits))
             then Report.Unsupported := Report.Unsupported + 1;
             else
-               Candidate.Items (I).Table_Binding :=
-                 (Region => Candidate.Items (Region).Table_Binding.Region,
-                  Offset => Natural (Candidate.Items (I).Region_Field_Info.Offset),
-                  Bits => Natural (Candidate.Items (I).Region_Field_Info.Bits));
-               Candidate.Items (I).Object_Type := Table_Field_Object;
+               Tree.Items (I).Table_Binding :=
+                 (Region => Tree.Items (Region).Table_Binding.Region,
+                  Offset => Natural (Tree.Items (I).Region_Field_Info.Offset),
+                  Bits => Natural (Tree.Items (I).Region_Field_Info.Bits));
+               Tree.Items (I).Object_Type := Table_Field_Object;
                Report.Bound := Report.Bound + 1;
             end if;
-            Candidate.Items (I).Static_Table_Field := False;
+            Tree.Items (I).Static_Table_Field := False;
          end if;
       end loop;
-      Tree := Candidate;
    end Resolve_Static_Tables;
 
    procedure Initialize_Members (Tree : in out State; Report : out Initialization_Report) is
@@ -3175,7 +3269,7 @@ package body AML_Namespace with SPARK_Mode is
                   declare
                      Used : Natural;
                      Parsed : AML_Decode.Status;
-                     Environment : Count_Context := (Candidate, Frames (Depth).Scope);
+                     Environment : Count_Context := (Candidate.Object_Capacity, Candidate.Byte_Capacity, Candidate.Element_Capacity, Candidate, Frames (Depth).Scope);
                   begin
                      Load_Bound_Data (Candidate.Values,
                        Data (Data'First + Offset .. Data'First + (Limit - 1)),
@@ -3222,7 +3316,7 @@ package body AML_Namespace with SPARK_Mode is
                           and then Header.Encoding_Bytes < Header.Extent then
                            declare
                               Count : constant AML_Data.Count_Result := Read_Static_Buffer_Count
-                                ((Candidate, Frames (Depth).Scope),
+                                ((Candidate.Object_Capacity, Candidate.Byte_Capacity, Candidate.Element_Capacity, Candidate, Frames (Depth).Scope),
                                  Bytes (Bytes'First + (1 + Header.Encoding_Bytes) ..
                                         Bytes'First + Header.Extent), Width);
                            begin
@@ -3282,7 +3376,21 @@ package body AML_Namespace with SPARK_Mode is
       Load_Names_From_Source (Tree, Data, Source, 0, Width, Result);
    end Load_Names;
 package body Owned with SPARK_Mode is
-   function Snapshot (A : Arena) return State is (A.Tree);
+   procedure Free_Values is new Ada.Unchecked_Deallocation (State, State_Owner);
+   function Storage_Released (A : Arena) return Boolean is (A.Tree = null);
+   function Can_Release_Storage (A : Arena) return Boolean is
+     (Storage_Released (A) or else (Valid (A)
+       and then Frame_Pins.Count (A.Frame_Roots) = 0
+       and then not A.Field_Uncertain.Present
+       and then not AML_Frame_Handles.Present (AML_Module_Frames.Top (A.Tree.Module_Frames))
+       and then (for all I in 1 .. A.Tree.Used =>
+         A.Tree.Items (I).Active_Calls = 0 and then not A.Tree.Items (I).Initializing)));
+   procedure Release_Storage (A : in out Arena; Released : out Boolean) is
+   begin
+      Released := Can_Release_Storage (A);
+      if Released then Free_Values (A.Tree); end if;
+   end Release_Storage;
+   function Snapshot (A : Arena) return State is (A.Tree.all);
    function Target (R : Reference) return AML_Objects.Object_ID is
      (AML_References.Target (R));
    function Offset (R : Reference) return Natural is
@@ -3290,11 +3398,15 @@ package body Owned with SPARK_Mode is
    function Byte_At (A : Arena; R : Reference) return AML_Decode.Byte is
      (AML_Objects.Stored_Byte (A.Tree.Values, Target (R), Offset (R)));
    function Valid (A : Arena) return Boolean is
-     (Mutex_Registry.Valid (A.Mutexes)
+     (A.Tree /= null and then A.Tree.Object_Capacity = A.Object_Capacity
+       and then A.Tree.Byte_Capacity = A.Byte_Capacity
+       and then A.Tree.Element_Capacity = A.Element_Capacity
+       and then A.Frame_Roots.Object_Capacity = A.Object_Capacity
+       and then Mutex_Registry.Valid (A.Mutexes)
        and then AML_Identity."=" (Mutex_Registry.Owner_Of (A.Mutexes), A.Token)
        and then Frame_Pins.Valid (A.Frame_Roots) and then Pins.Valid (A.Retention) and then Pins.Owner (A.Retention) = A.Token
        and then Pins.Pending_Count (A.Retention) = 0
-       and then A.Invocation_Issued <= Max_Invocations and then Valid_Context (A.Tree)
+       and then A.Invocation_Issued <= Max_Invocations and then Valid_Context (A.Tree.all)
        and then AML_Module_Frames.Belongs_To (A.Tree.Module_Frames,
           AML_Frame_Handles.Bind_Domain (A.Token, A.Invocation_Issued))
        and then (for all I in 1 .. A.Tree.Used =>
@@ -3302,23 +3414,23 @@ package body Owned with SPARK_Mode is
             AML_References.Belongs_To (A.Tree.Items (I).Buffer_Field_Info.Backing, A.Token))) and then
        (A.Token = AML_Identity.No_Identity or else AML_Identity.Issuer.Is_Issued (A.Token)));
    function Frame_Root_Count (A : Arena) return Natural is (Frame_Pins.Count (A.Frame_Roots));
-   function Node_Count (A : Arena) return Node_ID is (Count (A.Tree));
-   function Present (A : Arena; Node : Node_ID) return Boolean is (Present (A.Tree, Node));
-   function Kind (A : Arena; Node : Node_ID) return Object_Kind is (Kind (A.Tree, Node));
+   function Node_Count (A : Arena) return Node_ID is (Count (A.Tree.all));
+   function Present (A : Arena; Node : Node_ID) return Boolean is (Present (A.Tree.all, Node));
+   function Kind (A : Arena; Node : Node_ID) return Object_Kind is (Kind (A.Tree.all, Node));
    function Mutex_Data (A : Arena; Node : Node_ID) return Mutex_Metadata is
-     (Mutex_Data (A.Tree, Node));
+     (Mutex_Data (A.Tree.all, Node));
    function Processor_Data (A : Arena; Node : Node_ID) return Processor_Attributes is
-     (Processor_Data (A.Tree, Node));
+     (Processor_Data (A.Tree.all, Node));
    function Power_Data (A : Arena; Node : Node_ID) return Power_Attributes is
-     (Power_Data (A.Tree, Node));
+     (Power_Data (A.Tree.all, Node));
    function Operation_Region_Data (A : Arena; Node : Node_ID) return Operation_Region_Attributes is
-     (Operation_Region_Data (A.Tree, Node));
+     (Operation_Region_Data (A.Tree.all, Node));
    function Region_Field_Data (A : Arena; Node : Node_ID) return Region_Field_Attributes is
-     (Region_Field_Data (A.Tree, Node));
-   function Region_Data (A : Arena; Node : Node_ID) return Table_Region is (Region_Data (A.Tree, Node));
-   function Field_Data (A : Arena; Node : Node_ID) return Table_Field is (Field_Data (A.Tree, Node));
-   function Values_Used (A : Arena) return AML_Objects.Usage is (Value_Usage (A.Tree));
-   function Methods_Used (A : Arena) return Aggregate_Method_Count is (Method_Usage (A.Tree));
+     (Region_Field_Data (A.Tree.all, Node));
+   function Region_Data (A : Arena; Node : Node_ID) return Table_Region is (Region_Data (A.Tree.all, Node));
+   function Field_Data (A : Arena; Node : Node_ID) return Table_Field is (Field_Data (A.Tree.all, Node));
+   function Values_Used (A : Arena) return AML_Objects.Usage is (Value_Usage (A.Tree.all));
+   function Methods_Used (A : Arena) return Aggregate_Method_Count is (Method_Usage (A.Tree.all));
    function Initialized (A : Arena) return Boolean is
      (A.Token /= AML_Identity.No_Identity);
    function Generation (A : Arena) return AML_Identity.Identity is (A.Token);
@@ -3342,13 +3454,13 @@ package body Owned with SPARK_Mode is
    procedure Load (A : in out Arena; Data : AML_Decode.Bytes;
      Width : AML_Decode.Integer_Width; Result : out Load_Status) is
    begin
-      Load_Names (A.Tree, Data, Width, Result);
+      Load_Names (A.Tree.all, Data, Width, Result);
    end Load;
    function Pending_Members (A : Arena) return Natural is
-     (AML_Namespace.Pending_Members (A.Tree));
+     (AML_Namespace.Pending_Members (A.Tree.all));
    procedure Initialize_Members (A : in out Arena; Report : out Initialization_Report) is
    begin
-      Initialize_Members_With_Owner (A.Tree, A.Token, Report);
+      Initialize_Members_With_Owner (A.Tree.all, A.Token, Report);
    end Initialize_Members;
    function Mutex_Object_Live
      (A : Arena; Address : AML_Object_Identifiers.Object_Address; Level : Natural) return Boolean
@@ -3424,7 +3536,7 @@ package body Owned with SPARK_Mode is
             else Pins.Reset (A.Retention, Token, Result); end if;
             if Result /= Pins.Ready then raise Program_Error with "retention reset invariant"; end if;
          end;
-         A.Token := Token; A.Tree := Empty; A.Invocation_Issued := 0;
+         A.Token := Token; A.Tree.all := Empty_Like (A.Tree.all); A.Invocation_Issued := 0;
          A.Notifications := (others => <>);
          A.Last_Fatal := (Present => False);
       end if;
@@ -3569,14 +3681,14 @@ package body Owned with SPARK_Mode is
       Region : Table_Region; Node : out Node_ID; Result : out Bind_Status;
       Owner : Node_ID := Root) is
    begin
-      AML_Namespace.Bind_Table_Region (A.Tree, Scope, Part, Region, Node, Result, Owner);
+      AML_Namespace.Bind_Table_Region (A.Tree.all, Scope, Part, Region, Node, Result, Owner);
    end Bind_Table_Region;
    procedure Bind_Table_Field
      (A : in out Arena; Scope : Node_ID; Part : AML_Names.Segment;
       Field : Table_Field; Node : out Node_ID; Result : out Bind_Status;
       Owner : Node_ID := Root) is
    begin
-      AML_Namespace.Bind_Table_Field (A.Tree, Scope, Part, Field, Node, Result, Owner);
+      AML_Namespace.Bind_Table_Field (A.Tree.all, Scope, Part, Field, Node, Result, Owner);
    end Bind_Table_Field;
    procedure Append (A : in out Arena; Data : AML_Decode.Bytes;
      ID : out AML_Objects.Object_ID; Status : out AML_Objects.Allocation_Status) is
@@ -3652,29 +3764,36 @@ package body Owned with SPARK_Mode is
    procedure Store_Integer (A : in out Arena; R : Reference;
      Value : AML_Decode.Integer_Value; Status : out AML_Execute.Execution_Status)
    is
-      Candidate : AML_Objects.State;
+      Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Copied : AML_Objects.Clone_Status;
       ID : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
       Stored : AML_Objects.Package_References.Result_Status;
       OK : Boolean;
-   begin
-      Status := AML_Execute.Unsupported_Value;
-      if not Matches (A, R) then return; end if;
-      if AML_References.Kind (R) = AML_References.Byte_Slot then
-         Write (A, R, AML_Decode.Byte (Value mod 256), OK);
-         if OK then Status := AML_Execute.Returned; end if;
-      elsif AML_References.Kind (R) = AML_References.Package_Slot then
-         Candidate := A.Tree.Values;
-         AML_Objects.New_Integer (Candidate, Value, ID, Allocated);
-         if Allocated /= AML_Objects.Allocated then
-            Status := AML_Execute.Value_Limit; return;
+      procedure Execute_Value_Transaction is
+      begin
+         Status := AML_Execute.Unsupported_Value;
+         if not Matches (A, R) then return; end if;
+         if AML_References.Kind (R) = AML_References.Byte_Slot then
+            Write (A, R, AML_Decode.Byte (Value mod 256), OK);
+            if OK then Status := AML_Execute.Returned; end if;
+         elsif AML_References.Kind (R) = AML_References.Package_Slot then
+            AML_Objects.Clone (A.Tree.Values, Candidate, Copied);
+            if Copied /= AML_Objects.Cloned then Status := AML_Execute.Value_Limit; return; end if;
+            AML_Objects.New_Integer (Candidate, Value, ID, Allocated);
+            if Allocated /= AML_Objects.Allocated then
+               Status := AML_Execute.Value_Limit; return;
+            end if;
+            AML_Objects.Package_References.Write
+              (Candidate, AML_References.Package_Item (R), ID, Stored);
+            if Stored /= AML_Objects.Package_References.Ready then return; end if;
+            AML_Objects.Transfer (Candidate, A.Tree.Values);
+            Status := AML_Execute.Returned;
          end if;
-         AML_Objects.Package_References.Write
-           (Candidate, AML_References.Package_Item (R), ID, Stored);
-         if Stored /= AML_Objects.Package_References.Ready then return; end if;
-         A.Tree.Values := Candidate;
-         Status := AML_Execute.Returned;
-      end if;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Candidate);
    end Store_Integer;
 
    function Metadata_Matches (A : Arena; Item : AML_Execute.Metadata_Value) return Boolean is
@@ -4009,20 +4128,22 @@ package body Owned with SPARK_Mode is
       if not AML_Buffer_Bits.Fits (AML_Objects.Length (A.Tree.Values,
         AML_References.Source (Source)), Bit_Offset, Bit_Length)
       then Status := AML_Execute.Buffer_Field_Limit; return; end if;
-      Name_Target (A.Tree, Natural (Scope), Natural (Lifetime_Owner), Path, Base, Status, Module_Declaration);
+      Name_Target (A.Tree.all, Natural (Scope), Natural (Lifetime_Owner), Path, Base, Status, Module_Declaration);
       if Status /= AML_Execute.Returned then return; end if;
-      declare Candidate : State := A.Tree; begin
-         Insert (Candidate, Base, Path.Parts (Path.Count), Node, Added);
+      -- Insert refuses without changing the tree. After insertion succeeds,
+      -- only this non-fallible metadata publication remains; values are borrowed.
+      declare
+      begin
+         Insert (A.Tree.all, Base, Path.Parts (Path.Count), Node, Added);
          case Added is
             when Duplicate => Status := AML_Execute.Duplicate_Name; return;
             when Full => Status := AML_Execute.Namespace_Limit; return;
             when Invalid_Name => Status := AML_Execute.Bad_Name; return;
             when Inserted => null;
          end case;
-         Candidate.Items (Node) := (Candidate.Items (Node) with delta
+         A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
            Owner => Lifetime_Owner, Object_Type => Buffer_Field_Object, Object_Ref => 0,
            Buffer_Field_Info => (Source, Bit_Offset, Bit_Length, Always_Buffer));
-         A.Tree := Candidate;
          Field := AML_References.Bind_Named (A.Token, AML_References.Node_Position (Node),
            A.Tree.Items (Node).Incarnation);
          Status := AML_Execute.Returned;
@@ -4085,20 +4206,30 @@ package body Owned with SPARK_Mode is
    is
       Converted, Unused : AML_Execute.Datum;
       Field : Reference;
-      Prior_Values : constant AML_Objects.State := A.Tree.Values;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
+      procedure Execute_Value_Transaction is
+      begin
+         Status := AML_Execute.Unsupported_Value;
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         -- Operand conversion precedes declaration name/duplicate validation.
+         To_Buffer_And_Attach (A, Width, Source,
+           (Kind => AML_Execute.Detached_Result), Converted, Unused, Status);
+         if Status /= AML_Execute.Returned then return; end if;
+         if Scope > A.Tree.Used then
+            Status := AML_Execute.Unknown_Name;
+         else
+            Define_Buffer_Field_For_Context (A, Node_ID (Scope), Node_ID (Lifetime_Owner), Path, Converted.Object.Source,
+              Bit_Offset, Bit_Length, Always_Buffer, Field, Status, Module_Declaration);
+         end if;
+         if Status /= AML_Execute.Returned then AML_Objects.Transfer (Prior_Values, A.Tree.Values); end if;
+      end Execute_Value_Transaction;
    begin
-      Status := AML_Execute.Unsupported_Value;
-      -- Operand conversion precedes declaration name/duplicate validation.
-      To_Buffer_And_Attach (A, Width, Source,
-        (Kind => AML_Execute.Detached_Result), Converted, Unused, Status);
-      if Status /= AML_Execute.Returned then return; end if;
-      if Scope > A.Tree.Used then
-         Status := AML_Execute.Unknown_Name;
-      else
-         Define_Buffer_Field_For_Context (A, Node_ID (Scope), Node_ID (Lifetime_Owner), Path, Converted.Object.Source,
-           Bit_Offset, Bit_Length, Always_Buffer, Field, Status, Module_Declaration);
-      end if;
-      if Status /= AML_Execute.Returned then A.Tree.Values := Prior_Values; end if;
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end Define_Buffer_Field_Value_For_Context;
    procedure Define_Buffer_Field_Value
      (A : in out Arena; Scope : Natural; Path : AML_Names.Name_Result;
@@ -4123,24 +4254,34 @@ package body Owned with SPARK_Mode is
       Value : out AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
    is
       Extracted : Field_Result;
-      Prior_Values : constant AML_Objects.State := A.Tree.Values;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
+      procedure Execute_Value_Transaction is
+      begin
+         Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         Status := AML_Execute.Unsupported_Value;
+         if not Buffer_Field_Matches (A, Field) then return; end if;
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         Extract_Buffer_Field (A.Tree.all, A.Token,
+           Node_ID (AML_References.Named_Node (Field)), Width, Extracted, Status);
+         if Status /= AML_Execute.Returned then return; end if;
+         case Extracted.Kind is
+            when Scalar_Field => Value.Number := Extracted.Number;
+            when Buffer_Field =>
+               Read_Source (A, AML_References.Bind_Object (A.Token,
+                 AML_Objects.Address_Of (A.Tree.Values, Extracted.Object)), Value, Status);
+               if Status /= AML_Execute.Returned then
+                  AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+                  Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+               end if;
+         end case;
+      end Execute_Value_Transaction;
    begin
-      Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Status := AML_Execute.Unsupported_Value;
-      if not Buffer_Field_Matches (A, Field) then return; end if;
-      Extract_Buffer_Field (A.Tree, A.Token,
-        Node_ID (AML_References.Named_Node (Field)), Width, Extracted, Status);
-      if Status /= AML_Execute.Returned then return; end if;
-      case Extracted.Kind is
-         when Scalar_Field => Value.Number := Extracted.Number;
-         when Buffer_Field =>
-            Read_Source (A, AML_References.Bind_Object (A.Token,
-              AML_Objects.Address_Of (A.Tree.Values, Extracted.Object)), Value, Status);
-            if Status /= AML_Execute.Returned then
-               A.Tree.Values := Prior_Values;
-               Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-            end if;
-      end case;
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end Read_Buffer_Field;
    procedure Write_Buffer_Field
      (A : in out Arena; Field : Reference; Width : AML_Decode.Integer_Width;
@@ -4185,9 +4326,14 @@ package body Owned with SPARK_Mode is
             First : constant Natural := Natural (Info.Offset);
             Bits : constant Positive := Positive (Info.Bits);
             Data : AML_Decode.Bytes := AML_Objects.Byte_Data (A.Tree.Values, ID);
-            Candidate : AML_Objects.State := A.Tree.Values;
+            Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+            Store_Copy : AML_Objects.Clone_Status;
             Stored : AML_Objects.Buffer_Update_Status;
          begin
+            AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
+            if Store_Copy /= AML_Objects.Cloned then
+               Status := AML_Execute.Value_Limit; return;
+            end if;
             -- Read every source bit from the unchanged arena; stage all writes.
             for K in 0 .. Bits - 1 loop
                declare J : constant Positive := Data'First + (First + K) / Field_Byte_Bits; begin
@@ -4196,7 +4342,7 @@ package body Owned with SPARK_Mode is
             end loop;
             AML_Objects.Store_Buffer (Candidate, ID, Data, Stored);
             if Stored /= AML_Objects.Buffer_Updated then Status := AML_Execute.Value_Limit; return; end if;
-            A.Tree.Values := Candidate; Status := AML_Execute.Returned;
+            AML_Objects.Transfer (Candidate, A.Tree.Values); Status := AML_Execute.Returned;
          end;
       end;
    end Write_Buffer_Field;
@@ -4263,7 +4409,7 @@ package body Owned with SPARK_Mode is
 
    function Expression_Snapshot_Matches (A : Arena; Values : Root_Values;
       Roots : AML_Objects.Root_Snapshots.Snapshot) return Boolean is
-      Expected, Actual : Object_Root_Set := [others => False];
+      Expected, Actual : Object_Root_Set (1 .. A.Object_Capacity) := [others => False];
       Address : AML_Object_Identifiers.Object_Address;
       Accepted : Boolean;
       Status : AML_Objects.Root_Snapshots.Result_Status;
@@ -4294,6 +4440,7 @@ package body Owned with SPARK_Mode is
       Status := Snapshot_Uninitialized_Owner;
       if not Initialized (A) then R.Reject (Roots); return; end if;
       Status := Snapshot_Invalid_Value;
+      if Roots.Object_Capacity /= A.Object_Capacity then R.Reject (Roots); return; end if;
       for Value of Values loop
          Value_Root (A, Value, Address, Accepted);
          if not Accepted then R.Reject (Roots); return; end if;
@@ -4326,6 +4473,9 @@ package body Owned with SPARK_Mode is
       Targets := [others => AML_Object_Identifiers.No_Address];
       Status := Uninitialized_Owner;
       if not Initialized (A) then return; end if;
+      if Seeds'First /= 1 or else Seeds'Last /= A.Object_Capacity
+        or else Targets'First /= 1 or else Targets'Last /= A.Object_Capacity
+      then Status := Invalid_Root_Value; return; end if;
       if not Mutex_Registry_Live (A) then Status := Invalid_Root_Value; return; end if;
       for I in 1 .. Mutex_Registry.Held_Count (A.Mutexes) loop
          Seeds (AML_Object_Identifiers.Slot_Of (Mutex_Registry.Held_Address (A.Mutexes, I))) := True;
@@ -4389,7 +4539,7 @@ package body Owned with SPARK_Mode is
       Status := Invalid_Expression_Root;
       for Index in Frame_Pins.Root_Index loop
          declare
-            Snapshot_Seeds : Object_Root_Set;
+            Snapshot_Seeds : Object_Root_Set (1 .. A.Object_Capacity);
             Snapshot_Status : AML_Objects.Root_Snapshots.Result_Status;
             use type AML_Objects.Root_Snapshots.Result_Status;
          begin
@@ -4484,6 +4634,9 @@ package body Owned with SPARK_Mode is
       Scratch.Ambiguous_Edges := [others => False];
       Scratch.Problem := Persistent_Uninitialized;
       if not Initialized (A) then Result := Scratch.Problem; return; end if;
+      if Scratch.Object_Capacity /= A.Object_Capacity then
+         Scratch.Problem := Persistent_Invalid_Sequence; Result := Scratch.Problem; return;
+      end if;
       Scratch.Problem := Persistent_Invalid_Source;
       if not Has_Source (A, Source)
         or else AML_Objects.Kind (A.Tree.Values, AML_References.Source (Source))
@@ -4617,8 +4770,8 @@ package body Owned with SPARK_Mode is
      (A : Arena; Extra : Root_Values; Keep : Object_Root_Set;
       Scratch : Root_Workspace) return Boolean
    is
-      Seeds : Object_Root_Set;
-      Targets : AML_Objects.Reachability.Reference_Targets;
+      Seeds : Object_Root_Set (1 .. A.Object_Capacity);
+      Targets : AML_Objects.Reachability.Reference_Targets (1 .. A.Object_Capacity);
       Status : Root_Trace_Status;
    begin
       Gather_Owner_Roots (A, Extra, Seeds, Targets, Status);
@@ -4634,6 +4787,8 @@ package body Owned with SPARK_Mode is
       Walk_Status : AML_Objects.Reachability.Trace_Status;
    begin
       Keep := [others => False];
+      if Scratch.Object_Capacity /= A.Object_Capacity or else Keep'First /= 1
+        or else Keep'Last /= A.Object_Capacity then Status := Invalid_Root_Value; return; end if;
       Gather_Owner_Roots (A, Extra, Scratch.Seeds, Scratch.Targets, Status);
       if Status /= Roots_Traced then return; end if;
       AML_Objects.Reachability.Trace
@@ -4648,7 +4803,7 @@ package body Owned with SPARK_Mode is
    is
       ID : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
-      Witness : AML_Objects.Copies.Copy_Witness;
+      Witness : AML_Objects.Copies.Copy_Witness := AML_Objects.Copies.Empty_Witness (A.Object_Capacity);
    begin
       Copy := AML_References.No_Object_Handle;
       Status := AML_Execute.Unsupported_Value;
@@ -4972,7 +5127,7 @@ package body Owned with SPARK_Mode is
          Status := AML_Execute.Bad_Name; return;
       end if;
       if Scope > A.Tree.Used then Status := AML_Execute.Unknown_Name; return; end if;
-      Located := Resolve_Object (A.Tree, Node_ID (Scope), Path);
+      Located := Resolve_Object (A.Tree.all, Node_ID (Scope), Path);
       if Located.Status /= Found then Status := AML_Execute.Unknown_Name; return; end if;
       if Located.Node = Root then return; end if;
       if A.Tree.Items (Located.Node).Object_Type not in
@@ -5110,7 +5265,7 @@ package body Owned with SPARK_Mode is
          if Converted.Status = AML_Coercions.Empty_Buffer then
             Status := AML_Execute.Empty_Buffer; return;
          elsif Converted.Status /= AML_Coercions.Converted then return; end if;
-         Set_Integer (A.Tree, Node, Converted.Value);
+         Set_Integer (A.Tree.all, Node, Converted.Value);
          Status := AML_Execute.Returned; return;
       end if;
       if Source_Kind /= AML_Objects.Integer_Object then Count := AML_Objects.Length (A.Tree.Values, Source); end if;
@@ -5134,11 +5289,16 @@ package body Owned with SPARK_Mode is
         and then Count > AML_Objects.Max_Bytes - AML_Objects.Byte_Count (A.Tree.Values)
       then Status := AML_Execute.Value_Limit; return; end if;
       declare
-         Candidate : AML_Objects.State := A.Tree.Values;
+         Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+         Store_Copy : AML_Objects.Clone_Status;
          Data : AML_Decode.Bytes (1 .. Count) := [others => 0];
          B : AML_Decode.Byte;
          N : AML_Decode.Integer_Value := Number;
       begin
+         AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
+         if Store_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
          if Target_Kind = AML_Objects.String_Object then
             if Source_Kind = AML_Objects.Integer_Object then
                for I in reverse Data'Range loop Data (I) := Hex (AML_Decode.Byte (N mod 16)); N := N / 16; end loop;
@@ -5166,7 +5326,7 @@ package body Owned with SPARK_Mode is
             AML_Objects.Store_Buffer (Candidate, Target, Data, Buffer_Status);
             if Buffer_Status /= AML_Objects.Buffer_Updated then Status := AML_Execute.Value_Limit; return; end if;
          end if;
-         A.Tree.Values := Candidate;
+         AML_Objects.Transfer (Candidate, A.Tree.Values);
       end;
       Status := AML_Execute.Returned;
    end Store_Named_Direct;
@@ -5176,128 +5336,137 @@ package body Owned with SPARK_Mode is
       Item : AML_Execute.Datum; Status : out AML_Execute.Execution_Status;
       Mode : AML_Execute.Reference_Store_Mode := AML_Execute.Direct_Target)
    is
-      Candidate : AML_Objects.State;
+      Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Store_Copy : AML_Objects.Clone_Status;
       ID : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
       Stored : AML_Objects.Package_References.Result_Status;
-      Witness : AML_Objects.Copies.Copy_Witness;
-   begin
-      Status := AML_Execute.Unsupported_Value;
-      if not Matches (A, R) then return; end if;
-      -- Every target policy writes the existing field; none retags its node.
-      if Buffer_Field_Matches (A, R) then
-         Write_Buffer_Field (A, R, Width, Item, Status); return;
-      end if;
-      if AML_References.Kind (R) = AML_References.Named_Cell then
-         declare
-            Node : constant Node_ID := Node_ID (AML_References.Named_Node (R));
-            Path : constant AML_Names.Name_Result :=
-              (Kind => AML_Names.Accepted, Rooted => False, Parents => 0, Count => 1,
-               Parts => [1 => A.Tree.Items (Node).Part, others => "____"],
-               Consumed => AML_Names.Segment'Length);
-         begin
-            if Mode = AML_Execute.Explicit_Result_Target then
-               if A.Tree.Items (Node).Object_Type not in
-                 Integer_Object | String_Object | Buffer_Object | Uninitialized_Name_Object
-               then return; end if;
-               if Item.Value_Kind /= AML_Execute.Integer_Datum then
-                  if Item.Value_Kind /= AML_Execute.Object_Datum
-                    or else not Has_Source (A, Item.Object.Source)
-                    or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-                    or else AML_Objects.Kind (A.Tree.Values, Item.Object.ID) not in AML_Objects.Buffer_Object | AML_Objects.String_Object
-                  then return; end if;
-               end if;
-            end if;
-            if (Mode = AML_Execute.Direct_Target
-                and then A.Tree.Items (Node).Object_Type in Integer_Object | String_Object | Buffer_Object | Package_Object)
-              or else (Mode = AML_Execute.Argument_Indirect_Target
-                and then A.Tree.Items (Node).Object_Type = Package_Object)
-            then
-               Store_Named_Direct (A, Node, Width, Item, Status);
-            elsif Mode = AML_Execute.Explicit_Result_Target
-              and then Item.Value_Kind = AML_Execute.Object_Datum
-              and then ((A.Tree.Items (Node).Object_Type = Buffer_Object
-                and then AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.Buffer_Object)
-                or else (A.Tree.Items (Node).Object_Type = String_Object
-                  and then AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.String_Object))
-            then
-               Store_Named_Direct (A, Node, Width, Item, Status);
-            elsif Mode = AML_Execute.Explicit_Result_Target
-              and then A.Tree.Items (Node).Object_Type = Integer_Object
-              and then Item.Value_Kind = AML_Execute.Integer_Datum
-            then
-               -- exstoren: matching integer types copy only Value, retaining
-               -- the destination object. Differing explicit types attach anew.
-               Set_Integer (A.Tree, Node, AML_Integers.Normalize (Item.Number, Width));
-               Status := AML_Execute.Returned;
-            elsif Mode = AML_Execute.Explicit_Result_Target
-              and then Item.Value_Kind = AML_Execute.Object_Datum
-            then
-               -- exstoren: differing fixed-target primitive types attach the
-               -- authenticated source object, preserving result/target aliases.
-               -- Matching types were copied above; Arg/CopyObject stay separate.
-               A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
-                 Object_Type => (if AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.String_Object
-                   then String_Object else Buffer_Object),
-                 Object_Ref => Item.Object.ID);
-               Status := AML_Execute.Returned;
-            else
-               Replace_Value (A, Natural (A.Tree.Items (Node).Up), Path, Width, Item, Status);
-            end if;
-         end;
-      elsif AML_References.Kind (R) = AML_References.Byte_Slot then
-         if Item.Value_Kind = AML_Execute.Integer_Datum then
-            Store_Integer (A, R, AML_Integers.Normalize (Item.Number, Width), Status);
-         elsif Item.Value_Kind = AML_Execute.Object_Datum then
-            if not Has_Source (A, Item.Object.Source)
-              or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-            then return; end if;
+      Witness : AML_Objects.Copies.Copy_Witness := AML_Objects.Copies.Empty_Witness (A.Object_Capacity);
+      procedure Execute_Value_Transaction is
+      begin
+         Status := AML_Execute.Unsupported_Value;
+         if not Matches (A, R) then return; end if;
+         -- Every target policy writes the existing field; none retags its node.
+         if Buffer_Field_Matches (A, R) then
+            Write_Buffer_Field (A, R, Width, Item, Status); return;
+         end if;
+         if AML_References.Kind (R) = AML_References.Named_Cell then
             declare
-               Source_ID : constant AML_Objects.Object_ID := AML_References.Source (Item.Object.Source);
+               Node : constant Node_ID := Node_ID (AML_References.Named_Node (R));
+               Path : constant AML_Names.Name_Result :=
+                 (Kind => AML_Names.Accepted, Rooted => False, Parents => 0, Count => 1,
+                  Parts => [1 => A.Tree.Items (Node).Part, others => "____"],
+                  Consumed => AML_Names.Segment'Length);
             begin
-               if AML_Objects.Kind (A.Tree.Values, Source_ID) not in AML_Objects.String_Object | AML_Objects.Buffer_Object then return; end if;
-               if AML_Objects.Length (A.Tree.Values, Source_ID) = 0 then
-                  if AML_Objects.Kind (A.Tree.Values, Source_ID) = AML_Objects.Buffer_Object then
-                     Status := AML_Execute.Empty_Buffer; return;
+               if Mode = AML_Execute.Explicit_Result_Target then
+                  if A.Tree.Items (Node).Object_Type not in
+                    Integer_Object | String_Object | Buffer_Object | Uninitialized_Name_Object
+                  then return; end if;
+                  if Item.Value_Kind /= AML_Execute.Integer_Datum then
+                     if Item.Value_Kind /= AML_Execute.Object_Datum
+                       or else not Has_Source (A, Item.Object.Source)
+                       or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+                       or else AML_Objects.Kind (A.Tree.Values, Item.Object.ID) not in AML_Objects.Buffer_Object | AML_Objects.String_Object
+                     then return; end if;
                   end if;
-                  Store_Integer (A, R, 0, Status);
+               end if;
+               if (Mode = AML_Execute.Direct_Target
+                   and then A.Tree.Items (Node).Object_Type in Integer_Object | String_Object | Buffer_Object | Package_Object)
+                 or else (Mode = AML_Execute.Argument_Indirect_Target
+                   and then A.Tree.Items (Node).Object_Type = Package_Object)
+               then
+                  Store_Named_Direct (A, Node, Width, Item, Status);
+               elsif Mode = AML_Execute.Explicit_Result_Target
+                 and then Item.Value_Kind = AML_Execute.Object_Datum
+                 and then ((A.Tree.Items (Node).Object_Type = Buffer_Object
+                   and then AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.Buffer_Object)
+                   or else (A.Tree.Items (Node).Object_Type = String_Object
+                     and then AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.String_Object))
+               then
+                  Store_Named_Direct (A, Node, Width, Item, Status);
+               elsif Mode = AML_Execute.Explicit_Result_Target
+                 and then A.Tree.Items (Node).Object_Type = Integer_Object
+                 and then Item.Value_Kind = AML_Execute.Integer_Datum
+               then
+                  -- exstoren: matching integer types copy only Value, retaining
+                  -- the destination object. Differing explicit types attach anew.
+                  Set_Integer (A.Tree.all, Node, AML_Integers.Normalize (Item.Number, Width));
+                  Status := AML_Execute.Returned;
+               elsif Mode = AML_Execute.Explicit_Result_Target
+                 and then Item.Value_Kind = AML_Execute.Object_Datum
+               then
+                  -- exstoren: differing fixed-target primitive types attach the
+                  -- authenticated source object, preserving result/target aliases.
+                  -- Matching types were copied above; Arg/CopyObject stay separate.
+                  A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
+                    Object_Type => (if AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.String_Object
+                      then String_Object else Buffer_Object),
+                    Object_Ref => Item.Object.ID);
+                  Status := AML_Execute.Returned;
                else
-                  Store_Integer (A, R, AML_Decode.Integer_Value
-                    (AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, 0)), Status);
+                  Replace_Value (A, Natural (A.Tree.Items (Node).Up), Path, Width, Item, Status);
                end if;
             end;
-         end if;
-      elsif AML_References.Kind (R) = AML_References.Package_Slot then
-         Candidate := A.Tree.Values;
-         case Item.Value_Kind is
-            when AML_Execute.Integer_Datum =>
-               AML_Objects.New_Integer (Candidate, Item.Number, ID, Allocated, Item.Origin);
-            when AML_Execute.Metadata_Datum =>
-               if not Metadata_Matches (A, Item.Metadata) then return; end if;
-               case Item.Metadata.Mode is
-                  when AML_Execute.Live_Namespace =>
-                     AML_Objects.New_Metadata (Candidate, Item.Metadata.Namespace_Identity, ID, Allocated);
-                  when AML_Execute.Captured_Namespace =>
-                     AML_Objects.New_Metadata_Snapshot (Candidate,
-                       AML_Objects.Metadata_Snapshot_Data (A.Tree.Values,
-                         AML_References.Source (Item.Metadata.Snapshot_Source)), ID, Allocated);
-               end case;
-            when AML_Execute.Reference_Datum =>
-               if not AML_References.Well_Formed (Item.Ref) then return; end if;
-               AML_Objects.New_Reference (Candidate, Item.Ref, ID, Allocated);
-            when AML_Execute.Object_Datum =>
+         elsif AML_References.Kind (R) = AML_References.Byte_Slot then
+            if Item.Value_Kind = AML_Execute.Integer_Datum then
+               Store_Integer (A, R, AML_Integers.Normalize (Item.Number, Width), Status);
+            elsif Item.Value_Kind = AML_Execute.Object_Datum then
                if not Has_Source (A, Item.Object.Source)
                  or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
                then return; end if;
-               AML_Objects.Copies.Clone
-                 (Candidate, AML_References.Source (Item.Object.Source), ID, Allocated, Witness);
-         end case;
-         if Allocated = AML_Objects.Unsupported_Copy then return; end if;
-         if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
-         AML_Objects.Package_References.Write (Candidate, AML_References.Package_Item (R), ID, Stored);
-         if Stored /= AML_Objects.Package_References.Ready then return; end if;
-         A.Tree.Values := Candidate; Status := AML_Execute.Returned;
-      end if;
+               declare
+                  Source_ID : constant AML_Objects.Object_ID := AML_References.Source (Item.Object.Source);
+               begin
+                  if AML_Objects.Kind (A.Tree.Values, Source_ID) not in AML_Objects.String_Object | AML_Objects.Buffer_Object then return; end if;
+                  if AML_Objects.Length (A.Tree.Values, Source_ID) = 0 then
+                     if AML_Objects.Kind (A.Tree.Values, Source_ID) = AML_Objects.Buffer_Object then
+                        Status := AML_Execute.Empty_Buffer; return;
+                     end if;
+                     Store_Integer (A, R, 0, Status);
+                  else
+                     Store_Integer (A, R, AML_Decode.Integer_Value
+                       (AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, 0)), Status);
+                  end if;
+               end;
+            end if;
+         elsif AML_References.Kind (R) = AML_References.Package_Slot then
+            AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
+            if Store_Copy /= AML_Objects.Cloned then
+               Status := AML_Execute.Value_Limit; return;
+            end if;
+            case Item.Value_Kind is
+               when AML_Execute.Integer_Datum =>
+                  AML_Objects.New_Integer (Candidate, Item.Number, ID, Allocated, Item.Origin);
+               when AML_Execute.Metadata_Datum =>
+                  if not Metadata_Matches (A, Item.Metadata) then return; end if;
+                  case Item.Metadata.Mode is
+                     when AML_Execute.Live_Namespace =>
+                        AML_Objects.New_Metadata (Candidate, Item.Metadata.Namespace_Identity, ID, Allocated);
+                     when AML_Execute.Captured_Namespace =>
+                        AML_Objects.New_Metadata_Snapshot (Candidate,
+                          AML_Objects.Metadata_Snapshot_Data (A.Tree.Values,
+                            AML_References.Source (Item.Metadata.Snapshot_Source)), ID, Allocated);
+                  end case;
+               when AML_Execute.Reference_Datum =>
+                  if not AML_References.Well_Formed (Item.Ref) then return; end if;
+                  AML_Objects.New_Reference (Candidate, Item.Ref, ID, Allocated);
+               when AML_Execute.Object_Datum =>
+                  if not Has_Source (A, Item.Object.Source)
+                    or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+                  then return; end if;
+                  AML_Objects.Copies.Clone
+                    (Candidate, AML_References.Source (Item.Object.Source), ID, Allocated, Witness);
+            end case;
+            if Allocated = AML_Objects.Unsupported_Copy then return; end if;
+            if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
+            AML_Objects.Package_References.Write (Candidate, AML_References.Package_Item (R), ID, Stored);
+            if Stored /= AML_Objects.Package_References.Ready then return; end if;
+            AML_Objects.Transfer (Candidate, A.Tree.Values); Status := AML_Execute.Returned;
+         end if;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Candidate);
    end Store_Reference_Value;
    procedure Copy_And_Attach
      (A : in out Arena; Destination : AML_Execute.Copy_Destination;
@@ -5306,73 +5475,85 @@ package body Owned with SPARK_Mode is
    is
       Located : Lookup_Result;
       Node : Node_ID;
-      Prior : constant State := A.Tree;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
       ID : AML_Objects.Object_ID := 0;
       Allocated : AML_Objects.Allocation_Status;
       Tag : Object_Kind := Integer_Object;
-   begin
-      Copy := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Status := AML_Execute.Unsupported_Value;
-      if not Initialized (A) then return; end if;
-      case Destination.Kind is
-         when AML_Execute.Named_Destination =>
-            if Destination.Path.Kind /= AML_Names.Accepted then Status := AML_Execute.Bad_Name; return; end if;
-            if Destination.Scope > A.Tree.Used then Status := AML_Execute.Unknown_Name; return; end if;
-            Located := Resolve_Object (A.Tree, Node_ID (Destination.Scope), Destination.Path);
-            if Located.Status /= Found then Status := AML_Execute.Unknown_Name; return; end if;
-            Node := Located.Node;
-         when AML_Execute.Referenced_Destination =>
-            if not Named_Identity_Matches (A, Destination.Ref) then return; end if;
-            Node := (if AML_References.Kind (Destination.Ref) = AML_References.Root_Namespace then Root
-              else Node_ID (AML_References.Named_Node (Destination.Ref)));
-      end case;
-      if Node /= Root and then A.Tree.Items (Node).Object_Type not in
-        Integer_Object | String_Object | Buffer_Object | Package_Object | Reference_Object |
-        Metadata_Value_Object | Device_Object | Thermal_Zone_Object | Buffer_Field_Object | Uninitialized_Name_Object | Event_Object
-      then return; end if;
-      Copy_Value (A, Width, Item, Copy, Status);
-      if Status = AML_Execute.Returned then
-         if Node /= Root and then A.Tree.Items (Node).Object_Type = Buffer_Field_Object then
-            Write_Buffer_Field (A, AML_References.Bind_Named (A.Token,
-              AML_References.Node_Position (Node), A.Tree.Items (Node).Incarnation), Width, Copy, Status);
-         else
-            case Copy.Value_Kind is
-               when AML_Execute.Integer_Datum =>
-                  AML_Objects.New_Integer (A.Tree.Values, Copy.Number, ID, Allocated, Copy.Origin);
-                  Tag := Integer_Object;
-               when AML_Execute.Reference_Datum =>
-                  AML_Objects.New_Reference (A.Tree.Values, Copy.Ref, ID, Allocated);
-                  Tag := Reference_Object;
-               when AML_Execute.Metadata_Datum =>
-                  -- Copy_Value returns an authenticated, independently owned capture.
-                  ID := AML_References.Source (Copy.Metadata.Snapshot_Source);
-                  Allocated := AML_Objects.Allocated; Tag := Metadata_Value_Object;
-               when AML_Execute.Object_Datum =>
-                  ID := Copy.Object.ID; Allocated := AML_Objects.Allocated;
-                  case AML_Objects.Kind (A.Tree.Values, ID) is
-                     when AML_Objects.String_Object => Tag := String_Object;
-                     when AML_Objects.Buffer_Object => Tag := Buffer_Object;
-                     when AML_Objects.Package_Object => Tag := Package_Object;
-                     when AML_Objects.Mutex_Object => return;
-                     when AML_Objects.Event_Object =>
-                        -- Event replacement is supported for actual named
-                        -- objects. Root event payload semantics are separate.
-                        if Node = Root then Status := AML_Execute.Unsupported_Value;
-                        else Tag := Event_Object; end if;
-                     when others => Status := AML_Execute.Unsupported_Value;
-                  end case;
-            end case;
-            if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; end if;
-            if Status = AML_Execute.Returned then
-               if Node = Root then A.Tree.Root_Value := ID;
-               else A.Tree.Items (Node) := (A.Tree.Items (Node) with delta Object_Type => Tag, Object_Ref => ID); end if;
+      procedure Execute_Value_Transaction is
+      begin
+         Copy := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         Status := AML_Execute.Unsupported_Value;
+         if not Initialized (A) then return; end if;
+         case Destination.Kind is
+            when AML_Execute.Named_Destination =>
+               if Destination.Path.Kind /= AML_Names.Accepted then Status := AML_Execute.Bad_Name; return; end if;
+               if Destination.Scope > A.Tree.Used then Status := AML_Execute.Unknown_Name; return; end if;
+               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+               if Located.Status /= Found then Status := AML_Execute.Unknown_Name; return; end if;
+               Node := Located.Node;
+            when AML_Execute.Referenced_Destination =>
+               if not Named_Identity_Matches (A, Destination.Ref) then return; end if;
+               Node := (if AML_References.Kind (Destination.Ref) = AML_References.Root_Namespace then Root
+                 else Node_ID (AML_References.Named_Node (Destination.Ref)));
+         end case;
+         if Node /= Root and then A.Tree.Items (Node).Object_Type not in
+           Integer_Object | String_Object | Buffer_Object | Package_Object | Reference_Object |
+           Metadata_Value_Object | Device_Object | Thermal_Zone_Object | Buffer_Field_Object | Uninitialized_Name_Object | Event_Object
+         then return; end if;
+         -- Failed Copy_Value/BufferField writes affect only the value arena.
+         -- Destination metadata is published only after the last possible failure.
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         Copy_Value (A, Width, Item, Copy, Status);
+         if Status = AML_Execute.Returned then
+            if Node /= Root and then A.Tree.Items (Node).Object_Type = Buffer_Field_Object then
+               Write_Buffer_Field (A, AML_References.Bind_Named (A.Token,
+                 AML_References.Node_Position (Node), A.Tree.Items (Node).Incarnation), Width, Copy, Status);
+            else
+               case Copy.Value_Kind is
+                  when AML_Execute.Integer_Datum =>
+                     AML_Objects.New_Integer (A.Tree.Values, Copy.Number, ID, Allocated, Copy.Origin);
+                     Tag := Integer_Object;
+                  when AML_Execute.Reference_Datum =>
+                     AML_Objects.New_Reference (A.Tree.Values, Copy.Ref, ID, Allocated);
+                     Tag := Reference_Object;
+                  when AML_Execute.Metadata_Datum =>
+                     -- Copy_Value returns an authenticated, independently owned capture.
+                     ID := AML_References.Source (Copy.Metadata.Snapshot_Source);
+                     Allocated := AML_Objects.Allocated; Tag := Metadata_Value_Object;
+                  when AML_Execute.Object_Datum =>
+                     ID := Copy.Object.ID; Allocated := AML_Objects.Allocated;
+                     case AML_Objects.Kind (A.Tree.Values, ID) is
+                        when AML_Objects.String_Object => Tag := String_Object;
+                        when AML_Objects.Buffer_Object => Tag := Buffer_Object;
+                        when AML_Objects.Package_Object => Tag := Package_Object;
+                        when AML_Objects.Mutex_Object => return;
+                        when AML_Objects.Event_Object =>
+                           -- Event replacement is supported for actual named
+                           -- objects. Root event payload semantics are separate.
+                           if Node = Root then Status := AML_Execute.Unsupported_Value;
+                           else Tag := Event_Object; end if;
+                        when others => Status := AML_Execute.Unsupported_Value;
+                     end case;
+               end case;
+               if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; end if;
+               if Status = AML_Execute.Returned then
+                  if Node = Root then A.Tree.Root_Value := ID;
+                  else A.Tree.Items (Node) := (A.Tree.Items (Node) with delta Object_Type => Tag, Object_Ref => ID); end if;
+               end if;
             end if;
          end if;
-      end if;
-      if Status /= AML_Execute.Returned then
-         A.Tree := Prior;
-         Copy := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      end if;
+         if Status /= AML_Execute.Returned then
+            AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+            Copy := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         end if;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end Copy_And_Attach;
    procedure Concatenate_Resources_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;
@@ -5391,7 +5572,8 @@ package body Owned with SPARK_Mode is
       subtype View_Length is Natural range 0 .. AML_Objects.Max_Bytes + 1;
       Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
       Prior_Node : Entry_Record;
       ID : AML_Objects.Object_ID := 0;
       Allocated : AML_Objects.Allocation_Status;
@@ -5425,67 +5607,75 @@ package body Owned with SPARK_Mode is
          end if;
          return Data;
       end Converted;
-   begin
-      Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Status := Unsupported_Value;
-      -- Both source admissions precede resource parsing; no cached metadata.
-      if not Primitive (Right) or else not Primitive (Left) then return; end if;
-      case Destination.Kind is
-         when Detached_Result | Prepared_Cell_Copy => null;
-         when Named_Attachment =>
-            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
-            if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
-            Located := Resolve_Object (A.Tree, Node_ID (Destination.Scope), Destination.Path);
-            if Located.Status /= Found then Status := Unknown_Name; return; end if;
-            if Located.Node = Root then return; end if;
-            Node := Located.Node;
-            Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
-            if not Accepted then return; end if;
-         when Reference_Attachment =>
-            if not Matches (A, Destination.Ref) then return; end if;
-            Target_Reference := Destination.Ref;
-            if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-               Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-            end if;
-      end case;
-      declare
-         Right_View : constant AML_Decode.Bytes := Converted (Right);
-         Left_View : constant AML_Decode.Bytes := Converted (Left);
-         Built : constant Templates.Build_Result := Templates.Build (Left_View, Right_View);
+      procedure Execute_Value_Transaction is
       begin
-         case Built.Status is
-            when Templates.Invalid_Resource_Type => Status := Invalid_Resource_Type;
-            when Templates.Bad_Resource_Length => Status := Bad_Resource_Length;
-            when Templates.Buffer_Length => Status := Resource_Buffer_Length;
-            when Templates.No_End_Tag => Status := No_Resource_End_Tag;
-            when Templates.Output_Limit => Status := Value_Limit;
-            when Templates.Built =>
-               Prior_Values := A.Tree.Values;
-               if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
-               AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.Buffer_Object,
-                 Built.Data (1 .. Built.Length), ID, Allocated);
-               if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
-               Read_Source (A, AML_References.Bind_Object (A.Token,
-                 AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
-               if Status = Returned then
-                  case Destination.Kind is
-                     when Detached_Result => null;
-                     when Prepared_Cell_Copy => Cell_Value := Result_Value;
-                     when Named_Attachment =>
-                        Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Direct_Target);
-                     when Reference_Attachment =>
-                        Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
-                  end case;
-               end if;
-               if Status /= Returned then
-                  pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
-                  A.Tree.Values := Prior_Values;
-                  Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-                  Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         Status := Unsupported_Value;
+         -- Both source admissions precede resource parsing; no cached metadata.
+         if not Primitive (Right) or else not Primitive (Left) then return; end if;
+         case Destination.Kind is
+            when Detached_Result | Prepared_Cell_Copy => null;
+            when Named_Attachment =>
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
+               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+               if Located.Status /= Found then Status := Unknown_Name; return; end if;
+               if Located.Node = Root then return; end if;
+               Node := Located.Node;
+               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+               if not Accepted then return; end if;
+            when Reference_Attachment =>
+               if not Matches (A, Destination.Ref) then return; end if;
+               Target_Reference := Destination.Ref;
+               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
+                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
                end if;
          end case;
-      end;
+         declare
+            Right_View : constant AML_Decode.Bytes := Converted (Right);
+            Left_View : constant AML_Decode.Bytes := Converted (Left);
+            Built : constant Templates.Build_Result := Templates.Build (Left_View, Right_View);
+         begin
+            case Built.Status is
+               when Templates.Invalid_Resource_Type => Status := Invalid_Resource_Type;
+               when Templates.Bad_Resource_Length => Status := Bad_Resource_Length;
+               when Templates.Buffer_Length => Status := Resource_Buffer_Length;
+               when Templates.No_End_Tag => Status := No_Resource_End_Tag;
+               when Templates.Output_Limit => Status := Value_Limit;
+               when Templates.Built =>
+                  AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+                  if Snapshot_Copy /= AML_Objects.Cloned then
+                     Status := AML_Execute.Value_Limit; return;
+                  end if;
+                  if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
+                  AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.Buffer_Object,
+                    Built.Data (1 .. Built.Length), ID, Allocated);
+                  if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+                  Read_Source (A, AML_References.Bind_Object (A.Token,
+                    AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
+                  if Status = Returned then
+                     case Destination.Kind is
+                        when Detached_Result => null;
+                        when Prepared_Cell_Copy => Cell_Value := Result_Value;
+                        when Named_Attachment =>
+                           Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Direct_Target);
+                        when Reference_Attachment =>
+                           Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
+                     end case;
+                  end if;
+                  if Status /= Returned then
+                     pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
+                     AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+                     Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+                     Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+                  end if;
+            end case;
+         end;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end Concatenate_Resources_And_Attach;
 
    procedure Concatenate_And_Attach
@@ -5506,7 +5696,8 @@ package body Owned with SPARK_Mode is
       Left_Descriptor, Right_Descriptor : Descriptor_Kind := No_Descriptor;
       Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
       Prior_Node : Entry_Record;
       ID : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
@@ -5617,63 +5808,71 @@ package body Owned with SPARK_Mode is
          end case;
       end Data;
       Accepted : Boolean;
-   begin
-      Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Status := Unsupported_Value;
-      if not Initialized (A) then return; end if;
-      Classify (Left, Left_Kind, Left_Number, Left_ID, Left_Descriptor, Accepted);
-      if not Accepted then return; end if;
-      Classify (Right, Right_Kind, Right_Number, Right_ID, Right_Descriptor, Accepted);
-      if not Accepted then return; end if;
-      case Destination.Kind is
-         when Detached_Result | Prepared_Cell_Copy => null;
-         when Named_Attachment =>
-            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
-            if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
-            Located := Resolve_Object (A.Tree, Node_ID (Destination.Scope), Destination.Path);
-            if Located.Status /= Found then Status := Unknown_Name; return; end if;
-            if Located.Node = Root then return; end if;
-            Node := Located.Node;
-            Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
-            if not Accepted then return; end if;
-         when Reference_Attachment =>
-            if not Matches (A, Destination.Ref) then return; end if;
-            Target_Reference := Destination.Ref;
-            if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-               Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-            end if;
-      end case;
-      Prior_Values := A.Tree.Values;
-      if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
-      declare
-         Built : constant Builder.Result := Builder.Build
-           (Width, Left_Kind, Left_Number, Data (Left_ID, Left_Descriptor),
-            Right_Kind, Right_Number, Data (Right_ID, Right_Descriptor));
+      procedure Execute_Value_Transaction is
       begin
-         if Built.Status = Builder.Empty_Buffer then Status := Empty_Buffer; return; end if;
-         if Built.Status = Builder.Length_Limit then Status := Value_Limit; return; end if;
-         AML_Objects.New_Bytes
-           (A.Tree.Values,
-            (if Built.Kind = Builder.String_Output then AML_Objects.String_Object else AML_Objects.Buffer_Object),
-            Built.Data (1 .. Built.Length), ID, Allocated);
-      end;
-      if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
-      Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
-      if Status = Returned then
-         case Destination.Kind is
-            when Detached_Result => null;
-            when Prepared_Cell_Copy => Clone_Value (A, Width, Result_Value, Cell_Value, Status);
-            when Named_Attachment => Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Direct_Target);
-            when Reference_Attachment => Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
-         end case;
-      end if;
-      if Status /= Returned then
-         pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
-         A.Tree.Values := Prior_Values;
          Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      end if;
+         Status := Unsupported_Value;
+         if not Initialized (A) then return; end if;
+         Classify (Left, Left_Kind, Left_Number, Left_ID, Left_Descriptor, Accepted);
+         if not Accepted then return; end if;
+         Classify (Right, Right_Kind, Right_Number, Right_ID, Right_Descriptor, Accepted);
+         if not Accepted then return; end if;
+         case Destination.Kind is
+            when Detached_Result | Prepared_Cell_Copy => null;
+            when Named_Attachment =>
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
+               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+               if Located.Status /= Found then Status := Unknown_Name; return; end if;
+               if Located.Node = Root then return; end if;
+               Node := Located.Node;
+               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+               if not Accepted then return; end if;
+            when Reference_Attachment =>
+               if not Matches (A, Destination.Ref) then return; end if;
+               Target_Reference := Destination.Ref;
+               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
+                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
+               end if;
+         end case;
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
+         declare
+            Built : constant Builder.Result := Builder.Build
+              (Width, Left_Kind, Left_Number, Data (Left_ID, Left_Descriptor),
+               Right_Kind, Right_Number, Data (Right_ID, Right_Descriptor));
+         begin
+            if Built.Status = Builder.Empty_Buffer then Status := Empty_Buffer; return; end if;
+            if Built.Status = Builder.Length_Limit then Status := Value_Limit; return; end if;
+            AML_Objects.New_Bytes
+              (A.Tree.Values,
+               (if Built.Kind = Builder.String_Output then AML_Objects.String_Object else AML_Objects.Buffer_Object),
+               Built.Data (1 .. Built.Length), ID, Allocated);
+         end;
+         if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+         Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
+         if Status = Returned then
+            case Destination.Kind is
+               when Detached_Result => null;
+               when Prepared_Cell_Copy => Clone_Value (A, Width, Result_Value, Cell_Value, Status);
+               when Named_Attachment => Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Direct_Target);
+               when Reference_Attachment => Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
+            end case;
+         end if;
+         if Status /= Returned then
+            pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
+            AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+            Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+            Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         end if;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end Concatenate_And_Attach;
    procedure To_Buffer_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;
@@ -5689,88 +5888,97 @@ package body Owned with SPARK_Mode is
       Size : Natural := 0;
       Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
       Prior_Node : Entry_Record;
       ID : AML_Objects.Object_ID := 0;
       Allocated : AML_Objects.Allocation_Status;
       Located : Lookup_Result;
       Accepted : Boolean;
-   begin
-      Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Status := Unsupported_Value;
-      if not Initialized (A) then return; end if;
-      case Item.Value_Kind is
-         when Reference_Datum | Metadata_Datum => return;
-         when Integer_Datum => Size := (if Width = AML_Decode.Bits_32 then 4 else 8);
-         when Object_Datum =>
-            if not Has_Source (A, Item.Object.Source)
-              or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-            then return; end if;
-            Source_ID := AML_References.Source (Item.Object.Source);
-            case AML_Objects.Kind (A.Tree.Values, Source_ID) is
-               when AML_Objects.Buffer_Object => Existing_Buffer := True;
-               when AML_Objects.String_Object => Size := AML_Objects.Length (A.Tree.Values, Source_ID) + 1;
-               when others => return;
-            end case;
-      end case;
-      case Destination.Kind is
-         when Detached_Result | Prepared_Cell_Copy => null;
-         when Named_Attachment =>
-            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
-            if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
-            Located := Resolve_Object (A.Tree, Node_ID (Destination.Scope), Destination.Path);
-            if Located.Status /= Found then Status := Unknown_Name; return; end if;
-            if Located.Node = Root then return; end if;
-            Node := Located.Node;
-            Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
-            if not Accepted then return; end if;
-         when Reference_Attachment =>
-            if not Matches (A, Destination.Ref) then return; end if;
-            Target_Reference := Destination.Ref;
-            if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-               Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-            end if;
-      end case;
-      Prior_Values := A.Tree.Values;
-      if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
-      if Existing_Buffer then
-         ID := Source_ID;
-      else
-         if Size > AML_Objects.Max_Bytes then Status := Value_Limit; return; end if;
-         declare
-            Data : AML_Decode.Bytes (1 .. Size) := [others => 0];
-         begin
-            if Item.Value_Kind = Integer_Datum then
-               for I in Data'Range loop Data (I) := AML_Coercions.Octet (Item.Number, I - 1); end loop;
-            else
-               for I in 1 .. Size - 1 loop
-                  Data (I) := AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, I - 1);
-               end loop;
-            end if;
-            AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.Buffer_Object, Data, ID, Allocated);
-         end;
-         if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
-      end if;
-      Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
-      if Status = Returned then
-         case Destination.Kind is
-            when Detached_Result => null;
-            when Prepared_Cell_Copy =>
-               if Existing_Buffer then Clone_Value (A, Width, Result_Value, Cell_Value, Status);
-               else Cell_Value := Result_Value; end if;
-            when Named_Attachment =>
-               Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Explicit_Result_Target);
-            when Reference_Attachment =>
-               Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
-         end case;
-      end if;
-      if Status /= Returned then
-         pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
-         A.Tree.Values := Prior_Values;
+      procedure Execute_Value_Transaction is
+      begin
          Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      end if;
+         Status := Unsupported_Value;
+         if not Initialized (A) then return; end if;
+         case Item.Value_Kind is
+            when Reference_Datum | Metadata_Datum => return;
+            when Integer_Datum => Size := (if Width = AML_Decode.Bits_32 then 4 else 8);
+            when Object_Datum =>
+               if not Has_Source (A, Item.Object.Source)
+                 or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+               then return; end if;
+               Source_ID := AML_References.Source (Item.Object.Source);
+               case AML_Objects.Kind (A.Tree.Values, Source_ID) is
+                  when AML_Objects.Buffer_Object => Existing_Buffer := True;
+                  when AML_Objects.String_Object => Size := AML_Objects.Length (A.Tree.Values, Source_ID) + 1;
+                  when others => return;
+               end case;
+         end case;
+         case Destination.Kind is
+            when Detached_Result | Prepared_Cell_Copy => null;
+            when Named_Attachment =>
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
+               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+               if Located.Status /= Found then Status := Unknown_Name; return; end if;
+               if Located.Node = Root then return; end if;
+               Node := Located.Node;
+               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+               if not Accepted then return; end if;
+            when Reference_Attachment =>
+               if not Matches (A, Destination.Ref) then return; end if;
+               Target_Reference := Destination.Ref;
+               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
+                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
+               end if;
+         end case;
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
+         if Existing_Buffer then
+            ID := Source_ID;
+         else
+            if Size > AML_Objects.Max_Bytes then Status := Value_Limit; return; end if;
+            declare
+               Data : AML_Decode.Bytes (1 .. Size) := [others => 0];
+            begin
+               if Item.Value_Kind = Integer_Datum then
+                  for I in Data'Range loop Data (I) := AML_Coercions.Octet (Item.Number, I - 1); end loop;
+               else
+                  for I in 1 .. Size - 1 loop
+                     Data (I) := AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, I - 1);
+                  end loop;
+               end if;
+               AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.Buffer_Object, Data, ID, Allocated);
+            end;
+            if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+         end if;
+         Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
+         if Status = Returned then
+            case Destination.Kind is
+               when Detached_Result => null;
+               when Prepared_Cell_Copy =>
+                  if Existing_Buffer then Clone_Value (A, Width, Result_Value, Cell_Value, Status);
+                  else Cell_Value := Result_Value; end if;
+               when Named_Attachment =>
+                  Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Explicit_Result_Target);
+               when Reference_Attachment =>
+                  Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
+            end case;
+         end if;
+         if Status /= Returned then
+            pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
+            AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+            Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+            Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         end if;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end To_Buffer_And_Attach;
    procedure Mid_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;
@@ -5787,88 +5995,97 @@ package body Owned with SPARK_Mode is
       Selected : AML_Slices.Slice_Range;
       Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
       Prior_Node : Entry_Record;
       ID : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
       Located : Lookup_Result;
       Accepted : Boolean;
-   begin
-      Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Status := Unsupported_Value;
-      if not Initialized (A)
-        or else Start /= AML_Integers.Normalize (Start, Width)
-        or else Count /= AML_Integers.Normalize (Count, Width)
-      then return; end if;
-      case Item.Value_Kind is
-         when Reference_Datum | Metadata_Datum => return;
-         when Integer_Datum =>
-            Source_Length := (if Width = AML_Decode.Bits_32 then 4 else 8);
-         when Object_Datum =>
-            if not Has_Source (A, Item.Object.Source)
-              or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-            then return; end if;
-            Source_ID := AML_References.Source (Item.Object.Source);
-            Source_Kind := AML_Objects.Kind (A.Tree.Values, Source_ID);
-            if Source_Kind not in AML_Objects.String_Object | AML_Objects.Buffer_Object then return; end if;
-            Source_Length := AML_Objects.Length (A.Tree.Values, Source_ID);
-      end case;
-      if Destination.Kind = Reference_Attachment and then Destination.Mode = Explicit_Result_Target then return; end if;
-      Selected := AML_Slices.Select_Range (Source_Length, Start, Count);
-      case Destination.Kind is
-         when Detached_Result | Prepared_Cell_Copy => null;
-         when Named_Attachment =>
-            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
-            if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
-            Located := Resolve_Object (A.Tree, Node_ID (Destination.Scope), Destination.Path);
-            if Located.Status /= Found then Status := Unknown_Name; return; end if;
-            if Located.Node = Root then return; end if;
-            Node := Located.Node;
-            Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
-            if not Accepted then return; end if;
-         when Reference_Attachment =>
-            if not Matches (A, Destination.Ref) then return; end if;
-            Target_Reference := Destination.Ref;
-            if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-               Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-            end if;
-      end case;
-      Prior_Values := A.Tree.Values;
-      if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
-      declare
-         Data : AML_Decode.Bytes (1 .. Selected.Length);
-         Number : constant AML_Decode.Integer_Value :=
-           (if Item.Value_Kind = Integer_Datum then AML_Integers.Normalize (Item.Number, Width) else 0);
+      procedure Execute_Value_Transaction is
       begin
-         for I in Data'Range loop
-            if Item.Value_Kind = Integer_Datum then
-               Data (I) := AML_Coercions.Octet (Number, Selected.Offset + (I - 1));
-            else
-               Data (I) := AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, Selected.Offset + (I - 1));
-            end if;
-         end loop;
-         AML_Objects.New_Bytes (A.Tree.Values, Source_Kind, Data, ID, Allocated);
-      end;
-      if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
-      Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
-      if Status = Returned then
-         case Destination.Kind is
-            when Detached_Result => null;
-            when Prepared_Cell_Copy =>
-               Cell_Value := Result_Value;
-            when Named_Attachment =>
-               Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Direct_Target);
-            when Reference_Attachment =>
-               Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
-         end case;
-      end if;
-      if Status /= Returned then
-         pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
-         A.Tree.Values := Prior_Values;
          Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      end if;
+         Status := Unsupported_Value;
+         if not Initialized (A)
+           or else Start /= AML_Integers.Normalize (Start, Width)
+           or else Count /= AML_Integers.Normalize (Count, Width)
+         then return; end if;
+         case Item.Value_Kind is
+            when Reference_Datum | Metadata_Datum => return;
+            when Integer_Datum =>
+               Source_Length := (if Width = AML_Decode.Bits_32 then 4 else 8);
+            when Object_Datum =>
+               if not Has_Source (A, Item.Object.Source)
+                 or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+               then return; end if;
+               Source_ID := AML_References.Source (Item.Object.Source);
+               Source_Kind := AML_Objects.Kind (A.Tree.Values, Source_ID);
+               if Source_Kind not in AML_Objects.String_Object | AML_Objects.Buffer_Object then return; end if;
+               Source_Length := AML_Objects.Length (A.Tree.Values, Source_ID);
+         end case;
+         if Destination.Kind = Reference_Attachment and then Destination.Mode = Explicit_Result_Target then return; end if;
+         Selected := AML_Slices.Select_Range (Source_Length, Start, Count);
+         case Destination.Kind is
+            when Detached_Result | Prepared_Cell_Copy => null;
+            when Named_Attachment =>
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
+               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+               if Located.Status /= Found then Status := Unknown_Name; return; end if;
+               if Located.Node = Root then return; end if;
+               Node := Located.Node;
+               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+               if not Accepted then return; end if;
+            when Reference_Attachment =>
+               if not Matches (A, Destination.Ref) then return; end if;
+               Target_Reference := Destination.Ref;
+               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
+                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
+               end if;
+         end case;
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
+         declare
+            Data : AML_Decode.Bytes (1 .. Selected.Length);
+            Number : constant AML_Decode.Integer_Value :=
+              (if Item.Value_Kind = Integer_Datum then AML_Integers.Normalize (Item.Number, Width) else 0);
+         begin
+            for I in Data'Range loop
+               if Item.Value_Kind = Integer_Datum then
+                  Data (I) := AML_Coercions.Octet (Number, Selected.Offset + (I - 1));
+               else
+                  Data (I) := AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, Selected.Offset + (I - 1));
+               end if;
+            end loop;
+            AML_Objects.New_Bytes (A.Tree.Values, Source_Kind, Data, ID, Allocated);
+         end;
+         if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+         Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
+         if Status = Returned then
+            case Destination.Kind is
+               when Detached_Result => null;
+               when Prepared_Cell_Copy =>
+                  Cell_Value := Result_Value;
+               when Named_Attachment =>
+                  Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Direct_Target);
+               when Reference_Attachment =>
+                  Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
+            end case;
+         end if;
+         if Status /= Returned then
+            pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
+            AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+            Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+            Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         end if;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end Mid_And_Attach;
    procedure To_String_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;
@@ -5885,7 +6102,8 @@ package body Owned with SPARK_Mode is
       Selected_Length : AML_Slices.Extent := 0;
       Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
       Prior_Node : Entry_Record;
       ID : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
@@ -5895,80 +6113,88 @@ package body Owned with SPARK_Mode is
         (if Item.Value_Kind = Integer_Datum then
            AML_Coercions.Octet (AML_Integers.Normalize (Item.Number, Width), Offset)
          else AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, Offset));
-   begin
-      Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Status := Unsupported_Value;
-      if not Initialized (A)
-        or else Length /= AML_Integers.Normalize (Length, Width)
-      then return; end if;
-      case Item.Value_Kind is
-         when Reference_Datum | Metadata_Datum => return;
-         when Integer_Datum =>
-            Source_Length := (if Width = AML_Decode.Bits_32 then 4 else 8);
-         when Object_Datum =>
-            if not Has_Source (A, Item.Object.Source)
-              or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-            then return; end if;
-            Source_ID := AML_References.Source (Item.Object.Source);
-            Source_Kind := AML_Objects.Kind (A.Tree.Values, Source_ID);
-            if Source_Kind not in AML_Objects.String_Object | AML_Objects.Buffer_Object then return; end if;
-            Source_Length := AML_Objects.Length (A.Tree.Values, Source_ID);
-      end case;
-      if Destination.Kind = Reference_Attachment and then Destination.Mode = Direct_Target then return; end if;
-      -- String-to-Buffer appends NUL, which cannot extend the resulting
-      -- String prefix. Scan canonical source bytes without an intermediate.
-      while Selected_Length < Source_Length
-        and then AML_Decode.Integer_Value (Selected_Length) < Length
-        and then Source_Byte (Selected_Length) /= 0
-      loop
-         Selected_Length := Selected_Length + 1;
-      end loop;
-      case Destination.Kind is
-         when Detached_Result | Prepared_Cell_Copy => null;
-         when Named_Attachment =>
-            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
-            if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
-            Located := Resolve_Object (A.Tree, Node_ID (Destination.Scope), Destination.Path);
-            if Located.Status /= Found then Status := Unknown_Name; return; end if;
-            if Located.Node = Root then return; end if;
-            Node := Located.Node;
-            Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
-            if not Accepted then return; end if;
-         when Reference_Attachment =>
-            if not Matches (A, Destination.Ref) then return; end if;
-            Target_Reference := Destination.Ref;
-            if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-               Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-            end if;
-      end case;
-      Prior_Values := A.Tree.Values;
-      if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
-      declare
-         Data : AML_Decode.Bytes (1 .. Selected_Length);
+      procedure Execute_Value_Transaction is
       begin
-         for I in Data'Range loop Data (I) := Source_Byte (I - 1); end loop;
-         AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.String_Object, Data, ID, Allocated);
-      end;
-      if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
-      Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
-      if Status = Returned then
-         case Destination.Kind is
-            when Detached_Result => null;
-            when Prepared_Cell_Copy =>
-               Cell_Value := Result_Value;
-            when Named_Attachment =>
-               Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Explicit_Result_Target);
-            when Reference_Attachment =>
-               Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
-         end case;
-      end if;
-      if Status /= Returned then
-         pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
-         A.Tree.Values := Prior_Values;
          Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      end if;
+         Status := Unsupported_Value;
+         if not Initialized (A)
+           or else Length /= AML_Integers.Normalize (Length, Width)
+         then return; end if;
+         case Item.Value_Kind is
+            when Reference_Datum | Metadata_Datum => return;
+            when Integer_Datum =>
+               Source_Length := (if Width = AML_Decode.Bits_32 then 4 else 8);
+            when Object_Datum =>
+               if not Has_Source (A, Item.Object.Source)
+                 or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+               then return; end if;
+               Source_ID := AML_References.Source (Item.Object.Source);
+               Source_Kind := AML_Objects.Kind (A.Tree.Values, Source_ID);
+               if Source_Kind not in AML_Objects.String_Object | AML_Objects.Buffer_Object then return; end if;
+               Source_Length := AML_Objects.Length (A.Tree.Values, Source_ID);
+         end case;
+         if Destination.Kind = Reference_Attachment and then Destination.Mode = Direct_Target then return; end if;
+         -- String-to-Buffer appends NUL, which cannot extend the resulting
+         -- String prefix. Scan canonical source bytes without an intermediate.
+         while Selected_Length < Source_Length
+           and then AML_Decode.Integer_Value (Selected_Length) < Length
+           and then Source_Byte (Selected_Length) /= 0
+         loop
+            Selected_Length := Selected_Length + 1;
+         end loop;
+         case Destination.Kind is
+            when Detached_Result | Prepared_Cell_Copy => null;
+            when Named_Attachment =>
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
+               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+               if Located.Status /= Found then Status := Unknown_Name; return; end if;
+               if Located.Node = Root then return; end if;
+               Node := Located.Node;
+               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+               if not Accepted then return; end if;
+            when Reference_Attachment =>
+               if not Matches (A, Destination.Ref) then return; end if;
+               Target_Reference := Destination.Ref;
+               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
+                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
+               end if;
+         end case;
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
+         declare
+            Data : AML_Decode.Bytes (1 .. Selected_Length);
+         begin
+            for I in Data'Range loop Data (I) := Source_Byte (I - 1); end loop;
+            AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.String_Object, Data, ID, Allocated);
+         end;
+         if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+         Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
+         if Status = Returned then
+            case Destination.Kind is
+               when Detached_Result => null;
+               when Prepared_Cell_Copy =>
+                  Cell_Value := Result_Value;
+               when Named_Attachment =>
+                  Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Explicit_Result_Target);
+               when Reference_Attachment =>
+                  Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
+            end case;
+         end if;
+         if Status /= Returned then
+            pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
+            AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+            Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+            Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         end if;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end To_String_And_Attach;
    procedure Format_String_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;
@@ -5986,7 +6212,8 @@ package body Owned with SPARK_Mode is
       Existing_String : Boolean := False;
       Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State;
+      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+      Snapshot_Copy : AML_Objects.Clone_Status;
       Prior_Node : Entry_Record;
       ID : AML_Objects.Object_ID := 0;
       Located : Lookup_Result;
@@ -5998,73 +6225,81 @@ package body Owned with SPARK_Mode is
          AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.String_Object, Formatted.Data, ID, Allocated);
          Status := (if Allocated = AML_Objects.Allocated then Returned else Value_Limit);
       end Create;
-   begin
-      Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      Status := Unsupported_Value;
-      if not Initialized (A) then return; end if;
-      case Item.Value_Kind is
-         when Reference_Datum | Metadata_Datum => return;
-         when Integer_Datum => null;
-         when Object_Datum =>
-            if not Has_Source (A, Item.Object.Source)
-              or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-            then return; end if;
-            Source_ID := AML_References.Source (Item.Object.Source);
-            case AML_Objects.Kind (A.Tree.Values, Source_ID) is
-               when AML_Objects.String_Object => Existing_String := True;
-               when AML_Objects.Buffer_Object => null;
-               when others => return;
-            end case;
-      end case;
-      case Destination.Kind is
-         when Detached_Result | Prepared_Cell_Copy => null;
-         when Named_Attachment =>
-            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
-            if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
-            Located := Resolve_Object (A.Tree, Node_ID (Destination.Scope), Destination.Path);
-            if Located.Status /= Found then Status := Unknown_Name; return; end if;
-            if Located.Node = Root then return; end if;
-            Node := Located.Node;
-            Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
-            if not Accepted then return; end if;
-         when Reference_Attachment =>
-            if not Matches (A, Destination.Ref) then return; end if;
-            Target_Reference := Destination.Ref;
-            if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-               Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-            end if;
-      end case;
-      Prior_Values := A.Tree.Values;
-      if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
-      if Existing_String then
-         ID := Source_ID;
-      elsif Item.Value_Kind = Integer_Datum then
-         Create (Formatting.From_Integer (Selected_Mode, Width, Item.Number));
-         if Status /= Returned then return; end if;
-      else
-         Create (Formatting.From_Buffer (Selected_Mode, AML_Objects.Byte_Data (A.Tree.Values, Source_ID)));
-         if Status /= Returned then return; end if;
-      end if;
-      Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
-      if Status = Returned then
-         case Destination.Kind is
-            when Detached_Result => null;
-            when Prepared_Cell_Copy =>
-               if Existing_String then Clone_Value (A, Width, Result_Value, Cell_Value, Status);
-               else Cell_Value := Result_Value; end if;
-            when Named_Attachment =>
-               Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Explicit_Result_Target);
-            when Reference_Attachment =>
-               Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
-         end case;
-      end if;
-      if Status /= Returned then
-         pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
-         A.Tree.Values := Prior_Values;
+      procedure Execute_Value_Transaction is
+      begin
          Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-      end if;
+         Status := Unsupported_Value;
+         if not Initialized (A) then return; end if;
+         case Item.Value_Kind is
+            when Reference_Datum | Metadata_Datum => return;
+            when Integer_Datum => null;
+            when Object_Datum =>
+               if not Has_Source (A, Item.Object.Source)
+                 or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+               then return; end if;
+               Source_ID := AML_References.Source (Item.Object.Source);
+               case AML_Objects.Kind (A.Tree.Values, Source_ID) is
+                  when AML_Objects.String_Object => Existing_String := True;
+                  when AML_Objects.Buffer_Object => null;
+                  when others => return;
+               end case;
+         end case;
+         case Destination.Kind is
+            when Detached_Result | Prepared_Cell_Copy => null;
+            when Named_Attachment =>
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
+               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+               if Located.Status /= Found then Status := Unknown_Name; return; end if;
+               if Located.Node = Root then return; end if;
+               Node := Located.Node;
+               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+               if not Accepted then return; end if;
+            when Reference_Attachment =>
+               if not Matches (A, Destination.Ref) then return; end if;
+               Target_Reference := Destination.Ref;
+               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
+                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
+               end if;
+         end case;
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
+         if Existing_String then
+            ID := Source_ID;
+         elsif Item.Value_Kind = Integer_Datum then
+            Create (Formatting.From_Integer (Selected_Mode, Width, Item.Number));
+            if Status /= Returned then return; end if;
+         else
+            Create (Formatting.From_Buffer (Selected_Mode, AML_Objects.Byte_Data (A.Tree.Values, Source_ID)));
+            if Status /= Returned then return; end if;
+         end if;
+         Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
+         if Status = Returned then
+            case Destination.Kind is
+               when Detached_Result => null;
+               when Prepared_Cell_Copy =>
+                  if Existing_String then Clone_Value (A, Width, Result_Value, Cell_Value, Status);
+                  else Cell_Value := Result_Value; end if;
+               when Named_Attachment =>
+                  Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Explicit_Result_Target);
+               when Reference_Attachment =>
+                  Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
+            end case;
+         end if;
+         if Status /= Returned then
+            pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
+            AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+            Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+            Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+         end if;
+      end Execute_Value_Transaction;
+   begin
+      Execute_Value_Transaction;
+      AML_Objects.Discard (Prior_Values);
    end Format_String_And_Attach;
    function Invocation_Count (A : Arena) return AML_Frame_Handles.Invocation_Serial is
      (A.Invocation_Issued);
@@ -6101,25 +6336,23 @@ package body Owned with SPARK_Mode is
       Token : out Name_Reservation; Status : out AML_Execute.Execution_Status;
       Module_Declaration : Boolean)
    is
-      Candidate : State := A.Tree;
       Base, Node : Node_ID;
       Added : Insert_Status;
    begin
       Token := No_Name_Reservation; Status := AML_Execute.Unsupported_Value;
       if not Initialized (A) then return; end if;
-      Name_Target (A.Tree, Natural (Scope), Natural (Lifetime_Owner), Path, Base, Status, Module_Declaration);
+      Name_Target (A.Tree.all, Natural (Scope), Natural (Lifetime_Owner), Path, Base, Status, Module_Declaration);
       if Status /= AML_Execute.Returned then return; end if;
-      Insert (Candidate, Base, Path.Parts (Path.Count), Node, Added);
+      Insert (A.Tree.all, Base, Path.Parts (Path.Count), Node, Added);
       case Added is
          when Duplicate => Status := AML_Execute.Duplicate_Name; return;
          when Full => Status := AML_Execute.Namespace_Limit; return;
          when Invalid_Name => Status := AML_Execute.Bad_Name; return;
          when Inserted => null;
       end case;
-      Candidate.Items (Node) := (Candidate.Items (Node) with delta
+      A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
         Owner => Lifetime_Owner, Object_Type => Uninitialized_Name_Object, Initializing => True,
         Initializer_Frame => (if Module_Declaration then AML_Module_Frames.Top (A.Tree.Module_Frames) else AML_Frame_Handles.No_Frame));
-      A.Tree := Candidate;
       Token := (Ref => AML_References.Bind_Named (A.Token,
           AML_References.Node_Position (Node), A.Tree.Items (Node).Incarnation),
         Owner => Lifetime_Owner, Owner_Stamp => (if Lifetime_Owner = Root then 0 else A.Tree.Items (Lifetime_Owner).Incarnation),
@@ -6190,10 +6423,15 @@ package body Owned with SPARK_Mode is
          Complete_Name (A, Token, AML_References.No_Object_Handle, Status); return;
       end if;
       declare
-         Candidate : AML_Objects.State := A.Tree.Values;
+         Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+         Store_Copy : AML_Objects.Clone_Status;
          ID : AML_Objects.Object_ID;
          Allocated : AML_Objects.Allocation_Status;
       begin
+         AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
+         if Store_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
          if Layout.Initializer_Length = 0 then
             AML_Objects.New_Buffer (Candidate, Layout.Effective_Length,
               AML_Decode.Bytes'(1 .. 0 => 0), ID, Allocated);
@@ -6204,7 +6442,7 @@ package body Owned with SPARK_Mode is
          end if;
          if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
          -- One publication from the post-count arena; no pre-count state is restored.
-         A.Tree.Values := Candidate;
+         AML_Objects.Transfer (Candidate, A.Tree.Values);
          A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
            Object_Type => Buffer_Object, Object_Ref => ID, Initializing => False);
          Status := AML_Execute.Returned;
@@ -6301,7 +6539,7 @@ package body Owned with SPARK_Mode is
    begin
       R := AML_References.No_Reference; Success := False;
       if not Initialized (A) or else Node > A.Tree.Used then return; end if;
-      Canonical := Canonical_Node (A.Tree, Node_ID (Node));
+      Canonical := Canonical_Node (A.Tree.all, Node_ID (Node));
       if Canonical.Status /= Found then return; end if;
       if Canonical.Node = Root then R := AML_References.Bind_Root (A.Token);
       else
@@ -6357,7 +6595,7 @@ package body Owned with SPARK_Mode is
    begin
       R := AML_References.No_Reference; Success := False;
       if not Initialized (A) or else Node > A.Tree.Used then return; end if;
-      Canonical := Canonical_Node (A.Tree, Node_ID (Node));
+      Canonical := Canonical_Node (A.Tree.all, Node_ID (Node));
       if Canonical.Status /= Found or else Canonical.Node = Root then return; end if;
       if A.Tree.Items (Canonical.Node).Object_Type not in
         Integer_Object | String_Object | Buffer_Object | Package_Object | Reference_Object | Metadata_Value_Object | Uninitialized_Name_Object | Buffer_Field_Object | Region_Field_Object then return; end if;
@@ -6412,7 +6650,7 @@ package body Owned with SPARK_Mode is
       procedure Lookup (E : in out Arena; Backing : aliased AML_Table_Backing.State;
         Scope : Natural; Path : AML_Names.Name_Result; Width : AML_Decode.Integer_Width;
         Purpose : AML_Execute.Binding_Purpose; Binding : out AML_Execute.Binding_Result)
-        with Pre => Valid_Context (E.Tree) and then not Binding'Constrained, Post => Valid_Context (E.Tree);
+        with Pre => Valid_Context (E.Tree.all) and then not Binding'Constrained, Post => Valid_Context (E.Tree.all);
    end Named_Readers;
    package body Named_Readers is
       use type AML_Execute.Binding_Status;
@@ -6455,7 +6693,7 @@ package body Owned with SPARK_Mode is
          if Purpose in AML_Execute.Reference_Target | AML_Execute.Namespace_Identity then
             Binding := (Status => AML_Execute.Missing_Binding);
             if Scope > E.Tree.Used then return; end if;
-            Located := Resolve_Object (E.Tree, Node_ID (Scope), Path);
+            Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
             if Located.Status /= Found then return; end if;
             if Purpose = AML_Execute.Namespace_Identity then
                Make_Named_Identity (E, Natural (Located.Node), Ref, OK);
@@ -6465,10 +6703,10 @@ package body Owned with SPARK_Mode is
             return;
          end if;
          if Purpose = AML_Execute.Evaluate_Binding and then Scope <= E.Tree.Used then
-            Located := Resolve_Object (E.Tree, Node_ID (Scope), Path);
+            Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
             if Located.Status = Found and then Located.Node /= Root
-              and then (Kind (E.Tree, Located.Node) = Event_Object or else
-                (Kind (E.Tree, Located.Node) = Mutex_Object and then
+              and then (Kind (E.Tree.all, Located.Node) = Event_Object or else
+                (Kind (E.Tree.all, Located.Node) = Mutex_Object and then
                  E.Tree.Items (Located.Node).Object_Ref /= AML_Objects.No_Object)) then
                Read_Source (E, AML_References.Bind_Object (E.Token,
                  AML_Objects.Address_Of (E.Tree.Values, E.Tree.Items (Located.Node).Object_Ref)), Value, Read_Status);
@@ -6479,10 +6717,10 @@ package body Owned with SPARK_Mode is
             end if;
          end if;
          if Purpose in AML_Execute.Evaluate_Binding | AML_Execute.Inspect_Binding and then Scope <= E.Tree.Used then
-            Located := Resolve_Object (E.Tree, Node_ID (Scope), Path);
+            Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
             if Located.Status = Found and then
-              (Located.Node = Root or else Kind (E.Tree, Located.Node) = Metadata_Value_Object
-               or else Namespace_Metadata_Kind (Kind (E.Tree, Located.Node)))
+              (Located.Node = Root or else Kind (E.Tree.all, Located.Node) = Metadata_Value_Object
+               or else Namespace_Metadata_Kind (Kind (E.Tree.all, Located.Node)))
             then
                Make_Named_Identity (E, Natural (Located.Node), Ref, OK);
                if not OK then Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return; end if;
@@ -6500,8 +6738,8 @@ package body Owned with SPARK_Mode is
                return;
             end if;
             if Purpose = AML_Execute.Evaluate_Binding and then Located.Status = Found and then Located.Node /= Root
-              and then Present (E.Tree, Located.Node)
-              and then Kind (E.Tree, Located.Node) = Buffer_Field_Object
+              and then Present (E.Tree.all, Located.Node)
+              and then Kind (E.Tree.all, Located.Node) = Buffer_Field_Object
             then
                Make_Named_Reference (E, Natural (Located.Node), Ref, OK);
                if not OK then Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return; end if;
@@ -6516,9 +6754,9 @@ package body Owned with SPARK_Mode is
                return;
             end if;
             if Purpose = AML_Execute.Evaluate_Binding and then Located.Status = Found and then Located.Node /= Root
-              and then Present (E.Tree, Located.Node)
-              and then Kind (E.Tree, Located.Node) = Table_Field_Object
-              and then Field_Data (E.Tree, Located.Node).Bits >
+              and then Present (E.Tree.all, Located.Node)
+              and then Kind (E.Tree.all, Located.Node) = Table_Field_Object
+              and then Field_Data (E.Tree.all, Located.Node).Bits >
                 (if Width = AML_Decode.Bits_32 then 32 else 64)
             then
                Before_Allocation (E, [], Gate);
@@ -6527,7 +6765,7 @@ package body Owned with SPARK_Mode is
                end if;
             end if;
          end if;
-         Read_Table_Binding (E.Tree, Backing, Scope, Path, Width, Purpose, Binding); Stamp (E, Binding);
+         Read_Table_Binding (E.Tree.all, Backing, Scope, Path, Width, Purpose, Binding); Stamp (E, Binding);
       end Lookup;
    end Named_Readers;
    type Null_Field_Context is null record;
@@ -6601,7 +6839,7 @@ package body Owned with SPARK_Mode is
       use type AML_Execute.Binding_Status;
       use type AML_References.Object_Handle;
       Entry_Token : constant AML_Identity.Identity := A.Token;
-      Owner_Workspace : Semantic_Owner_Workspace;
+      Owner_Workspace : Semantic_Owner_Workspace (A.Object_Capacity);
       function Census_Status (Result : Persistent_Owner_Result)
         return AML_Execute.Owner_Census_Status is
         (case Result is
@@ -6638,7 +6876,7 @@ package body Owned with SPARK_Mode is
       end Owner_Census_Finish;
 
       function Context_Valid (E : Arena) return Boolean is
-        (Valid_Context (E.Tree) and then
+        (Valid_Context (E.Tree.all) and then
           (E.Token = AML_Identity.No_Identity or else AML_Identity.Issuer.Is_Issued (E.Token))
           and then E.Token = Entry_Token
           and then (if AML_Frame_Handles.Present (AML_Module_Frames.Top (E.Tree.Module_Frames)) then
@@ -6704,7 +6942,7 @@ package body Owned with SPARK_Mode is
       procedure PCI_Property
         (E : Arena; Scope : Node_ID; Name : AML_Names.Segment;
          Binding : out AML_Execute.Binding_Result; Missing : out Boolean) is
-         Located : constant Lookup_Result := Canonical_Child (E.Tree, Scope, Name);
+         Located : constant Lookup_Result := Canonical_Child (E.Tree.all, Scope, Name);
          Good : Boolean;
          Ref : Reference;
       begin
@@ -6787,7 +7025,7 @@ package body Owned with SPARK_Mode is
          Up : Node_ID;
          Good : Boolean;
       begin
-         Up := Parent (E.Tree, Node_ID (AML_References.Named_Node (E.PCI_Work (N).Walk)));
+         Up := Parent (E.Tree.all, Node_ID (AML_References.Named_Node (E.PCI_Work (N).Walk)));
          if Up = Root then E.PCI_Work (N).Walk := AML_References.No_Reference;
          else
             Make_Named_Identity (E, Natural (Up), E.PCI_Work (N).Walk, Good);
@@ -6806,9 +7044,9 @@ package body Owned with SPARK_Mode is
          if N = Root or else E.Tree.Items (N).Operation_Info.PCI.Known then return; end if;
          Step := (Phase => AML_Execute.Context_Failed, others => <>);
          if E.PCI_Work (N).Active or else E.PCI_Issued = AML_Execute.Field_Context_Ticket'Last then return; end if;
-         D := Parent (E.Tree, N);
+         D := Parent (E.Tree.all, N);
          while D /= Root and then E.Tree.Items (D).Object_Type /= Device_Object loop
-            D := Parent (E.Tree, D);
+            D := Parent (E.Tree.all, D);
          end loop;
          if D = Root then return; end if;
          E.PCI_Issued := E.PCI_Issued + 1;
@@ -6872,10 +7110,10 @@ package body Owned with SPARK_Mode is
          Host_Node := Node_ID (AML_References.Named_Node (W.Host));
          Up := Node_ID (AML_References.Named_Node (W.Device));
          if Up /= Host_Node then
-            Up := Parent (E.Tree, Up);
+            Up := Parent (E.Tree.all, Up);
             while Up /= Host_Node and then Up /= Root loop
                if E.Tree.Items (Up).Object_Type = Device_Object then return; end if;
-               Up := Parent (E.Tree, Up);
+               Up := Parent (E.Tree.all, Up);
             end loop;
          end if;
          W.Stage := PCI_ADR; Step.Phase := AML_Execute.Context_Value;
@@ -6906,7 +7144,7 @@ package body Owned with SPARK_Mode is
          Read_Status : AML_Execute.Execution_Status;
       begin
          if Purpose = AML_Execute.Evaluate_Binding and then Scope <= E.Tree.Used then
-            Located := Resolve_Object (E.Tree, Node_ID (Scope), Path);
+            Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
             if Located.Status = Found and then Located.Node /= Root
               and then E.Tree.Items (Located.Node).Object_Type = Region_Field_Object then
                Make_Named_Identity (E, Natural (Located.Node), Ref, OK);
@@ -6931,7 +7169,7 @@ package body Owned with SPARK_Mode is
          Readers.Lookup (E, Backing, Scope, Path, Width, Purpose, Binding);
       end Lookup;
       function Method (E : Arena; ID : Natural) return AML_Execute.Method_Definition is
-        (Read_Method (E.Tree, ID));
+        (Read_Method (E.Tree.all, ID));
       procedure Buffer_Literal
         (E : in out Arena; Scope : Natural; Length : AML_Buffer_Layouts.Buffer_Length;
          Initializer : AML_Decode.Bytes; Binding : out AML_Execute.Binding_Result)
@@ -6944,7 +7182,7 @@ package body Owned with SPARK_Mode is
          if Gate /= Allocation_Allowed then
             Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
          end if;
-         Materialize_Buffer_Literal (E.Tree, Scope, Length, Initializer, Binding);
+         Materialize_Buffer_Literal (E.Tree.all, Scope, Length, Initializer, Binding);
          Stamp (E, Binding);
       end Buffer_Literal;
       procedure Literal (E : in out Arena; Scope : Natural; Kind : AML_Execute.Literal_Kind; Width : AML_Decode.Integer_Width; Data : AML_Decode.Bytes;
@@ -6961,7 +7199,7 @@ package body Owned with SPARK_Mode is
          if Gate /= Allocation_Allowed then
             Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
          end if;
-         Materialize_Literal_With_Owner (E.Tree, E.Token, Scope, Kind, Width, Data, Source, Source_First, Binding); Stamp (E, Binding);
+         Materialize_Literal_With_Owner (E.Tree.all, E.Token, Scope, Kind, Width, Data, Source, Source_First, Binding); Stamp (E, Binding);
       end Literal;
       procedure Dereference_With_Provenance (E : in out Arena; Ref : Reference;
         Width : AML_Decode.Integer_Width;
@@ -7016,7 +7254,7 @@ package body Owned with SPARK_Mode is
          OK : Boolean;
       begin
          if Scope <= E.Tree.Used then
-            Located := Resolve_Object (E.Tree, Node_ID (Scope), Path);
+            Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
             if Located.Status = Found and then Located.Node /= Root
               and then E.Tree.Items (Located.Node).Object_Type = Region_Field_Object then
                Make_Named_Identity (E, Natural (Located.Node), Ref, OK);
@@ -7037,7 +7275,7 @@ package body Owned with SPARK_Mode is
            and then Scope <= E.Tree.Used
            and then Path.Kind = AML_Names.Accepted and then Path.Count > 0
          then
-            Located := Resolve_Object (E.Tree, Node_ID (Scope), Path);
+            Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
             if Located.Status = Found and then Located.Node /= Root
               and then E.Tree.Items (Located.Node).Alive
               and then E.Tree.Items (Located.Node).Initializing
@@ -7055,7 +7293,7 @@ package body Owned with SPARK_Mode is
          end if;
          Status := AML_Execute.Write_Unsupported;
          if Scope > E.Tree.Used then Status := AML_Execute.Write_Missing; return; end if;
-         Located := Resolve_Object (E.Tree, Node_ID (Scope), Path);
+         Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
          if Located.Status /= Found then Status := AML_Execute.Write_Missing; return; end if;
          if Located.Node = Root then Status := AML_Execute.Write_Unsupported; return; end if;
          if E.Tree.Items (Located.Node).Object_Type = Buffer_Field_Object then
@@ -7074,22 +7312,22 @@ package body Owned with SPARK_Mode is
       procedure Begin_Call (E : in out Arena; Scope : Natural; Allowed : out Boolean)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
-      begin Begin_Method (E.Tree, Scope, Allowed); end Begin_Call;
+      begin Begin_Method (E.Tree.all, Scope, Allowed); end Begin_Call;
       procedure End_Call (E : in out Arena; Scope : Natural)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
-      begin End_Method (E.Tree, Scope); end End_Call;
+      begin End_Method (E.Tree.all, Scope); end End_Call;
 
 
 
       procedure Complete (E : in out Arena; Backing : aliased AML_Table_Backing.State; Token : Natural; Width : AML_Decode.Integer_Width; Signature, OEM, Table_ID : AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
-      begin Complete_Table_Binding (E.Tree, Backing, Token, Width, Signature, OEM, Table_ID, Status); end Complete;
+      begin Complete_Table_Binding (E.Tree.all, Backing, Token, Width, Signature, OEM, Table_ID, Status); end Complete;
       procedure Timer (E : in out Arena; Value : out AML_Decode.Integer_Value; Available : out Boolean)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
-      begin Read_Context_Timer (E.Tree, Value, Available); end Timer;
+      begin Read_Context_Timer (E.Tree.all, Value, Available); end Timer;
       procedure Index (E : in out Arena; Source : AML_References.Object_Handle; Position : AML_Decode.Integer_Value; Ref : out Reference; Status : out AML_Execute.Execution_Status)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
@@ -7135,7 +7373,7 @@ package body Owned with SPARK_Mode is
          end if;
          Before_Allocation (E, [], Gate);
          if Gate /= Allocation_Allowed then Consumed := 0; Status := AML_Execute.Unsupported_Value; return; end if;
-         Define_Runtime_Name_For_Context (E.Tree, E.Token, Scope, Lifetime_Owner,
+         Define_Runtime_Name_For_Context (E.Tree.all, E.Token, Scope, Lifetime_Owner,
            Path, Width, Data, Source, Source_First, Consumed, Status, Module_Declaration);
       end Define_Name;
 
@@ -7285,7 +7523,7 @@ package body Owned with SPARK_Mode is
       procedure Publish_Expression
         (E : in out Arena; Frame : AML_Frame_Handles.Frame_Handle;
          Values : AML_Execute.Expression_Values) is
-         Roots : AML_Objects.Root_Snapshots.Snapshot;
+         Roots : AML_Objects.Root_Snapshots.Snapshot := AML_Objects.Root_Snapshots.Empty (E.Object_Capacity);
          Built : Snapshot_Build_Status;
          Updated : Frame_Pins.Result_Status;
          use type Frame_Pins.Result_Status;
@@ -7549,55 +7787,75 @@ package body Owned with SPARK_Mode is
          Metadata : AML_Container_Headers.Attributes; New_Scope : out Natural;
          Status : out AML_Execute.Execution_Status)
       is
-         Candidate : State := Environment.Tree;
+         Candidate_Lease : AML_Declaration_Contexts.State := Execute_Declaration_Lease_Store;
+         Pending_Entry : Entry_Record;
          Located : Lookup_Result;
          Base, Node : Node_ID;
          Added : Insert_Status;
+         Stamp : AML_References.Node_Incarnation;
          Pushed : Boolean;
          use type AML_Container_Headers.Container_Kind;
       begin
          New_Scope := Scope; Status := AML_Execute.Unsupported_Value;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then return; end if;
          if Metadata.Kind = AML_Container_Headers.Scope_Container then
-            Located := Resolve_Object (Candidate, Node_ID (Scope), Path);
+            Located := Resolve_Object (Environment.Tree.all, Node_ID (Scope), Path);
             if Located.Status /= Found then Status := AML_Execute.Unknown_Name; return; end if;
             Node := Located.Node;
-            if not Static_Scope (Kind (Candidate, Node)) then Status := AML_Execute.Unsupported_Value; return; end if;
+            if not Static_Scope (Kind (Environment.Tree.all, Node)) then Status := AML_Execute.Unsupported_Value; return; end if;
+            Stamp := (if Node = Root then 0 else Environment.Tree.Items (Node).Incarnation);
          else
-            Name_Target (Candidate, Scope, AML_Declaration_Contexts.Scope_Of (Lease),
+            Name_Target (Environment.Tree.all, Scope, AML_Declaration_Contexts.Scope_Of (Lease),
               Path, Base, Status, AML_Declaration_Contexts.Is_Module (Lease));
             if Status /= AML_Execute.Returned then return; end if;
-            Insert (Candidate, Base, Path.Parts (Path.Count), Node, Added);
+            Added := Insertion_Admission (Environment.Tree.all, Base, Path.Parts (Path.Count));
             case Added is
                when Duplicate => Status := AML_Execute.Duplicate_Name; return;
                when Full => Status := AML_Execute.Namespace_Limit; return;
                when Invalid_Name => Status := AML_Execute.Bad_Name; return;
                when Inserted => null;
             end case;
-            Candidate.Items (Node).Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
+            Node := Environment.Tree.Used + 1;
+            Pending_Entry := Next_Entry (Environment.Tree.all, Base, Path.Parts (Path.Count));
+            Stamp := Pending_Entry.Incarnation;
+            Pending_Entry.Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
             case Metadata.Kind is
-               when AML_Container_Headers.Device_Container => Candidate.Items (Node).Object_Type := Device_Object;
-               when AML_Container_Headers.Thermal_Zone_Container => Candidate.Items (Node).Object_Type := Thermal_Zone_Object;
+               when AML_Container_Headers.Device_Container => Pending_Entry.Object_Type := Device_Object;
+               when AML_Container_Headers.Thermal_Zone_Container => Pending_Entry.Object_Type := Thermal_Zone_Object;
                when AML_Container_Headers.Processor_Container =>
-                  Candidate.Items (Node).Object_Type := Processor_Object;
-                  Candidate.Items (Node).Processor_Info :=
+                  Pending_Entry.Object_Type := Processor_Object;
+                  Pending_Entry.Processor_Info :=
                     (AML_Decode.Byte (Metadata.Processor_ID), Processor_Block_Address (Metadata.Block_Address),
                      AML_Decode.Byte (Metadata.Block_Length));
                when AML_Container_Headers.Power_Resource_Container =>
-                  Candidate.Items (Node).Object_Type := Power_Resource_Object;
-                  Candidate.Items (Node).Power_Info :=
+                  Pending_Entry.Object_Type := Power_Resource_Object;
+                  Pending_Entry.Power_Info :=
                     (AML_Decode.Byte (Metadata.System_Level), Resource_Order (Metadata.Order));
                when AML_Container_Headers.Scope_Container => null;
             end case;
          end if;
+         -- Stage the independent execution-policy ledger, not the entire
+         -- namespace/value owner. A refused lexical push publishes neither.
          AML_Declaration_Contexts.Push_Scope
-           (Execute_Declaration_Lease_Store, Lease,
-            AML_Declaration_Contexts.Lexical_Top (Execute_Declaration_Lease_Store, Lease),
+           (Candidate_Lease, Lease,
+            AML_Declaration_Contexts.Lexical_Top (Candidate_Lease, Lease),
             AML_Declaration_Contexts.Make_Scope (AML_Declaration_Contexts.Scope_Node (Node),
-              AML_Declaration_Contexts.Scope_Incarnation
-                (if Node = Root then 0 else Natural (Candidate.Items (Node).Incarnation))), Pushed);
+              AML_Declaration_Contexts.Scope_Incarnation (Stamp)), Pushed);
          if not Pushed then Status := AML_Execute.Block_Limit; return; end if;
-         Environment.Tree := Candidate;
+         if Metadata.Kind /= AML_Container_Headers.Scope_Container then
+            -- No callback or fallible metadata conversion remains between
+            -- admission and publication. Insert rechecks without side effects
+            -- on refusal; the staged lexical ledger is still private then.
+            Insert (Environment.Tree.all, Base, Path.Parts (Path.Count), Node, Added);
+            case Added is
+               when Duplicate => Status := AML_Execute.Duplicate_Name; return;
+               when Full => Status := AML_Execute.Namespace_Limit; return;
+               when Invalid_Name => Status := AML_Execute.Bad_Name; return;
+               when Inserted => null;
+            end case;
+            Environment.Tree.Items (Node) := Pending_Entry;
+         end if;
+         Execute_Declaration_Lease_Store := Candidate_Lease;
          New_Scope := Natural (Node); Status := AML_Execute.Returned;
       end Execute_Container_Enter;
       procedure Execute_Container_Leave
@@ -7725,7 +7983,6 @@ package body Owned with SPARK_Mode is
       procedure Execute_Alias (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease;
          Scope : Natural; Source_Path, Target_Path : AML_Names.Name_Result;
          Status : out AML_Execute.Execution_Status) is
-         Candidate : State := Environment.Tree;
          Source : Lookup_Result;
          Base, Node : Node_ID;
          Added : Insert_Status;
@@ -7733,21 +7990,21 @@ package body Owned with SPARK_Mode is
          Status := AML_Execute.Unsupported;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope)
            or else not AML_Declaration_Contexts.Is_Module (Lease) then return; end if;
-         Source := Resolve_Object (Candidate, Node_ID (Scope), Source_Path);
+         Source := Resolve_Object (Environment.Tree.all, Node_ID (Scope), Source_Path);
          if Source.Status /= Found then Status := AML_Execute.Unknown_Name; return; end if;
-         Name_Target (Candidate, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Target_Path, Base, Status, True);
+         Name_Target (Environment.Tree.all, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Target_Path, Base, Status, True);
          if Status /= AML_Execute.Returned then return; end if;
-         Insert (Candidate, Base, Target_Path.Parts (Target_Path.Count), Node, Added);
+         Insert (Environment.Tree.all, Base, Target_Path.Parts (Target_Path.Count), Node, Added);
          case Added is
             when Duplicate => Status := AML_Execute.Duplicate_Name; return;
             when Full => Status := AML_Execute.Namespace_Limit; return;
             when Invalid_Name => Status := AML_Execute.Bad_Name; return;
             when Inserted => null;
          end case;
-         Candidate.Items (Node).Object_Type := Alias_Object;
-         Candidate.Items (Node).Alias_Target := Source.Node;
-         Candidate.Items (Node).Alias_Stamp := (if Source.Node = Root then 0 else Candidate.Items (Source.Node).Incarnation);
-         Environment.Tree := Candidate; Status := AML_Execute.Returned;
+         Environment.Tree.Items (Node).Object_Type := Alias_Object;
+         Environment.Tree.Items (Node).Alias_Target := Source.Node;
+         Environment.Tree.Items (Node).Alias_Stamp := (if Source.Node = Root then 0 else Environment.Tree.Items (Source.Node).Incarnation);
+         Status := AML_Execute.Returned;
       end Execute_Alias;
       procedure Execute_Mutex
         (Environment : in out Arena; Item : AML_Execute.Datum;
@@ -7770,7 +8027,7 @@ package body Owned with SPARK_Mode is
             begin
                if Node = Root or else Environment.Tree.Items (Node).Object_Type /= Mutex_Object then return; end if;
                -- The FACS Global Lock requires a real platform protocol.
-               if Parent (Environment.Tree, Node) = Root and then Name (Environment.Tree, Node) = "_GL_" then return; end if;
+               if Parent (Environment.Tree.all, Node) = Root and then Name (Environment.Tree.all, Node) = "_GL_" then return; end if;
                ID := Environment.Tree.Items (Node).Object_Ref;
                if not AML_Objects.Is_Live (Environment.Tree.Values, ID)
                  or else AML_Objects.Kind (Environment.Tree.Values, ID) /= AML_Objects.Mutex_Object
@@ -7786,7 +8043,7 @@ package body Owned with SPARK_Mode is
          if not AML_Objects.Is_Live (Environment.Tree.Values, ID)
            or else AML_Objects.Kind (Environment.Tree.Values, ID) /= AML_Objects.Mutex_Object then return; end if;
          declare
-            Global : constant Lookup_Result := Canonical_Child (Environment.Tree, Root, "_GL_");
+            Global : constant Lookup_Result := Canonical_Child (Environment.Tree.all, Root, "_GL_");
          begin
             if Global.Status = Found and then Global.Node /= Root
               and then Environment.Tree.Items (Global.Node).Object_Ref = ID then return; end if;
@@ -7860,48 +8117,61 @@ package body Owned with SPARK_Mode is
          Scope : Natural; Path : AML_Names.Name_Result;
          Status : in out AML_Execute.Execution_Status)
       is
-         Candidate : State := Environment.Tree;
+         Candidate_Values : AML_Objects.State := AML_Objects.Empty_Like (Environment.Tree.Values);
+         Snapshot_Copy : AML_Objects.Clone_Status;
          Object : AML_Objects.Object_ID;
          Allocated : AML_Objects.Allocation_Status;
          Base, Node : Node_ID;
          Added : Insert_Status;
          Gate : Allocation_Hook_Status;
-         procedure Reserve_Name is
+         procedure Admit_Name is
          begin
-            Name_Target (Candidate, Scope, AML_Declaration_Contexts.Scope_Of (Lease),
+            Name_Target (Environment.Tree.all, Scope, AML_Declaration_Contexts.Scope_Of (Lease),
               Path, Base, Status, AML_Declaration_Contexts.Is_Module (Lease));
             if Status /= AML_Execute.Returned then return; end if;
-            Insert (Candidate, Base, Path.Parts (Path.Count), Node, Added);
+            Added := Insertion_Admission (Environment.Tree.all, Base, Path.Parts (Path.Count));
             case Added is
                when Duplicate => Status := AML_Execute.Duplicate_Name;
                when Full => Status := AML_Execute.Namespace_Limit;
                when Invalid_Name => Status := AML_Execute.Bad_Name;
                when Inserted => Status := AML_Execute.Returned;
             end case;
-         end Reserve_Name;
+         end Admit_Name;
       begin
          Status := AML_Execute.Unsupported_Value;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then return; end if;
          -- Reject namespace failures before collection; these leave the arena
          -- and its collection metrics unchanged.
-         Reserve_Name;
+         Admit_Name;
          if Status /= AML_Execute.Returned then return; end if;
          Before_Allocation (Environment, [], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          -- Collection is real. Never restore the pre-collection snapshot.
          -- Rebuild and validate the transaction against the post-hook arena.
-         Candidate := Environment.Tree;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then
             Status := AML_Execute.Unsupported_Value; return;
          end if;
-         Reserve_Name;
+         Admit_Name;
          if Status /= AML_Execute.Returned then return; end if;
-         AML_Objects.New_Event (Candidate.Values, Object, Allocated);
+         -- Snapshot only values, from the post-collection owner. There is no
+         -- AML callback between final admission and the metadata publication.
+         AML_Objects.Clone (Environment.Tree.Values, Candidate_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         AML_Objects.New_Event (Candidate_Values, Object, Allocated);
          if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
-         Candidate.Items (Node).Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
-         Candidate.Items (Node).Object_Type := Event_Object;
-         Candidate.Items (Node).Object_Ref := Object;
-         Environment.Tree := Candidate;
+         Insert (Environment.Tree.all, Base, Path.Parts (Path.Count), Node, Added);
+         case Added is
+            when Duplicate => Status := AML_Execute.Duplicate_Name; return;
+            when Full => Status := AML_Execute.Namespace_Limit; return;
+            when Invalid_Name => Status := AML_Execute.Bad_Name; return;
+            when Inserted => null;
+         end case;
+         AML_Objects.Transfer (Candidate_Values, Environment.Tree.Values);
+         Environment.Tree.Items (Node).Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
+         Environment.Tree.Items (Node).Object_Type := Event_Object;
+         Environment.Tree.Items (Node).Object_Ref := Object;
          Status := AML_Execute.Returned;
       end Execute_Declaration_Event;
       procedure Execute_Declaration_Mutex
@@ -7909,50 +8179,63 @@ package body Owned with SPARK_Mode is
          Scope : Natural; Path : AML_Names.Name_Result; Flags : AML_Decode.Byte;
          Status : in out AML_Execute.Execution_Status)
       is
-         Candidate : State := Environment.Tree;
+         Candidate_Values : AML_Objects.State := AML_Objects.Empty_Like (Environment.Tree.Values);
+         Snapshot_Copy : AML_Objects.Clone_Status;
          Object : AML_Objects.Object_ID;
          Allocated : AML_Objects.Allocation_Status;
          Base, Node : Node_ID;
          Added : Insert_Status;
          Gate : Allocation_Hook_Status;
-         procedure Reserve_Name is
+         procedure Admit_Name is
          begin
-            Name_Target (Candidate, Scope, AML_Declaration_Contexts.Scope_Of (Lease),
+            Name_Target (Environment.Tree.all, Scope, AML_Declaration_Contexts.Scope_Of (Lease),
               Path, Base, Status, AML_Declaration_Contexts.Is_Module (Lease));
             if Status /= AML_Execute.Returned then return; end if;
-            Insert (Candidate, Base, Path.Parts (Path.Count), Node, Added);
+            Added := Insertion_Admission (Environment.Tree.all, Base, Path.Parts (Path.Count));
             case Added is
                when Duplicate => Status := AML_Execute.Duplicate_Name;
                when Full => Status := AML_Execute.Namespace_Limit;
                when Invalid_Name => Status := AML_Execute.Bad_Name;
                when Inserted => Status := AML_Execute.Returned;
             end case;
-         end Reserve_Name;
+         end Admit_Name;
       begin
          Status := AML_Execute.Unsupported_Value;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then return; end if;
          if not AML_Mutexes.Canonical_Flags (Flags) then return; end if;
          -- Reject namespace failures before collection; these leave the arena
          -- and its collection metrics unchanged.
-         Reserve_Name;
+         Admit_Name;
          if Status /= AML_Execute.Returned then return; end if;
          Before_Allocation (Environment, [], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          -- Collection is real. Never restore the pre-collection snapshot.
          -- Rebuild and validate the transaction against the post-hook arena.
-         Candidate := Environment.Tree;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then
             Status := AML_Execute.Unsupported_Value; return;
          end if;
-         Reserve_Name;
+         Admit_Name;
          if Status /= AML_Execute.Returned then return; end if;
-         AML_Objects.New_Mutex (Candidate.Values, Flags, Object, Allocated);
+         -- Snapshot only values, from the post-collection owner. There is no
+         -- AML callback between final admission and the metadata publication.
+         AML_Objects.Clone (Environment.Tree.Values, Candidate_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         AML_Objects.New_Mutex (Candidate_Values, Flags, Object, Allocated);
          if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
-         Candidate.Items (Node).Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
-         Candidate.Items (Node).Object_Type := Mutex_Object;
-         Candidate.Items (Node).Mutex_Flags := Flags;
-         Candidate.Items (Node).Object_Ref := Object;
-         Environment.Tree := Candidate;
+         Insert (Environment.Tree.all, Base, Path.Parts (Path.Count), Node, Added);
+         case Added is
+            when Duplicate => Status := AML_Execute.Duplicate_Name; return;
+            when Full => Status := AML_Execute.Namespace_Limit; return;
+            when Invalid_Name => Status := AML_Execute.Bad_Name; return;
+            when Inserted => null;
+         end case;
+         AML_Objects.Transfer (Candidate_Values, Environment.Tree.Values);
+         Environment.Tree.Items (Node).Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
+         Environment.Tree.Items (Node).Object_Type := Mutex_Object;
+         Environment.Tree.Items (Node).Mutex_Flags := Flags;
+         Environment.Tree.Items (Node).Object_Ref := Object;
          Status := AML_Execute.Returned;
       end Execute_Declaration_Mutex;
       procedure Execute_Declaration_Method
@@ -7961,7 +8244,7 @@ package body Owned with SPARK_Mode is
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then
             Status := AML_Execute.Declaration_Unsupported; return;
          end if;
-         Define_Method_For_Context (Environment.Tree, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Path, Flags, Width, Code, Status, AML_Declaration_Contexts.Is_Module (Lease));
+         Define_Method_For_Context (Environment.Tree.all, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Path, Flags, Width, Code, Status, AML_Declaration_Contexts.Is_Module (Lease));
       end Execute_Declaration_Method;
       procedure Execute_Declaration_Fields
         (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease; Scope : Natural; Region : AML_Names.Name_Result; Flags : AML_Decode.Byte; Entries : AML_Decode.Bytes; Status : out AML_Execute.Execution_Status) is
@@ -7969,7 +8252,7 @@ package body Owned with SPARK_Mode is
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then
             Status := AML_Execute.Unsupported_Value; return;
          end if;
-         Define_Fields_For_Context (Environment.Tree, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Region, Flags, Entries, Status, AML_Declaration_Contexts.Is_Module (Lease));
+         Define_Fields_For_Context (Environment.Tree.all, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Region, Flags, Entries, Status, AML_Declaration_Contexts.Is_Module (Lease));
       end Execute_Declaration_Fields;
       procedure Execute_Declaration_Indexed_Fields
         (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease;
@@ -7979,8 +8262,8 @@ package body Owned with SPARK_Mode is
          Index_Item, Data_Item : Lookup_Result;
          Lifetime_Owner : Node_ID := Root;
          function Suitable (N : Node_ID) return Boolean is
-           (N > Root and then Present (Environment.Tree, N)
-            and then Kind (Environment.Tree, N) = Region_Field_Object
+           (N > Root and then Present (Environment.Tree.all, N)
+            and then Kind (Environment.Tree.all, N) = Region_Field_Object
             and then not Environment.Tree.Items (N).Initializing
             and then (Environment.Tree.Items (N).Owner = Root
               or else Environment.Tree.Items (N).Owner = Lifetime_Owner));
@@ -7988,13 +8271,13 @@ package body Owned with SPARK_Mode is
          Status := AML_Execute.Unsupported_Value;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then return; end if;
          Lifetime_Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
-         Index_Item := Resolve_Object (Environment.Tree, Node_ID (Scope), Index_Path);
-         Data_Item := Resolve_Object (Environment.Tree, Node_ID (Scope), Data_Path);
+         Index_Item := Resolve_Object (Environment.Tree.all, Node_ID (Scope), Index_Path);
+         Data_Item := Resolve_Object (Environment.Tree.all, Node_ID (Scope), Data_Path);
          if Index_Item.Status /= Found or else Data_Item.Status /= Found then
             Status := AML_Execute.Unknown_Name; return;
          end if;
          if not Suitable (Index_Item.Node) or else not Suitable (Data_Item.Node) then return; end if;
-         Define_Operation_Fields_For_Context (Environment.Tree, Node_ID (Scope), Lifetime_Owner,
+         Define_Operation_Fields_For_Context (Environment.Tree.all, Node_ID (Scope), Lifetime_Owner,
            Index_Item.Node, Flags, Entries, Status, Data_Item.Node);
       end Execute_Declaration_Indexed_Fields;
       procedure Execute_Declaration_Banked_Fields
@@ -8008,16 +8291,16 @@ package body Owned with SPARK_Mode is
          Status := AML_Execute.Unsupported_Value;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then return; end if;
          Lifetime_Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
-         Region_Item := Resolve_Object (Environment.Tree, Node_ID (Scope), Region_Path);
-         Bank_Item := Resolve_Object (Environment.Tree, Node_ID (Scope), Bank_Path);
+         Region_Item := Resolve_Object (Environment.Tree.all, Node_ID (Scope), Region_Path);
+         Bank_Item := Resolve_Object (Environment.Tree.all, Node_ID (Scope), Bank_Path);
          if Region_Item.Status /= Found or else Bank_Item.Status /= Found then
             Status := AML_Execute.Unknown_Name; return;
          end if;
          if Region_Item.Node = Root or else Bank_Item.Node = Root
-           or else not Present (Environment.Tree, Region_Item.Node)
-           or else not Present (Environment.Tree, Bank_Item.Node)
-           or else Kind (Environment.Tree, Region_Item.Node) /= Operation_Region_Object
-           or else Kind (Environment.Tree, Bank_Item.Node) /= Region_Field_Object
+           or else not Present (Environment.Tree.all, Region_Item.Node)
+           or else not Present (Environment.Tree.all, Bank_Item.Node)
+           or else Kind (Environment.Tree.all, Region_Item.Node) /= Operation_Region_Object
+           or else Kind (Environment.Tree.all, Bank_Item.Node) /= Region_Field_Object
            or else Environment.Tree.Items (Region_Item.Node).Initializing
            or else Environment.Tree.Items (Bank_Item.Node).Initializing
          then return; end if;
@@ -8026,7 +8309,7 @@ package body Owned with SPARK_Mode is
            or else (Environment.Tree.Items (Bank_Item.Node).Owner /= Root
              and then Environment.Tree.Items (Bank_Item.Node).Owner /= Lifetime_Owner)
          then return; end if;
-         Define_Operation_Fields_For_Context (Environment.Tree, Node_ID (Scope), Lifetime_Owner,
+         Define_Operation_Fields_For_Context (Environment.Tree.all, Node_ID (Scope), Lifetime_Owner,
            Region_Item.Node, Flags, Entries, Status,
            Bank_Register => Bank_Item.Node, Bank_Value => Bank_Value);
       end Execute_Declaration_Banked_Fields;
@@ -8055,7 +8338,7 @@ package body Owned with SPARK_Mode is
       begin
          Token := AML_Declaration_Contexts.No_Region; Status := AML_Execute.Unsupported_Value;
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then return; end if;
-         Reserve_Region_For_Context (Environment.Tree, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Path, Node, Status, AML_Declaration_Contexts.Is_Module (Lease));
+         Reserve_Region_For_Context (Environment.Tree.all, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Path, Node, Status, AML_Declaration_Contexts.Is_Module (Lease));
          if Status in AML_Execute.Returned and then Node /= 0 then
             Token := AML_Declaration_Contexts.Reserve_Region (Lease, Node, Natural (Environment.Tree.Items (Node_ID (Node)).Incarnation));
          end if;
@@ -8086,7 +8369,7 @@ package body Owned with SPARK_Mode is
          -- Executable module declarations use their authenticated module frame.
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope)
          then return; end if;
-         Reserve_Region_For_Context (Environment.Tree, Scope,
+         Reserve_Region_For_Context (Environment.Tree.all, Scope,
            AML_Declaration_Contexts.Scope_Of (Lease), Path, Node, Status,
            AML_Declaration_Contexts.Is_Module (Lease));
          if Status = AML_Execute.Returned and then Node /= 0 then
@@ -8483,7 +8766,7 @@ package body Owned with SPARK_Mode is
             Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
          end if;
          if Pending_Authorities (Cursor).Field_Resolved then return; end if;
-         Located := Resolve_Object (E.Tree, Member.Scope, Member.Path);
+         Located := Resolve_Object (E.Tree.all, Member.Scope, Member.Path);
          if Located.Status /= Found or else Located.Node = Root
            or else E.Tree.Items (Located.Node).Object_Type /= Region_Field_Object then return; end if;
          Make_Named_Identity (E, Natural (Located.Node), Pending_Authorities (Cursor).Field, Good);
@@ -8639,47 +8922,62 @@ package body Owned with SPARK_Mode is
             Before_Allocation (E, [Root_Value], Gate);
             if Gate /= Allocation_Allowed or else not Builder_Matches (E, Lease, Token) then return; end if;
             declare
-               Group : constant Builder_Group := Builder_Groups (Group_Depth);
-               Candidate : State := E.Tree; -- CURRENT, after all effects and collection.
-               Self_Node : Node_ID := Root;
-               Replaced_Name : Boolean := False;
-            begin
-               if Group.Name /= Execute_Declaration_No_Name then
-                  if Group.Name.Owner /= Lease or else not Reservation_Matches (E, Group.Name.Original) then return; end if;
-                  Self_Node := Node_ID (AML_References.Named_Node (Group.Name.Original.Ref));
-                  Replaced_Name := Candidate.Items (Self_Node).Object_Type /= Uninitialized_Name_Object;
-                  if Replaced_Name then
-                     -- Count evaluation may have replaced the reserved name.
-                     -- Complete its initialization without overwriting that value.
-                     Candidate.Items (Self_Node).Initializing := False;
-                  else
-                     Candidate.Items (Self_Node) := (Candidate.Items (Self_Node) with delta
-                       Object_Type => Package_Object, Object_Ref => ID, Initializing => False);
+               Snapshot : Namespace_Snapshot_Owner := null;
+               Committed : Boolean := False;
+               procedure Commit_Snapshot (Candidate : in out State) is
+                  Group : constant Builder_Group := Builder_Groups (Group_Depth);
+                  Self_Node : Node_ID := Root;
+                  Replaced_Name : Boolean := False;
+               begin
+                  if Group.Name /= Execute_Declaration_No_Name then
+                     if Group.Name.Owner /= Lease or else not Reservation_Matches (E, Group.Name.Original) then return; end if;
+                     Self_Node := Node_ID (AML_References.Named_Node (Group.Name.Original.Ref));
+                     Replaced_Name := Candidate.Items (Self_Node).Object_Type /= Uninitialized_Name_Object;
+                     if Replaced_Name then
+                        -- Count evaluation may have replaced the reserved name.
+                        -- Complete its initialization without overwriting that value.
+                        Candidate.Items (Self_Node).Initializing := False;
+                     else
+                        Candidate.Items (Self_Node) := (Candidate.Items (Self_Node) with delta
+                          Object_Type => Package_Object, Object_Ref => ID, Initializing => False);
+                     end if;
                   end if;
+                  if Replaced_Name then
+                     -- The constructed subtree is discarded. Its deferred members
+                     -- must not enter the module journal or retain destination IDs.
+                     -- Executed count effects and the replacement stay committed.
+                     null;
+                  elsif AML_Declaration_Contexts.Is_Module (Lease) and then Self_Node /= Root then
+                     for I in Group.Checkpoint + 1 .. Pending.Count (Builder_Journal) loop
+                        declare M : constant Pending.Member_Result := Pending.Item (Builder_Journal, I); begin
+                           if not M.Found or else not Has_Source (E, Pending_Authorities (I).Destination)
+                             or else AML_References.Source (Pending_Authorities (I).Destination) /= M.Package_ID then return; end if;
+                           Pending.Append (Candidate.Journal, M.Package_ID, M.Element, M.Scope, M.Path, Added);
+                           if Added /= Pending.Appended then Binding := (AML_Execute.Failed_Binding, AML_Execute.Value_Limit); return; end if;
+                        end;
+                     end loop;
+                  else
+                     Bind_Live_Builder_Members (E, Candidate, Group.Checkpoint + 1,
+                       E.Token, Group.Width, Self_Node, Self_Node = Root, Status);
+                     if Status /= AML_Execute.Returned then Binding := (AML_Execute.Failed_Binding, Status); return; end if;
+                  end if;
+                  E.Tree.all := Candidate;
+                  Restore_Builder_Journal (Group.Checkpoint);
+                  Builder_Groups (Group_Depth) := (others => <>);
+                  Group_Depth := Group_Depth - 1;
+      Committed := True;
+               end Commit_Snapshot;
+            begin
+               -- Copy only after count effects and collection have completed.
+               Snapshot := Clone_Namespace_Snapshot (E.Tree.all);
+               if Snapshot = null then
+                  Binding := (AML_Execute.Failed_Binding, AML_Execute.Value_Limit);
+                  return;
                end if;
-               if Replaced_Name then
-                  -- The constructed subtree is discarded. Its deferred members
-                  -- must not enter the module journal or retain destination IDs.
-                  -- Executed count effects and the replacement stay committed.
-                  null;
-               elsif AML_Declaration_Contexts.Is_Module (Lease) and then Self_Node /= Root then
-                  for I in Group.Checkpoint + 1 .. Pending.Count (Builder_Journal) loop
-                     declare M : constant Pending.Member_Result := Pending.Item (Builder_Journal, I); begin
-                        if not M.Found or else not Has_Source (E, Pending_Authorities (I).Destination)
-                          or else AML_References.Source (Pending_Authorities (I).Destination) /= M.Package_ID then return; end if;
-                        Pending.Append (Candidate.Journal, M.Package_ID, M.Element, M.Scope, M.Path, Added);
-                        if Added /= Pending.Appended then Binding := (AML_Execute.Failed_Binding, AML_Execute.Value_Limit); return; end if;
-                     end;
-                  end loop;
-               else
-                  Bind_Live_Builder_Members (E, Candidate, Group.Checkpoint + 1,
-                    E.Token, Group.Width, Self_Node, Self_Node = Root, Status);
-                  if Status /= AML_Execute.Returned then Binding := (AML_Execute.Failed_Binding, Status); return; end if;
-               end if;
-               E.Tree := Candidate;
-               Restore_Builder_Journal (Group.Checkpoint);
-               Builder_Groups (Group_Depth) := (others => <>);
-               Group_Depth := Group_Depth - 1;
+               Commit_Snapshot (Snapshot.all);
+               Free_Namespace_Snapshot (Snapshot);
+               if not Committed then return; end if;
+
             end;
          else
             Completed_Child :=
@@ -8939,12 +9237,12 @@ package body Owned with SPARK_Mode is
      Node : Node_ID; Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
      Budget : Natural; Result : out AML_Execute.Execution_Result) is
       procedure Run is new Run_Context_Session (IO_Context, Field_Operation, Handoff, Before_Allocation);
-      Definition : constant AML_Execute.Method_Definition := Read_Method (A.Tree, Node);
+      Definition : constant AML_Execute.Method_Definition := Read_Method (A.Tree.all, Node);
    begin
       if Frame_Pins.Count (A.Frame_Roots) /= 0 then
          Result := (Status => AML_Execute.Unsupported_Value, Charged => 0); return;
       end if;
-      if Pending_Members (A.Tree) /= 0 then
+      if Pending_Members (A.Tree.all) /= 0 then
          Result := (Status => AML_Execute.Uninitialized, Charged => 0); return;
       end if;
       if not Definition.Exists then Result := (Status => AML_Execute.Invalid_Method, Charged => 0); return;
@@ -9254,18 +9552,18 @@ package body Owned with SPARK_Mode is
                if not Valid_Table (Backing, Source_At (Index), Requested.Name, Selected.Extent) then return; end if;
                if Root_Text'Length /= 0 then
                   Root_Name := Parse_Path (Root_Text); if Root_Name.Kind /= AML_Names.Accepted then return; end if;
-                  Destination := Resolve (E.Tree, Node_ID (Scope), Root_Name);
+                  Destination := Resolve (E.Tree.all, Node_ID (Scope), Root_Name);
                   if Destination.Status /= Found then return; end if;
-                  Destination := Canonical_Node (E.Tree, Destination.Node);
+                  Destination := Canonical_Node (E.Tree.all, Destination.Node);
                   if Destination.Status /= Found then return; end if;
                end if;
-               if Destination.Node /= Root and then not Static_Scope (Kind (E.Tree, Destination.Node)) then return; end if;
+               if Destination.Node /= Root and then not Static_Scope (Kind (E.Tree.all, Destination.Node)) then return; end if;
                if Parameter_Text'Length /= 0 then
                   Parameter_Name := Parse_Path (Parameter_Text); if Parameter_Name.Kind /= AML_Names.Accepted then return; end if;
-                  Target := Resolve (E.Tree, (if Parameter_Name.Rooted or else Parameter_Name.Parents > 0 then Node_ID (Scope)
+                  Target := Resolve (E.Tree.all, (if Parameter_Name.Rooted or else Parameter_Name.Parents > 0 then Node_ID (Scope)
                     else Destination.Node), Parameter_Name);
                   if Target.Status /= Found then return; end if;
-                  Target := Canonical_Node (E.Tree, Target.Node); if Target.Status /= Found then return; end if;
+                  Target := Canonical_Node (E.Tree.all, Target.Node); if Target.Status /= Found then return; end if;
                   Make_Named_Reference (E, Target.Node, Parameter, Allowed); if not Allowed then return; end if;
                end if;
                AML_Definition_Loads.Reserve (Loads, Index, Allowed); if not Allowed then return; end if;
@@ -9543,9 +9841,9 @@ package body Owned with SPARK_Mode is
       begin
          Status := Unsupported_Value;
          if not Plan_Live (Plan) or else Pending (Index).Entered or else Plan.Scope > E.Tree.Used then return; end if;
-         if Plan.Scope /= Root and then (not Present (E.Tree, Node_ID (Plan.Scope))
-           or else not Static_Scope (Kind (E.Tree, Node_ID (Plan.Scope)))) then return; end if;
-         Enter_Definition (E.Tree, Prior, ID, Allowed); if not Allowed then Status := Value_Limit; return; end if;
+         if Plan.Scope /= Root and then (not Present (E.Tree.all, Node_ID (Plan.Scope))
+           or else not Static_Scope (Kind (E.Tree.all, Node_ID (Plan.Scope)))) then return; end if;
+         Enter_Definition (E.Tree.all, Prior, ID, Allowed); if not Allowed then Status := Value_Limit; return; end if;
          AML_Definition_Loads.Consume (Loads, Index, ID, Allowed);
          if not Allowed then E.Tree.Current_Definition := Prior; return; end if;
          Pending (Index).Prior := Prior; Pending (Index).Entered := True; Status := Returned;
@@ -9615,7 +9913,7 @@ package body Owned with SPARK_Mode is
          Complete_Table_Binding => Complete_Registered_Table);
    begin
       if not Sources_Admitted or else Frame_Pins.Count (A.Frame_Roots) /= 0 or else not Expected_Reservations
-        or else (not Deferred_Readiness and then Pending_Members (A.Tree) /= 0)
+        or else (not Deferred_Readiness and then Pending_Members (A.Tree.all) /= 0)
       then Result := (Unsupported_Value, 0); return; end if;
       Run (A, IO, Input, Code, Source, Source_First, Width, Scope, Args, Argument_Count,
         Budget, Current_Sync, Result, Session_Request, Implementation);
@@ -9640,7 +9938,7 @@ package body Owned with SPARK_Mode is
       Input : aliased AML_Table_Backing.State; Node : Node_ID;
       Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
       Budget : Natural; Result : out AML_Execute.Execution_Result) is
-      Definition : constant AML_Execute.Method_Definition := Read_Method (A.Tree, Node);
+      Definition : constant AML_Execute.Method_Definition := Read_Method (A.Tree.all, Node);
       procedure Run is new Run_Registered_Context_Session
         (IO_Context, Field_Operation, Handoff, Before_Allocation);
    begin
@@ -9851,38 +10149,80 @@ package body Owned with SPARK_Mode is
       Run (A, Input, Node, Args, Argument_Count, Budget, Result, Result_Root, Retention);
    end Invoke_Retained;
    package body Collecting is
+      -- A collecting entry owns this scratch exclusively. It is separate
+      -- from value-copy snapshots and is freed after every return or exception.
+      type Collection_Workspace
+        (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) is limited record
+         Roots : Root_Workspace (Object_Capacity);
+         Reclaim : AML_Objects.Reclamation.Workspace (Object_Capacity, Byte_Capacity, Element_Capacity);
+         Keep : Object_Root_Set (1 .. Object_Capacity);
+      end record;
+      type Collection_Workspace_Owner is access Collection_Workspace;
+      procedure Free_Collection_Workspace is new Ada.Unchecked_Deallocation
+        (Collection_Workspace, Collection_Workspace_Owner);
+      function Allocate_Collection_Workspace
+        (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity)
+         return Collection_Workspace_Owner with SPARK_Mode => Off
+      is
+         subtype Workspace_Shape is Collection_Workspace
+           (Object_Capacity, Byte_Capacity, Element_Capacity);
+      begin
+         return new Workspace_Shape;
+
+      end Allocate_Collection_Workspace;
+      procedure Free_Inner is new Ada.Unchecked_Deallocation (Owned.Arena, Arena_Owner);
+      function Storage_Released (A : Arena) return Boolean is (A.Inner = null);
+      function Can_Release_Storage (A : Arena) return Boolean is
+        (Storage_Released (A) or else (Valid (A) and then not A.In_Progress
+          and then Owned.Can_Release_Storage (A.Inner.all)));
+      procedure Release_Storage (A : in out Arena; Released : out Boolean) is
+      begin
+         Released := Can_Release_Storage (A);
+         if not Released or else A.Inner = null then return; end if;
+         Owned.Release_Storage (A.Inner.all, Released);
+         if Released then Free_Inner (A.Inner); end if;
+      end Release_Storage;
+      function Allocate_Inner (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity)
+         return Arena_Owner is
+         subtype Inner_Shape is Owned.Arena (Object_Capacity, Byte_Capacity, Element_Capacity);
+      begin
+         return new Inner_Shape;
+      end Allocate_Inner;
       function No_Value return Value_Handle is ((others => <>));
       function Module_Errors (A : Arena) return Module_Error_Observation is
-        (Owned.Module_Errors (A.Inner));
+        (Owned.Module_Errors (A.Inner.all));
       function Import_Model (A : Arena) return Import_State is (A.Import);
       function Module_Transient_Free (A : Arena) return Boolean is
-        (not A.In_Progress and then Owned.Frame_Root_Count (A.Inner) = 0
+        (not A.In_Progress and then Owned.Frame_Root_Count (A.Inner.all) = 0
          and then not AML_Frame_Handles.Present (AML_Module_Frames.Top (A.Inner.Tree.Module_Frames))
          and then (for all I in 1 .. A.Inner.Tree.Used => not A.Inner.Tree.Items (I).Initializing));
       function Invocation_Model (A : Arena) return AML_Frame_Handles.Invocation_Serial is
-        (Owned.Invocation_Count (A.Inner));
+        (Owned.Invocation_Count (A.Inner.all));
       function Valid (A : Arena) return Boolean is
-        (Owned.Valid (A.Inner) and then
-           (if A.State = Uninitialized then not Owned.Initialized (A.Inner)
-            else Owned.Initialized (A.Inner))
+        (A.Inner /= null and then A.Inner.Object_Capacity = A.Object_Capacity
+          and then A.Inner.Byte_Capacity = A.Byte_Capacity
+          and then A.Inner.Element_Capacity = A.Element_Capacity
+          and then Owned.Valid (A.Inner.all) and then
+           (if A.State = Uninitialized then not Owned.Initialized (A.Inner.all)
+            else Owned.Initialized (A.Inner.all))
           and then (if A.Import = Module_Active then A.State = Loading and then A.In_Progress)
           and then (if A.Import = Module_Failed then A.State = Loading)
           and then (if A.State = Uninitialized then A.Import = Import_Undecided));
       function Retention_Model (A : Arena) return Retention_State is
-        (Owned.Retention_Model (A.Inner));
+        (Owned.Retention_Model (A.Inner.all));
       function Pin_Added (A : Arena; Before : Retention_State;
          Handle : Value_Handle) return Boolean is
          use type Pins.Result_Status;
          Saved : constant Pins.Read_Result := Pins.Read (A.Inner.Retention, Handle.Root.Pin);
       begin
          return Saved.Status = Pins.Ready and then Owned.Retention_Added
-           (A.Inner, Before, Handle.Root, Saved.Value);
+           (A.Inner.all, Before, Handle.Root, Saved.Value);
       end Pin_Added;
       function Pin_Removed (A : Arena; Before : Retention_State;
          Handle : Value_Handle) return Boolean is
-        (Owned.Retention_Removed (A.Inner, Before, Handle.Root));
+        (Owned.Retention_Removed (A.Inner.all, Before, Handle.Root));
       function Pins_Cleared (A : Arena; Before : Retention_State) return Boolean is
-        (Owned.Retention_Cleared (A.Inner, Before));
+        (Owned.Retention_Cleared (A.Inner.all, Before));
       function Reclamation_Metrics (A : Arena) return Collection_Statistics is (A.Collections);
       function Pending_Notifications (A : Arena) return Notification_Count is
         (A.Inner.Notifications.Used);
@@ -9906,7 +10246,7 @@ package body Owned with SPARK_Mode is
          if A.Inner.Notifications.Used = 0 then return; end if;
          Item := A.Inner.Notifications.Entries (1).Observation;
          Item.Current_Target := Named_Identity_Matches
-           (A.Inner, A.Inner.Notifications.Entries (1).Target);
+           (A.Inner.all, A.Inner.Notifications.Entries (1).Target);
          Present := True;
          for I in 1 .. A.Inner.Notifications.Used - 1 loop
             A.Inner.Notifications.Entries (I) := A.Inner.Notifications.Entries (I + 1);
@@ -9917,8 +10257,8 @@ package body Owned with SPARK_Mode is
 
       function Current (A : Arena) return Phase is (A.State);
       function Retained_Count (A : Arena) return Retained_Root_Count is
-        (Owned.Retained_Count (A.Inner));
-      function Node_Count (A : Arena) return Node_ID is (Owned.Node_Count (A.Inner));
+        (Owned.Retained_Count (A.Inner.all));
+      function Node_Count (A : Arena) return Node_ID is (Owned.Node_Count (A.Inner.all));
       function Position (Item : Node_Descriptor) return Node_ID is (Item.Node);
       function Parent_Position (Item : Node_Descriptor) return Node_ID is (Item.Parent_Node);
       function Node_Name (Item : Node_Descriptor) return AML_Names.Segment is (Item.Part);
@@ -9929,12 +10269,12 @@ package body Owned with SPARK_Mode is
          Item := No_Node;
          if A.In_Progress then Status := Busy; return;
          elsif A.State /= Ready then Status := Wrong_Phase; return;
-         elsif Node > Owned.Node_Count (A.Inner) or else not Owned.Present (A.Inner, Node)
+         elsif Node > Owned.Node_Count (A.Inner.all) or else not Owned.Present (A.Inner.all, Node)
          then Status := Invalid_Value; return; end if;
-         Item := (Identity => Metadata_Identity_At (A.Inner.Tree, A.Inner.Token, Node),
-           Node => Node, Parent_Node => Parent (A.Inner.Tree, Node),
-           Part => (if Node = Root then "____" else Name (A.Inner.Tree, Node)),
-           Tag => Kind (A.Inner.Tree, Node));
+         Item := (Identity => Metadata_Identity_At (A.Inner.Tree.all, A.Inner.Token, Node),
+           Node => Node, Parent_Node => Parent (A.Inner.Tree.all, Node),
+           Part => (if Node = Root then "____" else Name (A.Inner.Tree.all, Node)),
+           Tag => Kind (A.Inner.Tree.all, Node));
          Status := Available;
       end Describe_Node;
       procedure Describe_Definition (A : Arena; Item : Node_Descriptor;
@@ -9945,27 +10285,27 @@ package body Owned with SPARK_Mode is
          elsif A.State /= Ready then Status := Wrong_Phase; return;
          elsif not Current_Binding (A, Item) then Status := Invalid_Value; return;
          end if;
-         Definition := Definition_Of (A.Inner.Tree, Item.Node); Status := Available;
+         Definition := Definition_Of (A.Inner.Tree.all, Item.Node); Status := Available;
       end Describe_Definition;
       function Current_Binding (A : Arena; Item : Node_Descriptor) return Boolean is
         (not A.In_Progress and then A.State = Ready
-         and then Item.Node <= Owned.Node_Count (A.Inner)
-         and then Owned.Present (A.Inner, Item.Node)
-         and then Named_Identity_Matches (A.Inner, Item.Identity)
-         and then Item.Identity = Metadata_Identity_At (A.Inner.Tree, A.Inner.Token, Item.Node)
-         and then Item.Parent_Node = Parent (A.Inner.Tree, Item.Node)
-         and then Item.Part = (if Item.Node = Root then "____" else Name (A.Inner.Tree, Item.Node)));
+         and then Item.Node <= Owned.Node_Count (A.Inner.all)
+         and then Owned.Present (A.Inner.all, Item.Node)
+         and then Named_Identity_Matches (A.Inner.all, Item.Identity)
+         and then Item.Identity = Metadata_Identity_At (A.Inner.Tree.all, A.Inner.Token, Item.Node)
+         and then Item.Parent_Node = Parent (A.Inner.Tree.all, Item.Node)
+         and then Item.Part = (if Item.Node = Root then "____" else Name (A.Inner.Tree.all, Item.Node)));
 
       function Current_Node (A : Arena; Item : Node_Descriptor) return Boolean is
-        (Current_Binding (A, Item) and then Item.Tag = Kind (A.Inner.Tree, Item.Node));
+        (Current_Binding (A, Item) and then Item.Tag = Kind (A.Inner.Tree.all, Item.Node));
       function Field_Key_Matches (A : Arena; Key : Field_Key) return Boolean is
          F, R : Node_ID;
       begin
          if A.In_Progress or else A.State /= Ready
            or else AML_References.Kind (Key.Field) /= AML_References.Named_Cell
            or else AML_References.Kind (Key.Region) /= AML_References.Named_Cell
-           or else not Named_Identity_Matches (A.Inner, Key.Field)
-           or else not Named_Identity_Matches (A.Inner, Key.Region)
+           or else not Named_Identity_Matches (A.Inner.all, Key.Field)
+           or else not Named_Identity_Matches (A.Inner.all, Key.Region)
          then return False; end if;
          F := Node_ID (AML_References.Named_Node (Key.Field));
          R := Node_ID (AML_References.Named_Node (Key.Region));
@@ -10003,7 +10343,7 @@ package body Owned with SPARK_Mode is
          elsif A.State /= Ready then Status := Wrong_Phase; return;
          elsif Node > A.Inner.Tree.Used then Status := Invalid_Value; return;
          end if;
-         Selected := Canonical_Node (A.Inner.Tree, Node);
+         Selected := Canonical_Node (A.Inner.Tree.all, Node);
          if Selected.Status /= Found then Status := Invalid_Value; return;
          elsif Selected.Node = Root or else
            A.Inner.Tree.Items (Selected.Node).Object_Type /= Region_Field_Object
@@ -10012,9 +10352,9 @@ package body Owned with SPARK_Mode is
          if R = Root or else R > A.Inner.Tree.Used then
             Status := Invalid_Value; return;
          end if;
-         Make_Named_Identity (A.Inner, Natural (Selected.Node), Candidate.Field, Success);
+         Make_Named_Identity (A.Inner.all, Natural (Selected.Node), Candidate.Field, Success);
          if not Success then Status := Invalid_Value; return; end if;
-         Make_Named_Identity (A.Inner, Natural (R), Candidate.Region, Success);
+         Make_Named_Identity (A.Inner.all, Natural (R), Candidate.Region, Success);
          if not Success or else not Field_Key_Matches (A, Candidate) then
             Status := Invalid_Value; return;
          end if;
@@ -10025,11 +10365,11 @@ package body Owned with SPARK_Mode is
 
       function Present (A : Arena; Node : Node_ID) return Boolean is
         (not A.In_Progress and then A.State /= Uninitialized
-         and then Node <= Owned.Node_Count (A.Inner) and then Owned.Present (A.Inner, Node));
+         and then Node <= Owned.Node_Count (A.Inner.all) and then Owned.Present (A.Inner.all, Node));
       function Admission (A : Arena) return Access_Status is
         (if A.In_Progress then Busy elsif A.State /= Ready then Wrong_Phase else Available);
       function Audit (A : Arena) return Audit_Value is
-        ((Tree => Owned.Snapshot (A.Inner), Import => A.Import, Preparation => A.Preparation));
+        (Make_Audit (Owned.Snapshot (A.Inner.all), Import_State'Pos (A.Import), Preparation_State'Pos (A.Preparation)));
       function Namespace_Equal (Current, Prior : Audit_Value) return Boolean is (Current.Tree = Prior.Tree);
       function Initialization_Frame (Current, Prior : Audit_Value) return Boolean is
         (Current.Import = Prior.Import and then Current.Preparation = Prior.Preparation
@@ -10039,10 +10379,10 @@ package body Owned with SPARK_Mode is
         (Current.Import = Prior.Import and then Current.Preparation = Prior.Preparation
          and then AML_Namespace.Table_Initialization_Frame (Current.Tree, Prior.Tree, Input));
       function Generation (A : Arena) return AML_Identity.Identity is
-        (Owned.Generation (A.Inner));
+        (Owned.Generation (A.Inner.all));
       function Observe_Usage (A : Arena) return Usage_Description is
-        (Nodes => Owned.Node_Count (A.Inner), Values => Owned.Values_Used (A.Inner),
-         Methods => Owned.Methods_Used (A.Inner), Pending => Owned.Pending_Members (A.Inner));
+        (Nodes => Owned.Node_Count (A.Inner.all), Values => Owned.Values_Used (A.Inner.all),
+         Methods => Owned.Methods_Used (A.Inner.all), Pending => Owned.Pending_Members (A.Inner.all));
       procedure Find_Child (A : Arena; Parent : Node_ID; Part : AML_Names.Segment;
          Node : out Node_ID; Status : out Access_Status) is
       begin
@@ -10050,7 +10390,7 @@ package body Owned with SPARK_Mode is
          if A.In_Progress then Status := Busy; return;
          elsif A.State = Uninitialized then Status := Wrong_Phase; return;
          elsif not Present (A, Parent) then Status := Invalid_Value; return; end if;
-         Node := Child (A.Inner.Tree, Parent, Part);
+         Node := Child (A.Inner.Tree.all, Parent, Part);
          Status := Available;
       end Find_Child;
       procedure Find_Object (A : Arena; Parent : Node_ID; Part : AML_Names.Segment;
@@ -10061,10 +10401,10 @@ package body Owned with SPARK_Mode is
          elsif A.State = Uninitialized then Status := Wrong_Phase; return;
          elsif not Present (A, Parent) then Status := Invalid_Value; return; end if;
          declare
-            Canonical_Parent : constant Lookup_Result := Canonical_Node (A.Inner.Tree, Parent);
+            Canonical_Parent : constant Lookup_Result := Canonical_Node (A.Inner.Tree.all, Parent);
          begin
             if Canonical_Parent.Status /= Found then Status := Invalid_Value; return; end if;
-            Result := Canonical_Child (A.Inner.Tree, Canonical_Parent.Node, Part);
+            Result := Canonical_Child (A.Inner.Tree.all, Canonical_Parent.Node, Part);
          end;
          Status := Available;
       end Find_Object;
@@ -10081,7 +10421,7 @@ package body Owned with SPARK_Mode is
          elsif Scope.Node /= Root and then not Declaration_Scope (Scope.Tag) then
             Status := Wrong_Kind; return;
          end if;
-         Located := Resolve_Object (A.Inner.Tree, Scope.Node, Path);
+         Located := Resolve_Object (A.Inner.Tree.all, Scope.Node, Path);
          Outcome := Located.Status;
          Status := Available;
          if Located.Status = Found then
@@ -10097,7 +10437,7 @@ package body Owned with SPARK_Mode is
          elsif A.State /= Loading or else A.Import not in Import_Undecided | Legacy_Import then Status := Wrong_Phase; return;
          elsif not Present (A, Scope) or else not Present (A, Owner) then
             Status := Invalid_Value; return; end if;
-         Owned.Bind_Table_Region (A.Inner, Scope, Part, Region, Node, Outcome, Owner);
+         Owned.Bind_Table_Region (A.Inner.all, Scope, Part, Region, Node, Outcome, Owner);
          Status := Available;
       end Bind_Table_Region;
       procedure Bind_Table_Field (A : in out Arena; Scope : Node_ID;
@@ -10111,10 +10451,10 @@ package body Owned with SPARK_Mode is
          elsif not Present (A, Scope) or else not Present (A, Owner)
            or else Region_Node = Root or else not Present (A, Region_Node) then
             Status := Invalid_Value; return;
-         elsif Owned.Kind (A.Inner, Region_Node) /= Table_Region_Object then
+         elsif Owned.Kind (A.Inner.all, Region_Node) /= Table_Region_Object then
             Status := Wrong_Kind; return; end if;
-         Owned.Bind_Table_Field (A.Inner, Scope, Part,
-            (Owned.Region_Data (A.Inner, Region_Node), Offset, Bits), Node, Outcome, Owner);
+         Owned.Bind_Table_Field (A.Inner.all, Scope, Part,
+            (Owned.Region_Data (A.Inner.all, Region_Node), Offset, Bits), Node, Outcome, Owner);
          Status := Available;
       end Bind_Table_Field;
       procedure Read_Table_Field (A : Arena; Node : Node_ID;
@@ -10124,9 +10464,9 @@ package body Owned with SPARK_Mode is
          if A.In_Progress then Status := Busy; return;
          elsif A.State = Uninitialized then Status := Wrong_Phase; return;
          elsif Node = Root or else not Present (A, Node) then Status := Invalid_Value; return;
-         elsif Owned.Kind (A.Inner, Node) /= Table_Field_Object then
+         elsif Owned.Kind (A.Inner.all, Node) /= Table_Field_Object then
             Status := Wrong_Kind; return; end if;
-         Field := Owned.Field_Data (A.Inner, Node); Status := Available;
+         Field := Owned.Field_Data (A.Inner.all, Node); Status := Available;
       end Read_Table_Field;
       procedure Read_Processor_Metadata (A : Arena; Node : Node_ID;
          Metadata : out Processor_Attributes; Status : out Access_Status) is
@@ -10136,9 +10476,9 @@ package body Owned with SPARK_Mode is
          elsif A.State = Uninitialized then Status := Wrong_Phase; return;
          elsif Node = Root or else Node > Node_Count (A) or else not Present (A, Node) then
             Status := Invalid_Value; return;
-         elsif Owned.Kind (A.Inner, Node) /= Processor_Object then
+         elsif Owned.Kind (A.Inner.all, Node) /= Processor_Object then
             Status := Wrong_Kind; return; end if;
-         Metadata := Owned.Processor_Data (A.Inner, Node); Status := Available;
+         Metadata := Owned.Processor_Data (A.Inner.all, Node); Status := Available;
       end Read_Processor_Metadata;
       procedure Read_Power_Metadata (A : Arena; Node : Node_ID;
          Metadata : out Power_Attributes; Status : out Access_Status) is
@@ -10148,18 +10488,18 @@ package body Owned with SPARK_Mode is
          elsif A.State = Uninitialized then Status := Wrong_Phase; return;
          elsif Node = Root or else Node > Node_Count (A) or else not Present (A, Node) then
             Status := Invalid_Value; return;
-         elsif Owned.Kind (A.Inner, Node) /= Power_Resource_Object then
+         elsif Owned.Kind (A.Inner.all, Node) /= Power_Resource_Object then
             Status := Wrong_Kind; return; end if;
-         Metadata := Owned.Power_Data (A.Inner, Node); Status := Available;
+         Metadata := Owned.Power_Data (A.Inner.all, Node); Status := Available;
       end Read_Power_Metadata;
       procedure Reset (A : in out Arena; Status : out Access_Status) is
          Success : Boolean;
       begin
          if A.In_Progress or else Owned.Mutex_Registry.Active (A.Inner.Mutexes)
-           or else Owned.Frame_Root_Count (A.Inner) /= 0
+           or else Owned.Frame_Root_Count (A.Inner.all) /= 0
          then Status := Busy; return; end if;
          A.In_Progress := True;
-         Owned.Reset (A.Inner, Success);
+         Owned.Reset (A.Inner.all, Success);
          if Success then A.State := Loading; A.Import := Import_Undecided;
             A.Preparation := Bare_Namespace; Status := Available;
          else Status := Identity_Exhausted; end if;
@@ -10180,7 +10520,7 @@ package body Owned with SPARK_Mode is
          elsif A.State /= Loading or else A.Import not in Import_Undecided | Legacy_Import
            or else A.Preparation /= Bare_Namespace then Status := Wrong_Phase; return; end if;
          A.In_Progress := True;
-         Owned.Load (A.Inner, Data, Width, Outcome);
+         Owned.Load (A.Inner.all, Data, Width, Outcome);
          if Outcome = Loaded then A.Import := Legacy_Import; end if;
          A.In_Progress := False; Status := Available;
       end Load;
@@ -10204,7 +10544,7 @@ package body Owned with SPARK_Mode is
          Object_Ref : AML_Objects.Object_ID;
          Allocation : AML_Objects.Allocation_Status;
       begin
-         Candidate := Empty;
+         Candidate := Empty (Candidate.Object_Capacity, Candidate.Byte_Capacity, Candidate.Element_Capacity);
          Outcome := Namespace_Capacity_Exceeded;
          for Item of Seeds loop
             Insert (Candidate, Root, Item.Part, Node, Insert_Result);
@@ -10227,7 +10567,7 @@ package body Owned with SPARK_Mode is
       end Build_Firmware_Initial_State;
 
       function Firmware_Initial_State_Matches (Tree : State) return Boolean is
-         Expected : State;
+         Expected : State := Empty_Like (Tree);
          Outcome : Preparation_Outcome;
       begin
          Build_Firmware_Initial_State (Expected, Outcome);
@@ -10236,24 +10576,24 @@ package body Owned with SPARK_Mode is
 
       function Canonical_Firmware_Initial_State (A : Arena) return Boolean is
         (A.Preparation = Firmware_Initial_State
-         and then Firmware_Initial_State_Matches (A.Inner.Tree));
+         and then Firmware_Initial_State_Matches (A.Inner.Tree.all));
 
       procedure Prepare_Firmware_Namespace (A : in out Arena;
          Outcome : out Preparation_Outcome; Status : out Access_Status)
       is
-         Candidate : State;
+         Candidate : State := Empty_Like (A.Inner.Tree.all);
       begin
          Outcome := Preparation_Rejected;
          if A.In_Progress then Status := Busy; return;
          elsif A.State /= Loading or else A.Import /= Import_Undecided
            or else A.Preparation /= Bare_Namespace then Status := Wrong_Phase; return;
-         elsif Owned.Retained_Count (A.Inner) /= 0 or else Owned.Frame_Root_Count (A.Inner) /= 0
-           or else A.Inner.Tree /= Empty then Status := Invalid_Value; return;
+         elsif Owned.Retained_Count (A.Inner.all) /= 0 or else Owned.Frame_Root_Count (A.Inner.all) /= 0
+           or else A.Inner.Tree.all /= Empty_Like (A.Inner.Tree.all) then Status := Invalid_Value; return;
          end if;
          Build_Firmware_Initial_State (Candidate, Outcome);
          Status := Available;
          if Outcome = Firmware_Prepared then
-            A.Inner.Tree := Candidate;
+            A.Inner.Tree.all := Candidate;
             A.Preparation := Firmware_Initial_State;
          end if;
       end Prepare_Firmware_Namespace;
@@ -10273,251 +10613,279 @@ package body Owned with SPARK_Mode is
          Registered : Boolean; IO : in out Module_IO;
          Input : aliased AML_Table_Backing.State; Budget : Natural;
          Report : out Module_Report; Status : out Access_Status) is
-         use type Firmware_Tables.Admission;
-         use type AML_Table_Code.View_Status;
-         DSDT_Index : Natural := 0;
-         Width : AML_Decode.Integer_Width := AML_Decode.Bits_64;
-         Remaining : Natural := Budget;
-         Local_Metrics : Collection_Statistics := A.Collections;
-         Session_Active : Boolean := False;
-         Executing_Table : AML_Execute.Load_Table_Token := AML_Execute.No_Load_Table;
-         Roots : Root_Workspace;
-         Reclaim_Scratch : AML_Objects.Reclamation.Workspace;
-         Keep : Object_Root_Set;
-         procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
-         begin
-            if Collection_Count (Amount) > Collection_Count'Last - Counter then
-               Counter := Collection_Count'Last;
-            else Counter := Counter + Collection_Count (Amount); end if;
-         end Add;
-         procedure Collect_Before
-           (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
-            Trace : Root_Trace_Status;
-            Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
-            Before, After : AML_Objects.Usage;
-            use type AML_Objects.Reclamation.Reclaim_Status;
-         begin
-            Add (Local_Metrics.Attempted);
-            Gate := Invalid_Census;
-            if not Session_Active or else not Owned.Valid (E) or else Frame_Root_Count (E) = 0 then
-               Add (Local_Metrics.Rejected); return;
-            end if;
-            Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
-            if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
-            Before := AML_Objects.Usage_Of (E.Tree.Values);
-            AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
-              AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
-            if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
-               Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
-            end if;
-            After := AML_Objects.Usage_Of (E.Tree.Values);
-            Add (Local_Metrics.Completed);
-            Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
-            Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
-            Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
-            Gate := Allocation_Allowed;
-         end Collect_Before;
-
-         procedure Observe_Module_Field
-           (E : in out Owned.Arena; Context : in out Module_IO; Ref : Reference;
-            Width : AML_Decode.Integer_Width; For_Write : Boolean;
-            Value : in out AML_Execute.Datum; Result : out AML_Execute.Execution_Status) is
-         begin
-            Module_Field_Operation (E, Context, Ref, Width, For_Write, Value, Result);
-            if Result = AML_Execute.Returned or else Report.Field_Failure.Present
-              or else AML_References.Kind (Ref) /= AML_References.Named_Cell
-              or else not Named_Identity_Matches (E, Ref) then return; end if;
-            declare
-               Node : constant Node_ID := Node_ID (AML_References.Named_Node (Ref));
+         Workspace : Collection_Workspace_Owner := null;
+         procedure Run_With_Scratch (Scratch : in out Collection_Workspace) is
+            use type Firmware_Tables.Admission;
+            use type AML_Table_Code.View_Status;
+            DSDT_Index : Natural := 0;
+            Width : AML_Decode.Integer_Width := AML_Decode.Bits_64;
+            Remaining : Natural := Budget;
+            Local_Metrics : Collection_Statistics := A.Collections;
+            Session_Active : Boolean := False;
+            Executing_Table : AML_Execute.Load_Table_Token := AML_Execute.No_Load_Table;
+            Roots : Root_Workspace renames Scratch.Roots;
+            Reclaim_Scratch : AML_Objects.Reclamation.Workspace renames Scratch.Reclaim;
+            Keep : Object_Root_Set renames Scratch.Keep;
+            procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
             begin
-               if E.Tree.Items (Node).Object_Type /= Region_Field_Object then return; end if;
-               Report.Field_Failure :=
-                 (Present => True, Region_Known => False, For_Write => For_Write,
-                  Name => E.Tree.Items (Node).Part, Region => "____", Space => 0,
-                  Failure => (if Result in AML_Execute.Execution_Failure then Result else AML_Execute.Unsupported_Value));
-               declare Region : constant Node_ID := E.Tree.Items (Node).Region_Field_Info.Region; begin
-               if Region > Root and then Region <= E.Tree.Used
-                 and then E.Tree.Items (Region).Object_Type = Operation_Region_Object
-                 and then E.Tree.Items (Region).Incarnation = E.Tree.Items (Node).Region_Field_Info.Incarnation
-                 and then not E.Tree.Items (Region).Initializing then
-                  Report.Field_Failure.Region_Known := True;
-                  Report.Field_Failure.Region := E.Tree.Items (Region).Part;
-                  Report.Field_Failure.Space := AML_Decode.Byte (E.Tree.Items (Region).Operation_Info.Space);
+               if Collection_Count (Amount) > Collection_Count'Last - Counter then
+                  Counter := Collection_Count'Last;
+               else Counter := Counter + Collection_Count (Amount); end if;
+            end Add;
+            procedure Collect_Before
+              (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+               Trace : Root_Trace_Status;
+               Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
+               Before, After : AML_Objects.Usage;
+               use type AML_Objects.Reclamation.Reclaim_Status;
+            begin
+               Add (Local_Metrics.Attempted);
+               Gate := Invalid_Census;
+               if not Session_Active or else not Owned.Valid (E) or else Frame_Root_Count (E) = 0 then
+                  Add (Local_Metrics.Rejected); return;
                end if;
-               end;
-            end;
-         end Observe_Module_Field;
-
-         procedure Ignore_Module_Result (E : in out Owned.Arena; Result : AML_Execute.Execution_Result) is
-            pragma Unreferenced (E, Result);
-         begin null; end Ignore_Module_Result;
-         procedure Run_Standalone is new Run_Context_Session
-           (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before);
-         procedure Run_Registered is new Run_Registered_Context_Session
-           (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before);
-         procedure Run (E : in out Owned.Arena; Backing : aliased AML_Table_Backing.State;
-            Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
-            Width : AML_Decode.Integer_Width; Scope : Node_ID; Args : AML_Execute.Value_Arguments;
-            Count, Fuel : Natural; Sync : AML_Execute.Sync_Level; Result : out AML_Execute.Execution_Result;
-            Request : AML_Declaration_Contexts.Request) is
-         begin
-            if Registered then
-               Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
-                 Scope, Args, Count, Fuel, Sync, Result, Request, Deferred_Readiness => True,
-                 Enclosing_Table => Executing_Table);
-            else Run_Standalone (E, IO, Backing, Code, Source, Source_First, Width, Scope,
-                 Args, Count, Fuel, Sync, Result, Request); end if;
-         end Run;
-         function Signature_At (Index : Positive) return Firmware_Tables.Signature is
-            Offset : constant Natural := Input.Tables (Index).Offset;
-         begin
-            return [Character'Val (Input.Data.Bytes (Offset + 1)), Character'Val (Input.Data.Bytes (Offset + 2)),
-              Character'Val (Input.Data.Bytes (Offset + 3)), Character'Val (Input.Data.Bytes (Offset + 4))];
-         end Signature_At;
-         procedure Execute_Selected (Index : Positive) is
-            Prior : constant State := A.Inner.Tree;
-            type Definition_Snapshot is array (Positive range <>) of Definition_Identity;
-            Before : Definition_Snapshot (1 .. Loads.Capacity) := [others => No_Definition];
-            procedure Close_Rolled_Back_Definitions is
-               use type AML_Definition_Loads.Load_Phase;
-               Accepted : Boolean;
+               Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
+               if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
+               Before := AML_Objects.Usage_Of (E.Tree.Values);
+               AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
+                 AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
+               if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
+                  Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
+               end if;
+               After := AML_Objects.Usage_Of (E.Tree.Values);
+               Add (Local_Metrics.Completed);
+               Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
+               Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
+               Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
+               Gate := Allocation_Allowed;
+            end Collect_Before;
+   
+            procedure Observe_Module_Field
+              (E : in out Owned.Arena; Context : in out Module_IO; Ref : Reference;
+               Width : AML_Decode.Integer_Width; For_Write : Boolean;
+               Value : in out AML_Execute.Datum; Result : out AML_Execute.Execution_Status) is
             begin
-               for I in Before'Range loop
-                  if Before (I) /= AML_Definition_Loads.Definition (Loads, I) then
-                     if Has_Definition (Before (I)) then raise Program_Error with "startup definition identity changed"; end if;
-                     case AML_Definition_Loads.Phase (Loads, I) is
-                        when AML_Definition_Loads.Loaded =>
-                           AML_Definition_Loads.Require_Recovery (Loads, I, Accepted);
-                           if not Accepted then raise Program_Error with "startup rollback record invariant"; end if;
-                        when AML_Definition_Loads.Failed => null;
-                        when others => raise Program_Error with "startup rollback pending definition invariant";
-                     end case;
+               Module_Field_Operation (E, Context, Ref, Width, For_Write, Value, Result);
+               if Result = AML_Execute.Returned or else Report.Field_Failure.Present
+                 or else AML_References.Kind (Ref) /= AML_References.Named_Cell
+                 or else not Named_Identity_Matches (E, Ref) then return; end if;
+               declare
+                  Node : constant Node_ID := Node_ID (AML_References.Named_Node (Ref));
+               begin
+                  if E.Tree.Items (Node).Object_Type /= Region_Field_Object then return; end if;
+                  Report.Field_Failure :=
+                    (Present => True, Region_Known => False, For_Write => For_Write,
+                     Name => E.Tree.Items (Node).Part, Region => "____", Space => 0,
+                     Failure => (if Result in AML_Execute.Execution_Failure then Result else AML_Execute.Unsupported_Value));
+                  declare Region : constant Node_ID := E.Tree.Items (Node).Region_Field_Info.Region; begin
+                  if Region > Root and then Region <= E.Tree.Used
+                    and then E.Tree.Items (Region).Object_Type = Operation_Region_Object
+                    and then E.Tree.Items (Region).Incarnation = E.Tree.Items (Node).Region_Field_Info.Incarnation
+                    and then not E.Tree.Items (Region).Initializing then
+                     Report.Field_Failure.Region_Known := True;
+                     Report.Field_Failure.Region := E.Tree.Items (Region).Part;
+                     Report.Field_Failure.Space := AML_Decode.Byte (E.Tree.Items (Region).Operation_Info.Space);
                   end if;
-               end loop;
-            end Close_Rolled_Back_Definitions;
-            Prior_Definition, Definition : Definition_Identity;
-            Definition_Opened : Boolean;
-            Registry_Accepted : Boolean;
-            use type AML_Definition_Loads.Load_Phase;
-            Raw : AML_Execute.Execution_Result;
-            Visited : AML_Table_Code.View_Status;
-            procedure Consume (Backing : aliased AML_Table_Backing.State; Offset, Length : Natural) is
-               Args : constant AML_Execute.Value_Arguments :=
-                 [others => (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer)];
+                  end;
+               end;
+            end Observe_Module_Field;
+   
+            procedure Ignore_Module_Result (E : in out Owned.Arena; Result : AML_Execute.Execution_Result) is
+               pragma Unreferenced (E, Result);
+            begin null; end Ignore_Module_Result;
+            procedure Run_Standalone is new Run_Context_Session
+              (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before);
+            procedure Run_Registered is new Run_Registered_Context_Session
+              (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before);
+            procedure Run (E : in out Owned.Arena; Backing : aliased AML_Table_Backing.State;
+               Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
+               Width : AML_Decode.Integer_Width; Scope : Node_ID; Args : AML_Execute.Value_Arguments;
+               Count, Fuel : Natural; Sync : AML_Execute.Sync_Level; Result : out AML_Execute.Execution_Result;
+               Request : AML_Declaration_Contexts.Request) is
             begin
-               if Length = 0 then
-                  Run (A.Inner, Backing, [], Backing.Data, Offset, Width, Root, Args, 0, Remaining, 0, Raw,
-                    AML_Declaration_Contexts.Module_Request);
-               else
-                  Run (A.Inner, Backing, Backing.Data.Bytes (Offset + 1 .. Offset + Length),
-                    Backing.Data, Offset, Width, Root, Args, 0, Remaining, 0, Raw,
-                    AML_Declaration_Contexts.Module_Request);
-               end if;
-            end Consume;
-            procedure Visit is new AML_Table_Code.Visit_Body (Consume);
-         begin
-            if Registered then
-               -- A table loaded earlier in the same startup owns its existing
-               -- definition; the boot walk must not execute its body again.
-               if AML_Definition_Loads.Phase (Loads, Index) = AML_Definition_Loads.Loaded then
-                  Report.Completed := Report.Completed + 1; return;
-               end if;
-               for I in Before'Range loop Before (I) := AML_Definition_Loads.Definition (Loads, I); end loop;
-               AML_Definition_Loads.Reserve (Loads, Index, Registry_Accepted);
-               if not Registry_Accepted then
-                  Report.Outcome := Module_Rejected; Report.Failed_Table := Index;
-                  Report.Failure := AML_Execute.Duplicate_Name; A.Import := Module_Failed; return;
-               end if;
-            end if;
-            Enter_Definition (A.Inner.Tree, Prior_Definition, Definition, Definition_Opened);
-            if not Definition_Opened then
                if Registered then
-                  AML_Definition_Loads.Finish (Loads, Index, False, Registry_Accepted);
-                  if not Registry_Accepted then raise Program_Error with "boot unconsumed reservation invariant"; end if;
-               end if;
-               Report.Outcome := Module_Rejected; Report.Failed_Table := Index;
-               Report.Failure := AML_Execute.Value_Limit; A.Import := Module_Failed; return;
-            end if;
-            pragma Assert (Has_Definition (Definition));
-            if Registered then
-               AML_Definition_Loads.Consume (Loads, Index, Definition, Registry_Accepted);
-               if not Registry_Accepted then raise Program_Error with "boot definition registry invariant"; end if;
-               Executing_Table := AML_Execute.Load_Table_Token (Index);
-            end if;
-            Visit (Input, Index, Visited);
-            Executing_Table := AML_Execute.No_Load_Table;
-            A.Inner.Tree.Current_Definition := Prior_Definition;
-            if Visited /= AML_Table_Code.Body_Visited then
-               Raw := (AML_Execute.Unsupported_Value, 0);
-            end if;
-            if Registered then
-               AML_Definition_Loads.Finish (Loads, Index, Raw.Status = AML_Execute.Module_Completed, Registry_Accepted);
-               if not Registry_Accepted then raise Program_Error with "boot definition finalization invariant"; end if;
-            end if;
-            Remaining := Remaining - Raw.Charged;
-            Report.Charged := Budget - Remaining;
-            -- Invocation serials and collector observations remain monotonic.
-            -- Hardware-free attempts roll back Tree. Once a controlled provider
-            -- may have observed an operation, retain the partial namespace and
-            -- its identities for terminal recovery; effects are never replayed.
-            if Raw.Status /= AML_Execute.Module_Completed then
-               if Raw.Status = AML_Execute.Fatal_Requested then
-                  Report.Fatal := (Present => True, Item => Raw.Fatal);
-               end if;
-               if Registered then Close_Rolled_Back_Definitions; end if;
-               if not Keep_Failed_Tree (IO) then A.Inner.Tree := Prior; end if;
-               Report.Outcome := Module_Rejected;
-               Report.Failed_Table := Index;
-               Report.Failure := (if Raw.Status in AML_Execute.Execution_Failure then Raw.Status else AML_Execute.Unsupported_Value);
-               A.Import := Module_Failed;
-            else Report.Completed := Report.Completed + 1; end if;
-         end Execute_Selected;
-      begin
-         Report := (others => <>);
-         if Registered and then (Input.Count > Loads.Capacity or else AML_Definition_Loads.Active (Loads)) then
-            Status := Invalid_Value; return;
-         end if;
-         if A.In_Progress then Status := Busy; return;
-         elsif A.State /= Loading or else A.Import /= Import_Undecided then Status := Wrong_Phase; return;
-         elsif A.Inner.Notifications.Enabled or else A.Inner.Notifications.Used /= 0 then
-            -- Module evaluation must never publish queue effects outside the
-            -- namespace transaction. Interest can only be enabled after Ready.
-            Status := Invalid_Value; return;
-         elsif Owned.Retained_Count (A.Inner) /= 0 or else Owned.Frame_Root_Count (A.Inner) /= 0
-           or else (if A.Preparation = Bare_Namespace then A.Inner.Tree /= Empty
-             else not Firmware_Initial_State_Matches (A.Inner.Tree))
-         then Status := Invalid_Value; return; end if;
-         Status := Invalid_Value;
-         if Input.Count = 0 or else Input.Count > Input.Table_Capacity then return; end if;
-         for I in 1 .. Input.Count loop
-            if not AML_Table_Backing.Valid_Span (Input, I) then return; end if;
-            declare
-               Span : constant AML_Table_Backing.Span := Input.Tables (I);
-               Signature : constant Firmware_Tables.Signature := Signature_At (I);
-               Header : constant Firmware_Tables.Table_Result := Firmware_Tables.Read_Table
-                 (Input.Data.Bytes (Span.Offset + 1 .. Span.Offset + Span.Extent), Signature);
+                  Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
+                    Scope, Args, Count, Fuel, Sync, Result, Request, Deferred_Readiness => True,
+                    Enclosing_Table => Executing_Table);
+               else Run_Standalone (E, IO, Backing, Code, Source, Source_First, Width, Scope,
+                    Args, Count, Fuel, Sync, Result, Request); end if;
+            end Run;
+            function Signature_At (Index : Positive) return Firmware_Tables.Signature is
+               Offset : constant Natural := Input.Tables (Index).Offset;
             begin
-               if Header.Status /= Firmware_Tables.Accepted or else Header.Extent /= Span.Extent then return; end if;
-               if Signature = "DSDT" then
-                  if DSDT_Index /= 0 then return; end if;
-                  DSDT_Index := I;
-                  Width := (if Header.Revision < 2 then AML_Decode.Bits_32 else AML_Decode.Bits_64);
+               return [Character'Val (Input.Data.Bytes (Offset + 1)), Character'Val (Input.Data.Bytes (Offset + 2)),
+                 Character'Val (Input.Data.Bytes (Offset + 3)), Character'Val (Input.Data.Bytes (Offset + 4))];
+            end Signature_At;
+            procedure Execute_Selected (Index : Positive) is
+               Snapshot : Namespace_Snapshot_Owner := null;
+               procedure Execute_With_Snapshot (Prior : State) is
+                  type Definition_Snapshot is array (Positive range <>) of Definition_Identity;
+                  Before : Definition_Snapshot (1 .. Loads.Capacity) := [others => No_Definition];
+                  procedure Close_Rolled_Back_Definitions is
+                     use type AML_Definition_Loads.Load_Phase;
+                     Accepted : Boolean;
+                  begin
+                     for I in Before'Range loop
+                        if Before (I) /= AML_Definition_Loads.Definition (Loads, I) then
+                           if Has_Definition (Before (I)) then raise Program_Error with "startup definition identity changed"; end if;
+                           case AML_Definition_Loads.Phase (Loads, I) is
+                              when AML_Definition_Loads.Loaded =>
+                                 AML_Definition_Loads.Require_Recovery (Loads, I, Accepted);
+                                 if not Accepted then raise Program_Error with "startup rollback record invariant"; end if;
+                              when AML_Definition_Loads.Failed => null;
+                              when others => raise Program_Error with "startup rollback pending definition invariant";
+                           end case;
+                        end if;
+                     end loop;
+                  end Close_Rolled_Back_Definitions;
+                  Prior_Definition, Definition : Definition_Identity;
+                  Definition_Opened : Boolean;
+                  Registry_Accepted : Boolean;
+                  use type AML_Definition_Loads.Load_Phase;
+                  Raw : AML_Execute.Execution_Result;
+                  Visited : AML_Table_Code.View_Status;
+                  procedure Consume (Backing : aliased AML_Table_Backing.State; Offset, Length : Natural) is
+                     Args : constant AML_Execute.Value_Arguments :=
+                       [others => (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer)];
+                  begin
+                     if Length = 0 then
+                        Run (A.Inner.all, Backing, [], Backing.Data, Offset, Width, Root, Args, 0, Remaining, 0, Raw,
+                          AML_Declaration_Contexts.Module_Request);
+                     else
+                        Run (A.Inner.all, Backing, Backing.Data.Bytes (Offset + 1 .. Offset + Length),
+                          Backing.Data, Offset, Width, Root, Args, 0, Remaining, 0, Raw,
+                          AML_Declaration_Contexts.Module_Request);
+                     end if;
+                  end Consume;
+                  procedure Visit is new AML_Table_Code.Visit_Body (Consume);
+               begin
+                  if Registered then
+                     -- A table loaded earlier in the same startup owns its existing
+                     -- definition; the boot walk must not execute its body again.
+                     if AML_Definition_Loads.Phase (Loads, Index) = AML_Definition_Loads.Loaded then
+                        Report.Completed := Report.Completed + 1; return;
+                     end if;
+                     for I in Before'Range loop Before (I) := AML_Definition_Loads.Definition (Loads, I); end loop;
+                     AML_Definition_Loads.Reserve (Loads, Index, Registry_Accepted);
+                     if not Registry_Accepted then
+                        Report.Outcome := Module_Rejected; Report.Failed_Table := Index;
+                        Report.Failure := AML_Execute.Duplicate_Name; A.Import := Module_Failed; return;
+                     end if;
+                  end if;
+                  Enter_Definition (A.Inner.Tree.all, Prior_Definition, Definition, Definition_Opened);
+                  if not Definition_Opened then
+                     if Registered then
+                        AML_Definition_Loads.Finish (Loads, Index, False, Registry_Accepted);
+                        if not Registry_Accepted then raise Program_Error with "boot unconsumed reservation invariant"; end if;
+                     end if;
+                     Report.Outcome := Module_Rejected; Report.Failed_Table := Index;
+                     Report.Failure := AML_Execute.Value_Limit; A.Import := Module_Failed; return;
+                  end if;
+                  pragma Assert (Has_Definition (Definition));
+                  if Registered then
+                     AML_Definition_Loads.Consume (Loads, Index, Definition, Registry_Accepted);
+                     if not Registry_Accepted then raise Program_Error with "boot definition registry invariant"; end if;
+                     Executing_Table := AML_Execute.Load_Table_Token (Index);
+                  end if;
+                  Visit (Input, Index, Visited);
+                  Executing_Table := AML_Execute.No_Load_Table;
+                  A.Inner.Tree.Current_Definition := Prior_Definition;
+                  if Visited /= AML_Table_Code.Body_Visited then
+                     Raw := (AML_Execute.Unsupported_Value, 0);
+                  end if;
+                  if Registered then
+                     AML_Definition_Loads.Finish (Loads, Index, Raw.Status = AML_Execute.Module_Completed, Registry_Accepted);
+                     if not Registry_Accepted then raise Program_Error with "boot definition finalization invariant"; end if;
+                  end if;
+                  Remaining := Remaining - Raw.Charged;
+                  Report.Charged := Budget - Remaining;
+                  -- Invocation serials and collector observations remain monotonic.
+                  -- Hardware-free attempts roll back Tree. Once a controlled provider
+                  -- may have observed an operation, retain the partial namespace and
+                  -- its identities for terminal recovery; effects are never replayed.
+                  if Raw.Status /= AML_Execute.Module_Completed then
+                     if Raw.Status = AML_Execute.Fatal_Requested then
+                        Report.Fatal := (Present => True, Item => Raw.Fatal);
+                     end if;
+                     if Registered then Close_Rolled_Back_Definitions; end if;
+                     if not Keep_Failed_Tree (IO) then A.Inner.Tree.all := Prior; end if;
+                     Report.Outcome := Module_Rejected;
+                     Report.Failed_Table := Index;
+                     Report.Failure := (if Raw.Status in AML_Execute.Execution_Failure then Raw.Status else AML_Execute.Unsupported_Value);
+                     A.Import := Module_Failed;
+                  else Report.Completed := Report.Completed + 1; end if;
+               end Execute_With_Snapshot;
+            begin
+               Snapshot := Clone_Namespace_Snapshot (A.Inner.Tree.all);
+               if Snapshot = null then
+                  Report.Outcome := Module_Rejected;
+                  Report.Failed_Table := Index;
+                  Report.Failure := AML_Execute.Value_Limit;
+                  A.Import := Module_Failed;
+                  return;
                end if;
-            end;
-         end loop;
-         if DSDT_Index = 0 then return; end if;
-         A.In_Progress := True; Session_Active := True; A.Import := Module_Active;
-         Execute_Selected (DSDT_Index);
-         for I in 1 .. Input.Count loop
-            exit when A.Import = Module_Failed;
-            if Signature_At (I) = "SSDT" then Execute_Selected (I); end if;
-         end loop;
-         if A.Import /= Module_Failed then
-            A.Import := Module_Complete; Report.Outcome := Modules_Completed;
-            Report.Failure := AML_Execute.No_Return;
+               Execute_With_Snapshot (Snapshot.all);
+               Free_Namespace_Snapshot (Snapshot);
+
+            end Execute_Selected;
+         begin
+            Report := (others => <>);
+            if Registered and then (Input.Count > Loads.Capacity or else AML_Definition_Loads.Active (Loads)) then
+               Status := Invalid_Value; return;
+            end if;
+            if A.In_Progress then Status := Busy; return;
+            elsif A.State /= Loading or else A.Import /= Import_Undecided then Status := Wrong_Phase; return;
+            elsif A.Inner.Notifications.Enabled or else A.Inner.Notifications.Used /= 0 then
+               -- Module evaluation must never publish queue effects outside the
+               -- namespace transaction. Interest can only be enabled after Ready.
+               Status := Invalid_Value; return;
+            elsif Owned.Retained_Count (A.Inner.all) /= 0 or else Owned.Frame_Root_Count (A.Inner.all) /= 0
+              or else (if A.Preparation = Bare_Namespace then A.Inner.Tree.all /= Empty_Like (A.Inner.Tree.all)
+                else not Firmware_Initial_State_Matches (A.Inner.Tree.all))
+            then Status := Invalid_Value; return; end if;
+            Status := Invalid_Value;
+            if Input.Count = 0 or else Input.Count > Input.Table_Capacity then return; end if;
+            for I in 1 .. Input.Count loop
+               if not AML_Table_Backing.Valid_Span (Input, I) then return; end if;
+               declare
+                  Span : constant AML_Table_Backing.Span := Input.Tables (I);
+                  Signature : constant Firmware_Tables.Signature := Signature_At (I);
+                  Header : constant Firmware_Tables.Table_Result := Firmware_Tables.Read_Table
+                    (Input.Data.Bytes (Span.Offset + 1 .. Span.Offset + Span.Extent), Signature);
+               begin
+                  if Header.Status /= Firmware_Tables.Accepted or else Header.Extent /= Span.Extent then return; end if;
+                  if Signature = "DSDT" then
+                     if DSDT_Index /= 0 then return; end if;
+                     DSDT_Index := I;
+                     Width := (if Header.Revision < 2 then AML_Decode.Bits_32 else AML_Decode.Bits_64);
+                  end if;
+               end;
+            end loop;
+            if DSDT_Index = 0 then return; end if;
+            A.In_Progress := True; Session_Active := True; A.Import := Module_Active;
+            Execute_Selected (DSDT_Index);
+            for I in 1 .. Input.Count loop
+               exit when A.Import = Module_Failed;
+               if Signature_At (I) = "SSDT" then Execute_Selected (I); end if;
+            end loop;
+            if A.Import /= Module_Failed then
+               A.Import := Module_Complete; Report.Outcome := Modules_Completed;
+               Report.Failure := AML_Execute.No_Return;
+            end if;
+            A.Collections := Local_Metrics;
+            A.In_Progress := False; Status := Available;
+         end Run_With_Scratch;
+      begin
+         Workspace := Allocate_Collection_Workspace
+           (A.Object_Capacity, A.Byte_Capacity, A.Element_Capacity);
+         if Workspace = null then
+            Report := (Outcome => Module_Rejected, Failure => AML_Execute.Value_Limit, others => <>);
+            Status := Invalid_Value;
+            return;
          end if;
-         A.Collections := Local_Metrics;
-         A.In_Progress := False; Status := Available;
+         Run_With_Scratch (Workspace.all);
+         Free_Collection_Workspace (Workspace);
+
       end Execute_Modules_With_Context;
       function No_Module_Effects (IO : Null_Field_Context) return Boolean is
          pragma Unreferenced (IO);
@@ -10550,144 +10918,158 @@ package body Owned with SPARK_Mode is
          Width : AML_Decode.Integer_Width; Budget : Natural;
          Report : out Append_Report; Status : out Access_Status;
          Root_At : Module_Root := Namespace_Module_Root) is
-         use type Firmware_Tables.Admission;
-         use type AML_Table_Code.View_Status;
-         Local_Metrics : Collection_Statistics := A.Collections;
-         Session_Active : Boolean := False;
-         Roots : Root_Workspace;
-         Reclaim_Scratch : AML_Objects.Reclamation.Workspace;
-         Keep : Object_Root_Set;
-         Raw : AML_Execute.Execution_Result;
-         Visited : AML_Table_Code.View_Status;
-         Tables, Members : Initialization_Report;
-         Entry_Node : Node_ID := Root;
-         Prior_Definition : Definition_Identity;
-         Definition_Opened : Boolean;
-         procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
+         Workspace : Collection_Workspace_Owner := null;
+         procedure Run_With_Scratch (Scratch : in out Collection_Workspace) is
+            use type Firmware_Tables.Admission;
+            use type AML_Table_Code.View_Status;
+            Local_Metrics : Collection_Statistics := A.Collections;
+            Session_Active : Boolean := False;
+            Roots : Root_Workspace renames Scratch.Roots;
+            Reclaim_Scratch : AML_Objects.Reclamation.Workspace renames Scratch.Reclaim;
+            Keep : Object_Root_Set renames Scratch.Keep;
+            Raw : AML_Execute.Execution_Result;
+            Visited : AML_Table_Code.View_Status;
+            Tables, Members : Initialization_Report;
+            Entry_Node : Node_ID := Root;
+            Prior_Definition : Definition_Identity;
+            Definition_Opened : Boolean;
+            procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
+            begin
+               if Collection_Count (Amount) > Collection_Count'Last - Counter then
+                  Counter := Collection_Count'Last;
+               else Counter := Counter + Collection_Count (Amount); end if;
+            end Add;
+            procedure Collect_Before
+              (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+               Trace : Root_Trace_Status;
+               Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
+               Before, After : AML_Objects.Usage;
+               use type AML_Objects.Reclamation.Reclaim_Status;
+            begin
+               Add (Local_Metrics.Attempted);
+               Gate := Invalid_Census;
+               if not Session_Active or else not Owned.Valid (E) or else Frame_Root_Count (E) = 0 then
+                  Add (Local_Metrics.Rejected); return;
+               end if;
+               Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
+               if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
+               Before := AML_Objects.Usage_Of (E.Tree.Values);
+               AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
+                 AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
+               if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
+                  Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
+               end if;
+               After := AML_Objects.Usage_Of (E.Tree.Values);
+               Add (Local_Metrics.Completed);
+               Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
+               Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
+               Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
+               Gate := Allocation_Allowed;
+            end Collect_Before;
+   
+   
+            procedure Ignore_Result (E : in out Owned.Arena; Result : AML_Execute.Execution_Result) is
+               pragma Unreferenced (E, Result);
+            begin null; end Ignore_Result;
+            procedure Run_Standalone is new Run_Owned_Session (Ignore_Result, Collect_Before);
+            procedure Run_Registered is new Run_Registered_Context_Session
+              (Null_Field_Context, Reject_Field_Operation, Ignore_Result, Collect_Before);
+            IO : Null_Field_Context;
+            procedure Run (E : in out Owned.Arena; Backing : aliased AML_Table_Backing.State;
+               Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
+               Width : AML_Decode.Integer_Width; Scope : Node_ID; Args : AML_Execute.Value_Arguments;
+               Count, Fuel : Natural; Sync : AML_Execute.Sync_Level; Result : out AML_Execute.Execution_Result;
+               Request : AML_Declaration_Contexts.Request) is
+            begin
+               if Registered then
+                  Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
+                    Scope, Args, Count, Fuel, Sync, Result, Request,
+                    Enclosing_Table => AML_Execute.Load_Table_Token (Index));
+               else Run_Standalone (E, Backing, Code, Source, Source_First, Width, Scope,
+                    Args, Count, Fuel, Sync, Result, Request); end if;
+            end Run;
+            procedure Consume (Backing : aliased AML_Table_Backing.State; Offset, Length : Natural) is
+               Args : constant AML_Execute.Value_Arguments :=
+                 [others => (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer)];
+            begin
+               if Length = 0 then
+                  Run (A.Inner.all, Backing, [], Backing.Data, Offset, Width, Entry_Node, Args, 0, Budget, 0, Raw,
+                    AML_Declaration_Contexts.Module_Request);
+               else
+                  Run (A.Inner.all, Backing, Backing.Data.Bytes (Offset + 1 .. Offset + Length),
+                    Backing.Data, Offset, Width, Entry_Node, Args, 0, Budget, 0, Raw,
+                    AML_Declaration_Contexts.Module_Request);
+               end if;
+            end Consume;
+            procedure Visit is new AML_Table_Code.Visit_Body (Consume);
          begin
-            if Collection_Count (Amount) > Collection_Count'Last - Counter then
-               Counter := Collection_Count'Last;
-            else Counter := Counter + Collection_Count (Amount); end if;
-         end Add;
-         procedure Collect_Before
-           (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
-            Trace : Root_Trace_Status;
-            Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
-            Before, After : AML_Objects.Usage;
-            use type AML_Objects.Reclamation.Reclaim_Status;
-         begin
-            Add (Local_Metrics.Attempted);
-            Gate := Invalid_Census;
-            if not Session_Active or else not Owned.Valid (E) or else Frame_Root_Count (E) = 0 then
-               Add (Local_Metrics.Rejected); return;
+            Report := (others => <>); Status := Invalid_Value;
+            if Has_Definition (Stored_Definition (A, Loads)) then
+               Report.Outcome := Append_Already_Consumed; Report.Definition := Stored_Definition (A, Loads);
+               Status := Wrong_Phase; return;
             end if;
-            Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
-            if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
-            Before := AML_Objects.Usage_Of (E.Tree.Values);
-            AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
-              AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
-            if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
-               Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
+            if A.In_Progress then Status := Busy; return;
+            elsif A.State /= Ready or else A.Import /= Module_Complete then Status := Wrong_Phase; return;
+            elsif A.Inner.Notifications.Enabled or else A.Inner.Notifications.Used /= 0
+              or else Owned.Frame_Root_Count (A.Inner.all) /= 0 then return;
             end if;
-            After := AML_Objects.Usage_Of (E.Tree.Values);
-            Add (Local_Metrics.Completed);
-            Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
-            Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
-            Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
-            Gate := Allocation_Allowed;
-         end Collect_Before;
-
-
-         procedure Ignore_Result (E : in out Owned.Arena; Result : AML_Execute.Execution_Result) is
-            pragma Unreferenced (E, Result);
-         begin null; end Ignore_Result;
-         procedure Run_Standalone is new Run_Owned_Session (Ignore_Result, Collect_Before);
-         procedure Run_Registered is new Run_Registered_Context_Session
-           (Null_Field_Context, Reject_Field_Operation, Ignore_Result, Collect_Before);
-         IO : Null_Field_Context;
-         procedure Run (E : in out Owned.Arena; Backing : aliased AML_Table_Backing.State;
-            Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
-            Width : AML_Decode.Integer_Width; Scope : Node_ID; Args : AML_Execute.Value_Arguments;
-            Count, Fuel : Natural; Sync : AML_Execute.Sync_Level; Result : out AML_Execute.Execution_Result;
-            Request : AML_Declaration_Contexts.Request) is
-         begin
-            if Registered then
-               Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
-                 Scope, Args, Count, Fuel, Sync, Result, Request,
-                 Enclosing_Table => AML_Execute.Load_Table_Token (Index));
-            else Run_Standalone (E, Backing, Code, Source, Source_First, Width, Scope,
-                 Args, Count, Fuel, Sync, Result, Request); end if;
-         end Run;
-         procedure Consume (Backing : aliased AML_Table_Backing.State; Offset, Length : Natural) is
-            Args : constant AML_Execute.Value_Arguments :=
-              [others => (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer)];
-         begin
-            if Length = 0 then
-               Run (A.Inner, Backing, [], Backing.Data, Offset, Width, Entry_Node, Args, 0, Budget, 0, Raw,
-                 AML_Declaration_Contexts.Module_Request);
-            else
-               Run (A.Inner, Backing, Backing.Data.Bytes (Offset + 1 .. Offset + Length),
-                 Backing.Data, Offset, Width, Entry_Node, Args, 0, Budget, 0, Raw,
-                 AML_Declaration_Contexts.Module_Request);
+            if Root_At.Kind = Selected_Root then
+               if not Current_Node (A, Root_At.Scope) then return; end if;
+               Entry_Node := Position (Root_At.Scope);
+               if Entry_Node /= Root and then not Static_Scope (Kind (A.Inner.Tree.all, Entry_Node)) then return; end if;
             end if;
-         end Consume;
-         procedure Visit is new AML_Table_Code.Visit_Body (Consume);
+            if Input.Count = 0 or else Input.Count > Input.Table_Capacity or else Index > Input.Count
+              or else not AML_Table_Backing.Valid_Span (Input, Index) then return; end if;
+            declare
+               Span : constant AML_Table_Backing.Span := Input.Tables (Index);
+               Signature : constant Firmware_Tables.Signature :=
+                 [Character'Val (Input.Data.Bytes (Span.Offset + 1)), Character'Val (Input.Data.Bytes (Span.Offset + 2)),
+                  Character'Val (Input.Data.Bytes (Span.Offset + 3)), Character'Val (Input.Data.Bytes (Span.Offset + 4))];
+               Header : constant Firmware_Tables.Table_Result := Firmware_Tables.Read_Table
+                 (Input.Data.Bytes (Span.Offset + 1 .. Span.Offset + Span.Extent), Signature);
+            begin
+               if Header.Status /= Firmware_Tables.Accepted or else Header.Extent /= Span.Extent
+                 or else Signature in "DSDT" | "SSDT" then return; end if;
+            end;
+            Status := Available;
+            if Budget = 0 then Report.Outcome := Append_Budget_Refused; return; end if;
+            Enter_Definition (A.Inner.Tree.all, Prior_Definition, Report.Definition, Definition_Opened);
+            if not Definition_Opened then Status := Invalid_Value; Report.Failure := AML_Execute.Value_Limit; return; end if;
+            Consume_Definition (A, Loads, Report.Definition); Report.Recovery_Needed := True;
+            A.In_Progress := True; Session_Active := True;
+            Visit (Input, Index, Visited);
+            A.Inner.Tree.Current_Definition := Prior_Definition;
+            if Visited /= AML_Table_Code.Body_Visited then Raw := (AML_Execute.Unsupported_Value, 0); end if;
+            A.Collections := Local_Metrics;
+            A.In_Progress := False;
+            Report.Charged := Natural'Min (Raw.Charged, Budget);
+            if Raw.Charged > Budget or else Raw.Status /= AML_Execute.Module_Completed then
+               Report.Outcome := Append_Failed;
+               Report.Failure := (if Raw.Status in AML_Execute.Execution_Failure then Raw.Status else AML_Execute.Unsupported_Value);
+               if Raw.Status = AML_Execute.Fatal_Requested then Report.Fatal := (Present => True, Item => Raw.Fatal); end if;
+               A.State := Loading; A.Import := Module_Failed; return;
+            end if;
+            Resolve_Static_Tables (A.Inner.Tree.all, Input, True, Tables);
+            Owned.Initialize_Members (A.Inner.all, Members);
+            Report.Initialization := (Bound => Tables.Bound + Members.Bound,
+              Missing => Tables.Missing + Members.Missing, Unsupported => Tables.Unsupported + Members.Unsupported);
+            if Report.Initialization.Missing /= 0 or else Report.Initialization.Unsupported /= 0 then
+               Report.Outcome := Append_Initialization_Failed;
+               A.State := Loading; A.Import := Module_Failed; return;
+            end if;
+            Report.Outcome := Append_Completed; Report.Recovery_Needed := False;
+         end Run_With_Scratch;
       begin
-         Report := (others => <>); Status := Invalid_Value;
-         if Has_Definition (Stored_Definition (A, Loads)) then
-            Report.Outcome := Append_Already_Consumed; Report.Definition := Stored_Definition (A, Loads);
-            Status := Wrong_Phase; return;
+         Workspace := Allocate_Collection_Workspace
+           (A.Object_Capacity, A.Byte_Capacity, A.Element_Capacity);
+         if Workspace = null then
+            Report := (Failure => AML_Execute.Value_Limit, others => <>);
+            Status := Invalid_Value;
+            return;
          end if;
-         if A.In_Progress then Status := Busy; return;
-         elsif A.State /= Ready or else A.Import /= Module_Complete then Status := Wrong_Phase; return;
-         elsif A.Inner.Notifications.Enabled or else A.Inner.Notifications.Used /= 0
-           or else Owned.Frame_Root_Count (A.Inner) /= 0 then return;
-         end if;
-         if Root_At.Kind = Selected_Root then
-            if not Current_Node (A, Root_At.Scope) then return; end if;
-            Entry_Node := Position (Root_At.Scope);
-            if Entry_Node /= Root and then not Static_Scope (Kind (A.Inner.Tree, Entry_Node)) then return; end if;
-         end if;
-         if Input.Count = 0 or else Input.Count > Input.Table_Capacity or else Index > Input.Count
-           or else not AML_Table_Backing.Valid_Span (Input, Index) then return; end if;
-         declare
-            Span : constant AML_Table_Backing.Span := Input.Tables (Index);
-            Signature : constant Firmware_Tables.Signature :=
-              [Character'Val (Input.Data.Bytes (Span.Offset + 1)), Character'Val (Input.Data.Bytes (Span.Offset + 2)),
-               Character'Val (Input.Data.Bytes (Span.Offset + 3)), Character'Val (Input.Data.Bytes (Span.Offset + 4))];
-            Header : constant Firmware_Tables.Table_Result := Firmware_Tables.Read_Table
-              (Input.Data.Bytes (Span.Offset + 1 .. Span.Offset + Span.Extent), Signature);
-         begin
-            if Header.Status /= Firmware_Tables.Accepted or else Header.Extent /= Span.Extent
-              or else Signature in "DSDT" | "SSDT" then return; end if;
-         end;
-         Status := Available;
-         if Budget = 0 then Report.Outcome := Append_Budget_Refused; return; end if;
-         Enter_Definition (A.Inner.Tree, Prior_Definition, Report.Definition, Definition_Opened);
-         if not Definition_Opened then Status := Invalid_Value; Report.Failure := AML_Execute.Value_Limit; return; end if;
-         Consume_Definition (A, Loads, Report.Definition); Report.Recovery_Needed := True;
-         A.In_Progress := True; Session_Active := True;
-         Visit (Input, Index, Visited);
-         A.Inner.Tree.Current_Definition := Prior_Definition;
-         if Visited /= AML_Table_Code.Body_Visited then Raw := (AML_Execute.Unsupported_Value, 0); end if;
-         A.Collections := Local_Metrics;
-         A.In_Progress := False;
-         Report.Charged := Natural'Min (Raw.Charged, Budget);
-         if Raw.Charged > Budget or else Raw.Status /= AML_Execute.Module_Completed then
-            Report.Outcome := Append_Failed;
-            Report.Failure := (if Raw.Status in AML_Execute.Execution_Failure then Raw.Status else AML_Execute.Unsupported_Value);
-            if Raw.Status = AML_Execute.Fatal_Requested then Report.Fatal := (Present => True, Item => Raw.Fatal); end if;
-            A.State := Loading; A.Import := Module_Failed; return;
-         end if;
-         Resolve_Static_Tables (A.Inner.Tree, Input, True, Tables);
-         Owned.Initialize_Members (A.Inner, Members);
-         Report.Initialization := (Bound => Tables.Bound + Members.Bound,
-           Missing => Tables.Missing + Members.Missing, Unsupported => Tables.Unsupported + Members.Unsupported);
-         if Report.Initialization.Missing /= 0 or else Report.Initialization.Unsupported /= 0 then
-            Report.Outcome := Append_Initialization_Failed;
-            A.State := Loading; A.Import := Module_Failed; return;
-         end if;
-         Report.Outcome := Append_Completed; Report.Recovery_Needed := False;
+         Run_With_Scratch (Workspace.all);
+         Free_Collection_Workspace (Workspace);
+
       end Append_Module;
       procedure Append_Ready_Module (A : in out Arena;
          Input : aliased AML_Table_Backing.State; Index : Positive;
@@ -10797,9 +11179,9 @@ package body Owned with SPARK_Mode is
          Status := Admission (A); if Status /= Available then return; end if;
          if A.Inner.Field_Uncertain.Present then Outcome := AML_Execute.Field_Indeterminate; return; end if;
          if not Current_Binding (A, Target) then Status := Invalid_Value; return; end if;
-         Located := Canonical_Node (A.Inner.Tree, Target.Node);
+         Located := Canonical_Node (A.Inner.Tree.all, Target.Node);
          if Located.Status /= Found then Status := Invalid_Value; return; end if;
-         if Kind (A.Inner.Tree, Located.Node) not in
+         if Kind (A.Inner.Tree.all, Located.Node) not in
            Integer_Object | String_Object | Buffer_Object | Package_Object |
            Reference_Object | Metadata_Value_Object | Uninitialized_Name_Object | Buffer_Field_Object
          then Status := Wrong_Kind; return; end if;
@@ -10808,14 +11190,14 @@ package body Owned with SPARK_Mode is
             when Immediate_Argument =>
                Value := (AML_Execute.Integer_Datum, Item.Number, AML_Decode.Ordinary_Integer);
             when Retained_Argument =>
-               Owned.Read_Retained (A.Inner, Item.Handle.Root, Value, Read_Status);
+               Owned.Read_Retained (A.Inner.all, Item.Handle.Root, Value, Read_Status);
                if Read_Status /= AML_Execute.Returned then Status := Invalid_Value; return; end if;
          end case;
-         Owned.Make_Named_Reference (A.Inner, Located.Node, Ref, Accepted);
+         Owned.Make_Named_Reference (A.Inner.all, Located.Node, Ref, Accepted);
          if not Accepted then Status := Invalid_Value; return; end if;
          Charged := Parameter_Store_Charge;
          A.In_Progress := True;
-         Owned.Store_Reference_Value (A.Inner, Ref, Width, Value, Outcome, AML_Execute.Direct_Target);
+         Owned.Store_Reference_Value (A.Inner.all, Ref, Width, Value, Outcome, AML_Execute.Direct_Target);
          A.In_Progress := False;
       end Store_Parameter_Data;
       procedure Seal_Common (A : in out Arena; Input : aliased AML_Table_Backing.State;
@@ -10826,8 +11208,8 @@ package body Owned with SPARK_Mode is
          if A.In_Progress then Status := Busy; return;
          elsif A.State /= Loading or else A.Import not in Import_Undecided | Legacy_Import | Module_Complete then Status := Wrong_Phase; return; end if;
          A.In_Progress := True;
-         Resolve_Static_Tables (A.Inner.Tree, Input, Have_Input, Table_Report);
-         Owned.Initialize_Members (A.Inner, Member_Report);
+         Resolve_Static_Tables (A.Inner.Tree.all, Input, Have_Input, Table_Report);
+         Owned.Initialize_Members (A.Inner.all, Member_Report);
          Report := (Bound => Table_Report.Bound + Member_Report.Bound,
            Missing => Table_Report.Missing + Member_Report.Missing,
            Unsupported => Table_Report.Unsupported + Member_Report.Unsupported);
@@ -10848,108 +11230,122 @@ package body Owned with SPARK_Mode is
          Registered : Boolean; Input : aliased AML_Table_Backing.State;
          Node : Node_ID; Args : Arguments; Count : Argument_Count;
          Budget : Natural; Outcome : out Result; Status : out Access_Status) is
-         use type AML_Definition_Loads.Load_Phase;
-         Raw_Args : AML_Execute.Value_Arguments :=
-           [others => (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer)];
-         Raw : AML_Execute.Execution_Result;
-         Root : Retained_Root;
-         Retention : Invocation_Retention_Status;
-         Read_Status : AML_Execute.Execution_Status;
-         subtype Failure_Status is AML_Execute.Payload_Free_Failure;
-         Local_Metrics : Collection_Statistics := A.Collections;
-         Session_Active : Boolean := False;
-         Roots : Root_Workspace;
-         Reclaim_Scratch : AML_Objects.Reclamation.Workspace;
-         Keep : Object_Root_Set;
-         procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
-         begin
-            if Collection_Count (Amount) > Collection_Count'Last - Counter then
-               Counter := Collection_Count'Last;
-            else Counter := Counter + Collection_Count (Amount); end if;
-         end Add;
-         procedure Collect_Before
-           (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
-            Trace : Root_Trace_Status;
-            Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
-            Before, After : AML_Objects.Usage;
-            use type AML_Objects.Reclamation.Reclaim_Status;
-         begin
-            Add (Local_Metrics.Attempted);
-            Gate := Invalid_Census;
-            if not Session_Active or else not Owned.Valid (E) or else Frame_Root_Count (E) = 0 then
-               Add (Local_Metrics.Rejected); return;
-            end if;
-            Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
-            if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
-            Before := AML_Objects.Usage_Of (E.Tree.Values);
-            AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
-              AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
-            if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
-               Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
-            end if;
-            After := AML_Objects.Usage_Of (E.Tree.Values);
-            Add (Local_Metrics.Completed);
-            Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
-            Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
-            Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
-            Gate := Allocation_Allowed;
-         end Collect_Before;
-         procedure Run is new Invoke_Retained_With_Hook (Collect_Before);
-         procedure Run_Registered is new Invoke_Registered_Retained (Collect_Before);
-      begin
-         Outcome := (Status => AML_Execute.No_Return, Charged => 0);
-         Status := Admission (A); if Status /= Available then return; end if;
-         if Node > Owned.Node_Count (A.Inner) or else not Owned.Present (A.Inner, Node)
-           or else Owned.Kind (A.Inner, Node) /= Method_Object then
-            Outcome := (Status => AML_Execute.Invalid_Method, Charged => 0); return;
-         end if;
-         for I in 1 .. Count loop
-            case Args (I - 1).Kind is
-               when Immediate_Argument =>
-                  Raw_Args (I - 1) := (AML_Execute.Integer_Datum,
-                     Args (I - 1).Number, AML_Decode.Ordinary_Integer);
-               when Retained_Argument =>
-                  Owned.Read_Retained (A.Inner, Args (I - 1).Handle.Root,
-                     Raw_Args (I - 1), Read_Status);
-                  if Read_Status /= AML_Execute.Returned then Status := Invalid_Value; return; end if;
-            end case;
-         end loop;
-         A.In_Progress := True; Session_Active := True;
-         -- Caller pins remain live throughout the sole collecting session.
-         if Registered then
-            Run_Registered (A.Inner, Loads, Copies, Input, Node, Raw_Args, Count, Budget, Raw, Root, Retention);
-         else
-            Run (A.Inner, Input, Node, Raw_Args, Count, Budget, Raw, Root, Retention);
-         end if;
-         A.Collections := Local_Metrics;
-         A.In_Progress := False;
-         if Registered then
-            for I in 1 .. Loads.Capacity loop
-               if AML_Definition_Loads.Phase (Loads, I) = AML_Definition_Loads.Failed then
-                  A.State := Loading; A.Import := Module_Failed;
+         Workspace : Collection_Workspace_Owner := null;
+         procedure Run_With_Scratch (Scratch : in out Collection_Workspace) is
+            use type AML_Definition_Loads.Load_Phase;
+            Raw_Args : AML_Execute.Value_Arguments :=
+              [others => (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer)];
+            Raw : AML_Execute.Execution_Result;
+            Root : Retained_Root;
+            Retention : Invocation_Retention_Status;
+            Read_Status : AML_Execute.Execution_Status;
+            subtype Failure_Status is AML_Execute.Payload_Free_Failure;
+            Local_Metrics : Collection_Statistics := A.Collections;
+            Session_Active : Boolean := False;
+            Roots : Root_Workspace renames Scratch.Roots;
+            Reclaim_Scratch : AML_Objects.Reclamation.Workspace renames Scratch.Reclaim;
+            Keep : Object_Root_Set renames Scratch.Keep;
+            procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
+            begin
+               if Collection_Count (Amount) > Collection_Count'Last - Counter then
+                  Counter := Collection_Count'Last;
+               else Counter := Counter + Collection_Count (Amount); end if;
+            end Add;
+            procedure Collect_Before
+              (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+               Trace : Root_Trace_Status;
+               Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
+               Before, After : AML_Objects.Usage;
+               use type AML_Objects.Reclamation.Reclaim_Status;
+            begin
+               Add (Local_Metrics.Attempted);
+               Gate := Invalid_Census;
+               if not Session_Active or else not Owned.Valid (E) or else Frame_Root_Count (E) = 0 then
+                  Add (Local_Metrics.Rejected); return;
                end if;
+               Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
+               if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
+               Before := AML_Objects.Usage_Of (E.Tree.Values);
+               AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
+                 AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
+               if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
+                  Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
+               end if;
+               After := AML_Objects.Usage_Of (E.Tree.Values);
+               Add (Local_Metrics.Completed);
+               Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
+               Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
+               Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
+               Gate := Allocation_Allowed;
+            end Collect_Before;
+            procedure Run is new Invoke_Retained_With_Hook (Collect_Before);
+            procedure Run_Registered is new Invoke_Registered_Retained (Collect_Before);
+         begin
+            Outcome := (Status => AML_Execute.No_Return, Charged => 0);
+            Status := Admission (A); if Status /= Available then return; end if;
+            if Node > Owned.Node_Count (A.Inner.all) or else not Owned.Present (A.Inner.all, Node)
+              or else Owned.Kind (A.Inner.all, Node) /= Method_Object then
+               Outcome := (Status => AML_Execute.Invalid_Method, Charged => 0); return;
+            end if;
+            for I in 1 .. Count loop
+               case Args (I - 1).Kind is
+                  when Immediate_Argument =>
+                     Raw_Args (I - 1) := (AML_Execute.Integer_Datum,
+                        Args (I - 1).Number, AML_Decode.Ordinary_Integer);
+                  when Retained_Argument =>
+                     Owned.Read_Retained (A.Inner.all, Args (I - 1).Handle.Root,
+                        Raw_Args (I - 1), Read_Status);
+                     if Read_Status /= AML_Execute.Returned then Status := Invalid_Value; return; end if;
+               end case;
             end loop;
+            A.In_Progress := True; Session_Active := True;
+            -- Caller pins remain live throughout the sole collecting session.
+            if Registered then
+               Run_Registered (A.Inner.all, Loads, Copies, Input, Node, Raw_Args, Count, Budget, Raw, Root, Retention);
+            else
+               Run (A.Inner.all, Input, Node, Raw_Args, Count, Budget, Raw, Root, Retention);
+            end if;
+            A.Collections := Local_Metrics;
+            A.In_Progress := False;
+            if Registered then
+               for I in 1 .. Loads.Capacity loop
+                  if AML_Definition_Loads.Phase (Loads, I) = AML_Definition_Loads.Failed then
+                     A.State := Loading; A.Import := Module_Failed;
+                  end if;
+               end loop;
+            end if;
+            case Retention is
+               when Result_Root_Limit => Status := Root_Limit;
+               when Result_Identity_Exhausted => Status := Identity_Exhausted;
+               when Invocation_Busy => Status := Busy;
+               when Invalid_Result => Status := Invalid_Value;
+               when Result_Retained | No_Root_Required => Status := Available;
+            end case;
+            case Raw.Status is
+               when AML_Execute.Returned => Outcome :=
+                  (AML_Execute.Returned, Raw.Charged, Raw.Value, Raw.Origin);
+               when AML_Execute.Object_Returned =>
+                  Outcome := (AML_Execute.Object_Returned, Raw.Charged, (Root => Root));
+               when AML_Execute.Reference_Returned =>
+                  Outcome := (AML_Execute.Reference_Returned, Raw.Charged, (Root => Root));
+               when AML_Execute.Metadata_Returned =>
+                  Outcome := (AML_Execute.Metadata_Returned, Raw.Charged, (Root => Root));
+               when AML_Execute.Fatal_Requested => Outcome := (AML_Execute.Fatal_Requested, Raw.Charged, Raw.Fatal);
+               when AML_Execute.Module_Completed => Outcome := (AML_Execute.Unsupported_Value, Raw.Charged);
+               when others => Outcome := (Failure_Status (Raw.Status), Raw.Charged);
+            end case;
+         end Run_With_Scratch;
+      begin
+         Workspace := Allocate_Collection_Workspace
+           (A.Object_Capacity, A.Byte_Capacity, A.Element_Capacity);
+         if Workspace = null then
+            Outcome := (Status => AML_Execute.Value_Limit, Charged => 0);
+            Status := Invalid_Value;
+            return;
          end if;
-         case Retention is
-            when Result_Root_Limit => Status := Root_Limit;
-            when Result_Identity_Exhausted => Status := Identity_Exhausted;
-            when Invocation_Busy => Status := Busy;
-            when Invalid_Result => Status := Invalid_Value;
-            when Result_Retained | No_Root_Required => Status := Available;
-         end case;
-         case Raw.Status is
-            when AML_Execute.Returned => Outcome :=
-               (AML_Execute.Returned, Raw.Charged, Raw.Value, Raw.Origin);
-            when AML_Execute.Object_Returned =>
-               Outcome := (AML_Execute.Object_Returned, Raw.Charged, (Root => Root));
-            when AML_Execute.Reference_Returned =>
-               Outcome := (AML_Execute.Reference_Returned, Raw.Charged, (Root => Root));
-            when AML_Execute.Metadata_Returned =>
-               Outcome := (AML_Execute.Metadata_Returned, Raw.Charged, (Root => Root));
-            when AML_Execute.Fatal_Requested => Outcome := (AML_Execute.Fatal_Requested, Raw.Charged, Raw.Fatal);
-            when AML_Execute.Module_Completed => Outcome := (AML_Execute.Unsupported_Value, Raw.Charged);
-            when others => Outcome := (Failure_Status (Raw.Status), Raw.Charged);
-         end case;
+         Run_With_Scratch (Workspace.all);
+         Free_Collection_Workspace (Workspace);
+
       end Invoke_With_Loads;
       procedure Invoke (A : in out Arena; Input : aliased AML_Table_Backing.State;
          Node : Node_ID; Args : Arguments; Count : Argument_Count;
@@ -10988,170 +11384,131 @@ package body Owned with SPARK_Mode is
          Item : Node_Descriptor; Width : AML_Decode.Integer_Width; Budget : Natural;
          Outcome : out Result; Status : out Access_Status)
       is
-         use type AML_Execute.Binding_Status;
-         use type Pins.Result_Status;
-         Node : constant Node_ID := Item.Node;
-         Path : constant AML_Names.Name_Result (AML_Names.Accepted) :=
-           (Kind => AML_Names.Accepted, Rooted => False, Parents => 0,
-            Count => 1, Parts => [1 => Item.Part, others => "____"], Consumed => 4);
-         Located : Lookup_Result;
-         Binding : AML_Execute.Binding_Result;
-         Read_Status : AML_Execute.Execution_Status;
-         Value : AML_Execute.Datum := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-         Reserved : Retained_Root := No_Retained_Root;
-         Retention : Retain_Status;
-         Released : Release_Status;
-         Pin_Status : Pins.Result_Status;
-         Handle : Value_Handle := No_Value;
-         Keep_Result : Boolean := False;
-         Session_Active : Boolean := False;
-         Local_Metrics : Collection_Statistics := A.Collections;
-         Region_Gate : Allocation_Hook_Status;
-         Roots : Root_Workspace;
-         Reclaim_Scratch : AML_Objects.Reclamation.Workspace;
-         Keep : Object_Root_Set;
-         procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
-         begin
-            if Collection_Count (Amount) > Collection_Count'Last - Counter then
-               Counter := Collection_Count'Last;
-            else Counter := Counter + Collection_Count (Amount); end if;
-         end Add;
-         procedure Collect_Before
-           (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status)
-         is
-            Trace : Root_Trace_Status;
-            Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
-            Before, After : AML_Objects.Usage;
-            use type AML_Objects.Reclamation.Reclaim_Status;
-         begin
-            Add (Local_Metrics.Attempted);
-            Gate := Invalid_Census;
-            -- This is an exclusive external resolution, with no executing
-            -- method or synthetic frame. Existing retained and namespace
-            -- roots plus authenticated field extras form its actual census.
-            if not Session_Active or else not Owned.Valid (E)
-              or else Frame_Root_Count (E) /= 0
-              or else not Named_Identity_Matches (E, Item.Identity)
-            then Add (Local_Metrics.Rejected); return; end if;
-            Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
-            if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
-            Before := AML_Objects.Usage_Of (E.Tree.Values);
-            AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
-              AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
-            if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
-               Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
-            end if;
-            After := AML_Objects.Usage_Of (E.Tree.Values);
-            Add (Local_Metrics.Completed);
-            Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
-            Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
-            Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
-            Gate := Allocation_Allowed;
-         end Collect_Before;
-         package Readers is new Named_Readers (Collect_Before, Read_Table_Binding);
-      begin
-         Outcome := (Status => AML_Execute.No_Return, Charged => 0);
-         Status := Admission (A); if Status /= Available then return; end if;
-         if not Current_Binding (A, Item) or else Node = Root then
-            Status := Invalid_Value; return;
-         end if;
-         if Owned.Kind (A.Inner, Node) = Method_Object then
-            Invoke_Method (A, IO, Input, Node, Budget, Outcome, Status);
-            return;
-         end if;
-         if Budget < Named_Evaluation_Charge then
-            Outcome := (Status => AML_Execute.Budget_Exceeded, Charged => 0); return;
-         end if;
-         if Owned.Kind (A.Inner, Node) in Integer_Object | String_Object | Buffer_Object |
-           Package_Object | Reference_Object | Metadata_Value_Object
-         then
-            Observe_Named_Value (A, Node, Outcome, Status);
-            Outcome.Charged := Named_Evaluation_Charge;
-            return;
-         end if;
-         Outcome := (Status => AML_Execute.Unsupported_Value, Charged => Named_Evaluation_Charge);
-         if Owned.Kind (A.Inner, Node) not in Buffer_Field_Object | Table_Field_Object |
-           Region_Field_Object | Uninitialized_Table_Field_Object
-         then return; end if;
-         Located := Resolve_Object (A.Inner.Tree, Item.Parent_Node, Path);
-         if Located.Status /= Found or else Located.Node /= Node then
-            Status := Invalid_Value; return;
-         end if;
-         if Frame_Root_Count (A.Inner) /= 0 then Status := Busy; return; end if;
-         if Region_Read_Enabled and then Owned.Kind (A.Inner, Node) = Region_Field_Object then
-            -- Reserve the external result root before an allocating hardware
-            -- read. Scalar fields keep the existing nonallocating path.
-            if AML_Decode.Integer_Value (A.Inner.Tree.Items (Node).Region_Field_Info.Bits) >
-              AML_Decode.Integer_Value (Field_Integer_Bits (Width)) then
-               Owned.Retain (A.Inner, Value, Reserved, Retention);
-               case Retention is
-                  when Owned.Root_Limit => Status := Root_Limit; return;
-                  when Owned.Identity_Exhausted => Status := Identity_Exhausted; return;
-                  when Owned.Invalid_Value => Status := Invalid_Value; return;
-                  when Retained => null;
-               end case;
-            end if;
-            A.In_Progress := True; Session_Active := True;
-            Region_Gate := Allocation_Allowed;
-            if Reserved /= No_Retained_Root then
-               Collect_Before (A.Inner, [], Region_Gate);
-            end if;
-            if Region_Gate = Allocation_Allowed then
-               Read_Region (A.Inner, IO, Item.Identity, Width, Value, Read_Status);
-            else Read_Status := AML_Execute.Unsupported_Value; end if;
-            A.In_Progress := False; Session_Active := False;
-            A.Collections := Local_Metrics;
-            if Read_Status = AML_Execute.Returned and then
-              Value.Value_Kind = AML_Execute.Integer_Datum
-            then
-               Outcome := (AML_Execute.Returned, Named_Evaluation_Charge,
-                  Value.Number, Value.Origin);
-            elsif Read_Status = AML_Execute.Returned
-              and then Value.Value_Kind = AML_Execute.Object_Datum
-              and then Reserved /= No_Retained_Root
-              and then Value.Object.ID = AML_References.Source (Value.Object.Source)
-              and then Has_Source (A.Inner, Value.Object.Source)
-            then
-               Pins.Replace (A.Inner.Retention, Reserved.Pin, Value, Pin_Status);
-               if Pin_Status = Pins.Ready then
-                  Handle.Root := Reserved;
-                  Outcome := (AML_Execute.Object_Returned, Named_Evaluation_Charge, Handle);
-                  Keep_Result := True;
-               else Status := Invalid_Value; end if;
-            else
-               declare
-                  Failure : constant AML_Execute.Payload_Free_Failure :=
-                    (if Read_Status in AML_Execute.Payload_Free_Failure then Read_Status
-                     else AML_Execute.Unsupported_Value);
-               begin
-                  Outcome := (Failure, Named_Evaluation_Charge);
-               end;
-            end if;
-            if Reserved /= No_Retained_Root and then not Keep_Result then
-               Owned.Release (A.Inner, Reserved, Released);
-               if Released /= Owned.Released then
-                  raise Program_Error with "region evaluation reservation invariant";
+         Workspace : Collection_Workspace_Owner := null;
+         procedure Run_With_Scratch (Scratch : in out Collection_Workspace) is
+            use type AML_Execute.Binding_Status;
+            use type Pins.Result_Status;
+            Node : constant Node_ID := Item.Node;
+            Path : constant AML_Names.Name_Result (AML_Names.Accepted) :=
+              (Kind => AML_Names.Accepted, Rooted => False, Parents => 0,
+               Count => 1, Parts => [1 => Item.Part, others => "____"], Consumed => 4);
+            Located : Lookup_Result;
+            Binding : AML_Execute.Binding_Result;
+            Read_Status : AML_Execute.Execution_Status;
+            Value : AML_Execute.Datum := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+            Reserved : Retained_Root := No_Retained_Root;
+            Retention : Retain_Status;
+            Released : Release_Status;
+            Pin_Status : Pins.Result_Status;
+            Handle : Value_Handle := No_Value;
+            Keep_Result : Boolean := False;
+            Session_Active : Boolean := False;
+            Local_Metrics : Collection_Statistics := A.Collections;
+            Region_Gate : Allocation_Hook_Status;
+            Roots : Root_Workspace renames Scratch.Roots;
+            Reclaim_Scratch : AML_Objects.Reclamation.Workspace renames Scratch.Reclaim;
+            Keep : Object_Root_Set renames Scratch.Keep;
+            procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
+            begin
+               if Collection_Count (Amount) > Collection_Count'Last - Counter then
+                  Counter := Collection_Count'Last;
+               else Counter := Counter + Collection_Count (Amount); end if;
+            end Add;
+            procedure Collect_Before
+              (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status)
+            is
+               Trace : Root_Trace_Status;
+               Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
+               Before, After : AML_Objects.Usage;
+               use type AML_Objects.Reclamation.Reclaim_Status;
+            begin
+               Add (Local_Metrics.Attempted);
+               Gate := Invalid_Census;
+               -- This is an exclusive external resolution, with no executing
+               -- method or synthetic frame. Existing retained and namespace
+               -- roots plus authenticated field extras form its actual census.
+               if not Session_Active or else not Owned.Valid (E)
+                 or else Frame_Root_Count (E) /= 0
+                 or else not Named_Identity_Matches (E, Item.Identity)
+               then Add (Local_Metrics.Rejected); return; end if;
+               Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
+               if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
+               Before := AML_Objects.Usage_Of (E.Tree.Values);
+               AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
+                 AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
+               if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
+                  Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
                end if;
+               After := AML_Objects.Usage_Of (E.Tree.Values);
+               Add (Local_Metrics.Completed);
+               Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
+               Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
+               Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
+               Gate := Allocation_Allowed;
+            end Collect_Before;
+            package Readers is new Named_Readers (Collect_Before, Read_Table_Binding);
+         begin
+            Outcome := (Status => AML_Execute.No_Return, Charged => 0);
+            Status := Admission (A); if Status /= Available then return; end if;
+            if not Current_Binding (A, Item) or else Node = Root then
+               Status := Invalid_Value; return;
             end if;
-            return;
-         end if;
-         Owned.Retain (A.Inner, Value, Reserved, Retention);
-         case Retention is
-            when Owned.Root_Limit => Status := Root_Limit; return;
-            when Owned.Identity_Exhausted => Status := Identity_Exhausted; return;
-            when Owned.Invalid_Value => Status := Invalid_Value; return;
-            when Retained => null;
-         end case;
-         A.In_Progress := True; Session_Active := True;
-         Readers.Lookup (A.Inner, Input, Item.Parent_Node, Path, Width,
-           AML_Execute.Evaluate_Binding, Binding);
-         case Binding.Status is
-            when AML_Execute.Integer_Binding =>
-               Outcome := (AML_Execute.Returned, Named_Evaluation_Charge, Binding.Value, Binding.Origin);
-            when AML_Execute.Non_Integer_Binding =>
-               Value := (AML_Execute.Object_Datum, Binding.Object);
-               if Binding.Object.ID = AML_References.Source (Binding.Object.Source)
-                 and then Has_Source (A.Inner, Binding.Object.Source)
+            if Owned.Kind (A.Inner.all, Node) = Method_Object then
+               Invoke_Method (A, IO, Input, Node, Budget, Outcome, Status);
+               return;
+            end if;
+            if Budget < Named_Evaluation_Charge then
+               Outcome := (Status => AML_Execute.Budget_Exceeded, Charged => 0); return;
+            end if;
+            if Owned.Kind (A.Inner.all, Node) in Integer_Object | String_Object | Buffer_Object |
+              Package_Object | Reference_Object | Metadata_Value_Object
+            then
+               Observe_Named_Value (A, Node, Outcome, Status);
+               Outcome.Charged := Named_Evaluation_Charge;
+               return;
+            end if;
+            Outcome := (Status => AML_Execute.Unsupported_Value, Charged => Named_Evaluation_Charge);
+            if Owned.Kind (A.Inner.all, Node) not in Buffer_Field_Object | Table_Field_Object |
+              Region_Field_Object | Uninitialized_Table_Field_Object
+            then return; end if;
+            Located := Resolve_Object (A.Inner.Tree.all, Item.Parent_Node, Path);
+            if Located.Status /= Found or else Located.Node /= Node then
+               Status := Invalid_Value; return;
+            end if;
+            if Frame_Root_Count (A.Inner.all) /= 0 then Status := Busy; return; end if;
+            if Region_Read_Enabled and then Owned.Kind (A.Inner.all, Node) = Region_Field_Object then
+               -- Reserve the external result root before an allocating hardware
+               -- read. Scalar fields keep the existing nonallocating path.
+               if AML_Decode.Integer_Value (A.Inner.Tree.Items (Node).Region_Field_Info.Bits) >
+                 AML_Decode.Integer_Value (Field_Integer_Bits (Width)) then
+                  Owned.Retain (A.Inner.all, Value, Reserved, Retention);
+                  case Retention is
+                     when Owned.Root_Limit => Status := Root_Limit; return;
+                     when Owned.Identity_Exhausted => Status := Identity_Exhausted; return;
+                     when Owned.Invalid_Value => Status := Invalid_Value; return;
+                     when Retained => null;
+                  end case;
+               end if;
+               A.In_Progress := True; Session_Active := True;
+               Region_Gate := Allocation_Allowed;
+               if Reserved /= No_Retained_Root then
+                  Collect_Before (A.Inner.all, [], Region_Gate);
+               end if;
+               if Region_Gate = Allocation_Allowed then
+                  Read_Region (A.Inner.all, IO, Item.Identity, Width, Value, Read_Status);
+               else Read_Status := AML_Execute.Unsupported_Value; end if;
+               A.In_Progress := False; Session_Active := False;
+               A.Collections := Local_Metrics;
+               if Read_Status = AML_Execute.Returned and then
+                 Value.Value_Kind = AML_Execute.Integer_Datum
+               then
+                  Outcome := (AML_Execute.Returned, Named_Evaluation_Charge,
+                     Value.Number, Value.Origin);
+               elsif Read_Status = AML_Execute.Returned
+                 and then Value.Value_Kind = AML_Execute.Object_Datum
+                 and then Reserved /= No_Retained_Root
+                 and then Value.Object.ID = AML_References.Source (Value.Object.Source)
+                 and then Has_Source (A.Inner.all, Value.Object.Source)
                then
                   Pins.Replace (A.Inner.Retention, Reserved.Pin, Value, Pin_Status);
                   if Pin_Status = Pins.Ready then
@@ -11159,25 +11516,78 @@ package body Owned with SPARK_Mode is
                      Outcome := (AML_Execute.Object_Returned, Named_Evaluation_Charge, Handle);
                      Keep_Result := True;
                   else Status := Invalid_Value; end if;
-               else Status := Invalid_Value; end if;
-            when AML_Execute.Failed_Binding =>
-               declare
-                  Failure : constant AML_Execute.Payload_Free_Failure :=
-                    (if Binding.Failure in AML_Execute.Payload_Free_Failure then Binding.Failure
-                     else AML_Execute.Unsupported_Value);
-               begin
-                  Outcome := (Failure, Named_Evaluation_Charge);
-               end;
-            when others => null;
-         end case;
-         if not Keep_Result then
-            Owned.Release (A.Inner, Reserved, Released);
-            if Released /= Owned.Released then
-               raise Program_Error with "named evaluation reservation invariant";
+               else
+                  declare
+                     Failure : constant AML_Execute.Payload_Free_Failure :=
+                       (if Read_Status in AML_Execute.Payload_Free_Failure then Read_Status
+                        else AML_Execute.Unsupported_Value);
+                  begin
+                     Outcome := (Failure, Named_Evaluation_Charge);
+                  end;
+               end if;
+               if Reserved /= No_Retained_Root and then not Keep_Result then
+                  Owned.Release (A.Inner.all, Reserved, Released);
+                  if Released /= Owned.Released then
+                     raise Program_Error with "region evaluation reservation invariant";
+                  end if;
+               end if;
+               return;
             end if;
+            Owned.Retain (A.Inner.all, Value, Reserved, Retention);
+            case Retention is
+               when Owned.Root_Limit => Status := Root_Limit; return;
+               when Owned.Identity_Exhausted => Status := Identity_Exhausted; return;
+               when Owned.Invalid_Value => Status := Invalid_Value; return;
+               when Retained => null;
+            end case;
+            A.In_Progress := True; Session_Active := True;
+            Readers.Lookup (A.Inner.all, Input, Item.Parent_Node, Path, Width,
+              AML_Execute.Evaluate_Binding, Binding);
+            case Binding.Status is
+               when AML_Execute.Integer_Binding =>
+                  Outcome := (AML_Execute.Returned, Named_Evaluation_Charge, Binding.Value, Binding.Origin);
+               when AML_Execute.Non_Integer_Binding =>
+                  Value := (AML_Execute.Object_Datum, Binding.Object);
+                  if Binding.Object.ID = AML_References.Source (Binding.Object.Source)
+                    and then Has_Source (A.Inner.all, Binding.Object.Source)
+                  then
+                     Pins.Replace (A.Inner.Retention, Reserved.Pin, Value, Pin_Status);
+                     if Pin_Status = Pins.Ready then
+                        Handle.Root := Reserved;
+                        Outcome := (AML_Execute.Object_Returned, Named_Evaluation_Charge, Handle);
+                        Keep_Result := True;
+                     else Status := Invalid_Value; end if;
+                  else Status := Invalid_Value; end if;
+               when AML_Execute.Failed_Binding =>
+                  declare
+                     Failure : constant AML_Execute.Payload_Free_Failure :=
+                       (if Binding.Failure in AML_Execute.Payload_Free_Failure then Binding.Failure
+                        else AML_Execute.Unsupported_Value);
+                  begin
+                     Outcome := (Failure, Named_Evaluation_Charge);
+                  end;
+               when others => null;
+            end case;
+            if not Keep_Result then
+               Owned.Release (A.Inner.all, Reserved, Released);
+               if Released /= Owned.Released then
+                  raise Program_Error with "named evaluation reservation invariant";
+               end if;
+            end if;
+            A.Collections := Local_Metrics;
+            A.In_Progress := False;
+         end Run_With_Scratch;
+      begin
+         Workspace := Allocate_Collection_Workspace
+           (A.Object_Capacity, A.Byte_Capacity, A.Element_Capacity);
+         if Workspace = null then
+            Outcome := (Status => AML_Execute.Value_Limit, Charged => 0);
+            Status := Invalid_Value;
+            return;
          end if;
-         A.Collections := Local_Metrics;
-         A.In_Progress := False;
+         Run_With_Scratch (Workspace.all);
+         Free_Collection_Workspace (Workspace);
+
       end Evaluate_With_Context;
 
       package body Field_IO is
@@ -11259,7 +11669,7 @@ package body Owned with SPARK_Mode is
             Item := No_Binding;
             Status := Admission (A); if Status /= Available then return; end if;
             if not Field_Key_Matches (A, Key) then Status := Invalid_Value; return; end if;
-            Bind_Owned (A.Inner, IO, Key, Target, Item, Status);
+            Bind_Owned (A.Inner.all, IO, Key, Target, Item, Status);
          end Bind;
          procedure Clear (Items : out Binding_Set) is
          begin
@@ -11287,7 +11697,7 @@ package body Owned with SPARK_Mode is
               or else A.Inner.Tree.Items (Region.Node).Initializing then return; end if;
             if (Items.Count /= 0 or else Items.Register_Count /= 0) and then
               (Items.Owner /= A.Inner.Token or else Items.Provider /= Target.Provider) then return; end if;
-            Make_Named_Identity (A.Inner, Natural (Region.Node), Identity, Allowed);
+            Make_Named_Identity (A.Inner.all, Natural (Region.Node), Identity, Allowed);
             if not Allowed then return; end if;
             for I in Binding_Count range 1 .. Items.Register_Count loop
                if Items.Registers (I).Region = Identity and then Items.Registers (I).Target = Target then return; end if;
@@ -11361,7 +11771,7 @@ package body Owned with SPARK_Mode is
             for I in Binding_Count range 1 .. Items.Count loop
                if Items.Entries (I).Field = Key.Field then return; end if;
             end loop;
-            Field := Geometry_Of (A.Inner, Key);
+            Field := Geometry_Of (A.Inner.all, Key);
             Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads);
             if not AML_Field_Plans.Valid (Plan) or else AML_Field_Plans.Count (Plan) /= Count
             then return; end if;
@@ -11650,13 +12060,23 @@ package body Owned with SPARK_Mode is
                   if For_Write then Write_Datums; return; end if;
                   if AML_Field_Plans.Result_Form (Plan, Width) = AML_Field_Plans.Buffer_Result then
                      declare
-                        Candidate : AML_Objects.State := E.Tree.Values;
-                        Data : constant AML_Decode.Bytes (1 .. AML_Field_Plans.Buffer_Length (Plan)) := [others => 0];
+                        Candidate : AML_Objects.State := AML_Objects.Empty_Like (E.Tree.Values);
+                        Store_Copy : AML_Objects.Clone_Status;
+                        -- The valid plan admits at most one scalar-width buffer.
+                        -- Expose that bound to code generation as well as proof.
+                        subtype Direct_Buffer_Length is Positive range 1 ..
+                          AML_Integers.Bit_Width (AML_Decode.Bits_64) / AML_Field_Layout.Bits_Per_Byte;
+                        Data : constant AML_Decode.Bytes
+                          (1 .. Direct_Buffer_Length (AML_Field_Plans.Buffer_Length (Plan))) := [others => 0];
                         ID : AML_Objects.Object_ID;
                         Allocated : AML_Objects.Allocation_Status;
                         Source : AML_References.Object_Handle;
                         OK : Boolean;
                      begin
+                        AML_Objects.Clone (E.Tree.Values, Candidate, Store_Copy);
+                        if Store_Copy /= AML_Objects.Cloned then
+                           Status := AML_Execute.Value_Limit; return;
+                        end if;
                         -- Stage allocation before effects. The provider has no
                         -- arena alias, so this private candidate stays current.
                         AML_Objects.New_Bytes (Candidate, AML_Objects.Buffer_Object, Data, ID, Allocated);
@@ -11668,7 +12088,7 @@ package body Owned with SPARK_Mode is
                              AML_Decode.Byte (Interfaces.Shift_Right (Accumulator,
                                (I - 1) * AML_Field_Layout.Bits_Per_Byte) and 16#FF#));
                         end loop;
-                        E.Tree.Values := Candidate;
+                        AML_Objects.Transfer (Candidate, E.Tree.Values);
                         Owned.Make_Source (E, ID, Source, OK);
                         if not OK then raise Program_Error with "region buffer source invariant"; end if;
                         Owned.Read_Source (E, Source, Value, Status);
@@ -11762,10 +12182,14 @@ package body Owned with SPARK_Mode is
                return E.Tree.Items (Node_ID (AML_References.Named_Node (Ref))).Region_Field_Info.Bits;
             end Root_Bit_Length;
             Bits : constant Encoded_Field_Bits := Root_Bit_Length;
-            Output_Length : constant Natural :=
+            subtype Composed_Byte_Length is Natural range 0 .. AML_Objects.Max_Bytes;
+            Output_Length : constant Composed_Byte_Length :=
               (if not For_Write and then Bits in Scalar_Bits + 1 .. Maximum_Field_Bits
                then (Bits + AML_Field_Layout.Bits_Per_Byte - 1) / AML_Field_Layout.Bits_Per_Byte else 0);
-            Wide_Output : AML_Decode.Bytes (1 .. Output_Length) := [others => 0];
+            -- Fixed backing storage keeps checks-suppressed code generation
+            -- within the same byte bound as the admitted Field policy.
+            Wide_Output_Storage : AML_Decode.Bytes (1 .. AML_Objects.Max_Bytes) := [others => 0];
+            Wide_Output : AML_Decode.Bytes renames Wide_Output_Storage (1 .. Output_Length);
             Input_Object : AML_Objects.Object_ID := AML_Objects.No_Object;
             type Frame_Count is new Natural range 0 .. Capacity;
             subtype Frame_Position is Frame_Count range 1 .. Frame_Count'Last;
@@ -11786,10 +12210,40 @@ package body Owned with SPARK_Mode is
                Rule : AML_Field_Datums.Update_Rule := AML_Field_Datums.Preserve;
                Step : Phase := Start_Datum;
             end record;
-            type Frame_Array is array (Frame_Position) of Frame;
-            Stack : Frame_Array;
-            Top : Frame_Count := 0;
+            type Frame_Array is array (Frame_Position range <>) of Frame;
             type Directions is array (Boolean) of Boolean;
+            type Direction_Array is array (Node_ID) of Directions;
+            type Composed_Workspace (Limit : Frame_Position) is limited record
+               Stack, Preflight_Stack : Frame_Array (1 .. Limit);
+               Done : Direction_Array := [others => [others => False]];
+            end record;
+            type Workspace_Access is access Composed_Workspace;
+            procedure Free_Workspace is new Ada.Unchecked_Deallocation
+              (Composed_Workspace, Workspace_Access);
+            function Required_Frames return Frame_Position is
+               Count : Frame_Count := 0;
+            begin
+               -- Every dependency is an earlier live Field declaration. A
+               -- single dependency chain cannot need more frames than this
+               -- census, even when several paths share a declaration.
+               for I in 1 .. E.Tree.Used loop
+                  if E.Tree.Items (I).Alive and then E.Tree.Items (I).Object_Type = Region_Field_Object then
+                     Count := Count + 1;
+                  end if;
+               end loop;
+               return (if Count = 0 then Frame_Position'First else Frame_Position (Count));
+            end Required_Frames;
+            function Allocate_Workspace (Limit : Frame_Position) return Workspace_Access
+              with SPARK_Mode => Off
+            is
+               subtype Sized_Workspace is Composed_Workspace (Limit);
+            begin
+               return new Sized_Workspace;
+
+            end Allocate_Workspace;
+            procedure Run_Workspace (Scratch : in out Composed_Workspace) is
+            Stack : Frame_Array renames Scratch.Stack;
+            Top : Frame_Count := 0;
             Work : AML_Execution_Limits.Field_Work_Count := Work_Allowance;
             Last_Scalar, Input : AML_Decode.Integer_Value := 0;
             NoLock_And_Reserved_Mask : constant AML_Decode.Byte := 16#90#;
@@ -11830,7 +12284,7 @@ package body Owned with SPARK_Mode is
               Identity : out Reference; Good : out Boolean) is
             begin
                Identity := AML_References.No_Reference; Good := False;
-               if N = Root or else not Present (E.Tree, N)
+               if N = Root or else not Present (E.Tree.all, N)
                  or else E.Tree.Items (N).Incarnation /= Incarnation
                  or else E.Tree.Items (N).Object_Type /= Region_Field_Object then return; end if;
                Make_Named_Identity (E, Natural (N), Identity, Good);
@@ -11938,7 +12392,7 @@ package body Owned with SPARK_Mode is
                   end;
                   F.Position := 0; Good := True; return;
                end if;
-               if Items.Register_Count = 0 or else not Present (E.Tree, F.Info.Region)
+               if Items.Register_Count = 0 or else not Present (E.Tree.all, F.Info.Region)
                  or else E.Tree.Items (F.Info.Region).Incarnation /= F.Info.Incarnation
                  or else E.Tree.Items (F.Info.Region).Object_Type /= Operation_Region_Object then return; end if;
                Make_Named_Identity (E, Natural (F.Info.Region), F.Region, Allowed); if not Allowed then return; end if;
@@ -11991,7 +12445,7 @@ package body Owned with SPARK_Mode is
                for P in Frame_Position range 1 .. Depth loop
                   if Frames (P).Identity = Identity then Status := AML_Execute.Unsupported_Value; return; end if;
                end loop;
-               if Depth = Frame_Count'Last then Status := AML_Execute.Value_Limit; return; end if;
+               if Depth = Frames'Last then Status := AML_Execute.Value_Limit; return; end if;
                Build_Frame (Identity, Writing, Number, Candidate, Good);
                if Good then Depth := Depth + 1; Frames (Depth) := Candidate; end if;
             end Push_Into;
@@ -12026,12 +12480,13 @@ package body Owned with SPARK_Mode is
                if not Good then Status := AML_Execute.Field_Indeterminate; end if;
             end Close_Top;
             procedure Preflight (Identity : Reference; For_Writing : Boolean; Number : AML_Decode.Integer_Value; Good : out Boolean) is
-               Frames : Frame_Array;
+               Frames : Frame_Array renames Scratch.Preflight_Stack;
                Depth : Frame_Count := 0;
-               Done : array (Node_ID) of Directions := [others => [others => False]];
+               Done : Direction_Array renames Scratch.Done;
                Child : Reference;
                Writing, Pushed, Charged : Boolean;
             begin
+               Done := [others => [others => False]];
                Push_Into (Frames, Depth, Identity, For_Writing, Number, Good); if not Good then return; end if;
                while Depth > 0 loop
                   pragma Loop_Variant (Decreases => Work);
@@ -12342,14 +12797,21 @@ package body Owned with SPARK_Mode is
             if not For_Write and then Natural (Bits) > AML_Integers.Bit_Width (Width) then
                declare
                   use type AML_Objects.Buffer_Update_Status;
-                  Candidate : AML_Objects.State := E.Tree.Values;
-                  Data : AML_Decode.Bytes (1 .. (Natural (Bits) + AML_Field_Layout.Bits_Per_Byte - 1) /
-                    AML_Field_Layout.Bits_Per_Byte) := [others => 0];
+                  Candidate : AML_Objects.State := AML_Objects.Empty_Like (E.Tree.Values);
+                  Store_Copy : AML_Objects.Clone_Status;
+                  Data_Storage : AML_Decode.Bytes (1 .. AML_Objects.Max_Bytes) := [others => 0];
+                  Data : AML_Decode.Bytes renames Data_Storage
+                    (1 .. Composed_Byte_Length
+                      ((Natural (Bits) + AML_Field_Layout.Bits_Per_Byte - 1) / AML_Field_Layout.Bits_Per_Byte));
                   ID : AML_Objects.Object_ID;
                   Allocated : AML_Objects.Allocation_Status;
                   Updated : AML_Objects.Buffer_Update_Status;
                   Source : AML_References.Object_Handle;
                begin
+                  AML_Objects.Clone (E.Tree.Values, Candidate, Store_Copy);
+                  if Store_Copy /= AML_Objects.Cloned then
+                     Status := AML_Execute.Value_Limit; return;
+                  end if;
                   AML_Objects.New_Bytes (Candidate, AML_Objects.Buffer_Object, Data, ID, Allocated);
                   if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
                   Execute (Good); if not Good then return; end if;
@@ -12362,7 +12824,7 @@ package body Owned with SPARK_Mode is
                   if Updated /= AML_Objects.Buffer_Updated then
                      raise Program_Error with "preallocated composed field buffer invariant";
                   end if;
-                  E.Tree.Values := Candidate;
+                  AML_Objects.Transfer (Candidate, E.Tree.Values);
                   Owned.Make_Source (E, ID, Source, Good);
                   if not Good then raise Program_Error with "composed field result source invariant"; end if;
                   Owned.Read_Source (E, Source, Value, Status);
@@ -12374,6 +12836,13 @@ package body Owned with SPARK_Mode is
                     AML_Integers.Normalize (Last_Scalar, Width), AML_Decode.Ordinary_Integer);
                end if;
             end if;
+            end Run_Workspace;
+            Temporary : Workspace_Access;
+         begin
+            Temporary := Allocate_Workspace (Required_Frames);
+            if Temporary = null then Status := AML_Execute.Value_Limit; return; end if;
+            Run_Workspace (Temporary.all);
+            Free_Workspace (Temporary);
          end Perform_Composed_Field;
          procedure Perform_Bound_Field
            (E : in out Owned.Arena; Context : in out IO_Context; Items : Binding_Set; Ref : Reference;
@@ -12682,118 +13151,132 @@ package body Owned with SPARK_Mode is
          Input : aliased AML_Table_Backing.State;
          Node : Node_ID; Args : Arguments; Count : Argument_Count;
          Budget : Natural; Outcome : out Result; Status : out Access_Status) is
-         use type AML_Definition_Loads.Load_Phase;
-         Raw_Args : AML_Execute.Value_Arguments :=
-           [others => (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer)];
-         Raw : AML_Execute.Execution_Result;
-         Root : Retained_Root;
-         Retention : Invocation_Retention_Status;
-         Read_Status : AML_Execute.Execution_Status;
-         subtype Failure_Status is AML_Execute.Payload_Free_Failure;
-         Local_Metrics : Collection_Statistics := A.Collections;
-         Session_Active : Boolean := False;
-         Roots : Root_Workspace;
-         Reclaim_Scratch : AML_Objects.Reclamation.Workspace;
-         Keep : Object_Root_Set;
-         procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
-         begin
-            if Collection_Count (Amount) > Collection_Count'Last - Counter then
-               Counter := Collection_Count'Last;
-            else Counter := Counter + Collection_Count (Amount); end if;
-         end Add;
-         procedure Collect_Before
-           (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
-            Trace : Root_Trace_Status;
-            Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
-            Before, After : AML_Objects.Usage;
-            use type AML_Objects.Reclamation.Reclaim_Status;
-         begin
-            Add (Local_Metrics.Attempted);
-            Gate := Invalid_Census;
-            if not Session_Active or else not Owned.Valid (E) or else Frame_Root_Count (E) = 0 then
-               Add (Local_Metrics.Rejected); return;
-            end if;
-            Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
-            if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
-            Before := AML_Objects.Usage_Of (E.Tree.Values);
-            AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
-              AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
-            if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
-               Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
-            end if;
-            After := AML_Objects.Usage_Of (E.Tree.Values);
-            Add (Local_Metrics.Completed);
-            Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
-            Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
-            Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
-            Gate := Allocation_Allowed;
-         end Collect_Before;
-         procedure Perform
-           (E : in out Owned.Arena; Context : in out IO_Context; Ref : Reference;
-            Width : AML_Decode.Integer_Width; For_Write : Boolean;
-            Value : in out AML_Execute.Datum; Status : out AML_Execute.Execution_Status) is
-         begin
-            Perform_Bound_Field (E, Context, Items, Ref, Width, For_Write, Value, Status);
-         end Perform;
-         procedure Run is new Invoke_Context_Retained (IO_Context, Perform, Collect_Before);
-         procedure Run_Registered is new Invoke_Registered_Context_Retained (IO_Context, Perform, Collect_Before);
-      begin
-         Outcome := (Status => AML_Execute.No_Return, Charged => 0);
-         Status := Admission (A); if Status /= Available then return; end if;
-         if A.Inner.Field_Uncertain.Present or else Pending (IO) then
-            Outcome := (AML_Execute.Field_Indeterminate, 0); return;
-         end if;
-         if Node > Owned.Node_Count (A.Inner) or else not Owned.Present (A.Inner, Node)
-           or else Owned.Kind (A.Inner, Node) /= Method_Object then
-            Outcome := (Status => AML_Execute.Invalid_Method, Charged => 0); return;
-         end if;
-         for I in 1 .. Count loop
-            case Args (I - 1).Kind is
-               when Immediate_Argument =>
-                  Raw_Args (I - 1) := (AML_Execute.Integer_Datum,
-                     Args (I - 1).Number, AML_Decode.Ordinary_Integer);
-               when Retained_Argument =>
-                  Owned.Read_Retained (A.Inner, Args (I - 1).Handle.Root,
-                     Raw_Args (I - 1), Read_Status);
-                  if Read_Status /= AML_Execute.Returned then Status := Invalid_Value; return; end if;
-            end case;
-         end loop;
-         A.In_Progress := True; Session_Active := True;
-         -- Caller pins remain live throughout the sole collecting session.
-         if Registered then
-            Run_Registered (A.Inner, IO, Loads, Copies, Input, Node, Raw_Args, Count, Budget, Raw, Root, Retention);
-         else
-            Run (A.Inner, IO, Input, Node, Raw_Args, Count, Budget, Raw, Root, Retention);
-         end if;
-         A.Collections := Local_Metrics;
-         A.In_Progress := False;
-         if Registered then
-            for I in 1 .. Loads.Capacity loop
-               if AML_Definition_Loads.Phase (Loads, I) = AML_Definition_Loads.Failed then
-                  A.State := Loading; A.Import := Module_Failed;
+         Workspace : Collection_Workspace_Owner := null;
+         procedure Run_With_Scratch (Scratch : in out Collection_Workspace) is
+            use type AML_Definition_Loads.Load_Phase;
+            Raw_Args : AML_Execute.Value_Arguments :=
+              [others => (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer)];
+            Raw : AML_Execute.Execution_Result;
+            Root : Retained_Root;
+            Retention : Invocation_Retention_Status;
+            Read_Status : AML_Execute.Execution_Status;
+            subtype Failure_Status is AML_Execute.Payload_Free_Failure;
+            Local_Metrics : Collection_Statistics := A.Collections;
+            Session_Active : Boolean := False;
+            Roots : Root_Workspace renames Scratch.Roots;
+            Reclaim_Scratch : AML_Objects.Reclamation.Workspace renames Scratch.Reclaim;
+            Keep : Object_Root_Set renames Scratch.Keep;
+            procedure Add (Counter : in out Collection_Count; Amount : Natural := 1) is
+            begin
+               if Collection_Count (Amount) > Collection_Count'Last - Counter then
+                  Counter := Collection_Count'Last;
+               else Counter := Counter + Collection_Count (Amount); end if;
+            end Add;
+            procedure Collect_Before
+              (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+               Trace : Root_Trace_Status;
+               Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
+               Before, After : AML_Objects.Usage;
+               use type AML_Objects.Reclamation.Reclaim_Status;
+            begin
+               Add (Local_Metrics.Attempted);
+               Gate := Invalid_Census;
+               if not Session_Active or else not Owned.Valid (E) or else Frame_Root_Count (E) = 0 then
+                  Add (Local_Metrics.Rejected); return;
                end if;
+               Trace_Owner_Roots (E, Extra, Roots, Keep, Trace);
+               if Trace /= Roots_Traced then Add (Local_Metrics.Rejected); return; end if;
+               Before := AML_Objects.Usage_Of (E.Tree.Values);
+               AML_Objects.Reclamation.Reclaim (E.Tree.Values, E.Token,
+                 AML_Objects.Reclamation.Keep_Set (Keep), Reclaim_Scratch, Reclaimed);
+               if Reclaimed /= AML_Objects.Reclamation.Reclaimed then
+                  Gate := Reclamation_Failed; Add (Local_Metrics.Rejected); return;
+               end if;
+               After := AML_Objects.Usage_Of (E.Tree.Values);
+               Add (Local_Metrics.Completed);
+               Add (Local_Metrics.Freed_Objects, Before.Objects - After.Objects);
+               Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
+               Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
+               Gate := Allocation_Allowed;
+            end Collect_Before;
+            procedure Perform
+              (E : in out Owned.Arena; Context : in out IO_Context; Ref : Reference;
+               Width : AML_Decode.Integer_Width; For_Write : Boolean;
+               Value : in out AML_Execute.Datum; Status : out AML_Execute.Execution_Status) is
+            begin
+               Perform_Bound_Field (E, Context, Items, Ref, Width, For_Write, Value, Status);
+            end Perform;
+            procedure Run is new Invoke_Context_Retained (IO_Context, Perform, Collect_Before);
+            procedure Run_Registered is new Invoke_Registered_Context_Retained (IO_Context, Perform, Collect_Before);
+         begin
+            Outcome := (Status => AML_Execute.No_Return, Charged => 0);
+            Status := Admission (A); if Status /= Available then return; end if;
+            if A.Inner.Field_Uncertain.Present or else Pending (IO) then
+               Outcome := (AML_Execute.Field_Indeterminate, 0); return;
+            end if;
+            if Node > Owned.Node_Count (A.Inner.all) or else not Owned.Present (A.Inner.all, Node)
+              or else Owned.Kind (A.Inner.all, Node) /= Method_Object then
+               Outcome := (Status => AML_Execute.Invalid_Method, Charged => 0); return;
+            end if;
+            for I in 1 .. Count loop
+               case Args (I - 1).Kind is
+                  when Immediate_Argument =>
+                     Raw_Args (I - 1) := (AML_Execute.Integer_Datum,
+                        Args (I - 1).Number, AML_Decode.Ordinary_Integer);
+                  when Retained_Argument =>
+                     Owned.Read_Retained (A.Inner.all, Args (I - 1).Handle.Root,
+                        Raw_Args (I - 1), Read_Status);
+                     if Read_Status /= AML_Execute.Returned then Status := Invalid_Value; return; end if;
+               end case;
             end loop;
+            A.In_Progress := True; Session_Active := True;
+            -- Caller pins remain live throughout the sole collecting session.
+            if Registered then
+               Run_Registered (A.Inner.all, IO, Loads, Copies, Input, Node, Raw_Args, Count, Budget, Raw, Root, Retention);
+            else
+               Run (A.Inner.all, IO, Input, Node, Raw_Args, Count, Budget, Raw, Root, Retention);
+            end if;
+            A.Collections := Local_Metrics;
+            A.In_Progress := False;
+            if Registered then
+               for I in 1 .. Loads.Capacity loop
+                  if AML_Definition_Loads.Phase (Loads, I) = AML_Definition_Loads.Failed then
+                     A.State := Loading; A.Import := Module_Failed;
+                  end if;
+               end loop;
+            end if;
+            case Retention is
+               when Result_Root_Limit => Status := Root_Limit;
+               when Result_Identity_Exhausted => Status := Identity_Exhausted;
+               when Invocation_Busy => Status := Busy;
+               when Invalid_Result => Status := Invalid_Value;
+               when Result_Retained | No_Root_Required => Status := Available;
+            end case;
+            case Raw.Status is
+               when AML_Execute.Returned => Outcome :=
+                  (AML_Execute.Returned, Raw.Charged, Raw.Value, Raw.Origin);
+               when AML_Execute.Object_Returned =>
+                  Outcome := (AML_Execute.Object_Returned, Raw.Charged, (Root => Root));
+               when AML_Execute.Reference_Returned =>
+                  Outcome := (AML_Execute.Reference_Returned, Raw.Charged, (Root => Root));
+               when AML_Execute.Metadata_Returned =>
+                  Outcome := (AML_Execute.Metadata_Returned, Raw.Charged, (Root => Root));
+               when AML_Execute.Fatal_Requested => Outcome := (AML_Execute.Fatal_Requested, Raw.Charged, Raw.Fatal);
+               when AML_Execute.Module_Completed => Outcome := (AML_Execute.Unsupported_Value, Raw.Charged);
+               when others => Outcome := (Failure_Status (Raw.Status), Raw.Charged);
+            end case;
+         end Run_With_Scratch;
+      begin
+         Workspace := Allocate_Collection_Workspace
+           (A.Object_Capacity, A.Byte_Capacity, A.Element_Capacity);
+         if Workspace = null then
+            Outcome := (Status => AML_Execute.Value_Limit, Charged => 0);
+            Status := Invalid_Value;
+            return;
          end if;
-         case Retention is
-            when Result_Root_Limit => Status := Root_Limit;
-            when Result_Identity_Exhausted => Status := Identity_Exhausted;
-            when Invocation_Busy => Status := Busy;
-            when Invalid_Result => Status := Invalid_Value;
-            when Result_Retained | No_Root_Required => Status := Available;
-         end case;
-         case Raw.Status is
-            when AML_Execute.Returned => Outcome :=
-               (AML_Execute.Returned, Raw.Charged, Raw.Value, Raw.Origin);
-            when AML_Execute.Object_Returned =>
-               Outcome := (AML_Execute.Object_Returned, Raw.Charged, (Root => Root));
-            when AML_Execute.Reference_Returned =>
-               Outcome := (AML_Execute.Reference_Returned, Raw.Charged, (Root => Root));
-            when AML_Execute.Metadata_Returned =>
-               Outcome := (AML_Execute.Metadata_Returned, Raw.Charged, (Root => Root));
-            when AML_Execute.Fatal_Requested => Outcome := (AML_Execute.Fatal_Requested, Raw.Charged, Raw.Fatal);
-            when AML_Execute.Module_Completed => Outcome := (AML_Execute.Unsupported_Value, Raw.Charged);
-            when others => Outcome := (Failure_Status (Raw.Status), Raw.Charged);
-         end case;
+         Run_With_Scratch (Workspace.all);
+         Free_Collection_Workspace (Workspace);
+
       end Invoke_With_Loads;
       procedure Invoke (A : in out Arena; IO : in out IO_Context; Items : Binding_Set;
          Input : aliased AML_Table_Backing.State; Node : Node_ID; Args : Arguments; Count : Argument_Count;
@@ -12927,7 +13410,7 @@ package body Owned with SPARK_Mode is
          elsif A.State /= Ready and then
            (A.State /= Loading or else A.Import /= Module_Failed)
          then Status := Wrong_Phase; return; end if;
-         Owned.Release (A.Inner, Handle.Root, Released);
+         Owned.Release (A.Inner.all, Handle.Root, Released);
          Status := (if Released = Owned.Released then Available else Invalid_Value);
       end Release;
       procedure Fetch (A : Arena; Handle : Value_Handle; Value : out AML_Execute.Datum;
@@ -12936,7 +13419,7 @@ package body Owned with SPARK_Mode is
       begin
          Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Status := Admission (A); if Status /= Available then return; end if;
-         Owned.Read_Retained (A.Inner, Handle.Root, Value, Read_Status);
+         Owned.Read_Retained (A.Inner.all, Handle.Root, Value, Read_Status);
          if Read_Status /= AML_Execute.Returned then Status := Invalid_Value; end if;
       end Fetch;
       procedure Describe (A : Arena; Handle : Value_Handle;
@@ -12952,7 +13435,7 @@ package body Owned with SPARK_Mode is
                Description := (Reference_Description, AML_References.Kind (Value.Ref));
             when AML_Execute.Metadata_Datum =>
                declare Metadata : AML_Execute.Reference_Metadata; begin
-                  Owned.Describe_Metadata_Value (A.Inner, Value.Metadata, Metadata);
+                  Owned.Describe_Metadata_Value (A.Inner.all, Value.Metadata, Metadata);
                   if Metadata.Kind = AML_Execute.Metadata_Only then
                      Description := (Metadata_Description, Metadata.Object_Type);
                   else Status := Invalid_Value; end if;
@@ -12981,12 +13464,12 @@ package body Owned with SPARK_Mode is
             Status := Wrong_Kind; return;
          end if;
          Identity := Value.Metadata.Namespace_Identity;
-         if not Named_Identity_Matches (A.Inner, Identity)
+         if not Named_Identity_Matches (A.Inner.all, Identity)
            or else AML_References.Kind (Identity) /= AML_References.Named_Cell then
             Status := Invalid_Value; return;
          end if;
          Node := Node_ID (AML_References.Named_Node (Identity));
-         if Kind (A.Inner.Tree, Node) /= Device_Object then Status := Wrong_Kind; return; end if;
+         if Kind (A.Inner.Tree.all, Node) /= Device_Object then Status := Wrong_Kind; return; end if;
          Describe_Node (A, Node, Item, Status);
       end Read_Device_Metadata;
       procedure Read_Bytes (A : Arena; Handle : Value_Handle; Offset : Natural;
@@ -13009,7 +13492,7 @@ package body Owned with SPARK_Mode is
          Retention : Retain_Status;
       begin
          Handle := No_Value;
-         Owned.Retain (A.Inner, Value, Handle.Root, Retention);
+         Owned.Retain (A.Inner.all, Value, Handle.Root, Retention);
          case Retention is
             when Retained => Status := Available;
             when Owned.Invalid_Value => Status := Invalid_Value;
@@ -13037,7 +13520,7 @@ package body Owned with SPARK_Mode is
          Status := Admission (A); if Status /= Available then return; end if;
          -- Reserve a published placeholder before changing the object store.
          -- Root refusal therefore cannot allocate an unobservable object.
-         Owned.Retain (A.Inner,
+         Owned.Retain (A.Inner.all,
            (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer), Reserved, Retention);
          case Retention is
             when Owned.Root_Limit => Status := Root_Limit; return;
@@ -13055,8 +13538,8 @@ package body Owned with SPARK_Mode is
          case Allocation is
             when AML_Objects.Allocated => null;
             when AML_Objects.Object_Limit | AML_Objects.Generation_Limit |
-              AML_Objects.Byte_Limit | AML_Objects.Element_Limit =>
-               Owned.Release (A.Inner, Reserved, Removed);
+              AML_Objects.Byte_Limit | AML_Objects.Element_Limit | AML_Objects.Storage_Unavailable =>
+               Owned.Release (A.Inner.all, Reserved, Removed);
                if Removed /= Owned.Released then
                   raise Program_Error with "object construction reservation invariant";
                end if;
@@ -13066,9 +13549,9 @@ package body Owned with SPARK_Mode is
             when others =>
                raise Program_Error with "object construction allocation invariant";
          end case;
-         Owned.Make_Source (A.Inner, ID, Source, Has_Source);
+         Owned.Make_Source (A.Inner.all, ID, Source, Has_Source);
          if not Has_Source then raise Program_Error with "constructed object identity invariant"; end if;
-         Owned.Read_Source (A.Inner, Source, Value, Read_Status);
+         Owned.Read_Source (A.Inner.all, Source, Value, Read_Status);
          if Read_Status /= AML_Execute.Returned or else Value.Value_Kind /= AML_Execute.Object_Datum then
             raise Program_Error with "constructed object read invariant";
          end if;
@@ -13149,13 +13632,13 @@ package body Owned with SPARK_Mode is
          elsif A.State = Uninitialized then Status := Wrong_Phase; return; end if;
          Status := Available;
          if Node = Root or else not Present (A, Node) then Status := Invalid_Value; return; end if;
-         if Owned.Kind (A.Inner, Node) = Uninitialized_Name_Object then
+         if Owned.Kind (A.Inner.all, Node) = Uninitialized_Name_Object then
             Status := Uninitialized_Element; return;
-         elsif Owned.Kind (A.Inner, Node) not in Integer_Object | String_Object |
+         elsif Owned.Kind (A.Inner.all, Node) not in Integer_Object | String_Object |
            Buffer_Object | Package_Object | Reference_Object | Metadata_Value_Object then Status := Wrong_Kind; return; end if;
-         Owned.Make_Source (A.Inner, AML_Namespace.Data_Object (A.Inner.Tree, Node), Source, Success);
+         Owned.Make_Source (A.Inner.all, AML_Namespace.Data_Object (A.Inner.Tree.all, Node), Source, Success);
          if not Success then Status := Invalid_Value; return; end if;
-         Owned.Read_Source (A.Inner, Source, Value, Read_Status);
+         Owned.Read_Source (A.Inner.all, Source, Value, Read_Status);
          if Read_Status /= AML_Execute.Returned then Status := Invalid_Value; return; end if;
          if Value.Value_Kind = AML_Execute.Integer_Datum then
             Outcome := (AML_Execute.Returned, 0, Value.Number, Value.Origin);
@@ -13186,9 +13669,9 @@ package body Owned with SPARK_Mode is
          if Index >= Value.Object.Size then Status := Out_Of_Bounds; return; end if;
          ID := AML_Objects.Element (A.Inner.Tree.Values, Value.Object.ID, Index);
          if ID = AML_Objects.No_Object then Status := Uninitialized_Element; return; end if;
-         Owned.Make_Source (A.Inner, ID, Source, Success);
+         Owned.Make_Source (A.Inner.all, ID, Source, Success);
          if not Success then raise Program_Error with "collecting element identity invariant"; end if;
-         Owned.Read_Source (A.Inner, Source, Child, Read_Status);
+         Owned.Read_Source (A.Inner.all, Source, Child, Read_Status);
          if Read_Status /= AML_Execute.Returned then
             raise Program_Error with "collecting element read invariant";
          end if;
@@ -13204,8 +13687,8 @@ package body Owned with SPARK_Mode is
          Fetch (A, Handle, Saved, Status); if Status /= Available then return; end if;
          if Saved.Value_Kind /= AML_Execute.Reference_Datum then Status := Wrong_Kind; return; end if;
          if AML_References.Kind (Saved.Ref) = AML_References.Name_Member then
-            Owned.Resolve_Name_Member (A.Inner, Saved.Ref, Target, Read_Status);
-         else Owned.Resolve_Semantic_Reference (A.Inner, Saved.Ref, Target, Read_Status); end if;
+            Owned.Resolve_Name_Member (A.Inner.all, Saved.Ref, Target, Read_Status);
+         else Owned.Resolve_Semantic_Reference (A.Inner.all, Saved.Ref, Target, Read_Status); end if;
          if Read_Status = AML_Execute.Uninitialized then Status := Uninitialized_Element;
          elsif Read_Status /= AML_Execute.Returned then Status := Invalid_Value;
          else Save (A, Target, Value, Status); end if;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -62,7 +63,7 @@ procedure Query_Owner_Bridge_Tests is
    end Read_Table;
    Table : constant Firmware_Tables.Bytes := Read_Table;
    procedure Scenario (Initial : Q.Revision_Number) is
-      Server : Q.State (1, Table'Length, Table'Length, 1, Initial);
+      Server : Q.State (1, Table'Length, Table'Length, 1, Initial, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Q.Response;
       Request, Response, Filter, Payload : P.Byte_Array (0 .. Packet_Bytes - 1);
       Nodes : B.Search.Node_Array (1 .. 4);
@@ -418,7 +419,7 @@ procedure Query_Owner_Bridge_Tests is
       Broken : Firmware_Tables.Bytes (1 .. Table'Length + 1);
       Remaining : Natural := Broken'Length;
       Sum : Firmware_Tables.Byte := 0;
-      Server : Q.State (1, Broken'Length, Broken'Length, 1, 0);
+      Server : Q.State (1, Broken'Length, Broken'Length, 1, 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Q.Response;
       Frame, Response, Filter, Payload : P.Byte_Array (0 .. Packet_Bytes - 1);
       Nodes : B.Search.Node_Array (1 .. 4);

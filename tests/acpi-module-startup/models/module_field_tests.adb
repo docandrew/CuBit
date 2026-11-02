@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
@@ -110,7 +111,7 @@ procedure Module_Field_Tests is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         Service : C.State (1, 4096, 4096, Load_Capacity => 1);
+         Service : C.State (1, 4096, 4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Data : constant Bytes := Table (Revision);
          Staged : C.Stage_Status;
          Frozen : C.Freeze_Status;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Requests; use ACPI_Requests;
@@ -62,7 +63,7 @@ procedure Completion_Metrics_Tests is
 begin
    for Case_ID in Scenario loop
       declare
-         S : State (2, 512, 256, Load_Capacity => 2, Initial_Revision => 0);
+         S : State (2, 512, 256, Load_Capacity => 2, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Reply : Response;
          Prior : Revision_Number;
          -- A real module-level While(One){Noop} consumes the service's unchanged
@@ -123,7 +124,7 @@ begin
       end;
    end loop;
    declare
-      S : State (2, 512, 256, Load_Capacity => 2, Initial_Revision => 0);
+      S : State (2, 512, 256, Load_Capacity => 2, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
       Prior : Revision_Number;
    begin

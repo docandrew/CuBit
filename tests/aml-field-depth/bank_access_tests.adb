@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with AML_Execution_Limits;
@@ -73,7 +74,7 @@ procedure Bank_Access_Tests is
    begin Checks := Checks + 1; if not Good then raise Program_Error with Why; end if; end Check;
    procedure Run (Deep : Boolean; Expanded : Boolean := False) is
       Depth : constant Positive := (if Deep then 256 else 128);
-      Service : aliased C.State (1, Bank_Access_Oracle.Table256'Length, Bank_Access_Oracle.Table256'Length, 1);
+      Service : aliased C.State (1, Bank_Access_Oracle.Table256'Length, Bank_Access_Oracle.Table256'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : Context;
       Items : F.Binding_Set;
       Stage : C.Stage_Status;

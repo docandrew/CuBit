@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -27,7 +28,7 @@ procedure HID_Query_Tests is
    use type AML_Decode.Bytes;
    use type Q.Query_Outcome;
    use type Q.Descriptor_Register;
-   Service, Other : aliased C.State (1, 4096, 4096, 1);
+   Service, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks : Natural := 0;
    procedure Check (OK : Boolean; Label_Text : String) is
    begin

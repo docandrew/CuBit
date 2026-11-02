@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -36,7 +37,7 @@ procedure Busy_Release_Tests is
       end;
    end Read_Table;
    Boot : constant Firmware_Tables.Bytes := Read_Table;
-   Service : aliased C.State (1, Boot'Length, Boot'Length, 1);
+   Service : aliased C.State (1, Boot'Length, Boot'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Pin, Saved : V.Value_Handle;
    Calls : Natural := 0;
    Busy_Preserved : Boolean := False;

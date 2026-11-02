@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service; use ACPI_Service;
@@ -45,7 +46,7 @@ begin
    for Wide in Boolean loop
       declare
          Raw : Firmware_Tables.Bytes := Resource_Oracle.Raw_Table;
-         Service : aliased State (1, Raw'Length, Raw'Length, Load_Capacity => 1);
+         Service : aliased State (1, Raw'Length, Raw'Length, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Staged_Result : Stage_Status;
          Frozen : Freeze_Status;
          Access_Result : Values.Access_Status;
@@ -188,7 +189,7 @@ begin
          Check (Access_Result = Values.Available, "pin link source"); Clean (Handle);
          Read_Result_Device (Service, Saved, Item, Access_Result);
          Check (Access_Result = Values.Available and then Item = Link_Item, "live metadata descriptor");
-         declare Other : State (1, 1, 1, Load_Capacity => 1); begin
+         declare Other : State (1, 1, 1, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements); begin
             Read_Result_Device (Other, Saved, Item, Access_Result);
             Check (Access_Result /= Values.Available and then Item = Values.No_Node, "wrong service metadata handle");
          end;

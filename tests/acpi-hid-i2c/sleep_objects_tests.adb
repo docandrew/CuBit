@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -25,7 +26,7 @@ procedure Sleep_Objects_Tests is
    use type Q.Register_Model;
    use type Q.Sleep_Type;
    use type Q.Sleep_Field;
-   Service : aliased C.State (1, 4096, 4096, 1);
+   Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks : Natural := 0;
    Report : Q.Query_Report;
    procedure Check (OK : Boolean; Label_Text : String) is

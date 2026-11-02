@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Requests; use ACPI_Requests;
@@ -39,7 +40,7 @@ procedure Notification_Consumer_Tests is
       Import_Block(Server,Snapshot_Provider,Revision(Server),41,ACPI_Service.DSDT,Raw,Reply); Check(Reply.Status=OK);
       Handle(Server,Snapshot_Provider,(Label=>Finish_Snapshot,Data=>[Revision(Server),0,0,0],others=><>),Reply); Check(Reply.Status=OK);
    end Load;
-   Server : State(1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+   Server : State(1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    C : Client.State;
    Outcome : Client.Result;
    Request,Reply : Packet;
@@ -162,7 +163,7 @@ begin
    -- Retain the same real server receipt across malformed page decodes. No
    -- malformed kind, identity, path extent or NameSeg may trigger automatic ACK.
    declare
-      Other : State(1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+      Other : State(1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Consumer : Client.State;
       R : Client.Result;
       P,Q : Packet;
@@ -213,7 +214,7 @@ begin
       Client.Accept_Reply(Consumer,K,Q,R); Check(R=Client.Remote_Error and then Client.Last_Remote_Error(Consumer)=Denied);
    end;
    declare
-      Not_Started : State(1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0);
+      Not_Started : State(1, 2048, 2048, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Consumer : Client.State;
       R : Client.Result;
       P,Q : Packet;

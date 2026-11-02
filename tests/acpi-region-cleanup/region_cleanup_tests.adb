@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -76,7 +77,7 @@ procedure Region_Cleanup_Tests is
    package R is new ACPI_Region_Initialization
       (C, Owner_Context, Ready, PCI_Root, Invoke, Release_Result => Release);
    use type R.Phase, R.Cleanup_Action;
-   Service, Foreign : aliased C.State (1, 4096, 4096, Load_Capacity => 1);
+   Service, Foreign : aliased C.State (1, 4096, 4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Run : R.Session;
    Accepted : Boolean;
    Action : R.Cleanup_Action;

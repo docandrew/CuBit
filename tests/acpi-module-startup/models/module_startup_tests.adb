@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with ACPI_Hosted_Heap;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
@@ -17,6 +19,7 @@ with AML_Field_Layout;
 with AML_Identity;
 with AML_Identity.Issuer;
 with Root_Test_Support; use Root_Test_Support;
+pragma Elaborate_All (ACPI_Hosted_Heap);
 procedure Module_Startup_Tests is
    package C renames ACPI_Service;
    package E renames AML_Execute;
@@ -253,7 +256,7 @@ begin
                Prior_Copies : constant Natural := Copies;
                Prior_Calls : constant Natural := HW.Calls;
                Prior_Modules : constant Natural := Modules;
-               Another : ACPI_Bootstrap.State (1, 4096, 4096, Load_Capacity => 1);
+               Another : ACPI_Bootstrap.State (1, 4096, 4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
                Installed : C.Install_Status;
                Accepted : Boolean;
                package Direct is new ACPI_Bootstrap.With_Driver (Driver, Execute_Modules);

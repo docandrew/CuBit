@@ -1,5 +1,5 @@
 project Release is
- for Source_Dirs use (".", "../../userspace/services/acpi/snapshot", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/request-driver", "../../userspace/services/acpi/region-init", "../../shared/firmware", "../../shared/acpi", "../../userspace/services/acpi/resource-consumer");
+ for Source_Dirs use ("../support/acpi-heap", ".", "../../userspace/services/acpi/snapshot", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/request-driver", "../../userspace/services/acpi/region-init", "../../shared/firmware", "../../shared/acpi", "../../userspace/services/acpi/resource-consumer");
  for Main use ("snapshot_startup_tests.adb", "local_diagnostic_tests.adb", "startup_diagnostic_format_tests.adb");
  for Object_Dir use external ("SNAPSHOT_STARTUP_BUILD") & "/obj";
  for Exec_Dir use external ("SNAPSHOT_STARTUP_BUILD") & "/bin";

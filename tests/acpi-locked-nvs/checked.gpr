@@ -1,7 +1,7 @@
 project Checked is
  Snapshot := external ("ACPI_TEST_SNAPSHOT");
  Output := external ("ACPI_TEST_BUILD") & "/checked";
- for Source_Dirs use (Snapshot & "/tests/acpi-target-heap-model", Snapshot & "/userspace/services/acpi",
+ for Source_Dirs use ("../support/acpi-heap", Snapshot & "/tests/acpi-target-heap-model", Snapshot & "/userspace/services/acpi",
    Snapshot & "/userspace/services/acpi/lib",
    Snapshot & "/userspace/services/acpi/snapshot",
    Snapshot & "/userspace/services/acpi/field-client",

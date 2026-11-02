@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Integer_Text_IO;
@@ -102,7 +103,7 @@ procedure EC_Query_Tests is
    use type C.Stage_Status, C.Freeze_Status, C.Values.Access_Status, C.Values.Module_Outcome;
    use type AML_Execute.Execution_Status, AML_Decode.Integer_Value;
    use type M.Resolution_Outcome, M.Invocation_Outcome, M.Action_Result, M.Event_Number;
-   Service, Other : aliased C.State (1, 4096, 4096, 1);
+   Service, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Scope : C.Node_Descriptor;
    Last_Token : Catalog.Operation_ID := 0;
    function Find (State : C.State; Parent : C.Namespace.Node_ID;

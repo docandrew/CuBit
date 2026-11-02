@@ -1,3 +1,4 @@
+with AML_Objects;
 with ACPI_Test_Results;
 with Ada.Command_Line;
 with Ada.Streams.Stream_IO;
@@ -11,7 +12,7 @@ procedure BCD_Oracle_Runner is
    use type AML_Execute.Execution_Status;
    package IO renames Ada.Streams.Stream_IO;
    File : IO.File_Type;
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Held : ACPI_Test_Results.Holder;
    Status : Install_Status;
    Metrics_Mode : constant Boolean := Ada.Command_Line.Argument_Count = 2

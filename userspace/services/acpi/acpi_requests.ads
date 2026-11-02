@@ -2,6 +2,8 @@ pragma Ada_2022;
 with AML_Execute;
 with Interfaces;
 with ACPI_Service;
+with AML_Storage_Capacities;
+with AML_Objects;
 with ACPI_Bootstrap;
 with ACPI_Fatal_Diagnostics;
 with ACPI_Notification_Receipts;
@@ -43,7 +45,10 @@ package ACPI_Requests with SPARK_Mode is
    -- [region barrier attempted, Region_Status_Code, zero]. The status is only
    -- an attempted outcome when word1 is1; neither word grants authority.
    Metrics_Region_Attempt_Page : constant Unsigned_64 := 17;
-   Metrics_Last_Page : constant Unsigned_64 := Metrics_Region_Attempt_Page;
+   -- [live object slots, payload bytes, package-element slots]. Immutable
+   -- per-owner capacities, available to the existing Observer metrics path.
+   Metrics_Value_Limits_Page : constant Unsigned_64 := 18;
+   Metrics_Last_Page : constant Unsigned_64 := Metrics_Value_Limits_Page;
    type Finish_Stage_Code is
      (Finish_Not_Attempted_Code,
       Finish_Freeze_Failed_Code,
@@ -289,34 +294,45 @@ package ACPI_Requests with SPARK_Mode is
       Status : Outcome := Malformed;
       Data : Response_Words := [others => 0];
    end record;
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Initial_Revision : Revision_Number) is limited private
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Initial_Revision : Revision_Number; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is limited private
      with Default_Initial_Condition => Valid (State)
        and then Revision (State) = State.Initial_Revision
        and then Current (State) = Idle and then not Table_Open (State)
        and then Received (State) = 0;
    function Valid (Server : State) return Boolean;
-   type State_Model (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is private with Ghost;
-   function Model (Server : State) return State_Model with Ghost,
+   -- Terminal local cleanup after retiring this protocol owner. After success,
+   -- only Storage_Released and idempotent Release_Storage may be called.
+   function Storage_Released (Server : State) return Boolean;
+   procedure Release_Storage (Server : in out State; Released : out Boolean)
+     with Pre => Storage_Released (Server) or else Valid (Server),
+       Post => Released = Storage_Released (Server)
+       and then (if Released then not Valid (Server) else Valid (Server));
+   type State_Model (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is private with Ghost;
+   function Model (Server : State) return State_Model with Pre => Valid (Server), Ghost,
      Post => Model'Result.Table_Capacity = Server.Table_Capacity
        and then Model'Result.Byte_Capacity = Server.Byte_Capacity
-       and then Model'Result.Table_Byte_Limit = Server.Table_Byte_Limit;
-   function Revision (Server : State) return Revision_Number;
-   function Current (Server : State) return Phase;
-   function Table_Open (Server : State) return Boolean;
-   function Received (Server : State) return Natural;
-   function Completion (Server : State) return ACPI_Bootstrap.Finish_Report;
+       and then Model'Result.Table_Byte_Limit = Server.Table_Byte_Limit
+       and then Model'Result.Value_Object_Capacity = Server.Value_Object_Capacity
+       and then Model'Result.Value_Byte_Capacity = Server.Value_Byte_Capacity
+       and then Model'Result.Value_Element_Capacity = Server.Value_Element_Capacity;
+   function Revision (Server : State) return Revision_Number with Pre => Valid (Server);
+   function Current (Server : State) return Phase with Pre => Valid (Server);
+   function Table_Open (Server : State) return Boolean with Pre => Valid (Server);
+   function Received (Server : State) return Natural with Pre => Valid (Server);
+   function Completion (Server : State) return ACPI_Bootstrap.Finish_Report with Pre => Valid (Server);
    -- Copied initialization outcome; no AML, state change or new wire authority.
    function Device_Completion (Server : State) return ACPI_Bootstrap.Device_Report
-     with Global => null;
+     with Pre => Valid (Server), Global => null;
    -- Copied observation only; does not add a wire operation or authority.
    function Module_Errors (Server : State) return ACPI_Service.Module_Error_Observation
-     with Global => null;
+     with Pre => Valid (Server), Global => null;
    -- In-process read-only observation, not a new wire operation or authority.
    -- Caller correlates this copied record with Revision(Server); a revision
    -- change does not erase an already retained fatal from this session.
    function Fatal_Diagnostic (Server : State) return ACPI_Fatal_Diagnostics.Observation
-     with Global => null;
-   function Observe (Server : State) return ACPI_Service.Metrics;
+     with Pre => Valid (Server), Global => null;
+   function Storage_Limits (Server : State) return AML_Storage_Capacities.Limits with Pre => Valid (Server);
+   function Observe (Server : State) return ACPI_Service.Metrics with Pre => Valid (Server);
    -- All requests contain exactly four words and zero flags/reserved.
    -- Mutations use word0 as an optimistic revision token. Every state change
    -- consumes one token; it never wraps. Authorized replies report revision in
@@ -362,8 +378,8 @@ private
    -- Private wire codec; deliberately independent of internal enum positions.
    function Error_Code (Item : AML_Execute.Execution_Status) return Startup_Error_Code;
    package Receipts is new ACPI_Notification_Receipts (Max_Revision);
-   type State_Model (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is record
-      Boot : ACPI_Bootstrap.State_Model (Table_Capacity, Byte_Capacity, Load_Capacity);
+   type State_Model (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is record
+      Boot : ACPI_Bootstrap.State_Model (Table_Capacity, Byte_Capacity, Load_Capacity, Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity);
       Initial_Revision, Version : Revision_Number;
       Receipt : Receipts.State;
       Staged_Notification : ACPI_Service.Notification_Observation;
@@ -374,9 +390,9 @@ private
       Buffer_Data : Firmware_Tables.Bytes (1 .. Table_Byte_Limit);
    end record;
    function Consistent (Server : State) return Boolean;
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Initial_Revision : Revision_Number) is limited record
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Initial_Revision : Revision_Number; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is limited record
       Boot : ACPI_Bootstrap.State
-        (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity);
+        (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity, Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity);
       Version : Revision_Number := Initial_Revision;
       Receipt : Receipts.State;
       Staged_Notification : ACPI_Service.Notification_Observation;
@@ -388,11 +404,11 @@ private
       Buffer_Data : Firmware_Tables.Bytes (1 .. Table_Byte_Limit) := [others => 0];
    end record with Type_Invariant => Consistent (State);
    function Consistent (Server : State) return Boolean is
-     (Receipts.Valid (Server.Receipt) and then Server.Used <= Server.Extent and then Server.Extent <= Server.Table_Byte_Limit and then
+     (Storage_Released (Server) or else (ACPI_Bootstrap.Valid (Server.Boot) and then Receipts.Valid (Server.Receipt) and then Server.Used <= Server.Extent and then Server.Extent <= Server.Table_Byte_Limit and then
      (if Server.Open then ACPI_Bootstrap.Started (Server.Boot) and then
         ACPI_Bootstrap.Current (Server.Boot) = ACPI_Bootstrap.Receiving
         and then Server.Extent >= Firmware_Tables.Table_Header_Size
-      else Server.Used = 0 and then Server.Extent = 0));
+      else Server.Used = 0 and then Server.Extent = 0)));
    function Current (Server : State) return Phase is
      (if not ACPI_Bootstrap.Started (Server.Boot) then Idle else
        (case ACPI_Bootstrap.Current (Server.Boot) is

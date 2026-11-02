@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -44,8 +45,8 @@ procedure Native_Power_Tests is
    end Read_Table;
    Table : constant Firmware_Tables.Bytes := Read_Table;
    FADT_Length : constant := 276;
-   Server : Q.State (3, Table'Length + 2 * FADT_Length, Natural'Max (Table'Length, FADT_Length), 3, 0);
-   Foreign_Server : Q.State (1, Table'Length, Table'Length, 1, 0);
+   Server : Q.State (3, Table'Length + 2 * FADT_Length, Natural'Max (Table'Length, FADT_Length), 3, 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
+   Foreign_Server : Q.State (1, Table'Length, Table'Length, 1, 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    function Fixed_Table return Firmware_Tables.Bytes is
       Header_Length_Offset : constant := 4;
       Revision_Offset : constant := 8;

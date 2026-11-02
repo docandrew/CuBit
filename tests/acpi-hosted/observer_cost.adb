@@ -1,10 +1,11 @@
+with AML_Objects;
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Calendar; use Ada.Calendar;
 with ACPI_Service; use ACPI_Service;
 with Firmware_Tables;
 procedure Observer_Cost is
  use type Firmware_Tables.Byte;
- S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
+ S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
  Raw : Firmware_Tables.Bytes (1 .. 36) := [others => 0];
  Status : Install_Status;
  Checksum : Firmware_Tables.Byte := 0;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service;
@@ -8,8 +9,8 @@ procedure Endpoint_Tests is
    Checks : Natural := 0;
 
    Config : constant Configuration := (Observer_Tag => 17, Provider_Tag => 31);
-   Server : State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, Load_Capacity => ACPI_Service.Max_Tables, Initial_Revision => 0);
-   Empty_Server : State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, Load_Capacity => ACPI_Service.Max_Tables, Initial_Revision => 0);
+   Server : State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, Load_Capacity => ACPI_Service.Max_Tables, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
+   Empty_Server : State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes, Load_Capacity => ACPI_Service.Max_Tables, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Reply : Packet;
    Request : Packet;
    procedure Send (Stamp : Unsigned_64; Expected : Outcome) is
@@ -66,7 +67,7 @@ begin
    Send (Config.Provider_Tag, Stale);
    Checks := Checks + 1; pragma Assert (Reply.Data = [Unsigned_64 (Outcome'Pos (Stale)), 1, 0, 0]);
    declare
-      Before : constant State_Model (Server.Table_Capacity, Server.Byte_Capacity, Server.Table_Byte_Limit, Load_Capacity => Server.Load_Capacity) := Model (Server) with Ghost;
+      Before : constant State_Model (Server.Table_Capacity, Server.Byte_Capacity, Server.Table_Byte_Limit, Load_Capacity => Server.Load_Capacity, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements) := Model (Server) with Ghost;
    begin
       -- Forging the provider's tag in any wire word grants nothing.
       for I in Request.Data'Range loop

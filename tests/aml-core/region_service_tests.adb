@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with ACPI_Test_Results;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -62,7 +63,7 @@ procedure Region_Service_Tests is
      Method ("DYNM", Region (Enc ("MSEL")) & [16#A4#,16#8E#] & Enc ("REG0")) &
      Method ("BUFF", Region (Text ("DSDT"), [16#11#,3,16#0A#,0]) & [16#A4#,1]) &
      Method ("INTG", Region (Text ("DSDT"), [0]) & [16#A4#,1]);
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Status : Install_Status;
    R : AML_Execute.Execution_Result;
    Initial_Count : Namespace.Node_ID;

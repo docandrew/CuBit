@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -42,7 +43,7 @@ procedure Retained_Table_Load_Tests is
    Added : constant Firmware_Tables.Bytes := Read_Table (2);
    Mode : constant String := Ada.Command_Line.Argument (3);
    Other_Data : constant Firmware_Tables.Bytes := (if Mode = "distinct" then Read_Table (4) else Added);
-   Service, Other : aliased C.State (3, Boot'Length + 2 * Added'Length, Positive'Max (Boot'Length, Added'Length), 3);
+   Service, Other : aliased C.State (3, Boot'Length + 2 * Added'Length, Positive'Max (Boot'Length, Added'Length), 3, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Status : V.Access_Status;
    Report : C.Retained_Load_Report;
    Root, Foreign, Device, Destination, Getter, Method_At : C.Node_Descriptor;

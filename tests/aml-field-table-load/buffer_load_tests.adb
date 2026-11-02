@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -43,7 +44,7 @@ procedure Buffer_Load_Tests is
       end;
    end Read;
    Boot : constant F.Bytes := Read;
-   Service : aliased C.State (Boot_Quota, Boot'Length, Boot'Length, Registry_Quota);
+   Service : aliased C.State (Boot_Quota, Boot'Length, Boot'Length, Registry_Quota, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Stage : C.Stage_Status;
    Freeze : C.Freeze_Status;
    Status : V.Access_Status;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service_Core;
@@ -150,7 +151,7 @@ procedure Remote_Field_Tests is
    procedure Exercise (Revision : Unsigned_8; First : Natural; Update : Rule;
       Source : Source_Kind; Policy : Natural := 0; Fault : Natural := 0;
       Mode : Binding_Mode := Planned_Bindings) is
-      S : aliased C.State (1, 4096, 4096, 1);
+      S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : P.Context;
       Items, Read_Only : F.Binding_Set;
       Single : F.Binding;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Streams;
@@ -32,7 +33,7 @@ procedure Evaluated_Dependency_Tests is
    use type C.Values.Module_Outcome, C.Node_Descriptor, C.Values.Value_Handle;
    use type AML_Execute.Execution_Status, AML_Decode.Integer_Value;
    use type D.Outcome, D.Action_Result, R.Outcome, R.Element_Count, P.Outcome;
-   Service, Other : aliased C.State (1, 4096, 4096, 1);
+   Service, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Run : D.Session;
    Action : D.Action_Result;
    Items : R.Device_Array (Natural'Last - 7 .. Natural'Last);

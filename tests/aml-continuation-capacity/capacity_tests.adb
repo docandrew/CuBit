@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with ACPI_Service_Core;
@@ -29,7 +30,7 @@ procedure Capacity_Tests is
       use type C.Values.Access_Status;
       use type C.Values.Module_Outcome;
       procedure Run (Table, Supplemental : AML_Decode.Bytes) is
-         A : aliased C.State (2, Table'Length + Supplemental'Length, Table'Length + Supplemental'Length, 2);
+         A : aliased C.State (2, Table'Length + Supplemental'Length, Table'Length + Supplemental'Length, 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Staged : C.Stage_Status;
          Frozen : C.Freeze_Status;
          Report : C.Execution_Report;

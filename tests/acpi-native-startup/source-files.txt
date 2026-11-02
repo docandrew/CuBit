@@ -104,6 +104,8 @@ tests/acpi-native-startup/models/root_test_support.ads
 tests/acpi-native-startup/models/startup.ads
 tests/acpi-target-heap-model/acpi_target_heap_host.adb
 tests/acpi-target-heap-model/acpi_target_heap_test_control.ads
+tests/support/acpi-heap/acpi_hosted_heap.adb
+tests/support/acpi-heap/acpi_hosted_heap.ads
 userspace/lib/gpio-admission/gpio_channel_badges.adb
 userspace/lib/gpio-admission/gpio_channel_badges.ads
 userspace/lib/gpio-admission/gpio_client_controls.adb
@@ -117,6 +119,8 @@ userspace/lib/i2c-admission/i2c_configure_replies.adb
 userspace/lib/i2c-admission/i2c_configure_replies.ads
 userspace/lib/i2c-admission/i2c_transfer_wire.adb
 userspace/lib/i2c-admission/i2c_transfer_wire.ads
+userspace/services/acpi/acpi_allocation_diagnostics.adb
+userspace/services/acpi/acpi_allocation_diagnostics.ads
 userspace/services/acpi/acpi_bootstrap.adb
 userspace/services/acpi/acpi_bootstrap.ads
 userspace/services/acpi/acpi_capacity_diagnostics.adb
@@ -129,6 +133,8 @@ userspace/services/acpi/acpi_device_status.adb
 userspace/services/acpi/acpi_device_status.ads
 userspace/services/acpi/acpi_endpoint.adb
 userspace/services/acpi/acpi_endpoint.ads
+userspace/services/acpi/acpi_fallible_heap.adb
+userspace/services/acpi/acpi_fallible_heap.ads
 userspace/services/acpi/acpi_fatal_diagnostics.adb
 userspace/services/acpi/acpi_fatal_diagnostics.ads
 userspace/services/acpi/acpi_module_diagnostics.adb
@@ -397,6 +403,8 @@ userspace/services/acpi/lib/aml_simple_targets.adb
 userspace/services/acpi/lib/aml_simple_targets.ads
 userspace/services/acpi/lib/aml_slices.adb
 userspace/services/acpi/lib/aml_slices.ads
+userspace/services/acpi/lib/aml_storage_capacities.adb
+userspace/services/acpi/lib/aml_storage_capacities.ads
 userspace/services/acpi/lib/aml_string_order.adb
 userspace/services/acpi/lib/aml_string_order.ads
 userspace/services/acpi/lib/aml_table_backing.adb

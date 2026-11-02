@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Firmware_Tables;
@@ -100,7 +101,7 @@ begin
    -- Hosted-constructed AML, not an ACPICA oracle. Every PkgLength is derived.
    for Barrier in ACPI_Device_Policy.Region_Outcome loop
       declare
-         Service : aliased C.State (1, 4096, 4096, 1);
+         Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Run : Init.Session;
          Accepted : Boolean;
          Node : C.Namespace.Node_ID;

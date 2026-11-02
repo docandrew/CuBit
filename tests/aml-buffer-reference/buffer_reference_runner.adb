@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Fixed;
@@ -24,7 +25,7 @@ procedure Buffer_Reference_Runner is
    use type AML_Execute.Execution_Status;
    package IO renames Ada.Streams.Stream_IO;
    type State_Access is access all State;
-   Service : constant State_Access := new State (1, Table_Byte_Capacity, Table_Byte_Capacity, Load_Capacity => 1);
+   Service : constant State_Access := new State (1, Table_Byte_Capacity, Table_Byte_Capacity, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    File : IO.File_Type;
    Loaded : Install_Status;
    Access_Result : Values.Access_Status;

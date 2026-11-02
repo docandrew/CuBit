@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -23,7 +24,7 @@ procedure Power_Source_Tests is
    use type Q.Query_Outcome;
    use type Q.Source_State;
    use type Q.Identification_Outcome;
-   Service, Other : aliased C.State (1, 4096, 4096, 1);
+   Service, Other : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks, Calls : Natural := 0;
    Overcharge : Boolean := False;
    procedure Check (OK : Boolean; Label_Text : String) is

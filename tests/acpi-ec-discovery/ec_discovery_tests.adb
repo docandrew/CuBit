@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Streams;
@@ -20,7 +21,7 @@ procedure EC_Discovery_Tests is
    use type C.Values.Value_Handle, C.Values.Value_Kind;
    use type AML_Execute.Execution_Status, AML_Decode.Integer_Value;
    use type Interfaces.Unsigned_8;
-   Service, Other : aliased C.State (1, 8192, 8192, 1);
+   Service, Other : aliased C.State (1, 8192, 8192, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Checks, Calls, Releases : Natural := 0;
    Fail_Release : Natural := 0;
    Overcharge, Empty_Handle, Force_Unknown : Boolean := False;

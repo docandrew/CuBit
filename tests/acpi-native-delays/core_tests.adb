@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -40,7 +41,7 @@ procedure Core_Tests is
       end;
    end Read_Table;
    Data : constant Firmware_Tables.Bytes := Read_Table;
-   Tree : aliased S.State (1, Data'Length, Data'Length, 1);
+   Tree : aliased S.State (1, Data'Length, Data'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Installed : S.Install_Status;
    Initialization : S.Namespace.Initialization_Report;
    Access_Result : S.Values.Access_Status;

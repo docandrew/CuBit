@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Hosted_Heap;
 with Ada.Command_Line;
 with Ada.Exceptions;
 with Ada.Text_IO;
@@ -12,6 +13,7 @@ with ACPI_Device_Initialization;
 with ACPI_Device_Policy;
 with AML_Execute;
 with AML_Decode;
+pragma Elaborate_All (ACPI_Hosted_Heap);
 procedure Controlled_Tests is
    package C renames ACPI_Service;
    package Q renames ACPI_Requests;

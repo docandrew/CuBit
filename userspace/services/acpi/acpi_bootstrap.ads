@@ -5,6 +5,8 @@ with Firmware_Tables.MADT;
 with Firmware_Tables.SRAT;
 with Firmware_Tables.SLIT;
 with ACPI_Service;
+with AML_Storage_Capacities;
+with AML_Objects;
 with Firmware_Tables;
 with ACPI_Device_Initialization;
 with ACPI_Device_Policy;
@@ -46,40 +48,53 @@ package ACPI_Bootstrap with SPARK_Mode is
       Fatal_Initializer : ACPI_Service.Namespace.Node_ID := ACPI_Service.Namespace.Root;
    end record;
    type Phase is (Receiving, Complete, Failed);
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is limited private
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is limited private
      with Default_Initial_Condition => Valid (State) and then not Started (State)
        and then Current (State) = Failed and then Expected (State) = 0
        and then Installed (State) = 0;
    function Valid (Session : State) return Boolean;
-   function Started (Session : State) return Boolean;
-   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive) is private with Ghost;
-   function Model (Session : State) return State_Model with Ghost,
+   -- Terminal local cleanup after retiring this protocol owner. After success,
+   -- only Storage_Released and idempotent Release_Storage may be called.
+   function Storage_Released (Session : State) return Boolean;
+   procedure Release_Storage (Session : in out State; Released : out Boolean)
+     with Pre => Storage_Released (Session) or else Valid (Session),
+       Post => Released = Storage_Released (Session)
+       and then (if Released then not Valid (Session) else Valid (Session));
+   function Started (Session : State) return Boolean with Pre => Valid (Session);
+   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is private with Ghost;
+   function Model (Session : State) return State_Model with Pre => Valid (Session), Ghost,
      Post => Model'Result.Table_Capacity = Session.Table_Capacity
        and then Model'Result.Byte_Capacity = Session.Byte_Capacity
-       and then Model'Result.Load_Capacity = Session.Load_Capacity;
-   function Core_Model (Session : State) return ACPI_Service.State_Model with Ghost,
+       and then Model'Result.Load_Capacity = Session.Load_Capacity
+       and then Model'Result.Value_Object_Capacity = Session.Value_Object_Capacity
+       and then Model'Result.Value_Byte_Capacity = Session.Value_Byte_Capacity
+       and then Model'Result.Value_Element_Capacity = Session.Value_Element_Capacity;
+   function Core_Model (Session : State) return ACPI_Service.State_Model with Pre => Valid (Session), Ghost,
      Post => Core_Model'Result.Table_Capacity = Session.Table_Capacity
        and then Core_Model'Result.Byte_Capacity = Session.Byte_Capacity
-       and then Core_Model'Result.Load_Capacity = Session.Load_Capacity;
-   function Completion (Session : State) return Finish_Report;
+       and then Core_Model'Result.Load_Capacity = Session.Load_Capacity
+       and then Core_Model'Result.Value_Object_Capacity = Session.Value_Object_Capacity
+       and then Core_Model'Result.Value_Byte_Capacity = Session.Value_Byte_Capacity
+       and then Core_Model'Result.Value_Element_Capacity = Session.Value_Element_Capacity;
+   function Completion (Session : State) return Finish_Report with Pre => Valid (Session);
    function Module_Errors (Session : State) return ACPI_Service.Module_Error_Observation
-     with Global => null;
+     with Pre => Valid (Session), Global => null;
    -- Read-only copied request and authoritative evaluation context; no delivery
    -- or namespace authority is granted. A fresh session starts absent.
    function Fatal_Diagnostic (Session : State) return ACPI_Fatal_Diagnostics.Observation
-     with Global => null;
+     with Pre => Valid (Session), Global => null;
    -- Snapshot completion and device readiness are distinct. The current service
    -- has no registered hardware provider: actual hardware declarations leave
    -- its region phase unavailable, while an empty requirement can complete.
-   function Device_Completion (Session : State) return Device_Report;
+   function Device_Completion (Session : State) return Device_Report with Pre => Valid (Session);
    function Startup_Charged (Session : State) return Natural
      with Pre => Valid (Session), Post => Startup_Charged'Result <= Default_Startup_Budget;
    -- Owner interest is latched before startup and applied only after Ready,
    -- before device initializers. Module execution remains disabled.
-   function Notifications_Requested (Session : State) return Boolean;
-   function Notifications_Enabled (Session : State) return Boolean;
-   function Notification_Status (Session : State) return ACPI_Service.Values.Access_Status;
-   function Pending_Notifications (Session : State) return ACPI_Service.Notification_Count;
+   function Notifications_Requested (Session : State) return Boolean with Pre => Valid (Session);
+   function Notifications_Enabled (Session : State) return Boolean with Pre => Valid (Session);
+   function Notification_Status (Session : State) return ACPI_Service.Values.Access_Status with Pre => Valid (Session);
+   function Pending_Notifications (Session : State) return ACPI_Service.Notification_Count with Pre => Valid (Session);
    procedure Set_Notification_Interest (Session : in out State; Enabled : Boolean;
       Status : out ACPI_Service.Values.Access_Status)
      with Pre => Valid (Session), Post => Valid (Session)
@@ -89,49 +104,50 @@ package ACPI_Bootstrap with SPARK_Mode is
       Item : out ACPI_Service.Notification_Observation; Present : out Boolean;
       Status : out ACPI_Service.Values.Access_Status)
      with Pre => Valid (Session), Post => Valid (Session);
-   function Catalog_Model (Session : State) return ACPI_Service.Catalog_State with Ghost,
+   function Catalog_Model (Session : State) return ACPI_Service.Catalog_State with Pre => Valid (Session), Ghost,
      Post => Catalog_Model'Result.Table_Capacity = Session.Table_Capacity
        and then Catalog_Model'Result.Byte_Capacity = Session.Byte_Capacity;
-   function Members_Initialized (Session : State) return Boolean;
-   function Member_Initialization (Session : State) return ACPI_Service.Namespace.Initialization_Report;
-   function Pending_Members (Session : State) return Natural;
-   function Current (Session : State) return Phase;
-   function Expected (Session : State) return Natural;
-   function Installed (Session : State) return Natural;
-   function Observe (Session : State) return ACPI_Service.Metrics with
+   function Members_Initialized (Session : State) return Boolean with Pre => Valid (Session);
+   function Member_Initialization (Session : State) return ACPI_Service.Namespace.Initialization_Report with Pre => Valid (Session);
+   function Pending_Members (Session : State) return Natural with Pre => Valid (Session);
+   function Current (Session : State) return Phase with Pre => Valid (Session);
+   function Expected (Session : State) return Natural with Pre => Valid (Session);
+   function Installed (Session : State) return Natural with Pre => Valid (Session);
+   function Storage_Limits (Session : State) return AML_Storage_Capacities.Limits with Pre => Valid (Session);
+   function Observe (Session : State) return ACPI_Service.Metrics with Pre => Valid (Session),
      Post => Observe'Result.Tables <= Session.Table_Capacity
        and then Observe'Result.Bytes <= Session.Byte_Capacity;
-   function Audit (Session : State) return ACPI_Service.Values.Audit_Value;
+   function Audit (Session : State) return ACPI_Service.Values.Audit_Value with Pre => Valid (Session);
    function Table_Info (Session : State; Index : Positive) return ACPI_Service.Table_Metadata
-     with Pre => Index <= Installed (Session),
+     with Pre => Valid (Session) and then (Index <= Installed (Session)),
        Post => Table_Info'Result.Extent <= Session.Table_Byte_Limit;
    -- Read-only descriptions from retained snapshots; no hardware authority.
    function MADT_Info (Session : State; Index : Positive)
-     return Firmware_Tables.MADT.Table_Metadata with Pre => Index <= Installed (Session);
+     return Firmware_Tables.MADT.Table_Metadata with Pre => Valid (Session) and then (Index <= Installed (Session));
    function MADT_Record (Session : State; Index : Positive; Record_Index : Natural)
-     return Firmware_Tables.MADT.Record_Result with Pre => Index <= Installed (Session);
+     return Firmware_Tables.MADT.Record_Result with Pre => Valid (Session) and then (Index <= Installed (Session));
    function DMAR_Info (Session : State; Index : Positive) return Firmware_Tables.DMAR.Table_Metadata
-     with Pre => Index <= Installed (Session);
+     with Pre => Valid (Session) and then (Index <= Installed (Session));
    function DMAR_Record (Session : State; Index : Positive ; Record_Index : Natural) return Firmware_Tables.DMAR.Record_Result
-     with Pre => Index <= Installed (Session);
+     with Pre => Valid (Session) and then (Index <= Installed (Session));
    function DMAR_Scope (Session : State; Index : Positive ; Record_Index, Scope_Index : Natural) return Firmware_Tables.DMAR.Scope_Result
-     with Pre => Index <= Installed (Session);
+     with Pre => Valid (Session) and then (Index <= Installed (Session));
    function DMAR_Path (Session : State; Index : Positive ; Record_Index, Scope_Index, Path_Index : Natural) return Firmware_Tables.DMAR.Path_Result
-     with Pre => Index <= Installed (Session);
+     with Pre => Valid (Session) and then (Index <= Installed (Session));
    function SRAT_Info (Session : State; Index : Positive)
-     return Firmware_Tables.SRAT.Table_Metadata with Pre => Index <= Installed (Session);
+     return Firmware_Tables.SRAT.Table_Metadata with Pre => Valid (Session) and then (Index <= Installed (Session));
    function SRAT_Record (Session : State; Index : Positive; Record_Index : Natural)
-     return Firmware_Tables.SRAT.Record_Result with Pre => Index <= Installed (Session);
+     return Firmware_Tables.SRAT.Record_Result with Pre => Valid (Session) and then (Index <= Installed (Session));
    function MCFG_Info (Session : State; Index : Positive) return Firmware_Tables.MCFG.Table_Metadata
-     with Pre => Index <= Installed (Session);
+     with Pre => Valid (Session) and then (Index <= Installed (Session));
    function MCFG_Allocation (Session : State; Index : Positive; Allocation_Index : Natural) return Firmware_Tables.MCFG.Allocation_Result
-     with Pre => Index <= Installed (Session);
+     with Pre => Valid (Session) and then (Index <= Installed (Session));
    function SLIT_Info (Session : State; Index : Positive) return Firmware_Tables.SLIT.Table_Metadata
-     with Pre => Index <= Installed (Session);
+     with Pre => Valid (Session) and then (Index <= Installed (Session));
    function SLIT_Distance (Session : State; Index : Positive; From_Locality, To_Locality : Natural) return Firmware_Tables.SLIT.Distance_Result
-     with Pre => Index <= Installed (Session);
+     with Pre => Valid (Session) and then (Index <= Installed (Session));
    function Table_Byte (Session : State; Index : Positive; Offset : Natural) return Firmware_Tables.Byte
-     with Pre => Index <= Installed (Session) and then Offset < Table_Info (Session, Index).Extent;
+     with Pre => Valid (Session) and then (Index <= Installed (Session) and then Offset < Table_Info (Session, Index).Extent);
    -- The trusted provider advertises one DSDT first, followed by ordered SSDTs
    -- and other immutable description tables. Completion
    -- includes ordered definition-block execution and member initialization.
@@ -234,8 +250,8 @@ private
       Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome);
    package Devices is new ACPI_Device_Initialization
      (Core => ACPI_Service, Initialize_Regions => Unconfigured_Regions);
-   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive) is record
-      Core : ACPI_Service.State_Model (Table_Capacity, Byte_Capacity, Load_Capacity);
+   type State_Model (Table_Capacity, Byte_Capacity, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is record
+      Core : ACPI_Service.State_Model (Table_Capacity, Byte_Capacity, Load_Capacity, Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity);
       Stage : Phase;
       Required : Natural;
       Begun : Boolean;
@@ -247,8 +263,8 @@ private
       Notify_Requested, Notify_Enabled : Boolean := False;
       Notify_Status : ACPI_Service.Values.Access_Status := ACPI_Service.Values.Wrong_Phase;
    end record;
-   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive) is limited record
-      Core : aliased ACPI_Service.State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity);
+   type State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity : Positive; Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity : AML_Objects.Storage_Capacity) is limited record
+      Core : aliased ACPI_Service.State (Table_Capacity, Byte_Capacity, Table_Byte_Limit, Load_Capacity, Value_Object_Capacity, Value_Byte_Capacity, Value_Element_Capacity);
       Device_Run : Devices.Session;
       Begun : Boolean := False;
       Initialized : Boolean := False;
@@ -261,7 +277,8 @@ private
       Stage : Phase := Failed;
       Required : Natural := 0;
    end record with Type_Invariant =>
-     (if not State.Begun then State.Stage = Failed and then State.Required = 0
+     Storage_Released (State) or else
+       (ACPI_Service.Valid (State.Core) and then (if not State.Begun then State.Stage = Failed and then State.Required = 0
        and then ACPI_Service.Observe (State.Core).Tables = 0)
      and then State.Required <= State.Table_Capacity
      and then State.Completion_Data.Execution.Modules.Charged <= State.Startup_Limit
@@ -278,6 +295,6 @@ private
         and then State.Completion_Data.Execution.Phase = ACPI_Service.Module_Execution_Reported
         and then State.Completion_Data.Execution.Preparation = ACPI_Service.Values.Firmware_Prepared
         and then State.Completion_Data.Execution.Modules.Outcome = ACPI_Service.Values.Modules_Completed)
-     and then (if not State.Initialized then State.Initialization = (0,0,0));
+     and then (if not State.Initialized then State.Initialization = (0,0,0)));
    function Started (Session : State) return Boolean is (Session.Begun);
 end ACPI_Bootstrap;

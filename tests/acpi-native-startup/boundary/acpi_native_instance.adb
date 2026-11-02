@@ -13,6 +13,7 @@ with ACPI_Native_Log;
 with ACPI_Native_Module_Notes;
 with ACPI_Requests;
 with ACPI_Startup_Diagnostics;
+with ACPI_Allocation_Diagnostics;
 with ACPI_Native_EC_Boot_Notes;
 with CuBit.Messages;
 with CuBit.Firmware_Snapshot;
@@ -47,6 +48,7 @@ package body ACPI_Native_Instance is
         when L.Inventory_Not_Ready => "INVENTORY_NOT_READY",
         when L.Invalid_Inventory => "INVALID_INVENTORY",
         when L.Representation_Limit => "REPRESENTATION_LIMIT",
+        when L.Allocation_Refused => "ALLOCATION_REFUSED",
         when L.Invalid_Description => "INVALID_DESCRIPTION",
         when L.Inventory_Mismatch => "INVENTORY_MISMATCH",
         when L.Clock_Unavailable => "CLOCK_UNAVAILABLE",
@@ -172,6 +174,14 @@ package body ACPI_Native_Instance is
          ACPI_Native_Log.Info ("acpi: stage register-provider unavailable observer-only");
       end if;
       Loader.Load (Device_Run, L.R.Tick (Clock) + Startup_Timeout_Microseconds, Owner, Result);
+      if Result.Startup.Catalog.Ready then
+         ACPI_Native_Log.Info ("acpi: stage aml-input ok OBSERVED tables=" & Result.Startup.Catalog.Tables'Image &
+           " bytes=" & Result.Startup.Catalog.Total_Bytes'Image & " largest=" & Result.Startup.Catalog.Largest_Table'Image);
+      end if;
+      if ACPI_Allocation_Diagnostics.Present (Result.Startup.Allocation) then
+         ACPI_Native_Log.Warning ("acpi: stage allocation fail " &
+           ACPI_Allocation_Diagnostics.Format (Result.Startup.Allocation));
+      end if;
       if Result.Startup.Fatal.Present then
          ACPI_Native_Log.Critical
            (ACPI_Fatal_Diagnostics.Format (Result.Startup.Fatal));
@@ -191,6 +201,10 @@ package body ACPI_Native_Instance is
             end if;
             ACPI_Native_Log.Warning
               (ACPI_Startup_Diagnostics.Format (Result.Startup.Completion));
+            if Result.Startup.Values.Available then
+               ACPI_Native_Log.Warning ("acpi: stage aml-storage ok " &
+                 ACPI_Allocation_Diagnostics.Format (Result.Startup.Values));
+            end if;
             ACPI_Native_Log.Warning
               ("acpi: stage aml-limits ok CONFIGURED nodes=" &
                Positive'Image (ACPI_Service.Max_Namespace_Nodes) &

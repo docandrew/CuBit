@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with AML_Delays;
@@ -68,7 +69,7 @@ procedure Field_Object_Store_Tests is
 begin
    for Case_ID in D.Case_Number loop
       declare
-         S : aliased C.State (1, 4096, 4096, 1);
+         S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          IO : P.Context;
          Items : F.Binding_Set;
          Targets : array (Register_Index) of A.Target;

@@ -7,11 +7,17 @@ with Firmware_Tables.SRAT;
 with Firmware_Tables.SLIT;
 package body ACPI_Requests with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
+   function Storage_Released (Server : State) return Boolean is (ACPI_Bootstrap.Storage_Released (Server.Boot));
+   procedure Release_Storage (Server : in out State; Released : out Boolean) is
+   begin ACPI_Bootstrap.Release_Storage (Server.Boot, Released); end Release_Storage;
    function Valid (Server : State) return Boolean is
      (ACPI_Bootstrap.Valid (Server.Boot) and then Receipts.Valid (Server.Receipt));
    function Model (Server : State) return State_Model is
      (Table_Capacity => Server.Table_Capacity, Byte_Capacity => Server.Byte_Capacity,
       Table_Byte_Limit => Server.Table_Byte_Limit, Load_Capacity => Server.Load_Capacity,
+      Value_Object_Capacity => Server.Value_Object_Capacity,
+      Value_Byte_Capacity => Server.Value_Byte_Capacity,
+      Value_Element_Capacity => Server.Value_Element_Capacity,
       Boot => ACPI_Bootstrap.Model (Server.Boot),
       Initial_Revision => Server.Initial_Revision,
       Version => Server.Version, Receipt => Server.Receipt,
@@ -31,6 +37,7 @@ package body ACPI_Requests with SPARK_Mode is
      (ACPI_Bootstrap.Module_Errors (Server.Boot));
    function Fatal_Diagnostic (Server : State) return ACPI_Fatal_Diagnostics.Observation is
      (ACPI_Bootstrap.Fatal_Diagnostic (Server.Boot));
+   function Storage_Limits (Server : State) return AML_Storage_Capacities.Limits is (ACPI_Bootstrap.Storage_Limits (Server.Boot));
    function Observe (Server : State) return ACPI_Service.Metrics is (ACPI_Bootstrap.Observe (Server.Boot));
    procedure Import_Block
      (Server : in out State; Origin : Authority; Token : Unsigned_64;
@@ -242,6 +249,13 @@ package body ACPI_Requests with SPARK_Mode is
                  [Unsigned_64 (Startup_Error_Code'Enum_Rep (Error_Code (Finished.Execution.Modules.Failure))),
                   0,
                   0];
+               when Metrics_Value_Limits_Page =>
+                  declare
+                     Limits : constant AML_Storage_Capacities.Limits := Storage_Limits (Server);
+                  begin
+                     Reply.Data (1 .. 3) := [Unsigned_64 (Limits.Objects),
+                       Unsigned_64 (Limits.Bytes), Unsigned_64 (Limits.Elements)];
+                  end;
                when Metrics_Region_Attempt_Page => Reply.Data (1 .. 3) :=
                  [Boolean'Pos (Devices.Regions_Attempted),
                   Unsigned_64 (Region_Status_Code'Enum_Rep (Region_Code (Devices.Region_Status))),

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -67,7 +68,7 @@ procedure Orphan_Reg_Tests is
    end Release;
    package O is new R.Orphans (Provider_Ready, Release);
    use type O.Phase, O.Outcome, O.Action_Result;
-   Service, Foreign : aliased C.State (1, 4096, 4096, 1);
+   Service, Foreign : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Device : C.Node_Descriptor;
    Space : O.Address_Space := O.Embedded_Controller;
    Run : O.State;

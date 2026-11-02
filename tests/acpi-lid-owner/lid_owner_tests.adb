@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -49,7 +50,7 @@ procedure Lid_Owner_Tests is
    Table : constant Firmware_Tables.Bytes := Read_Table;
    Initial : constant Q.Revision_Number :=
      (if Ada.Command_Line.Argument (2) = "ceiling" then Q.Max_Revision - Startup_And_Receipt_Mutations else 0);
-   Server : Q.State (1, Table'Length, Table'Length, 1, Initial);
+   Server : Q.State (1, Table'Length, Table'Length, 1, Initial, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Cache, Other_Cache : Owner.Cache;
    Reply : Q.Response;
    Discovery : Owner.Controller.Discovery_Report;

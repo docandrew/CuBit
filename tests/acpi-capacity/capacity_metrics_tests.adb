@@ -1,8 +1,9 @@
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Requests; use ACPI_Requests;
 procedure Capacity_Metrics_Tests is
    type State_Access is access State;
-   S : constant State_Access := new State (1, 128, 128, Load_Capacity => 1, Initial_Revision => 0);
+   S : constant State_Access := new State (1, 128, 128, Load_Capacity => 1, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    R : Response;
    P : constant Packet := (Label => Read_Metrics, Data => [5,0,0,0], others => <>);
    Checks : Natural := 0;

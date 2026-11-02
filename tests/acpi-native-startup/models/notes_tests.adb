@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Hosted_Heap;
 with Ada.Text_IO;
 with Ada.Exceptions;
 with ACPI_Module_Diagnostics;
@@ -7,6 +8,7 @@ with AML_Identity;
 with AML_Identity.Issuer;
 with ACPI_Service;
 with Owner_Test_Control;
+pragma Elaborate_All (ACPI_Hosted_Heap);
 procedure Notes_Tests is
    package D renames ACPI_Module_Diagnostics;
    package T renames Owner_Test_Control;

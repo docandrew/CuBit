@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -50,7 +51,7 @@ procedure Battery_Notify_Tests is
    use type E.Routing_Result;
    use type W.Words;
    Cache, Other_Cache : B.State;
-   Service : aliased C.State (1, 4096, 4096, 1);
+   Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Last_Event : C.Notification_Observation;
    procedure Check (OK : Boolean; Text : String) is
    begin

@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Ada.Streams;
@@ -108,7 +109,7 @@ procedure EC_Field_Joined_Tests is
    package Fields is new C.Field_IO
      (Provider.Context, Provider.Pending, Provider.Describe, Provider.Dispatch,
       Provider.Reconciled, Authorize_Target => Provider.Authorize);
-   Service : aliased C.State (1, 4096, 4096, 1);
+   Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Provider.Context;
    Reads, Writes : Fields.Binding_Set;
    procedure Evaluate

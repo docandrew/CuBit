@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Requests; use ACPI_Requests;
 with ACPI_Service;
@@ -15,7 +16,7 @@ procedure Request_Boundary_Tests is
 begin
    for Bad_Header in Boolean loop
       declare
-         S : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 0);
+         S : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Reply : Response;
          Bad : Firmware_Tables.Bytes := First;
       begin
@@ -43,7 +44,7 @@ begin
       end;
    end loop;
    declare
-      S : State (1, 128, 128, Load_Capacity => 1, Initial_Revision => Max_Revision - 2);
+      S : State (1, 128, 128, Load_Capacity => 1, Initial_Revision => Max_Revision - 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Reply : Response;
    begin
       Handle (S, Snapshot_Provider, (Label => Start_Snapshot, Data => [Revision (S),1,0,0], others => <>), Reply);

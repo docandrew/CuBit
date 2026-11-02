@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -81,7 +82,7 @@ procedure Active_Definition_Tests is
    Mode : constant String := Ada.Command_Line.Argument (4);
    Field_Mode : constant Boolean := Mode in "field-direct" | "field-named" | "field-single" | "field-unbound";
    Named_Mode : constant Boolean := Mode in "named" | "field-named";
-   Service : aliased C.State (4, Capacity, Limit, 4);
+   Service : aliased C.State (4, Capacity, Limit, 4, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : IO_Context;
    Bindings : F.Binding_Set;
    Single : F.Binding;

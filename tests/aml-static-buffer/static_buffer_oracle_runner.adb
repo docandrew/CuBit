@@ -1,3 +1,4 @@
+with AML_Objects;
 with AML_Delays;
 with Ada.Command_Line;
 with Ada.Real_Time;
@@ -59,7 +60,7 @@ procedure Static_Buffer_Oracle_Runner is
       end;
    end Read_Input;
    Table_Data : constant Firmware_Tables.Bytes := Read_Input;
-   Service : aliased State (Max_Tables, Max_Total_Bytes, Table_Data'Length, Load_Capacity => Max_Tables);
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Table_Data'Length, Load_Capacity => Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Installed_Status : Install_Status;
    Access_Result : Values.Access_Status;
    Report : Namespace.Initialization_Report;

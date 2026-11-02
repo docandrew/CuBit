@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service_Core;
@@ -30,7 +31,7 @@ procedure Deref_Completion_Tests is
    end record;
    type Expectations is array (Positive range <>) of Expected_Result;
    procedure Run (Revision : Positive; First, Second : Bytes; Expected : Expectations) is
-      Service : aliased S.State (2, 8192, 4096, 2);
+      Service : aliased S.State (2, 8192, 4096, 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Stage : S.Stage_Status;
       Frozen : S.Freeze_Status;
       Report : S.Execution_Report;

@@ -62,7 +62,11 @@ for ali in "$out/obj/"*.ali; do
  else grep -Fxq 'A -gnatp' "$ali"; ! grep -Fxq 'A -gnata' "$ali"; fi
  count=$((count + 1))
 done
-test "$count" = 152
+test "$count" = 178
+cmp "$here/compiled-units.txt" <(for ali in "$out/obj/"*.ali; do
+ case "$ali" in */b__*) continue;; esac
+ basename "$ali"
+done | LC_ALL=C sort)
 printf 'Source ALIs: %s\n' "$count"
 total=$(awk '{sum += $NF} END {print sum}' "$out/test.log")
 test "$total" = 1892

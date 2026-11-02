@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service; use ACPI_Service;
@@ -100,7 +101,7 @@ procedure Static_Table_Service_Tests is
 begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       declare
-         Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8);
+         Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Code : constant Bytes := Region ("SELF", "DSDT") & Field ("SELF", "SIG0", 0, 32) &
            [16#06#] & Enc ("SIG0") & Enc ("ALS1") &
            [16#06#] & Enc ("ALS1") & Enc ("ALS2") &
@@ -115,7 +116,7 @@ begin
       end;
    end loop;
    declare
-      Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8);
+      Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Code : constant Bytes :=
         Region ("WILD", "TEST") & Field ("WILD", "FIR0", 36 * 8, 8) &
         Region ("OEMR", "TEST", "OEM002") & Field ("OEMR", "OEMF", 36 * 8, 8) &
@@ -135,7 +136,7 @@ begin
       Expect_Integer (Service, "FOU0", 16#B6#);
    end;
    declare
-      Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8);
+      Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Report : Namespace.Initialization_Report;
       Status : Values.Access_Status;
       Field_Node : Namespace.Node_ID;
@@ -156,7 +157,7 @@ begin
         and then Pending_Members (Service) = 0, "missing input does not materialize values");
    end;
    declare
-      Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8);
+      Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Report : Namespace.Initialization_Report;
       Status : Values.Access_Status;
       Field_Node : Namespace.Node_ID;
@@ -178,7 +179,7 @@ begin
         "invalid extent allocates no value");
    end;
    declare
-      Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8);
+      Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Before : Values.Audit_Value;
       Prior_Metrics : Metrics;
       Prior_Pending : Natural;

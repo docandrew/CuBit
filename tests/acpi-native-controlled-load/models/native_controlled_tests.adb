@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Hosted_Heap;
 with Ada.Text_IO;
 with Ada.Exceptions;
 with Ada.Command_Line;
@@ -19,6 +20,7 @@ with AML_Field_Layout;
 with AML_Identity;
 with AML_Identity.Issuer;
 with Root_Test_Support; use Root_Test_Support;
+pragma Elaborate_All (ACPI_Hosted_Heap);
 procedure Native_Controlled_Tests is
    package C renames ACPI_Service;
    package E renames AML_Execute;

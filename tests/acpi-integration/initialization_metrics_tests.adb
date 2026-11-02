@@ -1,3 +1,4 @@
+with AML_Objects;
 with ACPI_Requests; use ACPI_Requests;
 with ACPI_Service;
 with Firmware_Tables; use Firmware_Tables;
@@ -31,9 +32,9 @@ begin
    Header (DSDT_Data, "DSDT"); Header (SSDT_Data, "SSDT");
    for Premature in Boolean loop
       declare
-         Server : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 11);
+         Server : State (2, 256, 128, Load_Capacity => 2, Initial_Revision => 11, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Reply : Response;
-         Before : State_Model (2, 256, 128, Load_Capacity => 2) with Ghost;
+         Before : State_Model (2, 256, 128, Load_Capacity => 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements) with Ghost;
          procedure Metrics (Page : Unsigned_64; Expected : Response_Words;
                             Status : Outcome := OK) is
             Prior : constant Revision_Number := Revision (Server);

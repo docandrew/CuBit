@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Interfaces;
@@ -120,7 +121,7 @@ procedure Index_Width_Tests is
    begin Checks := Checks + 1; if not Good then raise Program_Error with Why; end if; end Check;
    procedure Exercise (Revision : Positive) is
       Raw : constant AML_Decode.Bytes := (if Revision = 1 then Index_Width_Oracle.Table32 else Index_Width_Oracle.Table64);
-      Service : aliased C.State (1, Raw'Length, Raw'Length, 1);
+      Service : aliased C.State (1, Raw'Length, Raw'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : Context;
       Items : F.Binding_Set;
       Status : C.Values.Access_Status;

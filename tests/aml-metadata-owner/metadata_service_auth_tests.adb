@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Service_Core;
 with AML_Delays;
@@ -44,8 +45,8 @@ procedure Metadata_Service_Auth_Tests is
 begin
    for Revision in 1 .. 2 loop
       declare
-         A : constant Service_Access := new State (1, 4096, 4096, Load_Capacity => 1);
-         B : constant Service_Access := new State (1, 4096, 4096, Load_Capacity => 1);
+         A : constant Service_Access := new State (1, 4096, 4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
+         B : constant Service_Access := new State (1, 4096, 4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          Result : Values.Result;
          Description : Values.Value_Description;
          Handle, Temporary, Derived, Stale : Values.Value_Handle;

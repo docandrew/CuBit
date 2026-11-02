@@ -1,15 +1,17 @@
 pragma Ada_2022;
 package body AML_Objects.Copies with SPARK_Mode is
+   function Empty_Witness (Object_Capacity : Storage_Capacity := Max_Objects) return Copy_Witness is
+     (Object_Capacity => Object_Capacity, others => <>);
    function Copy_Frame (Store, Prior : State) return Boolean is
       Bound : Object_ID := Prior.Used;
    begin
       if not Extends (Store, Prior)
-        or else Store.Bytes (Store.Bytes_Used + 1 .. Max_Bytes) /=
-          Prior.Bytes (Store.Bytes_Used + 1 .. Max_Bytes)
-        or else Store.Elements (Store.Elements_Used + 1 .. Max_Elements) /=
-          Prior.Elements (Store.Elements_Used + 1 .. Max_Elements)
+        or else Store.Bytes (Store.Bytes_Used + 1 .. Store.Byte_Capacity) /=
+          Prior.Bytes (Store.Bytes_Used + 1 .. Store.Byte_Capacity)
+        or else Store.Elements (Store.Elements_Used + 1 .. Store.Element_Capacity) /=
+          Prior.Elements (Store.Elements_Used + 1 .. Store.Element_Capacity)
       then return False; end if;
-      for I in 1 .. Max_Objects loop
+      for I in 1 .. Store.Object_Capacity loop
          if Is_Live (Store, I) and then not Is_Live (Prior, I) then
             if Prior.Objects (I).Stamp = Prior.Generation_Limit
               or else Store.Objects (I).Stamp /= Prior.Objects (I).Stamp + 1
@@ -26,14 +28,15 @@ package body AML_Objects.Copies with SPARK_Mode is
      (Store, Prior : State; Source, Target : Object_ID; Witness : Copy_Witness)
       return Boolean
    is
-      type Reverse_Map is array (Object_ID range 1 .. Max_Objects) of Object_ID;
+      type Reverse_Map is array (Object_ID range 1 .. Store.Object_Capacity) of Object_ID;
       Position : Reverse_Map := [others => 0];
-      Bytes : Natural range 0 .. Max_Bytes := Prior.Bytes_Used;
-      Elements : Natural range 0 .. Max_Elements := Prior.Elements_Used;
+      Bytes : Natural := Prior.Bytes_Used;
+      Elements : Natural := Prior.Elements_Used;
       Link : Copy_Link;
       Parent, Old_Child, New_Child, Child_Position : Object_ID;
    begin
-      if not Copy_Frame (Store, Prior) or else Witness.Used = 0
+      if Witness.Object_Capacity /= Store.Object_Capacity or else Witness.Used > Witness.Object_Capacity
+        or else not Copy_Frame (Store, Prior) or else Witness.Used = 0
         or else Store.Live_Used <= Prior.Live_Used
         or else Witness.Used /= Store.Live_Used - Prior.Live_Used
         or else Target /= Witness.Links (1).Copy
@@ -48,11 +51,11 @@ package body AML_Objects.Copies with SPARK_Mode is
          case Kind (Store, Link.Copy) is
             when String_Object | Buffer_Object =>
                if Store.Objects (Link.Copy).First /= Bytes
-                 or else Length (Store, Link.Copy) > Max_Bytes - Bytes then return False; end if;
+                 or else Length (Store, Link.Copy) > Store.Byte_Capacity - Bytes then return False; end if;
                Bytes := Bytes + Length (Store, Link.Copy);
             when Package_Object =>
                if Store.Objects (Link.Copy).First /= Elements
-                 or else Length (Store, Link.Copy) > Max_Elements - Elements then return False; end if;
+                 or else Length (Store, Link.Copy) > Store.Element_Capacity - Elements then return False; end if;
                Elements := Elements + Length (Store, Link.Copy);
             when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => null;
          end case;
@@ -92,7 +95,7 @@ package body AML_Objects.Copies with SPARK_Mode is
             end loop;
          end if;
       end loop;
-      for I in 1 .. Max_Objects loop
+      for I in 1 .. Store.Object_Capacity loop
          if Is_Live (Store, I) and then not Is_Live (Prior, I)
            and then Position (I) = 0 then return False; end if;
       end loop;
@@ -102,18 +105,19 @@ package body AML_Objects.Copies with SPARK_Mode is
    function Is_Independent_Copy
      (Store, Prior : State; Source, Target : Object_ID; Witness : Copy_Witness) return Boolean
    is
-      type Object_List is array (Positive range 1 .. Max_Objects) of Object_ID;
-      type Seen_Set is array (Object_ID range 1 .. Max_Objects) of Boolean;
+      type Object_List is array (Positive range 1 .. Store.Object_Capacity) of Object_ID;
+      type Seen_Set is array (Object_ID range 1 .. Store.Object_Capacity) of Boolean;
       Originals, Copies : Object_List := [others => No_Object];
       Seen : Seen_Set := [others => False];
       Added : Object_ID;
-      Bytes_Next : Natural range 0 .. Max_Bytes := Byte_Count (Prior);
-      Elements_Next : Natural range 0 .. Max_Elements := Element_Count (Prior);
+      Bytes_Next : Natural := Byte_Count (Prior);
+      Elements_Next : Natural := Element_Count (Prior);
       Queued : Object_ID := 1;
       Next : Positive := 1;
       Original, Copy, Old_Child, New_Child : Object_ID;
    begin
-      if not Copy_Frame (Store, Prior) or else Store.Live_Used <= Prior.Live_Used
+      if Witness.Object_Capacity /= Store.Object_Capacity or else Witness.Used > Witness.Object_Capacity
+        or else not Copy_Frame (Store, Prior) or else Store.Live_Used <= Prior.Live_Used
         or else not Is_Live (Store, Target) or else Is_Live (Prior, Target)
       then return False; end if;
       Added := Store.Live_Used - Prior.Live_Used;
@@ -125,7 +129,7 @@ package body AML_Objects.Copies with SPARK_Mode is
          pragma Loop_Invariant
            (for all J in 1 .. Queued => Is_Live (Prior, Originals (J))
              and then Is_Live (Store, Copies (J)) and then not Is_Live (Prior, Copies (J)));
-         pragma Loop_Variant (Decreases => Max_Objects + 1 - Next);
+         pragma Loop_Variant (Decreases => Store.Object_Capacity + 1 - Next);
          Original := Originals (Next); Copy := Copies (Next);
          if not Header_Matches (Store, Prior, Original, Copy)
            or else Witness.Links (Next).Original /= Original
@@ -134,11 +138,11 @@ package body AML_Objects.Copies with SPARK_Mode is
             when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object => null;
             when String_Object | Buffer_Object =>
                if Store.Objects (Copy).First /= Bytes_Next
-                 or else Length (Store, Copy) > Max_Bytes - Bytes_Next then return False; end if;
+                 or else Length (Store, Copy) > Store.Byte_Capacity - Bytes_Next then return False; end if;
                Bytes_Next := Bytes_Next + Length (Store, Copy);
             when Package_Object =>
                if Store.Objects (Copy).First /= Elements_Next
-                 or else Length (Store, Copy) > Max_Elements - Elements_Next then return False; end if;
+                 or else Length (Store, Copy) > Store.Element_Capacity - Elements_Next then return False; end if;
                Elements_Next := Elements_Next + Length (Store, Copy);
                for I in 1 .. Length (Prior, Original) loop
                   pragma Loop_Invariant (Queued >= 1 and then Queued <= Added);
@@ -169,7 +173,11 @@ package body AML_Objects.Copies with SPARK_Mode is
      (Store : in out State; Source : Object_ID;
       Target : out Object_ID; Status : out Allocation_Status; Witness : out Copy_Witness)
    is
-      Candidate : State := Store;
+      -- Independent value scratch, initialized through an unconstrained
+      -- constructor so code generation can use the growable secondary stack.
+      -- No backing pointer is hidden in State; scope retirement stays automatic.
+      Candidate : State := Empty_Like (Store);
+      Snapshot_Status : AML_Objects.Clone_Status;
       subtype Work_Item is Copy_Link;
       Work : Link_Array renames Witness.Links;
       Used : Object_ID renames Witness.Used;
@@ -255,8 +263,8 @@ package body AML_Objects.Copies with SPARK_Mode is
       end Link_Child;
       procedure Enqueue (Original, Copy, Parent : Object_ID; Slot : Natural)
       with Pre => Valid (Store) and then Valid (Candidate)
-          and then Used >= 1 and then Used < Max_Objects
-          and then Parent in 1 .. Used and then Slot < Max_Elements
+          and then Used >= 1 and then Used < Store.Object_Capacity
+          and then Parent in 1 .. Used and then Slot < Store.Element_Capacity
           and then Matching (Original, Copy)
           and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy)),
         Post => Used = Used'Old + 1
@@ -269,15 +277,20 @@ package body AML_Objects.Copies with SPARK_Mode is
          Work (Used) := Copy_Link'(Original => Original, Copy => Copy, Parent => Parent, Slot => Slot, Bytes_After => Candidate.Bytes_Used, Elements_After => Candidate.Elements_Used);
       end Enqueue;
    begin
-      Witness := (others => <>);
+      Witness := Empty_Witness (Witness.Object_Capacity);
       Target := No_Object;
+      if Witness.Object_Capacity /= Store.Object_Capacity then
+         Status := Invalid_Copy_Workspace; return;
+      end if;
+      AML_Objects.Clone (Store, Candidate, Snapshot_Status);
+      if Snapshot_Status /= AML_Objects.Cloned then Status := Storage_Unavailable; return; end if;
       Allocate (Source, Root);
       if Status /= Allocated then return; end if;
       Used := 1;
       Work (1) := (Original => Source, Copy => Root, Parent => 0, Slot => 0,
                    Bytes_After => Candidate.Bytes_Used, Elements_After => Candidate.Elements_Used);
       while Next <= Used loop
-         pragma Loop_Variant (Decreases => Max_Objects + 1 - Next);
+         pragma Loop_Variant (Decreases => Store.Object_Capacity + 1 - Next);
          pragma Loop_Invariant (Valid (Candidate));
          pragma Loop_Invariant (Extends (Candidate, Store));
          pragma Loop_Invariant (Used >= 1 and then Live_Count (Candidate) = Live_Count (Store) + Used);
@@ -303,7 +316,7 @@ package body AML_Objects.Copies with SPARK_Mode is
                if Original_Child /= No_Object then
                   Allocate (Original_Child, Child);
                   if Status /= Allocated then return; end if;
-                  if Used = Max_Objects then
+                  if Used = Store.Object_Capacity then
                      Status := Object_Limit;
                      return;
                   end if;
@@ -318,6 +331,9 @@ package body AML_Objects.Copies with SPARK_Mode is
            (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
          Next := Next + 1;
       end loop;
+      -- State owns inline value arrays, so this publication is an independent
+      -- value copy. Candidate then leaves scope; clearing it would add a dead
+      -- write rather than release a separately allocated backing owner.
       Store := Candidate;
       Target := Root;
       Status := Allocated;

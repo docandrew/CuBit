@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Objects;
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Streams;
@@ -41,7 +42,7 @@ procedure Native_HID_Detection_Tests is
       end;
    end Read_Table;
    Table : constant Firmware_Tables.Bytes := Read_Table;
-   Server, Foreign_Server : Q.State (1, Table'Length, Table'Length, 1, 0);
+   Server, Foreign_Server : Q.State (1, Table'Length, Table'Length, 1, 0, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Reply : Q.Response;
    Limits : D.Policy;
    Result, Again : D.Report;

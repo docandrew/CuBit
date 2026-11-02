@@ -95,7 +95,7 @@ begin
    for Revision in Unsigned_8 range 1 .. 2 loop
       for Bits of Counts loop
          declare
-            Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables);
+            Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    Held : ACPI_Test_Results.Holder;
             Installed_Result : Install_Status;
             Bound : Namespace.Bind_Status;

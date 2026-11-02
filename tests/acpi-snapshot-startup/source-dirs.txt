@@ -7,3 +7,4 @@ userspace/services/acpi/region-init
 shared/firmware
 shared/acpi
 userspace/services/acpi/resource-consumer
+tests/support/acpi-heap

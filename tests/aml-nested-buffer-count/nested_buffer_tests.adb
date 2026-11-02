@@ -1,3 +1,4 @@
+with AML_Objects;
 with Ada.Text_IO;
 with ACPI_Service_Core;
 with AML_Decode;
@@ -18,7 +19,7 @@ procedure Nested_Buffer_Tests is
    procedure Check (Good : Boolean; Message : String) is
    begin Checks := Checks + 1; if not Good then raise Program_Error with Message; end if; end Check;
    procedure Run (Table : AML_Decode.Bytes) is
-      A : aliased C.State (1, Table'Length, Table'Length, 1);
+      A : aliased C.State (1, Table'Length, Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Staged : C.Stage_Status;
       Frozen : C.Freeze_Status;
       Report : C.Execution_Report;
