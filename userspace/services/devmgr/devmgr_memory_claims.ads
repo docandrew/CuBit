@@ -144,4 +144,13 @@ package Devmgr_Memory_Claims with Pure, SPARK_Mode is
                    Claims (K).By /= Device or else Disjoint (Claims (K), Physical, Bytes)))
    with Pre => Claims'First = 1 and then Count <= Claims'Last;
 
+   --  The first page of the lowest claim (of any holder) starting above
+   --  Page, or the limit: how far an unprobed range may reach before it
+   --  meets something already known (PCI_BAR_Extents.Bounded_Extent).
+   function Next_Start (Claims : Claim_Array; Count : Natural; Page : Unsigned_64) return Unsigned_64
+   with Pre  => Claims'First = 1 and then Count <= Claims'Last,
+        Post => Next_Start'Result <= Page_Limit
+                and then (for all K in 1 .. Count =>
+                            Claims (K).First <= Page or else Claims (K).First >= Next_Start'Result);
+
 end Devmgr_Memory_Claims;

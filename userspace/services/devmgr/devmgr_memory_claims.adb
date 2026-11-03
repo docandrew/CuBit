@@ -43,4 +43,18 @@ package body Devmgr_Memory_Claims with SPARK_Mode is
       end if;
    end Claim_Pages;
 
+   function Next_Start (Claims : Claim_Array; Count : Natural; Page : Unsigned_64) return Unsigned_64 is
+      Next : Unsigned_64 := Page_Limit;
+   begin
+      for K in 1 .. Count loop
+         if Claims (K).First > Page and then Claims (K).First < Next then
+            Next := Claims (K).First;
+         end if;
+         pragma Loop_Invariant
+           (Next <= Page_Limit
+            and then (for all J in 1 .. K => Claims (J).First <= Page or else Claims (J).First >= Next));
+      end loop;
+      return Next;
+   end Next_Start;
+
 end Devmgr_Memory_Claims;

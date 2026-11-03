@@ -69,6 +69,8 @@ package Devmgr_Claim_Ledgers is
 
    function Clear_Of_ACPI (L : Memory_Ledger; Physical, Bytes : Unsigned_64) return Boolean;
    function Clear_Of_Devices (L : Memory_Ledger; Physical, Bytes : Unsigned_64) return Boolean;
+   --  The first page of the lowest claim starting above Page (MC.Next_Start).
+   function Next_Start (L : Memory_Ledger; Page : Unsigned_64) return Unsigned_64;
 
    function Count (L : Memory_Ledger) return Natural;
    function Claim_At (L : Memory_Ledger; Index : Positive) return MC.Claim

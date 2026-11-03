@@ -197,6 +197,16 @@ package body Devmgr_Authority is
    function Clear_Of_Devices (Physical, Bytes : Unsigned_64) return Boolean is
      (Ledgers.Clear_Of_Devices (Claims, Physical, Bytes));
 
+   procedure Claim_Device_Pages
+     (First_Page, End_Page : Unsigned_64; Result : out MC.Claim_Result; Report : out Capacity_Report) is
+   begin
+      Ledgers.Claim (Claims, First_Page * MC.Page_Bytes, (End_Page - First_Page) * MC.Page_Bytes,
+                     MC.Device, Result, Report);
+   end Claim_Device_Pages;
+
+   function Next_Claim_Start (Page : Unsigned_64) return Unsigned_64 is
+     (Ledgers.Next_Start (Claims, Page));
+
    procedure Take_Capacity_Failure (Report : out Capacity_Report; Failed : out Boolean) is
    begin
       Report := Device_Failure;

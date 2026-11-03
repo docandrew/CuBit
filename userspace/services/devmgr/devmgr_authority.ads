@@ -25,7 +25,8 @@
 --  device-memory range that touches an ACPI claim is ever covered
 --  (Device_Region), so neither a driver nor devmgr itself can map or be
 --  given those pages; every device range devmgr hands out or maps is
---  claimed in turn, so no later data envelope overlaps it.
+--  claimed in turn, and so is every PCI BAR's and bridge window's whole
+--  extent from enumeration on, so no data envelope overlaps one.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -103,6 +104,23 @@ package Devmgr_Authority is
 
    --  No page of the range is a device's.
    function Clear_Of_Devices (Physical, Bytes : Unsigned_64) return Boolean;
+
+   --  Claim pages [First_Page, End_Page) for a device whether or not a
+   --  device-memory root covers them: a PCI BAR's whole extent or a
+   --  bridge's window, found at enumeration before any driver runs
+   --  (PCI_BAR_Extents). Device claims never conflict with each other, so
+   --  the driver later bound to the device is granted its windows inside
+   --  it (Device_Region); no data envelope ever overlaps it. Overlaps_ACPI
+   --  when a page of it is an ACPI window; Needs_Room (Report says why)
+   --  when the ledger could not grow.
+   procedure Claim_Device_Pages
+     (First_Page, End_Page : Unsigned_64; Result : out Devmgr_Memory_Claims.Claim_Result;
+      Report : out Capacity_Report)
+   with Pre => First_Page < End_Page and then End_Page <= Devmgr_Memory_Claims.Page_Limit;
+
+   --  The first page of the lowest claim (ACPI's or a device's) starting
+   --  above Page, or the physical limit.
+   function Next_Claim_Start (Page : Unsigned_64) return Unsigned_64;
 
    --  The last capacity failure of a device claim (Device_Region), for the
    --  warning; Status Grown when none since the last call.

@@ -14,6 +14,7 @@ with Devmgr_Port_Claims;
 with Devmgr_Memory_Claims;
 with Devmgr_Claim_Ledgers;
 with Devmgr_Data_Windows;
+with PCI_BAR_Extents;
 with CuBit.Firmware_Data_Exchange;
 
 procedure Main is
@@ -21,12 +22,16 @@ procedure Main is
    package PC renames Devmgr_Port_Claims;
    package MC renames Devmgr_Memory_Claims;
    package DW renames Devmgr_Data_Windows;
+   package BX renames PCI_BAR_Extents;
    package FDX renames CuBit.Firmware_Data_Exchange;
    use type PC.Holder;
    use type PC.Claim;
    use type MC.Claim_Result;
    use type FDX.Disposition;
    use type Ledgers.Port_Store.Growth_Status;
+   use type BX.BAR_Kind;
+   use type BX.Extent_Status;
+   use type BX.Extent;
 
    Checks, Failed : Natural := 0;
 
@@ -290,13 +295,20 @@ begin
          R (16#8000_0000#, 16#7FFF_F#),           --  the PCI hole, ECAM, reserved MMIO
          R (16#1_8000_0000#, 16#1000#)];          --  above high RAM
       ECAM_All : constant DW.Range_Array := [R (ECAM, 256 * 256)];
-      BARs : constant DW.Range_Array := [R (16#FEB0_0000#, 1), R (16#FED2_1000#, 1)];
       None : constant DW.Range_Array (1 .. 0) := [others => (0, 0)];
       D : DW.Decision;
+      --  Two BARs, sized at enumeration and claimed for devices (no driver).
+      BARs : Ledgers.Memory_Ledger;
+      Result : MC.Claim_Result;
+      function Claimed_By_Device (Envelope : DW.Page_Range) return Boolean is
+        (not Ledgers.Clear_Of_Devices (BARs, Envelope.First_Page * Page, Envelope.Pages * Page));
       function Ask (Envelope : DW.Page_Range; Claimed : Boolean := False;
                     E : DW.Range_Array := ECAM_All) return DW.Decision is
-        (DW.Decide (Envelope, Firmware, Devices, E, BARs, Claimed));
+        (DW.Decide (Envelope, Firmware, Devices, E,
+                    Claimed or else Claimed_By_Device (Envelope)));
    begin
+      Ledgers.Claim (BARs, 16#FEB0_0000#, Page, MC.Device, Result, Report);
+      Ledgers.Claim (BARs, 16#FED2_1000#, Page, MC.Device, Result, Report);
       D := Ask (R (16#FED1_C000#, 1));
       Check (D.Answer = FDX.Granted_Data and then D.Root = 6, "a reserved page: granted data");
       D := Ask (R (16#FED1_C000#, 4));
@@ -349,6 +361,230 @@ begin
       Check (not FDX.Well_Formed (1, 1, 0) and then FDX.Well_Formed (1, 1, 1)
              and then not FDX.Well_Formed (FDX.Page_Limit - 1, 2, 1),
              "request words: an id, pages, below the limit");
+   end;
+
+   ---------------------------------------------------------------------------
+   --  PCI BAR extents (PCI_BAR_Extents): the sizing probe's arithmetic.
+   ---------------------------------------------------------------------------
+   declare
+      KiB : constant := 1024;
+      MiB : constant := 1024 * KiB;
+      GiB : constant Unsigned_64 := 1024 * MiB;
+      Limit_Bytes : constant Unsigned_64 := BX.Page_Limit * BX.Page_Bytes;
+      --  The size a BAR reads back after all-ones (Low, High: what the
+      --  probe returned; Wide: a 64-bit BAR).
+      function Size (Low, High : Unsigned_32; Wide : Boolean) return Unsigned_64 is
+        (BX.Size_Of (BX.Address_Mask (Low, High, Wide)));
+      E : BX.Extent;
+   begin
+      --  Decoding the BAR register.
+      Check (BX.Kind_Of (16#FEB0_0000#) = BX.Memory_32
+             and then BX.Kind_Of (16#FEB0_0008#) = BX.Memory_32
+             and then BX.Kind_Of (16#0000_C001#) = BX.IO_Space
+             and then BX.Kind_Of (16#FE00_000C#) = BX.Memory_64
+             and then BX.Kind_Of (16#0000_0002#) = BX.Memory_Other
+             and then BX.Kind_Of (16#0000_0006#) = BX.Memory_Other,
+             "BAR kinds: 32-bit, I/O, 64-bit, reserved types");
+      Check (BX.Prefetchable (16#FE00_000C#) and then BX.Prefetchable (16#FD00_0008#)
+             and then not BX.Prefetchable (16#FEB0_0000#)
+             and then not BX.Prefetchable (16#0000_C009#),
+             "prefetchable memory BARs, never an I/O BAR");
+      Check (BX.Registers_Of (16#FE00_000C#) = 2 and then BX.Registers_Of (16#FEB0_0000#) = 1
+             and then BX.Registers_Of (16#0000_C001#) = 1
+             and then BX.Registers_Of (16#0000_C005#) = 1,
+             "a 64-bit BAR takes two registers; an I/O BAR with type-like bits one");
+      Check (BX.Base_Of (16#FEB0_1008#, 16#1234#) = 16#FEB0_1000#
+             and then BX.Base_Of (16#C000_000C#, 16#0000_0003#) = 16#3_C000_0000#,
+             "base addresses: a 32-bit BAR ignores the next register, a 64-bit one uses it");
+
+      --  Sizes from the read-back masks.
+      Check (Size (16#FFFF_F000#, 0, False) = 4 * KiB, "32-bit 4 KiB BAR");
+      Check (Size (16#FFFF_FFF0#, 0, False) = 16, "32-bit 16-byte BAR (smaller than a page)");
+      Check (Size (16#FFF0_0008#, 0, False) = MiB, "32-bit prefetchable 1 MiB BAR");
+      Check (Size (16#8000_0000#, 0, False) = 2 * GiB, "32-bit maximum (2 GiB) BAR");
+      Check (Size (16#FFF0_000C#, 16#FFFF_FFFF#, True) = MiB, "64-bit prefetchable 1 MiB BAR");
+      Check (Size (16#0000_000C#, 16#FFFF_FFFE#, True) = 8 * GiB,
+             "64-bit 8 GiB BAR (low dword's address bits all zero)");
+      Check (Size (16#0000_0004#, 16#8000_0000#, True) = 2 ** 63, "64-bit maximum (2 ** 63) BAR");
+      Check (Size (16#0000_0000#, 0, False) = 0 and then Size (16#0000_0000#, 0, True) = 0
+             and then Size (16#0000_0008#, 0, False) = 0,
+             "unimplemented BARs: no size");
+      Check (Size (16#FFFF_FFF0#, 0, True) = 16 and then Size (16#0000_0000#, 1, True) = 4 * GiB,
+             "64-bit: the low dword's size, or the high dword's lowest bit");
+      Check (BX.Size_Of (BX.ROM_Mask (16#FFFE_0000#)) = 128 * KiB
+             and then BX.Size_Of (BX.ROM_Mask (16#FFFE_07FE#)) = 128 * KiB
+             and then BX.Size_Of (BX.ROM_Mask (0)) = 0,
+             "expansion ROM: 128 KiB, its flag bits ignored; none");
+      Check (BX.Size_Of (16#FFFF_FFFF_FFF0_1000#) = 4 * KiB,
+             "a mask with holes: its lowest bit (Linux's reading)");
+
+      --  Extents: every page a byte of the BAR touches.
+      E := BX.Extent_Of (16#FEB0_0000#, 16);
+      Check (E = (BX.Sized, 16#FEB00#, 16#FEB01#), "a 16-byte BAR covers its page");
+      E := BX.Extent_Of (16#FD00_0000#, 16 * MiB);
+      Check (E = (BX.Sized, 16#FD000#, 16#FE000#), "a 16 MiB framebuffer BAR, every page");
+      E := BX.Extent_Of (16#FEBF_F800#, 4 * KiB);
+      Check (E = (BX.Sized, 16#FEBFF#, 16#FEC01#), "a misaligned BAR: both pages it touches");
+      E := BX.Extent_Of (0, MiB);
+      Check (E.Status = BX.Unassigned and then not BX.Claimable (E), "a BAR at 0: unassigned");
+      E := BX.Extent_Of (16#FEB0_0000#, 0);
+      Check (E.Status = BX.Unimplemented and then not BX.Claimable (E), "no size: unimplemented");
+      E := BX.Extent_Of (Limit_Bytes, MiB);
+      Check (E.Status = BX.Beyond_Limit and then not BX.Claimable (E),
+             "a BAR above the physical limit: nothing to claim");
+      E := BX.Extent_Of (Limit_Bytes - MiB, 2 * MiB);
+      Check (E = (BX.Sized, BX.Page_Limit - MiB / Page, BX.Page_Limit),
+             "a BAR across the physical limit: clamped to it");
+      E := BX.Extent_Of (Limit_Bytes - Page, 2 ** 63);
+      Check (E = (BX.Sized, BX.Page_Limit - 1, BX.Page_Limit),
+             "the largest BAR below the limit, clamped");
+      E := BX.Extent_Of (16#1000#, Unsigned_64'Last);
+      Check (E = (BX.Overflows, 1, BX.Page_Limit),
+             "an end past 2 ** 64: refused as a size, claimed from its base to the limit");
+      E := BX.Extent_Of (Unsigned_64'Last - Page + 1, 2 * Page);
+      Check (E.Status = BX.Beyond_Limit, "a wrapping BAR above the limit: nothing to claim");
+
+      --  Type-1 bridge windows.
+      E := BX.Window_Extent (BX.Window_Base (16#FE80#, 0, False),
+                             BX.Window_Limit (16#FEA0#, 0, False));
+      Check (E = (BX.Sized, 16#FE800#, 16#FEB00#), "a bridge memory window, 1 MiB granules");
+      E := BX.Window_Extent (BX.Window_Base (16#FFF0#, 0, False),
+                             BX.Window_Limit (16#0000#, 0, False));
+      Check (E.Status = BX.Unimplemented, "base above limit: a closed window");
+      E := BX.Window_Extent (BX.Window_Base (0, 0, False), BX.Window_Limit (0, 0, False));
+      Check (E.Status = BX.Unassigned, "base 0 (reset): an unassigned window");
+      E := BX.Window_Extent (BX.Window_Base (16#0001#, 16#2#, True),
+                             BX.Window_Limit (16#0FF1#, 16#2#, True));
+      Check (E = (BX.Sized, 16#20_0000#, 16#21_0000#),
+             "a 64-bit prefetchable window above 4 GiB (256 MiB)");
+      Check (BX.Window_Base (16#C001#, 16#5#, False) = 16#C000_0000#,
+             "a 32-bit window ignores the upper dword");
+
+      --  The regression: a driverless BAR inside a firmware-reserved data
+      --  root. Before, devmgr knew only the BAR's base page (it never
+      --  probed a running device), so an envelope over the BAR's tail was
+      --  granted as firmware data; now the BAR is sized at enumeration and
+      --  its whole extent is a device claim, and the envelope is refused.
+      declare
+         Data_First : constant := 16#FE00_0000#;
+         Data_Pages : constant := 16#20#;
+         BAR_Base : constant := 16#FE01_0000#;
+         BAR_Bytes : constant Unsigned_64 := Size (16#FFFF_C000#, 0, False);   --  16 KiB
+         Firmware : constant DW.Root_Array :=
+           [(Pages => (First_Page => Data_First / Page, Pages => Data_Pages), Kind => DW.Data_Root)];
+         Devices : constant DW.Range_Array := [(First_Page => Data_First / Page, Pages => 16#100#)];
+         No_ECAM : constant DW.Range_Array (1 .. 0) := [others => (0, 0)];
+         Before, After : Ledgers.Memory_Ledger;
+         Result : MC.Claim_Result;
+         function Answer (L : Ledgers.Memory_Ledger; First_Page, Pages : Unsigned_64)
+           return FDX.Disposition is
+           (DW.Decide ((First_Page => First_Page, Pages => Pages), Firmware, Devices, No_ECAM,
+                       not Ledgers.Clear_Of_Devices (L, First_Page * Page, Pages * Page)).Answer);
+         Base_Page : constant Unsigned_64 := BAR_Base / Page;
+         Tail : constant Unsigned_64 := Base_Page + 1;    --  past the base page
+      begin
+         Check (BAR_Bytes = 16 * KiB, "the reserved-span BAR is 16 KiB");
+         --  Before: only the base page was known.
+         Ledgers.Claim (Before, BAR_Base, Page, MC.Device, Result, Report);
+         Check (Result = MC.Granted, "before: the base page only");
+         Check (Answer (Before, Tail, 2) = FDX.Granted_Data,
+                "before: an envelope over the BAR's tail, not its base page, was granted");
+         Check (Answer (Before, Tail + 2, 2) = FDX.Granted_Data,
+                "before: an envelope from the BAR's last page past its end was granted");
+         --  After: the sized extent.
+         E := BX.Extent_Of (BAR_Base, BAR_Bytes);
+         Check (E = (BX.Sized, Base_Page, Base_Page + 4), "the BAR's extent: its four pages");
+         Ledgers.Claim (After, E.First_Page * Page, (E.End_Page - E.First_Page) * Page, MC.Device,
+                        Result, Report);
+         Check (Result = MC.Granted, "the BAR's whole extent claimed for its device");
+         Check (Answer (After, Tail, 2) = FDX.Overlaps_Device,
+                "an envelope over a driverless BAR's tail is refused (Overlaps_Device)");
+         Check (Answer (After, Tail + 2, 2) = FDX.Overlaps_Device,
+                "an envelope from a driverless BAR's last page past its end is refused");
+         Check (Answer (After, Data_First / Page, Base_Page + 1 - Data_First / Page)
+                  = FDX.Overlaps_Device,
+                "an envelope from below the BAR into it is refused");
+         Check (Answer (After, Data_First / Page, Base_Page - Data_First / Page) = FDX.Granted_Data
+                and then Answer (After, Base_Page + 4, 1) = FDX.Granted_Data,
+                "the pages below and past the BAR are still data");
+         --  A driver bound later: its window over the same BAR, or part of
+         --  it, is granted beside the enumeration's claim.
+         Ledgers.Claim (After, BAR_Base, BAR_Bytes, MC.Device, Result, Report);
+         Check (Result = MC.Granted, "the driver's window over its whole BAR is granted");
+         Ledgers.Claim (After, BAR_Base + Page, 16#20#, MC.Device, Result, Report);
+         Check (Result = MC.Granted, "the driver's window over part of its BAR is granted");
+         Ledgers.Claim (After, BAR_Base + 3 * Page, Page, MC.ACPI_Data, Result, Report);
+         Check (Result = MC.Overlaps_Device, "a data claim over the BAR's last page is refused");
+      end;
+
+      --  The active boot display is never probed: which display holds the
+      --  firmware framebuffer, and its extents from non-probing sources.
+      declare
+         FB : constant := 16#FD00_0000#;
+         --  q35 desktop-display: QEMU VGA (00:01.0) BAR0, BAR2; virtio-gpu
+         --  (00:03.0) BAR1, BAR4; six slots per display function.
+         Bases : constant BX.Base_Array :=
+           [16#FD00_0000#, 0, 16#FEBD_8000#, 0, 0, 0,
+            0, 16#FEBD_9000#, 0, 0, 16#FE10_0000#, 0];
+         Slots : constant := 6;
+         Holder : Natural;
+         Display : Ledgers.Memory_Ledger;
+         Result : MC.Claim_Result;
+         Next : Unsigned_64;
+      begin
+         Check (BX.Display_Class (16#0300#) and then BX.Display_Class (16#0380#)
+                and then not BX.Display_Class (16#0200#) and then not BX.Display_Class (16#0C03#),
+                "display class: VGA and other displays; not network or USB");
+         Holder := BX.Scanout_Holder (Bases, FB, 16#30_0000#);
+         Check (Holder = 1 and then (Holder - 1) / Slots + 1 = 1,
+                "the VGA's BAR0 holds the framebuffer: that function is not probed");
+         Check (BX.Scanout_Holder (Bases, FB + 16#80_0000#, 16#30_0000#) = 1,
+                "a framebuffer inside the BAR, past its base: the same BAR");
+         Check (BX.Scanout_Holder (Bases, FB, 0) = 0, "no firmware framebuffer: every display is probed");
+         Check (BX.Scanout_Holder (Bases, 16#C000_0000#, Page) = 0,
+                "a framebuffer below every display BAR: none holds it");
+         Check (BX.Scanout_Holder ([16#C000_0000#, 16#E000_0000#, 16#F000_0000#], 16#E080_0000#, Page) = 2,
+                "the greatest base at or below the framebuffer holds it, not a lower one");
+         Check (BX.Documented_Size (16#8086#, 16#46D0#, 0) = 16 * MiB
+                and then BX.Documented_Size (16#8086#, 16#46D4#, 0) = 16 * MiB
+                and then BX.Documented_Size (16#8086#, 16#46D0#, 2) = 0
+                and then BX.Documented_Size (16#8086#, 16#9A49#, 0) = 0,
+                "documented sizes: Alder Lake-N GTTMMADR 16 MiB; its aperture and other GPUs none");
+         Check (BX.Documented_Size (16#1234#, 16#1111#, 2) = 4 * KiB
+                and then BX.Documented_Size (16#1234#, 16#1111#, 0) = 0,
+                "documented sizes: QEMU VGA MMIO 4 KiB; its framebuffer none");
+         --  The other devices are probed and claimed first (pci-testdev at
+         --  0xFE00_0000), then the boot display from what is known.
+         Ledgers.Claim (Display, 16#FE00_0000#, MiB, MC.Device, Result, Report);
+         E := BX.Extent_Of (16#FEBD_8000#, BX.Documented_Size (16#1234#, 16#1111#, 2));
+         Check (E = (BX.Sized, 16#FEBD8#, 16#FEBD9#), "the VGA's MMIO from its documented size");
+         Ledgers.Claim (Display, E.First_Page * Page, Page, MC.Device, Result, Report);
+         Next := Ledgers.Next_Start (Display, FB / Page);
+         Check (Next = 16#FE000#, "the next claimed range above the framebuffer BAR: pci-testdev's");
+         E := BX.Bounded_Extent (FB, False, Next);
+         Check (E = (BX.Bounded, 16#FD000#, 16#FE000#),
+                "the framebuffer BAR, not probed: from its base up to the next claimed range");
+         Ledgers.Claim (Display, E.First_Page * Page, (E.End_Page - E.First_Page) * Page, MC.Device,
+                        Result, Report);
+         Check (Result = MC.Granted, "claimed for the device");
+         Check (not Ledgers.Clear_Of_Devices (Display, FB, Page)
+                and then not Ledgers.Clear_Of_Devices (Display, 16#FDFF_F000#, Page),
+                "no data envelope reaches the framebuffer or the BAR's possible tail");
+         Check (Ledgers.Next_Start (Display, 16#FEBD8#) = MC.Page_Limit,
+                "nothing claimed above the last BAR: the physical limit");
+         Check (BX.Bounded_Extent (FB, False, MC.Page_Limit)
+                  = (BX.Bounded, 16#FD000#, 16#FD000# + 2 ** 31 / Page),
+                "nothing above a 32-bit BAR: at most the largest 32-bit BAR (2 GiB)");
+         Check (BX.Bounded_Extent (16#40_0000_0000#, True, MC.Page_Limit)
+                  = (BX.Bounded, 16#400_0000#, MC.Page_Limit),
+                "nothing above a 64-bit BAR: up to the physical limit");
+         Check (BX.Bounded_Extent (FB, False, 16#FD000#) = (BX.Bounded, 16#FD000#, 16#FD001#)
+                and then BX.Bounded_Extent (FB, False, 16#FC000#) = (BX.Bounded, 16#FD000#, 16#FD001#),
+                "a claim already at its base: at least its base page");
+         Check (BX.Bounded_Extent (0, False, 16#FE000#).Status = BX.Unassigned
+                and then BX.Bounded_Extent (Limit_Bytes, True, MC.Page_Limit).Status = BX.Beyond_Limit,
+                "unassigned and beyond the limit: nothing to claim");
+      end;
    end;
 
    Put_Line ("devmgr-claims:" & Checks'Image & " checks," & Failed'Image & " failed");

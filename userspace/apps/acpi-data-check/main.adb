@@ -19,7 +19,9 @@
 --  never a second grant. Then the named refusals: PCI configuration space
 --  (an ECAM page of bus 0 and of bus 1, from its own MCFG copy), a RAM page,
 --  a PCI BAR's page (found through its read-only PCI configuration window),
---  the FACS page (from its own FADT copy), a malformed request, and the
+--  the tail of a driverless BAR past its base page (QEMU's pci-testdev,
+--  which the test adds: devmgr sized it at enumeration), the FACS page
+--  (from its own FADT copy), a malformed request, and the
 --  ordinary "device-manager" endpoint, which is not the firmware-data
 --  badge. TEST: PASS acpi-firmware-data when all hold.
 --
@@ -127,6 +129,14 @@ procedure Main is
    BAR_Type_Mask         : constant Unsigned_32 := 16#6#;
    BAR_Type_64           : constant Unsigned_32 := 16#4#;
    BAR_Address_Mask      : constant Unsigned_32 := 16#FFFF_FFF0#;
+   Vendor_Shift          : constant := 16;
+   Dword_Bits            : constant := 32;
+   --  QEMU's PCI test device (Red Hat 1B36:0005; no CuBit driver) with
+   --  membar=1M (tests/headless/run.sh): BAR 2, 64-bit prefetchable.
+   Testdev_Vendor        : constant Unsigned_32 := 16#1B36#;
+   Testdev_Device        : constant Unsigned_32 := 16#0005#;
+   Testdev_BAR           : constant := 2;
+   Testdev_BAR_Bytes     : constant := 16#10_0000#;
 
    Tables : constant FS.Authority := Startup.Tables;
    Grant_Value : constant CuBit.ACPI_Windows.Grant := Startup.Hardware;
@@ -311,6 +321,34 @@ procedure Main is
       return 0;
    end First_BAR_Page;
 
+   --  The base of the test device's membar on bus 0, through the PCI
+   --  configuration window mapped at PCI_Virtual; 0 when absent.
+   function Testdev_BAR_Base return Unsigned_64 is
+      function Config (Device, Offset : Natural) return Unsigned_32 is
+         Word : Unsigned_32 with Import, Volatile,
+           Address => System'To_Address
+             (PCI_Virtual + Unsigned_64 (Device * PCI_Functions) * Page_Bytes + Unsigned_64 (Offset));
+      begin
+         return Word;
+      end Config;
+      Identity, Low : Unsigned_32;
+      Register : constant Natural := First_BAR + Testdev_BAR * BAR_Bytes;
+   begin
+      for Device in 0 .. PCI_Devices - 1 loop
+         Identity := Config (Device, 0);
+         if (Identity and Vendor_Mask) = Testdev_Vendor
+           and then Shift_Right (Identity, Vendor_Shift) = Testdev_Device
+         then
+            Low := Config (Device, Register);
+            if (Low and BAR_IO) = 0 and then (Low and BAR_Type_Mask) = BAR_Type_64 then
+               return Shift_Left (Unsigned_64 (Config (Device, Register + BAR_Bytes)), Dword_Bits)
+                      or Unsigned_64 (Low and BAR_Address_Mask);
+            end if;
+         end if;
+      end loop;
+      return 0;
+   end Testdev_BAR_Base;
+
    Granted_Page : Unsigned_64 := 0;
    Granted_Request : Unsigned_64 := 0;
    First_Grant : Device_Memory := No_Device_Memory;
@@ -440,10 +478,12 @@ begin
                       FDX.Not_Firmware_Class),
           "a RAM page refused (Not_Firmware_Class)");
 
-   --  A PCI BAR's page, found through the read-only configuration window.
+   --  A PCI BAR's page, found through the read-only configuration window,
+   --  and the tail of a driverless BAR: every page of it but its base page.
    declare
       PCI_Index : Natural := 0;
       BAR_Page : Unsigned_64 := 0;
+      Testdev_Base : Unsigned_64 := 0;
    begin
       for K in 1 .. G.Memory_Used loop
          if G.Memory (K).Kind = AMC.PCI_Config then
@@ -456,11 +496,24 @@ begin
                     PCI_Virtual, G.Memory (PCI_Index).Pages, True)
       then
          BAR_Page := First_BAR_Page;
+         Testdev_Base := Testdev_BAR_Base;
       end if;
       Check (BAR_Page /= 0
              and then Refused_As (Ask (Data_Endpoint.Value, BAR_Page, 1, Request_Id),
                                   FDX.Overlaps_Device),
              "a device BAR page refused (Overlaps_Device)");
+      debugPrint ("acpi-data-check: driverless test device BAR at " & Hex (Testdev_Base) & LF);
+      declare
+         Tail : constant Answer :=
+           Ask (Data_Endpoint.Value, Testdev_Base / Page_Bytes + 1,
+                Testdev_BAR_Bytes / Page_Bytes - 1, Request_Id);
+      begin
+         debugPrint ("acpi-data-check: driverless BAR tail: " &
+                     (if Tail.Replied then FDX.Name (Disposition_Of (Tail)) else "no reply") & LF);
+         Check (Testdev_Base /= 0 and then Testdev_Base mod Testdev_BAR_Bytes = 0
+                and then Refused_As (Tail, FDX.Overlaps_Device),
+                "a driverless BAR's tail refused (Overlaps_Device)");
+      end;
    end;
 
    declare

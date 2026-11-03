@@ -62,6 +62,7 @@ with Intel_GPU_ADLN_Devices;
 with PCI_Message_Interrupts;
 with PCI_Message_Functions;
 with PCI_Capabilities;
+with PCI_BAR_Extents;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.File_Access;
@@ -650,6 +651,82 @@ procedure main is
      (Read_Intel_IRQ_Config, Write_Intel_IRQ_Word);
 
    ---------------------------------------------------------------------------
+   --  Device memory by PCI decode (PCI_BAR_Extents): at enumeration, before
+   --  any driver starts, every assigned memory BAR (and enabled expansion
+   --  ROM) of a function is sized once, and its whole extent is claimed
+   --  for devices in the claim ledger; so is a type-1 bridge's memory and
+   --  prefetchable window (read, never probed). A firmware-data envelope
+   --  never overlaps one (Serve_Data_Window). An extent that could not be
+   --  recorded makes every firmware-data request refused: for the heap,
+   --  Capacity; over an ACPI window, Overlaps_Device (devmgr cannot tell
+   --  which pages are the device's).
+   ---------------------------------------------------------------------------
+   package BX renames PCI_BAR_Extents;
+   use type BX.BAR_Kind;
+   use type BX.Extent_Status;
+   --  Configuration registers (PCI Local Bus 3.0, 6.1; PCI-to-PCI Bridge
+   --  1.2, 3.2): the layout, memory decode and the ROM and window registers.
+   PCI_HEADER_LAYOUT_MASK   : constant Unsigned_8 := 16#7F#;
+   PCI_HEADER_GENERAL       : constant Unsigned_8 := 0;
+   PCI_HEADER_BRIDGE        : constant Unsigned_8 := 1;
+   PCI_GENERAL_BARS         : constant := 6;
+   PCI_BRIDGE_BARS          : constant := 2;
+   PCI_REGISTER_BYTES       : constant := 4;
+   PCI_COMMAND_MEMORY       : constant Unsigned_16 := 16#0002#;
+   PCI_EXPANSION_ROM        : constant Unsigned_8 := 16#30#;
+   PCI_BRIDGE_EXPANSION_ROM : constant Unsigned_8 := 16#38#;
+   PCI_MEMORY_BASE          : constant Unsigned_8 := 16#20#;
+   PCI_MEMORY_LIMIT         : constant Unsigned_8 := 16#22#;
+   PCI_PREFETCH_BASE        : constant Unsigned_8 := 16#24#;
+   PCI_PREFETCH_LIMIT       : constant Unsigned_8 := 16#26#;
+   PCI_PREFETCH_BASE_UPPER  : constant Unsigned_8 := 16#28#;
+   PCI_PREFETCH_LIMIT_UPPER : constant Unsigned_8 := 16#2C#;
+   --  A host bridge's memory decode stays on while it is sized (as Linux's
+   --  mmio_always_on): turning it off can cut the CPU off from memory.
+   CLASS_BRIDGE_HOST        : constant Unsigned_16 := 16#0600#;
+
+   --  Extents recorded, and why any was not.
+   PCI_Extents_Claimed     : Natural := 0;
+   PCI_Extents_Short       : Boolean := False;   --  the ledger could not grow
+   PCI_Extents_Conflicting : Natural := 0;       --  over an ACPI window
+
+   --  What an extent is, for its log lines.
+   type Extent_Kind is (BAR_Extent, ROM_Extent, Memory_Window, Prefetch_Window);
+   function Extent_Name (Kind : Extent_Kind; Index : Natural) return String is
+     (case Kind is
+        when BAR_Extent      => "BAR" & Character'Val (Character'Pos ('0') + Index mod PCI_GENERAL_BARS),
+        when ROM_Extent      => "ROM",
+        when Memory_Window   => "memory window",
+        when Prefetch_Window => "prefetchable window");
+
+   --  An extent that could not be recorded (firmware data is refused from
+   --  then on), named after the scan so one boot photo shows which.
+   type Extent_Why is (Ledger_Full, Over_ACPI);
+   type Extent_Failure is record
+      Location   : PCIDeviceInfo;
+      Kind       : Extent_Kind := BAR_Extent;
+      Index      : Natural := 0;
+      First_Page : Unsigned_64 := 0;
+      End_Page   : Unsigned_64 := 0;
+      Why        : Extent_Why := Over_ACPI;
+   end record;
+   package Failure_Store is new Devmgr_Growable
+     (Extent_Failure, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   PCI_Extent_Failures : Failure_Store.Store;
+   PCI_Failures_Unlisted : Natural := 0;   --  failures the list itself had no room for
+
+   --  Display-class functions, sized after the scan (PCI_BAR_Extents: the
+   --  active boot display is never probed).
+   type Display_Function is record
+      Location : PCIDeviceInfo;
+      Vendor, Device : Unsigned_16 := 0;
+   end record;
+   package Display_Store is new Devmgr_Growable
+     (Display_Function, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   use type Display_Store.Growth_Status;
+   Display_Functions : Display_Store.Store;
+
+   ---------------------------------------------------------------------------
    -- PCI bus scan: find devices by class code
    ---------------------------------------------------------------------------
    procedure scanPCI is
@@ -664,6 +741,333 @@ procedure main is
          end loop;
          return Result;
       end Hex;
+
+      function Location_Text (Location : PCIDeviceInfo) return String is
+        (Hex (Unsigned_64 (Location.bus), 2) & ":" & Hex (Unsigned_64 (Location.slot), 2) & "." &
+         Hex (Unsigned_64 (Location.func), 1));
+
+      --  Record one extent (Kind and Index name it; Detail adds to its log
+      --  line) for devices; a failure is kept for the warning after the scan.
+      procedure Claim_Extent
+        (Location : PCIDeviceInfo; Kind : Extent_Kind; Index : Natural; Detail : String;
+         E : BX.Extent)
+      is
+         What : constant String := Extent_Name (Kind, Index) & Detail;
+         Result : Devmgr_Memory_Claims.Claim_Result;
+         Report : Ledgers.Capacity_Report;
+         use type Devmgr_Memory_Claims.Claim_Result;
+
+         procedure Keep (Why : Extent_Why) is
+            Room : Failure_Store.Capacity_Report;
+            use type Failure_Store.Growth_Status;
+         begin
+            Failure_Store.Append
+              (PCI_Extent_Failures,
+               (Location => Location, Kind => Kind, Index => Index, First_Page => E.First_Page,
+                End_Page => E.End_Page, Why => Why), Room);
+            if Room.Status /= Failure_Store.Grown then
+               PCI_Failures_Unlisted := PCI_Failures_Unlisted + 1;
+            end if;
+         end Keep;
+      begin
+         if E.Status = BX.Overflows then
+            debugPrint ("devmgr: PCI " & Location_Text (Location) & " " & What &
+                        " wraps past the address space; claimed from its base up" & LF);
+         end if;
+         if not BX.Claimable (E) or else E.First_Page >= E.End_Page
+           or else E.End_Page > Devmgr_Memory_Claims.Page_Limit
+         then
+            return;
+         end if;
+         Devmgr_Authority.Claim_Device_Pages (E.First_Page, E.End_Page, Result, Report);
+         if Result = Devmgr_Memory_Claims.Granted then
+            PCI_Extents_Claimed := PCI_Extents_Claimed + 1;
+            debugPrint ("devmgr: PCI " & Location_Text (Location) & " " & What & " " &
+                        Hex (E.First_Page * BX.Page_Bytes, 16) & " +" &
+                        Hex ((E.End_Page - E.First_Page) * BX.Page_Bytes, 16) &
+                        " claimed for the device" & LF);
+         elsif Result = Devmgr_Memory_Claims.Needs_Room then
+            PCI_Extents_Short := True;
+            Warn_Capacity ("memory claims (PCI BAR extents)", Report);
+            Keep (Ledger_Full);
+         else
+            PCI_Extents_Conflicting := PCI_Extents_Conflicting + 1;
+            debugPrint ("devmgr: PCI " & Location_Text (Location) & " " & What & " " &
+                        Hex (E.First_Page * BX.Page_Bytes, 16) &
+                        " overlaps an ACPI window; not recorded" & LF);
+            Keep (Over_ACPI);
+         end if;
+      end Claim_Extent;
+
+      --  Size every assigned memory BAR of the function, and its enabled
+      --  expansion ROM, once: with its memory decode off (a host bridge's
+      --  stays on), all-ones written to each (both dwords of a 64-bit
+      --  BAR), the implemented bits read back, the BAR restored, then the
+      --  command register restored exactly. A BAR at 0 is unassigned and
+      --  an I/O BAR is no memory: neither is written. A function with no
+      --  assigned memory BAR is not touched. Then a bridge's windows.
+      procedure Probe_PCI_Memory (Location : PCIDeviceInfo; Class_Code : Unsigned_16) is
+         Layout : constant Unsigned_8 :=
+           pciReadConfig8 (Location.bus, Location.slot, Location.func, PCI_HEADER_TYPE)
+           and PCI_HEADER_LAYOUT_MASK;
+         BARs : constant Natural :=
+           (if Layout = PCI_HEADER_GENERAL then PCI_GENERAL_BARS
+            elsif Layout = PCI_HEADER_BRIDGE then PCI_BRIDGE_BARS else 0);
+         ROM_Register : constant Unsigned_8 :=
+           (if Layout = PCI_HEADER_BRIDGE then PCI_BRIDGE_EXPANSION_ROM else PCI_EXPANSION_ROM);
+         --  One per BAR register: the header's own layout.
+         type Probe is record
+            Register : Unsigned_8 := 0;
+            Index    : Natural := 0;
+            Wide     : Boolean := False;
+            Low, High : Unsigned_32 := 0;              --  as found
+            Low_Probe, High_Probe : Unsigned_32 := 0;  --  read back after all-ones
+         end record;
+         Probes : array (0 .. PCI_GENERAL_BARS - 1) of Probe;
+         Count : Natural := 0;
+         Has_ROM : Boolean := False;
+         ROM : Probe;
+         Index : Natural := 0;
+         Low, High : Unsigned_32;
+         Wide : Boolean;
+         Command : Unsigned_16;
+         Keep_Decode : constant Boolean := Class_Code = CLASS_BRIDGE_HOST;
+
+         function Read32 (Register : Unsigned_8) return Unsigned_32 is
+           (pciReadConfig32 (Location.bus, Location.slot, Location.func, Register));
+         procedure Write32 (Register : Unsigned_8; Value : Unsigned_32) is
+         begin
+            pciWriteConfig32 (Location.bus, Location.slot, Location.func, Register, Value);
+         end Write32;
+         function Read16 (Register : Unsigned_8) return Unsigned_16 is
+           (pciReadConfig16 (Location.bus, Location.slot, Location.func, Register));
+      begin
+         if BARs = 0 then
+            return;
+         end if;
+         --  The assigned memory BARs, read without disturbing anything.
+         while Index < BARs loop
+            Low := Read32 (PCI_BASEADDR_0 + Unsigned_8 (Index) * PCI_REGISTER_BYTES);
+            Wide := BX.Kind_Of (Low) = BX.Memory_64 and then Index + 1 < BARs;
+            High := (if Wide then Read32 (PCI_BASEADDR_0 + Unsigned_8 (Index + 1) * PCI_REGISTER_BYTES)
+                     else 0);
+            if BX.Kind_Of (Low) /= BX.IO_Space and then BX.Base_Of (Low, High) /= 0 then
+               Probes (Count) := (Register => PCI_BASEADDR_0 + Unsigned_8 (Index) * PCI_REGISTER_BYTES,
+                                  Index => Index, Wide => Wide, Low => Low, High => High,
+                                  others => 0);
+               Count := Count + 1;
+            end if;
+            Index := Index + (if Wide then 2 else 1);
+         end loop;
+         Low := Read32 (ROM_Register);
+         if (Low and BX.ROM_Enable) /= 0 and then (Low and BX.ROM_Address_Mask) /= 0 then
+            Has_ROM := True;
+            ROM := (Register => ROM_Register, Low => Low, others => <>);
+         end if;
+
+         if Count > 0 or else Has_ROM then
+            Command := Read16 (PCI_COMMAND);
+            if not Keep_Decode then
+               pciWriteConfig16 (Location.bus, Location.slot, Location.func, PCI_COMMAND,
+                                 Command and not PCI_COMMAND_MEMORY);
+            end if;
+            for K in 0 .. Count - 1 loop
+               declare
+                  P : Probe renames Probes (K);
+               begin
+                  Write32 (P.Register, BX.BAR_All_Ones);
+                  if P.Wide then
+                     Write32 (P.Register + PCI_REGISTER_BYTES, BX.BAR_All_Ones);
+                  end if;
+                  P.Low_Probe := Read32 (P.Register);
+                  if P.Wide then
+                     P.High_Probe := Read32 (P.Register + PCI_REGISTER_BYTES);
+                     Write32 (P.Register + PCI_REGISTER_BYTES, P.High);
+                  end if;
+                  Write32 (P.Register, P.Low);
+               end;
+            end loop;
+            if Has_ROM then
+               --  The address bits, enable clear: the ROM decodes nothing meanwhile.
+               Write32 (ROM.Register, BX.ROM_Address_Mask);
+               ROM.Low_Probe := Read32 (ROM.Register);
+               Write32 (ROM.Register, ROM.Low);
+            end if;
+            if not Keep_Decode then
+               pciWriteConfig16 (Location.bus, Location.slot, Location.func, PCI_COMMAND, Command);
+            end if;
+         end if;
+
+         for K in 0 .. Count - 1 loop
+            declare
+               P : constant Probe := Probes (K);
+            begin
+               Claim_Extent
+                 (Location, BAR_Extent, P.Index,
+                  (if P.Wide then " 64-bit" else "") &
+                    (if BX.Prefetchable (P.Low) then " prefetchable" else ""),
+                  BX.Extent_Of (BX.Base_Of (P.Low, P.High),
+                                BX.Size_Of (BX.Address_Mask (P.Low_Probe, P.High_Probe, P.Wide))));
+            end;
+         end loop;
+         if Has_ROM then
+            Claim_Extent (Location, ROM_Extent, 0, "",
+                          BX.Extent_Of (Unsigned_64 (ROM.Low and BX.ROM_Address_Mask),
+                                        BX.Size_Of (BX.ROM_Mask (ROM.Low_Probe))));
+         end if;
+
+         if Layout = PCI_HEADER_BRIDGE then
+            Claim_Extent
+              (Location, Memory_Window, 0, "",
+               BX.Window_Extent (BX.Window_Base (Read16 (PCI_MEMORY_BASE), 0, False),
+                                 BX.Window_Limit (Read16 (PCI_MEMORY_LIMIT), 0, False)));
+            declare
+               Base : constant Unsigned_16 := Read16 (PCI_PREFETCH_BASE);
+               Wide_Window : constant Boolean :=
+                 (Base and BX.Window_Type_Mask) = BX.Window_Type_64;
+               Base_Upper : constant Unsigned_32 :=
+                 (if Wide_Window then Read32 (PCI_PREFETCH_BASE_UPPER) else 0);
+               Limit_Upper : constant Unsigned_32 :=
+                 (if Wide_Window then Read32 (PCI_PREFETCH_LIMIT_UPPER) else 0);
+            begin
+               Claim_Extent
+                 (Location, Prefetch_Window, 0, "",
+                  BX.Window_Extent
+                    (BX.Window_Base (Base, Base_Upper, Wide_Window),
+                     BX.Window_Limit (Read16 (PCI_PREFETCH_LIMIT), Limit_Upper, Wide_Window)));
+            end;
+         end if;
+      end Probe_PCI_Memory;
+
+      --  The active boot display's memory BARs, never probed (PCI_BAR_
+      --  Extents): a documented size where one is known, otherwise from the
+      --  BAR's base up to the next claimed range (fail closed). Documented
+      --  extents first, so the bounded ones stop at them. Why names the
+      --  reason for the log.
+      procedure Claim_Unprobed (F : Display_Function; Why : String) is
+         Location : constant PCIDeviceInfo := F.Location;
+         function Read32 (Register : Unsigned_8) return Unsigned_32 is
+           (pciReadConfig32 (Location.bus, Location.slot, Location.func, Register));
+         Low, High : Unsigned_32;
+         Wide : Boolean;
+         Index : Natural;
+         Base, Size : Unsigned_64;
+      begin
+         for Pass in 1 .. 2 loop
+            Index := 0;
+            while Index < PCI_GENERAL_BARS loop
+               Low := Read32 (PCI_BASEADDR_0 + Unsigned_8 (Index) * PCI_REGISTER_BYTES);
+               Wide := BX.Kind_Of (Low) = BX.Memory_64 and then Index + 1 < PCI_GENERAL_BARS;
+               High := (if Wide then Read32 (PCI_BASEADDR_0 + Unsigned_8 (Index + 1) * PCI_REGISTER_BYTES)
+                        else 0);
+               Base := BX.Base_Of (Low, High);
+               Size := BX.Documented_Size (F.Vendor, F.Device, Index);
+               if BX.Kind_Of (Low) /= BX.IO_Space and then Base /= 0 then
+                  if Pass = 1 and then Size /= 0 then
+                     debugPrint ("devmgr: PCI " & Location_Text (Location) & " " &
+                                 Extent_Name (BAR_Extent, Index) & " not probed (" & Why &
+                                 "): its documented size" & LF);
+                     Claim_Extent (Location, BAR_Extent, Index, "", BX.Extent_Of (Base, Size));
+                  elsif Pass = 2 and then Size = 0 then
+                     debugPrint ("devmgr: PCI " & Location_Text (Location) & " " &
+                                 Extent_Name (BAR_Extent, Index) & " not probed (" & Why &
+                                 "): no documented size, claimed up to the next claimed range" & LF);
+                     Claim_Extent
+                       (Location, BAR_Extent, Index, "",
+                        BX.Bounded_Extent (Base, Wide,
+                                           Devmgr_Authority.Next_Claim_Start (Base / BX.Page_Bytes)));
+                  end if;
+               end if;
+               Index := Index + (if Wide then 2 else 1);
+            end loop;
+         end loop;
+         Low := Read32 (PCI_EXPANSION_ROM);
+         if (Low and BX.ROM_Enable) /= 0 and then (Low and BX.ROM_Address_Mask) /= 0 then
+            Base := Unsigned_64 (Low and BX.ROM_Address_Mask);
+            debugPrint ("devmgr: PCI " & Location_Text (Location) & " ROM not probed (" & Why &
+                        "): claimed up to the next claimed range" & LF);
+            Claim_Extent (Location, ROM_Extent, 0, "",
+                          BX.Bounded_Extent (Base, False,
+                                             Devmgr_Authority.Next_Claim_Start (Base / BX.Page_Bytes)));
+         end if;
+      end Claim_Unprobed;
+
+      --  A function's memory decode, claimed for devices before any driver
+      --  starts: probed now, or (a display) after the scan.
+      procedure Claim_PCI_Memory
+        (Location : PCIDeviceInfo; Vendor, Device, Class_Code : Unsigned_16)
+      is
+         Room : Display_Store.Capacity_Report;
+         F : constant Display_Function := (Location => Location, Vendor => Vendor, Device => Device);
+      begin
+         if not BX.Display_Class (Class_Code) then
+            Probe_PCI_Memory (Location, Class_Code);
+            return;
+         end if;
+         Display_Store.Append (Display_Functions, F, Room);
+         if Room.Status /= Display_Store.Grown then
+            --  Not kept for the scanout decision: never probed, then.
+            Claim_Unprobed (F, "no room to decide whether it is the boot display");
+         end if;
+      end Claim_PCI_Memory;
+
+      --  After the scan: the display function whose memory BAR holds the
+      --  firmware framebuffer (the greatest BAR base at or below it) and
+      --  every Intel display keep their decode on and are claimed from what
+      --  devmgr knows; the other displays are probed. Probed ones first, so
+      --  the unprobed bounded extents stop at them.
+      procedure Claim_Display_Memory is
+         Count : constant Natural := Display_Store.Length (Display_Functions);
+         Bases : BX.Base_Array (1 .. Count * PCI_GENERAL_BARS) := [others => 0];
+         Holder : Natural;
+         Scanout : Natural := 0;
+         Low, High : Unsigned_32;
+         Wide : Boolean;
+         Index : Natural;
+         function Unprobed (K : Positive) return Boolean is
+           (K = Scanout or else Display_Store.Element_At (Display_Functions, K).Vendor = BX.Intel_Vendor);
+      begin
+         if Count = 0 then
+            return;
+         end if;
+         for K in 1 .. Count loop
+            declare
+               L : constant PCIDeviceInfo := Display_Store.Element_At (Display_Functions, K).Location;
+            begin
+               Index := 0;
+               while Index < PCI_GENERAL_BARS loop
+                  Low := pciReadConfig32 (L.bus, L.slot, L.func,
+                                          PCI_BASEADDR_0 + Unsigned_8 (Index) * PCI_REGISTER_BYTES);
+                  Wide := BX.Kind_Of (Low) = BX.Memory_64 and then Index + 1 < PCI_GENERAL_BARS;
+                  High := (if Wide then pciReadConfig32
+                             (L.bus, L.slot, L.func,
+                              PCI_BASEADDR_0 + Unsigned_8 (Index + 1) * PCI_REGISTER_BYTES)
+                           else 0);
+                  if BX.Kind_Of (Low) /= BX.IO_Space then
+                     Bases ((K - 1) * PCI_GENERAL_BARS + Index + 1) := BX.Base_Of (Low, High);
+                  end if;
+                  Index := Index + (if Wide then 2 else 1);
+               end loop;
+            end;
+         end loop;
+         Holder := BX.Scanout_Holder (Bases, bootFramebuffer.First, bootFramebuffer.Bytes);
+         if Holder /= 0 then
+            Scanout := (Holder - 1) / PCI_GENERAL_BARS + 1;
+         end if;
+         for K in 1 .. Count loop
+            if not Unprobed (K) then
+               Probe_PCI_Memory (Display_Store.Element_At (Display_Functions, K).Location, 0);
+            end if;
+         end loop;
+         for K in 1 .. Count loop
+            if Unprobed (K) then
+               Claim_Unprobed (Display_Store.Element_At (Display_Functions, K),
+                               (if K = Scanout then "the boot display: holds the firmware framebuffer"
+                                else "an Intel display: its firmware scanout may be live"));
+            end if;
+         end loop;
+         Display_Store.Clear (Display_Functions);
+      end Claim_Display_Memory;
 
       procedure Report_Intel_Display (Location : PCIDeviceInfo;
                                       Device : Unsigned_16;
@@ -819,6 +1223,8 @@ procedure main is
          end if;
 
          debugPrint (LF & "");
+         --  Its memory decode, claimed for devices before any driver starts.
+         Claim_PCI_Memory (location, vendorID, deviceID, classCode);
          if vendorID = 16#8086# and then Shift_Right (classCode, 8) = 3 then
             Report_Intel_Display (location, deviceID, classCode);
          end if;
@@ -849,6 +1255,7 @@ procedure main is
             end if;
          end loop;
       end loop;
+      Claim_Display_Memory;
    end scanPCI;
 
    ---------------------------------------------------------------------------
@@ -3577,7 +3984,8 @@ procedure main is
    --  (acpi-firmware-data approve-declared), through the endpoint badge only
    --  procmgr mints for it. Devmgr_Data_Windows decides; this does the
    --  rest: gathers what devmgr knows (its roots, the MCFG's ECAM
-   --  allocations, every PCI BAR's base page, its claim ledger), claims a
+   --  allocations, its claim ledger: every PCI BAR's whole extent and
+   --  bridge window from enumeration, every driver's window), claims a
    --  granted envelope for ACPI for the rest of the boot, derives one
    --  capability per answered request and keeps it, and answers a repeated
    --  request id from the record, never deriving again.
@@ -3751,53 +4159,6 @@ procedure main is
       Read_ECAM;
    end Read_Data_Facts;
 
-   --  Every PCI BAR's base page, read from configuration space without the
-   --  sizing probe (which would stop a running device's decoding): a BAR
-   --  devmgr has handed to a driver is in the claim ledger whole.
-   PCI_HEADER_LAYOUT_MASK : constant Unsigned_8 := 16#7F#;
-   PCI_HEADER_GENERAL     : constant Unsigned_8 := 0;
-   PCI_HEADER_BRIDGE      : constant Unsigned_8 := 1;
-   PCI_GENERAL_BARS       : constant := 6;
-   PCI_BRIDGE_BARS        : constant := 2;
-   procedure Read_BAR_Pages (Into : in out Range_Store.Store) is
-      Report : Range_Store.Capacity_Report;
-   begin
-      for I in 1 .. inventoryCount loop
-         declare
-            dev : constant PCIDeviceInfo := inventory (I).location;
-            layout : constant Unsigned_8 :=
-              pciReadConfig8 (dev.bus, dev.slot, dev.func, PCI_HEADER_TYPE) and PCI_HEADER_LAYOUT_MASK;
-            bars : constant Natural :=
-              (if layout = PCI_HEADER_GENERAL then PCI_GENERAL_BARS
-               elsif layout = PCI_HEADER_BRIDGE then PCI_BRIDGE_BARS else 0);
-            index : Natural := 0;
-            low : Unsigned_32;
-            base : Unsigned_64;
-            wide : Boolean;
-         begin
-            while index < bars loop
-               low := pciReadConfig32 (dev.bus, dev.slot, dev.func,
-                                       PCI_BASEADDR_0 + Unsigned_8 (index) * PCI_BAR_BYTES);
-               wide := (low and PCI_BAR_TYPE_MASK) = PCI_BAR_TYPE_64;
-               if (low and PCI_BAR_IO) = 0 then
-                  base := Unsigned_64 (low and PCI_BAR_ADDRESS_MASK);
-                  if wide and then index + 1 < bars then
-                     base := base or Shift_Left
-                       (Unsigned_64 (pciReadConfig32
-                          (dev.bus, dev.slot, dev.func,
-                           PCI_BASEADDR_0 + Unsigned_8 (index + 1) * PCI_BAR_BYTES)), 32);
-                  end if;
-                  if base /= 0 and then DW.Valid_Range ((First_Page => base / PAGE_BYTES, Pages => 1)) then
-                     Range_Store.Append (Into, (First_Page => base / PAGE_BYTES, Pages => 1), Report);
-                     Note_Growth ("firmware-data facts (BARs)", Report);
-                  end if;
-               end if;
-               index := index + (if wide and then (low and PCI_BAR_IO) = 0 then 2 else 1);
-            end loop;
-         end;
-      end loop;
-   end Read_BAR_Pages;
-
    --  The answer to (Owner, Request) given before, or 0.
    function Answered_Before (Owner, Request : Unsigned_64) return Natural is
    begin
@@ -3878,7 +4239,9 @@ procedure main is
       --  Room for this answer first: a grant is never made that a repeated
       --  request could not find.
       Answer_Store.Reserve (Data_Answers, Answer_Store.Length (Data_Answers) + 1, Room);
-      if Room.Status /= Answer_Store.Grown or else not Data_Facts_Whole then
+      if Room.Status /= Answer_Store.Grown or else not Data_Facts_Whole
+        or else PCI_Extents_Short
+      then
          A.Answer := FDX.Capacity;
          if Room.Status /= Answer_Store.Grown then
             Warn_Capacity ("firmware-data answers",
@@ -3889,13 +4252,11 @@ procedure main is
          return;
       end if;
       declare
-         BARs : Range_Store.Store;
          Envelope : constant DW.Page_Range := (First_Page => First_Page, Pages => Pages);
          Physical : constant Unsigned_64 := First_Page * PAGE_BYTES;
          Bytes : constant Unsigned_64 := Pages * PAGE_BYTES;
          Decision : DW.Decision;
       begin
-         Read_BAR_Pages (BARs);
          declare
             Firmware : constant DW.Root_Array (1 .. Root_Store.Length (Data_Roots))
             with Import, Address => Root_Store.Block (Data_Roots);
@@ -3903,12 +4264,13 @@ procedure main is
             with Import, Address => Range_Store.Block (Device_Ranges);
             ECAM : constant DW.Range_Array (1 .. Range_Store.Length (ECAM_Ranges))
             with Import, Address => Range_Store.Block (ECAM_Ranges);
-            Bases : constant DW.Range_Array (1 .. Range_Store.Length (BARs))
-            with Import, Address => Range_Store.Block (BARs);
          begin
+            --  A BAR extent over an ACPI window went unrecorded: any page
+            --  may be a device's.
             Decision := DW.Decide
-              (Envelope, Firmware, Devices, ECAM, Bases,
-               Device_Claimed => not Devmgr_Authority.Clear_Of_Devices (Physical, Bytes));
+              (Envelope, Firmware, Devices, ECAM,
+               Device_Claimed => PCI_Extents_Conflicting > 0
+                                 or else not Devmgr_Authority.Clear_Of_Devices (Physical, Bytes));
             A.Answer := Decision.Answer;
             if Decision.Answer = FDX.Granted_Data then
                declare
@@ -3953,7 +4315,6 @@ procedure main is
                end;
             end if;
          end;
-         Range_Store.Clear (BARs);
       end;
       --  Recorded whatever the answer (room was reserved): a repeated
       --  request id gets it again.
@@ -4128,6 +4489,39 @@ begin
    --  Scan PCI bus for devices, then bind each to the driver that
    --  declares it (devices.index).
    scanPCI;
+   Warnings.Inform ("devmgr: PCI memory claimed for devices:" & Natural'Image (PCI_Extents_Claimed) &
+                    " BAR extents and bridge windows");
+   for K in 1 .. Failure_Store.Length (PCI_Extent_Failures) loop
+      declare
+         F : constant Extent_Failure := Failure_Store.Element_At (PCI_Extent_Failures, K);
+         --  The last Count hex digits of Value, zero-padded.
+         function Tail (Value : Unsigned_8; Count : Positive) return String is
+            Digit_Chars : constant String := "0123456789ABCDEF";
+            Hex_Base : constant := 16;
+            Result : String (1 .. Count);
+            V : Unsigned_8 := Value;
+         begin
+            for I in reverse Result'Range loop
+               Result (I) := Digit_Chars (Digit_Chars'First + Natural (V mod Hex_Base));
+               V := V / Hex_Base;
+            end loop;
+            return Result;
+         end Tail;
+      begin
+         Warnings.Warn
+           ("devmgr: firmware data refused: PCI " & Tail (F.Location.bus, 2) & ":" &
+            Tail (F.Location.slot, 2) & "." & Tail (F.Location.func, 1) & " " &
+            Extent_Name (F.Kind, F.Index) & " " & Hex (F.First_Page * PAGE_BYTES) & " +" &
+            Hex ((F.End_Page - F.First_Page) * PAGE_BYTES) & " not recorded: " &
+            (case F.Why is
+               when Ledger_Full => "the claim ledger could not grow (heap)",
+               when Over_ACPI   => "it overlaps an ACPI window"));
+      end;
+   end loop;
+   if PCI_Failures_Unlisted > 0 then
+      Warnings.Warn ("devmgr: firmware data refused: " & Natural'Image (PCI_Failures_Unlisted) &
+                     " more PCI extents not recorded (no room to list them)");
+   end if;
    Bind_Devices;
 
    -----------------------------------------------------------------------

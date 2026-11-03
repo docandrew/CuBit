@@ -115,6 +115,13 @@ package body Devmgr_Claim_Ledgers is
       return MC.Clear_Of_Devices (Items, Memory_Store.Length (L.Claims), Physical, Bytes);
    end Clear_Of_Devices;
 
+   function Next_Start (L : Memory_Ledger; Page : Unsigned_64) return Unsigned_64 is
+      Items : constant MC.Claim_Array (1 .. Memory_Store.Capacity (L.Claims))
+      with Import, Address => Memory_Store.Block (L.Claims);
+   begin
+      return MC.Next_Start (Items, Memory_Store.Length (L.Claims), Page);
+   end Next_Start;
+
    function Count (L : Memory_Ledger) return Natural is (Memory_Store.Length (L.Claims));
    function Claim_At (L : Memory_Ledger; Index : Positive) return MC.Claim is
      (Memory_Store.Element_At (L.Claims, Index));

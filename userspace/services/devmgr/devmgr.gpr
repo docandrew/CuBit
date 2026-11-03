@@ -19,6 +19,8 @@ project Devmgr is
        "pci_message_functions.ads", "pci_message_functions.adb",
        --  The capability-list walk (MSI / MSI-X facts, PCI_Capabilities).
        "pci_capabilities.ads", "pci_capabilities.adb",
+       --  Every BAR's extent, sized at enumeration (PCI_BAR_Extents).
+       "pci_bar_extents.ads", "pci_bar_extents.adb",
        "xhci_configure_reply.ads", "xhci_controller_identity.ads",
        "driver_manifests.ads", "driver_manifests.adb",
        --  Devices bound by their drivers' declared matches (HW-002).

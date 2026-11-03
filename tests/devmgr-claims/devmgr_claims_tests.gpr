@@ -9,7 +9,8 @@ project Devmgr_Claims_Tests is
       "devmgr_memory_claims.ads", "devmgr_memory_claims.adb",
       "devmgr_growable.ads", "devmgr_growable.adb",
       "devmgr_claim_ledgers.ads", "devmgr_claim_ledgers.adb",
-      "devmgr_data_windows.ads", "devmgr_data_windows.adb");
+      "devmgr_data_windows.ads", "devmgr_data_windows.adb",
+      "pci_bar_extents.ads", "pci_bar_extents.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");

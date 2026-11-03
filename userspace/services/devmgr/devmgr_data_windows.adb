@@ -88,7 +88,6 @@ package body Devmgr_Data_Windows with SPARK_Mode is
       Firmware : Root_Array;
       Devices  : Range_Array;
       ECAM     : Range_Array;
-      BARs     : Range_Array;
       Device_Claimed : Boolean) return Decision
    is
       Index : Natural;
@@ -101,7 +100,7 @@ package body Devmgr_Data_Windows with SPARK_Mode is
         or else Touches_Any (Envelope, ECAM)
       then
          return (Answer => FDX.Overlaps_PCI_Config, Root => 0);
-      elsif Device_Claimed or else Touches_Any (Envelope, BARs) then
+      elsif Device_Claimed then
          return (Answer => FDX.Overlaps_Device, Root => 0);
       end if;
       Index := Holding (Envelope, Firmware, NVS_Root);

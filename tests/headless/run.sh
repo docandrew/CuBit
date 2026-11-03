@@ -2723,6 +2723,12 @@ TEST_DEVICE_ARGS=()
 if [ "$TEST_NAME" = "generic-launch" ]; then
     TEST_DEVICE_ARGS=(-device edu)
 fi
+# QEMU's PCI test device has no CuBit driver: its 1 MiB 64-bit prefetchable
+# BAR 2 (membar, the size acpi-data-check expects) is a driverless BAR whose
+# tail devmgr must refuse as firmware data (sized at enumeration).
+if [ "$TEST_NAME" = "acpi-firmware-data" ]; then
+    TEST_DEVICE_ARGS=(-device pci-testdev,membar=1M)
+fi
 # Two xHCI controllers, a USB keyboard on one and a USB optical drive on
 # the other (a disc with the apps/ tree @cd:0 mounts, holding one file),
 # and a second NVMe disk with an empty ext2 volume: each gets its own
@@ -5223,6 +5229,8 @@ PCI_CHECK
         required_markers="
 (firmware data)
 devmgr: roots:
+ BAR2 64-bit prefetchable
+devmgr: PCI memory claimed for devices:
 procmgr: ACPI firmware data approved for acpi-data-check.app
 acpi-data-check: no firmware-data endpoint
 acpi-data-check: unapproved request refused (NOT_APPROVED)
@@ -5244,6 +5252,7 @@ acpi-data-check: an ECAM page of bus 0 refused (Overlaps_PCI_Config) PASS
 acpi-data-check: an ECAM page of bus 1 refused (Overlaps_PCI_Config) PASS
 acpi-data-check: a RAM page refused (Not_Firmware_Class) PASS
 acpi-data-check: a device BAR page refused (Overlaps_Device) PASS
+acpi-data-check: a driverless BAR's tail refused (Overlaps_Device) PASS
 acpi-data-check: the FACS page refused (Overlaps_Control) PASS
 acpi-data-check: a request without pages refused (Malformed) PASS
 TEST: PASS acpi-firmware-data
