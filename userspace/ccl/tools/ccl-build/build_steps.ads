@@ -99,6 +99,17 @@ package Build_Steps is
       Not_Reproducible : Boolean := False;
    end record;
 
+   --  An action record of any step, decoded: the step's identity and its
+   --  outputs. Raises Build_Encoding.Decode_Error unless Data is exactly a
+   --  canonical action record.
+   type Recorded_Output is record
+      Path : Unbounded_String;
+      Kind : Entry_Kind;
+      Identity : Digest;
+   end record;
+   package Recorded_Vectors is new Ada.Containers.Vectors (Output_Number, Recorded_Output);
+   procedure Decode_Action (Data : Byte_Array; Step_Identity : out Digest; Outputs : out Recorded_Vectors.Vector);
+
    --  Answers from the action cache when its record and every output entry
    --  are present; otherwise runs the step in a fresh directory holding only
    --  its inputs, stores the outputs and records the action.

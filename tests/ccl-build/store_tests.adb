@@ -110,7 +110,7 @@ begin
    Write (Random_Script, "#!/bin/sh" & LF & "exec /usr/bin/od -An -N8 -tx8 /dev/urandom" & LF,
           Executable => True);
    Write (Peek_Script, "#!/bin/sh" & LF & "exec /bin/cat secret.txt" & LF, Executable => True);
-   Store := Build_Store.Open (Store_Root);
+   Store := Build_Store.Open (Store_Root, Build_Store.Shared_Use);
 
    --  Files: named by content, read-only, stored once.
    Write (Sources / "a.txt", "alpha" & LF);
@@ -282,7 +282,7 @@ begin
       Write (Sources / "staged.txt", Content);
       Staged_Identity := Build_Store.Hash_File (Sources / "staged.txt");
       Check (not Store.Contains (Regular_File, Staged_Identity), "a staged entry is not an entry");
-      Store := Build_Store.Open (Store_Root);
+      Store := Build_Store.Open (Store_Root, Build_Store.Shared_Use);
       Check (not Ada.Directories.Exists (Garbage), "work of a dead process is removed");
       Check (Ada.Directories.Exists (Own), "work of a live process is kept");
       Check (Put (Sources / "staged.txt") = Staged_Identity, "the entry is stored after recovery");
@@ -307,21 +307,20 @@ begin
       end;
    end;
 
-   --  A damaged action record is refused, not trusted.
+   --  A damaged action record is never trusted: it is moved to damaged/
+   --  and the step runs again, to the same outputs.
    declare
       S : constant Step := Script_Step ("copy", Copy_Script, Sources / "a.txt");
-      Result : Outcome;
-      Refused : Boolean := False;
+      First, Again : Outcome;
    begin
-      Run (Store, S, Result);
-      Build_POSIX.Change_Mode (Store_Root / "actions" / Hex.Image (Result.Step_Identity), 8#644#);
-      Write (Store_Root / "actions" / Hex.Image (Result.Step_Identity), "garbage");
-      begin
-         Run (Store, S, Result);
-      exception
-         when Step_Error => Refused := True;
-      end;
-      Check (Refused, "a damaged action record is refused");
+      Run (Store, S, First);
+      Build_POSIX.Change_Mode (Store_Root / "actions" / Hex.Image (First.Step_Identity), 8#644#);
+      Write (Store_Root / "actions" / Hex.Image (First.Step_Identity), "garbage");
+      Run (Store, S, Again);
+      Check (Again.Ran and then Again.Outputs (1) = First.Outputs (1) and then not Again.Not_Reproducible,
+             "a damaged action record is not used: the step runs again");
+      Check (not Ada.Directories.Exists (Store_Root / "work" / ("step-" & Hex.Image (Shape (S)))),
+             "the step directory is gone after the run");
    end;
 
    Check (Build_POSIX.Process_Alive (Build_POSIX.Process_Id), "own process is alive");

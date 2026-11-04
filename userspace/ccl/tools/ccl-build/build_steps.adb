@@ -188,6 +188,38 @@ package body Build_Steps is
       return W.Bytes;
    end Action_Record;
 
+   procedure Decode_Action (Data : Byte_Array; Step_Identity : out Digest; Outputs : out Recorded_Vectors.Vector) is
+      R : Build_Encoding.Reader := (Length => Data'Length, Data => Data, Position => 1);
+      Count : Natural;
+   begin
+      Outputs.Clear;
+      if Build_Encoding.Read_Array (R) /= Action_Fields
+        or else Build_Encoding.Read_Text (R) /= Action_Tag
+        or else Build_Encoding.Read_Unsigned (R) /= Action_Version
+      then
+         raise Build_Encoding.Decode_Error with "not an action record";
+      end if;
+      Step_Identity := Build_Encoding.Read_Digest (R);
+      Count := Build_Encoding.Read_Array (R);
+      for N in 1 .. Count loop
+         if Build_Encoding.Read_Array (R) /= Input_Fields then
+            raise Build_Encoding.Decode_Error with "not an output";
+         end if;
+         declare
+            Path : constant String := Build_Encoding.Read_Text (R);
+            Kind : constant Interfaces.Unsigned_64 := Build_Encoding.Read_Unsigned (R);
+         begin
+            if Kind > Entry_Kind'Pos (Executable_File) then
+               raise Build_Encoding.Decode_Error with "an output is not a file";
+            end if;
+            Outputs.Append (Recorded_Output'(To_Unbounded_String (Path), Entry_Kind'Val (Kind), Build_Encoding.Read_Digest (R)));
+         end;
+      end loop;
+      if not Build_Encoding.At_End (R) then
+         raise Build_Encoding.Decode_Error with "bytes after the action record";
+      end if;
+   end Decode_Action;
+
    --  The outputs an action record names, if it is this step's record and
    --  every output entry is present; otherwise Found is False.
    procedure Recall
@@ -234,8 +266,12 @@ package body Build_Steps is
          Found := True;
       exception
          when E : Build_Encoding.Decode_Error =>
-            raise Step_Error with To_String (S.Label) & ": damaged action record: " &
-              Ada.Exceptions.Exception_Message (E);
+            --  Never trusted: moved aside, so the step runs and records anew.
+            Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error,
+              "ccl-build: " & To_String (S.Label) & ": damaged action record (" &
+              Ada.Exceptions.Exception_Message (E) & ")");
+            Outputs.Clear;
+            Store.Quarantine_Action (Step_Identity);
       end;
    end Recall;
 
@@ -308,14 +344,18 @@ package body Build_Steps is
       return To_String (Result);
    end Command_Image;
 
-   procedure Execute (Store : Build_Store.Store; S : Step; Outputs : out Digest_Vectors.Vector) is
+   --  Runs S in its claimed directory Root and stores its outputs. On a
+   --  failure the directory is kept for inspection (the claim is released
+   --  by the caller).
+   procedure Execute
+     (Store : Build_Store.Store; S : Step; Root : String; Outputs : out Digest_Vectors.Vector; Failed : out Boolean)
+   is
       use Interfaces.C.Strings;
-      Place : constant Digest := Shape (S);
-      Root : constant String := Store.Claim_Step (Place);
       Arguments : Build_POSIX.Argument_List (1 .. Natural (S.Arguments.Length) + 1);
       Status : Integer;
    begin
       Outputs.Clear;
+      Failed := True;
       for I of S.Inputs loop
          declare
             Target : constant String := Root / To_String (I.Path);
@@ -346,7 +386,6 @@ package body Build_Steps is
       end loop;
       if Status /= 0 then
          Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, "failed: " & Command_Image (Store, S, Root));
-         Store.Release_Step (Place, Keep => True);
          raise Step_Error with To_String (S.Label) & ": exit status" & Status'Image &
            " (step directory kept until the next build: " & Root & ")";
       end if;
@@ -356,29 +395,52 @@ package body Build_Steps is
             Stored : Digest;
          begin
             if Build_POSIX.Is_Symbolic_Link (Produced) or else not GNAT.OS_Lib.Is_Regular_File (Produced) then
-               Store.Release_Step (Place, Keep => True);
                raise Step_Error with To_String (S.Label) & ": did not produce " & To_String (O.Path);
             end if;
             Store.Put_File (Produced, Output_Kind (O), Stored);
             Outputs.Append (Stored);
          end;
       end loop;
-      Store.Release_Step (Place);
+      Failed := False;
    end Execute;
 
    procedure Run (Store : Build_Store.Store; S : Step; Result : out Outcome) is
       Found : Boolean;
+      Place : constant Digest := Shape (S);
+      Failed : Boolean := True;
+      Released : Boolean := False;
    begin
       Result := (Step_Identity => Identity (S), others => <>);
       Recall (Store, Result.Step_Identity, S, Result.Outputs, Found);
       if Found then
          return;
       end if;
-      Execute (Store, S, Result.Outputs);
-      Result.Ran := True;
-      Store.Put_Action
-        (Result.Step_Identity, Action_Record (Result.Step_Identity, S, Result.Outputs),
-         Result.Not_Reproducible);
+      declare
+         Root : constant String := Store.Claim_Step (Place, To_String (S.Label));
+      begin
+         --  Another build may have run the step while this one waited.
+         Recall (Store, Result.Step_Identity, S, Result.Outputs, Found);
+         if Found then
+            Released := True;
+            Store.Release_Step (Place);
+            return;
+         end if;
+         Execute (Store, S, Root, Result.Outputs, Failed);
+         Result.Ran := True;
+         --  Recorded before the claim is released, so a build waiting for
+         --  the step finds the record rather than running it again.
+         Store.Put_Action
+           (Result.Step_Identity, Action_Record (Result.Step_Identity, S, Result.Outputs),
+            Result.Not_Reproducible);
+         Released := True;
+         Store.Release_Step (Place);
+      exception
+         when others =>
+            if not Released then
+               Store.Release_Step (Place, Keep => Failed);
+            end if;
+            raise;
+      end;
    end Run;
 
 end Build_Steps;

@@ -13,7 +13,13 @@
 #      server (wrong digest refused and not stored, then stored, then a
 #      rebuild with the server stopped answered from the store);
 #   5. a real crash: SIGKILL while a tree is copied in, then recovery;
-#   6. with --prove: gnatprove on the Storehouse core (level 1, memory-capped).
+#   6. the Storehouse's reliability suite (store-suite.sh: a kill at every
+#      store-changing system call, parallel builders, dead and reused process
+#      numbers, generations and garbage collection), then with real builds:
+#      a damaged entry quarantined and made again, four builds of one
+#      component at once, a real build killed at (a sample of) every
+#      publishing system call, generations of real builds;
+#   7. with --prove: gnatprove on the Storehouse core (level 2, memory-capped).
 # Run inside `nix develop` with TMPDIR outside /tmp:
 #   TMPDIR=/home/doc/cubit-build-tmp nix develop -c bash tests/ccl-build/run.sh [--prove]
 set -euo pipefail
@@ -287,12 +293,62 @@ check "import after the crash completes" "$tool" import --store "$crash_store" "
 check "dead process's staging removed" test -z "$(ls -A "$crash_store/work")"
 check "recovered store verifies" "$tool" verify --store "$crash_store"
 
+echo "== the Storehouse's reliability suite (crashes, races, liveness, generations, gc)"
+check "store suite" bash "$here/store-suite.sh"
+
+echo "== integrity on use: a damaged entry is never used"
+sleep_app=$(sha256sum <"$scratch/out/$program" | cut -d' ' -f1)
+chmod u+w "$store/executables/$sleep_app"; printf 'x' >>"$store/executables/$sleep_app"
+check "build after damage" build "$repo" "$scratch/damaged.log" "$declaration" --out "$scratch/out-damaged"
+check "the damage is reported" grep -q "damaged: .*$sleep_app does not match its identity" "$scratch/damaged.log"
+check "the link runs again" step_ran "$scratch/damaged.log" "link userspace/apps/sleep/build/sleep.app"
+check "the program is the same bytes again" cmp -s "$scratch/out-damaged/$program" "$scratch/out/$program"
+check "the store verifies" "$tool" verify --store "$store"
+
+echo "== builds of the same component at once (real ccl-build processes)"
+check "four builds of boot-timeline at once" bash "$here/race.sh" tool "$tool" "$scratch/race-tool" 4 -- \
+    build --store @STORE@ --source-root "$repo" "${imports[@]}" --out @OUT@ "$repo/$multi"
+
+echo "== a real build killed at every publishing system call"
+template=$scratch/template-store
+"$tool" build --store "$template" --source-root "$repo" "${imports[@]}" "$repo/$multi" >/dev/null 2>&1
+check "sleep.app, killed anywhere in publishing" env CRASH_SETUP="cp -a $(printf '%q' "$template") \"\$STORE\"" \
+    CRASH_SAMPLE=25 CRASH_CALLS="link linkat rename renameat renameat2 fsync chmod fchmodat utimensat unlink unlinkat mkdir rmdir flock" \
+    bash "$here/crash.sh" tool "$tool" "$scratch/crash-build" -- \
+    build --store @STORE@ --source-root "$repo" "${imports[@]}" --out @OUT@ "$repo/$declaration"
+
+echo "== generations of real builds"
+gen_store=$scratch/gen-store
+# The other checkout holds sleep only; the profile also builds boot-timeline.
+for p in userspace/apps/boot-timeline userspace/lib/display; do copy "$p"; done
+profile_build() {  # profile_build LOG ROOT: sleep and boot-timeline as profile dev
+    local log=$1 at=$2
+    "$tool" build --store "$gen_store" --source-root "$at" "${imports[@]}" --profile dev \
+        "$at/$declaration" "$at/$multi" >"$log" 2>&1
+}
+check "a profile build" profile_build "$scratch/gen1.log" "$root"
+check "makes generation 1" grep -q 'profile dev is now at generation 1' "$scratch/gen1.log"
+check "the same build again" profile_build "$scratch/gen1b.log" "$root"
+check "adds no generation" grep -q 'profile dev unchanged at generation 1' "$scratch/gen1b.log"
+sed -i 's/sleep: started!/sleep: started again!/' "$root/userspace/apps/sleep/main.adb"
+check "a code edit" profile_build "$scratch/gen2.log" "$root"
+check "makes generation 2" grep -q 'profile dev is now at generation 2' "$scratch/gen2.log"
+"$tool" diff --store "$gen_store" --profile dev 1 2 >"$scratch/gen-diff" 2>&1
+cat "$scratch/gen-diff"
+check "diff: sleep.app changed" grep -q '~ userspace/apps/sleep/build/sleep.app' "$scratch/gen-diff"
+check "diff: main.adb's declaration unchanged, boot-timeline unchanged" grep -q '1 unchanged' "$scratch/gen-diff"
+check "rollback to 1" "$tool" rollback --store "$gen_store" --profile dev
+check "gc keeps both generations" "$tool" gc --store "$gen_store"
+check "switch to 2 after gc" "$tool" switch --store "$gen_store" --profile dev 2
+check "the generation store verifies" "$tool" verify --store "$gen_store"
+
 if [[ $prove == yes ]]; then
     echo "== proof: Storehouse core, level 1"
     check "gnatprove storehouse" systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 --quiet \
         bash -c "cd '$repo/kernel' && alr exec -- gnatprove -P ../tests/ccl-build/storehouse_proof.gpr \
             -u storehouse-hex.adb -u storehouse-canonical.adb -u storehouse-hashing.adb -u storehouse-paths.ads \
-            --level=1 -j2 --report=statistics"
+            -u storehouse-profiles.adb \
+            --level=2 -j2 --report=statistics"
 fi
 
 echo "ccl-build tests: $passed passed, $failed failed"

@@ -15,6 +15,15 @@ package body Build_POSIX is
    O_CREAT : constant int := 8#100#;
    O_EXCL : constant int := 8#200#;
    O_TRUNC : constant int := 8#1000#;
+   O_RDWR : constant int := 2;
+   O_CLOEXEC : constant int := 8#2000000#;
+   ENOENT : constant := 2;
+   EINTR : constant := 4;
+   EWOULDBLOCK : constant := 11;
+   LOCK_SH : constant int := 1;
+   LOCK_EX : constant int := 2;
+   LOCK_NB : constant int := 4;
+   Lock_File_Mode : constant unsigned := 8#644#;
    Created_File_Mode : constant unsigned := 8#644#;
    Standard_Output_Descriptor : constant int := 1;
    Exec_Failed_Status : constant int := 127;
@@ -28,6 +37,18 @@ package body Build_POSIX is
       Nanoseconds : long;
    end record with Convention => C;
    type Timespec_Pair is array (1 .. 2) of Timespec with Convention => C;
+
+   --  struct stat on Linux x86-64 (<bits/struct_stat.h>), 144 bytes.
+   type Reserved_Words is array (1 .. 3) of long with Convention => C;
+   type File_Status is record
+      Device, Inode, Links : unsigned_long;
+      Mode, User, Group : unsigned;
+      Padding : int;
+      Special_Device : unsigned_long;
+      Size, Block_Size, Blocks : long;
+      Accessed, Modified, Changed : Timespec;
+      Reserved : Reserved_Words;
+   end record with Convention => C;
 
    function c_link (Existing, New_Name : chars_ptr) return int
      with Import, Convention => C, External_Name => "link";
@@ -51,6 +72,18 @@ package body Build_POSIX is
      with Import, Convention => C, External_Name => "close";
    function c_rename (Old_Name, New_Name : chars_ptr) return int
      with Import, Convention => C, External_Name => "rename";
+   function c_flock (Descriptor, Operation : int) return int
+     with Import, Convention => C, External_Name => "flock";
+   function c_fstat (Descriptor : int; Status : access File_Status) return int
+     with Import, Convention => C, External_Name => "fstat";
+   function c_stat (Name : chars_ptr; Status : access File_Status) return int
+     with Import, Convention => C, External_Name => "stat";
+   function c_mkdir (Name : chars_ptr; Mode : unsigned) return int
+     with Import, Convention => C, External_Name => "mkdir";
+   function c_unlink (Name : chars_ptr) return int
+     with Import, Convention => C, External_Name => "unlink";
+   function c_rmdir (Name : chars_ptr) return int
+     with Import, Convention => C, External_Name => "rmdir";
    function c_kill (Process, Signal : int) return int
      with Import, Convention => C, External_Name => "kill";
    function c_getpid return int
@@ -160,6 +193,103 @@ package body Build_POSIX is
       Free (A); Free (B);
       Check (Result, "rename", To);
    end Rename_Replace;
+
+   procedure Rename_If_Present (From, To : String; Moved : out Boolean) is
+      A : chars_ptr := New_String (From);
+      B : chars_ptr := New_String (To);
+      Result : constant int := c_rename (A, B);
+   begin
+      Free (A); Free (B);
+      Moved := Result = 0;
+      if Result /= 0 and then GNAT.OS_Lib.Errno /= ENOENT then
+         Check (Result, "rename", To);
+      end if;
+   end Rename_If_Present;
+
+   procedure Make_Directory_New (Name : String; Created : out Boolean) is
+      C_Name : chars_ptr := New_String (Name);
+      Result : constant int := c_mkdir (C_Name, Writable_Directory);
+   begin
+      Free (C_Name);
+      Created := Result = 0;
+      if Result /= 0 and then GNAT.OS_Lib.Errno /= EEXIST then
+         Check (Result, "mkdir", Name);
+      end if;
+   end Make_Directory_New;
+
+   procedure Delete_File_If_Present (Name : String) is
+      C_Name : chars_ptr := New_String (Name);
+      Result : constant int := c_unlink (C_Name);
+   begin
+      Free (C_Name);
+      if Result /= 0 and then GNAT.OS_Lib.Errno /= ENOENT then
+         Check (Result, "unlink", Name);
+      end if;
+   end Delete_File_If_Present;
+
+   procedure Delete_Directory_If_Present (Name : String) is
+      C_Name : chars_ptr := New_String (Name);
+      Result : constant int := c_rmdir (C_Name);
+   begin
+      Free (C_Name);
+      if Result /= 0 and then GNAT.OS_Lib.Errno /= ENOENT then
+         Check (Result, "rmdir", Name);
+      end if;
+   end Delete_Directory_If_Present;
+
+   function Acquire (Name : String; Mode : Lock_Mode; Wait : Boolean) return Lock is
+      Operation : constant int :=
+        (case Mode is when Shared => LOCK_SH, when Exclusive => LOCK_EX) + (if Wait then 0 else LOCK_NB);
+   begin
+      loop
+         declare
+            C_Name : chars_ptr := New_String (Name);
+            Descriptor : constant int := c_open (C_Name, O_RDWR + O_CREAT + O_CLOEXEC, Lock_File_Mode);
+            Result : int;
+            Opened, Named : aliased File_Status;
+            Ignored : int;
+         begin
+            if Descriptor < 0 then
+               Free (C_Name);
+               raise POSIX_Error with "open " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
+            end if;
+            loop
+               Result := c_flock (Descriptor, Operation);
+               exit when Result = 0 or else GNAT.OS_Lib.Errno /= EINTR;
+            end loop;
+            if Result /= 0 then
+               Ignored := c_close (Descriptor);
+               Free (C_Name);
+               if GNAT.OS_Lib.Errno = EWOULDBLOCK and then not Wait then
+                  return No_Lock;
+               end if;
+               raise POSIX_Error with "flock " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
+            end if;
+            --  The holder before us may have deleted the file while we
+            --  waited: then our lock is on a file no longer named, and the
+            --  next process would create and lock a new one. Only a lock on
+            --  the file the name denotes counts.
+            if c_fstat (Descriptor, Opened'Access) = 0 and then c_stat (C_Name, Named'Access) = 0
+              and then Opened.Device = Named.Device and then Opened.Inode = Named.Inode
+            then
+               return (Descriptor => Descriptor, Name => C_Name);
+            end if;
+            Ignored := c_close (Descriptor);
+            Free (C_Name);
+         end;
+      end loop;
+   end Acquire;
+
+   procedure Release (L : in out Lock; Delete : Boolean) is
+   begin
+      if Delete then
+         Check ((if c_unlink (L.Name) = 0 then 0 else (if GNAT.OS_Lib.Errno = ENOENT then 0 else -1)),
+                "unlink", Value (L.Name));
+      end if;
+      Check (c_close (L.Descriptor), "close", Value (L.Name));
+      Free (L.Name);
+      L := No_Lock;
+   end Release;
 
    --  kill (Process, 0) probes without signalling; EPERM still means alive.
    function Process_Alive (Process : int) return Boolean is

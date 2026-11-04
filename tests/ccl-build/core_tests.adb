@@ -6,6 +6,8 @@ with Storehouse.Canonical;
 with Storehouse.Hashing;
 with Storehouse.Hex;
 with Storehouse.Paths;
+with Storehouse.Profiles;
+with Ada.Strings.Fixed;
 
 --  Hosted checks of the Storehouse core (docs/ccl-build.md): hex names,
 --  the canonical encoding against RFC 8949 appendix A and its refusals,
@@ -196,6 +198,47 @@ begin
    Check (not Paths.Is_Literal ("-I/usr/include"), "literal with a path");
    Check (not Paths.Is_Literal ("-ffile-prefix-map=/home=."), "literal with a host path");
    Check (not Paths.Is_Literal ("include/x.h"), "literal with a relative path");
+
+   --  Profiles and generation numbers (Storehouse.Profiles).
+   Check (Profiles.Is_Profile_Name ("system"), "profile name");
+   Check (Profiles.Is_Profile_Name ("nuc-2"), "profile name with a digit and a dash");
+   Check (not Profiles.Is_Profile_Name (""), "empty profile name");
+   Check (not Profiles.Is_Profile_Name ("../etc"), "profile name climbing out");
+   Check (not Profiles.Is_Profile_Name ("a/b"), "profile name with a separator");
+   Check (not Profiles.Is_Profile_Name ("System"), "profile name with a capital");
+   Check (not Profiles.Is_Profile_Name ("a--b"), "profile name with a double dash");
+   Check (not Profiles.Is_Profile_Name ("a-"), "profile name ending in a dash");
+   Check (not Profiles.Is_Profile_Name ("2a"), "profile name starting with a digit");
+   Check (not Profiles.Is_Profile_Name ([1 .. Profiles.Maximum_Name_Length + 1 => 'a']), "profile name too long");
+   Check (not Profiles.Is_Generation_Name ("0"), "generation zero");
+   Check (not Profiles.Is_Generation_Name ("01"), "generation with a leading zero");
+   Check (not Profiles.Is_Generation_Name ("1000000000"), "generation past the last");
+   Check (not Profiles.Is_Generation_Name ("-1"), "negative generation");
+   Check (Profiles.Image (Profiles.Last_Generation) = "999999999", "last generation's name");
+   declare
+      Round_Trips : Boolean := True;
+      procedure Round_Trip (N : Profiles.Generation_Number) is
+      begin
+         if Profiles.Image (N) /= Ada.Strings.Fixed.Trim (N'Image, Ada.Strings.Left)
+           or else Profiles.Value (Profiles.Image (N)) /= N
+         then
+            Round_Trips := False;
+         end if;
+      end Round_Trip;
+      Power : Profiles.Generation_Number := 1;
+   begin
+      for N in Profiles.Generation_Number range 1 .. 100_000 loop
+         Round_Trip (N);
+      end loop;
+      for Exponent in 1 .. Profiles.Maximum_Digits - 1 loop
+         Power := Power * Profiles.Decimal_Base;
+         Round_Trip (Power - 1);
+         Round_Trip (Power);
+         Round_Trip (Power + 1);
+      end loop;
+      Round_Trip (Profiles.Last_Generation);
+      Check (Round_Trips, "generation names round-trip and are the decimal image");
+   end;
 
    Put_Line ("core:" & Checks'Image & " checks," & Failures'Image & " failures");
    if Failures > 0 then

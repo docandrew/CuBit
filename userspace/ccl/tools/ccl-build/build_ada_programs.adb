@@ -675,6 +675,7 @@ package body Build_Ada_Programs is
                   Result.Products.Append
                     (Product'(To_Unbounded_String (Objects / Licence_Directory / Ada.Directories.Simple_Name (Licence)),
                               Regular_File, Snapshot (Licence, Regular_File)));
+                  Result.Deliverables.Append (Result.Products.Last_Element);
                end;
             end loop;
             Write_Embedded (Lengths);
@@ -1028,6 +1029,8 @@ package body Build_Ada_Programs is
          Piece_Of (S, Local_Output, Executable);
          Run (S, Outcome);
          Remember (S, Outcome);
+         Result.Deliverables.Append
+           (Product'(S.Outputs (Executable).Path, Executable_File, Outcome.Outputs (Executable)));
       end;
    end Build;
 

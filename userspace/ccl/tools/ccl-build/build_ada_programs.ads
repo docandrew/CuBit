@@ -20,6 +20,9 @@ package Build_Ada_Programs is
 
    type Report is record
       Products : Product_Vectors.Vector;   --  every step's outputs, in step order
+      --  What the program delivers (what a generation keeps): its
+      --  executable and its blobs' licences.
+      Deliverables : Product_Vectors.Vector;
       Ran, Answered : Natural := 0;        --  steps run, steps answered by the cache
       Not_Reproducible : Natural := 0;
    end record;
