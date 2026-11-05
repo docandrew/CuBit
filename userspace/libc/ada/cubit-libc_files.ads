@@ -56,6 +56,16 @@ package CuBit.Libc_Files is
    with Export, Convention => C, External_Name => "__cubit_file_write_at";
    function Flush (Handle : Unsigned_64) return long
    with Export, Convention => C, External_Name => "__cubit_file_flush";
+   --  An advisory lock (flock) on the handle's file: Options are
+   --  CuBit.Filesystem_Queues' Lock_Shared or Lock_Exclusive, plus
+   --  Lock_Wait to wait until Deadline (absolute ms; Forever spelled out).
+   --  0, or -EAGAIN (held elsewhere, no wait), -ETIMEDOUT (the deadline
+   --  came first), -EINTR (the handle unlocked or closed meanwhile).
+   function Lock_File (Handle : Unsigned_64; Options : Unsigned_32; Deadline : Unsigned_64)
+     return long
+   with Export, Convention => C, External_Name => "__cubit_file_lock";
+   function Unlock_File (Handle : Unsigned_64) return long
+   with Export, Convention => C, External_Name => "__cubit_file_unlock";
    function Describe (Handle : Unsigned_64; Inspection : System.Address) return long
    with Export, Convention => C, External_Name => "__cubit_file_describe";
    function Resize (Handle : Unsigned_64; Size : Unsigned_64) return long

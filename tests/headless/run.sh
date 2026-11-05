@@ -81,7 +81,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -329,7 +329,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -800,6 +800,15 @@ with open(sys.argv[1], "wb") as f:
         # compared with Linux. gnat1 is a large image procmgr reads whole.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-gnat.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        ;;
+    ccl-build-native)
+        # SELF-002: the native ccl-build.app builds ps2.drv on CuBit with the
+        # GCC port's toolchain; an interrupted build recovers, the program
+        # matches Linux's byte for byte, and a rebuild runs no step
+        # (tests/ccl-build-native). The CCL front end runs on a task with a
+        # large stack, gnat1 is a large image procmgr reads whole.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-build-native.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         ;;
     control-events)
         # docs/data-plane.md: grant lifecycle events and control messages.
@@ -2215,6 +2224,47 @@ if [ -n "$INIT_PROFILE" ]; then
           work/expected-transcript.txt "work/expected-b~hello.o"; do
             if ! debugfs -R "stat \"$GNAT_CHECK\"" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
                 echo "headless: $GNAT_CHECK was not installed" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "ccl-build-native" ]; then
+        # The launcher, ccl-build.app and the comparer at the root; the
+        # toolchain; the source subset in @nvme:0/cubit-src; the Storehouse
+        # with the manifest step's seed; Linux's ps2.drv in @nvme:0/work.
+        CBN_DIR="$ROOT_DIR/tests/ccl-build-native/build"
+        if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest ccl-build >/dev/null ||
+           ! bash "$ROOT_DIR/tests/ccl-build-native/build.sh" "$KERNEL_DIR/isodir/boot"; then
+            echo "headless: failed to build the ccl-build-native test" >&2
+            exit 1
+        fi
+        for CBN_IMAGE in logstore.svc ccl-build-check.app ccl-build.app binutils-compare.app; do
+            debugfs -w -R "rm $CBN_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CBN_IMAGE $CBN_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+        install_gcc_toolchain || exit 1
+        # A tree's directories, then its files, as debugfs commands.
+        cbn_install_tree() {  # cbn_install_tree SOURCE TARGET
+            echo "mkdir $2"
+            (cd "$1" && find . -mindepth 1 -type d | sort | sed "s|^\./|mkdir $2/|")
+            (cd "$1" && find . -type f | sort | sed "s|^\./\(.*\)|write $1/\1 $2/\1|")
+        }
+        CBN_COMMANDS="$TEMP_DISK.ccl-build-native"
+        {
+            cbn_install_tree "$CBN_DIR/cubit-src" cubit-src
+            cbn_install_tree "$CBN_DIR/seed" storehouse
+            echo "mkdir work"
+            echo "rm work/expected-ps2.drv"
+            echo "write $CBN_DIR/expected-ps2.drv work/expected-ps2.drv"
+        } > "$CBN_COMMANDS"
+        debugfs -w -f "$CBN_COMMANDS" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        rm -f "$CBN_COMMANDS"
+        for CBN_CHECK in ccl-build.app cubit-src/build-params.ccl cubit-src/userspace/runtime/adalib/libgnat-user.a \
+          cubit-src/userspace/services/ps2/main.adb storehouse/actions work/expected-ps2.drv \
+          toolchain/libexec/gcc/x86_64-linux-musl/15.3.0/gnat1; do
+            if ! debugfs -R "stat \"$CBN_CHECK\"" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
+                echo "headless: $CBN_CHECK was not installed" >&2
                 exit 1
             fi
         done
@@ -4141,6 +4191,14 @@ if [ "$TEST_NAME" = "gcc" ]; then
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "GCC-CHECK: PASS" "GCC-CHECK: FAIL" &
     INPUT_INJECTOR_PID=$!
 fi
+if [ "$TEST_NAME" = "ccl-build-native" ]; then
+    # Quit QEMU once ccl-build-check reports (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "CCL-BUILD-NATIVE: PASS" "CCL-BUILD-NATIVE: FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "gnat" ]; then
     # Quit QEMU once gnat-check reports (the timeout is only the bound).
     QMP_SOCKET="$(qemu_socket qmp)"
@@ -4795,6 +4853,24 @@ GNAT-CHECK: PASS
 "
         if grep -qF 'GNAT-CHECK: FAIL' "$SERIAL_LOG"; then
             echo "headless: gnat test reported a failure" >&2
+            exit 1
+        fi
+        ;;
+    ccl-build-native)
+        required_markers="
+ccl-build-check: ccl-build starts (first build, from an empty store) PASS
+ccl-build-check: ccl-build is ended while it builds (interrupted by its process identity) PASS
+ccl-build-check: the next build completes (exit code 0) PASS
+ccl-build-check: it reports its steps PASS
+ccl-build-check: ps2.drv is byte for byte the Linux build's PASS
+ccl-build-check: ccl-build verify finds no damage PASS
+ccl-build-check: a build after it completes (exit code 0) PASS
+ccl-build-check: it runs no step: every step is answered by the cache PASS
+ccl-build-check: its ps2.drv is still the Linux build's PASS
+CCL-BUILD-NATIVE: PASS
+"
+        if grep -qF 'CCL-BUILD-NATIVE: FAIL' "$SERIAL_LOG"; then
+            echo "headless: ccl-build-native reported a failure" >&2
             exit 1
         fi
         ;;

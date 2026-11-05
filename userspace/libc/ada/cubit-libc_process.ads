@@ -23,10 +23,14 @@
 --  "/toolchain/lib/../bin/as" are both "toolchain/bin/as"). The launch
 --  table (may_launch) compares the result exactly.
 --
---  Not supported: file actions (ENOTSUP: no descriptors cross processes
---  yet), spawn attributes (accepted, without effect: no signals, groups or
---  scheduler classes), PATH search, and waiting for processes this program
---  did not start.
+--  File actions: only posix_spawn_file_actions_addchdir_np, the child's
+--  working directory (resolved like chdir's name, in order), so a program
+--  starts a child in another directory without changing its own. Others
+--  are refused (ENOTSUP: no descriptors cross processes yet).
+--
+--  Not supported: spawn attributes (accepted, without effect: no signals,
+--  groups or scheduler classes), PATH search, and waiting for processes
+--  this program did not start.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces.C;
@@ -72,8 +76,19 @@ package CuBit.Libc_Process is
 
    --  An event another of the program's threads received (the stream
    --  dispatcher, a write polling for subscriptions): a child's exit is kept
-   --  for Wait_For_Child, anything else is ignored. Takes only its own
-   --  lock, so it may be called with the stream lock or the child lock held.
+   --  for Wait_For_Child; a control message is taken (below); anything else
+   --  is ignored. Takes only its own lock, so it may be called with the
+   --  stream lock or the child lock held.
+   --
+   --  Control messages (SEND_CONTROL, from the launcher or a holder of
+   --  authority over this process: docs/ipc-delivery.md) are this libc's
+   --  signals. It installs no handlers, so each takes a signal's default
+   --  action, as kill does: Stop (like SIGTERM) and Interrupt (like SIGINT)
+   --  end the process at once, with exit status 128 + that signal; Reload
+   --  (like SIGHUP, re-read configuration) is ignored. A control is taken
+   --  when the libc next receives events: at once while the stream
+   --  dispatcher runs, otherwise in the next wait for a child. Processes
+   --  this one started are not ended with it (no process groups).
    procedure Note_Event (Item : System.Address)
    with Export, Convention => C, External_Name => "__cubit_note_event";
 

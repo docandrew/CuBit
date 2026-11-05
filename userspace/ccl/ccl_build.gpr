@@ -1,19 +1,58 @@
---  ccl-build, the CCL build tool, hosted on Linux (docs/ccl-build.md). The
---  Storehouse core (userspace/lib/storehouse) is SPARK and proved; the
---  host tool keeps run-time checks and assertions, like the other CCL tools.
+--  ccl-build, the CCL build tool (docs/ccl-build.md). The Storehouse core
+--  (userspace/lib/storehouse) is SPARK and proved; the tool keeps run-time
+--  checks and assertions, like the other CCL tools. Two targets, each with
+--  its body of Build_Platform (tools/ccl-build/<target>):
+--    linux  hosted on Linux (the default): build/ccl-build/ccl-build.
+--    cubit  ccl-build.app, native on CuBit with the full Ada runtime of
+--           the GCC port (userspace/ports/gcc: libgnat, libgnarl) and the
+--           CuBit libc, cross-built with the same GNAT 15.3 (make -C kernel
+--           ccl-build-app passes the native configuration, the toolchain
+--           tree as the runtime, and its manifest object).
 with "cubit_shared.gpr";
 with "../lib/tls/sparktls_host.gpr";
 project CCL_Build is
+   type Tool_Targets is ("linux", "cubit");
+   Tool_Target : Tool_Targets := external ("CCL_TOOL_TARGET", "linux");
    for Languages use ("Ada");
-   for Source_Dirs use ("src", "tools/ccl-build", "../lib/storehouse");
-   for Object_Dir use "build/ccl-build";
-   for Exec_Dir use "build/ccl-build";
+   for Source_Dirs use ("src", "tools/ccl-build", "tools/ccl-build/" & Tool_Target, "../lib/storehouse");
    for Main use ("main.adb");
+
+   Checked := ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   --  cubit: CUBIT_TOOLCHAIN is the GCC port's toolchain tree (its specs,
+   --  start files, libc and libgcc), which the program links with as the
+   --  GNAT test's programs do; CCL_BUILD_MANIFEST its manifest object.
+   Tree := external ("CUBIT_TOOLCHAIN", "");
+   Library := Tree & "/lib/gcc/x86_64-linux-musl/15.3.0";
+   --  The main thread's stack (the CCL interpreter runs on its own task,
+   --  Build_Declarations).
+   Main_Stack_Bytes := "8388608";   --  8 MiB
+   Executable := "";
+   Target_Compiler := ();
+   Target_Linker := ();
+   case Tool_Target is
+      when "linux" =>
+         for Object_Dir use "build/ccl-build";
+         for Exec_Dir use "build/ccl-build";
+         Executable := "ccl-build";
+      when "cubit" =>
+         for Object_Dir use "build/ccl-build-cubit";
+         for Exec_Dir use "build/ccl-build-cubit";
+         Executable := "ccl-build.app";
+         --  Native code has no red zone (what the toolchain's specs add).
+         Target_Compiler := ("-mno-red-zone");
+         Target_Linker :=
+           ("-specs=" & Library & "/specs", "-B" & Library & "/", "-B" & Tree & "/lib/",
+            "-no-pie", "-fno-use-linker-plugin", "-Wl,-z,stack-size=" & Main_Stack_Bytes,
+            external ("CCL_BUILD_MANIFEST", ""));
+   end case;
+
    package Builder is
-      for Executable ("main.adb") use "ccl-build";
+      for Executable ("main.adb") use Executable;
    end Builder;
    package Compiler is
-      for Default_Switches ("Ada") use
-        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+      for Default_Switches ("Ada") use Checked & Target_Compiler;
    end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use Target_Linker;
+   end Linker;
 end CCL_Build;

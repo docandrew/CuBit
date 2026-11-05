@@ -13,7 +13,7 @@ with Build_Collection;
 with Build_Declarations;
 with Build_Encoding;
 with Build_Generations;
-with Build_POSIX;
+with Build_Platform;
 with Build_Steps;
 with Build_Store;
 with Storehouse;
@@ -236,11 +236,11 @@ procedure Main is
       return "";
    end Import_Path;
 
-   procedure Import (Store : Build_Store.Store; Name : String; Identity : Storehouse.Digest);
+   procedure Import (Store : Build_Store.Store; Name : String; Identity : Storehouse.Digest; Toolchain : Boolean);
 
-   --  The toolchain tree the parameters pin: in the store already, or
-   --  imported from the host directory --import NAME=PATH names (a Nix
-   --  store tree is recorded in place, another directory copied).
+   --  The toolchain tree the parameters pin for this host: in the store
+   --  already, or imported from the directory --import NAME=PATH names
+   --  (recorded in place or copied, as Import says).
    function Toolchain (Store : Build_Store.Store; Pin : Build_Declarations.Toolchain) return Storehouse.Digest is
       Name : constant String := To_String (Pin.Name);
       Pinned : constant String := To_String (Pin.Identity);
@@ -251,18 +251,18 @@ procedure Main is
       if not Store.Contains (Storehouse.Tree, Storehouse.Hex.Parse (Pinned)) and then Import_Path (Name) = "" then
          raise Usage_Error with "toolchain " & Name & " is not in the store; give --import " & Name & "=PATH";
       end if;
-      Import (Store, Name, Storehouse.Hex.Parse (Pinned));
+      Import (Store, Name, Storehouse.Hex.Parse (Pinned), Toolchain => True);
       return Storehouse.Hex.Parse (Pinned);
    end Toolchain;
 
    --  A pinned tree (a toolchain, a fetched library's tree) not yet in the
    --  store, imported from the host directory --import NAME=PATH names when
-   --  one is given: a Nix store tree is recorded in place, another copied.
+   --  one is given: a toolchain tree in a place nothing rewrites is
+   --  recorded in place (Build_Platform.Records_In_Place), another copied.
    --  A tree whose identity is not the pin is refused.
-   procedure Import (Store : Build_Store.Store; Name : String; Identity : Storehouse.Digest) is
+   procedure Import (Store : Build_Store.Store; Name : String; Identity : Storehouse.Digest; Toolchain : Boolean) is
       Path : constant String := Import_Path (Name);
-      Nix : constant Boolean := Path'Length > Build_Store.Nix_Store'Length
-        and then Path (Path'First .. Path'First + Build_Store.Nix_Store'Length - 1) = Build_Store.Nix_Store;
+      In_Place : constant Boolean := Build_Platform.Records_In_Place (Path, Toolchain);
       Imported : Storehouse.Digest;
    begin
       if Store.Contains (Storehouse.Tree, Identity) or else Path = "" then
@@ -271,14 +271,14 @@ procedure Main is
       Put_Line ("importing " & Name & " from " & Path);
       --  Hashed first, so a tree that is not the pinned one is never stored
       --  (Put_Tree and Record_Nix_Tree hash it again as they store it).
-      Imported := Build_Store.Hash_Tree (Path, Absolute_Links => Nix);
+      Imported := Build_Store.Hash_Tree (Path, Absolute_Links => In_Place);
       if Imported /= Identity then
          --  Identities first: GNAT bounds exception messages.
          raise Usage_Error with Name & " pins " & Storehouse.Hex.Image (Identity) & "; it has identity " &
            Storehouse.Hex.Image (Imported) & " at " & Path;
       end if;
-      if Nix then
-         Store.Record_Nix_Tree (Path, Imported);
+      if In_Place then
+         Store.Record_In_Place (Path, Imported);
       else
          Store.Put_Tree (Path, Imported);
       end if;
@@ -320,7 +320,7 @@ procedure Main is
                Ada.Directories.Delete_File (Target);
             end if;
             Ada.Directories.Copy_File (Store.Path_Of (P.Kind, P.Identity), Target);
-            Build_POSIX.Change_Mode
+            Build_Platform.Change_Mode
               (Target, (if P.Kind = Storehouse.Executable_File then Writable_Executable else Writable_File));
          end;
       end loop;
@@ -389,7 +389,7 @@ procedure Main is
             Pins.Append (Build_Generations.Item'(Profile.Binutils.Name, Storehouse.Tree, Binutils));
             --  A fetched tree may be seeded offline, against the same pin.
             for T of Program.Trees loop
-               Import (Store, To_String (T.Name), T.Tree);
+               Import (Store, To_String (T.Name), T.Tree, Toolchain => False);
                Pins.Append (Build_Generations.Item'(T.Name, Storehouse.Tree, T.Tree));
             end loop;
             Build_Ada_Programs.Build (Store, Source_Root, Profile, Program, Compiler, Binutils, Result);
@@ -654,10 +654,10 @@ begin
             Put_Line (Storehouse.Hex.Image (Identity));
          end;
       when Hash_Tree_Command =>
-         --  Nix store trees link to other store paths by absolute names.
+         --  Trees recorded in place (Nix store trees) may link to other
+         --  places by absolute names.
          Put_Line (Storehouse.Hex.Image (Build_Store.Hash_Tree
-           (Operands.First_Element,
-            Absolute_Links => Ada.Strings.Fixed.Index (Operands.First_Element, Build_Store.Nix_Store) = 1)));
+           (Operands.First_Element, Absolute_Links => Build_Platform.Records_In_Place (Operands.First_Element, Toolchain => True))));
       when Generations_Command => List_Generations;
       when Switch_Command => Switch;
       when Rollback_Command => Rollback;
@@ -682,7 +682,7 @@ exception
    when E : Build_Declarations.Declaration_Error =>
       Put_Line (Standard_Error, To_String (Current_Declaration) & ": " & Ada.Exceptions.Exception_Message (E));
       Set_Exit_Status (Failure);
-   when E : Build_Steps.Step_Error | Build_Store.Store_Error | Build_POSIX.POSIX_Error
+   when E : Build_Steps.Step_Error | Build_Store.Store_Error | Build_Platform.Platform_Error
           | Build_Generations.Generation_Error | Build_Collection.Collection_Error =>
       Put_Line (Standard_Error, "ccl-build: " & Ada.Exceptions.Exception_Message (E));
       Set_Exit_Status (Failure);

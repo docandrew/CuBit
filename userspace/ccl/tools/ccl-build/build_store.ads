@@ -1,7 +1,7 @@
 with Ada.Containers.Indefinite_Vectors;
 with Ada.Strings.Unbounded;
 with Interfaces;
-with Build_POSIX;
+with Build_Platform;
 with Storehouse;
 
 --  The Storehouse on a Linux host (docs/ccl-build.md, "The Storehouse"):
@@ -9,7 +9,7 @@ with Storehouse;
 --     <root>/files/<identity>        immutable file, mode 0444
 --     <root>/executables/<identity>  immutable executable file, mode 0555
 --     <root>/trees/<identity>/       immutable tree, read-only
---     <root>/imports/<identity>      a Nix store tree recorded in place
+--     <root>/imports/<identity>      a toolchain tree recorded in place
 --     <root>/actions/<identity>      step identity -> its outputs
 --     <root>/roots/checkouts/<key>/  the last build of each component in
 --                                    one checkout (<key>/checkout names it)
@@ -31,8 +31,9 @@ with Storehouse;
 --  it re-hashes it. An entry that does not match its name is moved to
 --  damaged/ and reported, and the caller sees it absent, so the step that
 --  made it runs again or the source is stored again: a damaged entry is
---  never used. Nix store trees recorded in place are hashed when recorded
---  and by Verify, not on use (read-only, owned by Nix).
+--  never used. Toolchain trees recorded in place are hashed when recorded
+--  and by Verify, not on use (read-only: owned by Nix on Linux, a
+--  read-only place on CuBit).
 --
 --  Concurrency: every process using a store holds the store's collection
 --  lock shared for as long as it runs; the garbage collector holds it
@@ -80,14 +81,15 @@ package Build_Store is
    with Pre => Kind /= Tree;
    procedure Put_Tree (S : Store; Source : String; Identity : out Digest);
 
-   --  A tree in the Nix store, recorded in place by its identity instead of
-   --  copied: Nix store paths are immutable, and a copy would break their
-   --  absolute references to other store paths (the compiler's configured
-   --  assembler, header links). Contains and Path_Of then answer for it as
-   --  for a tree entry, and Verify re-hashes it.
-   Nix_Store : constant String := "/nix/store/";
-   procedure Record_Nix_Tree (S : Store; Source : String; Identity : out Digest);
-   --  Whether a tree entry is a Nix store tree recorded in place.
+   --  A toolchain tree recorded in place by its identity instead of copied
+   --  (Build_Platform.Records_In_Place: the Nix store on Linux, the GCC
+   --  port's toolchain place on CuBit): nothing rewrites it, and a copy
+   --  would break the absolute names its programs use for each other (the
+   --  compiler's configured assembler, header links; on CuBit the driver's
+   --  launch table). Contains and Path_Of then answer for it as for a tree
+   --  entry, and Verify re-hashes it.
+   procedure Record_In_Place (S : Store; Source : String; Identity : out Digest);
+   --  Whether a tree entry is a toolchain tree recorded in place.
    function Is_Imported (S : Store; Identity : Digest) return Boolean;
 
    --  Action records: the canonical encoding of a step's outputs, stored
@@ -178,6 +180,6 @@ private
       Root : Ada.Strings.Unbounded.Unbounded_String;
    end record;
    type Named_Lock is limited record
-      Held : Build_POSIX.Lock := Build_POSIX.No_Lock;
+      Held : Build_Platform.Lock := Build_Platform.No_Lock;
    end record;
 end Build_Store;

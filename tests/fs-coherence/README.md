@@ -17,6 +17,16 @@ flock coordination/build.lock nix develop -c bash -c \
 tests/headless/run.sh --test fs-coherence-exit-left-open --accel kvm --timeout 60   # one case
 ```
 
+The `lock-*` cases test advisory locks (flock, filesystem.svc's
+`Queue_Lock`): a holder that exits without closing, one killed holding the
+lock (it traps; the kernel ends it), shared beside exclusive, a blocking
+request with a 200 ms limit (`cubit_flock_timeout`, `<cubit/files.h>`;
+on Linux a `LOCK_NB` loop stands in), and in one process close, `LOCK_UN`
+and a reused parked handle releasing. `fsync-directory` checks that fsync
+of a directory and of a read-only descriptor succeed (on CuBit both commit
+the volume's journal). The program checks conflicts while the other
+process lives (`during`), then that nothing is left locked.
+
 Markers: `fs-coherence: start CASE`, `fs-coherence: CASE PASS` (or `FAIL`
 and what was wrong), `fs-coherence: end` (QEMU stops there). Files live
 under `@nvme:0/fs-coherence` (made by the headless runner on its disk copy).

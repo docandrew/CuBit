@@ -8,6 +8,7 @@ with Fs_Server.Access_Control; use Fs_Server.Access_Control;
 with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Directory_Requests; use Fs_Server.Directory_Requests;
 with Fs_Server.Handles; use Fs_Server.Handles;
+with Fs_Server.Locks; use Fs_Server.Locks;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Storage; use Fs_Server.Storage;
 with Fs_Server.Watches; use Fs_Server.Watches;
@@ -832,6 +833,9 @@ package body Fs_Server.File_Requests is
          --  Linux's page cache writes back after close. The handle can
          --  no longer write through the service.
          files (handle).openRights := ACL_READ;
+         --  Parked is closed as far as its client knows: its lock ends
+         --  (flock locks end with the descriptor's close).
+         lockHandleGone (handle);
          if not delegated (handle) then
             handleOpened (handle);
          end if;
@@ -843,12 +847,28 @@ package body Fs_Server.File_Requests is
    procedure handleFlush (sender : Process_ID; msg : Message) is
       handle : constant Integer :=
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
+      directory : constant Integer :=
+        (if handle < 0 then resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT) else -1);
       status : Ext2.Flush_Status;
    begin
       if msg.tag.length /= 1 or else msg.tag.protocol /= 0 or else
-        msg.tag.reserved /= 0 or else handle < 0
+        msg.tag.reserved /= 0 or else (handle < 0 and then directory < 0)
       then
          sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      if directory >= 0 then
+         --  fsync of a directory: its entries (names created, removed or
+         --  renamed in it) are metadata of the running transaction (ext3)
+         --  or already written through (ext2); committing it and the device
+         --  barrier make them durable, with everything before them.
+         case files (directory).filesystemKind is
+            when CPIO_ARCHIVE | ISO_FILESYSTEM =>
+               status := Ext2.Flush_Unsupported;
+            when EXT2_FILESYSTEM =>
+               Ext2.Flush (Contexts (files (directory).volume).Fs, status);
+         end case;
+         sendReply (sender, Labels.Flush_Label (status), 0);
          return;
       end if;
       --  Any handle may flush (fsync of a read-only descriptor, as Linux):

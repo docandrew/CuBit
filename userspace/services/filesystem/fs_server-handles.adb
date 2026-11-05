@@ -1,6 +1,7 @@
 with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Watches; use Fs_Server.Watches;
 with Fs_Server.Copies; use Fs_Server.Copies;
+with Fs_Server.Locks; use Fs_Server.Locks;
 
 package body Fs_Server.Handles is
 
@@ -160,6 +161,7 @@ package body Fs_Server.Handles is
       if files (slot).objectKind = FILE_OBJECT then
          forgetNoticePath (slot);
          copyHandleGone (slot);
+         lockHandleGone (slot);
       end if;
       Open_Inodes.Detach (inodeObjects, Open_Inodes.Owner_Index (slot));
       files (slot).active := False;

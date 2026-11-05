@@ -10,7 +10,8 @@
 # A toolchain tree, pinned by its identity (64 lowercase hex digits), and
 # the prefix of its program names (x86_64-unknown-linux-musl-gcc). The first
 # build on a machine is given the host directory once (--import NAME=PATH);
-# Nix store trees are recorded in place, others copied into the store.
+# trees in the Nix store, and CuBit's toolchain place, are recorded in
+# place, others copied into the store.
 (type Toolchain (record (name String) (identity String) (prefix String)))
 
 # One link argument: literal text (no file names), a file from the tree,
@@ -73,8 +74,15 @@
   (code Library_Code Library_Code.Program_Code)
   (sources (List String) []) (units (List Unit_Code) []) (archives (List String) [])))
 
+# The trees a build host runs steps with: its compiler (gcc, gnatbind) and
+# its binutils (ld, objcopy). ccl-build uses the entry for the host it runs
+# on (one per host): nixpkgs' trees on Linux; on CuBit the GCC port's tree
+# (userspace/ports/gcc), which holds its binutils too.
+(type Build_Host (enum Linux CuBit))
+(type Host_Toolchains (record (host Build_Host) (toolchain Toolchain) (binutils Toolchain)))
+
 (type Parameters (record
-  (toolchain Toolchain) (binutils Toolchain) (runtime String)
+  (toolchains (List Host_Toolchains)) (runtime String)
   (manifest_tool String) (manifest_schema String)
   (process_manager_catalog String) (device_manager_catalog String)
   (target (List String)) (binder (List String)) (linker (List Link_Argument))))

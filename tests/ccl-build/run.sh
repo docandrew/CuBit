@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # CCL build, first slice (docs/ccl-build.md), hosted on Linux:
-#   1. core and store unit tests (hosted Ada);
+#   1. core and store unit tests (hosted Ada), and Build_Platform's contract
+#      with each body (the CuBit body hosted on Linux);
 #   2. every component.ccl type-checks, the negative cases are refused; sleep.app and the multi-unit
 #      boot-timeline.app build with GNAT 15.3;
 #   3. cache hits, mtime-only changes, another checkout sharing the store,
@@ -52,6 +53,7 @@ echo "== building ccl-build, the tests and the user runtime"
 (cd "$repo/kernel" &&
     alr exec -- gprbuild -q -p -P ../userspace/ccl/ccl_build.gpr &&
     alr exec -- gprbuild -q -p -P ../tests/ccl-build/ccl_build_tests.gpr &&
+    alr exec -- gprbuild -q -p -P ../tests/ccl-build/ccl_build_tests.gpr -XCCL_BUILD_PLATFORM=cubit &&
     make -s user_runtime ccl-manifest >/dev/null)
 tool=$repo/userspace/ccl/build/ccl-build/ccl-build
 : "${CUBIT_GNAT:?run inside nix develop}" "${CUBIT_BINUTILS:?run inside nix develop}"
@@ -64,6 +66,11 @@ echo "== unit tests"
 check "core tests" "$here/build/core_tests"
 mkdir -p "$scratch/unit"
 check "store tests" "$here/build/store_tests" "$scratch/unit"
+# Build_Platform's contract, with the Linux body and (hosted, on Linux) the
+# CuBit body: the same checks.
+mkdir -p "$scratch/platform-linux" "$scratch/platform-cubit"
+check "platform contract, Linux body" "$here/build/platform_tests" "$scratch/platform-linux"
+check "platform contract, CuBit body (hosted)" "$here/build-cubit-body/platform_tests" "$scratch/platform-cubit"
 
 echo "== declarations: every component.ccl type-checks against build-params.ccl and build-catalog.ccl"
 check "all declarations type-check" "$tool" check --source-root "$repo" \
@@ -80,6 +87,19 @@ for case in "$here"/negative/*/; do
         check "refused: $(basename "$case")" grep -qF -- "$expected" <<<"$output"
     fi
 done
+
+echo "== ccl-manifest --output: the assembly in the named file, nothing on standard output"
+manifest_tool=$repo/userspace/ccl/build/manifest/ccl-manifest
+manifest_args=("$repo/userspace/ccl/catalogs/native-runtime-services.ccl" "$repo/userspace/apps/sleep/manifest.ccl"
+               --schema "$repo/userspace/ccl/interfaces/executable-manifest.ccl")
+"$manifest_tool" "${manifest_args[@]}" > "$scratch/manifest-stdout.S"
+"$manifest_tool" "${manifest_args[@]}" --output "$scratch/manifest-named.S" > "$scratch/manifest-named.out"
+check "--output writes what standard output had" cmp "$scratch/manifest-stdout.S" "$scratch/manifest-named.S"
+check "--output leaves standard output empty" test ! -s "$scratch/manifest-named.out"
+printf '(Executable_Manifest identity => 7)\n' > "$scratch/bad-manifest.ccl"
+check "--output: a refused manifest writes no file" bash -c '! "$1" "$2" "$3" --output "$4" 2>/dev/null && test ! -e "$4"' \
+    _ "$manifest_tool" "$repo/userspace/ccl/catalogs/native-runtime-services.ccl" "$scratch/bad-manifest.ccl" \
+    "$scratch/bad-manifest.S"
 
 echo "== sleep.app and boot-timeline.app (multi-unit) with GNAT 15.3"
 store=$scratch/store

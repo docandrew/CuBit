@@ -5,7 +5,7 @@ with Interfaces;
 with Interfaces.C.Strings;
 with GNAT.OS_Lib;
 with Build_Encoding;
-with Build_POSIX;
+with Build_Platform;
 with Storehouse.Paths;
 
 package body Build_Steps is
@@ -297,12 +297,12 @@ package body Build_Steps is
          begin
             if Name = "." or else Name = ".." then
                null;
-            elsif Build_POSIX.Is_Symbolic_Link (From) then
-               Build_POSIX.Symbolic_Link (Build_POSIX.Link_Target (From), To);
+            elsif Build_Platform.Is_Symbolic_Link (From) then
+               Build_Platform.Symbolic_Link (Build_Platform.Link_Target (From), To);
             elsif GNAT.OS_Lib.Is_Directory (From) then
                Place_Tree (From, To);
             else
-               Build_POSIX.Link (From, To);
+               Build_Platform.Link (From, To);
             end if;
          end;
       end loop;
@@ -351,7 +351,7 @@ package body Build_Steps is
      (Store : Build_Store.Store; S : Step; Root : String; Outputs : out Digest_Vectors.Vector; Failed : out Boolean)
    is
       use Interfaces.C.Strings;
-      Arguments : Build_POSIX.Argument_List (1 .. Natural (S.Arguments.Length) + 1);
+      Arguments : Build_Platform.Argument_List (1 .. Natural (S.Arguments.Length) + 1);
       Status : Integer;
    begin
       Outputs.Clear;
@@ -364,7 +364,7 @@ package body Build_Steps is
                when Tree => Place_Tree (Store.Path_Of (Tree, I.Identity), Target);
                when others =>
                   Make_Parent (Target);
-                  Build_POSIX.Link (Store.Path_Of (I.Kind, I.Identity), Target);
+                  Build_Platform.Link (Store.Path_Of (I.Kind, I.Identity), Target);
             end case;
          end;
       end loop;
@@ -376,7 +376,7 @@ package body Build_Steps is
       for N in S.Arguments.First_Index .. S.Arguments.Last_Index loop
          Arguments (N + 1) := New_String (Render (Store, S, Root, S.Arguments (N)));
       end loop;
-      Build_POSIX.Run
+      Build_Platform.Run
         (Program => Program_Path (Store, S, Root), Arguments => Arguments,
          Directory => Root / To_String (S.Directory),
          Standard_Output => (if S.Capture = 0 then "" else Root / To_String (S.Outputs (S.Capture).Path)),
@@ -394,7 +394,7 @@ package body Build_Steps is
             Produced : constant String := Root / To_String (O.Path);
             Stored : Digest;
          begin
-            if Build_POSIX.Is_Symbolic_Link (Produced) or else not GNAT.OS_Lib.Is_Regular_File (Produced) then
+            if Build_Platform.Is_Symbolic_Link (Produced) or else not GNAT.OS_Lib.Is_Regular_File (Produced) then
                raise Step_Error with To_String (S.Label) & ": did not produce " & To_String (O.Path);
             end if;
             Store.Put_File (Produced, Output_Kind (O), Stored);

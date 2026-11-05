@@ -1,0 +1,17 @@
+# The ccl-build-native test launcher (tests/ccl-build-native/check): runs
+# the native ccl-build.app on ps2.drv's sources, interrupts one build,
+# checks that the next recovers and makes Linux's program byte for byte,
+# and that a build after it runs no step. It delegates to ccl-build the
+# places ccl-build's steps need (decision D2): it holds each of them.
+(Executable_Manifest
+  identity => "com.cubit.ccl-build-check"
+  version => "0.1.0"
+  requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
+  scopes => [
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/storehouse")
+    (filesystem [File_Right.Read] "@nvme:0/toolchain")
+    (filesystem [File_Right.Read] "@nvme:0/cubit-src")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")]
+  may_launch => [
+    (Launch "ccl-build.app")
+    (Launch "binutils-compare.app")])

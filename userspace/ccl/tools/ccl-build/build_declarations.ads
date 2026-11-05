@@ -97,7 +97,8 @@ package Build_Declarations is
    subtype Manifest_Catalog is Catalog range Process_Manager .. Device_Manager;
    type Catalog_Paths is array (Manifest_Catalog) of Unbounded_String;
 
-   --  The repository's build parameters.
+   --  The repository's build parameters; the toolchains are the ones its
+   --  toolchains list names for this host (Build_Platform.This_Host).
    type Parameters is record
       Compiler_Tools, Binutils : Toolchain;
       Runtime, Manifest_Tool, Manifest_Schema : Unbounded_String;
@@ -163,6 +164,9 @@ package Build_Declarations is
 
 private
    --  Evaluation runs on a task with this stack: the CCL interpreter
-   --  recurses with large frames (see ccl-manifest).
-   EVALUATION_STACK_BYTES : constant Natural := 256 * 1024 * 1024;
+   --  recurses with large frames (see ccl-manifest). Measured 2026-11-03
+   --  (built with -fstack-check, every component.ccl, the catalog and the
+   --  parameters): 4 MiB overflows, 8 MiB suffices. Eight times that, and
+   --  within one mapping of CuBit's libc (at most 256 MiB, ccl-build.app).
+   EVALUATION_STACK_BYTES : constant Natural := 64 * 1024 * 1024;
 end Build_Declarations;

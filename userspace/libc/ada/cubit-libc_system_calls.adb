@@ -65,6 +65,8 @@ package body CuBit.Libc_System_Calls is
    with Import, Convention => C, External_Name => "__cubit_fd_pwrite";
    function Fd_Fsync (Fd : int) return long
    with Import, Convention => C, External_Name => "__cubit_fd_fsync";
+   function Fd_Flock (Fd : int; Operation : int) return long
+   with Import, Convention => C, External_Name => "__cubit_fd_flock";
    function Fd_Lseek (Fd : int; Offset : long; Whence : int) return long
    with Import, Convention => C, External_Name => "__cubit_fd_lseek";
    function Fd_Open (Path : System.Address; Flags : int) return long
@@ -862,6 +864,8 @@ package body CuBit.Libc_System_Calls is
             return Fd_Pwrite (Low (A), Address_Of (B), size_t'Mod (C), D);
          when SYS_fsync | SYS_fdatasync =>
             return Fd_Fsync (Low (A));
+         when SYS_flock =>
+            return Fd_Flock (Low (A), Low (B));
          when SYS_close =>
             return Fd_Close (Low (A));
          when SYS_ioctl =>

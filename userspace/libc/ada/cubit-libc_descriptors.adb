@@ -7,6 +7,7 @@ with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Child_Exits;
+with CuBit.Control_Events;
 with CuBit.Parameter_Sections;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -22,10 +23,13 @@ with CuBit.Outlet_Rings;
 with CuBit.Grant_References;
 with CuBit.Stream_Regions;
 with CuBit.Stream_Rings;
+with CuBit.Filesystem_Queues;
+with CuBit.Published_Clock;
 
 package body CuBit.Libc_Descriptors is
 
    package K renames CuBit.Kernel_ABI;
+   package FQ renames CuBit.Filesystem_Queues;
    package Entries renames CuBit.Libc_Directory_Entries;
 
    use type Interfaces.C.long;
@@ -54,6 +58,11 @@ package body CuBit.Libc_Descriptors is
    with Import, Convention => C, External_Name => "__cubit_file_describe";
    function File_Resize (Handle : Unsigned_64; Size : Unsigned_64) return long
    with Import, Convention => C, External_Name => "__cubit_file_resize";
+   function File_Lock (Handle : Unsigned_64; Options : Unsigned_32; Deadline : Unsigned_64)
+     return long
+   with Import, Convention => C, External_Name => "__cubit_file_lock";
+   function File_Unlock (Handle : Unsigned_64) return long
+   with Import, Convention => C, External_Name => "__cubit_file_unlock";
    function Resolve (Path, Result : System.Address) return long
    with Import, Convention => C, External_Name => "__cubit_resolve";
    function Change_Directory (Path : System.Address) return long
@@ -438,10 +447,13 @@ package body CuBit.Libc_Descriptors is
          M := (others => <>);
          From := CuBit.Kernel_Calls.Call (K.Receive, Value_Of (M'Address));
          --  Receive takes events too: a child's exit goes to waitpid's
-         --  bookkeeping (it would otherwise be lost to the stream handler).
+         --  bookkeeping (it would otherwise be lost to the stream handler),
+         --  and a control message is taken there (CuBit.Libc_Process).
          --  Only the kernel's (no sender): a client's call with that label is
          --  not one.
-         if M.Label = CuBit.Child_Exits.Event_Label and then From = 0 then
+         if (M.Label = CuBit.Child_Exits.Event_Label or else M.Label = CuBit.Control_Events.Control_Label)
+           and then From = 0
+         then
             Note_Event (M'Address);
          else
             Lock (Stream_Lock'Access);
@@ -1099,16 +1111,60 @@ package body CuBit.Libc_Descriptors is
       declare
          E : Descriptor_Entry renames Table (Integer (Fd));
       begin
-         if E.Kind = Directory then
-            return 0;                  --  directory updates are written through
-         elsif E.Kind /= File then
+         if E.Kind /= File and then E.Kind /= Directory then
             return Error (EINVAL);
          end if;
-         --  The service flushes only through a write-authorized handle; a
-         --  read-only one has written nothing.
-         return (if Writable (E.Flags) then File_Flush (E.Handle) else 0);
+         --  Any handle flushes, read-only ones and directories too (as
+         --  Linux): the service commits the volume's journal, which makes
+         --  the file's writes, or the names made, removed or renamed in the
+         --  directory, durable with everything before them.
+         return File_Flush (E.Handle);
       end;
    end Fsync;
+
+   function Lock_Until (Fd : int; Operation : int; Deadline : unsigned_long) return long;
+   function Lock_Until (Fd : int; Operation : int; Deadline : unsigned_long) return long is
+      function Bits (Value : int) return Unsigned_32 is (Unsigned_32'Mod (Value));
+      Requested : constant Unsigned_32 := Bits (Operation);
+      Mode : constant Unsigned_32 := Requested and not Bits (LOCK_NB);
+      Options : Unsigned_32;
+   begin
+      if not Valid_Descriptor (Fd) then
+         return Error (EBADF);
+      elsif Table (Integer (Fd)).Kind /= File then
+         return Error (EINVAL);                --  files only (no directory locks yet)
+      elsif (Requested and not (Bits (LOCK_SH) or Bits (LOCK_EX) or Bits (LOCK_NB)
+                                or Bits (LOCK_UN))) /= 0
+      then
+         return Error (EINVAL);
+      elsif Mode = Bits (LOCK_UN) then
+         return File_Unlock (Table (Integer (Fd)).Handle);
+      elsif Mode /= Bits (LOCK_SH) and then Mode /= Bits (LOCK_EX) then
+         return Error (EINVAL);
+      end if;
+      Options := (if Mode = Bits (LOCK_SH) then FQ.Lock_Shared else FQ.Lock_Exclusive)
+        + (if (Requested and Bits (LOCK_NB)) = 0 then FQ.Lock_Wait else 0);
+      return File_Lock (Table (Integer (Fd)).Handle, Options, Unsigned_64 (Deadline));
+   end Lock_Until;
+
+   function Flock (Fd : int; Operation : int) return long is
+     (Lock_Until (Fd, Operation, unsigned_long (K.Forever)));
+
+   function Lock_Timeout (Fd : int; Operation : int; Timeout_Ms : long) return long is
+      --  The clock publication's milliseconds, on GET_TIME's epoch and never
+      --  behind it (GET_TIME is sampled at timer ticks): plus the
+      --  millisecond under way, the service, comparing GET_TIME, never ends
+      --  the wait before Timeout_Ms have passed.
+      Now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds + 1;
+   begin
+      if Timeout_Ms < 0 then
+         return Lock_Until (Fd, Operation, unsigned_long (K.Forever));
+      end if;
+      return Lock_Until
+        (Fd, Operation,
+         unsigned_long (if Unsigned_64 (Timeout_Ms) >= K.Forever - Now then K.Forever - 1
+                        else Now + Unsigned_64 (Timeout_Ms)));
+   end Lock_Timeout;
 
    function Stream_Writev (E : in out Descriptor_Entry; Vectors : System.Address;
                            Count : int) return long;

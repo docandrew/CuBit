@@ -43,8 +43,9 @@ procedure Main is
    --  manifests are checked against, found beside the catalogs directory.
    Schema_Source : String (1 .. Maximum_Schema_File);
    Schema_Length : Natural := 0;
-   --  CATALOG MANIFEST, then options as pairs: --startup-output FILE (the
-   --  Ada Startup package), --rust-output FILE (the Rust accessors),
+   --  CATALOG MANIFEST, then options as pairs: --output FILE (the ELF
+   --  section assembly; standard output without it), --startup-output FILE
+   --  (the Ada Startup package), --rust-output FILE (the Rust accessors),
    --  --c-output FILE (the C header), --schema FILE.
    function Option (Name : String) return String is
    begin
@@ -59,7 +60,12 @@ procedure Main is
      (Argument_Count >= 2 and then Argument_Count mod 2 = 0 and then
       (for all Index in 3 .. Argument_Count =>
          (Index - 3) mod 2 = 1 or else
-         Argument (Index) in "--rust-output" | "--c-output" | "--startup-output" | "--schema" | "--settings"));
+         Argument (Index) in "--output" | "--rust-output" | "--c-output" | "--startup-output" | "--schema"
+                           | "--settings"));
+   --  Where the assembly goes: a file a build step names as its output
+   --  (ccl-build on CuBit, where no descriptor crosses processes), or
+   --  standard output without --output.
+   function Assembly_Path return String is (Option ("--output"));
    --  Where the startup binding goes (none without --startup-output).
    function Startup_Path return String is (Option ("--startup-output"));
    --  The schema's default home: interfaces/ beside the catalogs directory.
@@ -1207,8 +1213,9 @@ begin
    end if;
    if not Options_Valid then
       Put_Line (Standard_Error,
-        "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--startup-output startup.ads] " &
-        "[--rust-output bindings.rs] [--c-output startup.h] [--schema executable-manifest.ccl] > manifest.S");
+        "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--output manifest.S] [--startup-output startup.ads] " &
+        "[--rust-output bindings.rs] [--c-output startup.h] [--schema executable-manifest.ccl]" &
+        " (without --output, the assembly goes to standard output)");
       Set_Exit_Status (Failure);
       return;
    end if;
@@ -1324,17 +1331,31 @@ begin
    if Option ("--c-output")'Length > 0 then
       Emit_C;
    end if;
-   Emit (".cubit.id", Result.Identity);
-   Emit (".cubit.caps", Result.Capabilities);
-   Emit (".cubit.access", Result.Access_Scopes);
-   Emit (".cubit.resources", Result.Resources);
-   Emit (".cubit.devices", Result.Devices);
-   Emit (".cubit.launch", Result.Launch);
-   Emit (".cubit.description", Result.Description);
-   Emit (".cubit.startup", Result.Startup);
-   Emit (".cubit.channels", Result.Channels);
-   Emit (".cubit.parameters", Parameters_Section);
-   Put_Line (".section .note.GNU-stack,"""",@progbits");
+   declare
+      Assembly : File_Type;
+   begin
+      --  Written only now, after the whole declaration validated, like
+      --  standard output.
+      if Assembly_Path'Length > 0 then
+         Create (Assembly, Out_File, Assembly_Path);
+         Set_Output (Assembly);
+      end if;
+      Emit (".cubit.id", Result.Identity);
+      Emit (".cubit.caps", Result.Capabilities);
+      Emit (".cubit.access", Result.Access_Scopes);
+      Emit (".cubit.resources", Result.Resources);
+      Emit (".cubit.devices", Result.Devices);
+      Emit (".cubit.launch", Result.Launch);
+      Emit (".cubit.description", Result.Description);
+      Emit (".cubit.startup", Result.Startup);
+      Emit (".cubit.channels", Result.Channels);
+      Emit (".cubit.parameters", Parameters_Section);
+      Put_Line (".section .note.GNU-stack,"""",@progbits");
+      if Assembly_Path'Length > 0 then
+         Set_Output (Standard_Output);
+         Close (Assembly);
+      end if;
+   end;
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>
       Put_Line (Standard_Error, "cannot access input/output, or input exceeds 4096-byte bound");

@@ -6,7 +6,7 @@ with Ada.Environment_Variables;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
 with Interfaces.C.Strings;
-with Build_POSIX;
+with Build_Platform;
 with Build_Steps;
 with Storehouse.Hex;
 with Storehouse.Paths;
@@ -176,7 +176,7 @@ package body Build_Ada_Programs is
                Candidate : constant String := Search (First .. Last - 1) / Name;
             begin
                if Last > First and then Ada.Directories.Exists (Candidate)
-                 and then Build_POSIX.Is_Executable (Candidate)
+                 and then Build_Platform.Is_Executable (Candidate)
                then
                   return Candidate;
                end if;
@@ -191,13 +191,13 @@ package body Build_Ada_Programs is
    --  redirects, over http or https only.
    procedure Download (URL, File, Directory : String) is
       use Interfaces.C.Strings;
-      Arguments : Build_POSIX.Argument_List :=
+      Arguments : Build_Platform.Argument_List :=
         [New_String (Fetcher_Name), New_String ("-sSfL"), New_String ("--proto"),
          New_String ("=http,https"), New_String ("-o"), New_String (File), New_String (URL),
          Null_Ptr];
       Status : Integer;
    begin
-      Build_POSIX.Run (Host_Program (Fetcher_Name), Arguments, Directory, "", Status);
+      Build_Platform.Run (Host_Program (Fetcher_Name), Arguments, Directory, "", Status);
       for A of Arguments loop
          Free (A);
       end loop;
@@ -209,12 +209,12 @@ package body Build_Ada_Programs is
 
    --  Runs a host program with an empty environment, failing on a nonzero
    --  exit status.
-   procedure Run_Host (Name : String; Arguments : in out Build_POSIX.Argument_List;
+   procedure Run_Host (Name : String; Arguments : in out Build_Platform.Argument_List;
                        Directory, Standard_Output, What : String) is
       use Interfaces.C.Strings;
       Status : Integer;
    begin
-      Build_POSIX.Run (Host_Program (Name), Arguments, Directory, Standard_Output, Status);
+      Build_Platform.Run (Host_Program (Name), Arguments, Directory, Standard_Output, Status);
       for A of Arguments loop
          Free (A);
       end loop;
@@ -241,10 +241,10 @@ package body Build_Ada_Programs is
          case T.Format is
             when Tar_Gz =>
                declare
-                  Decompress : Build_POSIX.Argument_List :=
+                  Decompress : Build_Platform.Argument_List :=
                     [New_String (Decompressor_Name), New_String ("-d"), New_String ("-c"),
                      New_String (Work / Archive_File), Null_Ptr];
-                  Unpack : Build_POSIX.Argument_List :=
+                  Unpack : Build_Platform.Argument_List :=
                     [New_String (Archiver_Name), New_String ("-x"), New_String ("-f"),
                      New_String (Work / Unpacked_Archive_File),
                      New_String ("--strip-components=" & Ada.Strings.Fixed.Trim
@@ -269,7 +269,7 @@ package body Build_Ada_Programs is
          Build_Store.Remove (Work);
          Ran := True;
       exception
-         when Step_Error | Build_POSIX.POSIX_Error | Build_Store.Store_Error =>
+         when Step_Error | Build_Platform.Platform_Error | Build_Store.Store_Error =>
             if Ada.Directories.Exists (Work) then
                Build_Store.Remove (Work);
             end if;
@@ -403,6 +403,9 @@ package body Build_Ada_Programs is
          end if;
          Ada.Text_IO.Put_Line ((if Outcome.Ran then "ran  " else "hit  ") &
            Storehouse.Hex.Image (Outcome.Step_Identity) (1 .. Short_Identity) & "  " & To_String (S.Label));
+         --  Each step as it finishes, also where standard output is not a
+         --  terminal (a pipe, CuBit's outlet ring): progress, not a summary.
+         Ada.Text_IO.Flush;
          for N in S.Outputs.First_Index .. S.Outputs.Last_Index loop
             Result.Products.Append
               (Product'(S.Outputs (N).Path,
@@ -507,6 +510,7 @@ package body Build_Ada_Programs is
          if Ran then Result.Ran := Result.Ran + 1; else Result.Answered := Result.Answered + 1; end if;
          Ada.Text_IO.Put_Line ((if Ran then "ran  " else "hit  ") &
            Storehouse.Hex.Image (Identity) (1 .. Short_Identity) & "  " & Label);
+         Ada.Text_IO.Flush;
       end Log;
 
       --  A blob's bytes in the store, checked against its pinned digest.
@@ -722,7 +726,10 @@ package body Build_Ada_Programs is
             Piece_Of (S, Output_Path, Startup);
             Literal (S, "--schema");
             Piece_Of (S, Input_Path, Schema);
-            S.Capture := Assembly;
+            --  Named, not captured from standard output: on CuBit no
+            --  descriptor crosses processes (Build_Platform.Run).
+            Literal (S, "--output");
+            Piece_Of (S, Output_Path, Assembly);
             --  ccl-manifest writes the body beside the spec, and the
             --  parameters binding beside both.
             Declare_Output (S, Generated / Startup_Body);

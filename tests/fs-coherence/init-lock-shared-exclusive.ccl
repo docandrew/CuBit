@@ -1,0 +1,5 @@
+# tests/fs-coherence case lock-shared-exclusive (headless: fs-coherence-lock-shared-exclusive).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "fs-coherence-lock-shared-exclusive.app" (priority 3))
+)

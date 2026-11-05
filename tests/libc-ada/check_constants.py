@@ -120,7 +120,7 @@ if not musl.is_dir():
     sys.exit(1)
 headers = ""
 for pattern in ("include/**/*.h", "arch/x86_64/bits/*.h*", "arch/generic/bits/*.h",
-                "src/internal/futex.h", "src/network/lookup.h"):
+                "src/internal/futex.h", "src/network/lookup.h", "src/process/fdop.h"):
     for f in musl.glob(pattern):
         headers += f.read_text(errors="ignore") + "\n"
 defines = {}
@@ -172,6 +172,14 @@ names = [n.strip(" *") for group in fields for n in group.split(",")]
 expected = ["self", "dtv", "prev", "next", "sysinfo", "canary_pad", "canary"]
 if [n for n in names if n != "canary_pad"] != [n for n in expected if n != "canary_pad"]:
     print(f"FAIL: musl struct pthread fields before tid changed: {names}")
+    failed = True
+# musl's struct fdop (a posix_spawn file action), whose offsets the libc's
+# Fdop_*_Offset constants count: two pointers, four ints, mode_t, the path.
+fdop = (musl / "src/process/fdop.h").read_text()
+checked += 1
+if not re.search(r"struct fdop \*next, \*prev;\s*int cmd, fd, srcfd, oflag;\s*mode_t mode;\s*char path\[\];",
+                 fdop):
+    print("FAIL: musl struct fdop changed (Fdop_*_Offset)")
     failed = True
 # The filesystem service's open options and inspection bits, as the libc's
 # Ada repeats them, against CuBit.Filesystems (whose page constants name

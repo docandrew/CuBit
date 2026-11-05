@@ -4,7 +4,7 @@ with Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded;
 with Ada.Text_IO;
 with GNAT.OS_Lib;
-with Build_POSIX;
+with Build_Platform;
 with Build_Steps;
 with Build_Store;
 with Storehouse;
@@ -57,7 +57,7 @@ procedure Store_Tests is
       String'Write (Ada.Streams.Stream_IO.Stream (File), Content);
       Ada.Streams.Stream_IO.Close (File);
       if Executable then
-         Build_POSIX.Change_Mode (Name, 8#755#);
+         Build_Platform.Change_Mode (Name, 8#755#);
       end if;
    end Write;
 
@@ -128,7 +128,7 @@ begin
    --  Trees: a Merkle identity over names, kinds and contents.
    Write (Sources / "tree/sub/b.txt", "beta" & LF);
    Write (Sources / "tree/tool", "#!/bin/sh" & LF, Executable => True);
-   Build_POSIX.Symbolic_Link ("sub/b.txt", Sources / "tree/link");
+   Build_Platform.Symbolic_Link ("sub/b.txt", Sources / "tree/link");
    declare
       T : Digest;
       Before : constant Digest := Build_Store.Hash_Tree (Sources / "tree");
@@ -137,13 +137,13 @@ begin
       Check (T = Before, "tree identity is its listing's hash");
       Check (Build_Store.Hash_Tree (Store.Path_Of (Tree, T)) = T, "stored tree hashes to its name");
       Check (not GNAT.OS_Lib.Is_Writable_File (Store.Path_Of (Tree, T) / "sub/b.txt"), "tree files read-only");
-      Check (Build_POSIX.Is_Executable (Store.Path_Of (Tree, T) / "tool"), "tree keeps the executable bit");
+      Check (Build_Platform.Is_Executable (Store.Path_Of (Tree, T) / "tool"), "tree keeps the executable bit");
       Write (Sources / "tree/sub/b.txt", "beta!" & LF);
       Check (Build_Store.Hash_Tree (Sources / "tree") /= T, "a changed file changes the tree identity");
       declare
          Edited : constant Digest := Build_Store.Hash_Tree (Sources / "tree");
       begin
-         Build_POSIX.Change_Mode (Sources / "tree/sub/b.txt", 8#755#);
+         Build_Platform.Change_Mode (Sources / "tree/sub/b.txt", 8#755#);
          Check (Build_Store.Hash_Tree (Sources / "tree") /= Edited, "the executable bit is part of a tree");
       end;
    end;
@@ -260,7 +260,7 @@ begin
    begin
       Verify_All (Store, Checked);
       Check (Damaged = 0, "a clean store verifies");
-      Build_POSIX.Change_Mode (Store.Path_Of (Regular_File, Victim), 8#644#);
+      Build_Platform.Change_Mode (Store.Path_Of (Regular_File, Victim), 8#644#);
       Write (Store.Path_Of (Regular_File, Victim), "tampered" & LF);
       Verify_All (Store, Checked);
       Check (Damaged = 1 and then Checked > 1, "a tampered entry is reported");
@@ -314,7 +314,7 @@ begin
       First, Again : Outcome;
    begin
       Run (Store, S, First);
-      Build_POSIX.Change_Mode (Store_Root / "actions" / Hex.Image (First.Step_Identity), 8#644#);
+      Build_Platform.Change_Mode (Store_Root / "actions" / Hex.Image (First.Step_Identity), 8#644#);
       Write (Store_Root / "actions" / Hex.Image (First.Step_Identity), "garbage");
       Run (Store, S, Again);
       Check (Again.Ran and then Again.Outputs (1) = First.Outputs (1) and then not Again.Not_Reproducible,
@@ -323,7 +323,7 @@ begin
              "the step directory is gone after the run");
    end;
 
-   Check (Build_POSIX.Process_Alive (Build_POSIX.Process_Id), "own process is alive");
+   Check (Build_Platform.Process_Alive (Build_Platform.Process_Id), "own process is alive");
    Put_Line ("store:" & Checks'Image & " checks," & Failures'Image & " failures");
    if Failures > 0 then
       raise Program_Error with "store tests failed";

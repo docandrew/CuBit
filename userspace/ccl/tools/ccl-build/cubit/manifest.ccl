@@ -1,0 +1,32 @@
+# ccl-build on CuBit (docs/ccl-build.md, "On CuBit"): the CCL build tool,
+# with the full Ada runtime of the GCC port (userspace/ports/gcc) and the
+# CuBit libc. It reads the source checkout and the toolchain, and writes the
+# Storehouse; it exports products into the work place (--out).
+#
+# Steps run the toolchain's gcc driver and gnatbind (the driver runs gnat1,
+# as and ld itself, from its own launch table) through the libc's
+# posix_spawn, which passes on whole the places this program's launcher
+# delegated to it (decision D2): a launcher must delegate the Storehouse,
+# the toolchain and the source checkout for the steps to see them. Each
+# step then holds all of them; per-step places (only the step's directory
+# writable, only its inputs readable) are CCL-004.
+#
+# Paths: @nvme:0/storehouse is the Storehouse until FS-020's
+# @system/Storehouse, @nvme:0/toolchain the GCC port's tree as installed
+# (--prefix=/toolchain), @nvme:0/cubit-src the source checkout.
+(Executable_Manifest
+  identity => "com.cubit.ccl-build"
+  version => "0.1.0"
+  requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
+  scopes => [
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/storehouse")
+    (filesystem [File_Right.Read] "@nvme:0/toolchain")
+    (filesystem [File_Right.Read] "@nvme:0/cubit-src")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")]
+  may_launch => [
+    (Launch "toolchain/bin/gcc")
+    (Launch "toolchain/bin/gnatbind")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")])

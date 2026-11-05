@@ -11,10 +11,32 @@
 #   build.sh OUTPUT_DIRECTORY
 set -euo pipefail
 export NIX_HARDENING_ENABLE=""
+# Locale-independent tool output and file-name order.
+export LC_ALL=C
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
 out=$1
 build=$here/build
+# Reproducible: the toolchain tree's identity is pinned (build-params.ccl,
+# gnat-15.3.0-cubit), so the same sources make the same bytes in any
+# checkout and at any time. Source and build directories are recorded
+# relative to the checkout (__FILE__ in assertions, debug information),
+# configure is run by a relative name (gcc -v prints its command line), the
+# host compilers are named without a directory (cc1's checksum for
+# precompiled headers covers its link command line), and the run-time
+# library's generated s-oscons.ads has a fixed time stamp
+# (reproducible.patch); the CuBit libc and binutils do the same.
+prefix_map="-ffile-prefix-map=$root=."
+# The host compilers: cubit-cc and cubit-c++ with the prefix map, found by
+# name on PATH.
+wrappers=$build/bin
+mkdir -p "$wrappers"
+for compiler in cubit-cc cubit-c++; do
+    printf '#!/usr/bin/env bash\nexec %q %q "$@"\n' "$root/userspace/libc/$compiler" "$prefix_map" \
+        > "$wrappers/$compiler"
+    chmod +x "$wrappers/$compiler"
+done
+export PATH="$wrappers:$PATH"
 # The compilers need far more than the 1 MiB default stack (audit, 2026-10-05).
 export CUBIT_STACK_SIZE=$((64 * 1024 * 1024))
 
@@ -26,7 +48,7 @@ gmp_src=$(source_of gmp.src)
 mpfr_src=$(source_of mpfr.src)
 mpc_src=$(source_of libmpc.src)
 # Fixes for GNAT's run-time library on musl.
-patches=("$here/gnat-musl.patch")
+patches=("$here/gnat-musl.patch" "$here/reproducible.patch")
 stamp="$gcc_src $gmp_src $mpfr_src $mpc_src $(cat "${patches[@]}" | sha256sum)"
 mkdir -p "$build"
 if [ ! -f "$build/source.stamp" ] || [ "$(cat "$build/source.stamp")" != "$stamp" ]; then
@@ -71,17 +93,16 @@ cd "$build/obj"
 # Reconfigured from scratch when the options or the source directory change:
 # configure records absolute paths, so a tree configured in another checkout
 # (or a removed worktree) must not be reused.
-configure_key="$build/src ${configure_args[*]}"
+configure_key="$build/src $wrappers ${configure_args[*]}"
 if [ ! -f Makefile ] || [ "$(cat configure.args 2>/dev/null)" != "$configure_key" ]; then
     find . -mindepth 1 -delete
-    CC="$root/userspace/libc/cubit-cc" CFLAGS="-O2" \
-    CXX="$root/userspace/libc/cubit-c++" CXXFLAGS="-O2" LDFLAGS="-static" \
+    CC=cubit-cc CFLAGS="-O2" CXX=cubit-c++ CXXFLAGS="-O2" LDFLAGS="-static" \
     CC_FOR_BUILD=gcc CXX_FOR_BUILD=g++ \
     GNATBIND="${gnat_prefix}gnatbind" GNATMAKE="${gnat_prefix}gnatmake" \
     acx_cv_cc_gcc_supports_ada=yes \
     AS_FOR_TARGET=as LD_FOR_TARGET=ld AR_FOR_TARGET=ar NM_FOR_TARGET=nm \
     RANLIB_FOR_TARGET=ranlib OBJDUMP_FOR_TARGET=objdump READELF_FOR_TARGET=readelf \
-    "$build/src/configure" "${configure_args[@]}" > configure.log 2>&1
+    ../src/configure "${configure_args[@]}" > configure.log 2>&1
     echo "$configure_key" > configure.args
 fi
 # make does not know the libc: relink the programs against the current one.
@@ -97,13 +118,17 @@ make -j"$(nproc)" MAKEINFO=true TARGET-gcc="all STAGE1=False" \
 # The Ada run-time library for programs: libgnat and libgnarl, built by the
 # musl cross GNAT from the same sources, in gcc/ada/rts. Its C parts use
 # GNU extensions musl declares only for _GNU_SOURCE (cpu_set_t), which
-# glibc's headers expose to GNAT's sources by default. Rebuilt each time,
-# like the programs above: make does not know the patches.
-rm -rf gcc/ada/rts gcc/stamp-gnatlib* "x86_64-linux-musl/libada/stamp-libada"
-make -j"$(nproc)" MAKEINFO=true \
-    GCC_FOR_TARGET="${gnat_prefix}gcc" CC_FOR_TARGET="${gnat_prefix}gcc" \
-    CFLAGS_FOR_TARGET="-g -O2 -D_GNU_SOURCE" \
-    all-target-libada > make-libada.log 2>&1
+# glibc's headers expose to GNAT's sources by default. The compiler carries
+# the prefix map: the run-time library's Ada units take GNAT's own flags,
+# not CFLAGS_FOR_TARGET. Built once per configured tree (a source or patch
+# change starts the tree afresh, above).
+if [ ! -f gcc/ada/rts/libgnat.a ] || [ ! -f gcc/ada/rts/libgnarl.a ]; then
+    rm -rf gcc/ada/rts gcc/stamp-gnatlib* "x86_64-linux-musl/libada/stamp-libada"
+    make -j"$(nproc)" MAKEINFO=true \
+        GCC_FOR_TARGET="${gnat_prefix}gcc $prefix_map" CC_FOR_TARGET="${gnat_prefix}gcc $prefix_map" \
+        CFLAGS_FOR_TARGET="-g -O2 -D_GNU_SOURCE" \
+        all-target-libada > make-libada.log 2>&1
+fi
 
 # The separate step: each program's manifest, as sections.
 sections_dir=$build/sections
@@ -138,7 +163,8 @@ add_manifest "$here/gnatbind.ccl" gcc/gnatbind "$out/gnatbind.app"
 # look by default; gcc's support files from the musl cross compiler of the
 # same version (libgcc and its unwinder, which Ada exceptions use, the
 # static init/fini frame) and the specs; the CuBit libc (start files,
-# archives, link script, headers).
+# archives, link script, headers), with musl's empty libpthread and librt,
+# which libgnarl's units name (-lpthread, -lrt) for programs with tasks.
 machine=x86_64-linux-musl
 version=15.3.0
 sysroot=$root/userspace/libc/build/sysroot
@@ -152,15 +178,21 @@ cp "$out/gnat1.app" "$tree/libexec/gcc/$machine/$version/gnat1"
 cp "$out/gnatbind.app" "$tree/bin/gnatbind"
 mkdir -p "$tree/lib/gcc/$machine/$version/adainclude" "$tree/lib/gcc/$machine/$version/adalib"
 cp -L gcc/ada/rts/*.ads gcc/ada/rts/*.adb "$tree/lib/gcc/$machine/$version/adainclude/"
-cp -L gcc/ada/rts/*.ali gcc/ada/rts/libgnat.a gcc/ada/rts/libgnarl.a \
-   "$tree/lib/gcc/$machine/$version/adalib/"
+cp -L gcc/ada/rts/libgnat.a gcc/ada/rts/libgnarl.a "$tree/lib/gcc/$machine/$version/adalib/"
+# GNAT records every compiler switch in a unit's .ali (A lines, for
+# recompilation decisions, which a read-only library never needs), the
+# prefix map with the checkout's name among them: that one is left out.
+for ali in gcc/ada/rts/*.ali; do
+    grep -v -x -F "A $prefix_map" "$ali" > "$tree/lib/gcc/$machine/$version/adalib/${ali##*/}"
+done
 cp "$here/cubit.specs" "$tree/lib/gcc/$machine/$version/specs"
 for file in libgcc.a libgcc_eh.a crtbeginT.o crtend.o; do
     cp "$("$cross/bin/x86_64-unknown-linux-musl-gcc" -print-file-name="$file")" \
        "$tree/lib/gcc/$machine/$version/"
 done
 cp "$sysroot"/lib/cubit-crt1.o "$sysroot"/lib/crti.o "$sysroot"/lib/crtn.o \
-   "$sysroot"/lib/cubit.ld "$sysroot"/lib/libc.a "$sysroot"/lib/libm.a "$tree/lib/"
+   "$sysroot"/lib/cubit.ld "$sysroot"/lib/libc.a "$sysroot"/lib/libm.a \
+   "$sysroot"/lib/libpthread.a "$sysroot"/lib/librt.a "$tree/lib/"
 cp -r "$sysroot/include" "$tree/include"
 chmod -R u+w "$tree"
 echo "gcc: cc1 gnat1 gnatbind gcc -> $out; toolchain tree $tree"

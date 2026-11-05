@@ -8,6 +8,7 @@ with Fs_Server.Copies; use Fs_Server.Copies;
 with Fs_Server.Directory_Requests; use Fs_Server.Directory_Requests;
 with Fs_Server.File_Requests; use Fs_Server.File_Requests;
 with Fs_Server.Handles; use Fs_Server.Handles;
+with Fs_Server.Locks; use Fs_Server.Locks;
 with Fs_Server.Namespace_Requests; use Fs_Server.Namespace_Requests;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Storage; use Fs_Server.Storage;
@@ -193,8 +194,9 @@ package body Fs_Server.Client_Queues is
             CuBit.Channels.Close (clientQueues (q).dirtyLink);
             CuBit.Channels.Close (clientQueues (q).eventLink);
             forgetWatches (q);
-            --  Its copies end unanswered: the queue is gone.
+            --  Its copies and lock waits end unanswered: the queue is gone.
             forgetCopies (q);
+            forgetLockWaits (q);
             clientQueues (q) := (others => <>);
          end if;
       end loop;
@@ -413,6 +415,10 @@ package body Fs_Server.Client_Queues is
             handleCopy (q, r);
          when FQ.Queue_Cancel =>
             handleCancel (q, r.Handle);
+         when FQ.Queue_Lock =>
+            handleLock (q, r);
+         when FQ.Queue_Unlock =>
+            handleUnlock (q, r.Handle);
          when FQ.Queue_List_Scopes =>
             if inArena then
                handleListScopes (owner, r.Length);

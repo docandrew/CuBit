@@ -1,7 +1,7 @@
 with GNAT.OS_Lib;
 with System;
 
-package body Build_POSIX is
+package body Build_Platform is
    use Interfaces.C;
    use Interfaces.C.Strings;
 
@@ -104,7 +104,7 @@ package body Build_POSIX is
    procedure Check (Result : int; What, Name : String) is
    begin
       if Result /= 0 then
-         raise POSIX_Error with What & " " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
+         raise Platform_Error with What & " " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
       end if;
    end Check;
 
@@ -145,7 +145,7 @@ package body Build_POSIX is
    begin
       Free (C_Name);
       if Length < 0 or else Length >= Link_Text_Limit then
-         raise POSIX_Error with "readlink " & Name;
+         raise Platform_Error with "readlink " & Name;
       end if;
       return To_Ada (Buffer (1 .. size_t (Length)), Trim_Nul => False);
    end Link_Target;
@@ -251,7 +251,7 @@ package body Build_POSIX is
          begin
             if Descriptor < 0 then
                Free (C_Name);
-               raise POSIX_Error with "open " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
+               raise Platform_Error with "open " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
             end if;
             loop
                Result := c_flock (Descriptor, Operation);
@@ -263,7 +263,7 @@ package body Build_POSIX is
                if GNAT.OS_Lib.Errno = EWOULDBLOCK and then not Wait then
                   return No_Lock;
                end if;
-               raise POSIX_Error with "flock " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
+               raise Platform_Error with "flock " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
             end if;
             --  The holder before us may have deleted the file while we
             --  waited: then our lock is on a file no longer named, and the
@@ -291,6 +291,41 @@ package body Build_POSIX is
       L := No_Lock;
    end Release;
 
+   --  Linux probes process numbers directly (Process_Alive).
+   function This_Host return Build_Host is (Linux);
+
+   Nix_Store : constant String := "/nix/store/";
+   Nix_Store_Program : constant String := "nix-store";
+
+   --  A Nix store tree, whatever it holds.
+   function Records_In_Place (Path : String; Toolchain : Boolean) return Boolean is
+     (Path'Length > Nix_Store'Length and then Path (Path'First .. Path'First + Nix_Store'Length - 1) = Nix_Store);
+
+   --  A Nix garbage-collector root, so Nix keeps the tree while the record
+   --  names it (2026-10-19: a collected toolchain had to be rebuilt from
+   --  source).
+   procedure Keep_Recorded_Tree (Path, Root_Name, Work : String) is
+      use GNAT.OS_Lib;
+      Arguments : GNAT.OS_Lib.Argument_List_Access := new GNAT.OS_Lib.Argument_List'
+        (new String'("--add-root"), new String'(Root_Name), new String'("--realise"), new String'(Path));
+      Program : GNAT.OS_Lib.String_Access := Locate_Exec_On_Path (Nix_Store_Program);
+      Succeeded : Boolean := False;
+      Code : Integer;
+   begin
+      if Program /= null then
+         Spawn (Program.all, Arguments.all, Work & "/" & Nix_Store_Program & ".out", Succeeded, Code);
+         Succeeded := Succeeded and then Code = 0;
+         GNAT.OS_Lib.Free (Program);
+      end if;
+      GNAT.OS_Lib.Free (Arguments);
+      if not Succeeded then
+         raise Platform_Error with "cannot add a Nix garbage-collector root for " & Path &
+           " (" & Nix_Store_Program & " --add-root)";
+      end if;
+   end Keep_Recorded_Tree;
+
+   procedure Mark_Alive (Lock_Directory : String) is null;
+
    --  kill (Process, 0) probes without signalling; EPERM still means alive.
    function Process_Alive (Process : int) return Boolean is
       Probe : constant int := 0;
@@ -305,7 +340,7 @@ package body Build_POSIX is
    begin
       Free (C_Name);
       if Descriptor < 0 then
-         raise POSIX_Error with "open " & Name;
+         raise Platform_Error with "open " & Name;
       end if;
       Check (c_fsync (Descriptor), "fsync", Name);
       Check (c_close (Descriptor), "close", Name);
@@ -351,10 +386,10 @@ package body Build_POSIX is
       end if;
       Free (C_Program); Free (C_Directory); Free (C_Output);
       if Child < 0 then
-         raise POSIX_Error with "fork " & Program;
+         raise Platform_Error with "fork " & Program;
       end if;
       if c_waitpid (Child, Status'Access, 0) /= Child then
-         raise POSIX_Error with "waitpid " & Program;
+         raise Platform_Error with "waitpid " & Program;
       end if;
       --  WIFEXITED: no terminating signal in the low seven bits.
       if Integer (Status) mod (Signal_Mask + 1) = 0 then
@@ -364,4 +399,4 @@ package body Build_POSIX is
       end if;
    end Run;
 
-end Build_POSIX;
+end Build_Platform;

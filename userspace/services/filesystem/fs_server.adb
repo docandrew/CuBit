@@ -3,6 +3,7 @@ with CuBit.Filesystems;
 with Fs_Server.Access_Control;
 with Fs_Server.Client_Queues;
 with Fs_Server.Copies;
+with Fs_Server.Locks;
 with Fs_Server.Directory_Requests;
 with Fs_Server.File_Requests;
 with Fs_Server.Namespace_Requests;
@@ -21,6 +22,8 @@ package body Fs_Server is
    procedure Run_Copies renames Copies.runCopies;
    function Arm_Client_Queues return Boolean renames Client_Queues.armClientQueues;
    function Copies_Active return Boolean renames Copies.copiesActive;
+   procedure Expire_Lock_Waits renames Locks.expireLockWaits;
+   function Next_Lock_Deadline return Unsigned_64 renames Locks.nextLockDeadline;
    procedure Commit_Tick renames Storage.commitTick;
 
    procedure Open_Channel (Sender : Process_ID; Msg : Message)

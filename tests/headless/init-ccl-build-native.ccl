@@ -1,0 +1,7 @@
+# ccl-build on CuBit (tests/ccl-build-native): ccl-build-check runs the
+# native ccl-build.app on ps2.drv's sources, interrupts one build, and checks
+# the recovery, Linux's bytes and an all-cached rebuild.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "ccl-build-check.app" (priority 3))
+)

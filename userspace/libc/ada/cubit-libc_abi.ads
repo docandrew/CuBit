@@ -22,6 +22,7 @@ package CuBit.Libc_ABI with Pure, SPARK_Mode is
    --  <errno.h>
    EPERM           : constant int := 1;
    ENOENT          : constant int := 2;
+   EINTR           : constant int := 4;
    EIO             : constant int := 5;
    E2BIG           : constant int := 7;
    ENOEXEC         : constant int := 8;
@@ -69,7 +70,9 @@ package CuBit.Libc_ABI with Pure, SPARK_Mode is
    WNOHANG    : constant int := 1;
    WUNTRACED  : constant int := 2;
    WCONTINUED : constant int := 8;
+   SIGINT     : constant int := 2;
    SIGKILL    : constant int := 9;
+   SIGTERM    : constant int := 15;
    --  Wait status: exit code << 8, or the terminating signal.
    Status_Code_Shift : constant := 8;
    --  A process killed by signal N reports exit status 128 + N.
@@ -114,6 +117,11 @@ package CuBit.Libc_ABI with Pure, SPARK_Mode is
    O_DIRECTORY   : constant long := 8#200000#;
    O_NOFOLLOW    : constant long := 8#400000#;
    O_NONBLOCK    : constant long := 2048;
+   --  <sys/file.h>
+   LOCK_SH       : constant int := 1;
+   LOCK_EX       : constant int := 2;
+   LOCK_NB       : constant int := 4;
+   LOCK_UN       : constant int := 8;
    SEEK_SET      : constant int := 0;
    SEEK_CUR      : constant int := 1;
    SEEK_END      : constant int := 2;
@@ -238,6 +246,14 @@ package CuBit.Libc_ABI with Pure, SPARK_Mode is
    Rusage_Bytes : constant := 144;
    --  posix_spawn_file_actions_t (<spawn.h>): its __actions pointer.
    File_Actions_Pointer_Offset : constant := 8;
+   --  musl's struct fdop (src/process/fdop.h), one file action, newest
+   --  first: next and prev pointers, then cmd, fd, srcfd and oflag (int),
+   --  mode, and the path. FDOP_CHDIR is posix_spawn_file_actions_addchdir_np.
+   Fdop_Next_Offset    : constant := 0;
+   Fdop_Prev_Offset    : constant := 8;
+   Fdop_Command_Offset : constant := 16;
+   Fdop_Path_Offset    : constant := 36;
+   FDOP_CHDIR          : constant := 4;
    --  musl's struct pthread (src/internal/pthread_impl.h): its tid, after
    --  self, dtv, prev, next, sysinfo and canary (x86-64).
    Pthread_Tid_Offset : constant := 48;

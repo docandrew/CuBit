@@ -1,14 +1,42 @@
 with Interfaces.C;
 with Interfaces.C.Strings;
 
---  The Linux system calls the hosted executor and store need that the Ada
---  library does not offer: hard and symbolic links, exact modes, fsync,
---  and starting a program with its own directory, environment and stdout.
---  Linux-only: on CuBit the store is the Storehouse place and steps are
---  launched through procmgr with delegated places (docs/ccl-build.md).
-package Build_POSIX is
+--  The system calls ccl-build's executor and store make that the Ada
+--  library does not offer, one body per platform, chosen by the project's
+--  source directories (never a case in the core):
+--    linux/build_platform.adb  hosted on Linux: hard and symbolic links,
+--      exact modes and times, renameat2 (RENAME_NOREPLACE), fsync, flock,
+--      fork and execve.
+--    cubit/build_platform.adb  on CuBit (SELF-002): the same calls through
+--      the libc and filesystem.svc where CuBit has them (flock, fsync of
+--      files and directories, rename, O_EXCL); no links (Link copies,
+--      symbolic links are refused), no mode bits or file times
+--      (Change_Mode and Set_Times change nothing), a rename that must not
+--      replace as an O_EXCL claim of the name and a rename over it, and
+--      steps started through procmgr (posix_spawn) with delegated places.
+package Build_Platform is
 
-   POSIX_Error : exception;
+   Platform_Error : exception;
+
+   --  The host this body runs on, which selects the toolchains a build
+   --  runs its steps with (build-params.ccl's toolchains, by host).
+   type Build_Host is (Linux, CuBit);
+   function This_Host return Build_Host;
+
+   --  Whether a tree imported from Path (a Toolchain's, or a fetched
+   --  library's seed) is recorded in place (by its identity, in the store's
+   --  imports/) rather than copied: a tree in a place nothing rewrites,
+   --  whose programs find each other by absolute names. Linux: any tree in
+   --  the Nix store. CuBit: every toolchain, the GCC port's tree in its
+   --  read-only toolchain place, configured --prefix=/toolchain and named
+   --  exactly by its drivers' launch tables. Its links may be absolute.
+   function Records_In_Place (Path : String; Toolchain : Boolean) return Boolean;
+   --  Keeps a tree recorded in place alive while Root_Name (beside its
+   --  import record) exists: on Linux a Nix garbage-collector root
+   --  (nix-store --add-root, its output in the directory Work); on CuBit
+   --  nothing collects the toolchain place. Raises Platform_Error when the
+   --  tree cannot be kept.
+   procedure Keep_Recorded_Tree (Path, Root_Name, Work : String);
 
    --  Modes of Storehouse entries and of the directories made for steps.
    Read_Only_File : constant := 8#444#;
@@ -39,6 +67,11 @@ package Build_POSIX is
    procedure Delete_File_If_Present (Name : String);
    procedure Delete_Directory_If_Present (Name : String);
    procedure Sync (Name : String);
+   --  This process announces that it lives, in a store's lock directory,
+   --  until it exits: where a process number cannot be probed (CuBit), by
+   --  holding a lock there that Process_Alive then asks; on Linux nothing
+   --  (kill (pid, 0) answers). Called once per store opened.
+   procedure Mark_Alive (Lock_Directory : String);
    function Process_Alive (Process : Interfaces.C.int) return Boolean;
    function Process_Id return Interfaces.C.int;
 
@@ -80,4 +113,4 @@ private
    end record;
    No_Lock : constant Lock := (Descriptor => -1, Name => Interfaces.C.Strings.Null_Ptr);
    function Held (L : Lock) return Boolean is (L.Descriptor >= 0);
-end Build_POSIX;
+end Build_Platform;

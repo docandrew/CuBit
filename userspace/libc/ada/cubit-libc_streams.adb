@@ -259,8 +259,11 @@ package body CuBit.Libc_Streams is
    begin
       if From = K.Failed or else (From = 0 and then M.Label = 0) then
          return;
-      elsif From = 0 and then M.Label = CuBit.Child_Exits.Event_Label then
-         --  A child's exit belongs to waitpid's bookkeeping, not here.
+      elsif From = 0 and then (M.Label = CuBit.Child_Exits.Event_Label
+                               or else M.Label = CuBit.Control_Events.Control_Label)
+      then
+         --  A child's exit belongs to waitpid's bookkeeping, and a control
+         --  message to the process's default action, not here.
          Note_Event (M'Address);
       else
          Ignore := Handle_Message (Interfaces.C.long (From), M'Address);

@@ -1,5 +1,6 @@
 with Ada.Exceptions;
 with Interfaces;
+with Build_Platform;
 with CCL.Catalog;
 with CCL.Evaluation;
 with CCL.Language;
@@ -286,9 +287,32 @@ package body Build_Declarations is
 
    procedure Parameters_Value (Object : Views.Snapshot; Result : out Parameters) is
       Root : constant Views.Cursor := Views.Root (Object);
+      use type Build_Platform.Build_Host;
+      Toolchains : constant Views.Cursor := Named (Object, Root, "toolchains");
+      Found : Boolean := False;
    begin
-      Result.Compiler_Tools := Toolchain_Of (Object, Named (Object, Root, "toolchain"));
-      Result.Binutils := Toolchain_Of (Object, Named (Object, Root, "binutils"));
+      --  This host's entry, exactly one.
+      for I in 1 .. Views.Length (Object, Toolchains) loop
+         declare
+            Item : constant Views.Cursor := Views.Element (Object, Toolchains, I);
+         begin
+            if Build_Platform.Build_Host'Value (Alternative (Object, Named (Object, Item, "host")))
+              = Build_Platform.This_Host
+            then
+               if Found then
+                  raise Declaration_Error with "toolchains names host " &
+                    Build_Platform.Build_Host'Image (Build_Platform.This_Host) & " twice";
+               end if;
+               Found := True;
+               Result.Compiler_Tools := Toolchain_Of (Object, Named (Object, Item, "toolchain"));
+               Result.Binutils := Toolchain_Of (Object, Named (Object, Item, "binutils"));
+            end if;
+         end;
+      end loop;
+      if not Found then
+         raise Declaration_Error with "toolchains names none for this host, " &
+           Build_Platform.Build_Host'Image (Build_Platform.This_Host);
+      end if;
       Result.Runtime := Field (Object, Root, "runtime");
       Result.Manifest_Tool := Field (Object, Root, "manifest_tool");
       Result.Manifest_Schema := Field (Object, Root, "manifest_schema");

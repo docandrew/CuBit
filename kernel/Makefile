@@ -1145,6 +1145,27 @@ ccl-build:
 # The same compiler driver for native assembly (manifest objects).
 NATIVE_CC = $(CUBIT_GNAT)/bin/x86_64-unknown-linux-musl-gcc -B$(CUBIT_BINUTILS)/bin/
 
+# ccl-build on CuBit (SELF-002): the same sources with the CuBit body of
+# Build_Platform, on the GCC port's full Ada runtime (libgnat, libgnarl)
+# and the CuBit libc, cross-built by the same GNAT 15.3 with the native
+# configuration and the port's toolchain tree as the runtime. Build the
+# tree first: userspace/ports/gcc/build.sh (tests/gnat/build.sh runs it).
+CCL_BUILD_APP_TREE := $(abspath ../userspace/ports/gcc/build/toolchain)
+CCL_BUILD_APP_RUNTIME := $(CCL_BUILD_APP_TREE)/lib/gcc/x86_64-linux-musl/15.3.0
+CCL_BUILD_APP_MANIFEST := ../userspace/ccl/build/ccl-build-cubit/manifest
+.PHONY: ccl-build-app
+ccl-build-app: ccl-manifest
+	@test -f $(CCL_BUILD_APP_RUNTIME)/adalib/libgnat.a || \
+	  { echo "ccl-build-app: no toolchain tree; run userspace/ports/gcc/build.sh first" >&2; exit 1; }
+	mkdir -p $(CCL_BUILD_APP_MANIFEST)
+	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl \
+	  ../userspace/ccl/tools/ccl-build/cubit/manifest.ccl --output $(CCL_BUILD_APP_MANIFEST)/manifest.S
+	$(NATIVE_CC) -c $(CCL_BUILD_APP_MANIFEST)/manifest.S -o $(CCL_BUILD_APP_MANIFEST)/manifest.o
+	$(ALR) gprbuild $(subst -XCUBIT_RUNTIME=$(abspath ../userspace/runtime),-XCUBIT_RUNTIME=$(CCL_BUILD_APP_RUNTIME),$(CUBIT_NATIVE_GPRBUILD_CONFIG)) \
+	  -p -q -P ../userspace/ccl/ccl_build.gpr -XCCL_TOOL_TARGET=cubit -XCUBIT_TOOLCHAIN=$(CCL_BUILD_APP_TREE) \
+	  -XCCL_BUILD_MANIFEST=$(abspath $(CCL_BUILD_APP_MANIFEST)/manifest.o)
+	cp ../userspace/ccl/build/ccl-build-cubit/ccl-build.app isodir/boot/ccl-build.app
+
 # One checked result supplies both the ELF requests and optional Ada bindings.
 # Named fixed bindings in this catalog preserve shared-runtime ABI conventions.
 define compile_ccl_manifest

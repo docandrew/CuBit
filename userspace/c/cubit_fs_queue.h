@@ -99,6 +99,16 @@ enum {
 	/* The caller's scopes whose volume is present, as FS_QUEUE_LIST_SCOPES
 	 * entries; value = place count (NO_SPACE: did not fit). */
 	FS_QUEUE_LIST_PLACES = 25,
+	/* Advisory lock on an open file (flock semantics): handle, options =
+	 * FS_LOCK_SHARED or FS_LOCK_EXCLUSIVE, plus FS_LOCK_WAIT to wait until
+	 * spare 2 (deadline, ms; ~0 for none), else BUSY at once. Released when
+	 * the handle unlocks, closes or is parked, or its process exits. */
+	FS_QUEUE_LOCK = 26,
+	FS_LOCK_SHARED = 1,
+	FS_LOCK_EXCLUSIVE = 2,
+	FS_LOCK_WAIT = 4,
+	/* handle: its lock ends (a wait is answered CANCELLED). */
+	FS_QUEUE_UNLOCK = 27,
 	/* Progress: token (u64) then bytes done (u64) per running copy. */
 	FS_SERVER_COPIES_AT = 256,
 	FS_COPY_ENTRY_BYTES = 16,

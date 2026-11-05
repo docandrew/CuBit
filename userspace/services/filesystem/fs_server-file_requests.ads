@@ -43,6 +43,10 @@ private package Fs_Server.File_Requests is
    --  handle that cannot read, or is not an ext2 file, is closed instead.
    procedure handlePark (sender : Process_ID; handleWord : Unsigned_64);
 
+   --  FLUSH: any handle of the file (fsync of a read-only descriptor too,
+   --  as Linux), or a directory handle (fsync of a directory: the names
+   --  made, removed or renamed in it). Either commits the volume's running
+   --  transaction and waits for the device's flush.
    procedure handleFlush (sender : Process_ID; msg : Message);
 
    procedure handleResize (sender : Process_ID; msg : Message);

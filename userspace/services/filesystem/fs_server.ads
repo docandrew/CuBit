@@ -62,6 +62,10 @@ package Fs_Server is
    procedure Run_Copies;
    function Arm_Client_Queues return Boolean;
    function Copies_Active return Boolean;
+   --  Lock waits whose deadline passed are answered; the loop sleeps at
+   --  most until the next one (Wait_Forever: none).
+   procedure Expire_Lock_Waits;
+   function Next_Lock_Deadline return Unsigned_64;
    Commit_Interval_Ms : constant := 5_000;
    procedure Commit_Tick;
 

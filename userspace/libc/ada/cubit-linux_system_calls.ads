@@ -61,6 +61,7 @@ package CuBit.Linux_System_Calls with Pure, SPARK_Mode is
    SYS_kill                : constant Number := 62;
    SYS_uname               : constant Number := 63;
    SYS_fcntl               : constant Number := 72;
+   SYS_flock               : constant Number := 73;
    SYS_fsync               : constant Number := 74;
    SYS_fdatasync           : constant Number := 75;
    SYS_truncate            : constant Number := 76;

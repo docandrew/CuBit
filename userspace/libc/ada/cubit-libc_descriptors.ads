@@ -58,6 +58,17 @@ package CuBit.Libc_Descriptors is
    with Export, Convention => C, External_Name => "__cubit_fd_pwrite";
    function Fsync (Fd : int) return long
    with Export, Convention => C, External_Name => "__cubit_fd_fsync";
+   --  flock(2) on a file descriptor: an advisory lock of the file held by
+   --  this descriptor's handle at filesystem.svc (Queue_Lock), released by
+   --  LOCK_UN, by close, and when the process exits however it ends.
+   function Flock (Fd : int; Operation : int) return long
+   with Export, Convention => C, External_Name => "__cubit_fd_flock";
+   --  flock with an explicit limit (CuBit, <cubit/files.h>): a blocking
+   --  request (no LOCK_NB) gives up after Timeout_Ms with -ETIMEDOUT; a
+   --  negative Timeout_Ms waits without limit. The deadline the service
+   --  gets is absolute (the kernel's monotonic ms, as poll's).
+   function Lock_Timeout (Fd : int; Operation : int; Timeout_Ms : long) return long
+   with Export, Convention => C, External_Name => "cubit_flock_timeout";
    function Lseek (Fd : int; Offset : long; Whence : int) return long
    with Export, Convention => C, External_Name => "__cubit_fd_lseek";
    function Open (Path : System.Address; Flags : int) return long

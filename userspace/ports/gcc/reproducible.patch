@@ -1,0 +1,18 @@
+Reproducible Ada run-time library (userspace/ports/gcc/build.sh): every
+.ali file records the time stamp of each source it depends on, and
+s-oscons.ads is generated during the build, so its stamp was the build's
+time and the toolchain tree's identity changed with every build. The
+generated file takes its template's time instead (from the source tarball).
+
+--- a/gcc/ada/gcc-interface/Makefile.in
++++ b/gcc/ada/gcc-interface/Makefile.in
+@@ -641,7 +641,8 @@
+ 	(cd $(RTSDIR) ; \
+ 	    $(OSCONS_CPP) ; \
+ 	    $(OSCONS_EXTRACT) ; \
+-	    ../bldtools/oscons/xoscons s-oscons)
++	    ../bldtools/oscons/xoscons s-oscons ; \
++	    touch -r $(fsrcpfx)ada/s-oscons-tmplt.c s-oscons.ads)
+ 
+ gnatlib: ../stamp-gnatlib1-$(RTSDIR) ../stamp-gnatlib2-$(RTSDIR) $(RTSDIR)/s-oscons.ads
+ 	test -f $(RTSDIR)/s-oscons.ads || exit 1

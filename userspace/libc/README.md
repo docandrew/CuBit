@@ -47,7 +47,7 @@ stack canary at `%fs:0x28`, exists.
 | `pipe`, `pipe2`, `socketpair(AF_UNIX, SOCK_STREAM)` | in-process rings (both ends in one address space: thread wakeups such as mio's waker, tokio's signal self-pipe). Across processes these should become CuBit IPC objects (an endpoint capability or stream granted at launch, never a filesystem path); not implemented yet |
 | `poll` | readiness of the descriptors' CuBit objects (streams writable, files readable) |
 | `getrandom` | RDRAND (not yet the entropy service) |
-| signals | masks and handlers accepted; none are delivered; `kill`/`raise` exit |
+| signals | masks and handlers accepted; none are delivered; `kill`/`raise` exit. A control message from the launcher (SEND_CONTROL) takes a signal's default action: Stop and Interrupt end the process with 128 + SIGTERM or SIGINT, Reload is ignored (taken by the stream dispatcher at once, otherwise in the next `waitpid`) |
 | `sched_getaffinity` | four CPUs |
 | `prctl` thread names | kept per thread in the process (the kernel has no thread names yet) |
 | sockets, processes | not yet |

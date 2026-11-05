@@ -14,6 +14,7 @@ with CuBit.Launch_Grants;
 with CuBit.Path_Names;
 with CuBit.Child_Exits;
 with CuBit.Child_Table;
+with CuBit.Control_Events;
 with CuBit.Process_IDs;
 with CuBit.Libc_Child_Outlets;
 with CuBit.Outlet_Rings;
@@ -272,13 +273,15 @@ package body CuBit.Libc_Process is
 
    --  Start the program named at Path with the vectors; 0 or an errno
    --  value. Child_Lock is held.
+   --  Directory: the child's working directory from its file actions, or
+   --  empty for this program's own (when it chose one).
    function Spawn_Locked
      (Result : System.Address; Name : String;
-      Arguments, Environment : System.Address) return int;
+      Arguments, Environment : System.Address; Directory : String) return int;
 
    function Spawn_Locked
      (Result : System.Address; Name : String;
-      Arguments, Environment : System.Address) return int
+      Arguments, Environment : System.Address; Directory : String) return int
    is
       Accepted : Boolean;
       Length : LA.Present_Length;
@@ -299,16 +302,18 @@ package body CuBit.Libc_Process is
       if Accepted then
          Add_Strings (Environment, Environment => True, Accepted => Accepted);
       end if;
-      if Accepted then
+      if Accepted and then Directory'Length > 0 then
+         LA.Add_Directory (Encoder, Directory, Accepted);
+      elsif Accepted then
          declare
-            Directory : String (1 .. Working_Directory_Bytes);
+            Own : String (1 .. Working_Directory_Bytes);
             Chosen : aliased int := 0;
             Bytes : constant size_t :=
-              Working_Directory (Directory'Address, Chosen'Access);
+              Working_Directory (Own'Address, Chosen'Access);
          begin
-            if Chosen /= 0 and then Bytes in 1 .. Directory'Length then
+            if Chosen /= 0 and then Bytes in 1 .. Own'Length then
                LA.Add_Directory
-                 (Encoder, Directory (1 .. Natural (Bytes)), Accepted);
+                 (Encoder, Own (1 .. Natural (Bytes)), Accepted);
             end if;
          end;
       end if;
@@ -387,16 +392,83 @@ package body CuBit.Libc_Process is
       Start : constant System.Address := Path;
       Length : Natural;
       Error : int;
+      On_System : constant String := PN.System_Volume & PN.Separator;
+      --  The child's working directory, from addchdir file actions.
+      Directory : PN.Name;
+      Directory_Length : PN.Name_Length := 0;
    begin
       if File_Actions /= System.Null_Address then
          declare
             Actions : constant System.Address
             with Import,
                  Address => File_Actions + File_Actions_Pointer_Offset;
+            Action : System.Address := Actions;
          begin
-            if Actions /= System.Null_Address then
-               return ENOTSUP;
-            end if;
+            --  Newest first: apply them from the oldest, each relative to
+            --  the directory before it.
+            while Action /= System.Null_Address loop
+               declare
+                  Next : constant System.Address
+                  with Import, Address => Action + Fdop_Next_Offset;
+               begin
+                  exit when Next = System.Null_Address;
+                  Action := Next;
+               end;
+            end loop;
+            while Action /= System.Null_Address loop
+               declare
+                  Command : constant int
+                  with Import, Address => Action + Fdop_Command_Offset;
+                  Previous : constant System.Address
+                  with Import, Address => Action + Fdop_Prev_Offset;
+                  Path_Length : constant Natural :=
+                    C_Length (Action + Fdop_Path_Offset, PN.Maximum_Path_Bytes);
+                  Base : PN.Name;
+                  Base_Length : PN.Name_Length := 0;
+                  Status : PN.Resolution := PN.Resolved;
+               begin
+                  if Command /= FDOP_CHDIR then
+                     return ENOTSUP;
+                  elsif Path_Length = 0 then
+                     return ENOENT;
+                  elsif Path_Length > PN.Maximum_Path_Bytes then
+                     return ENAMETOOLONG;
+                  end if;
+                  if Directory_Length > 0 then
+                     Base (1 .. Directory_Length) := Directory (1 .. Directory_Length);
+                     Base_Length := Directory_Length;
+                  else
+                     declare
+                        Own : String (1 .. Working_Directory_Bytes);
+                        Chosen : aliased int := 0;
+                        Bytes : constant size_t :=
+                          Working_Directory (Own'Address, Chosen'Access);
+                     begin
+                        if Chosen /= 0 and then Bytes in 1 .. size_t (PN.Maximum_Name_Bytes) then
+                           Base_Length := Natural (Bytes);
+                           Base (1 .. Base_Length) := Own (1 .. Base_Length);
+                        else
+                           Base_Length := On_System'Length;
+                           Base (1 .. Base_Length) := On_System;
+                        end if;
+                     end;
+                  end if;
+                  declare
+                     Text : constant String (1 .. Path_Length)
+                     with Import, Address => Action + Fdop_Path_Offset;
+                  begin
+                     PN.Resolve (Base (1 .. Base_Length), Text, PN.Maximum_Name_Bytes,
+                                 Directory, Directory_Length, Status);
+                  end;
+                  case Status is
+                     when PN.Resolved => null;
+                     when PN.Empty_Path => return ENOENT;
+                     when PN.Too_Long => return ENAMETOOLONG;
+                     when PN.Invalid_Base => return EINVAL;
+                  end case;
+                  Action := Previous;
+               end;
+            end loop;
          end;
       end if;
       if Path = System.Null_Address then
@@ -414,7 +486,6 @@ package body CuBit.Libc_Process is
          Resolved_Length : PN.Name_Length := 0;
          Status : PN.Resolution := PN.Resolved;
          First : Positive := 1;
-         On_System : constant String := PN.System_Volume & PN.Separator;
       begin
          if (for some C of Text => C = PN.Separator) then
             declare
@@ -452,7 +523,8 @@ package body CuBit.Libc_Process is
          end if;
          Lock (Child_Lock'Access);
          Error := Spawn_Locked
-           (Result, Resolved (First .. Resolved_Length), Arguments, Environment);
+           (Result, Resolved (First .. Resolved_Length), Arguments, Environment,
+            Directory (1 .. Directory_Length));
          Unlock (Child_Lock'Access);
       end;
       return Error;
@@ -474,9 +546,31 @@ package body CuBit.Libc_Process is
    Pending_Count : Natural := 0;
    Pending_Lost : Natural := 0;
 
+   --  musl's _Exit: the process ends now, without atexit handlers or
+   --  flushing (a signal's default action).
+   procedure Quick_Exit (Status : int)
+   with Import, Convention => C, External_Name => "_Exit", No_Return;
+
+   --  A control message's default action (see Note_Event's description).
+   procedure Take_Control (M : CuBit.Kernel_ABI.Message);
+   procedure Take_Control (M : CuBit.Kernel_ABI.Message) is
+      use type CuBit.Control_Events.Event_Kind;
+      Event : constant CuBit.Control_Events.Event :=
+        CuBit.Control_Events.Decode (M.Label, M.Length, M.Words (0), M.Words (1), M.Words (2));
+   begin
+      if Event.Kind = CuBit.Control_Events.Control then
+         case Event.Control is
+            when CuBit.Control_Events.Stop => Quick_Exit (Signal_Exit_Base + SIGTERM);
+            when CuBit.Control_Events.Interrupt => Quick_Exit (Signal_Exit_Base + SIGINT);
+            when CuBit.Control_Events.Reload => null;
+         end case;
+      end if;
+   end Take_Control;
+
    procedure Note_Event (Item : System.Address) is
       M : constant CuBit.Kernel_ABI.Message with Import, Address => Item;
    begin
+      Take_Control (M);
       if M.Label = CuBit.Child_Exits.Event_Label
         and then CuBit.Child_Exits.Valid (M.Length, M.Words (0), M.Words (1), M.Words (2))
       then
@@ -497,9 +591,9 @@ package body CuBit.Libc_Process is
    function Dispatcher_Running return int
    with Import, Convention => C, External_Name => "__cubit_dispatcher_running";
 
-   --  Move every queued exit event of our children into Children. Other
-   --  events are dropped: nothing else in the libc consumes events.
-   --  Child_Lock is held.
+   --  Move every queued exit event of our children into Children, and take
+   --  control messages (Note_Event). Other events are dropped: nothing else
+   --  in the libc consumes events. Child_Lock is held.
    procedure Drain_Events;
 
    procedure Drain_Events is
@@ -515,6 +609,7 @@ package body CuBit.Libc_Process is
         (Receive_Event_Nonblocking, Unsigned_64 (To_Integer (M'Address)))
         = Event_Received
       loop
+         Take_Control (M);
          if M.Label = CuBit.Child_Exits.Event_Label
            and then CuBit.Child_Exits.Valid
              (M.Length, M.Words (0), M.Words (1), M.Words (2))

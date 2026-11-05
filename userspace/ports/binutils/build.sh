@@ -8,10 +8,17 @@
 #   build.sh OUTPUT_DIRECTORY
 set -euo pipefail
 export NIX_HARDENING_ENABLE=""
+# Locale-independent tool output and file-name order.
+export LC_ALL=C
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
 out=$1
 build=$here/build
+# Reproducible: as and ld are in the GCC port's toolchain tree, whose
+# identity is pinned (build-params.ccl). Source and build directories are
+# recorded relative to the checkout, and configure is run by a relative
+# name, as for the GCC port.
+prefix_map="-ffile-prefix-map=$root=."
 tools=(as ld ar nm objcopy objdump readelf strip size strings ranlib addr2line)
 
 # The source nixpkgs pins (flake.lock), not a separate download.
@@ -25,20 +32,26 @@ if [ ! -f "$build/source.stamp" ] || [ "$(cat "$build/source.stamp")" != "$tarba
     echo "$tarball" > "$build/source.stamp"
 fi
 
+configure_args=(
+    --build=x86_64-pc-linux-gnu --host=x86_64-linux-musl
+    --target=x86_64-pc-linux-gnu
+    --prefix=/ --disable-nls --disable-shared --enable-static
+    --disable-plugins --disable-gold --disable-gprofng --disable-gprof
+    --disable-gdb --disable-gdbserver --disable-sim --disable-readline
+    --disable-libdecnumber --disable-werror --disable-multilib
+    --without-zstd --without-debuginfod --without-msgpack
+    --with-system-zlib=no)
 mkdir -p "$build/obj"
 cd "$build/obj"
-if [ ! -f Makefile ]; then
-    CC="$root/userspace/libc/cubit-cc" CFLAGS="-O2" \
-    CXX="$root/userspace/libc/cubit-c++" CXXFLAGS="-O2" LDFLAGS="-static" \
-    "$build/src/configure" \
-        --build=x86_64-pc-linux-gnu --host=x86_64-linux-musl \
-        --target=x86_64-pc-linux-gnu \
-        --prefix=/ --disable-nls --disable-shared --enable-static \
-        --disable-plugins --disable-gold --disable-gprofng --disable-gprof \
-        --disable-gdb --disable-gdbserver --disable-sim --disable-readline \
-        --disable-libdecnumber --disable-werror --disable-multilib \
-        --without-zstd --without-debuginfod --without-msgpack \
-        --with-system-zlib=no > configure.log 2>&1
+# Reconfigured from scratch when the options or the source directory change
+# (configure records absolute paths).
+configure_key="$build/src $prefix_map ${configure_args[*]}"
+if [ ! -f Makefile ] || [ "$(cat configure.args 2>/dev/null)" != "$configure_key" ]; then
+    find . -mindepth 1 -delete
+    CC="$root/userspace/libc/cubit-cc" CFLAGS="-O2 $prefix_map" \
+    CXX="$root/userspace/libc/cubit-c++" CXXFLAGS="-O2 $prefix_map" LDFLAGS="-static" \
+    ../src/configure "${configure_args[@]}" > configure.log 2>&1
+    echo "$configure_key" > configure.args
 fi
 # binutils' make does not know the libc: relink the tools against the current one.
 rm -f gas/as-new ld/ld-new binutils/nm-new binutils/strip-new binutils/ar binutils/objcopy \

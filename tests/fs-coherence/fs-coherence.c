@@ -33,6 +33,29 @@
  *                         descriptor keeps the old file, the name the new one
  *   readdir-after-other-create  a directory we listed, then the other
  *                         process created files in it
+ *
+ * Advisory locks (flock), released by the filesystem service when their
+ * handle closes or their process exits, however it ends:
+ *   lock-holder-exits     the other process holds LOCK_EX and exits without
+ *                         closing: our LOCK_NB fails while it lives, our
+ *                         blocking LOCK_EX is granted once it is gone
+ *   lock-holder-killed    the same, but the holder is killed (it traps:
+ *                         the kernel ends it, the libc closes nothing)
+ *   lock-shared-exclusive the other process holds LOCK_SH: our LOCK_SH
+ *                         is granted, LOCK_EX conflicts with both, and is
+ *                         granted (blocking) once the other has exited
+ *   lock-deadline         a blocking LOCK_EX with a 200 ms limit gives up
+ *                         with ETIMEDOUT while the other holds the lock
+ *                         (CuBit: cubit_flock_timeout; Linux: a LOCK_NB
+ *                         loop, the reference behaviour)
+ *   lock-close            one process: a second descriptor conflicts with
+ *                         the first (flock locks belong to the open file);
+ *                         close and LOCK_UN release; a closed descriptor
+ *                         reopened read-only (CuBit: its parked handle
+ *                         reused), locked and closed again leaves no lock
+ *   fsync-directory       fsync of a directory descriptor and of a
+ *                         read-only file descriptor succeed (CuBit: both
+ *                         commit the volume's journal)
  */
 #define _GNU_SOURCE
 #include <dirent.h>
@@ -42,12 +65,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #ifdef CUBIT
 #include <cubit/debug.h>
+#include <cubit/files.h>
 #include <spawn.h>
 #define DIRECTORY "@nvme:0/fs-coherence"
 #endif
@@ -61,6 +86,14 @@
 #define NS_PER_MS 1000000L
 #define DIR_MODE 0755
 #define PATH_BYTES 256                 /* a directory and a case's name */
+#define HOLD_MS 600                     /* the other process holds its lock */
+#define LIMIT_MS 200                    /* lock-deadline's limit */
+/* The limit is a deadline on the filesystem service's clock (GET_TIME's
+ * milliseconds); CLOCK_MONOTONIC, which measures it here, is the HPET when
+ * the TSC is not published (QEMU): the two were seen 1 % apart (198 ms). */
+#define CLOCK_SLACK_MS 5
+#define READY_WAIT_MS 10000             /* the other process takes its lock */
+#define POLL_MS 5
 #define NAME_BYTES (PATH_BYTES + 16)  /* and an entry in it */
 
 static const char *directory;
@@ -161,6 +194,63 @@ static void created_name(char *out, const char *sub, int k)
 	snprintf(out, NAME_BYTES, "%s/n%d", sub, k);
 }
 
+static long now_ms(void)
+{
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return t.tv_sec * 1000L + t.tv_nsec / NS_PER_MS;
+}
+
+static void sleep_ms(long ms)
+{
+	struct timespec t = { ms / 1000, (ms % 1000) * NS_PER_MS };
+	nanosleep(&t, 0);
+}
+
+/* The cases with a lock-holding other process. */
+static int is_lock_case(void)
+{
+	return !strncmp(case_name, "lock-", 5) && strcmp(case_name, "lock-close");
+}
+
+/* flock with a limit: 0, or -1 with errno (ETIMEDOUT when it gave up). */
+static int lock_within(int fd, int operation, long limit_ms)
+{
+#ifdef CUBIT
+	long r = cubit_flock_timeout(fd, operation, limit_ms);
+	if (r < 0) {
+		errno = (int)-r;
+		return -1;
+	}
+	return 0;
+#else
+	long until = now_ms() + limit_ms;
+	if (limit_ms < 0)
+		return flock(fd, operation);
+	for (;;) {
+		if (flock(fd, operation | LOCK_NB) == 0) return 0;
+		if (errno != EWOULDBLOCK) return -1;
+		if (now_ms() >= until) {
+			errno = ETIMEDOUT;
+			return -1;
+		}
+		sleep_ms(POLL_MS);
+	}
+#endif
+}
+
+/* Wait (with a limit) until the other process has made name. */
+static int wait_for(const char *name)
+{
+	struct stat st;
+	long until = now_ms() + READY_WAIT_MS;
+	while (stat(name, &st) != 0) {
+		if (now_ms() >= until) return -1;
+		sleep_ms(POLL_MS);
+	}
+	return 0;
+}
+
 /* --- the cases: prepare (this process), act (the other), check ----------- */
 
 static int held_fd = -1;                /* rename-over-open */
@@ -174,6 +264,39 @@ static int prepare(void)
 	unlink(b);
 	if (!strcmp(case_name, "exit-left-open") || !strcmp(case_name, "exit-closed"))
 		return 0;
+	if (is_lock_case())                     /* a: the lock file, b: ready */
+		return put_file(a, 'L', 1);
+	if (!strcmp(case_name, "lock-close")) {
+		if (put_file(a, 'L', 1) < 0) return -1;
+		int one = open(a, O_RDWR), two = open(a, O_RDWR), ok = one >= 0 && two >= 0;
+		ok = ok && flock(one, LOCK_EX | LOCK_NB) == 0;
+		ok = ok && flock(two, LOCK_EX | LOCK_NB) < 0 && errno == EWOULDBLOCK;
+		ok = ok && flock(two, LOCK_SH | LOCK_NB) < 0 && errno == EWOULDBLOCK;
+		ok = ok && close(one) == 0;                         /* close releases */
+		ok = ok && flock(two, LOCK_EX | LOCK_NB) == 0;
+		int three = open(a, O_RDONLY);
+		ok = ok && three >= 0 && flock(three, LOCK_SH | LOCK_NB) < 0 && errno == EWOULDBLOCK;
+		ok = ok && flock(two, LOCK_UN) == 0;                /* LOCK_UN releases */
+		ok = ok && flock(three, LOCK_SH | LOCK_NB) == 0;
+		ok = ok && flock(two, LOCK_SH | LOCK_NB) == 0;      /* shared with shared */
+		ok = ok && close(three) == 0 && close(two) == 0;
+		/* Read-only again (CuBit: the parked handle reused), locked and
+		 * closed: nothing may stay locked. */
+		int four = open(a, O_RDONLY);
+		ok = ok && four >= 0 && flock(four, LOCK_EX | LOCK_NB) == 0 && close(four) == 0;
+		int five = open(a, O_RDWR);
+		ok = ok && five >= 0 && flock(five, LOCK_EX | LOCK_NB) == 0 && close(five) == 0;
+		return ok ? 0 : -1;
+	}
+	if (!strcmp(case_name, "fsync-directory")) {
+		if (put_file(a, 'F', FILE_BYTES) < 0) return -1;
+		int file = open(a, O_RDONLY), dir = open(directory, O_RDONLY | O_DIRECTORY);
+		int ok = file >= 0 && dir >= 0 && fsync(file) == 0 && fsync(dir) == 0;
+		if (rename(a, b) != 0 || fsync(dir) != 0) ok = 0;
+		if (file >= 0) close(file);
+		if (dir >= 0) close(dir);
+		return ok ? 0 : -1;
+	}
 	if (!strcmp(case_name, "reopen-after-other-rename") ||
 	    !strcmp(case_name, "reopen-after-other-unlink-recreate") ||
 	    !strcmp(case_name, "other-truncate"))
@@ -231,7 +354,61 @@ static int act(void)
 		}
 		return 0;
 	}
+	if (!strcmp(case_name, "lock-close") || !strcmp(case_name, "fsync-directory"))
+		return 0;                           /* all in this process */
+	if (is_lock_case()) {
+		int fd = open(a, O_RDWR);
+		int shared = !strcmp(case_name, "lock-shared-exclusive");
+		if (fd < 0 || flock(fd, shared ? LOCK_SH : LOCK_EX) != 0) return -1;
+		if (put_file(b, 'R', 1) < 0) return -1;     /* ready: it holds */
+		sleep_ms(!strcmp(case_name, "lock-deadline") ? 3 * HOLD_MS : HOLD_MS);
+		if (!strcmp(case_name, "lock-holder-killed"))
+			__builtin_trap();               /* killed holding it */
+		return 0;                           /* exits holding it, fd open */
+	}
 	return -1;
+}
+
+/* This process, while the other runs (lock cases): what conflicts while
+ * it holds its lock, and what is granted once it is gone. */
+static const char *during(void)
+{
+	char a[PATH_BYTES], b[PATH_BYTES];
+	name_of(a, "a");
+	name_of(b, "b");
+	if (!is_lock_case()) return 0;
+	if (wait_for(b) < 0) return "the other process never took its lock";
+	int one = open(a, O_RDWR), two = open(a, O_RDWR);
+	if (one < 0 || two < 0) return "lock file not opened";
+	const char *wrong = 0;
+	if (!strcmp(case_name, "lock-shared-exclusive")) {
+		if (flock(one, LOCK_SH | LOCK_NB) != 0) wrong = "shared refused beside shared";
+		else if (flock(two, LOCK_EX | LOCK_NB) == 0 || errno != EWOULDBLOCK)
+			wrong = "exclusive granted beside shared";
+		else if (close(one) != 0) wrong = "close";
+		else if (one = -1, flock(two, LOCK_EX | LOCK_NB) == 0 || errno != EWOULDBLOCK)
+			wrong = "exclusive granted beside the other's shared";
+		else if (flock(two, LOCK_EX) != 0) wrong = "blocking exclusive not granted";
+	} else if (!strcmp(case_name, "lock-deadline")) {
+		long started = now_ms();
+		if (lock_within(one, LOCK_EX, LIMIT_MS) == 0) wrong = "granted while held";
+		else if (errno != ETIMEDOUT) wrong = "not ETIMEDOUT";
+		else if (now_ms() - started < LIMIT_MS - CLOCK_SLACK_MS) {
+			static char early[64];
+			snprintf(early, sizeof early, "gave up before the limit (%ld ms)", now_ms() - started);
+			wrong = early;
+		}
+		else if (now_ms() - started >= 3 * HOLD_MS) wrong = "gave up long after the limit";
+		else if (lock_within(two, LOCK_EX, -1) != 0) wrong = "not granted after the holder";
+	} else {                                    /* holder exits or is killed */
+		if (flock(one, LOCK_EX | LOCK_NB) == 0 || errno != EWOULDBLOCK)
+			wrong = "granted while the other holds it";
+		else if (flock(one, LOCK_EX) != 0) wrong = "blocking request not granted";
+		else if (flock(two, LOCK_EX | LOCK_NB) == 0) wrong = "two exclusive holders";
+	}
+	if (one >= 0) close(one);
+	close(two);
+	return wrong;
 }
 
 /* Checked once the other process has exited; cleans up after itself. */
@@ -259,6 +436,13 @@ static const char *check(void)
 		else if (!file_is(a, 'B', FILE_BYTES)) wrong = "name does not hold the renamed file";
 		else if (open(b, O_RDONLY) >= 0 || errno != ENOENT) wrong = "old name still there";
 		close(held_fd);
+	} else if (!strcmp(case_name, "fsync-directory")) {
+		if (!file_is(b, 'F', FILE_BYTES)) wrong = "renamed file's bytes lost";
+	} else if (!strncmp(case_name, "lock-", 5)) {
+		/* Nobody holds it now. */
+		int fd = open(a, O_RDWR);
+		if (fd < 0 || flock(fd, LOCK_EX | LOCK_NB) != 0) wrong = "still locked after everyone let go";
+		if (fd >= 0) close(fd);
 	} else if (!strcmp(case_name, "readdir-after-other-create")) {
 		char sub[PATH_BYTES], n[NAME_BYTES];
 		name_of(sub, "dir");
@@ -315,9 +499,15 @@ int main(int argc, char **argv)
 	if (child < 0)
 		return finish("other process not started");
 #endif
+	const char *wrong_during = during();
 	int status = 0;
-	if (waitpid(child, &status, 0) != child || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+	int killed = !strcmp(case_name, "lock-holder-killed");
+	if (waitpid(child, &status, 0) != child ||
+	    (killed ? WIFEXITED(status) && WEXITSTATUS(status) == 0
+		    : !WIFEXITED(status) || WEXITSTATUS(status) != 0))
 		return finish("other process failed");
+	if (wrong_during)
+		return finish(wrong_during);
 	struct timespec settle = { 0, SETTLE_MS * NS_PER_MS };
 	nanosleep(&settle, 0);
 	return finish(check());

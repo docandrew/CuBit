@@ -206,6 +206,7 @@ device-memory-diagnostics | kernel | kernel | alr exec -- gnatprove -P ../tests/
 directory-pages         | fs       | kernel | alr exec -- gnatprove -P ../tests/directory-pages/pages.gpr -u cubit-directory_pages.adb --level=2 -j2 --report=fail --checks-as-errors=on
 display-planes          | display  | kernel | bash ../tests/display-planes/prepare.sh && alr exec -- gnatprove -P ../tests/display-planes/planes.gpr -u cubit-display_planes.adb cubit-display_plane_protocol.adb cubit-gpu_plane_protocol.adb --level=2 --report=fail --checks-as-errors=on -j4
 filesystem-copy         | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-copy/copy.gpr -u copy_slices.adb --level=2 --report=all -j2
+filesystem-locks        | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-locks/locks.gpr -u locks_proof.ads --level=2 --report=all -j2
 filesystem-events       | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-events/events.gpr -u cubit-filesystem_events.adb watch_reserve.adb --level=2 --report=all -j2
 filesystem-queue-wakes  | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-queue-wakes/wakes.gpr -u queue_wakes.adb --level=2 --report=all -j2
 filesystem-truncate     | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-truncate/accounting_proof.gpr --level=1 --timeout=5 --checks-as-errors=on -j2

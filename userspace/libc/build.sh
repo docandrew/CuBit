@@ -6,8 +6,16 @@ set -euo pipefail
 # The libc's start code runs before the thread pointer (and so the stack
 # canary at %fs:0x28) exists; CuBit programs are static and non-PIE.
 export NIX_HARDENING_ENABLE=""
+# Locale-independent file-name order (the archive's members).
+export LC_ALL=C
 here=$(cd "$(dirname "$0")" && pwd)
 build=$here/build
+# Reproducible: the same sources make the same libc in any checkout. Debug
+# information names files relative to the checkout, and the configuration
+# pragmas file is named relatively (GNAT records its switches in the
+# objects). The GCC port's toolchain tree, whose identity is pinned, holds
+# this libc and programs linked with it.
+prefix_map="-ffile-prefix-map=$(cd "$here/../.." && pwd)=."
 musl_version=1.2.6
 musl_sha256=d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a
 tarball=$build/musl-$musl_version.tar.gz
@@ -32,7 +40,7 @@ done
 (
     cd "$src"
     ./configure --prefix="$sysroot" --target=x86_64 --disable-shared \
-        CFLAGS="-O2 -g" >/dev/null
+        CFLAGS="-O2 -g $prefix_map" >/dev/null
     make -j"$(nproc)" >/dev/null
     make install >/dev/null
 )
@@ -81,8 +89,8 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/../runtime/gnat/cubit-startup_tables.adb" "$here/../runtime/gnat/cubit-launch_envelopes.adb" \
     "$here/../../shared/capabilities/capability_abi.adb" \
     "$here/ada/cubit-libc_startup.adb"; do
-    (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic -ffunction-sections \
-        -gnat2022 -gnatwa -gnatys -gnatec="$here/libc-ada.adc" \
+    (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g "$prefix_map" -gnatp -gnatn -fno-pic -ffunction-sections \
+        -gnat2022 -gnatwa -gnatys -gnatec=../../libc-ada.adc \
         -I"$here/ada" -I"$here/../runtime/gnat" -I"$here/../../shared/time" \
         -I"$here/../../shared/publications" -I"$here/../../shared/launch" \
         -I"$here/../../shared/capabilities" \

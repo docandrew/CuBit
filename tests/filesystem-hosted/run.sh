@@ -2,7 +2,8 @@
 # Every Linux-hosted filesystem suite, in one run (inside nix develop, with
 # TMPDIR outside /tmp): JBD2 replay against e2fsprogs, power cuts, the
 # namespace and pressure workloads, I/O counts, Linux round-trip images,
-# the service's pure core, and the cross-process coherence cases against
+# the service's pure core, its advisory locks (tests/filesystem-locks), and
+# the cross-process coherence cases (locks among them) against
 # Linux's own semantics (tests/fs-coherence/host.sh). Prints one line per
 # suite and FILESYSTEM-HOSTED: PASS or FAIL; full output in LOG_DIR.
 set -uo pipefail
@@ -31,6 +32,8 @@ suite build-interop filesystem-interop gprbuild -q -p -P interop.gpr
 suite linux-round-trip filesystem-interop python3 run.py
 suite build-server-core filesystem-server-core gprbuild -q -p -P server_core.gpr
 suite server-core filesystem-server-core build/main
+suite build-locks filesystem-locks gprbuild -q -p -P locks.gpr
+suite locks filesystem-locks build/main
 suite coherence-linux fs-coherence ./host.sh
 echo "logs: $logs"
 if [ "$failed" = 0 ]; then echo "FILESYSTEM-HOSTED: PASS"; else echo "FILESYSTEM-HOSTED: FAIL"; fi

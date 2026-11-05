@@ -6,9 +6,16 @@
 # gcc's static init/fini frame. libgcc comes with its unwinder (libgcc_eh),
 # as for any static link: Ada exceptions use it. ld links directly: no
 # collect2, no LTO (decision D4).
+#
+# A program linked -nostdlib (CuBit's native Ada programs, which bring the
+# user runtime's start code and link script) gets none of the libc's link
+# layout, and -mno-red-zone is added only when not given: the driver then
+# runs ld and gnat1 with exactly what the same GCC does on Linux, so
+# ccl-build on CuBit makes the same programs byte for byte
+# (tests/ccl-build-native).
 
 *cc1:
-+ -mno-red-zone
++ %{!mno-red-zone:-mno-red-zone}
 
 *startfile:
 cubit-crt1.o%s crti.o%s crtbeginT.o%s
@@ -17,7 +24,7 @@ cubit-crt1.o%s crti.o%s crtbeginT.o%s
 crtend.o%s crtn.o%s
 
 *link:
--m elf_x86_64 -static -T cubit.ld%s -z stack-size=1048576 -z noexecstack -z noseparate-code
+-m elf_x86_64 -static %{!nostdlib:-T cubit.ld%s -z stack-size=1048576 -z noexecstack -z noseparate-code}
 
 *lib:
 -lc

@@ -2,11 +2,23 @@
 --  (docs/ccl-build.md); run with tests/ccl-build/run.sh.
 with "../../userspace/lib/tls/sparktls_host.gpr";
 project CCL_Build_Tests is
+   --  Build_Platform's body: linux (the host's), or cubit to test the CuBit
+   --  body's contract hosted on Linux (platform_tests; build-cubit-body/).
+   type Platforms is ("linux", "cubit");
+   Platform : Platforms := external ("CCL_BUILD_PLATFORM", "linux");
    for Languages use ("Ada");
-   for Source_Dirs use (".", "../../userspace/lib/storehouse", "../../userspace/ccl/tools/ccl-build");
-   for Object_Dir use "build";
-   for Exec_Dir use "build";
-   for Main use ("core_tests.adb", "store_tests.adb", "store_driver.adb");
+   for Source_Dirs use (".", "../../userspace/lib/storehouse", "../../userspace/ccl/tools/ccl-build",
+                        "../../userspace/ccl/tools/ccl-build/" & Platform);
+   case Platform is
+      when "linux" =>
+         for Object_Dir use "build";
+         for Exec_Dir use "build";
+         for Main use ("core_tests.adb", "store_tests.adb", "store_driver.adb", "platform_tests.adb");
+      when "cubit" =>
+         for Object_Dir use "build-cubit-body";
+         for Exec_Dir use "build-cubit-body";
+         for Main use ("platform_tests.adb");
+   end case;
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");

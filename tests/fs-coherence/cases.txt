@@ -5,3 +5,9 @@ reopen-after-other-unlink-recreate
 other-truncate
 rename-over-open
 readdir-after-other-create
+lock-holder-exits
+lock-holder-killed
+lock-shared-exclusive
+lock-deadline
+lock-close
+fsync-directory

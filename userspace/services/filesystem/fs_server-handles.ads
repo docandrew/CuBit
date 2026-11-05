@@ -23,8 +23,8 @@ private package Fs_Server.Handles is
       sender : Process_ID;
       expectedKind : Open_Object_Kind) return Integer;
 
-   --  Release a handle: its delegation, kept write error, notice path and
-   --  copies go; an unlinked file it held last is reclaimed.
+   --  Release a handle: its delegation, kept write error, notice path,
+   --  copies and lock go; an unlinked file it held last is reclaimed.
    procedure releaseHandle (slot : Integer);
 
    procedure releaseHandlesForOwner (owner : Process_ID);

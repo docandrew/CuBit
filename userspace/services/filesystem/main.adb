@@ -87,9 +87,13 @@ begin
       Fs_Server.Service_Client_Queues;
       Fs_Server.Settle_Watches;
       Fs_Server.Run_Copies;
+      Fs_Server.Expire_Lock_Waits;
       if not Fs_Server.Arm_Client_Queues then
-      --  Copies in progress: look for messages without waiting.
-      receiveUntil ((if Fs_Server.Copies_Active then 0 else nextCommit), sender, msg, received);
+      --  Copies in progress: look for messages without waiting; lock waits:
+      --  wake for the earliest deadline.
+      receiveUntil ((if Fs_Server.Copies_Active then 0
+                     else Unsigned_64'Min (nextCommit, Fs_Server.Next_Lock_Deadline)),
+                    sender, msg, received);
       if received then
       case msg.tag.label is
          when CuBit.Channel_Protocol.OP_OPEN_PRODUCING

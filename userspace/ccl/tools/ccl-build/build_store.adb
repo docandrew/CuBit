@@ -2,6 +2,7 @@ with Ada.Containers.Indefinite_Hashed_Maps;
 with Ada.Containers.Indefinite_Hashed_Sets;
 with Ada.Containers.Vectors;
 with Ada.Directories;
+with Ada.Exceptions;
 with Ada.Strings.Fixed;
 with Ada.Strings.Hash;
 with Ada.Text_IO;
@@ -61,7 +62,7 @@ package body Build_Store is
    type Session is record
       Root : Unbounded_String;
       Role : Store_Role;
-      Collection : Build_POSIX.Lock;
+      Collection : Build_Platform.Lock;
    end record;
    package Session_Vectors is new Ada.Containers.Vectors (Positive, Session);
    Sessions : Session_Vectors.Vector;
@@ -72,7 +73,7 @@ package body Build_Store is
 
    --  The step locks this process holds, by shape.
    package Claim_Maps is new Ada.Containers.Indefinite_Hashed_Maps
-     (String, Build_POSIX.Lock, Ada.Strings.Hash, "=", Build_POSIX."=");
+     (String, Build_Platform.Lock, Ada.Strings.Hash, "=", Build_Platform."=");
    Claims : Claim_Maps.Map;
 
    function Image (N : Integer) return String is
@@ -109,8 +110,8 @@ package body Build_Store is
       Locked : Boolean;
    begin
       Read_Claim (Claim, Owner, Locked);
-      return not Locked and then Owner > 0 and then Owner /= Integer (Build_POSIX.Process_Id)
-        and then Build_POSIX.Process_Alive (Interfaces.C.int (Owner));
+      return not Locked and then Owner > 0 and then Owner /= Integer (Build_Platform.Process_Id)
+        and then Build_Platform.Process_Alive (Interfaces.C.int (Owner));
    end Claimed_By_Older_Build;
 
    function Kind_Directory (Kind : Entry_Kind) return String is
@@ -141,10 +142,10 @@ package body Build_Store is
    end Members;
 
    function Is_Directory (Name : String) return Boolean is
-     (not Build_POSIX.Is_Symbolic_Link (Name) and then GNAT.OS_Lib.Is_Directory (Name));
+     (not Build_Platform.Is_Symbolic_Link (Name) and then GNAT.OS_Lib.Is_Directory (Name));
 
    function Is_Regular (Name : String) return Boolean is
-     (not Build_POSIX.Is_Symbolic_Link (Name) and then GNAT.OS_Lib.Is_Regular_File (Name));
+     (not Build_Platform.Is_Symbolic_Link (Name) and then GNAT.OS_Lib.Is_Regular_File (Name));
 
    function Names (S : Store; Directory : String) return Name_Vectors.Vector is
      (if Is_Directory (Root (S) / Directory) then Members (Root (S) / Directory) else Name_Vectors.Empty_Vector);
@@ -215,9 +216,9 @@ package body Build_Store is
          begin
             W.Add_Array (3);
             W.Add_Text (Member);
-            if Build_POSIX.Is_Symbolic_Link (Path) then
+            if Build_Platform.Is_Symbolic_Link (Path) then
                declare
-                  Target : constant String := Build_POSIX.Link_Target (Path);
+                  Target : constant String := Build_Platform.Link_Target (Path);
                begin
                   if Target'Length = 0 or else (Target (Target'First) = '/' and then not Absolute_Links) then
                      raise Store_Error with Path & ": a tree's links must be relative";
@@ -230,7 +231,7 @@ package body Build_Store is
                W.Add_Digest (Hash_Tree (Path, Absolute_Links));
             elsif Is_Regular (Path) then
                W.Add_Unsigned (Member_Kind'Pos
-                 (if Build_POSIX.Is_Executable (Path) then Member_Executable else Member_File));
+                 (if Build_Platform.Is_Executable (Path) then Member_Executable else Member_File));
                W.Add_Digest (Hash_File (Path));
             else
                raise Store_Error with Path & " is not a file, directory or link";
@@ -244,15 +245,15 @@ package body Build_Store is
 
    procedure Remove (Name : String) is
    begin
-      if Build_POSIX.Is_Symbolic_Link (Name) or else not GNAT.OS_Lib.Is_Directory (Name) then
-         Build_POSIX.Delete_File_If_Present (Name);
+      if Build_Platform.Is_Symbolic_Link (Name) or else not GNAT.OS_Lib.Is_Directory (Name) then
+         Build_Platform.Delete_File_If_Present (Name);
          return;
       end if;
-      Build_POSIX.Change_Mode (Name, Build_POSIX.Writable_Directory);
+      Build_Platform.Change_Mode (Name, Build_Platform.Writable_Directory);
       for Member of Members (Name) loop
          Remove (Name / Member);
       end loop;
-      Build_POSIX.Delete_Directory_If_Present (Name);
+      Build_Platform.Delete_Directory_If_Present (Name);
    end Remove;
 
    function New_Work (S : Store) return String is
@@ -264,9 +265,9 @@ package body Build_Store is
          Work_Counter := Work_Counter + 1;
          declare
             Name : constant String := Root (S) / Work_Directory /
-              (Image (Integer (Build_POSIX.Process_Id)) & "-" & Image (Work_Counter));
+              (Image (Integer (Build_Platform.Process_Id)) & "-" & Image (Work_Counter));
          begin
-            Build_POSIX.Make_Directory_New (Name, Created);
+            Build_Platform.Make_Directory_New (Name, Created);
             if Created then
                return Name;
             end if;
@@ -283,12 +284,12 @@ package body Build_Store is
       if Is_Directory (Name) then
          --  A directory moved to another parent must be writable (its "..").
          begin
-            Build_POSIX.Change_Mode (Name, Build_POSIX.Writable_Directory);
+            Build_Platform.Change_Mode (Name, Build_Platform.Writable_Directory);
          exception
-            when Build_POSIX.POSIX_Error => null;   --  gone meanwhile
+            when Build_Platform.Platform_Error => null;   --  gone meanwhile
          end;
       end if;
-      Build_POSIX.Rename_If_Present (Name, Work / "reaped", Moved);
+      Build_Platform.Rename_If_Present (Name, Work / "reaped", Moved);
       Remove (Work);
    end Reap;
 
@@ -298,7 +299,7 @@ package body Build_Store is
    --  directories whose lock is free (or whose claim names a dead older
    --  ccl-build), and staging directories named after a dead process.
    procedure Clean_Work (S : Store) is
-      Own : constant Integer := Integer (Build_POSIX.Process_Id);
+      Own : constant Integer := Integer (Build_Platform.Process_Id);
    begin
       for Member of Members (Root (S) / Work_Directory) loop
          if Starts_With (Member, Step_Prefix) then
@@ -313,15 +314,15 @@ package body Build_Store is
                   Reap (S, Root (S) / Work_Directory / Member);
                else
                   declare
-                     Held : Build_POSIX.Lock :=
-                       Build_POSIX.Acquire (Lock_Path (S, Step_Prefix & Shape), Build_POSIX.Exclusive, Wait => False);
+                     Held : Build_Platform.Lock :=
+                       Build_Platform.Acquire (Lock_Path (S, Step_Prefix & Shape), Build_Platform.Exclusive, Wait => False);
                   begin
-                     if Build_POSIX.Held (Held) then
+                     if Build_Platform.Held (Held) then
                         if not Claimed_By_Older_Build (Claim) then
                            Reap (S, Root (S) / Work_Directory / (Step_Prefix & Shape));
-                           Build_POSIX.Delete_File_If_Present (Claim);
+                           Build_Platform.Delete_File_If_Present (Claim);
                         end if;
-                        Build_POSIX.Release (Held, Delete => True);
+                        Build_Platform.Release (Held, Delete => True);
                      end if;
                   end;
                end if;
@@ -334,7 +335,7 @@ package body Build_Store is
                if Dash > Member'First then
                   Owner := Integer'Value (Member (Member'First .. Dash - 1));
                end if;
-               if Owner /= Own and then (Owner <= 0 or else not Build_POSIX.Process_Alive (Interfaces.C.int (Owner)))
+               if Owner /= Own and then (Owner <= 0 or else not Build_Platform.Process_Alive (Interfaces.C.int (Owner)))
                then
                   Reap (S, Root (S) / Work_Directory / Member);
                end if;
@@ -349,14 +350,14 @@ package body Build_Store is
       for Member of Members (Root (S) / Locks_Directory) loop
          if Starts_With (Member, Step_Prefix) then
             declare
-               Held : Build_POSIX.Lock :=
-                 Build_POSIX.Acquire (Lock_Path (S, Member), Build_POSIX.Exclusive, Wait => False);
+               Held : Build_Platform.Lock :=
+                 Build_Platform.Acquire (Lock_Path (S, Member), Build_Platform.Exclusive, Wait => False);
             begin
-               if Build_POSIX.Held (Held) then
+               if Build_Platform.Held (Held) then
                   if not Ada.Directories.Exists (Root (S) / Work_Directory / Member) then
-                     Build_POSIX.Release (Held, Delete => True);
+                     Build_Platform.Release (Held, Delete => True);
                   else
-                     Build_POSIX.Release (Held, Delete => False);
+                     Build_Platform.Release (Held, Delete => False);
                   end if;
                end if;
             end;
@@ -393,19 +394,20 @@ package body Build_Store is
       Ada.Directories.Create_Path (Root / Locks_Directory);
       Ada.Directories.Create_Path (Root / Work_Directory);
       declare
-         Mode : constant Build_POSIX.Lock_Mode :=
-           (case Role is when Shared_Use => Build_POSIX.Shared, when Collection => Build_POSIX.Exclusive);
-         Granted : Build_POSIX.Lock := Build_POSIX.Acquire (Lock_Path (Result, Collection_Lock), Mode, Wait => False);
+         Mode : constant Build_Platform.Lock_Mode :=
+           (case Role is when Shared_Use => Build_Platform.Shared, when Collection => Build_Platform.Exclusive);
+         Granted : Build_Platform.Lock := Build_Platform.Acquire (Lock_Path (Result, Collection_Lock), Mode, Wait => False);
       begin
-         if not Build_POSIX.Held (Granted) then
+         if not Build_Platform.Held (Granted) then
             Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error,
               (case Role is
                  when Shared_Use => "ccl-build: waiting for garbage collection of " & Root & " to finish",
                  when Collection => "ccl-build: waiting for the builds using " & Root & " to finish"));
-            Granted := Build_POSIX.Acquire (Lock_Path (Result, Collection_Lock), Mode, Wait => True);
+            Granted := Build_Platform.Acquire (Lock_Path (Result, Collection_Lock), Mode, Wait => True);
          end if;
          Sessions.Append (Session'(To_Unbounded_String (Root), Role, Granted));
       end;
+      Build_Platform.Mark_Alive (Root / Locks_Directory);
       Clean_Work (Result);
       return Result;
    end Open;
@@ -416,12 +418,11 @@ package body Build_Store is
    function Entry_Path (S : Store; Kind : Entry_Kind; Identity : Digest) return String is
      (Root (S) / Kind_Directory (Kind) / Storehouse.Hex.Image (Identity));
    Root_Suffix : constant String := ".root";
-   Nix_Store_Program : constant String := "nix-store";
 
    function Import_Record (S : Store; Identity : Digest) return String is
      (Root (S) / Imports_Directory / Storehouse.Hex.Image (Identity));
 
-   --  The Nix store path an import record names, or "".
+   --  The path an import record names (a tree recorded in place), or "".
    function Imported (S : Store; Identity : Digest) return String is
       File : Ada.Text_IO.File_Type;
    begin
@@ -451,18 +452,18 @@ package body Build_Store is
    procedure Quarantine (S : Store; Path, What, Reason : String) is
       Moved : Boolean;
       Target : constant String := Root (S) / Damaged_Directory /
-        (What & "-" & Image (Integer (Build_POSIX.Process_Id)) & "-" & Image (Work_Counter + 1));
+        (What & "-" & Image (Integer (Build_Platform.Process_Id)) & "-" & Image (Work_Counter + 1));
    begin
       Work_Counter := Work_Counter + 1;
       if Is_Directory (Path) then
          begin
-            Build_POSIX.Change_Mode (Path, Build_POSIX.Writable_Directory);
+            Build_Platform.Change_Mode (Path, Build_Platform.Writable_Directory);
          exception
-            when Build_POSIX.POSIX_Error => null;
+            when Build_Platform.Platform_Error => null;
          end;
       end if;
-      Build_POSIX.Rename_If_Present (Path, Target, Moved);
-      Build_POSIX.Sync (Ada.Directories.Containing_Directory (Path));
+      Build_Platform.Rename_If_Present (Path, Target, Moved);
+      Build_Platform.Sync (Ada.Directories.Containing_Directory (Path));
       Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error,
         "ccl-build: damaged: " & Path & " " & Reason & "; moved to " & Damaged_Directory & "/ and made again");
    end Quarantine;
@@ -472,7 +473,7 @@ package body Build_Store is
       Key : constant String := Verified_Key (Kind, Identity);
    begin
       if Kind = Tree and then not Is_Directory (Path) then
-         --  A Nix store tree recorded in place, checked when recorded.
+         --  A toolchain tree recorded in place, checked when recorded.
          return Imported (S, Identity) /= "";
       elsif Kind /= Tree and then not Is_Regular (Path) then
          return False;
@@ -514,21 +515,21 @@ package body Build_Store is
    --  its bytes and mode are durable before any rename names it.
    procedure Seal_File (Name : String; Executable : Boolean) is
    begin
-      Build_POSIX.Change_Mode
-        (Name, (if Executable then Build_POSIX.Read_Only_Executable else Build_POSIX.Read_Only_File));
-      Build_POSIX.Set_Times (Name, Entry_Time_Seconds);
-      Build_POSIX.Sync (Name);
+      Build_Platform.Change_Mode
+        (Name, (if Executable then Build_Platform.Read_Only_Executable else Build_Platform.Read_Only_File));
+      Build_Platform.Set_Times (Name, Entry_Time_Seconds);
+      Build_Platform.Sync (Name);
    end Seal_File;
 
    --  Moves a finished entry into place, or drops it if a concurrent build
    --  placed the same content first; Placed says which.
    procedure Publish (S : Store; Staged : String; Kind : Entry_Kind; Identity : Digest; Placed : out Boolean) is
    begin
-      Build_POSIX.Rename_New (Staged, Entry_Path (S, Kind, Identity), Placed);
+      Build_Platform.Rename_New (Staged, Entry_Path (S, Kind, Identity), Placed);
       if not Placed then
          Remove (Staged);
       end if;
-      Build_POSIX.Sync (Root (S) / Kind_Directory (Kind));
+      Build_Platform.Sync (Root (S) / Kind_Directory (Kind));
    end Publish;
 
    procedure Put_File (S : Store; Source : String; Kind : Entry_Kind; Identity : out Digest) is
@@ -567,22 +568,22 @@ package body Build_Store is
             From : constant String := Source / Member;
             To : constant String := Target / Member;
          begin
-            if Build_POSIX.Is_Symbolic_Link (From) then
-               Build_POSIX.Symbolic_Link (Build_POSIX.Link_Target (From), To);
+            if Build_Platform.Is_Symbolic_Link (From) then
+               Build_Platform.Symbolic_Link (Build_Platform.Link_Target (From), To);
             elsif Is_Directory (From) then
                Copy_Tree (From, To);
             else
                declare
                   Ignored : constant Digest := Copy_File (From, To);
                begin
-                  Seal_File (To, Build_POSIX.Is_Executable (From));
+                  Seal_File (To, Build_Platform.Is_Executable (From));
                end;
             end if;
          end;
       end loop;
-      Build_POSIX.Sync (Target);
+      Build_Platform.Sync (Target);
       if not Top then
-         Build_POSIX.Change_Mode (Target, Build_POSIX.Read_Only_Directory);
+         Build_Platform.Change_Mode (Target, Build_Platform.Read_Only_Directory);
       end if;
    end Copy_Tree;
 
@@ -607,8 +608,8 @@ package body Build_Store is
          end if;
          Publish (S, Staged, Tree, Identity, Placed);
          if Placed then
-            Build_POSIX.Change_Mode (Entry_Path (S, Tree, Identity), Build_POSIX.Read_Only_Directory);
-            Build_POSIX.Sync (Entry_Path (S, Tree, Identity));
+            Build_Platform.Change_Mode (Entry_Path (S, Tree, Identity), Build_Platform.Read_Only_Directory);
+            Build_Platform.Sync (Entry_Path (S, Tree, Identity));
             Verified.Include (Verified_Key (Tree, Identity));
          end if;
          Remove (Work);
@@ -625,8 +626,8 @@ package body Build_Store is
       Stream_IO.Create (Output, Stream_IO.Out_File, Name);
       Stream_IO.Write (Output, Elements);
       Stream_IO.Close (Output);
-      Build_POSIX.Change_Mode (Name, Build_POSIX.Read_Only_File);
-      Build_POSIX.Sync (Name);
+      Build_Platform.Change_Mode (Name, Build_Platform.Read_Only_File);
+      Build_Platform.Sync (Name);
    end Write_Sealed;
 
    function Text_Bytes (Text : String) return Byte_Array is
@@ -638,48 +639,29 @@ package body Build_Store is
       return Data;
    end Text_Bytes;
 
-   procedure Record_Nix_Tree (S : Store; Source : String; Identity : out Digest) is
+   procedure Record_In_Place (S : Store; Source : String; Identity : out Digest) is
       Work : constant String := New_Work (S);
       Staged : constant String := Work / "import";
    begin
-      if Source'Length <= Nix_Store'Length
-        or else Source (Source'First .. Source'First + Nix_Store'Length - 1) /= Nix_Store
-        or else not Is_Directory (Source)
-      then
+      if not Build_Platform.Records_In_Place (Source, Toolchain => True) or else not Is_Directory (Source) then
          Remove (Work);
-         raise Store_Error with Source & " is not a directory in " & Nix_Store;
+         raise Store_Error with Source & " is not a toolchain directory recorded in place";
       end if;
       Identity := Hash_Tree (Source, Absolute_Links => True);
       Write_Sealed (Staged, Text_Bytes (Source & ASCII.LF));
-      --  A Nix garbage-collector root first, so Nix keeps the tree while
-      --  the record names it (2026-10-19: a collected toolchain had to be
-      --  rebuilt from source).
-      declare
-         use GNAT.OS_Lib;
-         Arguments : Argument_List_Access := new Argument_List'
-           (new String'("--add-root"), new String'(Import_Record (S, Identity) & Root_Suffix),
-            new String'("--realise"), new String'(Source));
-         Program : GNAT.OS_Lib.String_Access := Locate_Exec_On_Path (Nix_Store_Program);
-         Succeeded : Boolean := False;
-         Output : constant String := Work / "nix-store.out";
-         Code : Integer;
+      --  Kept first (a Nix garbage-collector root on Linux), so the tree
+      --  stays while the record names it.
       begin
-         if Program /= null then
-            Spawn (Program.all, Arguments.all, Output, Succeeded, Code);
-            Succeeded := Succeeded and then Code = 0;
-            GNAT.OS_Lib.Free (Program);
-         end if;
-         GNAT.OS_Lib.Free (Arguments);
-         if not Succeeded then
+         Build_Platform.Keep_Recorded_Tree (Source, Import_Record (S, Identity) & Root_Suffix, Work);
+      exception
+         when E : Build_Platform.Platform_Error =>
             Remove (Work);
-            raise Store_Error with "cannot add a Nix garbage-collector root for " & Source &
-              " (" & Nix_Store_Program & " --add-root)";
-         end if;
+            raise Store_Error with Ada.Exceptions.Exception_Message (E);
       end;
-      Build_POSIX.Rename_Replace (Staged, Import_Record (S, Identity));
-      Build_POSIX.Sync (Root (S) / Imports_Directory);
+      Build_Platform.Rename_Replace (Staged, Import_Record (S, Identity));
+      Build_Platform.Sync (Root (S) / Imports_Directory);
       Remove (Work);
-   end Record_Nix_Tree;
+   end Record_In_Place;
 
    function Read_Bytes (Name : String) return Byte_Array is
       Size : constant Natural := Natural (Ada.Directories.Size (Name));
@@ -711,9 +693,9 @@ package body Build_Store is
       Placed : Boolean;
    begin
       Write_Sealed (Staged, Data);
-      Build_POSIX.Rename_New (Staged, Action_Path (S, Step), Placed);
+      Build_Platform.Rename_New (Staged, Action_Path (S, Step), Placed);
       Conflicting := not Placed and then Read_Bytes (Action_Path (S, Step)) /= Data;
-      Build_POSIX.Sync (Root (S) / Actions_Directory);
+      Build_Platform.Sync (Root (S) / Actions_Directory);
       Remove (Work);
    end Put_Action;
 
@@ -746,12 +728,12 @@ package body Build_Store is
       Ada.Directories.Create_Path (Directory);
       Write_Sealed (Staged, Data);
       if Replace then
-         Build_POSIX.Rename_Replace (Staged, Target);
+         Build_Platform.Rename_Replace (Staged, Target);
          Placed := True;
       else
-         Build_POSIX.Rename_New (Staged, Target, Placed);
+         Build_Platform.Rename_New (Staged, Target, Placed);
       end if;
-      Build_POSIX.Sync (Directory);
+      Build_Platform.Sync (Directory);
       Remove (Work);
    end Publish_Record;
 
@@ -773,8 +755,8 @@ package body Build_Store is
    procedure Delete_Record (S : Store; Name : String) is
       Path : constant String := Record_Path (S, Name);
    begin
-      Build_POSIX.Delete_File_If_Present (Path);
-      Build_POSIX.Sync (Ada.Directories.Containing_Directory (Path));
+      Build_Platform.Delete_File_If_Present (Path);
+      Build_Platform.Sync (Ada.Directories.Containing_Directory (Path));
    end Delete_Record;
 
    function Checkout_Key (Checkout : String) return String is (Storehouse.Hex.Image (Hash_Text (Checkout)));
@@ -793,17 +775,17 @@ package body Build_Store is
       if not Storehouse.Paths.Is_Relative (Name) or else Ada.Strings.Fixed.Index (Name, "/") /= 0 then
          raise Store_Error with """" & Name & """ is not a lock name";
       end if;
-      L.Held := Build_POSIX.Acquire (Lock_Path (S, Name), Build_POSIX.Exclusive, Wait => False);
-      if not Build_POSIX.Held (L.Held) then
+      L.Held := Build_Platform.Acquire (Lock_Path (S, Name), Build_Platform.Exclusive, Wait => False);
+      if not Build_Platform.Held (L.Held) then
          Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, Waiting_Message);
-         L.Held := Build_POSIX.Acquire (Lock_Path (S, Name), Build_POSIX.Exclusive, Wait => True);
+         L.Held := Build_Platform.Acquire (Lock_Path (S, Name), Build_Platform.Exclusive, Wait => True);
       end if;
    end Lock;
 
    procedure Unlock (L : in out Named_Lock) is
    begin
-      if Build_POSIX.Held (L.Held) then
-         Build_POSIX.Release (L.Held, Delete => True);
+      if Build_Platform.Held (L.Held) then
+         Build_Platform.Release (L.Held, Delete => True);
       end if;
    end Unlock;
 
@@ -811,13 +793,13 @@ package body Build_Store is
       Name : constant String := Storehouse.Hex.Image (Shape);
       Directory : constant String := Step_Path (S, Name);
       Claim : constant String := Directory & Owner_Suffix;
-      Held : Build_POSIX.Lock :=
-        Build_POSIX.Acquire (Lock_Path (S, Step_Prefix & Name), Build_POSIX.Exclusive, Wait => False);
+      Held : Build_Platform.Lock :=
+        Build_Platform.Acquire (Lock_Path (S, Step_Prefix & Name), Build_Platform.Exclusive, Wait => False);
    begin
-      if not Build_POSIX.Held (Held) then
+      if not Build_Platform.Held (Held) then
          Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error,
            "ccl-build: waiting for " & Label & ": another build is running it");
-         Held := Build_POSIX.Acquire (Lock_Path (S, Step_Prefix & Name), Build_POSIX.Exclusive, Wait => True);
+         Held := Build_Platform.Acquire (Lock_Path (S, Step_Prefix & Name), Build_Platform.Exclusive, Wait => True);
       end if;
       --  The claim, for older ccl-builds sharing the store (Locked_Claim).
       declare
@@ -827,21 +809,21 @@ package body Build_Store is
          Placed : Boolean;
       begin
          Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Note);
-         Ada.Text_IO.Put_Line (File, Image (Integer (Build_POSIX.Process_Id)));
+         Ada.Text_IO.Put_Line (File, Image (Integer (Build_Platform.Process_Id)));
          Ada.Text_IO.Put_Line (File, Locked_Claim);
          Ada.Text_IO.Close (File);
-         Build_POSIX.Link_New (Note, Claim, Placed);
+         Build_Platform.Link_New (Note, Claim, Placed);
          if not Placed then
             if Claimed_By_Older_Build (Claim) then
                Remove (Work);
-               Build_POSIX.Release (Held, Delete => True);
+               Build_Platform.Release (Held, Delete => True);
                raise Store_Error with "step " & Name & " is running in an older ccl-build";
             end if;
-            Build_POSIX.Delete_File_If_Present (Claim);
-            Build_POSIX.Link_New (Note, Claim, Placed);
+            Build_Platform.Delete_File_If_Present (Claim);
+            Build_Platform.Link_New (Note, Claim, Placed);
             if not Placed then
                Remove (Work);
-               Build_POSIX.Release (Held, Delete => True);
+               Build_Platform.Release (Held, Delete => True);
                raise Store_Error with "step " & Name & " was claimed meanwhile by an older ccl-build";
             end if;
          end if;
@@ -857,14 +839,14 @@ package body Build_Store is
 
    procedure Release_Step (S : Store; Shape : Digest; Keep : Boolean := False) is
       Name : constant String := Storehouse.Hex.Image (Shape);
-      Held : Build_POSIX.Lock := Claims (Name);
+      Held : Build_Platform.Lock := Claims (Name);
    begin
       if not Keep then
          Remove (Step_Path (S, Name));
       end if;
-      Build_POSIX.Delete_File_If_Present (Step_Path (S, Name) & Owner_Suffix);
+      Build_Platform.Delete_File_If_Present (Step_Path (S, Name) & Owner_Suffix);
       Claims.Delete (Name);
-      Build_POSIX.Release (Held, Delete => True);
+      Build_Platform.Release (Held, Delete => True);
    end Release_Step;
 
    procedure Verify (S : Store; Checked : out Natural) is
@@ -941,7 +923,7 @@ package body Build_Store is
    procedure Discard (S : Store; Kind : Entry_Kind; Identity : Digest) is
    begin
       Reap (S, Entry_Path (S, Kind, Identity));
-      Build_POSIX.Sync (Root (S) / Kind_Directory (Kind));
+      Build_Platform.Sync (Root (S) / Kind_Directory (Kind));
       Verified.Exclude (Verified_Key (Kind, Identity));
    end Discard;
 
@@ -986,7 +968,7 @@ package body Build_Store is
    end For_Each_Root;
 
    function Other_Users (S : Store) return String is
-      Own : constant Integer := Integer (Build_POSIX.Process_Id);
+      Own : constant Integer := Integer (Build_Platform.Process_Id);
       Result : Unbounded_String;
    begin
       for Member of Members (Root (S) / Work_Directory) loop
@@ -1001,7 +983,7 @@ package body Build_Store is
             then
                Owner := Integer'Value (Member (Member'First .. Ada.Strings.Fixed.Index (Member, "-") - 1));
             end if;
-            if Owner > 0 and then Owner /= Own and then Build_POSIX.Process_Alive (Interfaces.C.int (Owner)) then
+            if Owner > 0 and then Owner /= Own and then Build_Platform.Process_Alive (Interfaces.C.int (Owner)) then
                Append (Result, " " & Image (Owner));
             end if;
          exception
@@ -1022,7 +1004,7 @@ package body Build_Store is
             end if;
          end;
       end loop;
-      Build_POSIX.Sync (Root (S) / Roots_Directory / Checkouts_Directory);
+      Build_Platform.Sync (Root (S) / Roots_Directory / Checkouts_Directory);
    end Remove_Dead_Roots;
 
    procedure Empty_Damaged (S : Store; Removed : out Natural) is

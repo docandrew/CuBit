@@ -1,0 +1,14 @@
+--  Hosted tests and proof: advisory file locks (Queue_Lock, File_Locks).
+--  LOCKS_SRC: the unit's directory.
+project Locks is
+   Locks_Src := external ("LOCKS_SRC", "../../userspace/services/filesystem");
+   for Source_Dirs use (".", Locks_Src);
+   for Source_Files use ("main.adb", "file_locks.ads", "file_locks.adb", "locks_proof.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-O2");
+   end Compiler;
+end Locks;

@@ -53,4 +53,20 @@ package body CuBit.Libc_Threads is
       return 0;
    end Get_Attributes;
 
+   function Set_Priority_Ceiling (Attributes : System.Address; Ceiling : Interfaces.C.int)
+     return Interfaces.C.int
+   is
+      pragma Unreferenced (Attributes, Ceiling);
+   begin
+      return CuBit.Libc_ABI.ENOTSUP;
+   end Set_Priority_Ceiling;
+
+   function Set_Read_Write_Kind (Attributes : System.Address; Kind : Interfaces.C.int)
+     return Interfaces.C.int
+   is
+      pragma Unreferenced (Attributes, Kind);
+   begin
+      return 0;
+   end Set_Read_Write_Kind;
+
 end CuBit.Libc_Threads;

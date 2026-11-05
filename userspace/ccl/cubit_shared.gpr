@@ -9,8 +9,18 @@ project CuBit_Shared is
    --  the CuBit runtime's own Interfaces and System units in front of the
    --  host toolchain's.
    for Source_Dirs use ("runtime-shared");
-   for Object_Dir use "build/cubit-shared";
+   --  The full Ada runtime the including tool runs on: the Linux host's,
+   --  or the GCC port's libgnat on CuBit (ccl_build.gpr's cubit target).
+   type Tool_Targets is ("linux", "cubit");
+   Tool_Target : Tool_Targets := external ("CCL_TOOL_TARGET", "linux");
+   Target := ();
+   case Tool_Target is
+      when "linux" => for Object_Dir use "build/cubit-shared";
+      when "cubit" =>
+         for Object_Dir use "build/cubit-shared-cubit";
+         Target := ("-mno-red-zone");   --  native code has no red zone
+   end case;
    package Compiler is
-      for Default_Switches ("Ada") use ("-gnat2022", "-O2");
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2") & Target;
    end Compiler;
 end CuBit_Shared;

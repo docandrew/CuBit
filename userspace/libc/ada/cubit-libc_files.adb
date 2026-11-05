@@ -68,6 +68,10 @@ package body CuBit.Libc_Files is
    REPLY_INVALID_MOVE      : constant := 16#F012#;
    REPLY_CROSS_VOLUME      : constant := 16#F013#;
    REPLY_VOLUME_UNAVAILABLE : constant := 16#F017#;
+   REPLY_UNSUPPORTED_OBJECT : constant := 16#F00E#;
+   REPLY_CANCELLED : constant := 16#F014#;
+   REPLY_DEADLINE  : constant := 16#F015#;
+   REPLY_BUSY      : constant := 16#F016#;
    PROTOCOL_VERSION : constant := 2;   --  CuBit.Filesystems: Directory.Page.V2
    Seek_From_End : constant := 2;
    Open_Read_Only : constant Unsigned_64 := 0;
@@ -529,9 +533,9 @@ package body CuBit.Libc_Files is
 
    --  Put one request on the queue; its token.
    function Submit (Operation, Options : Unsigned_32; Handle, Position, Length : Unsigned_64;
-                    Is_Async : Boolean) return Unsigned_64;
+                    Is_Async : Boolean; Spare_2 : Unsigned_64 := 0) return Unsigned_64;
    function Submit (Operation, Options : Unsigned_32; Handle, Position, Length : Unsigned_64;
-                    Is_Async : Boolean) return Unsigned_64
+                    Is_Async : Boolean; Spare_2 : Unsigned_64 := 0) return Unsigned_64
    is
       Ring : Q.Submissions.Ring with Import, Address => To_Address (Queue + FQ.Client_Requests_At);
       OK : Boolean;
@@ -551,7 +555,7 @@ package body CuBit.Libc_Files is
       Q.Submit (Client, Ring, Q.Token (Token),
                 (Operation => Operation, Options => Options, Handle => Handle,
                  Position => Position, Length => Length, Arena_Offset => 0,
-                 Spare_1 => 0, Spare_2 => 0));
+                 Spare_1 => 0, Spare_2 => Spare_2));
       Compiler_Barrier;                 --  the entry before the count
       if Hold then
          return Token;
@@ -575,11 +579,12 @@ package body CuBit.Libc_Files is
 
    --  One request, waiting for its answer: its status, value and spare.
    function Request (Operation, Options : Unsigned_32; Handle, Position, Length : Unsigned_64;
-                     Value, Spare : out Unsigned_64) return Unsigned_32;
+                     Value, Spare : out Unsigned_64; Spare_2 : Unsigned_64 := 0) return Unsigned_32;
    function Request (Operation, Options : Unsigned_32; Handle, Position, Length : Unsigned_64;
-                     Value, Spare : out Unsigned_64) return Unsigned_32
+                     Value, Spare : out Unsigned_64; Spare_2 : Unsigned_64 := 0) return Unsigned_32
    is
-      Token : constant Unsigned_64 := Submit (Operation, Options, Handle, Position, Length, False);
+      Token : constant Unsigned_64 :=
+        Submit (Operation, Options, Handle, Position, Length, False, Spare_2);
       Got : Unsigned_64;
       Status : Unsigned_32;
    begin
@@ -1682,6 +1687,54 @@ package body CuBit.Libc_Files is
       Unlock;
       return (if Label = K.Reply_OK then 0 else To_Errno (Label));
    end Flush;
+
+   --  An advisory lock on the handle's file (FQ.Queue_Lock): Options as
+   --  the queue's (mode, Lock_Wait), Deadline absolute ms (Forever spelled
+   --  out). The caller's thread waits here while the lock is waited for,
+   --  holding the client's file lock: the libc's other file calls wait
+   --  too (one waiting lock per process at a time, as ccl-build's).
+   function Lock_File (Handle : Unsigned_64; Options : Unsigned_32; Deadline : Unsigned_64)
+     return long
+   is
+      Label : Unsigned_32;
+      Slot : Integer;
+      Ignore_Value, Ignore_Spare : Unsigned_64;
+   begin
+      Lock;
+      if not Queue_Ready then
+         Unlock;
+         return Error (ENOSYS);
+      end if;
+      --  A reused parked handle must be parked again at its close: that is
+      --  what ends its lock at the service.
+      Slot := Slot_Of (Handle);
+      if Slot >= 0 and then Handles (Slot).Handle = Handle then
+         Handles (Slot).Service_Parked := False;
+      end if;
+      Label := Request (FQ.Queue_Lock, Options, Handle, 0, 0, Ignore_Value, Ignore_Spare,
+                        Spare_2 => Deadline);
+      Unlock;
+      return (case Label is
+                when K.Reply_OK => 0,
+                when REPLY_BUSY => Error (EAGAIN),            --  EWOULDBLOCK
+                when REPLY_DEADLINE => Error (ETIMEDOUT),
+                when REPLY_CANCELLED => Error (EINTR),        --  unlocked or closed meanwhile
+                when REPLY_UNSUPPORTED_OBJECT => Error (EINVAL),
+                when others => To_Errno (Label));
+   end Lock_File;
+
+   function Unlock_File (Handle : Unsigned_64) return long is
+      Label : Unsigned_32;
+   begin
+      Lock;
+      if not Queue_Ready then
+         Unlock;
+         return Error (ENOSYS);
+      end if;
+      Label := Request (FQ.Queue_Unlock, 0, Handle, 0, 0);
+      Unlock;
+      return (if Label = K.Reply_OK then 0 else To_Errno (Label));
+   end Unlock_File;
 
    --  The handle's object as the volume records it (through the queue
    --  only: without one, -ENOSYS). A write-delegated handle's buffered
