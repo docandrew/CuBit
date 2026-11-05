@@ -62,7 +62,7 @@ for ali in "$out/obj/"*.ali; do
  else grep -Fxq 'A -gnatp' "$ali"; ! grep -Fxq 'A -gnata' "$ali"; fi
  count=$((count + 1))
 done
-test "$count" = 178
+test "$count" = 188
 cmp "$here/compiled-units.txt" <(for ali in "$out/obj/"*.ali; do
  case "$ali" in */b__*) continue;; esac
  basename "$ali"

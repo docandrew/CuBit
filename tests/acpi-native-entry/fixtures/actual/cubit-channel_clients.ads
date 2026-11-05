@@ -81,6 +81,21 @@ package CuBit.Channel_Clients is
    procedure Wait (C : in out Client; Number : Tag; Deadline : CuBit.Deadlines.Deadline;
                    Answer : out RC.Result; Outcome : out Wait_Outcome);
 
+   type Take_Outcome is (Answered, Pending, Ended);
+   --  The answer to Number if it has arrived: reaps, never blocks. Pending:
+   --  not yet (its tag stays outstanding).
+   procedure Try_Take (C : in out Client; Number : Tag; Answer : out RC.Result;
+                       Outcome : out Take_Outcome);
+
+   --  For a caller whose own event loop waits for this process's activity
+   --  instead of calling Wait: Arm before that wait declares the client
+   --  asleep, so the server's next answer wakes the process. Armed False:
+   --  an answer arrived meanwhile (take it, do not sleep). Disarm after the
+   --  wait. While armed, a Wait on another thread follows instead of
+   --  pumping; Disarm wakes it.
+   procedure Arm (C : in out Client; Armed : out Boolean);
+   procedure Disarm (C : in out Client);
+
    --  A kernel grant event: Ends tells whether it ended this channel (its
    --  outstanding requests then fail Ended).
    procedure Handle_Event (C : in out Client; Event : CuBit.Control_Events.Event;

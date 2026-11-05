@@ -1,5 +1,5 @@
 pragma Ada_2022;
-with ACPI_Delay_Waits;
+with ACPI_Delay_Waits; with ACPI_Native_Startup_Timing;
 with ACPI_Clock_Source;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -38,7 +38,9 @@ package body ACPI_Native_Delays is
    end Close_Startup;
    procedure Perform (Item : AML_Delays.Request; Result : out AML_Delays.Outcome) is
       Observation : Waits.Report;
-   begin
+      Timing : ACPI_Native_Startup_Timing.Token;
+      procedure Execute is
+      begin
       Result := AML_Delays.Unavailable;
       if In_Call then State := Closed; Result := AML_Delays.Failed; return; end if;
       if State /= Open then return; end if;
@@ -55,5 +57,12 @@ package body ACPI_Native_Delays is
          -- not replay/replenish waits or continue with a fresh time allowance.
          State := Closed;
       end if;
+      end Execute;
+   begin
+      ACPI_Native_Startup_Timing.Enter
+        ((if Item.Kind = AML_Delays.Sleep_Delay then ACPI_Native_Startup_Timing.P.AML_Sleep
+          else ACPI_Native_Startup_Timing.P.AML_Stall),Timing);
+      Execute;
+      ACPI_Native_Startup_Timing.Leave (Timing);
    end Perform;
 end ACPI_Native_Delays;

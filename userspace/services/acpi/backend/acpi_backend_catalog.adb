@@ -233,6 +233,23 @@ package body ACPI_Backend_Catalog is
       end loop;
       if Accepted then Changed (State); end if;
    end Revoke_Scope;
+   function Unused_Device_Arena_Claimed (State : Context) return Boolean is
+      (State.Device_Tail_Claimed);
+   procedure Claim_Unused_Device_Arena (State : in out Context;
+      First, Limit : out Unsigned_64; Accepted : out Boolean) is
+      Tail : constant Bindings.Statistics := Bindings.Observe (State.Windows);
+   begin
+      First := 0; Limit := 0; Accepted := False;
+      if not State.Sealed or else State.Working or else State.Quarantined
+        or else State.Device_Tail_Claimed or else Tail.Working
+        or else Virtual_First = 0 or else Virtual_First >= Virtual_Limit
+        or else Virtual_Limit > B.User_Virtual_Limit
+        or else Tail.Next_Virtual < Virtual_First or else Tail.Next_Virtual >= Virtual_Limit
+        or else Tail.Next_Virtual mod W.Map_Page_Bytes /= 0
+        or else Virtual_Limit mod W.Map_Page_Bytes /= 0 then return; end if;
+      State.Device_Tail_Claimed := True;
+      First := Tail.Next_Virtual; Limit := Virtual_Limit; Accepted := True;
+   end Claim_Unused_Device_Arena;
    function Observe (State : Context) return Statistics is
       Item : Statistics := (State.Sealed, State.Working, State.Quarantined, Natural (State.Count), 0, 0,
         Bindings.Observe (State.Windows).Stored);

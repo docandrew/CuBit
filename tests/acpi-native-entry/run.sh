@@ -39,9 +39,9 @@ for tool in gprbuild; do
  sha256sum "$path" >> "$out/tools.sha256"
 done
 mapfile -t units < "$here/selections.txt"
-test "${#units[@]}" = 64
+test "${#units[@]}" = 74
 nice -n 19 timeout --kill-after=2s 180 gprbuild -p -c -u -j1 -P "$here/$profile.gpr" "-XNATIVE_API_BUILD=$out" "${units[@]}" 2>&1 | head -c 1048576 > "$out/compile.log"
-test "$(find "$out" -maxdepth 1 -name '*.ali' | wc -l)" = 61
+test "$(find "$out" -maxdepth 1 -name '*.ali' | wc -l)" = 71
 test "$(find "$out" -maxdepth 1 -name '*.o' | wc -l)" = 0
 for ali in "$out/"*.ali; do
  grep -Fxq 'A -gnatc' "$ali"; grep -Fxq 'A -gnatwe' "$ali"

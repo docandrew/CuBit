@@ -8,6 +8,7 @@ package body ACPI_Locked_NVS_Client with SPARK_Mode is
        and then State.Descriptor /= P.No_Descriptor and then State.Sequence /= P.No_Read);
    function Observe (State : Context) return Statistics is
      ((State.Stage, State.Working, State.Pending_Read, State.Remote));
+   function First_Failure (State : Context) return Diagnostic is (State.First);
    function Finite (Deadline : W.Time_Instant) return Boolean is
      (Deadline /= 0 and then Deadline /= W.No_Finite_Deadline);
    procedure Time_Remains (State : in out Context; Deadline : W.Time_Instant; Result : out Outcome) is
@@ -28,12 +29,16 @@ package body ACPI_Locked_NVS_Client with SPARK_Mode is
       ID : P.Record_ID; Datum : P.Geometry; IPC_Deadline : W.Time_Instant;
       Value : out Interfaces.Unsigned_64; Result : out Outcome) is
       Wire_Reply : W.Packet;
-      Delivery : W.Delivery;
+      Delivery : W.Delivery := W.Not_Dispatched;
       Reply : P.Reply;
-      Access_Status : Lease.Outcome;
+      Access_Status : Lease.Outcome := Lease.Not_Ready;
+      Point : Read_Point := Validate_Request;
+      Exchanged, Reply_Known : Boolean := False;
+      Reply_Kind : P.Reply_Kind := P.Malformed;
       Token : constant P.Lease_Ticket := Lease.Ticket (Held);
       procedure Execute is
       begin
+         Point := Before_Select_Lease;
          Lease.Check_Usable (Held, Access_Status);
          if Access_Status /= Lease.Acquired then Result := Not_Ready; return; end if;
          if State.Bound and then State.Destination /= Lease.Bound_Peer (Held) then Result := Peer_Changed; return; end if;
@@ -41,12 +46,16 @@ package body ACPI_Locked_NVS_Client with SPARK_Mode is
          if State.Ticket /= Token then
             State.Ticket := Token; State.Descriptor := P.No_Descriptor; State.Sequence := P.No_Read;
          end if;
+         Point := Before_Select_Clock;
          Time_Remains (State, IPC_Deadline, Result); if Result /= Read_Complete then return; end if;
+         Point := Select_Exchange; Exchanged := True; Reply_Known := False;
          Exchange (Channel, State.Destination, IPC_Deadline, P.Select_Request (Token, ID, Datum), Wire_Reply, Delivery);
          if Delivery /= W.Reply_Received then
             Result := (if Delivery = W.Not_Dispatched then Not_Sent else Completion_Unknown); return;
          end if;
+         Point := Select_Reply;
          Reply := P.Decode_Reply (P.Select_Datum, Wire_Reply);
+         Reply_Known := Reply.Valid; if Reply_Known then Reply_Kind := Reply.Kind; end if;
          if not Reply.Valid then Result := Bad_Reply; return; end if;
          if Reply.Kind /= P.Prepared then Result := Backend_Refused; return; end if;
          if not P.Matches_Selection (Reply, ID, Datum) then Result := Bad_Reply; return; end if;
@@ -55,21 +64,27 @@ package body ACPI_Locked_NVS_Client with SPARK_Mode is
          else State.Descriptor := Reply.Descriptor; State.Sequence := P.No_Read;
          end if;
          State.ID := ID; State.Datum := Datum;
+         Point := Before_Read_Lease;
          Lease.Check_Usable (Held, Access_Status);
          if Access_Status /= Lease.Acquired then Result := Not_Ready; return; end if;
+         Point := Before_Read_Clock;
          Time_Remains (State, IPC_Deadline, Result); if Result /= Read_Complete then return; end if;
          if State.Sequence = P.Read_Sequence'Last then Result := Exhausted; return; end if;
          State.Sequence := State.Sequence + 1; State.Pending_Read := True; State.Remote := P.No_Data;
+         Point := Read_Exchange; Exchanged := True; Reply_Known := False;
          Exchange (Channel, State.Destination, IPC_Deadline,
            P.Read_Request (P.Read_Datum, Token, State.Descriptor, State.Sequence), Wire_Reply, Delivery);
          if Delivery = W.Not_Dispatched then State.Pending_Read := False; Result := Not_Sent; return;
          elsif Delivery /= W.Reply_Received then State.Stage := Uncertain; Result := Completion_Unknown; return; end if;
+         Point := Read_Reply;
          Reply := P.Decode_Reply (P.Read_Datum, Wire_Reply, Datum.Width);
+         Reply_Known := Reply.Valid; if Reply_Known then Reply_Kind := Reply.Kind; end if;
          if not Reply.Valid or else not P.Matches_Read (Reply, State.Descriptor, State.Sequence) then
             State.Stage := Uncertain; Result := Bad_Reply; return;
          end if;
          State.Pending_Read := False; State.Remote := Reply.Outcome;
          if Reply.Outcome /= P.Done then Result := Backend_Refused; return; end if;
+         Point := After_Read;
          Lease.Check_Usable (Held, Access_Status);
          Time_Remains (State, IPC_Deadline, Result);
          if Access_Status /= Lease.Acquired or else Result /= Read_Complete then Result := Late_Completed; return; end if;
@@ -84,6 +99,15 @@ package body ACPI_Locked_NVS_Client with SPARK_Mode is
       else
          State.Working := True; Execute; State.Working := False;
          if Result = Read_Complete then return; end if;
+      end if;
+      if not State.First.Present then
+         State.First :=
+           (Present => True, At_Point => Point, Result => Result,
+            Lease_Result => Access_Status, Exchange_Attempted => Exchanged,
+            Delivery => Delivery, Reply_Known => Reply_Known, Reply_Kind => Reply_Kind,
+            Pending_Read => State.Pending_Read, Remote => State.Remote,
+            ID => ID, Datum => Datum, IPC_Deadline => IPC_Deadline,
+            Last_Known_IPC_Time => State.Last_Clock, Seen_IPC_Clock => State.Seen_Clock);
       end if;
       if State.Stage /= Uncertain then State.Stage := Failed; end if;
       Lease.Stop_Using (Held);

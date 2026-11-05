@@ -62,3 +62,13 @@ acpi_requests.adb
 acpi_service_core.adb
 aml_namespace.adb
 acpi_fallible_heap.adb
+acpi_startup_timing.adb
+acpi_lock_trace.adb
+acpi_lock_trace_protocol.adb
+acpi_native_startup_timing.adb
+acpi_native_lock_notes.adb
+acpi_native_lock_dump.adb
+acpi_backend_main.adb
+acpi_backend_global_lock.adb
+aml_allocation_retry.adb
+aml_work_kinds.ads

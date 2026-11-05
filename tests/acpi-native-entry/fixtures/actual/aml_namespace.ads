@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Work_Kinds;
 with AML_Field_Access;
 with AML_Field_Layout;
 with AML_Field_Plans;
@@ -63,6 +64,8 @@ generic
    Block_Capacity : AML_Execution_Limits.Continuation_Capacity :=
      AML_Execution_Limits.Default_Continuation_Capacity;
    Enable_PCI_Context : Boolean := False;
+   -- Passive callback: bounded, normally returning, no allocation/hardware/logging/reentry.
+   with procedure Observe_Work (Item : AML_Work_Kinds.Kind; Entering : Boolean) is null;
 package AML_Namespace with SPARK_Mode is
    use type AML_Table_Sources.Source_Kind;
    use type AML_Decode.Integer_Value;
@@ -225,12 +228,24 @@ package AML_Namespace with SPARK_Mode is
    -- Literal firmware metadata only. No address-space handler or capability.
    type Region_Space_ID is new AML_Decode.Byte;
    type Region_Access_State is (No_Access);
+   -- Original startup execution within this owner, not a memory capability.
+   -- The embedding service must bind the table ID to its sealed boot snapshot.
+   type Operation_Region_Origin (Known : Boolean := False) is record
+      case Known is
+         when True =>
+            Table : AML_Table_Sources.Boot_Table_ID;
+            Definition : Definition_Identity;
+         when False => null;
+      end case;
+   end record;
    type Operation_Region_Attributes is record
       Space : Region_Space_ID := 0;
       Address, Length : AML_Decode.Integer_Value := 0;
       Width : AML_Decode.Integer_Width := AML_Decode.Bits_64;
       PCI : AML_Field_Layout.PCI_Route := (Known => False);
       Access_State : Region_Access_State := No_Access;
+      Syntax : AML_Execute.Operation_Region_Syntax;
+      Origin : Operation_Region_Origin;
    end record;
    -- PkgLength encodes exactly 28 bits; cumulative field position is UINT32.
    subtype Encoded_Field_Bits is AML_Decode.Field_Bit_Length;
@@ -1832,6 +1847,16 @@ package Owned with SPARK_Mode is
       with procedure End_Field
         (IO : in out IO_Context; Accepted : in out Boolean) is null;
       Allow_Locked_NVS_Reads : Boolean := False;
+      -- Trusted startup-only resolution after matching live declaration,
+      -- original table, and definition registry. No arena alias is passed.
+      -- A provider may request backing authority down the service layering
+      -- with a finite deadline; Pending must retain any uncertain outcome.
+      -- This hook grants no authority by itself and never establishes _REG.
+      Enable_Startup_Firmware_Resolution : Boolean := False;
+      with procedure Resolve_Startup_Firmware_Target
+        (IO : in out IO_Context; Declaration : Operation_Region_Attributes;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
       package Field_IO is
          pragma Unevaluated_Use_Of_Old (Allow);
          type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;

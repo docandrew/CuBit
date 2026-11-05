@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Field_Diagnostics;
 with AML_Execute;
 with ACPI_Capacity_Diagnostics;
 with Interfaces;
@@ -18,6 +19,10 @@ with ACPI_Field_Combined_Provider;
 with ACPI_Field_Provider_View;
 with ACPI_Field_Evaluation;
 with AML_Field_Access;
+with AML_Field_Layout;
+with AML_Identity;
+with ACPI_Field_Routes;
+with ACPI_Field_Transactions;
 generic
    with package Core is new ACPI_Service_Core (<>);
    type Transport_State is limited private;
@@ -39,6 +44,31 @@ generic
    with procedure Read_Lease_Clock
      (Now : out Interfaces.Unsigned_64; Available : out Boolean) is ACPI_Field_Clock.Unavailable;
    Enable_PCI : Boolean := False;
+   -- One package instance owns one startup lifetime. Firmware actuals retain
+   -- their own singleton session; they never own another physical guard.
+   Enable_Firmware_Data : Boolean := False;
+   with procedure Initialize_Firmware
+     (Destination : Endpoint; Symbol : AML_Field_Access.Endpoint_ID;
+      Deadline : ACPI_Inventory_Protocol.Wire.Time_Instant; Accepted : in out Boolean) is null;
+   with procedure Inspect_Firmware
+     (Is_Ready, Is_Pending : in out Boolean; Observation : in out AML_Field_Access.Observation;
+      Capacity : in out ACPI_Capacity_Diagnostics.Report) is null;
+   with procedure Describe_Firmware
+     (Target : AML_Field_Access.Target; Geometry : in out AML_Field_Layout.Register_Geometry;
+      Accepted : in out Boolean) is null;
+   with procedure Authorize_Firmware
+     (Target : AML_Field_Access.Target; For_Write : Boolean; Accepted : in out Boolean) is null;
+   with procedure Dispatch_Firmware
+     (Item : AML_Field_Access.Request; Reply : in out AML_Field_Access.Response) is null;
+   with procedure Resolve_Firmware
+     (Declaration : Core.Namespace.Operation_Region_Attributes;
+      Geometry : AML_Field_Layout.Register_Geometry;
+      Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+   with procedure Begin_Firmware
+     (Requires_Lock, For_Write : Boolean; Deadline : ACPI_Inventory_Protocol.Wire.Time_Instant;
+      Ticket : ACPI_Global_Lock_Protocol.Ticket; Accepted : in out Boolean) is null;
+   with procedure End_Firmware (Accepted : in out Boolean) is null;
+   with procedure Cleanup_Firmware (Accepted : in out Boolean) is null;
 package ACPI_Field_Startup_Owner is
    package Wire renames ACPI_Inventory_Protocol.Wire;
    type Phase is (Fresh, Provisioning, Ready, Failed, Closed);
@@ -49,6 +79,7 @@ package ACPI_Field_Startup_Owner is
       Capacity : ACPI_Capacity_Diagnostics.Report := ACPI_Capacity_Diagnostics.No_Report;
    end record;
    function Observe return Report;
+   function First_Failure return ACPI_Field_Diagnostics.Report;
    -- One package instance is one serialized process lifetime. Destination
    -- comes from the trusted typed startup binding, never a client request.
    -- Deadline is absolute MILLISECONDS in the IPC clock epoch; never cast a
@@ -85,6 +116,7 @@ package ACPI_Field_Startup_Owner is
    function Uncertain return AML_Field_Access.Observation;
 private
    Last_Capacity : ACPI_Capacity_Diagnostics.Report := ACPI_Capacity_Diagnostics.No_Report;
+   First : ACPI_Field_Diagnostics.Report;
    procedure Record_Capacity_Failure (Item : ACPI_Capacity_Diagnostics.Report);
    procedure Read_Window (Now, Deadline : out Wire.Time_Instant);
    package Scalar is new ACPI_Field_Inventory_Owner
@@ -124,16 +156,54 @@ private
      (Transport_State, Endpoint, No_Endpoint, Plain.Context, Plain.Initialize,
       Plain_View, Plain.Describe_Scoped_Read, Lease_Scope, Read_Lease_Window,
       Read_NVS_Deadline, Read_Cleanup_Deadline, ACPI_Global_Lock_Protocol.Attempt_Budget'Last);
-   function Provider_Ready (IO : Provider.Context) return Boolean;
+   type Lane is (Existing_Lane, Firmware_Lane);
+   procedure Lane_Describe (IO : Provider.Context; Path : Lane; Target : AML_Field_Access.Target;
+      Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean);
+   procedure Lane_Authorize (IO : Provider.Context; Path : Lane; Target : AML_Field_Access.Target;
+      For_Write : Boolean; Accepted : out Boolean);
+   procedure Lane_Dispatch (IO : in out Provider.Context; Path : Lane;
+      Item : AML_Field_Access.Request; Reply : out AML_Field_Access.Response);
+   package Routes is new ACPI_Field_Routes (Provider.Context,Lane,Lane_Describe,Lane_Authorize,Lane_Dispatch);
+   procedure Data_Begin (IO : in out Provider.Context; Requires_Lock, For_Write : Boolean; Accepted : in out Boolean);
+   procedure Data_End (IO : in out Provider.Context; Accepted : in out Boolean);
+   procedure Data_Cleanup (IO : in out Provider.Context; Accepted : out Boolean);
+   package Hooks is new ACPI_Field_Transactions
+      (Provider.Context,Provider.Begin_Field,Data_Begin,Data_End,Provider.End_Field,Data_Cleanup,Provider.Cleanup);
+   type Root_Context is limited record
+      Physical : Provider.Context;
+      Routing : Routes.Context;
+      Transactions : Hooks.Context;
+   end record;
+   function Root_Ready (IO : Root_Context) return Boolean;
+   function Root_Pending (IO : Root_Context) return Boolean;
+   function Root_Identity (IO : Root_Context) return AML_Identity.Identity;
+   function Root_Count (IO : Root_Context) return Natural;
+   procedure Root_Export (IO : Root_Context; Ordinal : Positive; Target : out AML_Field_Access.Target; Accepted : out Boolean);
+   procedure Root_Select (IO : in out Root_Context; Geometry : AML_Field_Layout.Register_Geometry;
+      For_Write : Boolean; Target : out AML_Field_Access.Target; Accepted : out Boolean);
+   procedure Root_Describe (IO : Root_Context; Target : AML_Field_Access.Target;
+      Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean);
+   procedure Root_Authorize (IO : Root_Context; Target : AML_Field_Access.Target;
+      For_Write : Boolean; Accepted : out Boolean);
+   procedure Root_Dispatch (IO : in out Root_Context; Item : AML_Field_Access.Request; Reply : out AML_Field_Access.Response);
+   procedure Root_Confirmed (IO : Root_Context; Expected : AML_Field_Access.Observation; Accepted : out Boolean);
+   procedure Root_Resolve_Module (IO : in out Root_Context; Geometry : AML_Field_Layout.Register_Geometry;
+      Target : in out AML_Field_Access.Target; Accepted : in out Boolean);
+   procedure Root_Resolve_Firmware (IO : in out Root_Context; Declaration : Core.Namespace.Operation_Region_Attributes;
+      Geometry : AML_Field_Layout.Register_Geometry; Target : in out AML_Field_Access.Target; Accepted : in out Boolean);
+   procedure Root_Begin (IO : in out Root_Context; Requires_Lock, For_Write : Boolean; Accepted : in out Boolean);
+   procedure Root_End (IO : in out Root_Context; Accepted : in out Boolean);
+   procedure Initialize_Root (Destination : Endpoint; Deadline : Wire.Time_Instant; Accepted : out Boolean);
+   function Current_Capacity return ACPI_Capacity_Diagnostics.Report;
    package View is new ACPI_Field_Provider_View
-     (Provider.Context, Provider_Ready, Provider.Identity, Provider.Pending, Provider.Register_Count,
-      Provider.Export_Target, Provider.Select_Target, Provider.Describe, Provider.Authorize,
-      Provider.Dispatch, Provider.Reconciled, Provider.Resolve_Module_Target,
-      Provider.Begin_Field, Provider.End_Field, Locked_NVS_Reads => True);
-   package Evaluation is new ACPI_Field_Evaluation (Core, View, Maximum_Bindings);
+     (Root_Context,Root_Ready,Root_Identity,Root_Pending,Root_Count,Root_Export,Root_Select,
+      Root_Describe,Root_Authorize,Root_Dispatch,Root_Confirmed,Root_Resolve_Module,Root_Begin,Root_End,
+      Locked_NVS_Reads => True);
+   package Evaluation is new ACPI_Field_Evaluation
+      (Core,View,Maximum_Bindings,Enable_Firmware_Data,Root_Resolve_Firmware);
    Stage : Phase := Fresh;
    Until_Time, Last_Sample : Wire.Time_Instant := 0;
    Module_Attempted, Module_Completed : Boolean := False;
-   IO : Provider.Context;
+   IO : Root_Context;
    Cache : Evaluation.Context;
 end ACPI_Field_Startup_Owner;

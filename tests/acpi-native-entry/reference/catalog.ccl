@@ -42,6 +42,9 @@
   # (acpi-registers approve-declared) gets this endpoint, badged with
   # ACPI_Register_Roles.Frontend_Tag; the backend registers the role.
   (service acpi-registers 35 read-write)
+  # Test only: the startup-wait headless test's late provider
+  # (CuBit.Startup_Wait_Test; procmgr's startup waits, CAP-003).
+  (service startup-wait-test 36 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)
@@ -57,4 +60,5 @@
   (notification lexicon 28 publish-and-manage)
   (notification acpi 29 publish-and-manage)
   (notification installer 31 publish-and-manage)
-  (notification acpi-registers 35 publish-and-manage))
+  (notification acpi-registers 35 publish-and-manage)
+  (notification startup-wait-test 36 publish-and-manage))

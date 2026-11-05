@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Field_Diagnostics;
 with Interfaces;
 with ACPI_Global_Lock_Client;
 with ACPI_Locked_NVS_Client;
@@ -33,7 +34,12 @@ package ACPI_Field_Lease_Scope with SPARK_Mode is
       Initialized, Working, Faulted, Cleanup_Required, Lease_Usable : Boolean;
    end record;
    function Observe (State : Context) return Statistics;
+   function First_Failure (State : Context) return ACPI_Field_Diagnostics.Report;
    function Pending (State : Context) return Boolean;
+   -- Borrowed identity of the existing whole-Field physical lease. Metadata
+   -- only, never fresh permission; the backend must Check_Access before each
+   -- data effect. Do not acquire or configure a second physical lock owner.
+   function Current_Ticket (State : Context) return Lease.P.Ticket;
    procedure Initialize (State : in out Context; Destination : Peer; Accepted : out Boolean);
    -- Only the first required lock takes the supplied deadlines. Nested locks
    -- reuse that lease; neither a new ticket nor a longer deadline is issued.
@@ -69,5 +75,6 @@ private
       Owners : Ownership := [others => False];
       Held : Lease.Context;
       Data : NVS.Context;
+      First : ACPI_Field_Diagnostics.Report;
    end record;
 end ACPI_Field_Lease_Scope;

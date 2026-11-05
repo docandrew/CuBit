@@ -73,6 +73,8 @@ userspace/services/acpi/acpi_fallible_heap.adb
 userspace/services/acpi/acpi_fallible_heap.ads
 userspace/services/acpi/acpi_fatal_diagnostics.adb
 userspace/services/acpi/acpi_fatal_diagnostics.ads
+userspace/services/acpi/acpi_field_diagnostics.adb
+userspace/services/acpi/acpi_field_diagnostics.ads
 userspace/services/acpi/acpi_module_diagnostics.adb
 userspace/services/acpi/acpi_module_diagnostics.ads
 userspace/services/acpi/acpi_notification_consumer.adb
@@ -126,10 +128,18 @@ userspace/services/acpi/lib/acpi_fadt-transactions.adb
 userspace/services/acpi/lib/acpi_fadt-transactions.ads
 userspace/services/acpi/lib/acpi_fadt.adb
 userspace/services/acpi/lib/acpi_fadt.ads
+userspace/services/acpi/lib/acpi_lock_trace.adb
+userspace/services/acpi/lib/acpi_lock_trace.ads
+userspace/services/acpi/lib/acpi_lock_trace_protocol.adb
+userspace/services/acpi/lib/acpi_lock_trace_protocol.ads
 userspace/services/acpi/lib/acpi_pci_config_reads.adb
 userspace/services/acpi/lib/acpi_pci_config_reads.ads
 userspace/services/acpi/lib/acpi_pci_memory_reads.adb
 userspace/services/acpi/lib/acpi_pci_memory_reads.ads
+userspace/services/acpi/lib/acpi_startup_timing.adb
+userspace/services/acpi/lib/acpi_startup_timing.ads
+userspace/services/acpi/lib/aml_allocation_retry.adb
+userspace/services/acpi/lib/aml_allocation_retry.ads
 userspace/services/acpi/lib/aml_bcd.adb
 userspace/services/acpi/lib/aml_bcd.ads
 userspace/services/acpi/lib/aml_buffer_bits.adb
@@ -256,6 +266,7 @@ userspace/services/acpi/lib/aml_table_readers.adb
 userspace/services/acpi/lib/aml_table_readers.ads
 userspace/services/acpi/lib/aml_table_sources.adb
 userspace/services/acpi/lib/aml_table_sources.ads
+userspace/services/acpi/lib/aml_work_kinds.ads
 userspace/services/acpi/lid/acpi_bootstrap-lids-cached.adb
 userspace/services/acpi/lid/acpi_bootstrap-lids-cached.ads
 userspace/services/acpi/lid/acpi_bootstrap-lids.adb

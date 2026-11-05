@@ -1,5 +1,8 @@
+with ACPI_Native_Startup_Timing;
+with ACPI_Native_Lock_Dump;
 with Interfaces; use Interfaces;
 with AML_Decode;
+with ACPI_Field_Diagnostics;
 with ACPI_Clock_Source;
 with ACPI_Bootstrap;
 with ACPI_Native_Delays;
@@ -108,8 +111,17 @@ package body ACPI_Native_Instance is
    end Initialize_Regions;
    package Driver is new ACPI_Device_Initialization
      (ACPI_Service, Initialize_Regions, ACPI_Native_Evaluation.Evaluate_Named);
+   procedure Timed_Module_Startup
+     (Service : in out ACPI_Service.State; Budget : Natural;
+      Result : out ACPI_Service.Execution_Report; Status : out ACPI_Service.Values.Access_Status) is
+      Timing : ACPI_Native_Startup_Timing.Token;
+   begin
+      ACPI_Native_Startup_Timing.Enter (ACPI_Native_Startup_Timing.P.Module_Execution,Timing);
+      ACPI_Native_Evaluation.Execute_Module_Startup (Service,Budget,Result,Status);
+      ACPI_Native_Startup_Timing.Leave (Timing);
+   end Timed_Module_Startup;
    package Loader is new ACPI_Native_Snapshot_Load.With_Driver
-     (Driver, ACPI_Native_Evaluation.Execute_Module_Startup);
+     (Driver, Timed_Module_Startup);
    Device_Run : Driver.Session;
    Owner : L.State_Access;
    Started : Boolean := False;
@@ -136,6 +148,25 @@ package body ACPI_Native_Instance is
       Registers : constant CuBit.Handles.Startup.Optional_Endpoint := Startup.Registers;
       Register_Now : Unsigned_64;
       Devices : ACPI_Bootstrap.Device_Report;
+      Root_Timing, Provider_Timing, Load_Timing : ACPI_Native_Startup_Timing.Token;
+      Timing_Finished : Boolean := False;
+      procedure Finish_Timing is
+      begin
+         if Timing_Finished then return; end if;
+         Timing_Finished := True;
+         ACPI_Native_Startup_Timing.Leave (Root_Timing);
+         ACPI_Native_Startup_Timing.Report;
+         ACPI_Native_Lock_Dump.Request (Registers);
+      end Finish_Timing;
+      function Elapsed_Startup_Milliseconds return String is
+         Current : AML_Decode.Integer_Value;
+         Known : Boolean;
+      begin
+         ACPI_Clock_Source.Read (Current, Known);
+         return ACPI_Field_Diagnostics.Elapsed_Milliseconds
+           (ACPI_Field_Diagnostics.Microseconds (Clock),
+            ACPI_Field_Diagnostics.Microseconds (Current), Known);
+      end Elapsed_Startup_Milliseconds;
       procedure Attempt is
       begin
       ACPI_Native_Log.Info ("acpi: stage service-start ok");
@@ -158,8 +189,10 @@ package body ACPI_Native_Instance is
          if Register_Now >= Unsigned_64'Last - Startup_Timeout_Milliseconds then
             ACPI_Native_Log.Warning ("acpi: stage register-provider fail DEADLINE_OVERFLOW"); return;
          end if;
+         ACPI_Native_Startup_Timing.Enter (ACPI_Native_Startup_Timing.P.Provider_Init,Provider_Timing);
          ACPI_Native_Fields.Begin_Startup (Registers.Value,
            ACPI_Native_Fields.Wire.Time_Instant (Register_Now + Startup_Timeout_Milliseconds), Provider_Accepted);
+         ACPI_Native_Startup_Timing.Leave (Provider_Timing);
          if Provider_Accepted then ACPI_Native_Evaluation.Select_Registers (Provider_Accepted); end if;
          if not Provider_Accepted then
             ACPI_Native_Log.Warning ("acpi: stage register-provider fail " & ACPI_Native_Fields.Observe.Stage'Image);
@@ -173,7 +206,9 @@ package body ACPI_Native_Instance is
          end if;
          ACPI_Native_Log.Info ("acpi: stage register-provider unavailable observer-only");
       end if;
+      ACPI_Native_Startup_Timing.Enter (ACPI_Native_Startup_Timing.P.Snapshot_Load,Load_Timing);
       Loader.Load (Device_Run, L.R.Tick (Clock) + Startup_Timeout_Microseconds, Owner, Result);
+      ACPI_Native_Startup_Timing.Leave (Load_Timing);
       if Result.Startup.Catalog.Ready then
          ACPI_Native_Log.Info ("acpi: stage aml-input ok OBSERVED tables=" & Result.Startup.Catalog.Tables'Image &
            " bytes=" & Result.Startup.Catalog.Total_Bytes'Image & " largest=" & Result.Startup.Catalog.Largest_Table'Image);
@@ -197,7 +232,9 @@ package body ACPI_Native_Instance is
             if Result.Startup.Completion.Execution.Modules.Field_Failure.Present then
                ACPI_Native_Log.Warning
                  (ACPI_Startup_Diagnostics.Format_Field_Failure
-                    (Result.Startup.Completion, ACPI_Native_Fields.Observe.Capacity));
+                    (Result.Startup.Completion, ACPI_Native_Fields.Observe.Capacity) & " " &
+                  ACPI_Field_Diagnostics.Format (ACPI_Native_Fields.First_Failure) &
+                  " elapsed_ms=" & Elapsed_Startup_Milliseconds);
             end if;
             ACPI_Native_Log.Warning
               (ACPI_Startup_Diagnostics.Format (Result.Startup.Completion));
@@ -257,6 +294,7 @@ package body ACPI_Native_Instance is
       end if;
       ACPI_Native_Log.Info ("acpi: stage registration ok observer-only");
       ACPI_Native_Log.Info ("acpi: bring-up reached registration (4/4) hardware-pending");
+      Finish_Timing;
       ACPI_Native_Server.Run (Owner.all, Reason);
       ACPI_Native_Module_Notes.Observe (ACPI_Requests.Module_Errors (Owner.all));
       if Reason = ACPI_Native_Server.Stop_Requested then
@@ -268,10 +306,13 @@ package body ACPI_Native_Instance is
    begin
       if Started then return; end if;
       Started := True;
+      ACPI_Native_Startup_Timing.Start;
+      ACPI_Native_Startup_Timing.Enter (ACPI_Native_Startup_Timing.P.Startup,Root_Timing);
       -- Expected failures return typed outcomes from Attempt. The native
       -- runtime terminates unexpected failures; it has no exception handlers.
       Attempt;
       ACPI_Native_Evaluation.Close_Startup;
       ACPI_Native_Delays.Close_Startup;
+      Finish_Timing;
    end Start;
 end ACPI_Native_Instance;

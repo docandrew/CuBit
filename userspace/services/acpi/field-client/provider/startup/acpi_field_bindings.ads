@@ -3,13 +3,22 @@ with ACPI_Service_Core;
 with ACPI_Field_Provider_View;
 with ACPI_Field_Module_Startup;
 with AML_Field_Access;
+with AML_Field_Layout;
 with AML_Identity;
 generic
    with package Core is new ACPI_Service_Core (<>);
    with package Provider is new ACPI_Field_Provider_View (<>);
    Maximum_Bindings : Positive := AML_Field_Access.Default_Maximum_Bindings;
+   -- Explicit startup-only forwarding; default remains disabled. The Core
+   -- validates the live original definition before invoking this callback.
+   Enable_Startup_Firmware_Resolution : Boolean := False;
+   with procedure Resolve_Startup_Firmware_Target
+     (IO : in out Provider.Context; Declaration : Core.Namespace.Operation_Region_Attributes;
+      Geometry : AML_Field_Layout.Register_Geometry;
+      Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
 package ACPI_Field_Bindings is
-   package Startup is new ACPI_Field_Module_Startup (Core, Provider, Maximum_Bindings);
+   package Startup is new ACPI_Field_Module_Startup (Core, Provider, Maximum_Bindings, Enable_Startup_Firmware_Resolution,
+      Resolve_Startup_Firmware_Target);
    package Fields renames Startup.Fields;
    type Outcome is (Not_Attempted, Built, Built_With_Gaps, Already_Consumed,
                     Provider_Unavailable, Pending_IO, Namespace_Unavailable, Binding_Refused);

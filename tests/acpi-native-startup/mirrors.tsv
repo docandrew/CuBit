@@ -1,4 +1,5 @@
 tests/acpi-native-startup/boundary/acpi_clock_source.ads	userspace/services/acpi/native-clock/acpi_clock_source.ads
+tests/acpi-native-startup/boundary/acpi_firmware_data_activation.ads	userspace/services/acpi/native/acpi_firmware_data_activation.ads
 tests/acpi-native-startup/boundary/acpi_native_delays.ads	userspace/services/acpi/native-clock/acpi_native_delays.ads
 tests/acpi-native-startup/boundary/acpi_native_ec_boot_notes.adb	userspace/services/acpi/native/acpi_native_ec_boot_notes.adb
 tests/acpi-native-startup/boundary/acpi_native_ec_boot_notes.ads	userspace/services/acpi/native/acpi_native_ec_boot_notes.ads
@@ -8,6 +9,7 @@ tests/acpi-native-startup/boundary/acpi_native_fields.ads	userspace/services/acp
 tests/acpi-native-startup/boundary/acpi_native_hid_detection.ads	userspace/services/acpi/native/acpi_native_hid_detection.ads
 tests/acpi-native-startup/boundary/acpi_native_instance.adb	userspace/services/acpi/native/acpi_native_instance.adb
 tests/acpi-native-startup/boundary/acpi_native_instance.ads	userspace/services/acpi/native/acpi_native_instance.ads
+tests/acpi-native-startup/boundary/acpi_native_lock_dump.ads	userspace/services/acpi/native/acpi_native_lock_dump.ads
 tests/acpi-native-startup/boundary/acpi_native_log.ads	userspace/services/acpi/native/acpi_native_log.ads
 tests/acpi-native-startup/boundary/acpi_native_module_notes.adb	userspace/services/acpi/native/acpi_native_module_notes.adb
 tests/acpi-native-startup/boundary/acpi_native_module_notes.ads	userspace/services/acpi/native/acpi_native_module_notes.ads
@@ -16,6 +18,7 @@ tests/acpi-native-startup/boundary/acpi_native_server.ads	userspace/services/acp
 tests/acpi-native-startup/boundary/acpi_native_snapshot_load-with_driver.ads	userspace/services/acpi/native/acpi_native_snapshot_load-with_driver.ads
 tests/acpi-native-startup/boundary/acpi_native_snapshot_load.ads	userspace/services/acpi/native/acpi_native_snapshot_load.ads
 tests/acpi-native-startup/boundary/acpi_native_snapshot_read.ads	userspace/services/acpi/native/acpi_native_snapshot_read.ads
+tests/acpi-native-startup/boundary/acpi_native_startup_timing.ads	userspace/services/acpi/native/acpi_native_startup_timing.ads
 tests/acpi-native-startup/models/cubit-control_events.ads	userspace/runtime/gnat/cubit-control_events.ads
 tests/acpi-native-startup/models/cubit-process_ids.adb	userspace/runtime/gnat/cubit-process_ids.adb
 tests/acpi-native-startup/models/cubit-process_ids.ads	userspace/runtime/gnat/cubit-process_ids.ads

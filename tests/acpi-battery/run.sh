@@ -15,7 +15,13 @@ verify () {
 }
 verify
 if [ "${1:-}" = --validate-only ]; then printf '%s\n' 'Battery inputs verified; no build or oracle.'; exit 0; fi
-test "$#" = 0
+profiles=(checked release)
+if [ "${1:-}" = --mode ]; then
+ test "$#" = 2
+ case "$2" in checked|release) profiles=("$2");; *) exit 2;; esac
+else
+ test "$#" = 0
+fi
 test "${TMPDIR:-}" = /home/doc/cubit-build-tmp
 ulimit -s 65536
 ulimit -c 0
@@ -49,7 +55,7 @@ test "$(grep -c '^No object was returned from evaluation of ' "$out/acpiexec.log
 # Known ACPICA20260408 exit0 shutdown diagnostic remains visible in the receipt.
 grep -Fx 'ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)' "$out/acpiexec.log"
 sha256sum "$out/reference/battery.aml" > "$out/reference.sha256"
-for profile in checked release; do
+for profile in "${profiles[@]}"; do
  for model in status observer; do
   build="$out/$model-$profile"
   mkdir -p "$build/obj" "$build/bin"
@@ -58,7 +64,7 @@ for profile in checked release; do
    expected='battery status checks 14237'; alis=2; args=()
   else
    project="$here/observer_$profile.gpr"; variable=BATTERY_OBSERVER_BUILD; main=battery_observer_tests
-   expected='ACPI battery observer checks 330'; alis=84; args=("$out/reference/battery.aml")
+   expected='ACPI battery observer checks 330'; alis=89; args=("$out/reference/battery.aml")
   fi
   nice -n 19 timeout --kill-after=2s 180 gprbuild -p -v -j1 -P "$project" "-X$variable=$build" 2>&1 | head -c 1048576 > "$out/$model-$profile-build.log"
   nice -n 19 timeout --kill-after=2s 30 "$build/bin/$main" "${args[@]}" 2>&1 | head -c 1048576 > "$out/$model-$profile-test.log"

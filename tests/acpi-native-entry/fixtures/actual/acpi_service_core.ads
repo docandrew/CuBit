@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Work_Kinds;
 with AML_Definition_Loads;
 with AML_Copied_Tables;
 with AML_References;
@@ -50,6 +51,8 @@ generic
    Enable_PCI_Context : Boolean := False;
    Copied_Table_Capacity : Natural := 0;
    Copied_Byte_Capacity : Natural := 0;
+   -- Passive callback: bounded, normally returning, no allocation/hardware/logging/reentry.
+   with procedure Observe_Work (Item : AML_Work_Kinds.Kind; Entering : Boolean) is null;
 package ACPI_Service_Core with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
    Max_Namespace_Nodes : constant Positive := Namespace_Node_Capacity;
@@ -60,7 +63,7 @@ package ACPI_Service_Core with SPARK_Mode is
       Max_Pending_Notifications => Notification_Capacity,
       Supported_Interfaces => Supported_Interfaces,
       Wait_Event_Timeout => Wait_Event_Timeout,
-      Block_Capacity => Block_Capacity, Enable_PCI_Context => Enable_PCI_Context);
+      Block_Capacity => Block_Capacity, Enable_PCI_Context => Enable_PCI_Context, Observe_Work => Observe_Work);
    package Values is new Namespace.Owned.Collecting;
    use type AML_Execute.Execution_Status;
    use type AML_Copied_Tables.Outcome;
@@ -112,6 +115,7 @@ package ACPI_Service_Core with SPARK_Mode is
       Last_Load_Code : Natural range 0 .. Namespace.Load_Status'Pos (Namespace.Load_Status'Last) + 1 := 0;
       Rejections : Natural := 0;
       Counter_Saturated : Boolean := False;
+      Collections : Values.Collection_Statistics;
    end record;
    -- Capacities are fixed at construction, before any untrusted table import.
    -- No default discriminants: objects must be explicitly constrained or
@@ -387,6 +391,16 @@ package ACPI_Service_Core with SPARK_Mode is
       with procedure End_Field
         (IO : in out IO_Context; Accepted : in out Boolean) is null;
       Allow_Locked_NVS_Reads : Boolean := False;
+      -- Trusted startup-only resolution after matching live declaration,
+      -- original table, and definition registry. No arena alias is passed.
+      -- A provider may request backing authority down the service layering
+      -- with a finite deadline; Pending must retain any uncertain outcome.
+      -- This hook grants no authority by itself and never establishes _REG.
+      Enable_Startup_Firmware_Resolution : Boolean := False;
+      with procedure Resolve_Startup_Firmware_Target
+        (IO : in out IO_Context; Declaration : Namespace.Operation_Region_Attributes;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
    package Field_IO is
       pragma Unevaluated_Use_Of_Old (Allow);
       type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
@@ -533,7 +547,8 @@ package ACPI_Service_Core with SPARK_Mode is
    private
       package Adapter is new Values.Field_IO
         (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed, Maximum_Bindings,
-         Authorize_Target, Maximum_Requests, Maximum_Work, Resolve_Module_Target, Begin_Field, End_Field, Allow_Locked_NVS_Reads);
+         Authorize_Target, Maximum_Requests, Maximum_Work, Resolve_Module_Target, Begin_Field, End_Field, Allow_Locked_NVS_Reads,
+         Enable_Startup_Firmware_Resolution, Resolve_Startup_Firmware_Target);
       type Binding is record
          Inner : Adapter.Binding := Adapter.No_Binding;
       end record;

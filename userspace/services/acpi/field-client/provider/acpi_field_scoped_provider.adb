@@ -1,6 +1,9 @@
 pragma Ada_2022;
 package body ACPI_Field_Scoped_Provider is
    package D renames ACPI_Locked_NVS_Protocol;
+   package F renames ACPI_Field_Diagnostics;
+   function First_Failure (IO : Context) return F.Report is
+     (if F.Present (IO.First) then IO.First else Scope.First_Failure (IO.Guard));
    use type A.Counter, A.Completion, Scope.Depth_Count, W.Time_Instant;
    function Status (IO : Context) return Startup_State is
      (if not IO.Consumed then Fresh elsif IO.Failed then Failed
@@ -13,6 +16,31 @@ package body ACPI_Field_Scoped_Provider is
      (Scope.Observe (IO.Guard).Cleanup_Required);
    function Live (IO : Context) return Boolean is
      (Status (IO) = Ready and then not Pending (IO));
+   function Current_Ticket (IO : Context) return ACPI_Global_Lock_Protocol.Ticket is
+     (if Live (IO) then Scope.Current_Ticket (IO.Guard)
+      else ACPI_Global_Lock_Protocol.No_Ticket);
+   procedure Read_Field_Context (IO : Context; Requires_Lock, For_Write : Boolean;
+      Deadline : out W.Time_Instant; Ticket : out ACPI_Global_Lock_Protocol.Ticket;
+      Accepted : out Boolean) is
+      Held : constant Boolean := Scope.Observe (IO.Guard).Lease_Usable;
+   begin
+      Deadline := W.No_Finite_Deadline;
+      Ticket := ACPI_Global_Lock_Protocol.No_Ticket; Accepted := False;
+      if not Live (IO) or else Scope.Observe (IO.Guard).Depth = 0
+        or else IO.Startup_Deadline in 0 | W.No_Finite_Deadline
+        or else (Held and then For_Write) then return; end if;
+      if Held then
+         Ticket := Current_Ticket (IO);
+         if not ACPI_Global_Lock_Protocol.Valid (Ticket)
+           or else IO.Data_Deadline in 0 | W.No_Finite_Deadline then
+            Ticket := ACPI_Global_Lock_Protocol.No_Ticket; return;
+         end if;
+         Deadline := W.Time_Instant'Min (IO.Startup_Deadline, IO.Data_Deadline);
+      elsif Requires_Lock then return;
+      else Deadline := IO.Startup_Deadline;
+      end if;
+      Accepted := True;
+   end Read_Field_Context;
    procedure Initialize
      (IO : in out Context; Destination : Peer; Symbol : A.Endpoint_ID;
       Deadline : W.Time_Instant; Accepted : out Boolean) is
@@ -20,6 +48,7 @@ package body ACPI_Field_Scoped_Provider is
       Accepted := False; if IO.Consumed then return; end if;
       IO.Consumed := True;
       if Destination = No_Peer then IO.Failed := True; return; end if;
+      IO.Startup_Deadline := Deadline;
       Scope.Initialize (IO.Guard, Destination, Accepted);
       if Accepted then Initialize_Base (IO.Inner, Destination, Symbol, Deadline, Accepted); end if;
       if not Accepted then IO.Failed := True; end if;
@@ -133,7 +162,12 @@ package body ACPI_Field_Scoped_Provider is
          end if;
       end if;
       IO.Working := False;
-      if Reply.Status /= A.Completed then IO.Failed := True; end if;
+      if Reply.Status /= A.Completed then
+         if Reply.Status = A.Indeterminate and then not F.Present (Scope.First_Failure (IO.Guard)) then
+            F.Remember (IO.First, (Reason => F.Provider_Uncertain, At_Point => F.Provider_Dispatch, others => <>));
+         end if;
+         IO.Failed := True;
+      end if;
    end Dispatch;
    function Uncertain (IO : Context) return A.Observation is (IO.Captured);
    function Completed_Fault (IO : Context) return A.Observation is (IO.Fault);

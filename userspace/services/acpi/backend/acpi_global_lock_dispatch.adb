@@ -81,6 +81,12 @@ package body ACPI_Global_Lock_Dispatch with SPARK_Mode is
             when P.Query_Termination => Requests.Query (State, Scope, Caller, Token, Requests.Termination, Result);
          end case;
          Output.Kind := Kind_For (Result.Kind); Output.Outcome := Outcome_For (Result.Outcome);
+         -- Refusals such as transaction-retained Busy have no recorded
+         -- physical outcome. Preserve their kind without claiming an effect;
+         -- protocol v1 reserves the outcome word for Recorded/Cached/Checked.
+         if Output.Kind not in P.Recorded | P.Cached | P.Checked then
+            Output.Outcome := P.Not_Ready;
+         end if;
       end if;
       Response := P.Encode_Reply (Kind, Output);
    end Handle;

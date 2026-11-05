@@ -8,5 +8,7 @@
                 "userspace/services/acpi/native"
                 "shared/firmware"
                 "shared/acpi"
-                "shared/hardware"]
+                "shared/hardware"
+                "userspace/services/acpi"
+                "userspace/services/acpi/field-client/provider"]
     link_extra => [(Link_Argument.Text "-Wl,-z,stack-size=67108864")])) )

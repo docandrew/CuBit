@@ -30,7 +30,8 @@ package body ACPI_Service_Core with SPARK_Mode is
    begin
       return (Service.Stats with delta Objects => Usage.Nodes,
          Method_Bytes => Usage.Methods, Value_Objects => Usage.Values.Objects,
-         Value_Bytes => Usage.Values.Bytes, Package_Elements => Usage.Values.Elements);
+         Value_Bytes => Usage.Values.Bytes, Package_Elements => Usage.Values.Elements,
+         Collections => Values.Reclamation_Metrics (Service.Tree));
    end Observe;
    function Namespace_Node_Count (Service : State) return Namespace.Node_ID is
      (Values.Node_Count (Service.Tree));

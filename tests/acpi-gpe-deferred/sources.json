@@ -8,6 +8,14 @@
     {
       "path": "userspace/services/acpi/events/acpi_gpe_lifecycle.ads",
       "sha256": "c908b36a50cae2bdf1dc05ae6ee52281a7bc0c48e345a7b8de82f2e1b17fc45e"
+    },
+    {
+      "path": "userspace/services/acpi/events/acpi_gpe_methods.adb",
+      "sha256": "eac97fce27f099e2d6d30933e2f1af8cf75a3b637c39889023f454eea2af1874"
+    },
+    {
+      "path": "userspace/services/acpi/events/acpi_gpe_methods.ads",
+      "sha256": "de1c8ae0f381249d8e3a071c894bfe5cafa695f46c93b049ef2f8d6bdaa0534a"
     }
   ],
   "tests": [

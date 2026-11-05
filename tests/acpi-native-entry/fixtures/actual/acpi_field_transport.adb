@@ -1,5 +1,5 @@
 pragma Ada_2022;
-with Interfaces;
+with Interfaces; with ACPI_Native_Startup_Timing;
 with ACPI_Inventory_Transport;
 with ACPI_Register_Transport;
 with AML_Field_Access;
@@ -18,7 +18,9 @@ package body ACPI_Field_Transport is
       pragma Unreferenced (Transport);
       Meta : Metadata.State;
       Scalar : ACPI_Register_Transport.State;
+      Timing : ACPI_Native_Startup_Timing.Token;
    begin
+      ACPI_Native_Startup_Timing.Enter (ACPI_Native_Startup_Timing.P.Classify (Item.Label),Timing);
       if Item.Label = Proto.Header_Operation or else Item.Label = Proto.Part_Operation then
          Metadata.Exchange (Meta, Destination, Deadline, Item, Reply, Delivered);
       elsif ACPI_Field_Protocol_Frames.Owned_Label (Item.Label) then
@@ -26,5 +28,6 @@ package body ACPI_Field_Transport is
       else
          ACPI_Register_Transport.Exchange (Scalar, Destination, Deadline, Item, Reply, Delivered);
       end if;
+      ACPI_Native_Startup_Timing.Leave (Timing);
    end Exchange;
 end ACPI_Field_Transport;

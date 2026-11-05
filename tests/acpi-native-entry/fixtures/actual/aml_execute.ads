@@ -25,6 +25,11 @@ package AML_Execute with SPARK_Mode, Pure is
    Create_QWord_Field_Op : constant AML_Decode.Byte := 16#8F#;
    Create_Field_Extension : constant AML_Decode.Byte := 16#13#;
    Operation_Region_Extension : constant AML_Decode.Byte := 16#80#;
+   -- Exact integer-literal syntax observed in an executed declaration.
+   -- These facts alone establish neither table origin nor address authority.
+   type Operation_Region_Syntax is record
+      Address_Is_Literal, Length_Is_Literal : Boolean := False;
+   end record;
    type Invocation_Status is (Available, Unsupported_Context, Exhausted);
    type Arguments is array (Natural range 0 .. 6) of AML_Decode.Integer_Value;
    -- ID and conversion caches describe a value. Source separately carries
@@ -512,6 +517,7 @@ package AML_Execute with SPARK_Mode, Pure is
         (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
          Token : AML_Declaration_Contexts.Operation_Region_Reservation;
          Width : AML_Decode.Integer_Width; Address, Length : AML_Decode.Integer_Value;
+         Syntax : Operation_Region_Syntax;
          Status : in out Execution_Status) is null;
       -- Serialized entry is owner-authenticated and shares the invocation's
       -- explicit-lock level. Default adapters reject rather than simulate it.

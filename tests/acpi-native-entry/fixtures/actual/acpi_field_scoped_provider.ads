@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Field_Diagnostics;
 with Interfaces;
 with AML_Field_Access;
 with AML_Field_Layout;
@@ -34,9 +35,18 @@ package ACPI_Field_Scoped_Provider is
    type Startup_State is (Fresh, Ready, Failed);
    type Context is limited private;
    function Status (IO : Context) return Startup_State;
+   function First_Failure (IO : Context) return ACPI_Field_Diagnostics.Report;
    function Identity (IO : Context) return AML_Identity.Identity;
    function Pending (IO : Context) return Boolean;
    function Cleanup_Required (IO : Context) return Boolean;
+   -- Borrowed identity from the existing whole-Field guard; metadata only.
+   -- No additional physical acquisition or renewed data permission.
+   function Current_Ticket (IO : Context) return ACPI_Global_Lock_Protocol.Ticket;
+   -- Borrow only the active Field's original window and existing ticket.
+   -- No clock/IPC call or fresh permission. Backend must recheck both.
+   procedure Read_Field_Context (IO : Context; Requires_Lock, For_Write : Boolean;
+      Deadline : out W.Time_Instant; Ticket : out ACPI_Global_Lock_Protocol.Ticket;
+      Accepted : out Boolean);
    procedure Initialize
      (IO : in out Context; Destination : Peer; Symbol : AML_Field_Access.Endpoint_ID;
       Deadline : W.Time_Instant; Accepted : out Boolean);
@@ -74,7 +84,9 @@ private
       Channel : Transport;
       Consumed, Working, Failed : Boolean := False;
       Issued : A.Counter := 0;
+      Startup_Deadline : W.Time_Instant := W.No_Finite_Deadline;
       Data_Deadline : W.Time_Instant := W.No_Finite_Deadline;
       Captured, Fault : A.Observation;
+      First : ACPI_Field_Diagnostics.Report;
    end record;
 end ACPI_Field_Scoped_Provider;

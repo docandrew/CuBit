@@ -2,7 +2,7 @@
 
 Run `bash tests/acpi-native-entry/run.sh --mode checked` or `--mode release`
 inside pinned Nix, with TMPDIR=/home/doc/cubit-build-tmp before and inside it.
-Each profile semantically checks 64 selections, producing 61 ALIs and zero objects
+Each profile semantically checks 74 selections, producing 71 ALIs and zero objects
 or executables. It checks main, clock, logger, native owner, observer endpoint/
 runner, event routing/classification/lifetime, snapshot bindings and generic
 local copy/startup units against actual current runtime declarations.
@@ -283,3 +283,11 @@ with zero objects. The separate actual-native-compiler gate checks both complete
 application closures plus generated Startup bodies (428 commands total). These
 checks execute neither elaboration nor native hardware. Historical evidence
 records above retain their original source/tool scope.
+
+
+Firmware-data milestone: the test-only union reference manifest adds ACPI_Hardware so its real generated Startup exposes both Registers and Hardware_Data. It is intentionally not an exact mirror of the production frontend manifest; individual production frontend/backend declarations have separate checks. Actual Ada/runtime source fixtures retain exact mirrors. This earlier firmware-data milestone used64selections/61ALIs/zeroobjects/profile. No link or native/hardware execution is implied.
+
+
+The earlier startup diagnostics milestone used72 selections /69 ALIs per profile, zero objects. These explicitly include both service entry paths, passive lock observers, the bounded trace protocol and logger, and the post-startup finite-deadline diagnostic client. Current channel-client and lock-dispatch mirrors are refreshed to their actual repository originals; no runtime source changes. Hosted diagnostic behavior is covered by tests/acpi-startup-diagnostics. No new proof or native execution claim.
+
+Allocation/work-profile mirror refresh: the current gate is74selections/71ALIs/profile, zeroobjects. It includes AML_Work_Kinds and AML_Allocation_Retry and current930/958 namespace/Core/timing interfaces. Checked/release semantic tests cover the actual installed cohort. This refresh does not renew old functional, proof or hardware receipts.

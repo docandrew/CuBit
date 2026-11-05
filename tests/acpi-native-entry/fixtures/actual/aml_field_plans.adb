@@ -1,9 +1,9 @@
 pragma Ada_2022;
 with ACPI_FADT.Transactions;
+with AML_Register_Views;
 package body AML_Field_Plans with SPARK_Mode is
    use type AML_Decode.Byte;
    use type AML_Field_Layout.Field_Form;
-   use type AML_Field_Layout.Region_Geometry;
    use type ACPI_FADT.Transactions.Access_Width;
    Access_Mask : constant AML_Decode.Byte := 16#0F#;
    Lock_Mask : constant AML_Decode.Byte := 16#10#;
@@ -20,18 +20,21 @@ package body AML_Field_Plans with SPARK_Mode is
    Qword_Code : constant AML_Decode.Byte := 4;
    Narrow_Bits : constant AML_Decode.Integer_Value := 32;
 
-   function Prepare (Field : AML_Field_Layout.Field_Geometry) return Plan is
+   function Prepare (Field : AML_Field_Layout.Field_Geometry;
+      Allow_Locked_Read : Boolean := False) return Plan is
       Width : ACPI_FADT.Transactions.Access_Width;
       Update : AML_Field_Datums.Update_Rule;
       Datums : AML_Field_Datums.Plan;
    begin
       if Field.Form /= AML_Field_Layout.Ordinary_Field or else Field.Has_Connection
-        or else Field.Region.Space not in AML_Field_Layout.Memory_Space | AML_Field_Layout.IO_Space | AML_Field_Layout.Embedded_Control_Space
+        or else Field.Region.Space not in AML_Field_Layout.Memory_Space | AML_Field_Layout.IO_Space | AML_Field_Layout.PCI_Config_Space | AML_Field_Layout.Embedded_Control_Space
+        or else not AML_Field_Layout.Domain_Valid (Field.Region)
         or else Field.Bit_Length = 0 or else Field.Bit_Length > Maximum_Bits
         or else Field.Region.Length = 0
         or else Field.Region.Base > AML_Decode.Integer_Value'Last - (Field.Region.Length - 1)
         or else (Field.Flags and Reserved_Mask) /= 0
-        or else (Field.Flags and Lock_Mask) /= 0
+        or else ((Field.Flags and Lock_Mask) /= 0 and then
+          (not Allow_Locked_Read or else Field.Region.Space /= AML_Field_Layout.Memory_Space))
         or else (Field.Flags and Access_Mask) > Last_Access
         or else Field.Attribute /= 0 or else Field.Access_Length /= 0
       then return (others => <>); end if;
@@ -50,7 +53,7 @@ package body AML_Field_Plans with SPARK_Mode is
          when Word_Code => Width := ACPI_FADT.Transactions.Word_Access;
          when Dword_Code => Width := ACPI_FADT.Transactions.Dword_Access;
          when Qword_Code =>
-            if Field.Region.Space = AML_Field_Layout.IO_Space then
+            if Field.Region.Space in AML_Field_Layout.IO_Space | AML_Field_Layout.PCI_Config_Space then
                return (others => <>);
             end if;
             Width := ACPI_FADT.Transactions.Qword_Access;
@@ -85,9 +88,8 @@ package body AML_Field_Plans with SPARK_Mode is
       declare
          Datum : constant AML_Field_Datums.Datum := Datum_At (Item, Position);
       begin
-         return Register.Region = Item.Geometry.Region
-           and then Register.Byte_Offset = AML_Decode.Integer_Value (Datum.Offset)
-           and then Register.Width = Datum.Access_Width;
+         return AML_Register_Views.Same_Transaction
+           (Register, (Item.Geometry.Region, AML_Decode.Integer_Value (Datum.Offset), Datum.Access_Width));
       end;
    end Matches;
 

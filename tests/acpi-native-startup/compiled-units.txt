@@ -18,6 +18,7 @@ acpi_fatal_diagnostics.ali
 acpi_field_bindings.ali
 acpi_field_clock.ali
 acpi_field_combined_provider.ali
+acpi_field_diagnostics.ali
 acpi_field_evaluation.ali
 acpi_field_inventory_owner.ali
 acpi_field_lease_scope.ali
@@ -26,9 +27,12 @@ acpi_field_nvs_provider.ali
 acpi_field_pci_provider.ali
 acpi_field_provider_view.ali
 acpi_field_remote_provider.ali
+acpi_field_routes.ali
 acpi_field_scoped_provider.ali
 acpi_field_startup_owner.ali
+acpi_field_transactions.ali
 acpi_field_transport.ali
+acpi_firmware_data_activation.ali
 acpi_global_lock_client.ali
 acpi_global_lock_client_native.ali
 acpi_global_lock_protocol.ali
@@ -41,6 +45,7 @@ acpi_inventory_protocol.ali
 acpi_locked_nvs_client.ali
 acpi_locked_nvs_protocol.ali
 acpi_module_diagnostics.ali
+acpi_native_data.ali
 acpi_native_delays.ali
 acpi_native_ec_boot_notes.ali
 acpi_native_evaluation.ali
@@ -48,6 +53,7 @@ acpi_native_events.ali
 acpi_native_fields.ali
 acpi_native_hid_detection.ali
 acpi_native_instance.ali
+acpi_native_lock_dump.ali
 acpi_native_log.ali
 acpi_native_module_notes.ali
 acpi_native_power_detection.ali
@@ -55,6 +61,7 @@ acpi_native_server.ali
 acpi_native_snapshot_load-with_driver.ali
 acpi_native_snapshot_load.ali
 acpi_native_snapshot_read.ali
+acpi_native_startup_timing.ali
 acpi_notification_receipts.ali
 acpi_nvs_client.ali
 acpi_nvs_protocol.ali
@@ -77,10 +84,12 @@ acpi_snapshot_startup-with_driver.ali
 acpi_snapshot_startup.ali
 acpi_startup_diagnostics.ali
 acpi_startup_evaluation.ali
+acpi_startup_timing.ali
 acpi_target_heap_host.ali
 acpi_target_heap_test_control.ali
 acpi_target_storage.ali
 acpi_unprovisioned_regions.ali
+aml_allocation_retry.ali
 aml_bcd.ali
 aml_buffer_bits.ali
 aml_buffer_layouts.ali
@@ -149,6 +158,7 @@ aml_table_backing.ali
 aml_table_code.ali
 aml_table_readers.ali
 aml_table_sources.ali
+aml_work_kinds.ali
 cubit-control_events.ali
 cubit-firmware_snapshot.ali
 cubit-handles-startup.ali

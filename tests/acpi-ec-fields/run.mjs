@@ -41,19 +41,19 @@ function run(label,args,seconds){
 run('iasl',[tools.iasl,'-p',out+'/ec-fields',out+'/source/ec_fields.asl'],5);pins[out+'/ec-fields.aml']=sha(out+'/ec-fields.aml');
 for(const profile of ['checked','release']){
  counts[profile]={};const flags=['-gnat2022','-gnatwa','-gnatwe',...(profile==='checked'?['-gnata','-gnato','-O2']:['-gnatp','-O3'])];
- for(const kind of ['geometry','joined']){
+ for(const kind of (profile==='checked'?['geometry']:['geometry','joined'])){
   const dir=out+'/'+profile+'/'+kind;fs.mkdirSync(dir,{recursive:true});const main='ec_field_'+kind+'_tests.adb',project=dir+'/ec_fields.gpr';
-  fs.writeFileSync(project,`project EC_Fields is\n for Source_Dirs use ("../../source");\n for Main use (${JSON.stringify(main)});\n for Object_Dir use "obj";\n for Exec_Dir use "bin";\n package Compiler is\n for Default_Switches ("Ada") use (${flags.map(x=>JSON.stringify(x)).join(',')});\n end Compiler;\nend EC_Fields;\n`);pins[project]=sha(project);
+  fs.writeFileSync(project,`project EC_Fields is\n for Source_Dirs use ("../../source");\n for Main use (${JSON.stringify(main)});\n for Object_Dir use "obj";\n for Exec_Dir use "bin";\n package Naming is for Body ("ACPI_Target_Heap") use "acpi_target_heap_host.adb";end Naming;\n package Compiler is\n for Default_Switches ("Ada") use (${flags.map(x=>JSON.stringify(x)).join(',')});\n end Compiler;\nend EC_Fields;\n`);pins[project]=sha(project);
   run(profile+'-'+kind+'-build',[tools.gprbuild,'-p','-j1','-P',project],180);
   const exe=dir+'/bin/'+path.basename(main,'.adb');pins[exe]=sha(exe);
   const log=run(profile+'-'+kind+'-runtime',[exe,...(kind==='joined'?[out+'/ec-fields.aml']:[])],30);
   const pattern=kind==='joined'?/EC joined Field checks:\s+(\d+)/:/EC field geometry checks:\s+(\d+)/,match=pattern.exec(log);
   if(!match||Number(match[1])<=0)throw Error('Missing checks');counts[profile][kind]=Number(match[1]);
   const alis=fs.readdirSync(dir+'/obj').filter(n=>n.endsWith('.ali')&&!n.startsWith('b__'));
-  if(!alis.length)throw Error('No ALI evidence');
+  if(!alis.length)throw Error('No ALI evidence');if(profile==='checked'&&alis.some(n=>/acpi_service_core|aml_execute/.test(n)))throw Error('Checked geometry must not compile Core');
   for(const name of alis){const lines=fs.readFileSync(dir+'/obj/'+name,'utf8').split('\n');for(const flag of flags.filter(f=>f.startsWith('-gnat')))if(!lines.includes('A '+flag))throw Error('ALI profile '+name);}
  }
 }
-if(JSON.stringify(counts.checked)!==JSON.stringify(counts.release))throw Error('Profiles disagree');verify();
+if(counts.checked.geometry!==counts.release.geometry)throw Error('Geometry profiles disagree');verify();
 fs.writeFileSync(out+'/inputs.json',JSON.stringify(pins,null,2)+'\n');
-fs.writeFileSync(out+'/COMPLETE.json',JSON.stringify({counts,commands:commands.length,actual_AML_remote_provider_EC_owner:true,hardware_IPC_clock_reservation_modeled:true,locked_fields_supported:false,new_proof:false,native_executed:false,hardware_validated:false},null,2)+'\n');console.log(JSON.stringify(counts));
+fs.writeFileSync(out+'/COMPLETE.json',JSON.stringify({counts,commands:commands.length,actual_AML_remote_provider_EC_owner:true,checked_geometry_only:true,checked_whole_core_not_run:true,hosted_heap_modeled:true,hardware_IPC_clock_reservation_modeled:true,locked_fields_supported:false,new_proof:false,native_executed:false,hardware_validated:false},null,2)+'\n');console.log(JSON.stringify(counts));

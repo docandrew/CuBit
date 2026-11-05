@@ -1,7 +1,12 @@
 {
   "production": {
     "userspace/lib/gpio-admission/gpio_channel_badges.ads": "3b8a652567742389b483e5898d103a8b9d11aa9237deadb038df5d2ff3fb7e0b",
-    "userspace/lib/gpio-admission/gpio_channel_badges.adb": "41e109af16df9ea986349d0ea184386a489858e999a44cbe2e048588dc39b709"
+    "userspace/lib/gpio-admission/gpio_channel_badges.adb": "41e109af16df9ea986349d0ea184386a489858e999a44cbe2e048588dc39b709",
+    "userspace/lib/gpio-admission/gpio_client_controls.adb": "56127368e27c424041daabab3f0dbbba5271ed8734a7e3a2965376834693616e",
+    "userspace/lib/gpio-admission/gpio_client_controls.ads": "533f16adfc8c1026ebb97df65db01944c98b5d06cce1ae0632a4417e6dde5e69",
+    "userspace/lib/gpio-admission/gpio_control_wire.adb": "70216dc0db50c8a97323adff0029bf642c5068f1b3140c88e65a8650d486fbc6",
+    "userspace/lib/gpio-admission/gpio_control_wire.ads": "4d47763db6f1783f0bf7686d5f79a8798082114e1d4d730351aba55efad94b50",
+    "userspace/lib/gpio-admission/gpio_lease_control.ads": "e83ba6270fede0904f87243520276229c3eb368de63f8f06545b23e49e34dbdc"
   },
   "checks_per_profile": 2752586,
   "scope": "GPIO_Channel_Badges pure codec only"

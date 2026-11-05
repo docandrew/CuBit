@@ -34,6 +34,9 @@ package body ACPI_Target_Storage is
    function Read (Store : Context; Index : Positive) return Element is
       Items : Elements (1 .. Store.Reserved) with Import, Address => Store.Base;
    begin return Items (Index); end Read;
+   procedure Replace (Store : in out Context; Index : Positive; Item : Element) is
+      Items : Elements (1 .. Store.Reserved) with Import, Address => Store.Base;
+   begin Items (Index) := Item; end Replace;
    procedure Append
      (Store : in out Context; Item : Element;
       Index : out Count; Result : out Outcome) is

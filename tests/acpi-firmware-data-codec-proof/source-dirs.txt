@@ -1,0 +1,7 @@
+userspace/services/acpi
+userspace/services/acpi/lib
+userspace/services/acpi/backend
+shared/acpi
+shared/firmware
+shared/capabilities
+tests/support/acpi-firmware-wire

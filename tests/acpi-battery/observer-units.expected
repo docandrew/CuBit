@@ -3,8 +3,10 @@ acpi_battery_status.ali
 acpi_device_policy.ali
 acpi_fadt-transactions.ali
 acpi_fadt.ali
+acpi_pci_config_reads.ali
 acpi_resource_names.ali
 acpi_service_core.ali
+aml_allocation_retry.ali
 aml_bcd.ali
 aml_buffer_bits.ali
 aml_buffer_layouts.ali
@@ -14,6 +16,7 @@ aml_coercions-strings.ali
 aml_coercions.ali
 aml_concatenation.ali
 aml_container_headers.ali
+aml_copied_tables.ali
 aml_data.ali
 aml_declaration_contexts.ali
 aml_decode.ali
@@ -59,6 +62,7 @@ aml_pending_members.ali
 aml_persistent_owner_graph.ali
 aml_reference_frames.ali
 aml_references.ali
+aml_register_views.ali
 aml_resource_templates.ali
 aml_retained_identities.ali
 aml_retained_roots.ali
@@ -66,8 +70,12 @@ aml_root_slots.ali
 aml_scalar_ledger.ali
 aml_simple_targets.ali
 aml_slices.ali
+aml_storage_capacities.ali
 aml_table_backing.ali
 aml_table_code.ali
+aml_table_readers.ali
+aml_table_sources.ali
+aml_work_kinds.ali
 battery_observer_tests.ali
 firmware_tables-catalog.ali
 firmware_tables-copies.ali

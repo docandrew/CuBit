@@ -38,8 +38,14 @@ with ACPI_Global_Lock_Requests;
 with ACPI_Global_Lock_Dispatch;
 with ACPI_Global_Lock_Maintenance;
 with ACPI_Global_Lock_Protocol;
+with ACPI_Native_Lock_Notes;
 with ACPI_Region_Protocol;
 with Startup;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Startup;
+with ACPI_Firmware_Data_Lease_Check;
+with ACPI_Native_Firmware_Backend;
+with ACPI_Firmware_Data_Activation;
 procedure ACPI_Backend_Main is
    use Interfaces;
    package B renames ACPI_Backend_Binding_Types;
@@ -244,9 +250,20 @@ begin
         (Catalog.Bindings, Catalog.Context, Catalog.Select_Access, Signal_Word);
       Signal_State : Signaling.Context;
       Signal_Result : Signaling.Report;
+      procedure Observe_Signal (Report : Signaling.Report) is
+         package N renames ACPI_Native_Lock_Notes;
+      begin
+         N.Observe_Signal
+           ((case Report.Status is when Signaling.Signaled => N.Trace.Signaled,
+              when Signaling.Not_Sent => N.Trace.Signal_Not_Sent,
+              when others => N.Trace.Signal_Unknown),Report.Reads,Report.Writes);
+      end Observe_Signal;
       package Physical_Lock is new ACPI_Backend_Global_Lock
         (Catalog.Bindings, Catalog.Context, FACS, Signaling, Hardware, FACS_State, Signal_State,
-         Lock_Scope, 0, Lock_Clock);
+         Lock_Scope, 0, Lock_Clock,
+         Observe_Word => ACPI_Native_Lock_Notes.Observe_Word,
+         Observe_CAS => ACPI_Native_Lock_Notes.Observe_CAS,
+         Observe_Signal => Observe_Signal);
       package Lock_Owner renames Physical_Lock.Owner;
       package Lock_Sessions is new ACPI_Global_Lock_Scoped_Sessions
         (CuBit.Messages.Process_ID, CuBit.Messages.No_Process, Lock_Scope, 0, Lock_Owner);
@@ -261,6 +278,18 @@ begin
       Lock_Status : Lock_Owner.Outcome;
       Last_Lock : Lock_Maintenance.Report;
       Stop_Requested, Retention_Noted, Loop_Failed : Boolean := False;
+      package Data_Lease is new ACPI_Firmware_Data_Lease_Check
+        (CuBit.Messages.Process_ID,CuBit.Messages.No_Process,CuBit.Messages.From_Word,
+         Lock_Scope,0,Lock_Owner,Lock_Sessions,Lock_Requests,Lock_State,
+         Lock_Scope (ACPI_Register_Roles.Frontend_Tag));
+      function Data_Caller (Caller : Unsigned_64) return Boolean is
+        (CuBit.Messages.Is_Process (CuBit.Messages.From_Word (Caller)));
+      function Data_Admission return Boolean is
+        (not Stop_Requested and then not Loop_Failed and then not Lock_Requests.Closing (Lock_State)
+         and then not Catalog.Observe (Hardware).Quarantined);
+      package Firmware_Data is new ACPI_Native_Firmware_Backend
+        (CuBit.Handles.IPC.Close,Data_Lease.Check,Data_Caller,Data_Admission,Kernel_Map_Page_Limit);
+
       use type Lock_Owner.Outcome, FACS.Outcome, Signaling.Outcome, Signaling.Bank, Catalog.W.Window_ID;
       function Unique_Window
         (Space : Catalog.W.P.Address_Space; Address : Unsigned_64; Width : Catalog.W.T.Access_Width)
@@ -356,9 +385,43 @@ begin
             Stop := Lock_Requests.May_Exit (Lock_State);
          end if;
       end Lock_Event;
+      function Wire_Outcome (Value : Lock_Owner.Outcome) return ACPI_Global_Lock_Protocol.Lock_Outcome is
+        (case Value is
+           when Lock_Owner.Configured => ACPI_Global_Lock_Protocol.Configured,
+           when Lock_Owner.Invalid_Configuration => ACPI_Global_Lock_Protocol.Invalid_Configuration,
+           when Lock_Owner.Already_Configured => ACPI_Global_Lock_Protocol.Already_Configured,
+           when Lock_Owner.Acquired => ACPI_Global_Lock_Protocol.Acquired,
+           when Lock_Owner.Acquired_After_Deadline => ACPI_Global_Lock_Protocol.Acquired_After_Deadline,
+           when Lock_Owner.Acquired_Clock_Failed => ACPI_Global_Lock_Protocol.Acquired_Clock_Failed,
+           when Lock_Owner.Released => ACPI_Global_Lock_Protocol.Released,
+           when Lock_Owner.Waiting_For_Firmware => ACPI_Global_Lock_Protocol.Waiting_For_Firmware,
+           when Lock_Owner.Contended => ACPI_Global_Lock_Protocol.Contended,
+           when Lock_Owner.Expired => ACPI_Global_Lock_Protocol.Expired,
+           when Lock_Owner.Clock_Failed => ACPI_Global_Lock_Protocol.Clock_Failed,
+           when Lock_Owner.Clock_Reversed => ACPI_Global_Lock_Protocol.Clock_Reversed,
+           when Lock_Owner.Invalid_Deadline => ACPI_Global_Lock_Protocol.Invalid_Deadline,
+           when Lock_Owner.Unauthorized => ACPI_Global_Lock_Protocol.Unauthorized,
+           when Lock_Owner.Not_Ready => ACPI_Global_Lock_Protocol.Not_Ready,
+           when Lock_Owner.Already_Held => ACPI_Global_Lock_Protocol.Already_Held,
+           when Lock_Owner.Stale_Lease => ACPI_Global_Lock_Protocol.Stale_Lease,
+           when Lock_Owner.Lease_Exhausted => ACPI_Global_Lock_Protocol.Lease_Exhausted,
+           when Lock_Owner.Read_Unavailable => ACPI_Global_Lock_Protocol.Read_Unavailable,
+           when Lock_Owner.Atomic_Refused => ACPI_Global_Lock_Protocol.Atomic_Refused,
+           when Lock_Owner.Atomic_Indeterminate => ACPI_Global_Lock_Protocol.Atomic_Indeterminate,
+           when Lock_Owner.Signal_Deferred => ACPI_Global_Lock_Protocol.Signal_Deferred,
+           when Lock_Owner.Signal_Indeterminate => ACPI_Global_Lock_Protocol.Signal_Indeterminate,
+           when Lock_Owner.Reentered => ACPI_Global_Lock_Protocol.Reentered);
       procedure Maintain_Lock (Wake : in out Unsigned_64; Proceed : in out Boolean) is
       begin
+         ACPI_Native_Lock_Notes.Begin_Maintenance;
          Lock_Maintenance.Run (Lock_Schedule, Lock_State, Last_Lock);
+         ACPI_Native_Lock_Notes.Finish_Maintenance (Wire_Outcome (Last_Lock.Cleanup));
+         -- Owner's known post-release phase, not session quiescence, controls
+         -- logging. No logging while Held or any uncertain physical phase.
+         declare Engine : constant Lock_Owner.Statistics := Lock_Requests.Observe (Lock_State).Engine; begin
+            ACPI_Native_Lock_Notes.Flush
+              (not Engine.Working and then Engine.Stage in Lock_Owner.Fresh | Lock_Owner.Ready | Lock_Owner.Signal_Pending);
+         end;
          Wake := Last_Lock.Deadline;
          if Lock_Requests.Closing (Lock_State) and then Lock_Requests.May_Exit (Lock_State) then Proceed := False; end if;
       end Maintain_Lock;
@@ -375,8 +438,17 @@ begin
            (Request.tag.label, Request.tag.length, CuBit.Messages.Flag_Byte (Request.tag),
             Request.tag.reserved, ACPI_Region_Protocol.Words (Request.words));
          Output : P.Packet;
+         Decoded : constant P.Request := P.Decode_Request (Input);
       begin
+         ACPI_Native_Lock_Notes.Handle_Dump (From,Request,Response,Handled);
+         if Handled then return; end if;
+         if Decoded.Valid then
+            ACPI_Native_Lock_Notes.Begin_Request (From,Request.authorityTag,Decoded.Kind);
+         end if;
          Lock_Dispatch.Handle (Lock_State, Lock_Scope (Request.authorityTag), From, Input, Output, Handled);
+         if Decoded.Valid then
+            ACPI_Native_Lock_Notes.Finish_Request (P.Decode_Reply (Output,Decoded.Kind));
+         end if;
          if Handled then
             Response := CuBit.Messages.NULL_MESSAGE;
             Response.tag := (label => Output.Label, length => Output.Length,
@@ -393,6 +465,11 @@ begin
             Response.tag := (label => Output.Label, length => Output.Length,
               protocol => CuBit.Messages.Protocol_Flags (Output.Flags), ipc => <>, reserved => Output.Reserved);
             Response.words := CuBit.Messages.MessageWords (Output.Data); return;
+         end if;
+         -- Data history/descriptions and scope Close must remain reachable
+         -- before the generic quiescing fallback consumes unknown labels.
+         Firmware_Data.Additional_Request (From,Request,Response,Handled);
+         if Handled then return;
          elsif Lock_Requests.Closing (Lock_State) then
             -- Quiescing consumes every non-lock request before legacy/data
             -- dispatch. Existing lock queries/release remain correlated.
@@ -571,6 +648,27 @@ begin
       if not Startup_Time_Remains then
          ACPI_Native_Log.Warning ("acpi-backend: stage global-lock fail CLOCK_OR_DEADLINE"); return;
       end if;
+      if ACPI_Firmware_Data_Activation.Enabled then
+         declare
+            Data_Endpoint : constant CuBit.Handles.Startup.Optional_Endpoint := Startup.Hardware_Data;
+            Data_First, Data_Limit : Unsigned_64;
+            Accepted : Boolean;
+         begin
+            if not Data_Endpoint.Present then
+               ACPI_Native_Log.Warning ("acpi-backend: stage firmware-data fail NOT_APPROVED"); return;
+            end if;
+            Catalog.Claim_Unused_Device_Arena (Hardware,Data_First,Data_Limit,Accepted);
+            if not Accepted then
+               ACPI_Native_Log.Warning ("acpi-backend: stage firmware-data fail ARENA_UNAVAILABLE"); return;
+            end if;
+            Firmware_Data.Initialize (Data_Endpoint.Value,Data_First,Data_Limit,Accepted);
+            if not Accepted then
+               ACPI_Native_Log.Warning ("acpi-backend: stage firmware-data fail " &
+                  Firmware_Data.Observe.Initialization'Image); return;
+            end if;
+            ACPI_Native_Log.Info ("acpi-backend: stage firmware-data ok READY_READ_ONLY");
+         end;
+      else ACPI_Native_Log.Info ("acpi-backend: stage firmware-data skip DISABLED"); end if;
       ACPI_Native_Log.Info ("acpi-backend: stage catalog ok named=" & Natural'Image (Catalog.Observe (Hardware).Registers) &
         " timer=" & Bound.Timer_Status'Image & " block=" & Bound.Timer_Block'Image);
       Registration_Result := CuBit.Messages.registerDriver (Register_Service_Role, Startup.Registration);

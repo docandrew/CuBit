@@ -9,11 +9,21 @@ package AML_BCD with SPARK_Mode, Pure is
    subtype Nibble is Natural range 0 .. 15;
    Decimal_Radix : constant := 10;
    Nibble_Bits : constant := 4;
+   -- Static factors keep checked postconditions independent of an optional
+   -- run-time exponentiation helper on the native CuBit profile.
+   type Decimal_Power_Table is array (Digit_Index) of AML_Decode.Integer_Value;
+   Decimal_Powers : constant Decimal_Power_Table :=
+     [Decimal_Radix ** 0, Decimal_Radix ** 1, Decimal_Radix ** 2, Decimal_Radix ** 3,
+      Decimal_Radix ** 4, Decimal_Radix ** 5, Decimal_Radix ** 6, Decimal_Radix ** 7,
+      Decimal_Radix ** 8, Decimal_Radix ** 9, Decimal_Radix ** 10, Decimal_Radix ** 11,
+      Decimal_Radix ** 12, Decimal_Radix ** 13, Decimal_Radix ** 14, Decimal_Radix ** 15];
+   function Decimal_Power (Index : Digit_Index) return AML_Decode.Integer_Value is
+     (Decimal_Powers (Index));
    function Active_Digits (Width : AML_Decode.Integer_Width) return Digit_Count is
      (if Width = AML_Decode.Bits_32 then 8 else 16);
    function Decimal_Maximum (Width : AML_Decode.Integer_Width)
      return AML_Decode.Integer_Value is
-       (Decimal_Radix ** Active_Digits (Width) - 1);
+       (Decimal_Power (Digit_Index (Active_Digits (Width) - 1)) * Decimal_Radix - 1);
    function Digit (Value : AML_Decode.Integer_Value; Index : Digit_Index)
      return Nibble is
        (Nibble (Interfaces.Shift_Right (Value, Nibble_Bits * Index) and 15));
@@ -35,7 +45,7 @@ package AML_BCD with SPARK_Mode, Pure is
          From_BCD'Result.Value = 0
        else From_BCD'Result.Value <= Decimal_Maximum (Width)
          and then (for all I in 0 .. Active_Digits (Width) - 1 =>
-           (From_BCD'Result.Value / Decimal_Radix ** I) mod Decimal_Radix =
+           (From_BCD'Result.Value / Decimal_Power (Digit_Index (I))) mod Decimal_Radix =
              AML_Decode.Integer_Value (Digit (Value, I))));
    -- Raw operand semantics: do not normalize before conversion. Any value
    -- exceeding the active decimal capacity fails, including inactive bits.
@@ -49,5 +59,5 @@ package AML_BCD with SPARK_Mode, Pure is
          and then (if Width = AML_Decode.Bits_32 then To_BCD'Result.Value <= 16#FFFF_FFFF#)
          and then (for all I in 0 .. Active_Digits (Width) - 1 =>
            AML_Decode.Integer_Value (Digit (To_BCD'Result.Value, I)) =
-             (Value / Decimal_Radix ** I) mod Decimal_Radix));
+             (Value / Decimal_Power (Digit_Index (I))) mod Decimal_Radix));
 end AML_BCD;

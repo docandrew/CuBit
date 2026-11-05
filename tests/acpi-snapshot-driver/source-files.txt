@@ -1,3 +1,13 @@
+shared/acpi/acpi_field_protocol_frames.adb
+shared/acpi/acpi_field_protocol_frames.ads
+shared/acpi/acpi_global_lock_protocol.adb
+shared/acpi/acpi_global_lock_protocol.ads
+shared/acpi/acpi_inventory_protocol.adb
+shared/acpi/acpi_inventory_protocol.ads
+shared/acpi/acpi_locked_nvs_protocol.adb
+shared/acpi/acpi_locked_nvs_protocol.ads
+shared/acpi/acpi_nvs_protocol.adb
+shared/acpi/acpi_nvs_protocol.ads
 shared/acpi/acpi_passive_query-fields.adb
 shared/acpi/acpi_passive_query-fields.ads
 shared/acpi/acpi_passive_query-pages.adb
@@ -8,9 +18,13 @@ shared/acpi/acpi_passive_query-resource_records.adb
 shared/acpi/acpi_passive_query-resource_records.ads
 shared/acpi/acpi_passive_query.adb
 shared/acpi/acpi_passive_query.ads
+shared/acpi/acpi_pci_protocol.adb
+shared/acpi/acpi_pci_protocol.ads
 shared/acpi/acpi_protocol.ads
 shared/acpi/acpi_query_transport.adb
 shared/acpi/acpi_query_transport.ads
+shared/acpi/acpi_region_protocol.ads
+shared/acpi/acpi_register_roles.ads
 shared/firmware/firmware_tables-catalog.adb
 shared/firmware/firmware_tables-catalog.ads
 shared/firmware/firmware_tables-copies.adb
@@ -53,6 +67,8 @@ userspace/services/acpi/acpi_allocation_diagnostics.adb
 userspace/services/acpi/acpi_allocation_diagnostics.ads
 userspace/services/acpi/acpi_bootstrap.adb
 userspace/services/acpi/acpi_bootstrap.ads
+userspace/services/acpi/acpi_capacity_diagnostics.adb
+userspace/services/acpi/acpi_capacity_diagnostics.ads
 userspace/services/acpi/acpi_device_initialization.adb
 userspace/services/acpi/acpi_device_initialization.ads
 userspace/services/acpi/acpi_device_policy.adb
@@ -65,6 +81,8 @@ userspace/services/acpi/acpi_fallible_heap.adb
 userspace/services/acpi/acpi_fallible_heap.ads
 userspace/services/acpi/acpi_fatal_diagnostics.adb
 userspace/services/acpi/acpi_fatal_diagnostics.ads
+userspace/services/acpi/acpi_field_diagnostics.adb
+userspace/services/acpi/acpi_field_diagnostics.ads
 userspace/services/acpi/acpi_module_diagnostics.adb
 userspace/services/acpi/acpi_module_diagnostics.ads
 userspace/services/acpi/acpi_notification_consumer.adb
@@ -82,6 +100,10 @@ userspace/services/acpi/acpi_service_core.adb
 userspace/services/acpi/acpi_service_core.ads
 userspace/services/acpi/acpi_snapshot_provider.adb
 userspace/services/acpi/acpi_snapshot_provider.ads
+userspace/services/acpi/acpi_startup_evaluation.adb
+userspace/services/acpi/acpi_startup_evaluation.ads
+userspace/services/acpi/acpi_unprovisioned_regions.adb
+userspace/services/acpi/acpi_unprovisioned_regions.ads
 userspace/services/acpi/lib/acpi_fadt-registers.adb
 userspace/services/acpi/lib/acpi_fadt-registers.ads
 userspace/services/acpi/lib/acpi_fadt-sleep_registers.adb
@@ -90,6 +112,12 @@ userspace/services/acpi/lib/acpi_fadt-transactions.adb
 userspace/services/acpi/lib/acpi_fadt-transactions.ads
 userspace/services/acpi/lib/acpi_fadt.adb
 userspace/services/acpi/lib/acpi_fadt.ads
+userspace/services/acpi/lib/acpi_pci_config_reads.adb
+userspace/services/acpi/lib/acpi_pci_config_reads.ads
+userspace/services/acpi/lib/acpi_pci_memory_reads.adb
+userspace/services/acpi/lib/acpi_pci_memory_reads.ads
+userspace/services/acpi/lib/aml_allocation_retry.adb
+userspace/services/acpi/lib/aml_allocation_retry.ads
 userspace/services/acpi/lib/aml_bcd.adb
 userspace/services/acpi/lib/aml_bcd.ads
 userspace/services/acpi/lib/aml_buffer_bits.adb
@@ -190,6 +218,8 @@ userspace/services/acpi/lib/aml_persistent_owner_graph.ads
 userspace/services/acpi/lib/aml_reference_frames.adb
 userspace/services/acpi/lib/aml_reference_frames.ads
 userspace/services/acpi/lib/aml_references.ads
+userspace/services/acpi/lib/aml_register_views.adb
+userspace/services/acpi/lib/aml_register_views.ads
 userspace/services/acpi/lib/aml_resource_templates.adb
 userspace/services/acpi/lib/aml_resource_templates.ads
 userspace/services/acpi/lib/aml_retained_identities.ads
@@ -214,6 +244,7 @@ userspace/services/acpi/lib/aml_table_readers.adb
 userspace/services/acpi/lib/aml_table_readers.ads
 userspace/services/acpi/lib/aml_table_sources.adb
 userspace/services/acpi/lib/aml_table_sources.ads
+userspace/services/acpi/lib/aml_work_kinds.ads
 userspace/services/acpi/region-init/acpi_region_initialization.adb
 userspace/services/acpi/region-init/acpi_region_initialization.ads
 userspace/services/acpi/request-driver/acpi_observer_endpoint.adb

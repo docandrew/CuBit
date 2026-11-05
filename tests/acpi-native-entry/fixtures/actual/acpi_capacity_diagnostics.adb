@@ -3,7 +3,9 @@ package body ACPI_Capacity_Diagnostics with SPARK_Mode is
    function Format (Item : Report) return String is
       function Cache_Name return String is
         (case Item.Cache is when No_Cache => "NONE", when NVS_Targets => "NVS_TARGETS",
-         when Combined_Targets => "COMBINED_TARGETS", when PCI_Targets => "PCI_TARGETS");
+         when Combined_Targets => "COMBINED_TARGETS", when PCI_Targets => "PCI_TARGETS",
+         when Firmware_Targets => "FIRMWARE_TARGETS", when Firmware_Regions => "FIRMWARE_REGIONS",
+         when Firmware_Frames => "FIRMWARE_FRAMES", when Firmware_Descriptors => "FIRMWARE_DESCRIPTORS");
       function Limit_Name return String is
         (case Item.Failure is when No_Failure => "NONE",
          when Process_Heap => "PROCESS_HEAP_BUDGET",

@@ -24,3 +24,5 @@ Its current-source input/closure refresh does not renew historical proof results
 Fresh hosted checks cover both profiles; no native execution or hardware
 authority/region connection follows from these tests. The native API gate
 selects 59 units and produces 56 ALIs with zero objects per profile.
+
+Current compiler workflow: `run.sh --mode release` runs the full ACPICA reference and release status/actual-Core observer tests. `--mode checked` remains an explicit profile; do not run whole-Core assertion code generation with the known compiler issue. Pure status tests can be checked independently. No argument retains the historical both-profile behavior. The current observer compiled-unit closure is92, including registered/copied-table, typed storage, PCI/register-view and930/958helpers. This metadata refresh does not renew old proof/hardware receipts.

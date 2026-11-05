@@ -34,6 +34,7 @@ generic
    Virtual_First, Virtual_Limit : Interfaces.Unsigned_64;
    Mapping_Page_Limit : Positive;
 package ACPI_Backend_Catalog is
+   pragma Unevaluated_Use_Of_Old (Allow);
    use Interfaces;
    package Bindings is new ACPI_Backend_Bindings
      (Memory_Authority, No_Memory, Port_Authority, No_Ports,
@@ -120,6 +121,22 @@ package ACPI_Backend_Catalog is
       Registers, Active_Registers, Pending, Retained_Windows : Natural := 0;
    end record;
    function Observe (State : Context) return Statistics;
+   -- Trusted process-local ownership handoff after catalog sealing. No IPC,
+   -- grant, physical address or mapping is exposed. Attempted mappings retain
+   -- their entire reserved span; the remaining VA tail can be claimed once.
+   function Unused_Device_Arena_Claimed (State : Context) return Boolean
+      with SPARK_Mode, Global => null;
+   procedure Claim_Unused_Device_Arena (State : in out Context;
+      First, Limit : out Unsigned_64; Accepted : out Boolean)
+      with SPARK_Mode, Global => (Input => (Virtual_First, Virtual_Limit)),
+      Post => Unused_Device_Arena_Claimed (State) =
+         (Unused_Device_Arena_Claimed (State)'Old or Accepted)
+         and then (if Accepted then
+            not Unused_Device_Arena_Claimed (State)'Old
+            and then First >= Virtual_First and then First < Limit
+            and then Limit = Virtual_Limit and then Limit <= B.User_Virtual_Limit
+            and then First mod W.Map_Page_Bytes = 0 and then Limit mod W.Map_Page_Bytes = 0
+            else First = 0 and then Limit = 0);
 private
    type Slot_Count is new Natural range 0 .. Maximum_Registers;
    subtype Slot_Index is Slot_Count range 1 .. Slot_Count'Last;
@@ -140,6 +157,7 @@ private
       Count : Slot_Count := 0;
       Scope_Last : Scope_Count := 0;
       Sealed, Working, Quarantined : Boolean := False;
+      Device_Tail_Claimed : Boolean := False;
       Revision : Revision_Number := No_Revision;
    end record;
 end ACPI_Backend_Catalog;

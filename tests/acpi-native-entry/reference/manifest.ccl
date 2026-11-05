@@ -5,6 +5,7 @@
   requests => [
     (service "logstore" "logstore")
     (Request.Firmware_Snapshot "tables")
+    (Request.ACPI_Hardware "hardware")
     (service "acpi-registers" "registers")
     (notification "acpi" Notify_Access.Manage "registration")]
   optional => ["registers"])

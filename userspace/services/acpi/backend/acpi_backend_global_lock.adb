@@ -22,6 +22,7 @@ package body ACPI_Backend_Global_Lock is
          Word := 0;
          Available := Signal_Ready and then View.Allowed and then View.Space = Bindings.P.Memory_Space;
          if Available then Word := Atomic.Read_Word (Pointer (View)); end if;
+         Observe_Word (Word, Available);
       end Read_Word;
       procedure Compare_Exchange
         (Expected, Replacement : Interfaces.Unsigned_32;
@@ -30,14 +31,19 @@ package body ACPI_Backend_Global_Lock is
          View : constant Bindings.Access_View := FACS.Select_Word (FACS_State, Hardware, True);
       begin
          Observed := 0; Result := Not_Attempted;
-         if not Signal_Ready or else not View.Allowed or else View.Space /= Bindings.P.Memory_Space then return; end if;
+         if not Signal_Ready or else not View.Allowed or else View.Space /= Bindings.P.Memory_Space then
+            Observe_CAS (Expected, Replacement, Observed, False, False, False);
+            return;
+         end if;
          Observed := Atomic.Compare_Exchange (Pointer (View), Expected, Replacement);
          Result := (if Observed = Expected then Exchanged else Not_Exchanged);
+         Observe_CAS (Expected, Replacement, Observed, True, True, Result = Exchanged);
       end Compare_Exchange;
       procedure Signal_Firmware (Result : out Signal_Outcome) is
          Report : Signaling.Report;
       begin
          Signaling.Emit (Signal_State, Hardware, Report);
+         Observe_Signal (Report);
          Result := (case Report.Status is
             when Signaling.Signaled => Complete,
             when Signaling.Not_Sent => Not_Sent,

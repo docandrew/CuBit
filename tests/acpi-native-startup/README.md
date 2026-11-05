@@ -164,3 +164,5 @@ the entry's module callback. The obsolete uncontrolled modeled entry is refused.
 All 88 startup scenarios pass in each profile (1,892 owner plus 31 diagnostic assertions
 per profile,152 source ALIs). Expected trusted-boundary exceptions remain caught
 only by the hosted test boundary; no native exception recovery is claimed.
+
+Current source refresh after930/958:188compiled units,88release owner scenarios/1892checks plus31module-note checks. Boundary mirrors use current native-instance and service interfaces. Timing/report and the diagnostic lock-dump body are explicit passive models here to preserve the scenario clock and logger budget; actual diagnostics are covered separately by acpi-work-timing and acpi-native-entry. No native/hardware or new proof claim.

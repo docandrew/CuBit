@@ -3,6 +3,8 @@
 --  Handle limit: standard (4096).
 pragma Ada_2022;
 with CuBit.Handles.Startup;
+with CuBit.ACPI_Windows.Launch;
+with CuBit.Firmware_Data_Exchange;
 with CuBit.Firmware_Snapshot;
 with CuBit.Startup_State;
 with CuBit.Startup_Tables;
@@ -17,6 +19,13 @@ package Startup with SPARK_Mode, Elaborate_Body is
    function Tables return Standard.CuBit.Firmware_Snapshot.Authority is
      (Standard.CuBit.Firmware_Snapshot.Named ("tables"));
 
+   --  ACPI_Hardware "hardware", required.
+   function Hardware return Standard.CuBit.ACPI_Windows.Grant is
+     (Standard.CuBit.ACPI_Windows.Launch.Named ("hardware"));
+   function Hardware_Data return Standard.CuBit.Handles.Startup.Optional_Endpoint is
+     (Standard.CuBit.Handles.Startup.Optional_Endpoint_Named
+        (Standard.CuBit.Firmware_Data_Exchange.Data_Label ("hardware")));
+
    --  Endpoint "registers", optional.
    function Registers return Standard.CuBit.Handles.Startup.Optional_Endpoint is
      (Standard.CuBit.Handles.Startup.Optional_Endpoint_Named ("registers", Standard.CuBit.Startup_Tables.Endpoint));
@@ -30,6 +39,7 @@ package Startup with SPARK_Mode, Elaborate_Body is
    Expected : constant Standard.CuBit.Startup_State.Expectations :=
      [(Standard.CuBit.Startup_Tables.To_Name ("logstore"), Standard.CuBit.Startup_Tables.Endpoint, Standard.CuBit.Startup_Tables.Required),
       (Standard.CuBit.Startup_Tables.To_Name ("tables"), Standard.CuBit.Startup_Tables.Firmware_Snapshot, Standard.CuBit.Startup_Tables.Required),
+      (Standard.CuBit.Startup_Tables.To_Name ("hardware"), Standard.CuBit.Startup_Tables.ACPI_Hardware, Standard.CuBit.Startup_Tables.Required),
       (Standard.CuBit.Startup_Tables.To_Name ("registers"), Standard.CuBit.Startup_Tables.Endpoint, Standard.CuBit.Startup_Tables.Optional),
       (Standard.CuBit.Startup_Tables.To_Name ("registration"), Standard.CuBit.Startup_Tables.Notification, Standard.CuBit.Startup_Tables.Required)];
 end Startup;

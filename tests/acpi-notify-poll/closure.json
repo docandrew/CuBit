@@ -2,29 +2,29 @@
   "module_policy_tests": {
     "main": "module_policy_tests.adb",
     "sources": {
+      "acpi_allocation_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.adb",
+        "sha256": "31ecdfeeec72795073ca81a34b963b292c48834bf844df852108f791bf59d03c"
+      },
+      "acpi_allocation_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.ads",
+        "sha256": "532ff73565f7851a486e62b2887fe8f1e20be8c52d5c5e6c0c2917785c526bff"
+      },
       "acpi_bootstrap.adb": {
         "path": "userspace/services/acpi/acpi_bootstrap.adb",
-        "sha256": "820954d8d953869aa9e7514cb9b5ff35f9c0f672fdf8598c64aece2abe088125"
+        "sha256": "74dce0c9a07f9a0f378df5166703c5643e76c81adea430a7417843e4ad2451f6"
       },
       "acpi_bootstrap.ads": {
         "path": "userspace/services/acpi/acpi_bootstrap.ads",
-        "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1"
+        "sha256": "c81ac82bcc95250678dcad20835bc4b50e99c4561803715816e496a56259d6f6"
       },
       "acpi_capacity_diagnostics.adb": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
-        "sha256": "d6d1447499504b50a2a6760fb9b594fa37031b4afb198ed9c60e8e284c054f3a"
+        "sha256": "a09046149489b4f0b3fe148e9fe8aa1a1a93d422950b30fa79f7bf5809f2356d"
       },
       "acpi_capacity_diagnostics.ads": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
-        "sha256": "3cef27ce0fab358de43f08a80c2b1c7652426d18bc2680e6333972831f0e7567"
-      },
-      "acpi_controller_source.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
-        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
-      },
-      "acpi_controller_source.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
-        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+        "sha256": "abb016dcfc40c419cee06771311817f461ce0c5e9ea9f55d26cd7d8581ab9cd3"
       },
       "acpi_device_initialization.adb": {
         "path": "userspace/services/acpi/acpi_device_initialization.adb",
@@ -58,6 +58,138 @@
         "path": "userspace/services/acpi/acpi_endpoint.ads",
         "sha256": "951ce7dfe301e75e7a7f2d49997a691d75acecc3d0555b5f851b7d920d01097e"
       },
+      "acpi_fallible_heap.adb": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.adb",
+        "sha256": "3e45a25f57c438a691976044030bc35ec87e3f6157c1b3460a674723ada97815"
+      },
+      "acpi_fallible_heap.ads": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+        "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+      },
+      "acpi_fatal_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
+        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
+      },
+      "acpi_fatal_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
+        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
+      },
+      "acpi_field_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.adb",
+        "sha256": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a"
+      },
+      "acpi_field_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.ads",
+        "sha256": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+      },
+      "acpi_module_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
+        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
+      },
+      "acpi_module_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
+        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
+      },
+      "acpi_notification_consumer.adb": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
+        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
+      },
+      "acpi_notification_consumer.ads": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
+        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
+      },
+      "acpi_notification_receipts.adb": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
+        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
+      },
+      "acpi_notification_receipts.ads": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
+        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
+      },
+      "acpi_requests-notification_pump.adb": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
+        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
+      },
+      "acpi_requests-notification_pump.ads": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
+        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
+      },
+      "acpi_requests-with_notification_routing.adb": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
+        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
+      },
+      "acpi_requests-with_notification_routing.ads": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
+        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
+      },
+      "acpi_requests.adb": {
+        "path": "userspace/services/acpi/acpi_requests.adb",
+        "sha256": "ce0f3e505f6bdb28487bd5f431930cad8d9e58ac1f24e8c92c65eade90e50beb"
+      },
+      "acpi_requests.ads": {
+        "path": "userspace/services/acpi/acpi_requests.ads",
+        "sha256": "4beb679bf9ea146826a1780d24019befab34f6250c3b417fcdc183b5503625ef"
+      },
+      "acpi_service.ads": {
+        "path": "userspace/services/acpi/acpi_service.ads",
+        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
+      },
+      "acpi_service_core.adb": {
+        "path": "userspace/services/acpi/acpi_service_core.adb",
+        "sha256": "8992a07cefe2312b4e5507d607d3f58fd120892622f65335b9baad6c505d10ac"
+      },
+      "acpi_service_core.ads": {
+        "path": "userspace/services/acpi/acpi_service_core.ads",
+        "sha256": "edd9ad7dedeb72f1c5e260c0253c2115866a16ce0c3d8644c79eaa8f49239f13"
+      },
+      "acpi_snapshot_provider.adb": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
+        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
+      },
+      "acpi_snapshot_provider.ads": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
+        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
+      },
+      "acpi_startup_evaluation.adb": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
+        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
+      },
+      "acpi_startup_evaluation.ads": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
+        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
+      },
+      "acpi_unprovisioned_regions.adb": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
+        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
+      },
+      "acpi_unprovisioned_regions.ads": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
+        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
+      },
+      "acpi_controller_source.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
+        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
+      },
+      "acpi_controller_source.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
+        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+      },
+      "acpi_resource_names.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
+        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
+      },
+      "acpi_resource_names.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
+        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
+      },
+      "acpi_resource_reader.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
+        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
+      },
+      "acpi_resource_reader.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
+        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
+      },
       "acpi_fadt-registers.adb": {
         "path": "userspace/services/acpi/lib/acpi_fadt-registers.adb",
         "sha256": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6"
@@ -90,38 +222,6 @@
         "path": "userspace/services/acpi/lib/acpi_fadt.ads",
         "sha256": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752"
       },
-      "acpi_fatal_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
-        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
-      },
-      "acpi_fatal_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
-        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
-      },
-      "acpi_module_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
-        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
-      },
-      "acpi_module_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
-        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
-      },
-      "acpi_notification_consumer.adb": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
-        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
-      },
-      "acpi_notification_consumer.ads": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
-        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
-      },
-      "acpi_notification_receipts.adb": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
-        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
-      },
-      "acpi_notification_receipts.ads": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
-        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
-      },
       "acpi_pci_config_reads.adb": {
         "path": "userspace/services/acpi/lib/acpi_pci_config_reads.adb",
         "sha256": "916b94ba08882f32a297791986b0e536920debfcb767a456344fdb686cc59ac2"
@@ -137,82 +237,6 @@
       "acpi_pci_memory_reads.ads": {
         "path": "userspace/services/acpi/lib/acpi_pci_memory_reads.ads",
         "sha256": "eaf82d368c4ad444da23db348118f29a0f6ec643f5bf3f8ba5b477ae8d5f5a37"
-      },
-      "acpi_requests-notification_pump.adb": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
-        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
-      },
-      "acpi_requests-notification_pump.ads": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
-        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
-      },
-      "acpi_requests-with_notification_routing.adb": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
-        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
-      },
-      "acpi_requests-with_notification_routing.ads": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
-        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
-      },
-      "acpi_requests.adb": {
-        "path": "userspace/services/acpi/acpi_requests.adb",
-        "sha256": "f8b0e7dcbb3d3a56b165ea1063458ec90d4e30de5bcc5e0359f10a60ab487719"
-      },
-      "acpi_requests.ads": {
-        "path": "userspace/services/acpi/acpi_requests.ads",
-        "sha256": "7ef7a30966b61bdfd597e4817ac8b8fdd9e7601f0f7760b1f2bd20b33936d088"
-      },
-      "acpi_resource_names.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
-        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
-      },
-      "acpi_resource_names.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
-        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
-      },
-      "acpi_resource_reader.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
-        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
-      },
-      "acpi_resource_reader.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
-        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
-      },
-      "acpi_service_core.adb": {
-        "path": "userspace/services/acpi/acpi_service_core.adb",
-        "sha256": "8768a90a0b1cbf2d3a0c82c32f7be35f617f2e5da40ec18d24dc71a8bbd055ab"
-      },
-      "acpi_service_core.ads": {
-        "path": "userspace/services/acpi/acpi_service_core.ads",
-        "sha256": "fbcb9dbfe952328b1be3ee4c410040d3ea2cd74f100f55ae97f7c082598b8bbd"
-      },
-      "acpi_service.ads": {
-        "path": "userspace/services/acpi/acpi_service.ads",
-        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
-      },
-      "acpi_snapshot_provider.adb": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
-        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
-      },
-      "acpi_snapshot_provider.ads": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
-        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
-      },
-      "acpi_startup_evaluation.adb": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
-        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
-      },
-      "acpi_startup_evaluation.ads": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
-        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
-      },
-      "acpi_unprovisioned_regions.adb": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
-        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
-      },
-      "acpi_unprovisioned_regions.ads": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
-        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
       },
       "aml_bcd.adb": {
         "path": "userspace/services/acpi/lib/aml_bcd.adb",
@@ -296,11 +320,11 @@
       },
       "aml_data.adb": {
         "path": "userspace/services/acpi/lib/aml_data.adb",
-        "sha256": "99c86d0e236053a6a57772f1b78f701c1d94c7a6e8e62208c10694cdfbf73ee1"
+        "sha256": "890f17dd83532f0721b64f7d27dd0ee8d7496a3775c32cd813462d61545fe845"
       },
       "aml_data.ads": {
         "path": "userspace/services/acpi/lib/aml_data.ads",
-        "sha256": "31a0100147dc2f7012a1b9b263cd1cb38168b0ccd4cfaff5639adb0e1b8dc024"
+        "sha256": "86eb1e0fef56e908aeaf44214e8eb1c2c62d8dd90b4ee3182c90a80f8fd25fbb"
       },
       "aml_declaration_contexts.adb": {
         "path": "userspace/services/acpi/lib/aml_declaration_contexts.adb",
@@ -352,11 +376,11 @@
       },
       "aml_execute.adb": {
         "path": "userspace/services/acpi/lib/aml_execute.adb",
-        "sha256": "88f5f0fa039b7da3c6f163108bcba9f47c45152086911de482c7f9f9e1c2a2a5"
+        "sha256": "7a3d619e7cfe8939395eedb44924fe710d69fe878bd73355c260cc66acb9eaf7"
       },
       "aml_execute.ads": {
         "path": "userspace/services/acpi/lib/aml_execute.ads",
-        "sha256": "7df63a4792523963a0a588010acbf2713486398d58552fa1b632197b70967f78"
+        "sha256": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1"
       },
       "aml_execution_limits.ads": {
         "path": "userspace/services/acpi/lib/aml_execution_limits.ads",
@@ -432,11 +456,11 @@
       },
       "aml_frame_roots.adb": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.adb",
-        "sha256": "7f38fbef176bfb5e02de700938957cf39aa72dd1a4d660bb12bdbaae3a3bbdd2"
+        "sha256": "75dcd92f8358dfe28c5bb34c0395b2cf37d583f7895bc746b7226742368a7885"
       },
       "aml_frame_roots.ads": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.ads",
-        "sha256": "b454a661613c7bee703bc8a058fe2ab17f7a59b0c1c84cdc62073785d4a4b793"
+        "sha256": "8005877861b99e46f0c4cbaa06e727cba12b70c3813fbfea8562d653a6dc2169"
       },
       "aml_identity-issuer.adb": {
         "path": "userspace/services/acpi/lib/aml_identity-issuer.adb",
@@ -520,15 +544,15 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "a1b790cc07681aad370c395b260eaf90c3f6985332b91fa2c20b6c6ee2cb5dd4"
+        "sha256": "3b6b3e073a12287554121eca9a2d058172176b2f77da6c3859ecd0752c0eace4"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
-        "sha256": "129a7f8c98493e37580be33dda29daa87508c8e61ac8a83aa2f2dbb6f7f27ffc"
+        "sha256": "f9be802f0e19e6bea2fc8c960a1ecddee612d05158eb82c4906621384be5fcb8"
       },
       "aml_object_identifiers.ads": {
         "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
-        "sha256": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba"
+        "sha256": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356"
       },
       "aml_objects-byte_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-byte_references.adb",
@@ -540,11 +564,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "cf262cb314b35a3ea26f01bce8e398af467918c397197cc66b24c3b3561c5660"
+        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "85bf98821d2694ad127f6e3c11676d158f374cf6a84587af0821605d8a04e1da"
+        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -556,35 +580,35 @@
       },
       "aml_objects-reachability.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.adb",
-        "sha256": "4760cc417ab80d06e93e8ac06928c9380003f6c4d9fab13eaa16761f48b39427"
+        "sha256": "f827d2df0dfd7a35c0e33b2fd4b4f5e78a418a4b99402b78af18311e5afc3d34"
       },
       "aml_objects-reachability.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.ads",
-        "sha256": "70c3526a1111e7589e673e7a98b68f8810185d58b9df23f570b5314f0d3724d7"
+        "sha256": "f77a33dd1652cb2f6b06aad63f25f2107e43848b8f82affd5e45463b960a2bbd"
       },
       "aml_objects-reclamation.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.adb",
-        "sha256": "723a439d31ead3d4dd6c3efca61fdfcb8bcb046f8e08528e980fbfee21cdb739"
+        "sha256": "de8a14cf86968456bef4897dc1aeb8ddab35006609503fe7cbf75b8b01ae5dbb"
       },
       "aml_objects-reclamation.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.ads",
-        "sha256": "b52eb3acdd0f6923f85477a666979cb1fc3ff2efb69caff681d195eae53e345e"
+        "sha256": "316ea00ecc1870b25b5ef4a38a59b444ffe216adf3b288ba179cf2d0903ac63c"
       },
       "aml_objects-root_snapshots.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.adb",
-        "sha256": "1ace625842bc7e84ddbb017be2f60e6ff99edaa125dde4bc116bb313aefe6200"
+        "sha256": "f64c655e52b732d7e84a9f5607ac71de9669bbc954b282ec19144e816c74b45f"
       },
       "aml_objects-root_snapshots.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.ads",
-        "sha256": "c977f5774628018fa80a857e5a22f50a1657e58ed35dfcc8c11580e1900d8446"
+        "sha256": "edae83d3c161a04e59615bf5553727f3f660e63f29b357307f6452e50dae0b31"
       },
       "aml_objects.adb": {
         "path": "userspace/services/acpi/lib/aml_objects.adb",
-        "sha256": "baf3370e9d9d14eb358f3df885eb74c47a4ade781edef94519b5493610d2304f"
+        "sha256": "ef75ea91053c22b0b1cfc5232ebab1110df30de6176de816b36553be3b60a135"
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "c62800fb01bae0ad8ba9d69e28c6a2bee33153afaf7846d3d63fbb2a44cef208"
+        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -669,6 +693,14 @@
       "aml_slices.ads": {
         "path": "userspace/services/acpi/lib/aml_slices.ads",
         "sha256": "6c54b617cc89e429f4ee1b4874c902807d725938726f7a9bbe123e28c4f77563"
+      },
+      "aml_storage_capacities.adb": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.adb",
+        "sha256": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f"
+      },
+      "aml_storage_capacities.ads": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.ads",
+        "sha256": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688"
       },
       "aml_string_order.adb": {
         "path": "userspace/services/acpi/lib/aml_string_order.adb",
@@ -831,29 +863,29 @@
   "namespace_notify_tests": {
     "main": "namespace_notify_tests.adb",
     "sources": {
+      "acpi_allocation_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.adb",
+        "sha256": "31ecdfeeec72795073ca81a34b963b292c48834bf844df852108f791bf59d03c"
+      },
+      "acpi_allocation_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.ads",
+        "sha256": "532ff73565f7851a486e62b2887fe8f1e20be8c52d5c5e6c0c2917785c526bff"
+      },
       "acpi_bootstrap.adb": {
         "path": "userspace/services/acpi/acpi_bootstrap.adb",
-        "sha256": "820954d8d953869aa9e7514cb9b5ff35f9c0f672fdf8598c64aece2abe088125"
+        "sha256": "74dce0c9a07f9a0f378df5166703c5643e76c81adea430a7417843e4ad2451f6"
       },
       "acpi_bootstrap.ads": {
         "path": "userspace/services/acpi/acpi_bootstrap.ads",
-        "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1"
+        "sha256": "c81ac82bcc95250678dcad20835bc4b50e99c4561803715816e496a56259d6f6"
       },
       "acpi_capacity_diagnostics.adb": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
-        "sha256": "d6d1447499504b50a2a6760fb9b594fa37031b4afb198ed9c60e8e284c054f3a"
+        "sha256": "a09046149489b4f0b3fe148e9fe8aa1a1a93d422950b30fa79f7bf5809f2356d"
       },
       "acpi_capacity_diagnostics.ads": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
-        "sha256": "3cef27ce0fab358de43f08a80c2b1c7652426d18bc2680e6333972831f0e7567"
-      },
-      "acpi_controller_source.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
-        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
-      },
-      "acpi_controller_source.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
-        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+        "sha256": "abb016dcfc40c419cee06771311817f461ce0c5e9ea9f55d26cd7d8581ab9cd3"
       },
       "acpi_device_initialization.adb": {
         "path": "userspace/services/acpi/acpi_device_initialization.adb",
@@ -887,6 +919,138 @@
         "path": "userspace/services/acpi/acpi_endpoint.ads",
         "sha256": "951ce7dfe301e75e7a7f2d49997a691d75acecc3d0555b5f851b7d920d01097e"
       },
+      "acpi_fallible_heap.adb": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.adb",
+        "sha256": "3e45a25f57c438a691976044030bc35ec87e3f6157c1b3460a674723ada97815"
+      },
+      "acpi_fallible_heap.ads": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+        "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+      },
+      "acpi_fatal_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
+        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
+      },
+      "acpi_fatal_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
+        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
+      },
+      "acpi_field_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.adb",
+        "sha256": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a"
+      },
+      "acpi_field_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.ads",
+        "sha256": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+      },
+      "acpi_module_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
+        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
+      },
+      "acpi_module_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
+        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
+      },
+      "acpi_notification_consumer.adb": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
+        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
+      },
+      "acpi_notification_consumer.ads": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
+        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
+      },
+      "acpi_notification_receipts.adb": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
+        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
+      },
+      "acpi_notification_receipts.ads": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
+        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
+      },
+      "acpi_requests-notification_pump.adb": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
+        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
+      },
+      "acpi_requests-notification_pump.ads": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
+        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
+      },
+      "acpi_requests-with_notification_routing.adb": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
+        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
+      },
+      "acpi_requests-with_notification_routing.ads": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
+        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
+      },
+      "acpi_requests.adb": {
+        "path": "userspace/services/acpi/acpi_requests.adb",
+        "sha256": "ce0f3e505f6bdb28487bd5f431930cad8d9e58ac1f24e8c92c65eade90e50beb"
+      },
+      "acpi_requests.ads": {
+        "path": "userspace/services/acpi/acpi_requests.ads",
+        "sha256": "4beb679bf9ea146826a1780d24019befab34f6250c3b417fcdc183b5503625ef"
+      },
+      "acpi_service.ads": {
+        "path": "userspace/services/acpi/acpi_service.ads",
+        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
+      },
+      "acpi_service_core.adb": {
+        "path": "userspace/services/acpi/acpi_service_core.adb",
+        "sha256": "8992a07cefe2312b4e5507d607d3f58fd120892622f65335b9baad6c505d10ac"
+      },
+      "acpi_service_core.ads": {
+        "path": "userspace/services/acpi/acpi_service_core.ads",
+        "sha256": "edd9ad7dedeb72f1c5e260c0253c2115866a16ce0c3d8644c79eaa8f49239f13"
+      },
+      "acpi_snapshot_provider.adb": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
+        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
+      },
+      "acpi_snapshot_provider.ads": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
+        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
+      },
+      "acpi_startup_evaluation.adb": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
+        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
+      },
+      "acpi_startup_evaluation.ads": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
+        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
+      },
+      "acpi_unprovisioned_regions.adb": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
+        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
+      },
+      "acpi_unprovisioned_regions.ads": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
+        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
+      },
+      "acpi_controller_source.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
+        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
+      },
+      "acpi_controller_source.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
+        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+      },
+      "acpi_resource_names.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
+        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
+      },
+      "acpi_resource_names.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
+        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
+      },
+      "acpi_resource_reader.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
+        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
+      },
+      "acpi_resource_reader.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
+        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
+      },
       "acpi_fadt-registers.adb": {
         "path": "userspace/services/acpi/lib/acpi_fadt-registers.adb",
         "sha256": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6"
@@ -919,38 +1083,6 @@
         "path": "userspace/services/acpi/lib/acpi_fadt.ads",
         "sha256": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752"
       },
-      "acpi_fatal_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
-        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
-      },
-      "acpi_fatal_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
-        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
-      },
-      "acpi_module_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
-        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
-      },
-      "acpi_module_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
-        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
-      },
-      "acpi_notification_consumer.adb": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
-        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
-      },
-      "acpi_notification_consumer.ads": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
-        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
-      },
-      "acpi_notification_receipts.adb": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
-        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
-      },
-      "acpi_notification_receipts.ads": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
-        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
-      },
       "acpi_pci_config_reads.adb": {
         "path": "userspace/services/acpi/lib/acpi_pci_config_reads.adb",
         "sha256": "916b94ba08882f32a297791986b0e536920debfcb767a456344fdb686cc59ac2"
@@ -966,82 +1098,6 @@
       "acpi_pci_memory_reads.ads": {
         "path": "userspace/services/acpi/lib/acpi_pci_memory_reads.ads",
         "sha256": "eaf82d368c4ad444da23db348118f29a0f6ec643f5bf3f8ba5b477ae8d5f5a37"
-      },
-      "acpi_requests-notification_pump.adb": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
-        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
-      },
-      "acpi_requests-notification_pump.ads": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
-        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
-      },
-      "acpi_requests-with_notification_routing.adb": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
-        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
-      },
-      "acpi_requests-with_notification_routing.ads": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
-        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
-      },
-      "acpi_requests.adb": {
-        "path": "userspace/services/acpi/acpi_requests.adb",
-        "sha256": "f8b0e7dcbb3d3a56b165ea1063458ec90d4e30de5bcc5e0359f10a60ab487719"
-      },
-      "acpi_requests.ads": {
-        "path": "userspace/services/acpi/acpi_requests.ads",
-        "sha256": "7ef7a30966b61bdfd597e4817ac8b8fdd9e7601f0f7760b1f2bd20b33936d088"
-      },
-      "acpi_resource_names.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
-        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
-      },
-      "acpi_resource_names.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
-        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
-      },
-      "acpi_resource_reader.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
-        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
-      },
-      "acpi_resource_reader.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
-        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
-      },
-      "acpi_service_core.adb": {
-        "path": "userspace/services/acpi/acpi_service_core.adb",
-        "sha256": "8768a90a0b1cbf2d3a0c82c32f7be35f617f2e5da40ec18d24dc71a8bbd055ab"
-      },
-      "acpi_service_core.ads": {
-        "path": "userspace/services/acpi/acpi_service_core.ads",
-        "sha256": "fbcb9dbfe952328b1be3ee4c410040d3ea2cd74f100f55ae97f7c082598b8bbd"
-      },
-      "acpi_service.ads": {
-        "path": "userspace/services/acpi/acpi_service.ads",
-        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
-      },
-      "acpi_snapshot_provider.adb": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
-        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
-      },
-      "acpi_snapshot_provider.ads": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
-        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
-      },
-      "acpi_startup_evaluation.adb": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
-        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
-      },
-      "acpi_startup_evaluation.ads": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
-        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
-      },
-      "acpi_unprovisioned_regions.adb": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
-        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
-      },
-      "acpi_unprovisioned_regions.ads": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
-        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
       },
       "aml_bcd.adb": {
         "path": "userspace/services/acpi/lib/aml_bcd.adb",
@@ -1125,11 +1181,11 @@
       },
       "aml_data.adb": {
         "path": "userspace/services/acpi/lib/aml_data.adb",
-        "sha256": "99c86d0e236053a6a57772f1b78f701c1d94c7a6e8e62208c10694cdfbf73ee1"
+        "sha256": "890f17dd83532f0721b64f7d27dd0ee8d7496a3775c32cd813462d61545fe845"
       },
       "aml_data.ads": {
         "path": "userspace/services/acpi/lib/aml_data.ads",
-        "sha256": "31a0100147dc2f7012a1b9b263cd1cb38168b0ccd4cfaff5639adb0e1b8dc024"
+        "sha256": "86eb1e0fef56e908aeaf44214e8eb1c2c62d8dd90b4ee3182c90a80f8fd25fbb"
       },
       "aml_declaration_contexts.adb": {
         "path": "userspace/services/acpi/lib/aml_declaration_contexts.adb",
@@ -1181,11 +1237,11 @@
       },
       "aml_execute.adb": {
         "path": "userspace/services/acpi/lib/aml_execute.adb",
-        "sha256": "88f5f0fa039b7da3c6f163108bcba9f47c45152086911de482c7f9f9e1c2a2a5"
+        "sha256": "7a3d619e7cfe8939395eedb44924fe710d69fe878bd73355c260cc66acb9eaf7"
       },
       "aml_execute.ads": {
         "path": "userspace/services/acpi/lib/aml_execute.ads",
-        "sha256": "7df63a4792523963a0a588010acbf2713486398d58552fa1b632197b70967f78"
+        "sha256": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1"
       },
       "aml_execution_limits.ads": {
         "path": "userspace/services/acpi/lib/aml_execution_limits.ads",
@@ -1261,11 +1317,11 @@
       },
       "aml_frame_roots.adb": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.adb",
-        "sha256": "7f38fbef176bfb5e02de700938957cf39aa72dd1a4d660bb12bdbaae3a3bbdd2"
+        "sha256": "75dcd92f8358dfe28c5bb34c0395b2cf37d583f7895bc746b7226742368a7885"
       },
       "aml_frame_roots.ads": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.ads",
-        "sha256": "b454a661613c7bee703bc8a058fe2ab17f7a59b0c1c84cdc62073785d4a4b793"
+        "sha256": "8005877861b99e46f0c4cbaa06e727cba12b70c3813fbfea8562d653a6dc2169"
       },
       "aml_identity-issuer.adb": {
         "path": "userspace/services/acpi/lib/aml_identity-issuer.adb",
@@ -1349,15 +1405,15 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "a1b790cc07681aad370c395b260eaf90c3f6985332b91fa2c20b6c6ee2cb5dd4"
+        "sha256": "3b6b3e073a12287554121eca9a2d058172176b2f77da6c3859ecd0752c0eace4"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
-        "sha256": "129a7f8c98493e37580be33dda29daa87508c8e61ac8a83aa2f2dbb6f7f27ffc"
+        "sha256": "f9be802f0e19e6bea2fc8c960a1ecddee612d05158eb82c4906621384be5fcb8"
       },
       "aml_object_identifiers.ads": {
         "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
-        "sha256": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba"
+        "sha256": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356"
       },
       "aml_objects-byte_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-byte_references.adb",
@@ -1369,11 +1425,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "cf262cb314b35a3ea26f01bce8e398af467918c397197cc66b24c3b3561c5660"
+        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "85bf98821d2694ad127f6e3c11676d158f374cf6a84587af0821605d8a04e1da"
+        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -1385,35 +1441,35 @@
       },
       "aml_objects-reachability.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.adb",
-        "sha256": "4760cc417ab80d06e93e8ac06928c9380003f6c4d9fab13eaa16761f48b39427"
+        "sha256": "f827d2df0dfd7a35c0e33b2fd4b4f5e78a418a4b99402b78af18311e5afc3d34"
       },
       "aml_objects-reachability.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.ads",
-        "sha256": "70c3526a1111e7589e673e7a98b68f8810185d58b9df23f570b5314f0d3724d7"
+        "sha256": "f77a33dd1652cb2f6b06aad63f25f2107e43848b8f82affd5e45463b960a2bbd"
       },
       "aml_objects-reclamation.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.adb",
-        "sha256": "723a439d31ead3d4dd6c3efca61fdfcb8bcb046f8e08528e980fbfee21cdb739"
+        "sha256": "de8a14cf86968456bef4897dc1aeb8ddab35006609503fe7cbf75b8b01ae5dbb"
       },
       "aml_objects-reclamation.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.ads",
-        "sha256": "b52eb3acdd0f6923f85477a666979cb1fc3ff2efb69caff681d195eae53e345e"
+        "sha256": "316ea00ecc1870b25b5ef4a38a59b444ffe216adf3b288ba179cf2d0903ac63c"
       },
       "aml_objects-root_snapshots.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.adb",
-        "sha256": "1ace625842bc7e84ddbb017be2f60e6ff99edaa125dde4bc116bb313aefe6200"
+        "sha256": "f64c655e52b732d7e84a9f5607ac71de9669bbc954b282ec19144e816c74b45f"
       },
       "aml_objects-root_snapshots.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.ads",
-        "sha256": "c977f5774628018fa80a857e5a22f50a1657e58ed35dfcc8c11580e1900d8446"
+        "sha256": "edae83d3c161a04e59615bf5553727f3f660e63f29b357307f6452e50dae0b31"
       },
       "aml_objects.adb": {
         "path": "userspace/services/acpi/lib/aml_objects.adb",
-        "sha256": "baf3370e9d9d14eb358f3df885eb74c47a4ade781edef94519b5493610d2304f"
+        "sha256": "ef75ea91053c22b0b1cfc5232ebab1110df30de6176de816b36553be3b60a135"
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "c62800fb01bae0ad8ba9d69e28c6a2bee33153afaf7846d3d63fbb2a44cef208"
+        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -1498,6 +1554,14 @@
       "aml_slices.ads": {
         "path": "userspace/services/acpi/lib/aml_slices.ads",
         "sha256": "6c54b617cc89e429f4ee1b4874c902807d725938726f7a9bbe123e28c4f77563"
+      },
+      "aml_storage_capacities.adb": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.adb",
+        "sha256": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f"
+      },
+      "aml_storage_capacities.ads": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.ads",
+        "sha256": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688"
       },
       "aml_string_order.adb": {
         "path": "userspace/services/acpi/lib/aml_string_order.adb",
@@ -1661,11 +1725,11 @@
       },
       "notify_replay.adb": {
         "path": "tests/aml-notify/notify_replay.adb",
-        "sha256": "20d23f1db7b7f00d40b65dcef47e649e392ba29b3de6677c37f35db844c5b4a8"
+        "sha256": "72323678b36282a2797f0350931618949e50f9a9f8a352a822ded994bc1bdf7e"
       },
       "service_notify_tests.adb": {
         "path": "tests/aml-notify/service_notify_tests.adb",
-        "sha256": "fd08778b5f4a6c287b0a6772482ed359cd5b43c8a01f5055d8a20d047d05f52f"
+        "sha256": "288adab5a16d5a4532b433a051fee2251b05f1d7fe3089d4b9bec578a7836d5a"
       }
     }
   },
@@ -1673,29 +1737,29 @@
     "main": "notification_poll_tests.adb",
     "marker": "Notification polling checks",
     "sources": {
+      "acpi_allocation_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.adb",
+        "sha256": "31ecdfeeec72795073ca81a34b963b292c48834bf844df852108f791bf59d03c"
+      },
+      "acpi_allocation_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.ads",
+        "sha256": "532ff73565f7851a486e62b2887fe8f1e20be8c52d5c5e6c0c2917785c526bff"
+      },
       "acpi_bootstrap.adb": {
         "path": "userspace/services/acpi/acpi_bootstrap.adb",
-        "sha256": "820954d8d953869aa9e7514cb9b5ff35f9c0f672fdf8598c64aece2abe088125"
+        "sha256": "74dce0c9a07f9a0f378df5166703c5643e76c81adea430a7417843e4ad2451f6"
       },
       "acpi_bootstrap.ads": {
         "path": "userspace/services/acpi/acpi_bootstrap.ads",
-        "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1"
+        "sha256": "c81ac82bcc95250678dcad20835bc4b50e99c4561803715816e496a56259d6f6"
       },
       "acpi_capacity_diagnostics.adb": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
-        "sha256": "d6d1447499504b50a2a6760fb9b594fa37031b4afb198ed9c60e8e284c054f3a"
+        "sha256": "a09046149489b4f0b3fe148e9fe8aa1a1a93d422950b30fa79f7bf5809f2356d"
       },
       "acpi_capacity_diagnostics.ads": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
-        "sha256": "3cef27ce0fab358de43f08a80c2b1c7652426d18bc2680e6333972831f0e7567"
-      },
-      "acpi_controller_source.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
-        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
-      },
-      "acpi_controller_source.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
-        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+        "sha256": "abb016dcfc40c419cee06771311817f461ce0c5e9ea9f55d26cd7d8581ab9cd3"
       },
       "acpi_device_initialization.adb": {
         "path": "userspace/services/acpi/acpi_device_initialization.adb",
@@ -1729,6 +1793,138 @@
         "path": "userspace/services/acpi/acpi_endpoint.ads",
         "sha256": "951ce7dfe301e75e7a7f2d49997a691d75acecc3d0555b5f851b7d920d01097e"
       },
+      "acpi_fallible_heap.adb": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.adb",
+        "sha256": "3e45a25f57c438a691976044030bc35ec87e3f6157c1b3460a674723ada97815"
+      },
+      "acpi_fallible_heap.ads": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+        "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+      },
+      "acpi_fatal_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
+        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
+      },
+      "acpi_fatal_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
+        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
+      },
+      "acpi_field_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.adb",
+        "sha256": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a"
+      },
+      "acpi_field_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.ads",
+        "sha256": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+      },
+      "acpi_module_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
+        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
+      },
+      "acpi_module_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
+        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
+      },
+      "acpi_notification_consumer.adb": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
+        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
+      },
+      "acpi_notification_consumer.ads": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
+        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
+      },
+      "acpi_notification_receipts.adb": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
+        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
+      },
+      "acpi_notification_receipts.ads": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
+        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
+      },
+      "acpi_requests-notification_pump.adb": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
+        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
+      },
+      "acpi_requests-notification_pump.ads": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
+        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
+      },
+      "acpi_requests-with_notification_routing.adb": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
+        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
+      },
+      "acpi_requests-with_notification_routing.ads": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
+        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
+      },
+      "acpi_requests.adb": {
+        "path": "userspace/services/acpi/acpi_requests.adb",
+        "sha256": "ce0f3e505f6bdb28487bd5f431930cad8d9e58ac1f24e8c92c65eade90e50beb"
+      },
+      "acpi_requests.ads": {
+        "path": "userspace/services/acpi/acpi_requests.ads",
+        "sha256": "4beb679bf9ea146826a1780d24019befab34f6250c3b417fcdc183b5503625ef"
+      },
+      "acpi_service.ads": {
+        "path": "userspace/services/acpi/acpi_service.ads",
+        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
+      },
+      "acpi_service_core.adb": {
+        "path": "userspace/services/acpi/acpi_service_core.adb",
+        "sha256": "8992a07cefe2312b4e5507d607d3f58fd120892622f65335b9baad6c505d10ac"
+      },
+      "acpi_service_core.ads": {
+        "path": "userspace/services/acpi/acpi_service_core.ads",
+        "sha256": "edd9ad7dedeb72f1c5e260c0253c2115866a16ce0c3d8644c79eaa8f49239f13"
+      },
+      "acpi_snapshot_provider.adb": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
+        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
+      },
+      "acpi_snapshot_provider.ads": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
+        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
+      },
+      "acpi_startup_evaluation.adb": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
+        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
+      },
+      "acpi_startup_evaluation.ads": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
+        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
+      },
+      "acpi_unprovisioned_regions.adb": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
+        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
+      },
+      "acpi_unprovisioned_regions.ads": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
+        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
+      },
+      "acpi_controller_source.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
+        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
+      },
+      "acpi_controller_source.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
+        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+      },
+      "acpi_resource_names.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
+        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
+      },
+      "acpi_resource_names.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
+        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
+      },
+      "acpi_resource_reader.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
+        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
+      },
+      "acpi_resource_reader.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
+        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
+      },
       "acpi_fadt-registers.adb": {
         "path": "userspace/services/acpi/lib/acpi_fadt-registers.adb",
         "sha256": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6"
@@ -1761,38 +1957,6 @@
         "path": "userspace/services/acpi/lib/acpi_fadt.ads",
         "sha256": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752"
       },
-      "acpi_fatal_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
-        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
-      },
-      "acpi_fatal_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
-        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
-      },
-      "acpi_module_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
-        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
-      },
-      "acpi_module_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
-        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
-      },
-      "acpi_notification_consumer.adb": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
-        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
-      },
-      "acpi_notification_consumer.ads": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
-        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
-      },
-      "acpi_notification_receipts.adb": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
-        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
-      },
-      "acpi_notification_receipts.ads": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
-        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
-      },
       "acpi_pci_config_reads.adb": {
         "path": "userspace/services/acpi/lib/acpi_pci_config_reads.adb",
         "sha256": "916b94ba08882f32a297791986b0e536920debfcb767a456344fdb686cc59ac2"
@@ -1808,82 +1972,6 @@
       "acpi_pci_memory_reads.ads": {
         "path": "userspace/services/acpi/lib/acpi_pci_memory_reads.ads",
         "sha256": "eaf82d368c4ad444da23db348118f29a0f6ec643f5bf3f8ba5b477ae8d5f5a37"
-      },
-      "acpi_requests-notification_pump.adb": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
-        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
-      },
-      "acpi_requests-notification_pump.ads": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
-        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
-      },
-      "acpi_requests-with_notification_routing.adb": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
-        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
-      },
-      "acpi_requests-with_notification_routing.ads": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
-        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
-      },
-      "acpi_requests.adb": {
-        "path": "userspace/services/acpi/acpi_requests.adb",
-        "sha256": "f8b0e7dcbb3d3a56b165ea1063458ec90d4e30de5bcc5e0359f10a60ab487719"
-      },
-      "acpi_requests.ads": {
-        "path": "userspace/services/acpi/acpi_requests.ads",
-        "sha256": "7ef7a30966b61bdfd597e4817ac8b8fdd9e7601f0f7760b1f2bd20b33936d088"
-      },
-      "acpi_resource_names.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
-        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
-      },
-      "acpi_resource_names.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
-        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
-      },
-      "acpi_resource_reader.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
-        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
-      },
-      "acpi_resource_reader.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
-        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
-      },
-      "acpi_service_core.adb": {
-        "path": "userspace/services/acpi/acpi_service_core.adb",
-        "sha256": "8768a90a0b1cbf2d3a0c82c32f7be35f617f2e5da40ec18d24dc71a8bbd055ab"
-      },
-      "acpi_service_core.ads": {
-        "path": "userspace/services/acpi/acpi_service_core.ads",
-        "sha256": "fbcb9dbfe952328b1be3ee4c410040d3ea2cd74f100f55ae97f7c082598b8bbd"
-      },
-      "acpi_service.ads": {
-        "path": "userspace/services/acpi/acpi_service.ads",
-        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
-      },
-      "acpi_snapshot_provider.adb": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
-        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
-      },
-      "acpi_snapshot_provider.ads": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
-        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
-      },
-      "acpi_startup_evaluation.adb": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
-        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
-      },
-      "acpi_startup_evaluation.ads": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
-        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
-      },
-      "acpi_unprovisioned_regions.adb": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
-        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
-      },
-      "acpi_unprovisioned_regions.ads": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
-        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
       },
       "aml_bcd.adb": {
         "path": "userspace/services/acpi/lib/aml_bcd.adb",
@@ -1967,11 +2055,11 @@
       },
       "aml_data.adb": {
         "path": "userspace/services/acpi/lib/aml_data.adb",
-        "sha256": "99c86d0e236053a6a57772f1b78f701c1d94c7a6e8e62208c10694cdfbf73ee1"
+        "sha256": "890f17dd83532f0721b64f7d27dd0ee8d7496a3775c32cd813462d61545fe845"
       },
       "aml_data.ads": {
         "path": "userspace/services/acpi/lib/aml_data.ads",
-        "sha256": "31a0100147dc2f7012a1b9b263cd1cb38168b0ccd4cfaff5639adb0e1b8dc024"
+        "sha256": "86eb1e0fef56e908aeaf44214e8eb1c2c62d8dd90b4ee3182c90a80f8fd25fbb"
       },
       "aml_declaration_contexts.adb": {
         "path": "userspace/services/acpi/lib/aml_declaration_contexts.adb",
@@ -2023,11 +2111,11 @@
       },
       "aml_execute.adb": {
         "path": "userspace/services/acpi/lib/aml_execute.adb",
-        "sha256": "88f5f0fa039b7da3c6f163108bcba9f47c45152086911de482c7f9f9e1c2a2a5"
+        "sha256": "7a3d619e7cfe8939395eedb44924fe710d69fe878bd73355c260cc66acb9eaf7"
       },
       "aml_execute.ads": {
         "path": "userspace/services/acpi/lib/aml_execute.ads",
-        "sha256": "7df63a4792523963a0a588010acbf2713486398d58552fa1b632197b70967f78"
+        "sha256": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1"
       },
       "aml_execution_limits.ads": {
         "path": "userspace/services/acpi/lib/aml_execution_limits.ads",
@@ -2103,11 +2191,11 @@
       },
       "aml_frame_roots.adb": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.adb",
-        "sha256": "7f38fbef176bfb5e02de700938957cf39aa72dd1a4d660bb12bdbaae3a3bbdd2"
+        "sha256": "75dcd92f8358dfe28c5bb34c0395b2cf37d583f7895bc746b7226742368a7885"
       },
       "aml_frame_roots.ads": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.ads",
-        "sha256": "b454a661613c7bee703bc8a058fe2ab17f7a59b0c1c84cdc62073785d4a4b793"
+        "sha256": "8005877861b99e46f0c4cbaa06e727cba12b70c3813fbfea8562d653a6dc2169"
       },
       "aml_identity-issuer.adb": {
         "path": "userspace/services/acpi/lib/aml_identity-issuer.adb",
@@ -2191,15 +2279,15 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "a1b790cc07681aad370c395b260eaf90c3f6985332b91fa2c20b6c6ee2cb5dd4"
+        "sha256": "3b6b3e073a12287554121eca9a2d058172176b2f77da6c3859ecd0752c0eace4"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
-        "sha256": "129a7f8c98493e37580be33dda29daa87508c8e61ac8a83aa2f2dbb6f7f27ffc"
+        "sha256": "f9be802f0e19e6bea2fc8c960a1ecddee612d05158eb82c4906621384be5fcb8"
       },
       "aml_object_identifiers.ads": {
         "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
-        "sha256": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba"
+        "sha256": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356"
       },
       "aml_objects-byte_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-byte_references.adb",
@@ -2211,11 +2299,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "cf262cb314b35a3ea26f01bce8e398af467918c397197cc66b24c3b3561c5660"
+        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "85bf98821d2694ad127f6e3c11676d158f374cf6a84587af0821605d8a04e1da"
+        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -2227,35 +2315,35 @@
       },
       "aml_objects-reachability.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.adb",
-        "sha256": "4760cc417ab80d06e93e8ac06928c9380003f6c4d9fab13eaa16761f48b39427"
+        "sha256": "f827d2df0dfd7a35c0e33b2fd4b4f5e78a418a4b99402b78af18311e5afc3d34"
       },
       "aml_objects-reachability.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.ads",
-        "sha256": "70c3526a1111e7589e673e7a98b68f8810185d58b9df23f570b5314f0d3724d7"
+        "sha256": "f77a33dd1652cb2f6b06aad63f25f2107e43848b8f82affd5e45463b960a2bbd"
       },
       "aml_objects-reclamation.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.adb",
-        "sha256": "723a439d31ead3d4dd6c3efca61fdfcb8bcb046f8e08528e980fbfee21cdb739"
+        "sha256": "de8a14cf86968456bef4897dc1aeb8ddab35006609503fe7cbf75b8b01ae5dbb"
       },
       "aml_objects-reclamation.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.ads",
-        "sha256": "b52eb3acdd0f6923f85477a666979cb1fc3ff2efb69caff681d195eae53e345e"
+        "sha256": "316ea00ecc1870b25b5ef4a38a59b444ffe216adf3b288ba179cf2d0903ac63c"
       },
       "aml_objects-root_snapshots.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.adb",
-        "sha256": "1ace625842bc7e84ddbb017be2f60e6ff99edaa125dde4bc116bb313aefe6200"
+        "sha256": "f64c655e52b732d7e84a9f5607ac71de9669bbc954b282ec19144e816c74b45f"
       },
       "aml_objects-root_snapshots.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.ads",
-        "sha256": "c977f5774628018fa80a857e5a22f50a1657e58ed35dfcc8c11580e1900d8446"
+        "sha256": "edae83d3c161a04e59615bf5553727f3f660e63f29b357307f6452e50dae0b31"
       },
       "aml_objects.adb": {
         "path": "userspace/services/acpi/lib/aml_objects.adb",
-        "sha256": "baf3370e9d9d14eb358f3df885eb74c47a4ade781edef94519b5493610d2304f"
+        "sha256": "ef75ea91053c22b0b1cfc5232ebab1110df30de6176de816b36553be3b60a135"
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "c62800fb01bae0ad8ba9d69e28c6a2bee33153afaf7846d3d63fbb2a44cef208"
+        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -2340,6 +2428,14 @@
       "aml_slices.ads": {
         "path": "userspace/services/acpi/lib/aml_slices.ads",
         "sha256": "6c54b617cc89e429f4ee1b4874c902807d725938726f7a9bbe123e28c4f77563"
+      },
+      "aml_storage_capacities.adb": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.adb",
+        "sha256": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f"
+      },
+      "aml_storage_capacities.ads": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.ads",
+        "sha256": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688"
       },
       "aml_string_order.adb": {
         "path": "userspace/services/acpi/lib/aml_string_order.adb",
@@ -2383,15 +2479,35 @@
       },
       "bootstrap_catalog_tests.adb": {
         "path": "tests/acpi-bootstrap-devices/bootstrap_catalog_tests.adb",
-        "sha256": "cbb5bf5c26dffcdc589c9afad5a8dcfbd2364071c8c4005f8d2c9758d6b94cdf"
+        "sha256": "632ee8f84a7ab2ce829184f13280c0435901ec0ac0019d4d1193671175cfb4cc"
       },
       "bootstrap_device_tests.adb": {
         "path": "tests/acpi-bootstrap-devices/bootstrap_device_tests.adb",
-        "sha256": "99884224f86e57b20d5f1631b7a6e6537c73a35c6928ba8694bac1e25c1f2fb9"
+        "sha256": "1645a46d6fd0a26604001fb273ae2174f11e75ad73bce791f253006eaffdd9d9"
       },
       "bootstrap_migration_tests.adb": {
         "path": "tests/acpi-bootstrap-devices/bootstrap_migration_tests.adb",
-        "sha256": "b622abae173909f43f9e8ccd3c07b57b638beb4bb5669fbc4c07c0a9f02ccbb0"
+        "sha256": "96dbedce26530f2c8ed42071078026351175f28e2bb0e84e2329a9958609b5e3"
+      },
+      "migration_tables.adb": {
+        "path": "tests/acpi-bootstrap-devices/migration_tables.adb",
+        "sha256": "62bcf8c0cf69d146206be3041a33352da7647ccb0c91af804f5446ff3d2d1ca2"
+      },
+      "migration_tables.ads": {
+        "path": "tests/acpi-bootstrap-devices/migration_tables.ads",
+        "sha256": "5ab7cdf25f7bc2231b92807bfe07a55ac6cb2f6e71163b4954187acafa6e1b7f"
+      },
+      "request_boundary_tests.adb": {
+        "path": "tests/acpi-bootstrap-devices/request_boundary_tests.adb",
+        "sha256": "8c76395ada0cce644095ea0ba6a153d12de4ff58e3cb1452f2b85847bb4e9a92"
+      },
+      "request_migration_tests.adb": {
+        "path": "tests/acpi-bootstrap-devices/request_migration_tests.adb",
+        "sha256": "6010bf09d3956c71e2989dffb22f15717c435e6c4c11160ecc51a5786b637a19"
+      },
+      "startup_metrics_tests.adb": {
+        "path": "tests/acpi-bootstrap-devices/startup_metrics_tests.adb",
+        "sha256": "465189a429c6c18295090f9182f794aafdff5462f0946f8599eb968d6e13b4e9"
       },
       "firmware_tables-catalog.adb": {
         "path": "shared/firmware/firmware_tables-catalog.adb",
@@ -2505,62 +2621,42 @@
         "path": "shared/firmware/firmware_tables.ads",
         "sha256": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4"
       },
-      "migration_tables.adb": {
-        "path": "tests/acpi-bootstrap-devices/migration_tables.adb",
-        "sha256": "62bcf8c0cf69d146206be3041a33352da7647ccb0c91af804f5446ff3d2d1ca2"
-      },
-      "migration_tables.ads": {
-        "path": "tests/acpi-bootstrap-devices/migration_tables.ads",
-        "sha256": "5ab7cdf25f7bc2231b92807bfe07a55ac6cb2f6e71163b4954187acafa6e1b7f"
-      },
       "notification_poll_tests.adb": {
         "path": "tests/acpi-notify-poll/notification_poll_tests.adb",
-        "sha256": "55f0c7a1f9e594a86fee5b3a0b7f4e121e6f05ab0e41e46ba3fc825986a21248"
+        "sha256": "fa6ac481eab675242c01e4da40832382e5fb5eaf09d40ec4c0db6d4572d9648b"
       },
       "notification_receipt_tests.adb": {
         "path": "tests/acpi-notify-poll/notification_receipt_tests.adb",
         "sha256": "d8771a2909fe9d4b2ed438223c169249f825a7e7f3827fe6d5787306032fcb7e"
-      },
-      "request_boundary_tests.adb": {
-        "path": "tests/acpi-bootstrap-devices/request_boundary_tests.adb",
-        "sha256": "45b050adbef7a81326fbf6c59843d483cc063b1ea0b53001a2a398b43bdf37cf"
-      },
-      "request_migration_tests.adb": {
-        "path": "tests/acpi-bootstrap-devices/request_migration_tests.adb",
-        "sha256": "154b90f60647ed532dd5f5f06c522d404d1cbe9adcb2037f38ce13fd1ec15834"
-      },
-      "startup_metrics_tests.adb": {
-        "path": "tests/acpi-bootstrap-devices/startup_metrics_tests.adb",
-        "sha256": "fa4dad2cb194d40ffa2d1ad14131e9febfdaccfcb2f858792eb0b391a0722664"
       }
     }
   },
   "notification_receipt_tests": {
     "main": "notification_receipt_tests.adb",
     "sources": {
+      "acpi_allocation_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.adb",
+        "sha256": "31ecdfeeec72795073ca81a34b963b292c48834bf844df852108f791bf59d03c"
+      },
+      "acpi_allocation_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.ads",
+        "sha256": "532ff73565f7851a486e62b2887fe8f1e20be8c52d5c5e6c0c2917785c526bff"
+      },
       "acpi_bootstrap.adb": {
         "path": "userspace/services/acpi/acpi_bootstrap.adb",
-        "sha256": "820954d8d953869aa9e7514cb9b5ff35f9c0f672fdf8598c64aece2abe088125"
+        "sha256": "74dce0c9a07f9a0f378df5166703c5643e76c81adea430a7417843e4ad2451f6"
       },
       "acpi_bootstrap.ads": {
         "path": "userspace/services/acpi/acpi_bootstrap.ads",
-        "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1"
+        "sha256": "c81ac82bcc95250678dcad20835bc4b50e99c4561803715816e496a56259d6f6"
       },
       "acpi_capacity_diagnostics.adb": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
-        "sha256": "d6d1447499504b50a2a6760fb9b594fa37031b4afb198ed9c60e8e284c054f3a"
+        "sha256": "a09046149489b4f0b3fe148e9fe8aa1a1a93d422950b30fa79f7bf5809f2356d"
       },
       "acpi_capacity_diagnostics.ads": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
-        "sha256": "3cef27ce0fab358de43f08a80c2b1c7652426d18bc2680e6333972831f0e7567"
-      },
-      "acpi_controller_source.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
-        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
-      },
-      "acpi_controller_source.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
-        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+        "sha256": "abb016dcfc40c419cee06771311817f461ce0c5e9ea9f55d26cd7d8581ab9cd3"
       },
       "acpi_device_initialization.adb": {
         "path": "userspace/services/acpi/acpi_device_initialization.adb",
@@ -2594,6 +2690,138 @@
         "path": "userspace/services/acpi/acpi_endpoint.ads",
         "sha256": "951ce7dfe301e75e7a7f2d49997a691d75acecc3d0555b5f851b7d920d01097e"
       },
+      "acpi_fallible_heap.adb": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.adb",
+        "sha256": "3e45a25f57c438a691976044030bc35ec87e3f6157c1b3460a674723ada97815"
+      },
+      "acpi_fallible_heap.ads": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+        "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+      },
+      "acpi_fatal_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
+        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
+      },
+      "acpi_fatal_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
+        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
+      },
+      "acpi_field_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.adb",
+        "sha256": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a"
+      },
+      "acpi_field_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.ads",
+        "sha256": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+      },
+      "acpi_module_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
+        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
+      },
+      "acpi_module_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
+        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
+      },
+      "acpi_notification_consumer.adb": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
+        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
+      },
+      "acpi_notification_consumer.ads": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
+        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
+      },
+      "acpi_notification_receipts.adb": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
+        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
+      },
+      "acpi_notification_receipts.ads": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
+        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
+      },
+      "acpi_requests-notification_pump.adb": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
+        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
+      },
+      "acpi_requests-notification_pump.ads": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
+        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
+      },
+      "acpi_requests-with_notification_routing.adb": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
+        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
+      },
+      "acpi_requests-with_notification_routing.ads": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
+        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
+      },
+      "acpi_requests.adb": {
+        "path": "userspace/services/acpi/acpi_requests.adb",
+        "sha256": "ce0f3e505f6bdb28487bd5f431930cad8d9e58ac1f24e8c92c65eade90e50beb"
+      },
+      "acpi_requests.ads": {
+        "path": "userspace/services/acpi/acpi_requests.ads",
+        "sha256": "4beb679bf9ea146826a1780d24019befab34f6250c3b417fcdc183b5503625ef"
+      },
+      "acpi_service.ads": {
+        "path": "userspace/services/acpi/acpi_service.ads",
+        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
+      },
+      "acpi_service_core.adb": {
+        "path": "userspace/services/acpi/acpi_service_core.adb",
+        "sha256": "8992a07cefe2312b4e5507d607d3f58fd120892622f65335b9baad6c505d10ac"
+      },
+      "acpi_service_core.ads": {
+        "path": "userspace/services/acpi/acpi_service_core.ads",
+        "sha256": "edd9ad7dedeb72f1c5e260c0253c2115866a16ce0c3d8644c79eaa8f49239f13"
+      },
+      "acpi_snapshot_provider.adb": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
+        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
+      },
+      "acpi_snapshot_provider.ads": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
+        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
+      },
+      "acpi_startup_evaluation.adb": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
+        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
+      },
+      "acpi_startup_evaluation.ads": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
+        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
+      },
+      "acpi_unprovisioned_regions.adb": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
+        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
+      },
+      "acpi_unprovisioned_regions.ads": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
+        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
+      },
+      "acpi_controller_source.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
+        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
+      },
+      "acpi_controller_source.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
+        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+      },
+      "acpi_resource_names.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
+        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
+      },
+      "acpi_resource_names.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
+        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
+      },
+      "acpi_resource_reader.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
+        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
+      },
+      "acpi_resource_reader.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
+        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
+      },
       "acpi_fadt-registers.adb": {
         "path": "userspace/services/acpi/lib/acpi_fadt-registers.adb",
         "sha256": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6"
@@ -2626,38 +2854,6 @@
         "path": "userspace/services/acpi/lib/acpi_fadt.ads",
         "sha256": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752"
       },
-      "acpi_fatal_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
-        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
-      },
-      "acpi_fatal_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
-        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
-      },
-      "acpi_module_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
-        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
-      },
-      "acpi_module_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
-        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
-      },
-      "acpi_notification_consumer.adb": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
-        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
-      },
-      "acpi_notification_consumer.ads": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
-        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
-      },
-      "acpi_notification_receipts.adb": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
-        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
-      },
-      "acpi_notification_receipts.ads": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
-        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
-      },
       "acpi_pci_config_reads.adb": {
         "path": "userspace/services/acpi/lib/acpi_pci_config_reads.adb",
         "sha256": "916b94ba08882f32a297791986b0e536920debfcb767a456344fdb686cc59ac2"
@@ -2673,82 +2869,6 @@
       "acpi_pci_memory_reads.ads": {
         "path": "userspace/services/acpi/lib/acpi_pci_memory_reads.ads",
         "sha256": "eaf82d368c4ad444da23db348118f29a0f6ec643f5bf3f8ba5b477ae8d5f5a37"
-      },
-      "acpi_requests-notification_pump.adb": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
-        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
-      },
-      "acpi_requests-notification_pump.ads": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
-        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
-      },
-      "acpi_requests-with_notification_routing.adb": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
-        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
-      },
-      "acpi_requests-with_notification_routing.ads": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
-        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
-      },
-      "acpi_requests.adb": {
-        "path": "userspace/services/acpi/acpi_requests.adb",
-        "sha256": "f8b0e7dcbb3d3a56b165ea1063458ec90d4e30de5bcc5e0359f10a60ab487719"
-      },
-      "acpi_requests.ads": {
-        "path": "userspace/services/acpi/acpi_requests.ads",
-        "sha256": "7ef7a30966b61bdfd597e4817ac8b8fdd9e7601f0f7760b1f2bd20b33936d088"
-      },
-      "acpi_resource_names.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
-        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
-      },
-      "acpi_resource_names.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
-        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
-      },
-      "acpi_resource_reader.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
-        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
-      },
-      "acpi_resource_reader.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
-        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
-      },
-      "acpi_service_core.adb": {
-        "path": "userspace/services/acpi/acpi_service_core.adb",
-        "sha256": "8768a90a0b1cbf2d3a0c82c32f7be35f617f2e5da40ec18d24dc71a8bbd055ab"
-      },
-      "acpi_service_core.ads": {
-        "path": "userspace/services/acpi/acpi_service_core.ads",
-        "sha256": "fbcb9dbfe952328b1be3ee4c410040d3ea2cd74f100f55ae97f7c082598b8bbd"
-      },
-      "acpi_service.ads": {
-        "path": "userspace/services/acpi/acpi_service.ads",
-        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
-      },
-      "acpi_snapshot_provider.adb": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
-        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
-      },
-      "acpi_snapshot_provider.ads": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
-        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
-      },
-      "acpi_startup_evaluation.adb": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
-        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
-      },
-      "acpi_startup_evaluation.ads": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
-        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
-      },
-      "acpi_unprovisioned_regions.adb": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
-        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
-      },
-      "acpi_unprovisioned_regions.ads": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
-        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
       },
       "aml_bcd.adb": {
         "path": "userspace/services/acpi/lib/aml_bcd.adb",
@@ -2832,11 +2952,11 @@
       },
       "aml_data.adb": {
         "path": "userspace/services/acpi/lib/aml_data.adb",
-        "sha256": "99c86d0e236053a6a57772f1b78f701c1d94c7a6e8e62208c10694cdfbf73ee1"
+        "sha256": "890f17dd83532f0721b64f7d27dd0ee8d7496a3775c32cd813462d61545fe845"
       },
       "aml_data.ads": {
         "path": "userspace/services/acpi/lib/aml_data.ads",
-        "sha256": "31a0100147dc2f7012a1b9b263cd1cb38168b0ccd4cfaff5639adb0e1b8dc024"
+        "sha256": "86eb1e0fef56e908aeaf44214e8eb1c2c62d8dd90b4ee3182c90a80f8fd25fbb"
       },
       "aml_declaration_contexts.adb": {
         "path": "userspace/services/acpi/lib/aml_declaration_contexts.adb",
@@ -2888,11 +3008,11 @@
       },
       "aml_execute.adb": {
         "path": "userspace/services/acpi/lib/aml_execute.adb",
-        "sha256": "88f5f0fa039b7da3c6f163108bcba9f47c45152086911de482c7f9f9e1c2a2a5"
+        "sha256": "7a3d619e7cfe8939395eedb44924fe710d69fe878bd73355c260cc66acb9eaf7"
       },
       "aml_execute.ads": {
         "path": "userspace/services/acpi/lib/aml_execute.ads",
-        "sha256": "7df63a4792523963a0a588010acbf2713486398d58552fa1b632197b70967f78"
+        "sha256": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1"
       },
       "aml_execution_limits.ads": {
         "path": "userspace/services/acpi/lib/aml_execution_limits.ads",
@@ -2968,11 +3088,11 @@
       },
       "aml_frame_roots.adb": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.adb",
-        "sha256": "7f38fbef176bfb5e02de700938957cf39aa72dd1a4d660bb12bdbaae3a3bbdd2"
+        "sha256": "75dcd92f8358dfe28c5bb34c0395b2cf37d583f7895bc746b7226742368a7885"
       },
       "aml_frame_roots.ads": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.ads",
-        "sha256": "b454a661613c7bee703bc8a058fe2ab17f7a59b0c1c84cdc62073785d4a4b793"
+        "sha256": "8005877861b99e46f0c4cbaa06e727cba12b70c3813fbfea8562d653a6dc2169"
       },
       "aml_identity-issuer.adb": {
         "path": "userspace/services/acpi/lib/aml_identity-issuer.adb",
@@ -3056,15 +3176,15 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "a1b790cc07681aad370c395b260eaf90c3f6985332b91fa2c20b6c6ee2cb5dd4"
+        "sha256": "3b6b3e073a12287554121eca9a2d058172176b2f77da6c3859ecd0752c0eace4"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
-        "sha256": "129a7f8c98493e37580be33dda29daa87508c8e61ac8a83aa2f2dbb6f7f27ffc"
+        "sha256": "f9be802f0e19e6bea2fc8c960a1ecddee612d05158eb82c4906621384be5fcb8"
       },
       "aml_object_identifiers.ads": {
         "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
-        "sha256": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba"
+        "sha256": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356"
       },
       "aml_objects-byte_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-byte_references.adb",
@@ -3076,11 +3196,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "cf262cb314b35a3ea26f01bce8e398af467918c397197cc66b24c3b3561c5660"
+        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "85bf98821d2694ad127f6e3c11676d158f374cf6a84587af0821605d8a04e1da"
+        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -3092,35 +3212,35 @@
       },
       "aml_objects-reachability.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.adb",
-        "sha256": "4760cc417ab80d06e93e8ac06928c9380003f6c4d9fab13eaa16761f48b39427"
+        "sha256": "f827d2df0dfd7a35c0e33b2fd4b4f5e78a418a4b99402b78af18311e5afc3d34"
       },
       "aml_objects-reachability.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.ads",
-        "sha256": "70c3526a1111e7589e673e7a98b68f8810185d58b9df23f570b5314f0d3724d7"
+        "sha256": "f77a33dd1652cb2f6b06aad63f25f2107e43848b8f82affd5e45463b960a2bbd"
       },
       "aml_objects-reclamation.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.adb",
-        "sha256": "723a439d31ead3d4dd6c3efca61fdfcb8bcb046f8e08528e980fbfee21cdb739"
+        "sha256": "de8a14cf86968456bef4897dc1aeb8ddab35006609503fe7cbf75b8b01ae5dbb"
       },
       "aml_objects-reclamation.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.ads",
-        "sha256": "b52eb3acdd0f6923f85477a666979cb1fc3ff2efb69caff681d195eae53e345e"
+        "sha256": "316ea00ecc1870b25b5ef4a38a59b444ffe216adf3b288ba179cf2d0903ac63c"
       },
       "aml_objects-root_snapshots.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.adb",
-        "sha256": "1ace625842bc7e84ddbb017be2f60e6ff99edaa125dde4bc116bb313aefe6200"
+        "sha256": "f64c655e52b732d7e84a9f5607ac71de9669bbc954b282ec19144e816c74b45f"
       },
       "aml_objects-root_snapshots.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.ads",
-        "sha256": "c977f5774628018fa80a857e5a22f50a1657e58ed35dfcc8c11580e1900d8446"
+        "sha256": "edae83d3c161a04e59615bf5553727f3f660e63f29b357307f6452e50dae0b31"
       },
       "aml_objects.adb": {
         "path": "userspace/services/acpi/lib/aml_objects.adb",
-        "sha256": "baf3370e9d9d14eb358f3df885eb74c47a4ade781edef94519b5493610d2304f"
+        "sha256": "ef75ea91053c22b0b1cfc5232ebab1110df30de6176de816b36553be3b60a135"
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "c62800fb01bae0ad8ba9d69e28c6a2bee33153afaf7846d3d63fbb2a44cef208"
+        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -3205,6 +3325,14 @@
       "aml_slices.ads": {
         "path": "userspace/services/acpi/lib/aml_slices.ads",
         "sha256": "6c54b617cc89e429f4ee1b4874c902807d725938726f7a9bbe123e28c4f77563"
+      },
+      "aml_storage_capacities.adb": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.adb",
+        "sha256": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f"
+      },
+      "aml_storage_capacities.ads": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.ads",
+        "sha256": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688"
       },
       "aml_string_order.adb": {
         "path": "userspace/services/acpi/lib/aml_string_order.adb",
@@ -3360,7 +3488,7 @@
       },
       "notification_poll_tests.adb": {
         "path": "tests/acpi-notify-poll/notification_poll_tests.adb",
-        "sha256": "55f0c7a1f9e594a86fee5b3a0b7f4e121e6f05ab0e41e46ba3fc825986a21248"
+        "sha256": "fa6ac481eab675242c01e4da40832382e5fb5eaf09d40ec4c0db6d4572d9648b"
       },
       "notification_receipt_tests.adb": {
         "path": "tests/acpi-notify-poll/notification_receipt_tests.adb",
@@ -3371,29 +3499,29 @@
   "service_notify_tests": {
     "main": "service_notify_tests.adb",
     "sources": {
+      "acpi_allocation_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.adb",
+        "sha256": "31ecdfeeec72795073ca81a34b963b292c48834bf844df852108f791bf59d03c"
+      },
+      "acpi_allocation_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.ads",
+        "sha256": "532ff73565f7851a486e62b2887fe8f1e20be8c52d5c5e6c0c2917785c526bff"
+      },
       "acpi_bootstrap.adb": {
         "path": "userspace/services/acpi/acpi_bootstrap.adb",
-        "sha256": "820954d8d953869aa9e7514cb9b5ff35f9c0f672fdf8598c64aece2abe088125"
+        "sha256": "74dce0c9a07f9a0f378df5166703c5643e76c81adea430a7417843e4ad2451f6"
       },
       "acpi_bootstrap.ads": {
         "path": "userspace/services/acpi/acpi_bootstrap.ads",
-        "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1"
+        "sha256": "c81ac82bcc95250678dcad20835bc4b50e99c4561803715816e496a56259d6f6"
       },
       "acpi_capacity_diagnostics.adb": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
-        "sha256": "d6d1447499504b50a2a6760fb9b594fa37031b4afb198ed9c60e8e284c054f3a"
+        "sha256": "a09046149489b4f0b3fe148e9fe8aa1a1a93d422950b30fa79f7bf5809f2356d"
       },
       "acpi_capacity_diagnostics.ads": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
-        "sha256": "3cef27ce0fab358de43f08a80c2b1c7652426d18bc2680e6333972831f0e7567"
-      },
-      "acpi_controller_source.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
-        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
-      },
-      "acpi_controller_source.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
-        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+        "sha256": "abb016dcfc40c419cee06771311817f461ce0c5e9ea9f55d26cd7d8581ab9cd3"
       },
       "acpi_device_initialization.adb": {
         "path": "userspace/services/acpi/acpi_device_initialization.adb",
@@ -3427,6 +3555,138 @@
         "path": "userspace/services/acpi/acpi_endpoint.ads",
         "sha256": "951ce7dfe301e75e7a7f2d49997a691d75acecc3d0555b5f851b7d920d01097e"
       },
+      "acpi_fallible_heap.adb": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.adb",
+        "sha256": "3e45a25f57c438a691976044030bc35ec87e3f6157c1b3460a674723ada97815"
+      },
+      "acpi_fallible_heap.ads": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+        "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+      },
+      "acpi_fatal_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
+        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
+      },
+      "acpi_fatal_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
+        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
+      },
+      "acpi_field_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.adb",
+        "sha256": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a"
+      },
+      "acpi_field_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.ads",
+        "sha256": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+      },
+      "acpi_module_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
+        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
+      },
+      "acpi_module_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
+        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
+      },
+      "acpi_notification_consumer.adb": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
+        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
+      },
+      "acpi_notification_consumer.ads": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
+        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
+      },
+      "acpi_notification_receipts.adb": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
+        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
+      },
+      "acpi_notification_receipts.ads": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
+        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
+      },
+      "acpi_requests-notification_pump.adb": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
+        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
+      },
+      "acpi_requests-notification_pump.ads": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
+        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
+      },
+      "acpi_requests-with_notification_routing.adb": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
+        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
+      },
+      "acpi_requests-with_notification_routing.ads": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
+        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
+      },
+      "acpi_requests.adb": {
+        "path": "userspace/services/acpi/acpi_requests.adb",
+        "sha256": "ce0f3e505f6bdb28487bd5f431930cad8d9e58ac1f24e8c92c65eade90e50beb"
+      },
+      "acpi_requests.ads": {
+        "path": "userspace/services/acpi/acpi_requests.ads",
+        "sha256": "4beb679bf9ea146826a1780d24019befab34f6250c3b417fcdc183b5503625ef"
+      },
+      "acpi_service.ads": {
+        "path": "userspace/services/acpi/acpi_service.ads",
+        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
+      },
+      "acpi_service_core.adb": {
+        "path": "userspace/services/acpi/acpi_service_core.adb",
+        "sha256": "8992a07cefe2312b4e5507d607d3f58fd120892622f65335b9baad6c505d10ac"
+      },
+      "acpi_service_core.ads": {
+        "path": "userspace/services/acpi/acpi_service_core.ads",
+        "sha256": "edd9ad7dedeb72f1c5e260c0253c2115866a16ce0c3d8644c79eaa8f49239f13"
+      },
+      "acpi_snapshot_provider.adb": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
+        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
+      },
+      "acpi_snapshot_provider.ads": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
+        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
+      },
+      "acpi_startup_evaluation.adb": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
+        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
+      },
+      "acpi_startup_evaluation.ads": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
+        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
+      },
+      "acpi_unprovisioned_regions.adb": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
+        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
+      },
+      "acpi_unprovisioned_regions.ads": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
+        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
+      },
+      "acpi_controller_source.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
+        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
+      },
+      "acpi_controller_source.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
+        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+      },
+      "acpi_resource_names.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
+        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
+      },
+      "acpi_resource_names.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
+        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
+      },
+      "acpi_resource_reader.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
+        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
+      },
+      "acpi_resource_reader.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
+        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
+      },
       "acpi_fadt-registers.adb": {
         "path": "userspace/services/acpi/lib/acpi_fadt-registers.adb",
         "sha256": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6"
@@ -3459,38 +3719,6 @@
         "path": "userspace/services/acpi/lib/acpi_fadt.ads",
         "sha256": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752"
       },
-      "acpi_fatal_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
-        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
-      },
-      "acpi_fatal_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
-        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
-      },
-      "acpi_module_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
-        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
-      },
-      "acpi_module_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
-        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
-      },
-      "acpi_notification_consumer.adb": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
-        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
-      },
-      "acpi_notification_consumer.ads": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
-        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
-      },
-      "acpi_notification_receipts.adb": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
-        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
-      },
-      "acpi_notification_receipts.ads": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
-        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
-      },
       "acpi_pci_config_reads.adb": {
         "path": "userspace/services/acpi/lib/acpi_pci_config_reads.adb",
         "sha256": "916b94ba08882f32a297791986b0e536920debfcb767a456344fdb686cc59ac2"
@@ -3506,82 +3734,6 @@
       "acpi_pci_memory_reads.ads": {
         "path": "userspace/services/acpi/lib/acpi_pci_memory_reads.ads",
         "sha256": "eaf82d368c4ad444da23db348118f29a0f6ec643f5bf3f8ba5b477ae8d5f5a37"
-      },
-      "acpi_requests-notification_pump.adb": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
-        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
-      },
-      "acpi_requests-notification_pump.ads": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
-        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
-      },
-      "acpi_requests-with_notification_routing.adb": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
-        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
-      },
-      "acpi_requests-with_notification_routing.ads": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
-        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
-      },
-      "acpi_requests.adb": {
-        "path": "userspace/services/acpi/acpi_requests.adb",
-        "sha256": "f8b0e7dcbb3d3a56b165ea1063458ec90d4e30de5bcc5e0359f10a60ab487719"
-      },
-      "acpi_requests.ads": {
-        "path": "userspace/services/acpi/acpi_requests.ads",
-        "sha256": "7ef7a30966b61bdfd597e4817ac8b8fdd9e7601f0f7760b1f2bd20b33936d088"
-      },
-      "acpi_resource_names.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
-        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
-      },
-      "acpi_resource_names.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
-        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
-      },
-      "acpi_resource_reader.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
-        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
-      },
-      "acpi_resource_reader.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
-        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
-      },
-      "acpi_service_core.adb": {
-        "path": "userspace/services/acpi/acpi_service_core.adb",
-        "sha256": "8768a90a0b1cbf2d3a0c82c32f7be35f617f2e5da40ec18d24dc71a8bbd055ab"
-      },
-      "acpi_service_core.ads": {
-        "path": "userspace/services/acpi/acpi_service_core.ads",
-        "sha256": "fbcb9dbfe952328b1be3ee4c410040d3ea2cd74f100f55ae97f7c082598b8bbd"
-      },
-      "acpi_service.ads": {
-        "path": "userspace/services/acpi/acpi_service.ads",
-        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
-      },
-      "acpi_snapshot_provider.adb": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
-        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
-      },
-      "acpi_snapshot_provider.ads": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
-        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
-      },
-      "acpi_startup_evaluation.adb": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
-        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
-      },
-      "acpi_startup_evaluation.ads": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
-        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
-      },
-      "acpi_unprovisioned_regions.adb": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
-        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
-      },
-      "acpi_unprovisioned_regions.ads": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
-        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
       },
       "aml_bcd.adb": {
         "path": "userspace/services/acpi/lib/aml_bcd.adb",
@@ -3665,11 +3817,11 @@
       },
       "aml_data.adb": {
         "path": "userspace/services/acpi/lib/aml_data.adb",
-        "sha256": "99c86d0e236053a6a57772f1b78f701c1d94c7a6e8e62208c10694cdfbf73ee1"
+        "sha256": "890f17dd83532f0721b64f7d27dd0ee8d7496a3775c32cd813462d61545fe845"
       },
       "aml_data.ads": {
         "path": "userspace/services/acpi/lib/aml_data.ads",
-        "sha256": "31a0100147dc2f7012a1b9b263cd1cb38168b0ccd4cfaff5639adb0e1b8dc024"
+        "sha256": "86eb1e0fef56e908aeaf44214e8eb1c2c62d8dd90b4ee3182c90a80f8fd25fbb"
       },
       "aml_declaration_contexts.adb": {
         "path": "userspace/services/acpi/lib/aml_declaration_contexts.adb",
@@ -3721,11 +3873,11 @@
       },
       "aml_execute.adb": {
         "path": "userspace/services/acpi/lib/aml_execute.adb",
-        "sha256": "88f5f0fa039b7da3c6f163108bcba9f47c45152086911de482c7f9f9e1c2a2a5"
+        "sha256": "7a3d619e7cfe8939395eedb44924fe710d69fe878bd73355c260cc66acb9eaf7"
       },
       "aml_execute.ads": {
         "path": "userspace/services/acpi/lib/aml_execute.ads",
-        "sha256": "7df63a4792523963a0a588010acbf2713486398d58552fa1b632197b70967f78"
+        "sha256": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1"
       },
       "aml_execution_limits.ads": {
         "path": "userspace/services/acpi/lib/aml_execution_limits.ads",
@@ -3801,11 +3953,11 @@
       },
       "aml_frame_roots.adb": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.adb",
-        "sha256": "7f38fbef176bfb5e02de700938957cf39aa72dd1a4d660bb12bdbaae3a3bbdd2"
+        "sha256": "75dcd92f8358dfe28c5bb34c0395b2cf37d583f7895bc746b7226742368a7885"
       },
       "aml_frame_roots.ads": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.ads",
-        "sha256": "b454a661613c7bee703bc8a058fe2ab17f7a59b0c1c84cdc62073785d4a4b793"
+        "sha256": "8005877861b99e46f0c4cbaa06e727cba12b70c3813fbfea8562d653a6dc2169"
       },
       "aml_identity-issuer.adb": {
         "path": "userspace/services/acpi/lib/aml_identity-issuer.adb",
@@ -3889,15 +4041,15 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "a1b790cc07681aad370c395b260eaf90c3f6985332b91fa2c20b6c6ee2cb5dd4"
+        "sha256": "3b6b3e073a12287554121eca9a2d058172176b2f77da6c3859ecd0752c0eace4"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
-        "sha256": "129a7f8c98493e37580be33dda29daa87508c8e61ac8a83aa2f2dbb6f7f27ffc"
+        "sha256": "f9be802f0e19e6bea2fc8c960a1ecddee612d05158eb82c4906621384be5fcb8"
       },
       "aml_object_identifiers.ads": {
         "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
-        "sha256": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba"
+        "sha256": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356"
       },
       "aml_objects-byte_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-byte_references.adb",
@@ -3909,11 +4061,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "cf262cb314b35a3ea26f01bce8e398af467918c397197cc66b24c3b3561c5660"
+        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "85bf98821d2694ad127f6e3c11676d158f374cf6a84587af0821605d8a04e1da"
+        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -3925,35 +4077,35 @@
       },
       "aml_objects-reachability.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.adb",
-        "sha256": "4760cc417ab80d06e93e8ac06928c9380003f6c4d9fab13eaa16761f48b39427"
+        "sha256": "f827d2df0dfd7a35c0e33b2fd4b4f5e78a418a4b99402b78af18311e5afc3d34"
       },
       "aml_objects-reachability.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.ads",
-        "sha256": "70c3526a1111e7589e673e7a98b68f8810185d58b9df23f570b5314f0d3724d7"
+        "sha256": "f77a33dd1652cb2f6b06aad63f25f2107e43848b8f82affd5e45463b960a2bbd"
       },
       "aml_objects-reclamation.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.adb",
-        "sha256": "723a439d31ead3d4dd6c3efca61fdfcb8bcb046f8e08528e980fbfee21cdb739"
+        "sha256": "de8a14cf86968456bef4897dc1aeb8ddab35006609503fe7cbf75b8b01ae5dbb"
       },
       "aml_objects-reclamation.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.ads",
-        "sha256": "b52eb3acdd0f6923f85477a666979cb1fc3ff2efb69caff681d195eae53e345e"
+        "sha256": "316ea00ecc1870b25b5ef4a38a59b444ffe216adf3b288ba179cf2d0903ac63c"
       },
       "aml_objects-root_snapshots.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.adb",
-        "sha256": "1ace625842bc7e84ddbb017be2f60e6ff99edaa125dde4bc116bb313aefe6200"
+        "sha256": "f64c655e52b732d7e84a9f5607ac71de9669bbc954b282ec19144e816c74b45f"
       },
       "aml_objects-root_snapshots.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.ads",
-        "sha256": "c977f5774628018fa80a857e5a22f50a1657e58ed35dfcc8c11580e1900d8446"
+        "sha256": "edae83d3c161a04e59615bf5553727f3f660e63f29b357307f6452e50dae0b31"
       },
       "aml_objects.adb": {
         "path": "userspace/services/acpi/lib/aml_objects.adb",
-        "sha256": "baf3370e9d9d14eb358f3df885eb74c47a4ade781edef94519b5493610d2304f"
+        "sha256": "ef75ea91053c22b0b1cfc5232ebab1110df30de6176de816b36553be3b60a135"
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "c62800fb01bae0ad8ba9d69e28c6a2bee33153afaf7846d3d63fbb2a44cef208"
+        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -4038,6 +4190,14 @@
       "aml_slices.ads": {
         "path": "userspace/services/acpi/lib/aml_slices.ads",
         "sha256": "6c54b617cc89e429f4ee1b4874c902807d725938726f7a9bbe123e28c4f77563"
+      },
+      "aml_storage_capacities.adb": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.adb",
+        "sha256": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f"
+      },
+      "aml_storage_capacities.ads": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.ads",
+        "sha256": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688"
       },
       "aml_string_order.adb": {
         "path": "userspace/services/acpi/lib/aml_string_order.adb",
@@ -4201,40 +4361,40 @@
       },
       "notify_replay.adb": {
         "path": "tests/aml-notify/notify_replay.adb",
-        "sha256": "20d23f1db7b7f00d40b65dcef47e649e392ba29b3de6677c37f35db844c5b4a8"
+        "sha256": "72323678b36282a2797f0350931618949e50f9a9f8a352a822ded994bc1bdf7e"
       },
       "service_notify_tests.adb": {
         "path": "tests/aml-notify/service_notify_tests.adb",
-        "sha256": "fd08778b5f4a6c287b0a6772482ed359cd5b43c8a01f5055d8a20d047d05f52f"
+        "sha256": "288adab5a16d5a4532b433a051fee2251b05f1d7fe3089d4b9bec578a7836d5a"
       }
     }
   },
   "startup_metrics_tests": {
     "main": "startup_metrics_tests.adb",
     "sources": {
+      "acpi_allocation_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.adb",
+        "sha256": "31ecdfeeec72795073ca81a34b963b292c48834bf844df852108f791bf59d03c"
+      },
+      "acpi_allocation_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_allocation_diagnostics.ads",
+        "sha256": "532ff73565f7851a486e62b2887fe8f1e20be8c52d5c5e6c0c2917785c526bff"
+      },
       "acpi_bootstrap.adb": {
         "path": "userspace/services/acpi/acpi_bootstrap.adb",
-        "sha256": "820954d8d953869aa9e7514cb9b5ff35f9c0f672fdf8598c64aece2abe088125"
+        "sha256": "74dce0c9a07f9a0f378df5166703c5643e76c81adea430a7417843e4ad2451f6"
       },
       "acpi_bootstrap.ads": {
         "path": "userspace/services/acpi/acpi_bootstrap.ads",
-        "sha256": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1"
+        "sha256": "c81ac82bcc95250678dcad20835bc4b50e99c4561803715816e496a56259d6f6"
       },
       "acpi_capacity_diagnostics.adb": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
-        "sha256": "d6d1447499504b50a2a6760fb9b594fa37031b4afb198ed9c60e8e284c054f3a"
+        "sha256": "a09046149489b4f0b3fe148e9fe8aa1a1a93d422950b30fa79f7bf5809f2356d"
       },
       "acpi_capacity_diagnostics.ads": {
         "path": "userspace/services/acpi/acpi_capacity_diagnostics.ads",
-        "sha256": "3cef27ce0fab358de43f08a80c2b1c7652426d18bc2680e6333972831f0e7567"
-      },
-      "acpi_controller_source.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
-        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
-      },
-      "acpi_controller_source.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
-        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+        "sha256": "abb016dcfc40c419cee06771311817f461ce0c5e9ea9f55d26cd7d8581ab9cd3"
       },
       "acpi_device_initialization.adb": {
         "path": "userspace/services/acpi/acpi_device_initialization.adb",
@@ -4268,6 +4428,138 @@
         "path": "userspace/services/acpi/acpi_endpoint.ads",
         "sha256": "951ce7dfe301e75e7a7f2d49997a691d75acecc3d0555b5f851b7d920d01097e"
       },
+      "acpi_fallible_heap.adb": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.adb",
+        "sha256": "3e45a25f57c438a691976044030bc35ec87e3f6157c1b3460a674723ada97815"
+      },
+      "acpi_fallible_heap.ads": {
+        "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+        "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+      },
+      "acpi_fatal_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
+        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
+      },
+      "acpi_fatal_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
+        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
+      },
+      "acpi_field_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.adb",
+        "sha256": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a"
+      },
+      "acpi_field_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_field_diagnostics.ads",
+        "sha256": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+      },
+      "acpi_module_diagnostics.adb": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
+        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
+      },
+      "acpi_module_diagnostics.ads": {
+        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
+        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
+      },
+      "acpi_notification_consumer.adb": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
+        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
+      },
+      "acpi_notification_consumer.ads": {
+        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
+        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
+      },
+      "acpi_notification_receipts.adb": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
+        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
+      },
+      "acpi_notification_receipts.ads": {
+        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
+        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
+      },
+      "acpi_requests-notification_pump.adb": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
+        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
+      },
+      "acpi_requests-notification_pump.ads": {
+        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
+        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
+      },
+      "acpi_requests-with_notification_routing.adb": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
+        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
+      },
+      "acpi_requests-with_notification_routing.ads": {
+        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
+        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
+      },
+      "acpi_requests.adb": {
+        "path": "userspace/services/acpi/acpi_requests.adb",
+        "sha256": "ce0f3e505f6bdb28487bd5f431930cad8d9e58ac1f24e8c92c65eade90e50beb"
+      },
+      "acpi_requests.ads": {
+        "path": "userspace/services/acpi/acpi_requests.ads",
+        "sha256": "4beb679bf9ea146826a1780d24019befab34f6250c3b417fcdc183b5503625ef"
+      },
+      "acpi_service.ads": {
+        "path": "userspace/services/acpi/acpi_service.ads",
+        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
+      },
+      "acpi_service_core.adb": {
+        "path": "userspace/services/acpi/acpi_service_core.adb",
+        "sha256": "8992a07cefe2312b4e5507d607d3f58fd120892622f65335b9baad6c505d10ac"
+      },
+      "acpi_service_core.ads": {
+        "path": "userspace/services/acpi/acpi_service_core.ads",
+        "sha256": "edd9ad7dedeb72f1c5e260c0253c2115866a16ce0c3d8644c79eaa8f49239f13"
+      },
+      "acpi_snapshot_provider.adb": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
+        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
+      },
+      "acpi_snapshot_provider.ads": {
+        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
+        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
+      },
+      "acpi_startup_evaluation.adb": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
+        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
+      },
+      "acpi_startup_evaluation.ads": {
+        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
+        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
+      },
+      "acpi_unprovisioned_regions.adb": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
+        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
+      },
+      "acpi_unprovisioned_regions.ads": {
+        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
+        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
+      },
+      "acpi_controller_source.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
+        "sha256": "475fffb204b9b7743285a4a2c3a4ca2321edd44ef1f62b990311211f7c1c5e57"
+      },
+      "acpi_controller_source.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.ads",
+        "sha256": "e8a24d307933801319cbb93df965d40859c97228c8d6276ca888fd1697ec4f64"
+      },
+      "acpi_resource_names.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
+        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
+      },
+      "acpi_resource_names.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
+        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
+      },
+      "acpi_resource_reader.adb": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
+        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
+      },
+      "acpi_resource_reader.ads": {
+        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
+        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
+      },
       "acpi_fadt-registers.adb": {
         "path": "userspace/services/acpi/lib/acpi_fadt-registers.adb",
         "sha256": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6"
@@ -4300,38 +4592,6 @@
         "path": "userspace/services/acpi/lib/acpi_fadt.ads",
         "sha256": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752"
       },
-      "acpi_fatal_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
-        "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
-      },
-      "acpi_fatal_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
-        "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
-      },
-      "acpi_module_diagnostics.adb": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.adb",
-        "sha256": "2befb70b77abd006b474561001447b895314c6127d6763418c5baa18a3572402"
-      },
-      "acpi_module_diagnostics.ads": {
-        "path": "userspace/services/acpi/acpi_module_diagnostics.ads",
-        "sha256": "09344f3ac30dbfdd53e7855d4ad3a0c9995f887dd151e9efc737d22d6554cc4a"
-      },
-      "acpi_notification_consumer.adb": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.adb",
-        "sha256": "7476f48ef62a6fd4f22732e7a08ef8047bfb1ab3eeb05c9b78817b5ddea31892"
-      },
-      "acpi_notification_consumer.ads": {
-        "path": "userspace/services/acpi/acpi_notification_consumer.ads",
-        "sha256": "98b9398313f664a3f34f5825cfe04b6aadc16f766f8da9a892f4af1daaf23721"
-      },
-      "acpi_notification_receipts.adb": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.adb",
-        "sha256": "4734604f96c96d4fc4cf52335e82eb5f85a49433b245c195049cb1c6dedc9096"
-      },
-      "acpi_notification_receipts.ads": {
-        "path": "userspace/services/acpi/acpi_notification_receipts.ads",
-        "sha256": "546b09c2402ed2098c56dd84018b61045a2f92881eaf2cb39da76a55779352f8"
-      },
       "acpi_pci_config_reads.adb": {
         "path": "userspace/services/acpi/lib/acpi_pci_config_reads.adb",
         "sha256": "916b94ba08882f32a297791986b0e536920debfcb767a456344fdb686cc59ac2"
@@ -4347,82 +4607,6 @@
       "acpi_pci_memory_reads.ads": {
         "path": "userspace/services/acpi/lib/acpi_pci_memory_reads.ads",
         "sha256": "eaf82d368c4ad444da23db348118f29a0f6ec643f5bf3f8ba5b477ae8d5f5a37"
-      },
-      "acpi_requests-notification_pump.adb": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.adb",
-        "sha256": "8d9f44cfbee35a603b1f8957ccdf0139506757c873ee692f80326065b950dcec"
-      },
-      "acpi_requests-notification_pump.ads": {
-        "path": "userspace/services/acpi/acpi_requests-notification_pump.ads",
-        "sha256": "05e5a26913a78ce1c728fe7b3b351227e73ea3fbab712a87a022a5321c965c5f"
-      },
-      "acpi_requests-with_notification_routing.adb": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.adb",
-        "sha256": "2d6e7e6fc06834761166913dfbb39e473a8ba0be3233db97f11f286bfc701d9c"
-      },
-      "acpi_requests-with_notification_routing.ads": {
-        "path": "userspace/services/acpi/acpi_requests-with_notification_routing.ads",
-        "sha256": "efdb3deb43b8cdc7f441789d777c035b18ef26e7fb8d38c254b4cfbad9f9a3be"
-      },
-      "acpi_requests.adb": {
-        "path": "userspace/services/acpi/acpi_requests.adb",
-        "sha256": "f8b0e7dcbb3d3a56b165ea1063458ec90d4e30de5bcc5e0359f10a60ab487719"
-      },
-      "acpi_requests.ads": {
-        "path": "userspace/services/acpi/acpi_requests.ads",
-        "sha256": "7ef7a30966b61bdfd597e4817ac8b8fdd9e7601f0f7760b1f2bd20b33936d088"
-      },
-      "acpi_resource_names.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
-        "sha256": "2718bdf05cf75100ec03d7331ed2c70bc307741633cd821b12ffc33ea007e3b6"
-      },
-      "acpi_resource_names.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
-        "sha256": "92938b7f8276c2386c012745dd92492701fd2b1e9fa64f9a319360a7944a5d74"
-      },
-      "acpi_resource_reader.adb": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.adb",
-        "sha256": "ba3351a3337fb0bcde99f8d41d45f2b4a43e8dcc629c437f8ac5b644210bc7d7"
-      },
-      "acpi_resource_reader.ads": {
-        "path": "userspace/services/acpi/resource-consumer/acpi_resource_reader.ads",
-        "sha256": "8b7e9f92b3734ddc09dbf27c0a030a8f60b50785b6ca9fae9b464d3b321fb669"
-      },
-      "acpi_service_core.adb": {
-        "path": "userspace/services/acpi/acpi_service_core.adb",
-        "sha256": "8768a90a0b1cbf2d3a0c82c32f7be35f617f2e5da40ec18d24dc71a8bbd055ab"
-      },
-      "acpi_service_core.ads": {
-        "path": "userspace/services/acpi/acpi_service_core.ads",
-        "sha256": "fbcb9dbfe952328b1be3ee4c410040d3ea2cd74f100f55ae97f7c082598b8bbd"
-      },
-      "acpi_service.ads": {
-        "path": "userspace/services/acpi/acpi_service.ads",
-        "sha256": "92cbd27c9fca034b5bec744c0c84361085619a0e32151ae19ab58759d65092a0"
-      },
-      "acpi_snapshot_provider.adb": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
-        "sha256": "7175e15e929245181a233ce3e2ec9f55f3c4488a1760f0d1d447d041e346f2c6"
-      },
-      "acpi_snapshot_provider.ads": {
-        "path": "userspace/services/acpi/acpi_snapshot_provider.ads",
-        "sha256": "560fb66566d6501f6a14a14a2c4bca9312caf6dfdca4deabd5263b46a1e8b981"
-      },
-      "acpi_startup_evaluation.adb": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
-        "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
-      },
-      "acpi_startup_evaluation.ads": {
-        "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
-        "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
-      },
-      "acpi_unprovisioned_regions.adb": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
-        "sha256": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d"
-      },
-      "acpi_unprovisioned_regions.ads": {
-        "path": "userspace/services/acpi/acpi_unprovisioned_regions.ads",
-        "sha256": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f"
       },
       "aml_bcd.adb": {
         "path": "userspace/services/acpi/lib/aml_bcd.adb",
@@ -4506,11 +4690,11 @@
       },
       "aml_data.adb": {
         "path": "userspace/services/acpi/lib/aml_data.adb",
-        "sha256": "99c86d0e236053a6a57772f1b78f701c1d94c7a6e8e62208c10694cdfbf73ee1"
+        "sha256": "890f17dd83532f0721b64f7d27dd0ee8d7496a3775c32cd813462d61545fe845"
       },
       "aml_data.ads": {
         "path": "userspace/services/acpi/lib/aml_data.ads",
-        "sha256": "31a0100147dc2f7012a1b9b263cd1cb38168b0ccd4cfaff5639adb0e1b8dc024"
+        "sha256": "86eb1e0fef56e908aeaf44214e8eb1c2c62d8dd90b4ee3182c90a80f8fd25fbb"
       },
       "aml_declaration_contexts.adb": {
         "path": "userspace/services/acpi/lib/aml_declaration_contexts.adb",
@@ -4562,11 +4746,11 @@
       },
       "aml_execute.adb": {
         "path": "userspace/services/acpi/lib/aml_execute.adb",
-        "sha256": "88f5f0fa039b7da3c6f163108bcba9f47c45152086911de482c7f9f9e1c2a2a5"
+        "sha256": "7a3d619e7cfe8939395eedb44924fe710d69fe878bd73355c260cc66acb9eaf7"
       },
       "aml_execute.ads": {
         "path": "userspace/services/acpi/lib/aml_execute.ads",
-        "sha256": "7df63a4792523963a0a588010acbf2713486398d58552fa1b632197b70967f78"
+        "sha256": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1"
       },
       "aml_execution_limits.ads": {
         "path": "userspace/services/acpi/lib/aml_execution_limits.ads",
@@ -4642,11 +4826,11 @@
       },
       "aml_frame_roots.adb": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.adb",
-        "sha256": "7f38fbef176bfb5e02de700938957cf39aa72dd1a4d660bb12bdbaae3a3bbdd2"
+        "sha256": "75dcd92f8358dfe28c5bb34c0395b2cf37d583f7895bc746b7226742368a7885"
       },
       "aml_frame_roots.ads": {
         "path": "userspace/services/acpi/lib/aml_frame_roots.ads",
-        "sha256": "b454a661613c7bee703bc8a058fe2ab17f7a59b0c1c84cdc62073785d4a4b793"
+        "sha256": "8005877861b99e46f0c4cbaa06e727cba12b70c3813fbfea8562d653a6dc2169"
       },
       "aml_identity-issuer.adb": {
         "path": "userspace/services/acpi/lib/aml_identity-issuer.adb",
@@ -4730,15 +4914,15 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "a1b790cc07681aad370c395b260eaf90c3f6985332b91fa2c20b6c6ee2cb5dd4"
+        "sha256": "3b6b3e073a12287554121eca9a2d058172176b2f77da6c3859ecd0752c0eace4"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
-        "sha256": "129a7f8c98493e37580be33dda29daa87508c8e61ac8a83aa2f2dbb6f7f27ffc"
+        "sha256": "f9be802f0e19e6bea2fc8c960a1ecddee612d05158eb82c4906621384be5fcb8"
       },
       "aml_object_identifiers.ads": {
         "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
-        "sha256": "a41e1817dd858963d79a952d943979b67ab6a167bca2e85f5a1488369fe0bcba"
+        "sha256": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356"
       },
       "aml_objects-byte_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-byte_references.adb",
@@ -4750,11 +4934,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "cf262cb314b35a3ea26f01bce8e398af467918c397197cc66b24c3b3561c5660"
+        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "85bf98821d2694ad127f6e3c11676d158f374cf6a84587af0821605d8a04e1da"
+        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -4766,35 +4950,35 @@
       },
       "aml_objects-reachability.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.adb",
-        "sha256": "4760cc417ab80d06e93e8ac06928c9380003f6c4d9fab13eaa16761f48b39427"
+        "sha256": "f827d2df0dfd7a35c0e33b2fd4b4f5e78a418a4b99402b78af18311e5afc3d34"
       },
       "aml_objects-reachability.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reachability.ads",
-        "sha256": "70c3526a1111e7589e673e7a98b68f8810185d58b9df23f570b5314f0d3724d7"
+        "sha256": "f77a33dd1652cb2f6b06aad63f25f2107e43848b8f82affd5e45463b960a2bbd"
       },
       "aml_objects-reclamation.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.adb",
-        "sha256": "723a439d31ead3d4dd6c3efca61fdfcb8bcb046f8e08528e980fbfee21cdb739"
+        "sha256": "de8a14cf86968456bef4897dc1aeb8ddab35006609503fe7cbf75b8b01ae5dbb"
       },
       "aml_objects-reclamation.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-reclamation.ads",
-        "sha256": "b52eb3acdd0f6923f85477a666979cb1fc3ff2efb69caff681d195eae53e345e"
+        "sha256": "316ea00ecc1870b25b5ef4a38a59b444ffe216adf3b288ba179cf2d0903ac63c"
       },
       "aml_objects-root_snapshots.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.adb",
-        "sha256": "1ace625842bc7e84ddbb017be2f60e6ff99edaa125dde4bc116bb313aefe6200"
+        "sha256": "f64c655e52b732d7e84a9f5607ac71de9669bbc954b282ec19144e816c74b45f"
       },
       "aml_objects-root_snapshots.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-root_snapshots.ads",
-        "sha256": "c977f5774628018fa80a857e5a22f50a1657e58ed35dfcc8c11580e1900d8446"
+        "sha256": "edae83d3c161a04e59615bf5553727f3f660e63f29b357307f6452e50dae0b31"
       },
       "aml_objects.adb": {
         "path": "userspace/services/acpi/lib/aml_objects.adb",
-        "sha256": "baf3370e9d9d14eb358f3df885eb74c47a4ade781edef94519b5493610d2304f"
+        "sha256": "ef75ea91053c22b0b1cfc5232ebab1110df30de6176de816b36553be3b60a135"
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "c62800fb01bae0ad8ba9d69e28c6a2bee33153afaf7846d3d63fbb2a44cef208"
+        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -4880,6 +5064,14 @@
         "path": "userspace/services/acpi/lib/aml_slices.ads",
         "sha256": "6c54b617cc89e429f4ee1b4874c902807d725938726f7a9bbe123e28c4f77563"
       },
+      "aml_storage_capacities.adb": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.adb",
+        "sha256": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f"
+      },
+      "aml_storage_capacities.ads": {
+        "path": "userspace/services/acpi/lib/aml_storage_capacities.ads",
+        "sha256": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688"
+      },
       "aml_string_order.adb": {
         "path": "userspace/services/acpi/lib/aml_string_order.adb",
         "sha256": "19866d874b57733cddfb34e75aadb1bfba1f51bb6b06fb453118a091b9939e40"
@@ -4922,15 +5114,35 @@
       },
       "bootstrap_catalog_tests.adb": {
         "path": "tests/acpi-bootstrap-devices/bootstrap_catalog_tests.adb",
-        "sha256": "cbb5bf5c26dffcdc589c9afad5a8dcfbd2364071c8c4005f8d2c9758d6b94cdf"
+        "sha256": "632ee8f84a7ab2ce829184f13280c0435901ec0ac0019d4d1193671175cfb4cc"
       },
       "bootstrap_device_tests.adb": {
         "path": "tests/acpi-bootstrap-devices/bootstrap_device_tests.adb",
-        "sha256": "99884224f86e57b20d5f1631b7a6e6537c73a35c6928ba8694bac1e25c1f2fb9"
+        "sha256": "1645a46d6fd0a26604001fb273ae2174f11e75ad73bce791f253006eaffdd9d9"
       },
       "bootstrap_migration_tests.adb": {
         "path": "tests/acpi-bootstrap-devices/bootstrap_migration_tests.adb",
-        "sha256": "b622abae173909f43f9e8ccd3c07b57b638beb4bb5669fbc4c07c0a9f02ccbb0"
+        "sha256": "96dbedce26530f2c8ed42071078026351175f28e2bb0e84e2329a9958609b5e3"
+      },
+      "migration_tables.adb": {
+        "path": "tests/acpi-bootstrap-devices/migration_tables.adb",
+        "sha256": "62bcf8c0cf69d146206be3041a33352da7647ccb0c91af804f5446ff3d2d1ca2"
+      },
+      "migration_tables.ads": {
+        "path": "tests/acpi-bootstrap-devices/migration_tables.ads",
+        "sha256": "5ab7cdf25f7bc2231b92807bfe07a55ac6cb2f6e71163b4954187acafa6e1b7f"
+      },
+      "request_boundary_tests.adb": {
+        "path": "tests/acpi-bootstrap-devices/request_boundary_tests.adb",
+        "sha256": "8c76395ada0cce644095ea0ba6a153d12de4ff58e3cb1452f2b85847bb4e9a92"
+      },
+      "request_migration_tests.adb": {
+        "path": "tests/acpi-bootstrap-devices/request_migration_tests.adb",
+        "sha256": "6010bf09d3956c71e2989dffb22f15717c435e6c4c11160ecc51a5786b637a19"
+      },
+      "startup_metrics_tests.adb": {
+        "path": "tests/acpi-bootstrap-devices/startup_metrics_tests.adb",
+        "sha256": "465189a429c6c18295090f9182f794aafdff5462f0946f8599eb968d6e13b4e9"
       },
       "firmware_tables-catalog.adb": {
         "path": "shared/firmware/firmware_tables-catalog.adb",
@@ -5043,26 +5255,6 @@
       "firmware_tables.ads": {
         "path": "shared/firmware/firmware_tables.ads",
         "sha256": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4"
-      },
-      "migration_tables.adb": {
-        "path": "tests/acpi-bootstrap-devices/migration_tables.adb",
-        "sha256": "62bcf8c0cf69d146206be3041a33352da7647ccb0c91af804f5446ff3d2d1ca2"
-      },
-      "migration_tables.ads": {
-        "path": "tests/acpi-bootstrap-devices/migration_tables.ads",
-        "sha256": "5ab7cdf25f7bc2231b92807bfe07a55ac6cb2f6e71163b4954187acafa6e1b7f"
-      },
-      "request_boundary_tests.adb": {
-        "path": "tests/acpi-bootstrap-devices/request_boundary_tests.adb",
-        "sha256": "45b050adbef7a81326fbf6c59843d483cc063b1ea0b53001a2a398b43bdf37cf"
-      },
-      "request_migration_tests.adb": {
-        "path": "tests/acpi-bootstrap-devices/request_migration_tests.adb",
-        "sha256": "154b90f60647ed532dd5f5f06c522d404d1cbe9adcb2037f38ce13fd1ec15834"
-      },
-      "startup_metrics_tests.adb": {
-        "path": "tests/acpi-bootstrap-devices/startup_metrics_tests.adb",
-        "sha256": "fa4dad2cb194d40ffa2d1ad14131e9febfdaccfcb2f858792eb0b391a0722664"
       }
     }
   }

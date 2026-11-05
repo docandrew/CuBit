@@ -25,6 +25,14 @@ generic
    with procedure Read_Clock (Now : out Interfaces.Unsigned_64; Available : out Boolean);
    Maximum_Attempts : Positive := 16;
    Maximum_Leases : Interfaces.Unsigned_64 := Interfaces.Unsigned_64'Last;
+   -- Observers must return normally, never reenter this owner or perform IO.
+   -- Values are copied from existing operations; no extra physical accesses.
+   with procedure Observe_Word
+     (Word : Interfaces.Unsigned_32; Available : Boolean) is null;
+   with procedure Observe_CAS
+     (Expected, Replacement, Observed : Interfaces.Unsigned_32;
+      Known, Attempted, Exchanged : Boolean) is null;
+   with procedure Observe_Signal (Report : Signaling.Report) is null;
 package ACPI_Backend_Global_Lock is
    type Atomic_Outcome is (Exchanged, Not_Exchanged, Not_Attempted, Atomic_Unknown);
    type Signal_Outcome is (Complete, Not_Sent, Signal_Unknown);

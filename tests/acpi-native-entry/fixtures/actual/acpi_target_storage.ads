@@ -25,6 +25,8 @@ package ACPI_Target_Storage is
       return ACPI_Capacity_Diagnostics.Report;
    function Read (Store : Context; Index : Positive) return Element
      with Pre => Index <= Length (Store);
+   procedure Replace (Store : in out Context; Index : Positive; Item : Element)
+     with Pre => Index <= Length (Store);
    procedure Append
      (Store : in out Context; Item : Element;
       Index : out Count; Result : out Outcome);

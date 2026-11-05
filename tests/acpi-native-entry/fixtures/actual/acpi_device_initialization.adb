@@ -11,6 +11,13 @@ package body ACPI_Device_Initialization with SPARK_Mode is
    use type ACPI_Device_Policy.Region_Outcome;
    use type ACPI_Device_Policy.Status_Decision;
    function Observe (Run : Session) return Report is (Run.Info);
+   function Startup_Claimed (Run : Session) return Boolean is
+     (Run.Claimed or else Run.Info.Stage /= Not_Started);
+   procedure Claim_Startup (Run : in out Session; Accepted : out Boolean) is
+   begin
+      Accepted := not Startup_Claimed (Run);
+      Run.Claimed := True;
+   end Claim_Startup;
    function Observe_Node (Run : Session; Node : Node_ID) return Node_Report is (Run.Items (Node));
    function Device_Kind (Kind : N.Object_Kind) return Boolean is
      (Kind in N.Device_Object | N.Processor_Object | N.Thermal_Zone_Object);

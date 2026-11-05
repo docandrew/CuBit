@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Allocation_Retry;
 with Ada.Unchecked_Deallocation;
 with AML_Table_Readers;
 with Interfaces;
@@ -64,7 +65,10 @@ package body AML_Namespace with SPARK_Mode is
       subtype Snapshot_Shape is State
         (Tree.Object_Capacity, Tree.Byte_Capacity, Tree.Element_Capacity);
    begin
-      return new Snapshot_Shape'(Tree);
+      Observe_Work (AML_Work_Kinds.Namespace_Snapshot,True);
+      declare Result : constant Namespace_Snapshot_Owner := new Snapshot_Shape'(Tree); begin
+         Observe_Work (AML_Work_Kinds.Namespace_Snapshot,False); return Result;
+      end;
 
    end Clone_Namespace_Snapshot;
    procedure Append_Code
@@ -6828,17 +6832,20 @@ package body Owned with SPARK_Mode is
      Budget : Natural; Current_Sync : AML_Execute.Sync_Level;
      Result : out AML_Execute.Execution_Result;
      Session_Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
-     Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation);
+     Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
+     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source);
    procedure Run_Context_Session (A : in out Arena; IO : in out IO_Context; Input : aliased AML_Table_Backing.State;
      Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural; Width : AML_Decode.Integer_Width; Scope : Node_ID;
      Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
      Budget : Natural; Current_Sync : AML_Execute.Sync_Level;
      Result : out AML_Execute.Execution_Result;
      Session_Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
-     Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation) is
+     Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
+     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source) is
       use type AML_Execute.Binding_Status;
       use type AML_References.Object_Handle;
       Entry_Token : constant AML_Identity.Identity := A.Token;
+      Startup_Definition : constant Definition_Identity := A.Tree.Current_Definition;
       Owner_Workspace : Semantic_Owner_Workspace (A.Object_Capacity);
       function Census_Status (Result : Persistent_Owner_Result)
         return AML_Execute.Owner_Census_Status is
@@ -7137,6 +7144,7 @@ package body Owned with SPARK_Mode is
         Purpose : AML_Execute.Binding_Purpose; Binding : out AML_Execute.Binding_Result)
         with Pre => Context_Valid (E) and then not Binding'Constrained, Post => Context_Valid (E)
       is
+         procedure Profiled_Work is
          Located : Lookup_Result;
          Ref : Reference;
          OK : Boolean;
@@ -7167,6 +7175,11 @@ package body Owned with SPARK_Mode is
             end if;
          end if;
          Readers.Lookup (E, Backing, Scope, Path, Width, Purpose, Binding);
+         end Profiled_Work;
+      begin
+         Observe_Work (AML_Work_Kinds.Namespace_Lookup,True);
+         Profiled_Work;
+         Observe_Work (AML_Work_Kinds.Namespace_Lookup,False);
       end Lookup;
       function Method (E : Arena; ID : Natural) return AML_Execute.Method_Definition is
         (Read_Method (E.Tree.all, ID));
@@ -7176,30 +7189,62 @@ package body Owned with SPARK_Mode is
         with Pre => Context_Valid (E) and then not Binding'Constrained,
              Post => Context_Valid (E)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
       begin
-         Before_Allocation (E, [], Gate);
+         Allocation_Boundary (E, [], Gate);
          if Gate /= Allocation_Allowed then
             Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
          end if;
          Materialize_Buffer_Literal (E.Tree.all, Scope, Length, Initializer, Binding);
          Stamp (E, Binding);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Buffer_Literal;
       procedure Literal (E : in out Arena; Scope : Natural; Kind : AML_Execute.Literal_Kind; Width : AML_Decode.Integer_Width; Data : AML_Decode.Bytes;
          Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
         Binding : out AML_Execute.Binding_Result)
         with Pre => Context_Valid (E) and then not Binding'Constrained, Post => Context_Valid (E)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
       begin
          if not AML_Byte_Sources.Corresponds (Source, Source_First, Data) then
             Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
          end if;
-         Before_Allocation (E, [], Gate);
+         Allocation_Boundary (E, [], Gate);
          if Gate /= Allocation_Allowed then
             Binding := (AML_Execute.Failed_Binding, AML_Execute.Unsupported_Value); return;
          end if;
          Materialize_Literal_With_Owner (E.Tree.all, E.Token, Scope, Kind, Width, Data, Source, Source_First, Binding); Stamp (E, Binding);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Literal;
       procedure Dereference_With_Provenance (E : in out Arena; Ref : Reference;
         Width : AML_Decode.Integer_Width;
@@ -7226,6 +7271,15 @@ package body Owned with SPARK_Mode is
          Bit_Offset, Bit_Length : AML_Decode.Integer_Value; Always_Buffer : Boolean;
          Status : out AML_Execute.Execution_Status; Module_Declaration : Boolean)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
       begin
          -- Existing canonical Buffer capture allocates no value objects.
@@ -7238,14 +7292,31 @@ package body Owned with SPARK_Mode is
               Bit_Offset, Bit_Length, Always_Buffer, Status, Module_Declaration);
             return;
          end if;
-         Before_Allocation (E, [Source], Gate);
+         Allocation_Boundary (E, [Source], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          Define_Buffer_Field_Value_For_Context (E, Scope, Lifetime_Owner, Path, Width, Source,
            Bit_Offset, Bit_Length, Always_Buffer, Status, Module_Declaration);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Define_Field_At_Entry;
       procedure Write (E : in out Arena; Scope : Natural; Path : AML_Names.Name_Result; Width : AML_Decode.Integer_Width; Item : AML_Execute.Datum; Status : out AML_Execute.Write_Status)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
+         procedure Profiled_Work is
          Located : Lookup_Result;
          Stored : AML_Execute.Execution_Status;
          Gate : Allocation_Hook_Status;
@@ -7269,7 +7340,7 @@ package body Owned with SPARK_Mode is
                return;
             end if;
          end if;
-         Before_Allocation (E, [Item], Gate);
+         Allocation_Boundary (E, [Item], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Write_Unsupported; return; end if;
          if Item.Value_Kind = AML_Execute.Integer_Datum
            and then Scope <= E.Tree.Used
@@ -7308,6 +7379,18 @@ package body Owned with SPARK_Mode is
            when AML_Execute.Empty_Buffer => AML_Execute.Write_Empty_Buffer,
            when AML_Execute.Unknown_Name => AML_Execute.Write_Missing,
            when others => AML_Execute.Write_Unsupported);
+         end Profiled_Work;
+      begin
+         Observe_Work (AML_Work_Kinds.Namespace_Store,True);
+         Profiled_Work;
+         Observe_Work (AML_Work_Kinds.Namespace_Store,False);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then AML_Execute."=" (Status, AML_Execute.Write_Value_Limit));
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Write;
       procedure Begin_Call (E : in out Arena; Scope : Natural; Allowed : out Boolean)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
@@ -7337,6 +7420,15 @@ package body Owned with SPARK_Mode is
          Item : AML_Execute.Datum; Status : out AML_Execute.Execution_Status; Mode : AML_Execute.Reference_Store_Mode)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          Field_Value : AML_Execute.Datum := Item;
          Canonical : Reference := Ref;
@@ -7348,9 +7440,16 @@ package body Owned with SPARK_Mode is
          if Hardware_Field (E, Canonical) then
             Field_Operation (E, IO, Canonical, Width, True, Field_Value, Status); return;
          end if;
-         Before_Allocation (E, [Item, (AML_Execute.Reference_Datum, Ref)], Gate);
+         Allocation_Boundary (E, [Item, (AML_Execute.Reference_Datum, Ref)], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          Store_Reference_Value (E, Ref, Width, Item, Status, Mode);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Store_Reference;
       procedure Compare_Objects
         (E : in out Arena; Op : AML_Decode.Byte; Left, Right : AML_Execute.Datum;
@@ -7366,15 +7465,31 @@ package body Owned with SPARK_Mode is
          Consumed : out Natural; Status : out AML_Execute.Execution_Status; Module_Declaration : Boolean := False)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
       begin
          if not AML_Byte_Sources.Corresponds (Source, Source_First, Data) then
             Consumed := 0; Status := AML_Execute.Unsupported_Value; return;
          end if;
-         Before_Allocation (E, [], Gate);
+         Allocation_Boundary (E, [], Gate);
          if Gate /= Allocation_Allowed then Consumed := 0; Status := AML_Execute.Unsupported_Value; return; end if;
          Define_Runtime_Name_For_Context (E.Tree.all, E.Token, Scope, Lifetime_Owner,
            Path, Width, Data, Source, Source_First, Consumed, Status, Module_Declaration);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Define_Name;
 
       procedure Complete_Dynamic_Buffer
@@ -7382,11 +7497,27 @@ package body Owned with SPARK_Mode is
          Initializer : AML_Decode.Bytes; Count : AML_Data.Count_Result;
          Status : out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
       begin
-         Before_Allocation (E, [(AML_Execute.Reference_Datum, Token.Ref)], Gate);
+         Allocation_Boundary (E, [(AML_Execute.Reference_Datum, Token.Ref)], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          Complete_Runtime_Buffer (E, Token, Width, Initializer, Count, Status);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Complete_Dynamic_Buffer;
       procedure Abort_Dynamic_Name
         (E : in out Arena; Token : Name_Reservation; Status : out AML_Execute.Execution_Status)
@@ -7551,26 +7682,64 @@ package body Owned with SPARK_Mode is
         (E : in out Arena; Width : AML_Decode.Integer_Width;
          Item : AML_Execute.Datum; Copy : out AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status) is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
+         procedure Profiled_Work is
          Gate : Allocation_Hook_Status;
       begin
          Copy := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-         Before_Allocation (E, [Item], Gate);
+         Allocation_Boundary (E, [Item], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          Copy_Value (E, Width, Item, Copy, Status);
+         end Profiled_Work;
+      begin
+         Observe_Work (AML_Work_Kinds.Value_Clone,True);
+         Profiled_Work;
+         Observe_Work (AML_Work_Kinds.Value_Clone,False);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Clone_At_Entry;
       procedure Copy_At_Entry
         (E : in out Arena; Destination : AML_Execute.Copy_Destination;
          Width : AML_Decode.Integer_Width; Item : AML_Execute.Datum;
          Copy : out AML_Execute.Datum; Status : out AML_Execute.Execution_Status) is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          use type AML_Execute.Copy_Destination_Kind;
       begin
          Copy := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          if Destination.Kind = AML_Execute.Referenced_Destination then
-            Before_Allocation (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
-         else Before_Allocation (E, [Item], Gate); end if;
+            Allocation_Boundary (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
+         else Allocation_Boundary (E, [Item], Gate); end if;
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          Copy_And_Attach (E, Destination, Width, Item, Copy, Status);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Copy_At_Entry;
       procedure Concatenate_At_Entry
         (E : in out Arena; Width : AML_Decode.Integer_Width;
@@ -7578,6 +7747,15 @@ package body Owned with SPARK_Mode is
          Destination : AML_Execute.Concatenation_Destination;
          Result_Value, Cell_Value : out AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status) is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          use type AML_Execute.Concatenation_Operand_Kind;
          use type AML_Execute.Concatenation_Destination_Kind;
@@ -7588,11 +7766,18 @@ package body Owned with SPARK_Mode is
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          if Destination.Kind = AML_Execute.Reference_Attachment then
-            Before_Allocation (E, [Root_Value (Left), Root_Value (Right),
+            Allocation_Boundary (E, [Root_Value (Left), Root_Value (Right),
               (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
-         else Before_Allocation (E, [Root_Value (Left), Root_Value (Right)], Gate); end if;
+         else Allocation_Boundary (E, [Root_Value (Left), Root_Value (Right)], Gate); end if;
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          Concatenate_And_Attach (E, Width, Left, Right, Destination, Result_Value, Cell_Value, Status);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Concatenate_At_Entry;
       procedure Resources_At_Entry
         (E : in out Arena; Width : AML_Decode.Integer_Width;
@@ -7600,16 +7785,25 @@ package body Owned with SPARK_Mode is
          Destination : AML_Execute.Concatenation_Destination;
          Result_Value, Cell_Value : out AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status) is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          use type AML_Execute.Concatenation_Destination_Kind;
       begin
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          if Destination.Kind = AML_Execute.Reference_Attachment then
-            Before_Allocation (E, [Left, Right,
+            Allocation_Boundary (E, [Left, Right,
               (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
          else
-            Before_Allocation (E, [Left, Right], Gate);
+            Allocation_Boundary (E, [Left, Right], Gate);
          end if;
          if Gate /= Allocation_Allowed then
             Status := AML_Execute.Unsupported_Value;
@@ -7617,6 +7811,13 @@ package body Owned with SPARK_Mode is
          end if;
          Concatenate_Resources_And_Attach
            (E, Width, Left, Right, Destination, Result_Value, Cell_Value, Status);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Resources_At_Entry;
 
       procedure To_Buffer_At_Entry
@@ -7625,6 +7826,15 @@ package body Owned with SPARK_Mode is
          Result_Value, Cell_Value : out AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          use type AML_Execute.Concatenation_Destination_Kind;
       begin
@@ -7641,10 +7851,17 @@ package body Owned with SPARK_Mode is
             return;
          end if;
          if Destination.Kind = AML_Execute.Reference_Attachment then
-            Before_Allocation (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
-         else Before_Allocation (E, [Item], Gate); end if;
+            Allocation_Boundary (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
+         else Allocation_Boundary (E, [Item], Gate); end if;
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          To_Buffer_And_Attach (E, W, Item, Destination, Result_Value, Cell_Value, Status);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end To_Buffer_At_Entry;
       procedure Format_String_At_Entry
         (E : in out Arena; W : AML_Decode.Integer_Width; Mode : AML_Execute.Explicit_String_Mode; Item : AML_Execute.Datum;
@@ -7652,6 +7869,15 @@ package body Owned with SPARK_Mode is
          Result_Value, Cell_Value : out AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          use type AML_Execute.Concatenation_Destination_Kind;
       begin
@@ -7668,10 +7894,17 @@ package body Owned with SPARK_Mode is
             return;
          end if;
          if Destination.Kind = AML_Execute.Reference_Attachment then
-            Before_Allocation (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
-         else Before_Allocation (E, [Item], Gate); end if;
+            Allocation_Boundary (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
+         else Allocation_Boundary (E, [Item], Gate); end if;
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          Format_String_And_Attach (E, W, Mode, Item, Destination, Result_Value, Cell_Value, Status);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Format_String_At_Entry;
       procedure Mid_At_Entry
         (E : in out Arena; W : AML_Decode.Integer_Width; Item : AML_Execute.Datum; Start, Count : AML_Decode.Integer_Value;
@@ -7679,16 +7912,32 @@ package body Owned with SPARK_Mode is
          Result_Value, Cell_Value : out AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          use type AML_Execute.Concatenation_Destination_Kind;
       begin
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          if Destination.Kind = AML_Execute.Reference_Attachment then
-            Before_Allocation (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
-         else Before_Allocation (E, [Item], Gate); end if;
+            Allocation_Boundary (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
+         else Allocation_Boundary (E, [Item], Gate); end if;
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          Mid_And_Attach (E, W, Item, Start, Count, Destination, Result_Value, Cell_Value, Status);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Mid_At_Entry;
       procedure To_String_At_Entry
         (E : in out Arena; W : AML_Decode.Integer_Width; Item : AML_Execute.Datum; Length : AML_Decode.Integer_Value;
@@ -7696,16 +7945,32 @@ package body Owned with SPARK_Mode is
          Result_Value, Cell_Value : out AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          use type AML_Execute.Concatenation_Destination_Kind;
       begin
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          if Destination.Kind = AML_Execute.Reference_Attachment then
-            Before_Allocation (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
-         else Before_Allocation (E, [Item], Gate); end if;
+            Allocation_Boundary (E, [Item, (AML_Execute.Reference_Datum, Destination.Ref)], Gate);
+         else Allocation_Boundary (E, [Item], Gate); end if;
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          To_String_And_Attach (E, W, Item, Length, Destination, Result_Value, Cell_Value, Status);
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end To_String_At_Entry;
 
 
@@ -8117,6 +8382,15 @@ package body Owned with SPARK_Mode is
          Scope : Natural; Path : AML_Names.Name_Result;
          Status : in out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Candidate_Values : AML_Objects.State := AML_Objects.Empty_Like (Environment.Tree.Values);
          Snapshot_Copy : AML_Objects.Clone_Status;
          Object : AML_Objects.Object_ID;
@@ -8144,7 +8418,7 @@ package body Owned with SPARK_Mode is
          -- and its collection metrics unchanged.
          Admit_Name;
          if Status /= AML_Execute.Returned then return; end if;
-         Before_Allocation (Environment, [], Gate);
+         Allocation_Boundary (Environment, [], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          -- Collection is real. Never restore the pre-collection snapshot.
          -- Rebuild and validate the transaction against the post-hook arena.
@@ -8173,12 +8447,28 @@ package body Owned with SPARK_Mode is
          Environment.Tree.Items (Node).Object_Type := Event_Object;
          Environment.Tree.Items (Node).Object_Ref := Object;
          Status := AML_Execute.Returned;
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Execute_Declaration_Event;
       procedure Execute_Declaration_Mutex
         (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease;
          Scope : Natural; Path : AML_Names.Name_Result; Flags : AML_Decode.Byte;
          Status : in out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Candidate_Values : AML_Objects.State := AML_Objects.Empty_Like (Environment.Tree.Values);
          Snapshot_Copy : AML_Objects.Clone_Status;
          Object : AML_Objects.Object_ID;
@@ -8207,7 +8497,7 @@ package body Owned with SPARK_Mode is
          -- and its collection metrics unchanged.
          Admit_Name;
          if Status /= AML_Execute.Returned then return; end if;
-         Before_Allocation (Environment, [], Gate);
+         Allocation_Boundary (Environment, [], Gate);
          if Gate /= Allocation_Allowed then Status := AML_Execute.Unsupported_Value; return; end if;
          -- Collection is real. Never restore the pre-collection snapshot.
          -- Rebuild and validate the transaction against the post-hook arena.
@@ -8237,6 +8527,13 @@ package body Owned with SPARK_Mode is
          Environment.Tree.Items (Node).Mutex_Flags := Flags;
          Environment.Tree.Items (Node).Object_Ref := Object;
          Status := AML_Execute.Returned;
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Execute_Declaration_Mutex;
       procedure Execute_Declaration_Method
         (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease; Scope : Natural; Path : AML_Names.Name_Result; Flags : AML_Decode.Byte; Width : AML_Decode.Integer_Width; Code : AML_Decode.Bytes; Status : out AML_Execute.Declaration_Status) is
@@ -8389,6 +8686,7 @@ package body Owned with SPARK_Mode is
         (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease;
          Token : AML_Declaration_Contexts.Operation_Region_Reservation;
          Width : AML_Decode.Integer_Width; Address, Length : AML_Decode.Integer_Value;
+         Syntax : AML_Execute.Operation_Region_Syntax;
          Status : in out AML_Execute.Execution_Status)
       is
          Node : constant Natural := AML_Declaration_Contexts.Node_Of (Token);
@@ -8416,7 +8714,18 @@ package body Owned with SPARK_Mode is
            (Environment.Tree.Items (Node_ID (Node)) with delta
               Operation_Info =>
                 (Environment.Tree.Items (Node_ID (Node)).Operation_Info with delta
-                   Address => Address, Length => Length, Width => Width),
+                   Address => Address, Length => Length, Width => Width, Syntax => Syntax,
+                   Origin =>
+                     (if Startup_Source.Kind = AML_Table_Sources.Boot_Source
+                       and then Natural (Startup_Source.Boot) <= Input.Count
+                       and then AML_Declaration_Contexts.Is_Module (Session_Request)
+                       and then AML_Declaration_Contexts.Is_Module (Lease)
+                       and then AML_Module_Frames.Count (Environment.Tree.Module_Frames) = 1
+                       and then Has_Definition (Startup_Definition)
+                       and then Environment.Tree.Current_Definition = Startup_Definition
+                     then (Known => True, Table => Startup_Source.Boot,
+                       Definition => Startup_Definition)
+                     else (Known => False))),
               Object_Type => Operation_Region_Object, Initializing => False,
               Initializer_Frame => AML_Frame_Handles.No_Frame);
          Status := AML_Execute.Returned;
@@ -8536,6 +8845,15 @@ package body Owned with SPARK_Mode is
          Width : AML_Decode.Integer_Width; Token : out Runtime_Package_Token;
          Binding : out AML_Execute.Binding_Result)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Position : Builder_Position := 0;
          Gate : Allocation_Hook_Status;
          ID : AML_Objects.Object_ID;
@@ -8563,7 +8881,7 @@ package body Owned with SPARK_Mode is
             Binding := (AML_Execute.Failed_Binding, AML_Execute.Expression_Limit); return;
          end if;
          -- Caller publishes all suspended parents before this boundary.
-         Before_Allocation (E, [], Gate);
+         Allocation_Boundary (E, [], Gate);
          if Gate /= Allocation_Allowed
            or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope) then return; end if;
          if Parent /= No_Runtime_Package and then not Builder_Matches (E, Lease, Parent) then return; end if;
@@ -8593,12 +8911,28 @@ package body Owned with SPARK_Mode is
             Type_Code => 4, Size => Count, others => <>));
          -- No allocating callback occurs between this allocation and return.
          -- Execute must publish Binding before evaluating the next child.
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Begin_Runtime_Package;
       procedure Append_Runtime_Package
         (E : in out Arena; Lease : AML_Declaration_Contexts.Lease;
          Token : in out Runtime_Package_Token; Item : AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          Parent, Child : AML_Objects.Object_ID;
          Allocated : AML_Objects.Allocation_Status;
@@ -8658,7 +8992,7 @@ package body Owned with SPARK_Mode is
                Root_Value := (AML_Execute.Object_Datum,
                  (Source => Builders (Token.Position).Source, ID => Parent,
                   Type_Code => 4, Size => AML_Objects.Length (E.Tree.Values, Parent), others => <>));
-               Before_Allocation (E, [Root_Value, Item], Gate);
+               Allocation_Boundary (E, [Root_Value, Item], Gate);
                if Gate /= Allocation_Allowed or else not Builder_Matches (E, Lease, Token) then return; end if;
                AML_Objects.New_Integer (E.Tree.Values, Item.Number, Child, Allocated, Item.Origin);
                if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
@@ -8680,6 +9014,13 @@ package body Owned with SPARK_Mode is
          Builders (Token.Position).Stamp := Last_Builder_Stamp;
          Token.Stamp := Last_Builder_Stamp;
          Status := AML_Execute.Returned;
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Append_Runtime_Package;
       procedure Defer_Runtime_Package_Name
         (E : Arena; Lease : AML_Declaration_Contexts.Lease;
@@ -8780,6 +9121,15 @@ package body Owned with SPARK_Mode is
          Token : Runtime_Package_Token; Cursor : Natural;
          Item : AML_Execute.Datum; Status : in out AML_Execute.Execution_Status)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          Child : AML_Objects.Object_ID;
          Allocated : AML_Objects.Allocation_Status;
@@ -8799,7 +9149,7 @@ package body Owned with SPARK_Mode is
             Root_Value := (AML_Execute.Object_Datum,
               (Source => Builders (Token.Position).Source, ID => Member.Package_ID,
                Type_Code => 4, Size => AML_Objects.Length (E.Tree.Values, Member.Package_ID), others => <>));
-            Before_Allocation (E, [Root_Value, Item], Gate);
+            Allocation_Boundary (E, [Root_Value, Item], Gate);
             if Gate /= Allocation_Allowed or else not Current then return; end if;
             case Item.Value_Kind is
                when AML_Execute.Integer_Datum =>
@@ -8817,6 +9167,13 @@ package body Owned with SPARK_Mode is
             Pending_Authorities (Cursor).Field_Resolved := True;
             Status := AML_Execute.Returned;
          end;
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Status = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Complete_Runtime_Package_Field;
       procedure Bind_Live_Builder_Members
         (E : Arena; Candidate : in out State; First : Natural;
@@ -8897,6 +9254,15 @@ package body Owned with SPARK_Mode is
         (E : in out Arena; Lease : AML_Declaration_Contexts.Lease;
          Token : in out Runtime_Package_Token; Binding : out AML_Execute.Binding_Result)
       is
+         Boundary_Reached : Boolean := False;
+         procedure Attempt (Collect_Before : Boolean) is
+            procedure Allocation_Boundary
+              (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+            begin
+               Boundary_Reached := True;
+               if Collect_Before then Before_Allocation (Owner,Extra,Gate);
+               else Gate := Allocation_Allowed; end if;
+            end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
          ID : AML_Objects.Object_ID;
          Root_Value : AML_Execute.Datum;
@@ -8919,7 +9285,7 @@ package body Owned with SPARK_Mode is
            (Source => Builders (Token.Position).Source, ID => ID, Type_Code => 4,
             Size => AML_Objects.Length (E.Tree.Values, ID), others => <>));
          if Token.Position = Builder_Groups (Group_Depth).Root_Position then
-            Before_Allocation (E, [Root_Value], Gate);
+            Allocation_Boundary (E, [Root_Value], Gate);
             if Gate /= Allocation_Allowed or else not Builder_Matches (E, Lease, Token) then return; end if;
             declare
                Snapshot : Namespace_Snapshot_Owner := null;
@@ -8989,6 +9355,13 @@ package body Owned with SPARK_Mode is
          Binding := (AML_Execute.Non_Integer_Binding, Root_Value.Object);
          Builders (Token.Position) := (others => <>);
          Token := No_Runtime_Package;
+         end Attempt;
+         function Capacity_Refused return Boolean is
+           (Boundary_Reached and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
+         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
+         Outcome : Retry.Report;
+      begin
+         Retry.Run (Outcome);
       end Finish_Runtime_Package;
       procedure Abort_Runtime_Package
         (E : Arena; Lease : AML_Declaration_Contexts.Lease;
@@ -9302,7 +9675,8 @@ package body Owned with SPARK_Mode is
       Session_Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
       Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
       Deferred_Readiness : Boolean := False;
-      Enclosing_Table : AML_Execute.Load_Table_Token := AML_Execute.No_Load_Table);
+      Enclosing_Table : AML_Execute.Load_Table_Token := AML_Execute.No_Load_Table;
+     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source);
    procedure Run_Registered_Context_Session
      (A : in out Arena; IO : in out IO_Context; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
       Input : aliased AML_Table_Backing.State; Code : AML_Decode.Bytes;
@@ -9312,7 +9686,8 @@ package body Owned with SPARK_Mode is
       Session_Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
       Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
       Deferred_Readiness : Boolean := False;
-      Enclosing_Table : AML_Execute.Load_Table_Token := AML_Execute.No_Load_Table) is
+      Enclosing_Table : AML_Execute.Load_Table_Token := AML_Execute.No_Load_Table;
+     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source) is
       use AML_Execute;
       use type AML_Definition_Loads.Load_Phase;
       use type AML_Declaration_Contexts.Lease;
@@ -9916,7 +10291,7 @@ package body Owned with SPARK_Mode is
         or else (not Deferred_Readiness and then Pending_Members (A.Tree.all) /= 0)
       then Result := (Unsupported_Value, 0); return; end if;
       Run (A, IO, Input, Code, Source, Source_First, Width, Scope, Args, Argument_Count,
-        Budget, Current_Sync, Result, Session_Request, Implementation);
+        Budget, Current_Sync, Result, Session_Request, Implementation, Startup_Source);
       if not Expected_Reservations then raise Program_Error with "active definition leaked reservation"; end if;
    end Run_Registered_Context_Session;
    generic
@@ -10634,6 +11009,7 @@ package body Owned with SPARK_Mode is
             end Add;
             procedure Collect_Before
               (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+               procedure Profiled_Work is
                Trace : Root_Trace_Status;
                Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
                Before, After : AML_Objects.Usage;
@@ -10658,6 +11034,11 @@ package body Owned with SPARK_Mode is
                Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
                Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
                Gate := Allocation_Allowed;
+               end Profiled_Work;
+            begin
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,True);
+               Profiled_Work;
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,False);
             end Collect_Before;
    
             procedure Observe_Module_Field
@@ -10701,14 +11082,15 @@ package body Owned with SPARK_Mode is
                Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
                Width : AML_Decode.Integer_Width; Scope : Node_ID; Args : AML_Execute.Value_Arguments;
                Count, Fuel : Natural; Sync : AML_Execute.Sync_Level; Result : out AML_Execute.Execution_Result;
-               Request : AML_Declaration_Contexts.Request) is
+               Request : AML_Declaration_Contexts.Request;
+               Startup_Source : AML_Table_Sources.Source) is
             begin
                if Registered then
                   Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
                     Scope, Args, Count, Fuel, Sync, Result, Request, Deferred_Readiness => True,
-                    Enclosing_Table => Executing_Table);
+                    Enclosing_Table => Executing_Table, Startup_Source => Startup_Source);
                else Run_Standalone (E, IO, Backing, Code, Source, Source_First, Width, Scope,
-                    Args, Count, Fuel, Sync, Result, Request); end if;
+                    Args, Count, Fuel, Sync, Result, Request, Startup_Source => Startup_Source); end if;
             end Run;
             function Signature_At (Index : Positive) return Firmware_Tables.Signature is
                Offset : constant Natural := Input.Tables (Index).Offset;
@@ -10750,11 +11132,13 @@ package body Owned with SPARK_Mode is
                   begin
                      if Length = 0 then
                         Run (A.Inner.all, Backing, [], Backing.Data, Offset, Width, Root, Args, 0, Remaining, 0, Raw,
-                          AML_Declaration_Contexts.Module_Request);
+                          AML_Declaration_Contexts.Module_Request,
+                          (AML_Table_Sources.Boot_Source, AML_Table_Sources.Boot_Table_ID (Index)));
                      else
                         Run (A.Inner.all, Backing, Backing.Data.Bytes (Offset + 1 .. Offset + Length),
                           Backing.Data, Offset, Width, Root, Args, 0, Remaining, 0, Raw,
-                          AML_Declaration_Contexts.Module_Request);
+                          AML_Declaration_Contexts.Module_Request,
+                          (AML_Table_Sources.Boot_Source, AML_Table_Sources.Boot_Table_ID (Index)));
                      end if;
                   end Consume;
                   procedure Visit is new AML_Table_Code.Visit_Body (Consume);
@@ -10941,6 +11325,7 @@ package body Owned with SPARK_Mode is
             end Add;
             procedure Collect_Before
               (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+               procedure Profiled_Work is
                Trace : Root_Trace_Status;
                Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
                Before, After : AML_Objects.Usage;
@@ -10965,6 +11350,11 @@ package body Owned with SPARK_Mode is
                Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
                Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
                Gate := Allocation_Allowed;
+               end Profiled_Work;
+            begin
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,True);
+               Profiled_Work;
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,False);
             end Collect_Before;
    
    
@@ -11253,6 +11643,7 @@ package body Owned with SPARK_Mode is
             end Add;
             procedure Collect_Before
               (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+               procedure Profiled_Work is
                Trace : Root_Trace_Status;
                Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
                Before, After : AML_Objects.Usage;
@@ -11277,6 +11668,11 @@ package body Owned with SPARK_Mode is
                Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
                Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
                Gate := Allocation_Allowed;
+               end Profiled_Work;
+            begin
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,True);
+               Profiled_Work;
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,False);
             end Collect_Before;
             procedure Run is new Invoke_Retained_With_Hook (Collect_Before);
             procedure Run_Registered is new Invoke_Registered_Retained (Collect_Before);
@@ -11417,6 +11813,7 @@ package body Owned with SPARK_Mode is
             procedure Collect_Before
               (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status)
             is
+               procedure Profiled_Work is
                Trace : Root_Trace_Status;
                Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
                Before, After : AML_Objects.Usage;
@@ -11445,6 +11842,11 @@ package body Owned with SPARK_Mode is
                Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
                Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
                Gate := Allocation_Allowed;
+               end Profiled_Work;
+            begin
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,True);
+               Profiled_Work;
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,False);
             end Collect_Before;
             package Readers is new Named_Readers (Collect_Before, Read_Table_Binding);
          begin
@@ -12937,7 +13339,7 @@ package body Owned with SPARK_Mode is
                Allowed := Prepared.Owner = E.Token and then Prepared.Provider = Target.Provider;
             end Select_Provider;
             procedure Resolve_Datum
-              (Desired : AML_Field_Layout.Register_Geometry;
+              (Region_Node : Node_ID; Desired : AML_Field_Layout.Register_Geometry;
                Target : out AML_Field_Access.Target;
                Geometry : out AML_Field_Layout.Register_Geometry; Allowed : out Boolean) is
                Current : Boolean;
@@ -12945,6 +13347,39 @@ package body Owned with SPARK_Mode is
                Target := AML_Field_Access.No_Target; Geometry := (others => <>); Allowed := False;
                Charge (Current); if not Current then return; end if;
                Resolve_Module_Target (Context, Desired, Target, Allowed);
+               if not Allowed and then not Pending (Context)
+                 and then Enable_Startup_Firmware_Resolution
+                 and then Region_Node > Root and then Region_Node <= E.Tree.Used
+                 and then E.Tree.Items (Region_Node).Alive
+                 and then E.Tree.Items (Region_Node).Object_Type = Operation_Region_Object
+                 and then not E.Tree.Items (Region_Node).Initializing
+               then
+                  declare
+                     R : constant Operation_Region_Attributes := E.Tree.Items (Region_Node).Operation_Info;
+                  begin
+                     if R.Space = Region_Space_ID (AML_Field_Layout.Memory_Space)
+                       and then R.Syntax.Address_Is_Literal
+                       and then R.Syntax.Length_Is_Literal and then R.Length > 0
+                       and then R.Origin.Known
+                       and then Has_Definition (R.Origin.Definition)
+                       and then Definition_Of (E.Tree.all, Region_Node) = R.Origin.Definition
+                       and then Natural (R.Origin.Table) <= Input.Count
+                       and then Natural (R.Origin.Table) <= Loads.Capacity
+                       and then AML_Table_Backing.Valid_Span (Input, Positive (R.Origin.Table))
+                       and then AML_Definition_Loads.Phase (Loads, Positive (R.Origin.Table)) in
+                         AML_Definition_Loads.Loading | AML_Definition_Loads.Loaded
+                       and then AML_Definition_Loads.Definition (Loads, Positive (R.Origin.Table)) =
+                         R.Origin.Definition
+                     then
+                        Charge (Current); if not Current then return; end if;
+                        Target := AML_Field_Access.No_Target;
+                        -- Grant requests can have effects even when no Field
+                        -- data operation ran. Preserve the owner from here.
+                        Provider_May_Have_Effects := True;
+                        Resolve_Startup_Firmware_Target (Context, R, Desired, Target, Allowed);
+                     end if;
+                  end;
+               end if;
                if Pending (Context) then
                   Allowed := False; Status := AML_Execute.Field_Indeterminate; return;
                end if;
@@ -12999,7 +13434,7 @@ package body Owned with SPARK_Mode is
                      end loop;
                      if not Matched then
                         declare D : constant AML_Field_Datums.Datum := AML_Field_Plans.Datum_At (Plan, Datum); begin
-                           Resolve_Datum ((Field.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
+                           Resolve_Datum (Region, (Field.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
                              Selected.Read_Targets (Datum), Selected.Read_Geometries (Datum), Matched);
                         end;
                      end if;
@@ -13062,7 +13497,7 @@ package body Owned with SPARK_Mode is
                         end if;
                      end loop;
                      if not Found then
-                        Resolve_Datum ((Geometry.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
+                        Resolve_Datum (Info.Region, (Geometry.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
                           Chosen, Chosen_Geometry, Found);
                      end if;
                      if not Found then return; end if;
@@ -13174,6 +13609,7 @@ package body Owned with SPARK_Mode is
             end Add;
             procedure Collect_Before
               (E : in out Owned.Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
+               procedure Profiled_Work is
                Trace : Root_Trace_Status;
                Reclaimed : AML_Objects.Reclamation.Reclaim_Status;
                Before, After : AML_Objects.Usage;
@@ -13198,6 +13634,11 @@ package body Owned with SPARK_Mode is
                Add (Local_Metrics.Freed_Bytes, Before.Bytes - After.Bytes);
                Add (Local_Metrics.Freed_Elements, Before.Elements - After.Elements);
                Gate := Allocation_Allowed;
+               end Profiled_Work;
+            begin
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,True);
+               Profiled_Work;
+               Observe_Work (AML_Work_Kinds.Allocation_Preparation,False);
             end Collect_Before;
             procedure Perform
               (E : in out Owned.Arena; Context : in out IO_Context; Ref : Reference;

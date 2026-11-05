@@ -4542,6 +4542,28 @@ package body AML_Execute with SPARK_Mode is
                        AML_Declaration_Contexts.No_Operation_Region;
                      Declared_Status : Execution_Status := Unsupported_Value;
                      Address, Length : Staged_Operand;
+                     Address_Start, Address_Stop, Length_Start, Length_Stop : Natural := 0;
+                     function Literal_Span (First, Stop : Natural;
+                        Value : AML_Decode.Integer_Value) return Boolean
+                     is
+                        Maximum_Integer_Encoding : constant Positive :=
+                          1 + AML_Decode.Integer_Value'Size / AML_Decode.Byte'Size;
+                     begin
+                        -- Bound the slice before decoding. Values that happen
+                        -- to equal a constant do not make an expression literal.
+                        if First >= Stop or else Stop > Limit
+                          or else Stop - First > Maximum_Integer_Encoding
+                        then return False; end if;
+                        declare
+                           Parsed : constant AML_Decode.Integer_Result :=
+                             AML_Decode.Read_Integer
+                               (Code (Code'First + First .. Code'First + (Stop - 1)), Width);
+                        begin
+                           return Parsed.Kind = AML_Decode.Accepted
+                             and then Parsed.Consumed = Stop - First
+                             and then Parsed.Value = AML_Integers.Normalize (Value, Width);
+                        end;
+                     end Literal_Span;
                      procedure Initialize_Operation_Region is
                      begin
                         if Offset = Limit then Declared_Status := Truncated; return; end if;
@@ -4565,11 +4587,15 @@ package body AML_Execute with SPARK_Mode is
                         if Token = AML_Declaration_Contexts.No_Operation_Region then
                            Declared_Status := Unsupported_Value; return;
                         end if;
+                        Address_Start := Offset;
                         Read_Staged (Address, AML_Root_Slots.Region_Signature,
                           Declaration_Source, Declared_Status);
+                        Address_Stop := Offset;
                         if Declared_Status /= Returned then return; end if;
+                        Length_Start := Offset;
                         Read_Staged (Length, AML_Root_Slots.Region_OEM,
                           Declaration_Index, Declared_Status);
+                        Length_Stop := Offset;
                         if Declared_Status /= Returned then return; end if;
                         -- Evaluate left-to-right; resolve completed operands
                         -- from the last operand, as for other declarations.
@@ -4584,7 +4610,11 @@ package body AML_Execute with SPARK_Mode is
                         Declared_Status := Unsupported_Value;
                         Complete_Operation_Region (Environment, Active_Lease, Token, Width,
                           AML_Integers.Normalize (Address.Item.Number, Width),
-                          AML_Integers.Normalize (Length.Item.Number, Width), Declared_Status);
+                          AML_Integers.Normalize (Length.Item.Number, Width),
+                          (Address_Is_Literal => Literal_Span
+                             (Address_Start, Address_Stop, Address.Item.Number),
+                           Length_Is_Literal => Literal_Span
+                             (Length_Start, Length_Stop, Length.Item.Number)), Declared_Status);
                      end Initialize_Operation_Region;
                   begin
                      Initialize_Operation_Region;

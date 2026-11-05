@@ -32,6 +32,29 @@ package ACPI_Locked_NVS_Client with SPARK_Mode is
       Remote : P.Read_Outcome;
    end record;
    function Observe (State : Context) return Statistics;
+   -- Passive first failed read, retained across query/release/explicit
+   -- retirement. It never establishes completion or authorizes replay.
+   type Read_Point is (Validate_Request, Before_Select_Lease, Before_Select_Clock,
+      Select_Exchange, Select_Reply, Before_Read_Lease, Before_Read_Clock,
+      Read_Exchange, Read_Reply, After_Read);
+   type Diagnostic is record
+      Present : Boolean := False;
+      At_Point : Read_Point := Validate_Request;
+      Result : Outcome := Not_Ready;
+      Lease_Result : Lease.Outcome := Lease.Not_Ready;
+      Exchange_Attempted : Boolean := False;
+      Delivery : W.Delivery := W.Not_Dispatched;
+      Reply_Known : Boolean := False;
+      Reply_Kind : P.Reply_Kind := P.Malformed;
+      Pending_Read : Boolean := False;
+      Remote : P.Read_Outcome := P.No_Data;
+      ID : P.Record_ID := P.No_Record;
+      Datum : P.Geometry := P.Empty_Geometry;
+      IPC_Deadline, Last_Known_IPC_Time : W.Time_Instant := 0;
+      Seen_IPC_Clock : Boolean := False;
+   end record;
+   function First_Failure (State : Context) return Diagnostic;
+
    -- One persistent context per retained peer. The destination comes only
    -- from the matching lease client; this API cannot choose another endpoint.
    -- Every failure stops this field's local lease use; cleanup remains due.
@@ -62,6 +85,7 @@ private
       ID : P.Record_ID := P.No_Record;
       Datum : P.Geometry := P.Empty_Geometry;
       Remote : P.Read_Outcome := P.No_Data;
+      First : Diagnostic;
    end record
      with Type_Invariant => Consistent (Context);
 end ACPI_Locked_NVS_Client;
