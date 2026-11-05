@@ -309,6 +309,55 @@ package body CuBit.Channel_Clients is
       end loop;
    end Wait;
 
+   procedure Try_Take (C : in out Client; Number : Tag; Answer : out RC.Result;
+                       Outcome : out Take_Outcome)
+   is
+      Found, Gone, Reaped, Wake_Followers : Boolean;
+   begin
+      CuBit.Futex_Locks.Lock (C.Guard);
+      Reap_All (C, Reaped);
+      Take_Answer (C, Number, Answer, Found, Gone);
+      Wake_Followers := Reaped and then C.Followers > 0;
+      CuBit.Futex_Locks.Unlock (C.Guard);
+      if Wake_Followers then
+         CuBit.Futex_Locks.Signal (C.Answers_Ready);
+      end if;
+      Outcome := (if Found then Answered elsif Gone then Ended else Pending);
+   end Try_Take;
+
+   procedure Arm (C : in out Client; Armed : out Boolean) is
+   begin
+      CuBit.Futex_Locks.Lock (C.Guard);
+      if C.Why /= Open_Channel or else C.Pumping then
+         --  Ended (nothing will come), or already armed: do not sleep on it.
+         Armed := False;
+      else
+         Armed := RC.Arm_For_Completions (C.Ring);
+         if Armed then
+            C.Pumping := True;
+         else
+            RC.Disarm_For_Completions (C.Ring);
+         end if;
+      end if;
+      CuBit.Futex_Locks.Unlock (C.Guard);
+   end Arm;
+
+   procedure Disarm (C : in out Client) is
+      Reaped, Wake_Followers : Boolean := False;
+   begin
+      CuBit.Futex_Locks.Lock (C.Guard);
+      if C.Pumping then
+         C.Pumping := False;
+         RC.Disarm_For_Completions (C.Ring);
+         Reap_All (C, Reaped);
+         Wake_Followers := C.Followers > 0;
+      end if;
+      CuBit.Futex_Locks.Unlock (C.Guard);
+      if Wake_Followers then
+         CuBit.Futex_Locks.Signal (C.Answers_Ready);
+      end if;
+   end Disarm;
+
    procedure Handle_Event (C : in out Client; Event : CuBit.Control_Events.Event;
                            Ends : out Boolean) is
    begin

@@ -10,6 +10,7 @@ with CuBit.Channel_Protocol;
 with CuBit.Deadlines;
 with CuBit.Deadlines.Clock;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Events;
 with CuBit.System_Facts;
 with System.Machine_Code;
 with IPCtest_Channel;
@@ -20,7 +21,7 @@ procedure Channel_Tests (Server : CuBit.Handles.Endpoint; Ok : in out Boolean) i
    package IC renames IPCtest_Channel;
    package Shared renames IPCtest_Channel_Clients;
    package Clients renames Shared.Clients;
-   use type Clients.Open_Outcome, Clients.Submit_Result, Clients.Wait_Outcome;
+   use type Clients.Open_Outcome, Clients.Submit_Result, Clients.Wait_Outcome, Clients.Take_Outcome;
 
    Open_Ms     : constant := 2_000;
    Answer_Ms   : constant := 2_000;
@@ -398,6 +399,75 @@ begin
       debugPrint ("ipctest-client: channel deadline PASS" & LF);
    end;
 
+   --  An event loop that owns its waiting (no Wait): Try_Take never blocks
+   --  and reports a held request Pending; Arm before the loop's own
+   --  activity wait lets the server's answer wake it; Disarm after.
+   declare
+      Held, Releasing : Clients.Tag;
+      Submitted : Clients.Submit_Result;
+      Answer : IC.Result;
+      Took : Clients.Take_Outcome;
+      Armed : Boolean;
+      Deadline : constant CuBit.Deadlines.Deadline := CuBit.Deadlines.Clock.After (Answer_Ms);
+      Notice : aliased Message;
+      Woke : Wake_Result;
+      Waits : Natural := 0;
+   begin
+      Clients.Submit (A, (Value => 79, Kind => IC.Silent), Held, Submitted);
+      if Submitted /= Clients.Queued then Fail ("loop-silent-submit"); return; end if;
+      Clients.Try_Take (A, Held, Answer, Took);
+      if Took /= Clients.Pending then
+         Fail ("loop-held-not-pending " & Clients.Take_Outcome'Image (Took));
+         return;
+      end if;
+      Clients.Submit (A, (Value => 80, Kind => IC.Release), Releasing, Submitted);
+      if Submitted /= Clients.Queued then Fail ("loop-release-submit"); return; end if;
+      loop
+         Clients.Try_Take (A, Held, Answer, Took);
+         exit when Took /= Clients.Pending;
+         if CuBit.Deadlines.Passed (Deadline, CuBit.Deadlines.Clock.Now) then
+            Fail ("loop-held-timed-out");
+            return;
+         end if;
+         Clients.Arm (A, Armed);
+         if Armed then
+            Waits := Waits + 1;
+            if CuBit.Process_Events.Has_Room then
+               Wait_For_Activity_Or_Event (CuBit.Deadlines.Kernel_Word (Deadline), Notice, Woke);
+               if Woke = Event_Taken then
+                  CuBit.Process_Events.File (Notice);
+               elsif Woke = Work_Available then
+                  CuBit.Process_Events.Poll;
+               end if;
+            elsif Wait_For_Activity_Until (CuBit.Deadlines.Kernel_Word (Deadline)) = Work_Available then
+               CuBit.Process_Events.Poll;
+            end if;
+            Clients.Disarm (A);
+         end if;
+      end loop;
+      if Took /= Clients.Answered or else Answer.Value /= 79 * IC.Multiplier then
+         Fail ("loop-held-answer " & Clients.Take_Outcome'Image (Took));
+         return;
+      end if;
+      Clients.Try_Take (A, Releasing, Answer, Took);
+      if Took /= Clients.Answered then
+         --  Its answer may trail the held one by a wake: one real Wait.
+         declare
+            Waited : Clients.Wait_Outcome;
+         begin
+            Clients.Wait (A, Releasing, Deadline, Answer, Waited);
+            if Waited /= Clients.Answered then Fail ("loop-release-answer"); return; end if;
+         end;
+      end if;
+      Clients.Try_Take (A, Releasing, Answer, Took);
+      if Took /= Clients.Ended then
+         Fail ("loop-taken-twice " & Clients.Take_Outcome'Image (Took));
+         return;
+      end if;
+      debugPrint ("ipctest-client: channel event-loop take PASS (" & Image (Unsigned_64 (Waits))
+                  & " armed waits)" & LF);
+   end;
+
    --  Close B; then the server's report: everything served, one limit
    --  refusal, B's end seen.
    Clients.Close (B);
@@ -436,14 +506,14 @@ begin
    elsif Msg.words (IC.Report_Limit) /= 1 then
       Fail ("server-limit-count " & Image (Msg.words (IC.Report_Limit)));
    elsif Msg.words (IC.Report_Served) /=
-     Unsigned_64 (Ping_Count + 2 * Shared.Worker_Calls + Batch_Count + 3 + Probe_Requests)
+     Unsigned_64 (Ping_Count + 2 * Shared.Worker_Calls + Batch_Count + 5 + Probe_Requests)
    then
       Fail ("server-served " & Image (Msg.words (IC.Report_Served)));
    elsif Msg.words (IC.Report_Ended) /= IC.Per_Client then
       Fail ("server-ends " & Image (Msg.words (IC.Report_Ended)));
    else
       debugPrint ("ipctest-client: channel server calls " & Image (Msg.words (IC.Report_Server_Calls))
-                  & " for" & Natural'Image (Ping_Count + 2 * Shared.Worker_Calls + Batch_Count + 3 + Probe_Requests)
+                  & " for" & Natural'Image (Ping_Count + 2 * Shared.Worker_Calls + Batch_Count + 5 + Probe_Requests)
                   & " requests" & LF);
       debugPrint ("ipctest-client: channel end PASS" & LF);
    end if;
