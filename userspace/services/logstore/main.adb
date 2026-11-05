@@ -17,6 +17,12 @@ with CuBit.Process_Events;
 with Kernel_Device_Memory;
 with Startup;
 with CuBit.Refusal_Notes;
+with CuBit.Log_Sources;
+with CuBit.Grant_References;
+with CuBit.Memory_Grants;
+with System;
+with Source_Identities;
+with Source_Registrars;
 
 procedure Main is
    function Image (Process : Process_ID) return String
@@ -44,6 +50,11 @@ procedure Main is
    Writers : Stream_Writers.Table;
    --  Publishers' channels: drained every pass.
    Publishers : Publisher_Rings.Table;
+   --  Who each source is, from the launchers' registrar channels (LOG-003).
+   Identities : Source_Identities.Table;
+   Registrars : Source_Registrars.Table;
+   --  A registrar channel still held notices, or some arrived while arming.
+   Waiting_Notices : Boolean := False;
    --  A publisher ring still held records after a pass, or records arrived
    --  while arming: do not sleep.
    Waiting_Records : Boolean := False;
@@ -68,6 +79,50 @@ procedure Main is
    Have_Event : Boolean;
    Decoded : Logs.Decoded;
 
+
+   --  List_Sources (LOG-003): who the sources logstore knows are, newest
+   --  first after Skip, written as CuBit.Log_Sources entries into the page
+   --  Reference names, which Reader lends. Written and Total for the reply.
+   procedure List_Sources
+     (Reader : Process_ID; Reference_Word, Skip : Unsigned_64;
+      Written, Total : out Unsigned_64; Result : out Status)
+   is
+      package LS renames CuBit.Log_Sources;
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped : System.Address;
+      Acquired, Returned : Boolean;
+      Known : constant Natural := Source_Identities.Count (Identities);
+      Bytes : LS.Entry_Buffer;
+   begin
+      Written := 0;
+      Total := Unsigned_64 (Known);
+      Result := Invalid_Request;
+      if not CuBit.Grant_References.Valid_Wire (Reference_Word) then
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (Reference_Word);
+      CuBit.Memory_Grants.Acquire
+        (Reference, Reader, 0, LS.Page_Bytes, CuBit.Memory_Grants.Write_Access, Mapped, Acquired);
+      if not Acquired then
+         return;
+      end if;
+      declare
+         Page : array (0 .. LS.Page_Bytes - 1) of Unsigned_8 with Import, Address => Mapped;
+      begin
+         Page := [others => 0];
+         for Position in LS.Page_Position loop
+            exit when Skip >= Unsigned_64 (Known) - Written;
+            LS.Encode
+              (Source_Identities.Newest (Identities, Natural (Skip + Written) + 1), Bytes);
+            for I in Bytes'Range loop
+               Page (LS.Entry_Offset (Position) + I) := Bytes (I);
+            end loop;
+            Written := Written + 1;
+         end loop;
+      end;
+      CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+      Result := OK;
+   end List_Sources;
 
    --  logstore's own record about what it keeps, published straight into
    --  the store and never itself subject to the minimum.
@@ -149,6 +204,8 @@ begin
       --  while arming mean there is no sleeping this time.
       if not Waiting_Records then
          Publisher_Rings.Arm (Publishers, Waiting_Records);
+         Source_Registrars.Arm (Registrars, Waiting_Notices);
+         Waiting_Records := Waiting_Records or else Waiting_Notices;
       end if;
       receiveUntil
         ((if Waiting_Records then Now_Ms
@@ -160,6 +217,7 @@ begin
                   Unsigned_64'Last - Now_Ms)),
          From, Request, Received);
       Publisher_Rings.Disarm (Publishers);
+      Source_Registrars.Disarm (Registrars);
       Now_Ms := syscall (SYSCALL_GETTIME);
       if not Minimum_Settled then
          Read_Minimum_Setting;
@@ -175,11 +233,16 @@ begin
          CuBit.Process_Events.Next (Ended_Event, Have_Event);
          exit when not Have_Event;
          Publisher_Rings.Ended (Publishers, Store, Budgets, Ended_Event, Minimum, Now_Ms);
+         Source_Registrars.Ended (Registrars, Identities, Ended_Event, Now_Ms);
          Stream_Writers.Ended (Writers, Ended_Event);
       end loop;
       if Received and then Request.tag.label = CuBit.Channel_Protocol.OP_OPEN_PRODUCING then
-         --  A publisher opening its channel.
-         if From /= No_Process and then May_Publish (Request.authorityTag) then
+         --  A launcher opening its registrar channel (LOG-003), or a
+         --  publisher opening its channel.
+         if From /= No_Process and then CuBit.Log_Sources.Is_Registrar (Request.authorityTag) then
+            Source_Registrars.Open
+              (Registrars, Identities, From, Request.authorityTag, Request, Now_Ms, Response);
+         elsif From /= No_Process and then May_Publish (Request.authorityTag) then
             Publisher_Rings.Open (Publishers, Store, Budgets, From, Request.authorityTag, Request,
                                   Minimum, Now_Ms, Response);
          else
@@ -199,6 +262,8 @@ begin
       elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_CLOSE then
          if CuBit.Channels.Number_Of (Request) > Stream_Writers.First_Number then
             Stream_Writers.Close (Writers, From, Request);
+         elsif Source_Registrars.Owns (CuBit.Channels.Number_Of (Request)) then
+            Source_Registrars.Close (Registrars, Identities, From, Request, Now_Ms);
          else
             Publisher_Rings.Close (Publishers, Store, Budgets, From, Request, Minimum, Now_Ms);
          end if;
@@ -272,6 +337,12 @@ begin
                         Response.words (0) := Logs.Severity'Pos (Minimum);
                         Result := OK;
                      end if;
+                  when List_Sources =>
+                     --  Words: the lent page, the sources to skip.
+                     if Request.words (2 .. 3) = [0, 0] then
+                        List_Sources (From, Request.words (0), Request.words (1),
+                                      Response.words (0), Response.words (1), Result);
+                     end if;
                   when Close =>
                      if Request.words (1 .. 3) = [0, 0, 0] then
                         Log_Fanout.Close (Store, From, Request.authorityTag,
@@ -291,6 +362,11 @@ begin
       --  Published records, new events, freed ring space, ended
       --  subscriptions: every pass.
       Publisher_Rings.Drain (Publishers, Store, Budgets, Minimum, Now_Ms, Waiting_Records);
+      --  Who started and exited: before readers ask, and kept while their
+      --  records are.
+      Source_Registrars.Drain (Registrars, Identities, Now_Ms, Waiting_Notices);
+      Waiting_Records := Waiting_Records or else Waiting_Notices;
+      Source_Identities.Prune (Identities, Store, Now_Ms);
       Stream_Writers.Drain (Writers, Store, Backlog);
       Log_Persistence.Pump (Store, Now_Ms);
       Publisher_Rings.Release (Publishers);

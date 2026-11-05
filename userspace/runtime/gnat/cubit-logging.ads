@@ -4,6 +4,7 @@ with CuBit.Handles.Services;
 with Interfaces; use Interfaces;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Sources;
 with CuBit.Channels;
 
 --  Native adapter, not part of the portable SPARK proof. Keep these limited
@@ -92,6 +93,24 @@ package CuBit.Logging is
      (Item : in out Reader; Result : out CuBit.Log_Protocol.Status);
    --  Well inside logstore's subscription lease (Log_Fanout).
    RENEW_MS : constant := 10_000;
+
+   --  Who the sources logstore knows were (LOG-003, CuBit.Log_Sources), as
+   --  the launchers told it: live ones, and exited ones while logstore
+   --  keeps their records. Newest first: one page after skipping Skip, of
+   --  Total. Through the reader's log-observer endpoint; no subscription
+   --  needed.
+   type Source_Page is array (CuBit.Log_Sources.Page_Position) of CuBit.Log_Sources.Source_Entry;
+   procedure List_Sources
+     (Item : Reader; Skip : Natural; Page : out Source_Page;
+      Written : out CuBit.Log_Sources.Page_Count; Total : out Natural;
+      Result : out CuBit.Log_Protocol.Status);
+   --  Every source that answers to Wanted (CuBit.Log_Sources.Answers_To),
+   --  newest first, into Found (Found'First .. Found'First + Count - 1): at
+   --  most Found'Length of them.
+   type Source_Entries is array (Positive range <>) of CuBit.Log_Sources.Source_Entry;
+   procedure Find_Sources
+     (Item : Reader; Wanted : String; Found : out Source_Entries; Count : out Natural;
+      Result : out CuBit.Log_Protocol.Status);
 
    --  One record from a service that otherwise does not log: typically
    --  "started". A synchronous call through the caller's logstore binding

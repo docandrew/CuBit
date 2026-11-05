@@ -1,0 +1,13 @@
+# LOG-003 (CCL_CONSOLE_DEMO=log-exited): log-exit-probe publishes a few
+# records and exits at boot; afterwards (logs.recent "log-exit-probe") at
+# the console still returns them, and boot-logs still names them. boot-logs
+# opens before the console, so the console has the keyboard.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "log-exit-probe.app" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "boot-logs.app" (priority 3))
+  (start "ccl-console.app" (priority 3))
+)

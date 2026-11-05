@@ -16,6 +16,8 @@
 --  its launch block before it first runs.
 ------------------------------------------------------------------------------
 with Deferred_Warnings;
+with Source_Notices;
+with CuBit.Log_Sources;
 with Ada.Unchecked_Conversion;
 with Ada.Unchecked_Deallocation;
 with Config_Worker_Startup;
@@ -100,6 +102,10 @@ procedure main is
    --  logstore's endpoint, once it runs (defined with the process records).
    function Logstore_Collector return CuBit.Handles.Endpoint;
    package Warnings is new Deferred_Warnings (Issuance => 4, Collector => Logstore_Collector);
+   --  Who each process procmgr starts is, for logstore (LOG-003): its
+   --  records keep their name after it exits.
+   package Sources is new Source_Notices
+     (Issuance => CuBit.Log_Sources.Process_Manager_Issuance, Collector => Logstore_Collector);
    use ASCII;
    --  Never reuse issuance identities within this bootstrap issuer lifetime.
    --  Independent procmgr restart requires an epoch protocol, not yet supported.
@@ -3788,6 +3794,7 @@ procedure main is
       --  Parse .cubit.id section for package identity
       parseIdSection (elfSize, pkgId, pkgIdLen);
       noteProcess (newPID, requester, pkgId (1 .. pkgIdLen), Child.Control, Child.Mailbox);
+      Sources.Started (newPID, pkgId (1 .. pkgIdLen), name);
       Recorded := Records.Find (newPID) /= 0;
 
       --  A launched child asks only for services its launcher holds; note a
@@ -5288,6 +5295,7 @@ begin
            (syscall (SYSCALL_GETTIME) + Registration_Poll_Ms, sender, msg, received);
       end if;
       Warnings.Pump;
+      Sources.Pump;
 
       if received then
          case msg.tag.label is
@@ -5348,6 +5356,9 @@ begin
                               Warnings.Inform (Line);
                            end if;
                         end;
+                     end if;
+                     if Known /= 0 then
+                        Sources.Exited (Exited);
                      end if;
                      for Registrant of Registrants loop
                         if Registrant = Exited then

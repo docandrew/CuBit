@@ -11,7 +11,10 @@ project Fanout is
                         "policy_proof.adb", "log_fanout.ads", "log_fanout.adb",
                         "cubit-channel_rings.ads", "cubit-channel_rings.adb",
                         "cubit-datagram_rings.ads", "cubit-datagram_rings.adb",
-                        "cubit-log_streams.ads", "cubit-log_streams.adb");
+                        "cubit-log_streams.ads", "cubit-log_streams.adb",
+                        "cubit-log_sources.ads", "cubit-log_sources.adb",
+                        "source_identities.ads", "source_identities.adb",
+                        "cualloc_host.ads", "cualloc_host.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");

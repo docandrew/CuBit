@@ -4,6 +4,7 @@ with CuBit.Logging;
 with Startup;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Sources;
 with CuBit.Desktop_Protocol;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
@@ -24,6 +25,8 @@ procedure Main is
    Status : P.Status := P.Unavailable;
    Reported_Status : P.Status := P.Unavailable;
    Records : array (1 .. 512) of CuBit.Log_Records.Log_Record;
+   --  Each record's source (the process logstore stamped it with).
+   Record_Sources : array (Records'Range) of Unsigned_64 := [others => 0];
    Count, Page : Natural := 0;
    Lost_Records : Unsigned_64 := 0;
    Viewer_Dropped : Unsigned_64 := 0;
@@ -64,6 +67,83 @@ procedure Main is
    KEY_TAB : constant := 16#0F#;
    KEY_B   : constant := 16#30#;
 
+   --  Who each source is (LOG-003): what logstore's launchers recorded,
+   --  so a source that has exited keeps its name. logstore lists the live
+   --  sources and the exited ones it still keeps records of; this viewer
+   --  keeps as many as it keeps records.
+   package LS renames CuBit.Log_Sources;
+   use type LS.Entry_Kind;
+   type Known_Source is record
+      Who : LS.Source_Identity;
+      Exited : Boolean := False;
+   end record;
+   Known : array (Records'Range) of Known_Source;
+   Known_Count : Natural range 0 .. Records'Length := 0;
+   --  How often the sources are asked for again, for exits.
+   NAMES_MS : constant := 2_000;
+   Names_Due : Unsigned_64 := 0;
+
+   function Known_Index (Source : Unsigned_64) return Natural is
+   begin
+      for I in 1 .. Known_Count loop
+         if Known (I).Who.Source = Source then
+            return I;
+         end if;
+      end loop;
+      return 0;
+   end Known_Index;
+
+   --  Its label (acpi for acpi.svc), or "" while logstore has not said.
+   function Label_Of (Source : Unsigned_64) return String is
+      I : constant Natural := Known_Index (Source);
+   begin
+      return (if I = 0 then "" else LS.Label (Known (I).Who));
+   end Label_Of;
+
+   function Exited (Source : Unsigned_64) return Boolean is
+      I : constant Natural := Known_Index (Source);
+   begin
+      return I /= 0 and then Known (I).Exited;
+   end Exited;
+
+   --  Ask logstore who the sources are (every page); say once on serial
+   --  when one has exited.
+   procedure Refresh_Sources is
+      Page_Of_Sources : CuBit.Logging.Source_Page;
+      Written : LS.Page_Count;
+      Total, Skip : Natural := 0;
+      Result : P.Status;
+      Index : Natural;
+   begin
+      loop
+         CuBit.Logging.List_Sources (Reader, Skip, Page_Of_Sources, Written, Total, Result);
+         exit when Result /= P.OK or else Written = 0;
+         for Position in 1 .. Written loop
+            declare
+               Listed : LS.Source_Entry renames Page_Of_Sources (Position);
+            begin
+               Index := Known_Index (Listed.Who.Source);
+               if Index = 0 and then Known_Count < Known'Length then
+                  Known_Count := Known_Count + 1;
+                  Index := Known_Count;
+                  Known (Index) := (Who => Listed.Who, Exited => False);
+               end if;
+               if Index /= 0 then
+                  Known (Index).Who := Listed.Who;
+                  if Listed.Kind = LS.Exited and then not Known (Index).Exited then
+                     Known (Index).Exited := True;
+                     debugPrint ("boot-logs: " & LS.Label (Listed.Who) & " exited (" &
+                                 LS.Identity_Of (Listed.Who) & ", " & LS.Name_Of (Listed.Who) & ")" &
+                                 ASCII.LF);
+                  end if;
+               end if;
+            end;
+         end loop;
+         Skip := Skip + Written;
+         exit when Skip >= Total;
+      end loop;
+   end Refresh_Sources;
+
    function Source_Of (Item : CuBit.Log_Records.Log_Record) return String is
       Text : constant String := CuBit.Log_Records.Text (Item);
    begin
@@ -76,8 +156,30 @@ procedure Main is
       return "";
    end Source_Of;
 
-   procedure Remember_Source (Item : CuBit.Log_Records.Log_Record) is
-      Name : constant String := Source_Of (Item);
+   --  A record's source name: its text's own prefix, else its source's label.
+   function Name_Of_Source (Index : Positive) return String is
+      Prefix : constant String := Source_Of (Records (Index));
+      Label : constant String := Label_Of (Record_Sources (Index));
+   begin
+      return (if Prefix'Length > 0 then Prefix
+              elsif Label'Length <= SOURCE_TEXT then Label
+              else Label (Label'First .. Label'First + SOURCE_TEXT - 1));
+   end Name_Of_Source;
+
+   --  A record as shown: its source's label first when its text does not
+   --  name it, and marked when the source has exited.
+   function Shown_Text (Index : Positive) return String is
+      Text : constant String := CuBit.Log_Records.Text (Records (Index));
+      Label : constant String := Label_Of (Record_Sources (Index));
+      Named : constant String :=
+        (if Source_Of (Records (Index))'Length = 0 and then Label'Length > 0
+         then Label & ": " & Text else Text);
+   begin
+      return (if Exited (Record_Sources (Index)) then "[exited] " & Named else Named);
+   end Shown_Text;
+
+   procedure Remember_Source (Index : Positive) is
+      Name : constant String := Name_Of_Source (Index);
    begin
       if Name'Length = 0 or else Source_Total = MAX_SOURCES then
          return;
@@ -92,8 +194,8 @@ procedure Main is
       Sources (Source_Total).Text (1 .. Name'Length) := Name;
    end Remember_Source;
 
-   function Shown (Item : CuBit.Log_Records.Log_Record) return Boolean is
-      Name : constant String := Source_Of (Item);
+   function Shown (Index : Positive) return Boolean is
+      Name : constant String := Name_Of_Source (Index);
    begin
       case Filter is
          when All_Sources => return True;
@@ -146,7 +248,7 @@ procedure Main is
    begin
       Visible_Count := 0;
       for I in 1 .. Count loop
-         if Shown (Records (I)) then
+         if Shown (I) then
             Visible_Count := Visible_Count + 1;
             Visible (Visible_Count) := I;
          end if;
@@ -196,7 +298,7 @@ procedure Main is
          for I in 0 .. Rows - 1 loop
             if First + I <= Visible_Count then
                Line ((if Filter = All_Sources then Top else 40) + I * Line_Height,
-                 CuBit.Log_Records.Text (Records (Visible (First + I))),
+                 Shown_Text (Visible (First + I)),
                  (if CuBit.Log_Records.Level (Records (Visible (First + I))) >= CuBit.Log_Records.Warning
                   then Colors.danger else Colors.text));
             end if;
@@ -227,7 +329,7 @@ procedure Main is
          end loop;
       end if;
       for I in First .. Natural'Min (Visible_Count, First + Rows - 1) loop
-         Line (CuBit.Log_Records.Text (Records (Visible (I))));
+         Line (Shown_Text (Visible (I)));
       end loop;
       CuBit.UI.Clipboard.Copy_Built (CuBit.UI.App.Surface_ID (Win), "", Copy_Form, Copy_Form, Result);
       debugPrint ("boot-logs: copy " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
@@ -271,6 +373,8 @@ procedure Main is
       Event : P.Event;
       Lost : Unsigned_64;
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      --  Sources were asked for this time already.
+      Asked : Boolean := False;
    begin
       Due := Now + 250;
       if Status not in P.OK | P.Empty | P.Gap then
@@ -284,23 +388,46 @@ procedure Main is
                Dirty := CuBit.UI.App.Full_Rect (Win);
             end if;
             exit when Status /= P.OK;
-            debugPrint ("boot-logs: " & CuBit.Log_Records.Text (Event.Data) & ASCII.LF);
-            Remember_Source (Event.Data);
             if Pinned (Event.Data) then
                Pin (Event.Data);
             end if;
             if Count < Records'Length then
-               Count := Count + 1; Records (Count) := Event.Data;
+               Count := Count + 1;
             else
                -- Preserve the latest diagnosis and final capture summary.
                for J in Records'First .. Records'Last - 1 loop
                   Records (J) := Records (J + 1);
+                  Record_Sources (J) := Record_Sources (J + 1);
                end loop;
-               Records (Records'Last) := Event.Data;
                Viewer_Dropped := Viewer_Dropped + 1;
             end if;
+            Records (Count) := Event.Data;
+            Record_Sources (Count) := Event.Source;
+            --  A new source: ask logstore who it is before showing it.
+            if Known_Index (Event.Source) = 0 and then not Asked then
+               Refresh_Sources;
+               Asked := True;
+            end if;
+            --  As shown, but without the exit mark: the exit is its own line.
+            declare
+               Label : constant String := Label_Of (Event.Source);
+               Text : constant String := CuBit.Log_Records.Text (Event.Data);
+            begin
+               debugPrint ("boot-logs: " &
+                           (if Source_Of (Event.Data)'Length = 0 and then Label'Length > 0
+                            then Label & ": " else "") & Text & ASCII.LF);
+            end;
+            Remember_Source (Count);
             Dirty := CuBit.UI.App.Full_Rect (Win);
          end loop;
+      end if;
+      --  Exits since the last look (and names logstore learned late).
+      if Now >= Names_Due then
+         Names_Due := Now + NAMES_MS;
+         if Count > 0 then
+            Refresh_Sources;
+            Dirty := CuBit.UI.App.Full_Rect (Win);
+         end if;
       end if;
       if Now >= Turn_Page then
          Select_Visible;

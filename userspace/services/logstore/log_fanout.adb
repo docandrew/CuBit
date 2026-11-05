@@ -251,6 +251,10 @@ package body Log_Fanout with SPARK_Mode is
       end loop;
    end Retire;
 
+   function Holds_History (Item : Broker; Source : Unsigned_64) return Boolean is
+     (for some H of Item.Kept =>
+        H.In_Use and then H.Source = Source and then (H.Boot_Used > 0 or else H.Newest_Used > 0));
+
    procedure Subscribe
      (Item : in out Broker; Caller : Process_ID; Authority_Tag : Unsigned_64;
       Handle : out Unsigned_64; Result : out Status;

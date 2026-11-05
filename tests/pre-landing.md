@@ -62,6 +62,24 @@ make -C kernel world
 bash tests/headless/run.sh --test log-retention --accel kvm
 ```
 
+## log-exited (LOG-003)
+
+An exited service's records keep its name. log-exit-probe publishes three
+records whose text does not name it and exits at boot; afterwards
+`(logs.recent "log-exit-probe")` at the console still returns them, and
+boot-logs prints them under its name and says it exited. The names come
+from the launchers (procmgr, devmgr) as registrar notices to logstore,
+never from the publisher. Failed before: logstore keyed records by process
+only and the name came from the live process list, so the console
+answered "no running service or program is named", and boot-logs showed
+the bare text. The hosted core regression (the notice codec, name matching
+and the identity table's retention) is `tests/log-fanout/run.sh`.
+
+```sh
+make -C kernel world
+CCL_CONSOLE_DEMO=log-exited bash tests/headless/run.sh --test ccl-console --accel kvm --timeout 90
+```
+
 ## native-gprbuild-config
 
 Native fixture scripts resolve the gprbuild configuration before their

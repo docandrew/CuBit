@@ -39,6 +39,9 @@ package Log_Fanout with SPARK_Mode is
    --  The publisher Source ended (its channel closed or its process exited):
    --  its history stays, but its slot is the first given to a new source.
    procedure Retire (Item : in out Broker; Source : Unsigned_64);
+   --  Whether any record of Source is retained: its identity is kept while
+   --  it is (LOG-003, Source_Identities).
+   function Holds_History (Item : Broker; Source : Unsigned_64) return Boolean;
    --  Minimum filters by severity and Source by publishing process (0: every
    --  source) in the service, so an observer copies only what it asked for.
    --  A new subscription replays retained history that passes the filter

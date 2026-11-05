@@ -68,6 +68,8 @@ with CuBit.Memory_Grants;
 with CuBit.File_Access;
 with Cpio;
 with Deferred_Warnings;
+with Source_Notices;
+with CuBit.Log_Sources;
 with XHCI_DMA_Layout;
 with Contiguous_Memory;
 with XHCI_Capabilities;
@@ -1337,6 +1339,18 @@ procedure main is
       return Read_Bytes;
    end Read_Boot_Image;
 
+   --  Refused maps and mints reach logstore once it runs (the kernel's own
+   --  "kernel: device-memory denied" record says why).
+   --  logstore's untagged endpoint, once procmgr offered it
+   --  (CuBit.Service_Exchange.Available), and the desktop's.
+   Logstore_Endpoint : H.Endpoint := H.No_Endpoint;
+   Desktop_Endpoint  : H.Endpoint := H.No_Endpoint;
+   function Logstore return H.Endpoint is (Logstore_Endpoint);
+   --  Who each child is, for logstore (LOG-003): its records keep its name
+   --  after it exits.
+   package Sources is new Source_Notices
+     (Issuance => CuBit.Log_Sources.Device_Manager_Issuance, Collector => Logstore);
+
    ---------------------------------------------------------------------------
    --  Spawn a program from the boot image (or, for optical boot, the
    --  filesystem) suspended: No_Child on failure. What it is given is
@@ -1382,6 +1396,8 @@ procedure main is
                return DL.No_Child;
             end if;
          end;
+         --  devmgr reads no package identity: the program's name says who.
+         Sources.Started (DL.PID (Spawned), "", name);
       end if;
       return Spawned;
    end spawnFromBootStorage;
@@ -1392,13 +1408,6 @@ procedure main is
    ---------------------------------------------------------------------------
    -- Mint a capability into a target process
    ---------------------------------------------------------------------------
-   --  Refused maps and mints reach logstore once it runs (the kernel's own
-   --  "kernel: device-memory denied" record says why).
-   --  logstore's untagged endpoint, once procmgr offered it
-   --  (CuBit.Service_Exchange.Available), and the desktop's.
-   Logstore_Endpoint : H.Endpoint := H.No_Endpoint;
-   Desktop_Endpoint  : H.Endpoint := H.No_Endpoint;
-   function Logstore return H.Endpoint is (Logstore_Endpoint);
    package Warnings is new Deferred_Warnings (Issuance => 3, Collector => Logstore);
    function Hex (Value : Unsigned_64) return String renames Warnings.Hex;
    --  Refused launches (a child's startup entry, spawn, install) as warnings.
@@ -1425,6 +1434,7 @@ procedure main is
       loop
          Devmgr_Children.Take_Next_Exit (Child, Name, Length, Report, Found);
          exit when not Found;
+         Sources.Exited (Child);
          declare
             Line : constant String :=
               "devmgr: child " & Name (1 .. Length) & " (" & Hex (To_Word (Child)) & ") " &
@@ -5467,6 +5477,7 @@ begin
       Launch_Now := syscall (SYSCALL_GETTIME);
       Forward_Launch_Refusals;
       Warnings.Pump;
+      Sources.Pump;
       Log_Child_Exits (Launch_Now);
       if Poll_Completion (Launch_Receipt'Address) = 1 then
          GPU_Launch.Complete

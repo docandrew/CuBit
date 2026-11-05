@@ -4,6 +4,7 @@ with CuBit.Logging;
 with CuBit.Handles.Services;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Sources;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Process_Observer;
@@ -123,6 +124,37 @@ procedure Main is
          end;
       end loop;
    end Refresh_Names;
+
+   --  Names logstore's launchers recorded (LOG-003): a source that has
+   --  exited keeps its name, marked as exited, which the running process
+   --  list above no longer has.
+   procedure Refresh_Logged_Names is
+      package LS renames CuBit.Log_Sources;
+      Listed : CuBit.Logging.Source_Page;
+      Written : LS.Page_Count;
+      Total, Skip : Natural := 0;
+      Result : P.Status;
+   begin
+      loop
+         CuBit.Logging.List_Sources (Reader, Skip, Listed, Written, Total, Result);
+         exit when Result /= P.OK or else Written = 0;
+         for Position in 1 .. Written loop
+            declare
+               use type LS.Entry_Kind;
+               Who : LS.Source_Identity renames Listed (Position).Who;
+               Name : constant String :=
+                 (if Who.Identity_Used > 0 then LS.Identity_Of (Who) else LS.Name_Of (Who));
+            begin
+               --  Running ones are named from the process list.
+               if Listed (Position).Kind = LS.Exited then
+                  Log_View.Name_Source (View, Who.Source, Name & " (exited)", Listed (Position).Seen_Ms);
+               end if;
+            end;
+         end loop;
+         Skip := Skip + Written;
+         exit when Skip >= Total;
+      end loop;
+   end Refresh_Logged_Names;
 
    --  What logstore keeps, through the observer's endpoint.
    procedure Refresh_Kept is
@@ -296,6 +328,8 @@ procedure Main is
             Refresh_Names;
             Unnamed := False;
          end if;
+         --  Every time: a source that exits keeps its name, now marked.
+         Refresh_Logged_Names;
          --  Another log-control holder may have changed what logstore keeps.
          Refresh_Kept;
          Names_Due := Now + NAMES_MS;

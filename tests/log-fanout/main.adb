@@ -10,6 +10,10 @@ with CuBit.Log_Records;
 with CuBit.Log_Streams;
 with CuBit.Channel_Rings;
 with CuBit.Datagram_Rings;
+with CuBit.Log_Sources;
+with Source_Identities;
+with CuAlloc_Host;
+pragma Unreferenced (CuAlloc_Host);
 procedure Main is
    --  Brokers are several MiB each: on the heap, not the test's stack.
    type Broker_Access is access Log_Fanout.Broker;
@@ -511,5 +515,100 @@ begin
       Log_Fanout.Subscribe (Kept, From_Word (304), Observer_Authority_Tag, Narrow, Result, Source => 5_000);
       Next (304, Narrow); pragma Assert (Result = OK and Value.Source = 5_000);
       Put_Line ("PASS: per-source retention, ordered incremental replay, persistence order, replay loss, slot reuse");
+   end;
+   --  LOG-003: who a source was, kept past its exit while its records are.
+   declare
+      package LS renames CuBit.Log_Sources;
+      use type LS.Entry_Kind;
+      use type LS.Source_Identity;
+      Who : constant LS.Source_Identity := LS.Make (7_001, "com.cubit.acpi", "/boot/acpi.svc");
+      Bare : constant LS.Source_Identity := LS.Make (7_002, "com.cubit.wifi", "");
+      Long_Identity : constant String (1 .. 100) := [others => 'a'];
+      Bytes, Broken : LS.Entry_Buffer;
+      Back : LS.Source_Entry;
+      Accepted : Boolean;
+      Table : Source_Identities.Table;
+      Kept_Storage : constant Broker_Access := new Log_Fanout.Broker;
+      Kept : Log_Fanout.Broker renames Kept_Storage.all;
+      Exit_Ms : constant := 1_000;
+   begin
+      pragma Assert (LS.Valid (Who) and then LS.Named (Who));
+      pragma Assert (LS.Name_Of (Who) = "acpi.svc");
+      pragma Assert (LS.Identity_Of (Who) = "com.cubit.acpi");
+      pragma Assert (LS.Label (Who) = "acpi");
+      pragma Assert (LS.Label (Bare) = "wifi");
+      pragma Assert (LS.Identity_Of (LS.Make (7_003, "bad id" & ASCII.LF, "x")) = "badid");
+      pragma Assert (LS.Make (7_004, Long_Identity, "").Identity_Used = LS.Identity_Bytes);
+      pragma Assert (not LS.Named (LS.Make (7_005, "", "")));
+      pragma Assert (LS.Answers_To (Who, "acpi") and then LS.Answers_To (Who, "acpi.svc"));
+      pragma Assert (LS.Answers_To (Who, "com.cubit.acpi") and then LS.Answers_To (Who, "cubit.acpi"));
+      pragma Assert (not LS.Answers_To (Who, "acp") and then not LS.Answers_To (Who, "i.acpi"));
+      pragma Assert (not LS.Answers_To (Who, "") and then not LS.Answers_To (Who, "svc"));
+      pragma Assert (LS.Is_Registrar (LS.Registrar_Tag (LS.Process_Manager_Issuance)));
+      pragma Assert (not LS.Is_Registrar (LS.Registrar_Tag_Base));
+      pragma Assert (not LS.Is_Registrar (Publisher_Authority_Tag));
+      pragma Assert (not Is_Publisher (LS.Registrar_Tag (LS.Device_Manager_Issuance)));
+      pragma Assert (not Is_Observer (LS.Registrar_Tag (LS.Device_Manager_Issuance)));
+      Put_Line ("PASS: source identities: names from launchers, labels, matching, registrar tags");
+
+      LS.Encode ((Kind => LS.Exited, Who => Who, Seen_Ms => 42), Bytes);
+      LS.Decode (Bytes, Back, Accepted);
+      pragma Assert (Accepted and then Back.Kind = LS.Exited and then Back.Who = Who
+                     and then Back.Seen_Ms = 42);
+      --  Malformed: unknown kind, overlong identity, a space in it, reserved
+      --  header or tail bytes, no process.
+      Broken := Bytes; Broken (0) := 3;
+      LS.Decode (Broken, Back, Accepted); pragma Assert (not Accepted);
+      Broken := Bytes; Broken (1) := LS.Identity_Bytes + 1;
+      LS.Decode (Broken, Back, Accepted); pragma Assert (not Accepted);
+      Broken := Bytes; Broken (24) := Character'Pos (' ');
+      LS.Decode (Broken, Back, Accepted); pragma Assert (not Accepted);
+      Broken := Bytes; Broken (3) := 1;
+      LS.Decode (Broken, Back, Accepted); pragma Assert (not Accepted);
+      Broken := Bytes; Broken (LS.Entry_Bytes - 1) := 1;
+      LS.Decode (Broken, Back, Accepted); pragma Assert (not Accepted);
+      Broken := Bytes; Broken (8 .. 15) := [others => 0];
+      LS.Decode (Broken, Back, Accepted); pragma Assert (not Accepted);
+      --  A start must say who; an exit need not.
+      LS.Encode ((Kind => LS.Started, Who => LS.Make (7_005, "", ""), Seen_Ms => 0), Broken);
+      LS.Decode (Broken, Back, Accepted); pragma Assert (not Accepted);
+      LS.Encode ((Kind => LS.Exited, Who => LS.Make (7_005, "", ""), Seen_Ms => 0), Broken);
+      LS.Decode (Broken, Back, Accepted); pragma Assert (Accepted and then Back.Who.Source = 7_005);
+      Put_Line ("PASS: source notices round-trip and malformed ones are refused");
+
+      Source_Identities.Started (Table, Who, 100);
+      Source_Identities.Started (Table, Bare, 200);
+      pragma Assert (Source_Identities.Count (Table) = 2);
+      pragma Assert (Source_Identities.Newest (Table, 1).Who = Bare);
+      pragma Assert (Source_Identities.Newest (Table, 2).Kind = LS.Started);
+      pragma Assert (Source_Identities.Newest (Table, 2).Seen_Ms = 100);
+      --  acpi logged before it exited; wifi never did.
+      Log_Fanout.Publish
+        (Kept, (Source => 7_001, Node => This_Node, Publication_Tag => Publisher_Authority_Tag,
+                Monotonic_Ms => 1, Data => CuBit.Log_Records.Empty_Record));
+      pragma Assert (Log_Fanout.Holds_History (Kept, 7_001));
+      pragma Assert (not Log_Fanout.Holds_History (Kept, 7_002));
+      Source_Identities.Exited (Table, 7_001, Exit_Ms);
+      Source_Identities.Exited (Table, 7_002, Exit_Ms);
+      Source_Identities.Exited (Table, 9_999, Exit_Ms);
+      Source_Identities.Prune (Table, Kept, Exit_Ms + Source_Identities.Exit_Grace_Ms - 1);
+      pragma Assert (Source_Identities.Count (Table) = 2);
+      Source_Identities.Prune (Table, Kept, Exit_Ms + Source_Identities.Exit_Grace_Ms);
+      pragma Assert (Source_Identities.Count (Table) = 1);
+      pragma Assert (Source_Identities.Newest (Table, 1).Who = Who);
+      pragma Assert (Source_Identities.Newest (Table, 1).Kind = LS.Exited);
+      --  Grows with the processes started; a repeated start replaces.
+      for I in 1 .. 100 loop
+         Source_Identities.Started
+           (Table, LS.Make (Unsigned_64 (8_000 + I), "com.cubit.many", "many.app"), Unsigned_64 (I));
+      end loop;
+      pragma Assert (Source_Identities.Count (Table) = 101);
+      pragma Assert (Source_Identities.Newest (Table, 1).Who.Source = 8_100);
+      pragma Assert (Source_Identities.Newest (Table, 101).Who = Who);
+      Source_Identities.Started (Table, LS.Make (8_050, "com.cubit.again", "again.app"), 500);
+      pragma Assert (Source_Identities.Count (Table) = 101);
+      pragma Assert (Source_Identities.Newest (Table, 1).Who.Source = 8_050);
+      pragma Assert (Source_Identities.Lost (Table) = 0);
+      Put_Line ("PASS: source identities outlive their process while its records are kept (LOG-003)");
    end;
 end Main;

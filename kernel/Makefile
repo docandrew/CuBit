@@ -1983,6 +1983,14 @@ log-retention-check: ccl-build user_runtime ccl-manifest log-flood
 	$(CCL_BUILD) ../userspace/apps/log-retention-check/component.ccl
 	cp ../userspace/apps/log-retention-check/build/log-retention-check.app isodir/boot/log-retention-check.app
 
+# LOG-003: an exited service's records keep its name (headless
+# CCL_CONSOLE_DEMO=log-exited --test ccl-console).
+.PHONY : log-exit-probe
+log-exit-probe: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/log-exit-probe/build
+	$(CCL_BUILD) ../userspace/apps/log-exit-probe/component.ccl
+	cp ../userspace/apps/log-exit-probe/build/log-exit-probe.app isodir/boot/log-exit-probe.app
+
 # Standard desktop-session build: nonblocking typed metrics, with a matching
 # startup collector. Keep bare `desktop` for profiles without metrics.svc.
 .PHONY : desktop-metrics
@@ -2411,7 +2419,7 @@ iso: cubit_kernel initrd
 # runs a binary left over from an older ABI (a stale one passes or fails for
 # the wrong reason).
 TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
-	log-fields-check log-retention-check libc-check cxx-check network-check net-link-check \
+	log-fields-check log-retention-check log-exit-probe libc-check cxx-check network-check net-link-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
 	metrics-check grant-forward ccl-control input-stress bench-storage \

@@ -12,9 +12,10 @@ with CCL_Native_Bindings;
 with CuBit.Handles;
 with CuBit.Handles.Services;
 
---  logs.recent on CuBit: a subscription to logstore filtered to one process,
---  which replays that process's retained records; the newest that fit one
---  result are kept, and the subscription is closed again.
+--  logs.recent on CuBit: for each process the name has named during this
+--  boot (LOG-003: exited ones too, as logstore's launchers recorded them), a
+--  subscription to logstore filtered to it, which replays its retained
+--  records and is closed again; the newest that fit one result are kept.
 package body CCL_Log_IO is
    procedure Announce (Text : String) is
       Published : Boolean;
@@ -162,70 +163,140 @@ package body CCL_Log_IO is
       Image : out CCL.Objects.Image; Success : out Boolean;
       Why : out CuBit.Failures.Failure)
    is
-      Source : constant Unsigned_64 := Source_Of (Service);
       Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (CCL_Native_Bindings.Log_Observer);
       Result : P.Status;
       Value : P.Event;
       Lost : Unsigned_64;
-      --  The newest records seen, oldest first once the replay ends.
-      Ring : array (1 .. Logs.MAX_ENTRIES) of P.Event;
-      Next : Positive range 1 .. Logs.MAX_ENTRIES := 1;
-      Held : Natural range 0 .. Logs.MAX_ENTRIES := 0;
+      --  The sources Service names, newest instance first (LOG-003): every
+      --  process that carried the name during this boot, live or exited,
+      --  as logstore's launchers recorded them, then a running process the
+      --  name resolves to now. A result holds at most MAX_ENTRIES records,
+      --  so more instances could add nothing.
+      Instances : CuBit.Logging.Source_Entries (1 .. Logs.MAX_ENTRIES);
+      Sources : array (1 .. Logs.MAX_ENTRIES) of Unsigned_64 := [others => 0];
+      Source_Count : Natural range 0 .. Logs.MAX_ENTRIES := 0;
+      Found : Natural;
+      Process : CuBit.Messages.Process_ID;
+      Is_Number : Boolean;
+      --  Records kept, Held (1 .. Used): each instance's newest that still
+      --  fit, newest instance first; Order then puts them oldest first.
+      Held : array (1 .. Logs.MAX_ENTRIES) of P.Event;
+      Used : Natural range 0 .. Logs.MAX_ENTRIES := 0;
+      Order : array (1 .. Logs.MAX_ENTRIES) of Positive;
       Closed : P.Status;
       Added : Boolean;
+
+      procedure Add_Source (Source : Unsigned_64) is
+      begin
+         if Source /= 0 and then Source_Count < Logs.MAX_ENTRIES
+           and then (for all K in 1 .. Source_Count => Sources (K) /= Source)
+         then
+            Source_Count := Source_Count + 1;
+            Sources (Source_Count) := Source;
+         end if;
+      end Add_Source;
+
+      --  Source's retained records into Held (Used + 1 .. ): the newest
+      --  Room of them, oldest first.
+      procedure Replay (Source : Unsigned_64; Ok : out Boolean) is
+         Room : constant Positive := Logs.MAX_ENTRIES - Used;
+         Base : constant Natural := Used;
+         Next : Positive := 1;
+         Count : Natural := 0;
+      begin
+         CuBit.Logging.Subscribe (Reader, Result, Source => Source);
+         Ok := Result = P.OK;
+         if not Ok then
+            return;
+         end if;
+         --  The replay holds at most a queue's worth of records; the region
+         --  Held (Base + 1 .. Base + Room) is a ring until it ends.
+         for Step in 1 .. P.Observer_Queue_Records + 1 loop
+            CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
+            exit when Result not in P.OK | P.Gap;
+            if Result = P.OK then
+               Held (Base + Next) := Value;
+               Next := (if Next = Room then 1 else Next + 1);
+               Count := Natural'Min (Count + 1, Room);
+            end if;
+         end loop;
+         Ok := Result = P.Empty;
+         CuBit.Logging.Close (Reader, Closed);
+         if not Ok then
+            return;
+         end if;
+         --  Unwind the ring: oldest first.
+         if Count = Room and then Next /= 1 then
+            declare
+               Ring : constant array (1 .. Room) of P.Event := [for I in 1 .. Room => Held (Base + I)];
+            begin
+               for I in 1 .. Room loop
+                  Held (Base + I) := Ring ((Next + I - 2) mod Room + 1);
+               end loop;
+            end;
+         end if;
+         Used := Used + Count;
+      end Replay;
    begin
       Logs.Start (Contract, Image);
-      Success := Source /= 0;
       Why := (others => <>);
+      CuBit.Process_IDs.Parse (Service, Process, Is_Number);
+      if not Is_Number then
+         CuBit.Logging.Find_Sources (Reader, Service, Instances, Found, Result);
+         if Result = P.OK then
+            for I in 1 .. Found loop
+               Add_Source (Instances (I).Who.Source);
+            end loop;
+         end if;
+      end if;
+      Add_Source (Source_Of (Service));
+      Success := Source_Count > 0;
       if not Success then
          Why := Failures.Failed
-           (Failures.Not_Found, "no running service or program is named """ & Service & """",
-            "name a running service or program (rtw89, wifi), or give its process number");
+           (Failures.Not_Found, "no service or program named """ & Service & """ has run during this boot",
+            "name a service or program (rtw89, wifi, acpi), or give its process number");
          return;
       end if;
-      CuBit.Logging.Subscribe (Reader, Result, Source => Source);
-      Success := Result = P.OK;
-      if not Success then
-         Why := Refusal (Result, "the log store would not let this program observe " & Service);
-         return;
-      end if;
-      --  The replay holds at most a queue's worth of records.
-      for Step in 1 .. P.Observer_Queue_Records + 1 loop
-         CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
-         exit when Result not in P.OK | P.Gap;
-         if Result = P.OK then
-            Ring (Next) := Value;
-            Next := (if Next = Logs.MAX_ENTRIES then 1 else Next + 1);
-            Held := Natural'Min (Held + 1, Logs.MAX_ENTRIES);
+      for I in 1 .. Source_Count loop
+         exit when Used = Logs.MAX_ENTRIES;
+         Replay (Sources (I), Success);
+         if not Success then
+            Why := Refusal (Result, "the log store would not replay " & Service);
+            return;
          end if;
       end loop;
-      Success := Result = P.Empty;
-      CuBit.Logging.Close (Reader, Closed);
-      if not Success then
-         Why := Refusal (Result, "the log store stopped replaying " & Service);
-         return;
-      end if;
-      --  Oldest held first. Add stops when the image is full; the records it
-      --  drops are then the newest, so keep the newest instead: skip the
-      --  oldest until the rest fit.
-      declare
-         First : constant Positive := (if Held < Logs.MAX_ENTRIES then 1 else Next);
-         Text_Room : Natural := CCL.Objects.Maximum_Text_Bytes;
-         Skip : Natural := Held;
-      begin
-         for Back in 0 .. Held - 1 loop
+      --  Oldest first across instances (stable: equal times keep their order).
+      for I in 1 .. Used loop
+         Order (I) := I;
+         for J in reverse 1 .. I - 1 loop
+            exit when Held (Order (J)).Monotonic_Ms <= Held (Order (J + 1)).Monotonic_Ms;
             declare
-               Length : constant Natural :=
-                 L.Text (Ring ((First + Held - 1 - Back - 1) mod Logs.MAX_ENTRIES + 1).Data)'Length;
+               Swap : constant Positive := Order (J);
+            begin
+               Order (J) := Order (J + 1);
+               Order (J + 1) := Swap;
+            end;
+         end loop;
+      end loop;
+      --  Add stops when the image is full; the records it drops are then
+      --  the newest, so keep the newest instead: skip the oldest until the
+      --  rest fit.
+      declare
+         Text_Room : Natural := CCL.Objects.Maximum_Text_Bytes;
+         Skip : Natural := Used;
+      begin
+         for Back in reverse 1 .. Used loop
+            declare
+               Length : constant Natural := L.Text (Held (Order (Back)).Data)'Length;
             begin
                exit when Length > Text_Room;
                Text_Room := Text_Room - Length;
                Skip := Skip - 1;
             end;
          end loop;
-         for Offset in Skip .. Held - 1 loop
+         for Position in Skip + 1 .. Used loop
             declare
-               Item : P.Event renames Ring ((First + Offset - 1) mod Logs.MAX_ENTRIES + 1);
+               Item : P.Event renames Held (Order (Position));
             begin
                Logs.Add (Image, Item.Monotonic_Ms, Level_Of (L.Level (Item.Data)), Item.Source,
                          L.Text (Item.Data), Added);

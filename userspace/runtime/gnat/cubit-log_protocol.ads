@@ -45,10 +45,10 @@ package CuBit.Log_Protocol with Pure, SPARK_Mode is
      with Pre => Is_Publisher (Tag);
    --  Publishing is a channel a publisher opens (CuBit.Log_Publish_Rings,
    --  CuBit.Channel_Protocol), not an operation.
-   type Operation is (Subscribe, Close, Set_Minimum, Get_Minimum);
+   type Operation is (Subscribe, Close, Set_Minimum, Get_Minimum, List_Sources);
    for Operation use
      (Subscribe => 16#0C01#, Close => 16#0C03#,
-      Set_Minimum => 16#0C04#, Get_Minimum => 16#0C05#);
+      Set_Minimum => 16#0C04#, Get_Minimum => 16#0C05#, List_Sources => 16#0C06#);
    --  The node an event was published on: a 16-byte identity, stamped by the
    --  logstore that ingested it, never by the publisher. This_Node (zero)
    --  until nodes have identities; ingestion from other nodes keeps theirs.
@@ -88,6 +88,11 @@ package CuBit.Log_Protocol with Pure, SPARK_Mode is
    --    stream.
    --  Close: subscription, zero, zero, zero. logstore stops writing into
    --    the stream; the reader then closes its channel.
+   --  List_Sources (observer, LOG-003): a memory grant reference (generation
+   --    << 32 | slot) of one writable page the reader owns, the sources to
+   --    skip (newest first), zero, zero. logstore fills the page with
+   --    CuBit.Log_Sources entries: who each source it knows was, live or
+   --    exited. OK reply: entries written, sources in total, zero, zero.
    --  Tags are kernel-stamped; knowing these numeric values grants nothing.
    --  Whether a publishing channel may be opened with this tag.
    function May_Publish (Authority_Tag : Unsigned_64) return Boolean is
@@ -99,5 +104,5 @@ package CuBit.Log_Protocol with Pure, SPARK_Mode is
          when Set_Minimum => Is_Control (Authority_Tag),
          when Get_Minimum =>
            Is_Publisher (Authority_Tag) or else Is_Observer (Authority_Tag) or else Is_Control (Authority_Tag),
-         when Subscribe | Close => Is_Observer (Authority_Tag));
+         when Subscribe | Close | List_Sources => Is_Observer (Authority_Tag));
 end CuBit.Log_Protocol;

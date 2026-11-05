@@ -4,6 +4,8 @@ with CuBit.Channel_Protocol;
 with CuBit.Published_Clock;
 with CuBit.Log_Publish_Rings;
 with CuBit.Log_Streams;
+with CuBit.Grant_References;
+with CuBit.Memory_Grants;
 package body CuBit.Logging is
    use CuBit.Messages;
    use CuBit.Log_Protocol;
@@ -227,6 +229,88 @@ package body CuBit.Logging is
          Waited := Waited + 1;
       end loop;
    end Flush;
+
+   procedure List_Sources
+     (Item : Reader; Skip : Natural; Page : out Source_Page;
+      Written : out CuBit.Log_Sources.Page_Count; Total : out Natural;
+      Result : out Status)
+   is
+      package LS renames CuBit.Log_Sources;
+      type Lent_Page is array (0 .. LS.Page_Bytes - 1) of Unsigned_8
+        with Alignment => LS.Page_Bytes;
+      Lent : aliased Lent_Page := [others => 0];
+      Loan : CuBit.Memory_Grants.Grant_Reference;
+      Granted, Revoked, Accepted : Boolean;
+      Msg : Message := Request (CuBit.Log_Protocol.List_Sources);
+      Tag : MessageTag;
+      Bytes : LS.Entry_Buffer;
+   begin
+      Page := [others => (others => <>)];
+      Written := 0;
+      Total := 0;
+      Result := Unavailable;
+      if not CuBit.Handles.Valid (Item.Slot) then
+         return;
+      end if;
+      CuBit.Memory_Grants.Create_Via_Capability (Item.Slot, Lent'Address, 1, True, Loan, Granted);
+      if not Granted then
+         return;
+      end if;
+      Msg.words := [CuBit.Grant_References.Encode (Loan), Unsigned_64 (Skip), 0, 0];
+      Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
+      CuBit.Memory_Grants.Revoke (Loan, Revoked);
+      Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
+      if Result /= OK then
+         return;
+      end if;
+      if Msg.words (0) > LS.Page_Entries or else Msg.words (2 .. 3) /= [0, 0] then
+         Result := Invalid_Request;
+         return;
+      end if;
+      Total := Natural (Unsigned_64'Min (Msg.words (1), Unsigned_64 (Natural'Last)));
+      for Position in 1 .. Natural (Msg.words (0)) loop
+         for I in Bytes'Range loop
+            Bytes (I) := Lent (LS.Entry_Offset (Position) + I);
+         end loop;
+         LS.Decode (Bytes, Page (Position), Accepted);
+         if not Accepted then
+            Result := Invalid_Request;
+            return;
+         end if;
+         Written := Position;
+      end loop;
+   end List_Sources;
+
+   procedure Find_Sources
+     (Item : Reader; Wanted : String; Found : out Source_Entries; Count : out Natural;
+      Result : out Status)
+   is
+      Page : Source_Page;
+      Written : CuBit.Log_Sources.Page_Count;
+      Total, Skip : Natural := 0;
+      Seen : Boolean;
+   begin
+      Found := [others => (others => <>)];
+      Count := 0;
+      loop
+         List_Sources (Item, Skip, Page, Written, Total, Result);
+         exit when Result /= OK or else Written = 0;
+         for Position in 1 .. Written loop
+            Seen := False;
+            for K in Found'First .. Found'First + Count - 1 loop
+               Seen := Seen or else Found (K).Who.Source = Page (Position).Who.Source;
+            end loop;
+            if not Seen and then Count < Found'Length
+              and then CuBit.Log_Sources.Answers_To (Page (Position).Who, Wanted)
+            then
+               Found (Found'First + Count) := Page (Position);
+               Count := Count + 1;
+            end if;
+         end loop;
+         Skip := Skip + Written;
+         exit when Skip >= Total;
+      end loop;
+   end Find_Sources;
 
    procedure Disconnect (Item : in out Publisher; Done : out Boolean) is
    begin

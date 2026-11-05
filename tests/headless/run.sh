@@ -595,6 +595,11 @@ with open(sys.argv[1], "wb") as f:
                       -device ufs,serial=cubitufs,id=ufs
                       -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
         fi
+        if [ "${CCL_CONSOLE_DEMO:-}" = log-exited ]; then
+            # LOG-003: log-exit-probe logs and exits at boot; its records
+            # must still be found by name (logs.recent) and named (boot-logs).
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console-log-exited.ccl"
+        fi
         # The gcc demo runs cc1, a 45 MB image procmgr reads whole.
         if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then QEMU_MEMORY="${QEMU_MEMORY:-1G}"; fi
         ;;
@@ -1464,6 +1469,9 @@ if [ -n "$INIT_PROFILE" ]; then
             CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
         elif [ "$TEST_NAME" = "ccl-console" ]; then
             CCL_IMAGES="ccl-console.app clock.svc desktop.svc display.svc logstore.svc"
+            if [ "${CCL_CONSOLE_DEMO:-}" = log-exited ]; then
+                CCL_IMAGES="$CCL_IMAGES boot-logs.app log-exit-probe.app"
+            fi
         elif [ "$TEST_NAME" = "logs" ]; then
             CCL_IMAGES="logs.app clock.svc desktop.svc display.svc"
         elif [ "$TEST_NAME" = "lexicon" ]; then
@@ -3506,6 +3514,19 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'sendkey esc\n'
                 sleep 0.5
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ "${CCL_CONSOLE_DEMO:-}" = log-exited ]; then
+            # LOG-003 (CCL_CONSOLE_DEMO=log-exited): once boot-logs has seen
+            # log-exit-probe exit, its records by name at the console.
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                grep -qa "boot-logs: log-exit-probe exited" "$SERIAL_LOG" && break
+                sleep 0.2
+            done
+            sleep 0.5
+            python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" \
+              '(logs.recent "log-exit-probe")' 0.08
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-log-exited.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
             elif [ "${CCL_CONSOLE_DEMO:-}" = logs ]; then
             # What logstore keeps (CCL_CONSOLE_DEMO=logs): read it, lower it
             # to Debug through log-control, read it again.
@@ -5676,6 +5697,18 @@ wifi: no Wi-Fi radio is attached
 ccl-console: REPL completed: config.get failed
 wifi: passphrase stored for \"CuBitTest\"
 ccl-console: REPL completed: List<LogEntry>: [(LogEntry
+"
+        elif [ "${CCL_CONSOLE_DEMO:-}" = log-exited ]; then
+            # LOG-003: the probe's records carry no name of their own; after
+            # it exits boot-logs still names them and logs.recent finds them.
+            required_markers="$required_markers
+log-exit-probe: published 3 records, exiting
+boot-logs: log-exit-probe: exit probe stage 1 of 3
+boot-logs: log-exit-probe: exit probe stage 3 of 3
+boot-logs: log-exit-probe exited (com.cubit.log-exit-probe, log-exit-probe.app)
+ccl-console: REPL completed: List<LogEntry>: [(LogEntry
+\"exit probe stage 1 of 3\")
+\"exit probe stage 3 of 3\")]
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
             required_markers="$required_markers

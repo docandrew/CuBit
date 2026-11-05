@@ -12,6 +12,8 @@ project Devmgr is
     for Source_Files use ("main.adb", "cpio.ads", "cpio.adb", "ccl.ads",
        --  Warnings kept until logstore runs (CAP-001 diagnostics).
        "deferred_warnings.ads", "deferred_warnings.adb",
+       --  Who each child is, for logstore (LOG-003).
+       "source_notices.ads", "source_notices.adb",
        --  Children by name, for their exit lines.
        "devmgr_children.ads", "devmgr_children.adb",
        --  Message-signaled interrupts (docs/msi-interrupts.md).

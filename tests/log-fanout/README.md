@@ -22,7 +22,13 @@ records; replay merges sources in publish order, incrementally, with a gap
 only for records given up while the reader was due them; the persistent
 log's order and loss count; slot reuse prefers ended sources), stale
 handles after close/reopen, distinct launch tags at the same PID, idempotent
-subscription retries, lease renewal/expiration, and subscriber capacity exhaustion. Denied reads
+subscription retries, lease renewal/expiration, and subscriber capacity exhaustion.
+It also covers who each source was (LOG-003): the launchers' registrar
+notice codec (`CuBit.Log_Sources`: round trip, refusal of malformed or
+unnamed starts), name matching, registrar tags apart from the other log
+roles, and `Source_Identities` keeping an exited source's identity while
+the broker retains its records (and dropping it after the exit grace when
+it does not), growing with the processes started. Denied reads
 return no event contents or loss counts and do not consume the victim's queue.
 
 Budget tests cover distinct issuance tags sharing one pool, independent pools,
