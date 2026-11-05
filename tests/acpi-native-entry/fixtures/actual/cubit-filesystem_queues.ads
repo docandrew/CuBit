@@ -138,7 +138,9 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    Queue_Close    : constant := 2;   --  Handle
    Queue_Read_At  : constant := 3;   --  Handle, Position, Length, Arena_Offset
    Queue_Write_At : constant := 4;   --  Handle, Position, Length, Arena_Offset
-   Queue_Flush    : constant := 5;   --  Handle (after its dirty pages)
+   --  Handle (after its dirty pages): a file, or a directory (its names).
+   --  Commits the volume's journal and waits for the device's flush.
+   Queue_Flush    : constant := 5;
    Queue_Writeback : constant := 6;  --  Handle: harvest its dirty pages
    --  path at Arena_Offset, Length; Handle: 0, or the client's parked
    --  handle for the name, closed with the unlink (its buffered pages
@@ -236,6 +238,29 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  REPLY_OK, written; REPLY_NO_SPACE, the range holds fewer (what it
    --  holds is incomplete).
    Queue_List_Places : constant := 25;
+   --  An advisory lock on an open file (flock(2) semantics): Handle = a
+   --  file handle of an ext2 volume (REPLY_UNSUPPORTED_OBJECT otherwise),
+   --  Options = Lock_Shared or Lock_Exclusive, plus Lock_Wait to wait for
+   --  it until Spare_2 (an absolute monotonic deadline in ms,
+   --  CuBit.Messages.Wait_Forever spelled out for none); without Lock_Wait
+   --  a conflict is answered REPLY_BUSY at once. Answered REPLY_OK once
+   --  held, REPLY_DEADLINE if the deadline came first, REPLY_CANCELLED if
+   --  the handle unlocked or closed meanwhile. The lock belongs to the
+   --  handle: it ends when the handle unlocks (Queue_Unlock), closes or is
+   --  parked, and when its process exits however it ended (procmgr's
+   --  OP_RELEASE_OWNER releases its handles), so a lock held is a live
+   --  holder. Two handles conflict even within one process. A handle holds
+   --  one lock: asking for the other mode releases it first (as Linux).
+   --  Per file, requests are granted in arrival order (a waiting exclusive
+   --  request is not overtaken by later shared ones). One wait per handle
+   --  (REPLY_ERR while it waits).
+   Queue_Lock : constant := 26;
+   Lock_Shared    : constant := 1;
+   Lock_Exclusive : constant := 2;
+   Lock_Wait      : constant := 4;
+   --  Handle (a file): its lock ends, and a wait of it is answered
+   --  REPLY_CANCELLED. REPLY_OK whether or not it held one.
+   Queue_Unlock : constant := 27;
 
    --  Byte offsets within a request and an answer (the token first).
    Token_At        : constant := 0;
