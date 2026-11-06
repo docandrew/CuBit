@@ -34,27 +34,49 @@ package body CCL_Process_Bindings is
       Success := Grant = CCL.Catalog.Grant_Added;
    end Install;
 
+   --  A listing that changed between procmgr's pages is read again, this
+   --  many times at most, before the call fails.
+   CONSISTENT_ATTEMPTS : constant := 3;
+
    procedure Invoke
      (Binding : Unsigned_32; Argument : CCL.Host_Values.Value;
       Reply : out CCL.Host_Values.Call_Result)
    is
       pragma Unreferenced (Argument);
-      Entries : CCL_Processes.Listing;
-      Count : CCL_Processes.Listed_Count;
-      Total : Natural;
-      Result : CCL_Processes.Result_Kind;
+      subtype Kept_Count is Natural range 0 .. Processes.MAXIMUM_LISTED;
+      Kept : array (1 .. Processes.MAXIMUM_LISTED) of CCL_Processes.Listed;
+      Count : Kept_Count := 0;
+      Seen, Total : Natural := 0;
+      Result : CCL_Processes.Result_Kind := CCL_Processes.Unavailable;
       use type CCL_Processes.Result_Kind;
       Image : CCL.Objects.Image;
       Step : CCL.Objects.Build_Result := CCL.Objects.Added;
+      procedure Keep (Item : CCL_Processes.Listed) is
+      begin
+         if Count < Kept'Last then
+            Count := Count + 1;
+            Kept (Count) := Item;
+         end if;
+      end Keep;
+      procedure List is new CCL_Processes.Each (Keep);
       procedure Put (Cell : CCL.Objects.Cell) is
       begin
          if Step = CCL.Objects.Added then CCL.Objects.Append (Image, Cell, Step); end if;
       end Put;
       function Number (Value : Integer_64) return CCL.Objects.Cell is (CCL.Objects.Integer_Cell (Value));
+      function Decimal (Value : Natural) return String is
+         Text : constant String := Value'Image;
+      begin
+         return Text (Text'First + 1 .. Text'Last);
+      end Decimal;
    begin
       Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
       if not Handles (Binding) then return; end if;
-      CCL_Processes.List (Entries, Count, Total, Result);
+      for Attempt in 1 .. CONSISTENT_ATTEMPTS loop
+         Count := 0;
+         List (Seen, Total, Result);
+         exit when Result /= CCL_Processes.Listed_Part;
+      end loop;
       if Result = CCL_Processes.Not_Granted then
          Reply.Why := CuBit.Failures.Failed
            (CuBit.Failures.Not_Granted, "seeing what runs needs procmgr's process-observer role",
@@ -65,29 +87,40 @@ package body CCL_Process_Bindings is
          Reply.Why := CuBit.Failures.Failed
            (CuBit.Failures.Unavailable, "the process manager did not answer");
          return;
+      elsif Result = CCL_Processes.Listed_Part then
+         Reply.Why := CuBit.Failures.Failed
+           (CuBit.Failures.Unavailable, "the process table kept changing while it was read (" &
+            Decimal (Seen) & " of " & Decimal (Total) & " processes); ask again");
+         return;
+      elsif Seen > Count then
+         --  Never a silent prefix: the whole table or an honest refusal.
+         Reply.Why := CuBit.Failures.Failed
+           (CuBit.Failures.Exhausted, Decimal (Seen) & " processes are running; one result holds at most " &
+            Decimal (Processes.MAXIMUM_LISTED));
+         return;
       end if;
       Image := CCL.Objects.Empty (Contract);
       Put (CCL.Objects.Sequence_Cell (Count));
       for I in 1 .. Count loop
          Put (CCL.Objects.Product_Cell (Processes.PROCESS_FIELDS));
-         Put (Number (Integer_64 (Entries (I).Pid)));
+         Put (Number (Integer_64 (Kept (I).Pid)));
          if Step = CCL.Objects.Added then
-            CCL.Objects.Append_Text (Image, Entries (I).Name (1 .. Entries (I).Name_Length), Step);
+            CCL.Objects.Append_Text (Image, Kept (I).Name (1 .. Kept (I).Name_Length), Step);
          end if;
          if Step = CCL.Objects.Added then
-            CCL.Objects.Append_Text (Image, Entries (I).Identity (1 .. Entries (I).Identity_Length), Step);
+            CCL.Objects.Append_Text (Image, Kept (I).Identity (1 .. Kept (I).Identity_Length), Step);
          end if;
-         Put (CCL.Objects.Variant_Cell (Processes.Run_State'Pos (Entries (I).State) + 1));
+         Put (CCL.Objects.Variant_Cell (Processes.Run_State'Pos (Kept (I).State) + 1));
          Put (CCL.Objects.Unit_Cell);
-         Put (Number (Integer_64 (Unsigned_64'Min (Entries (I).Memory, Unsigned_64 (Integer_64'Last)))));
-         Put (Number (Integer_64 (Entries (I).Launcher)));
-         Put (Number (Integer_64 (Unsigned_64'Min (Entries (I).Age_Ms, Unsigned_64 (Integer_64'Last)))));
+         Put (Number (Integer_64 (Unsigned_64'Min (Kept (I).Memory, Unsigned_64 (Integer_64'Last)))));
+         Put (Number (Integer_64 (Kept (I).Launcher)));
+         Put (Number (Integer_64 (Unsigned_64'Min (Kept (I).Age_Ms, Unsigned_64 (Integer_64'Last)))));
       end loop;
       if Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contract) then
          Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
       else
          Reply.Why := CuBit.Failures.Failed
-           (CuBit.Failures.Exhausted, Natural'Image (Total) & " processes do not fit one result");
+           (CuBit.Failures.Exhausted, Decimal (Count) & " processes' names do not fit one result");
       end if;
    end Invoke;
 end CCL_Process_Bindings;

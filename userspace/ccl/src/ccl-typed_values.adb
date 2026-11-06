@@ -4,7 +4,6 @@ with CCL.Diagnostics;
 with CCL.Evaluation;
 with CCL.Language;
 with CCL.Objects;
-with CCL.Objects.Views;
 with CCL.Types;
 
 package body CCL.Typed_Values is
@@ -153,6 +152,13 @@ package body CCL.Typed_Values is
    --  In the program's data, not the heap: one heap block this size would
    --  open a whole medium-block arena (CuAlloc commits 1 MiB).
    Work : Views.Snapshot;
+
+   procedure Capture_Value
+     (Schema, Root_Name, Source : String; Object : in out Views.Snapshot; Result : out Check_Result) is
+   begin
+      Result := (others => <>);
+      Capture (Schema, Root_Name, Source, Object, Result);
+   end Capture_Value;
 
    procedure Check (Schema, Root_Name, Source : String; Result : out Check_Result) is
    begin

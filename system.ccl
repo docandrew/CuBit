@@ -22,6 +22,11 @@
   (setting "desktop.launch.16-trace"
     (Launch_Entry label => "Desktop trace" action => (Launch_Action.Program "trace-viewer.app") icon => (Launch_Icon "Trace") category => App_Category.System
       color => (App_Color.RGB (RGB_Color red => 30 green => 157 blue => 181))))
+  # The in-CuBit agent (AGENT-002): Diagnose missions through llm.svc; the
+  # API key goes into secrets.svc from its masked entry.
+  (setting "desktop.launch.13-agent"
+    (Launch_Entry label => "Agent" action => (Launch_Action.Program "agent.app") icon => (Launch_Icon "Console") category => App_Category.Development
+      color => (App_Color.RGB (RGB_Color red => 122 green => 72 blue => 196))))
   (setting "desktop.launch.20-doom"
     (Launch_Entry label => "DOOM" action => (Launch_Action.Program "doom.elf") icon => (Launch_Icon "Doom") category => App_Category.Games single_instance => true
       color => (App_Color.RGB (RGB_Color red => 179 green => 38 blue => 26))))

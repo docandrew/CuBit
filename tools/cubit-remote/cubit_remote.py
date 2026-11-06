@@ -1,0 +1,662 @@
+#!/usr/bin/env python3
+"""cubit-remote: the host client of a CuBit machine's ccl-remote endpoint.
+
+The device side is userspace/ccl/apps/ccl-remote; the wire profile is
+userspace/ccl/remote/remote_wire.ads (proved). One request per TCP
+connection: a 28-byte header carrying the pairing token, then a body.
+
+  cubit-remote pair HOST[:PORT] [--name NAME]   type the code the device shows
+  cubit-remote hello                            check the pairing, show grants
+  cubit-remote eval '(proc.list)'               evaluate CCL on the device
+  cubit-remote logs SERVICE                     (logs.recent "SERVICE"), whole
+  cubit-remote ps                               (proc.list), whole
+  cubit-remote ls [PATH] [--place P]            list the workspace (or mail)
+  cubit-remote put LOCAL [REMOTE] [-r]          upload into the workspace
+  cubit-remote get REMOTE [LOCAL]               download (SHA-256 checked)
+  cubit-remote stat REMOTE | rm REMOTE
+  cubit-remote build COMPONENT [--detach]       ccl-build on a workspace component
+  cubit-remote build --attach JOB | --cancel JOB
+  cubit-remote mail send FILE [--name NAME] | mail send --text TEXT --name NAME
+  cubit-remote mail recv [--dir DIR] [--keep] | mail ls
+
+Pairing tokens are stored in ~/.config/cubit-remote/hosts.json (0600, the
+directory 0700) and never printed. Python 3 standard library only.
+
+A list result longer than one response carries (the device says "too large
+to show whole", or ends a list with "... N more") is fetched whole, in
+slices: (length E), then (last k (first i E)) for consecutive ranges, k
+halved while a slice is still too large. Slices are separate evaluations,
+so a list that changes meanwhile (new log records) may shift between them.
+"""
+
+import argparse
+import getpass
+import hashlib
+import json
+import os
+import re
+import socket
+import stat as stat_module
+import struct
+import sys
+import time
+
+# --- Wire profile (remote_wire.ads) -----------------------------------------
+MAGIC = b"CBRM"
+PROTOCOL_VERSION = 1
+TOKEN_BYTES = 16
+TOKEN_TEXT_LENGTH = 26
+REQUEST_HEADER_BYTES = 28
+RESPONSE_HEADER_BYTES = 12
+MAXIMUM_CHUNK_BYTES = 32_768
+MAXIMUM_NAME_BYTES = 240
+MAXIMUM_SOURCE_BYTES = 4_096
+MAXIMUM_FILE_BYTES = 268_435_456
+MAXIMUM_RESPONSE_BODY = 65_536
+STAGING_SUFFIX = ".cubit-remote-part"
+DEFAULT_PORT = 8445
+
+OPERATIONS = {
+    "hello": 1, "evaluate": 2, "list": 3, "stat": 4, "get": 5, "put": 6,
+    "commit": 7, "remove": 8, "build_start": 9, "build_poll": 10, "build_cancel": 11,
+}
+PLACES = {"none": 0, "workspace": 1, "to-device": 2, "to-host": 3}
+STATUSES = [
+    "OK", "Malformed", "Unauthorized", "Not_Granted", "Not_Found", "Too_Large",
+    "Conflict", "Busy", "Failed", "Integrity_Mismatch", "Unavailable",
+    "Unsupported_Version", "Locked",
+]
+JOB_STATES = {1: "running", 2: "exited", 3: "failed-to-start", 4: "cancelled", 5: "unknown"}
+GRANTS = [(1, "diagnose"), (2, "files"), (4, "builds"), (8, "mail")]
+
+# Whole lists: elements per slice at first (halved while a slice is still
+# too large), and the device's own words for a result it could not carry.
+LIST_SLICE_START = 32
+TOO_LARGE_TEXT = "The result is too large to show whole"
+# What an endpoint built before Result_Too_Large says for the same case.
+OLD_TOO_LARGE_TEXT = "does not support the operation's value or lifecycle contract"
+LIST_RESULT = re.compile(r"\A(List<[^>]*>): (?:\[(.*)\]|\(list-of [^)]*\))\Z", re.S)
+MORE_ELEMENTS = re.compile(r"(?:, )?\.\.\. (\d+) more\Z")
+INTEGER_RESULT = re.compile(r"\AInteger: (\d+)\Z")
+
+# Seconds: connect, and the whole exchange of one request.
+CONNECT_TIMEOUT_S = 10
+EXCHANGE_TIMEOUT_S = 60
+BUILD_POLL_INTERVAL_S = 0.5
+
+SYMBOLS = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+class RemoteError(Exception):
+    """A response with a status other than OK."""
+
+    def __init__(self, status, detail=""):
+        self.status = status
+        name = STATUSES[status] if status < len(STATUSES) else "status %d" % status
+        super().__init__(name + (": " + detail if detail else ""))
+
+
+def token_image(token):
+    """The 26 Crockford base32 symbols of a 16-byte token."""
+    assert len(token) == TOKEN_BYTES
+    value = int.from_bytes(token, "big") << (TOKEN_TEXT_LENGTH * 5 - TOKEN_BYTES * 8)
+    return "".join(SYMBOLS[(value >> (5 * (TOKEN_TEXT_LENGTH - 1 - i))) & 31]
+                   for i in range(TOKEN_TEXT_LENGTH))
+
+
+def decode_token_text(text):
+    """What a person typed, as Remote_Wire.Decode_Token_Text reads it."""
+    aliases = {"O": "0", "I": "1", "L": "1"}
+    value = 0
+    count = 0
+    for c in text.upper():
+        if c in "- ":
+            continue
+        c = aliases.get(c, c)
+        index = SYMBOLS.find(c)
+        if index < 0 or count == TOKEN_TEXT_LENGTH:
+            raise ValueError("not a pairing code")
+        value = value * 32 + index
+        count += 1
+    padding = TOKEN_TEXT_LENGTH * 5 - TOKEN_BYTES * 8
+    if count != TOKEN_TEXT_LENGTH or value & ((1 << padding) - 1):
+        raise ValueError("not a pairing code (26 symbols)")
+    return (value >> padding).to_bytes(TOKEN_BYTES, "big")
+
+
+def valid_name(name):
+    """Remote_Wire.Valid_Name: a relative name inside a place."""
+    if not 1 <= len(name) <= MAXIMUM_NAME_BYTES or name.endswith(STAGING_SUFFIX):
+        return False
+    for part in name.split("/"):
+        if part in ("", ".", ".."):
+            return False
+        if any(not (c.isascii() and (c.isalnum() or c in "._-+")) for c in part):
+            return False
+    return True
+
+
+def name_field(name):
+    raw = name.encode("ascii")
+    return struct.pack(">H", len(raw)) + raw
+
+
+def request_bytes(operation, place, token, body=b""):
+    return (MAGIC + bytes([PROTOCOL_VERSION, OPERATIONS[operation], PLACES[place], 0])
+            + struct.pack(">I", len(body)) + token + body)
+
+
+def exchange(address, port, token, operation, place="none", body=b""):
+    """One request on its own connection; the response body, or RemoteError."""
+    frame = request_bytes(operation, place, token, body)
+    with socket.create_connection((address, port), timeout=CONNECT_TIMEOUT_S) as s:
+        s.settimeout(EXCHANGE_TIMEOUT_S)
+        s.sendall(frame)
+        header = _read_exact(s, RESPONSE_HEADER_BYTES)
+        if header[:4] != MAGIC or header[4] != PROTOCOL_VERSION:
+            raise RemoteError(1, "not a ccl-remote response")
+        length = struct.unpack(">I", header[8:12])[0]
+        if length > MAXIMUM_RESPONSE_BODY:
+            raise RemoteError(1, "response too long")
+        payload = _read_exact(s, length)
+    if header[5] != 0:
+        raise RemoteError(header[5], payload.decode("ascii", "replace") if operation == "evaluate" else "")
+    return payload
+
+
+def _read_exact(s, count):
+    data = bytearray()
+    while len(data) < count:
+        part = s.recv(count - len(data))
+        if not part:
+            raise RemoteError(8, "the device closed the connection")
+        data += part
+    return bytes(data)
+
+
+# --- Host store --------------------------------------------------------------
+def config_path():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "cubit-remote", "hosts.json")
+
+
+def load_hosts():
+    path = config_path()
+    if not os.path.exists(path):
+        return {"default": None, "hosts": {}}
+    mode = stat_module.S_IMODE(os.stat(path).st_mode)
+    if mode & 0o077:
+        raise SystemExit("cubit-remote: %s is readable by others (mode %o); chmod 600 it" % (path, mode))
+    with open(path) as f:
+        return json.load(f)
+
+
+def save_hosts(store):
+    path = config_path()
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    os.chmod(os.path.dirname(path), 0o700)
+    temporary = path + ".new"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w") as f:
+        json.dump(store, f, indent=2)
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+
+
+class Host:
+    def __init__(self, name, address, port, token):
+        self.name, self.address, self.port, self.token = name, address, port, token
+
+    def call(self, operation, place="none", body=b""):
+        return exchange(self.address, self.port, self.token, operation, place, body)
+
+
+def selected_host(args):
+    store = load_hosts()
+    name = args.host or store.get("default")
+    if not name or name not in store["hosts"]:
+        raise SystemExit("cubit-remote: no paired host%s; run cubit-remote pair HOST"
+                         % (" named " + name if name else ""))
+    entry = store["hosts"][name]
+    return Host(name, entry["address"], entry["port"], bytes.fromhex(entry["token"]))
+
+
+def grant_names(bits):
+    return ", ".join(n for b, n in GRANTS if bits & b) or "none"
+
+
+# --- Operations ---------------------------------------------------------------
+def hello(host):
+    body = host.call("hello")
+    bits = body[0]
+    chunk = struct.unpack(">I", body[1:5])[0]
+    return bits, chunk, body[5:].decode("ascii", "replace")
+
+
+def evaluate(host, source):
+    raw = source.encode("ascii")
+    if not 1 <= len(raw) <= MAXIMUM_SOURCE_BYTES:
+        raise SystemExit("cubit-remote: CCL source must be 1..%d ASCII bytes" % MAXIMUM_SOURCE_BYTES)
+    body = host.call("evaluate", "none", raw)
+    return body[0] == 1, body[1:].decode("ascii", "replace")
+
+
+def split_elements(body):
+    """The top-level elements of a list's text: separated by spaces (record
+    literals) or ", " (scalars), outside parentheses, brackets and quotes."""
+    items, current, depth, quoted, escaped = [], [], 0, False, False
+    for c in body:
+        if quoted:
+            current.append(c)
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                quoted = False
+            continue
+        if c == '"':
+            quoted = True
+        elif c in "([":
+            depth += 1
+        elif c in ")]":
+            depth -= 1
+        elif depth == 0 and c in " ,":
+            if current:
+                items.append("".join(current))
+                current = []
+            continue
+        current.append(c)
+    if current:
+        items.append("".join(current))
+    return items
+
+
+def parse_list(text):
+    """A list result as (type, elements, more): more counts the elements the
+    device left out ("... N more"). None when text is not a list result."""
+    found = LIST_RESULT.match(text)
+    if not found:
+        return None
+    body = found.group(2) or ""
+    more = MORE_ELEMENTS.search(body)
+    if more:
+        body = body[:more.start()]
+    return found.group(1), split_elements(body), int(more.group(1)) if more else 0
+
+
+def single_form(source):
+    """Whether source is one parenthesized expression (it can be sliced)."""
+    source = source.strip()
+    if not source.startswith("("):
+        return False
+    depth, quoted, escaped = 0, False, False
+    for i, c in enumerate(source):
+        if quoted:
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                quoted = False
+        elif c == '"':
+            quoted = True
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i == len(source) - 1
+    return False
+
+
+def too_large(text):
+    return text.startswith(TOO_LARGE_TEXT) or OLD_TOO_LARGE_TEXT in text
+
+
+def evaluate_whole(host, expression):
+    """(ok, text) of expression with every element of a list result: when the
+    device could not carry it whole, it is fetched in slices (module doc)."""
+    ok, text = evaluate(host, expression)
+    shown = parse_list(text) if ok else None
+    if ok and (shown is None or shown[2] == 0):
+        return ok, text
+    if not ok and not (too_large(text) and single_form(expression)):
+        return ok, text
+    counted_ok, counted = evaluate(host, "(length %s)" % expression)
+    count = INTEGER_RESULT.match(counted) if counted_ok else None
+    if count is None:
+        return ok, text
+    total = int(count.group(1))
+    kind, elements, step = shown[0] if shown else None, [], LIST_SLICE_START
+    while len(elements) < total:
+        size = min(step, total - len(elements))
+        part_ok, part = evaluate(host, "(last %d (first %d %s))" % (size, len(elements) + size, expression))
+        if not part_ok and too_large(part) and size > 1:
+            step = max(1, size // 2)
+            continue
+        sliced = parse_list(part) if part_ok else None
+        if sliced is None or not sliced[1]:
+            return False, part if not part_ok else "cubit-remote: the list changed while it was read: " + part
+        kind = sliced[0]
+        elements += sliced[1]
+    scalars = elements and not elements[0].startswith("(")
+    return True, "%s: [%s]" % (kind or "List", (", " if scalars else " ").join(elements))
+
+
+def remote_stat(host, place, name):
+    body = host.call("stat", place, name_field(name))
+    return struct.unpack(">Q", body[:8])[0], body[8:40]
+
+
+def put_file(host, place, local, name, progress=None):
+    if not valid_name(name):
+        raise SystemExit("cubit-remote: %r is not a name inside the place" % name)
+    size = os.path.getsize(local)
+    if size > MAXIMUM_FILE_BYTES:
+        raise SystemExit("cubit-remote: %s is larger than %d bytes" % (local, MAXIMUM_FILE_BYTES))
+    digest = hashlib.sha256()
+    offset = 0
+    with open(local, "rb") as f:
+        while True:
+            chunk = f.read(MAXIMUM_CHUNK_BYTES)
+            if offset > 0 and not chunk:
+                break
+            digest.update(chunk)
+            host.call("put", place, name_field(name) + struct.pack(">Q", offset) + chunk)
+            offset += len(chunk)
+            if progress:
+                progress(offset, size)
+            if len(chunk) < MAXIMUM_CHUNK_BYTES:
+                break
+    host.call("commit", place, name_field(name) + struct.pack(">Q", offset) + digest.digest())
+    return offset, digest.hexdigest()
+
+
+def get_file(host, place, name, local):
+    size, expected = remote_stat(host, place, name)
+    digest = hashlib.sha256()
+    offset = 0
+    temporary = local + ".part"
+    with open(temporary, "wb") as f:
+        while offset < size:
+            chunk = host.call("get", place, name_field(name) + struct.pack(">Q", offset))
+            if not chunk:
+                break
+            f.write(chunk)
+            digest.update(chunk)
+            offset += len(chunk)
+    if offset != size or digest.digest() != expected:
+        os.unlink(temporary)
+        raise RemoteError(9, "%s changed or arrived damaged (%d of %d bytes)" % (name, offset, size))
+    os.replace(temporary, local)
+    return size, digest.hexdigest()
+
+
+def build_poll(host, job, offset):
+    body = host.call("build_poll", "none", struct.pack(">IQ", job, offset))
+    state, code, total, first_kept = struct.unpack(">BIQQ", body[:21])
+    return state, code, total, first_kept, body[21:]
+
+
+def follow_build(host, job, out):
+    """Stream a job's output until it ends; its exit code (or 1)."""
+    offset = 0
+    while True:
+        state, code, total, first_kept, output = build_poll(host, job, offset)
+        if first_kept > offset:
+            out.write("[cubit-remote: %d bytes of output were not kept]\n" % (first_kept - offset))
+            offset = first_kept
+        out.write(output.decode("utf-8", "replace"))
+        out.flush()
+        offset += len(output)
+        if state != 1 and offset >= total:
+            sys.stderr.write("cubit-remote: job %d %s%s\n" % (
+                job, JOB_STATES.get(state, "?"), " (exit code %d)" % code if state == 2 else ""))
+            return code if state == 2 else 1
+        if not output:
+            time.sleep(BUILD_POLL_INTERVAL_S)
+
+
+# --- Commands -------------------------------------------------------------------
+def command_pair(args):
+    target = args.target
+    address, _, port_text = target.partition(":")
+    port = int(port_text) if port_text else DEFAULT_PORT
+    if args.code_stdin:
+        code = sys.stdin.readline().strip()
+    else:
+        code = getpass.getpass("Pairing code shown on the device: ")
+    try:
+        token = decode_token_text(code)
+    except ValueError as e:
+        raise SystemExit("cubit-remote: %s" % e)
+    host = Host(args.name or address, address, port, token)
+    bits, _, server = hello(host)
+    store = load_hosts()
+    store["hosts"][host.name] = {"address": address, "port": port, "token": token.hex()}
+    store["default"] = host.name
+    save_hosts(store)
+    print("paired with %s (%s:%d, %s); the host may: %s" % (host.name, address, port, server, grant_names(bits)))
+
+
+def command_hosts(args):
+    store = load_hosts()
+    for name, entry in sorted(store["hosts"].items()):
+        mark = "*" if name == store.get("default") else " "
+        print("%s %s %s:%d" % (mark, name, entry["address"], entry["port"]))
+
+
+def command_unpair(args):
+    store = load_hosts()
+    store["hosts"].pop(args.name, None)
+    if store.get("default") == args.name:
+        store["default"] = next(iter(store["hosts"]), None)
+    save_hosts(store)
+
+
+def command_hello(args):
+    bits, chunk, server = hello(selected_host(args))
+    print("%s; the host may: %s; chunk %d bytes" % (server, grant_names(bits), chunk))
+
+
+def command_eval(args):
+    source = open(args.file).read() if args.file else args.source
+    if source is None:
+        raise SystemExit("cubit-remote: give CCL source or --file")
+    ok, text = evaluate_whole(selected_host(args), source)
+    print(text)
+    return 0 if ok else 1
+
+
+def command_logs(args):
+    ok, text = evaluate_whole(selected_host(args), '(logs.recent "%s")' % args.service)
+    print(text)
+    return 0 if ok else 1
+
+
+def command_ps(args):
+    ok, text = evaluate_whole(selected_host(args), "(proc.list)")
+    print(text)
+    return 0 if ok else 1
+
+
+def command_ls(args):
+    path = args.path or ""
+    if path and not valid_name(path):
+        raise SystemExit("cubit-remote: %r is not a name inside the place" % path)
+    sys.stdout.write(selected_host(args).call("list", args.place, name_field(path)).decode("ascii", "replace"))
+
+
+def command_put(args):
+    host = selected_host(args)
+    if os.path.isdir(args.local):
+        if not args.recursive:
+            raise SystemExit("cubit-remote: %s is a directory (use -r)" % args.local)
+        base = args.remote or os.path.basename(os.path.normpath(args.local))
+        count = 0
+        for root, dirs, files in os.walk(args.local):
+            dirs.sort()
+            for f in sorted(files):
+                local = os.path.join(root, f)
+                relative = os.path.relpath(local, args.local).replace(os.sep, "/")
+                put_file(host, args.place, local, base + "/" + relative)
+                count += 1
+        print("put %d files under %s" % (count, base))
+    else:
+        name = args.remote or os.path.basename(args.local)
+        size, digest = put_file(host, args.place, args.local, name)
+        print("put %s (%d bytes, sha256 %s)" % (name, size, digest))
+
+
+def command_get(args):
+    local = args.local or os.path.basename(args.remote)
+    size, digest = get_file(selected_host(args), args.place, args.remote, local)
+    print("got %s (%d bytes, sha256 %s)" % (local, size, digest))
+
+
+def command_stat(args):
+    size, digest = remote_stat(selected_host(args), args.place, args.remote)
+    print("%s %d sha256 %s" % (args.remote, size, digest.hex()))
+
+
+def command_rm(args):
+    selected_host(args).call("remove", args.place, name_field(args.remote))
+
+
+def command_build(args):
+    host = selected_host(args)
+    if args.cancel:
+        body = host.call("build_cancel", "none", struct.pack(">I", args.cancel))
+        print("job %d %s" % (args.cancel, JOB_STATES.get(body[0], "?")))
+        return 0
+    if args.attach:
+        return follow_build(host, args.attach, sys.stdout)
+    if not args.component:
+        raise SystemExit("cubit-remote: give a component (its component.ccl, relative to the workspace)")
+    job = struct.unpack(">I", host.call("build_start", "workspace", name_field(args.component)))[0]
+    sys.stderr.write("cubit-remote: job %d started (cubit-remote build --attach %d)\n" % (job, job))
+    if args.detach:
+        print(job)
+        return 0
+    return follow_build(host, job, sys.stdout)
+
+
+def command_mail(args):
+    host = selected_host(args)
+    if args.mail_command == "send":
+        if args.text is not None:
+            if not args.name:
+                raise SystemExit("cubit-remote: --text needs --name")
+            temporary = os.path.join(os.environ.get("TMPDIR", "/tmp"), "cubit-remote-mail-%d" % os.getpid())
+            with open(temporary, "w") as f:
+                f.write(args.text)
+            try:
+                put_file(host, "to-device", temporary, args.name)
+            finally:
+                os.unlink(temporary)
+            print("sent %s" % args.name)
+        else:
+            name = args.name or os.path.basename(args.file)
+            put_file(host, "to-device", args.file, name)
+            print("sent %s" % name)
+    elif args.mail_command == "ls":
+        sys.stdout.write(host.call("list", "to-host", name_field("")).decode("ascii", "replace"))
+    else:
+        listing = host.call("list", "to-host", name_field("")).decode("ascii", "replace")
+        os.makedirs(args.dir, exist_ok=True)
+        for line in listing.splitlines():
+            kind, _, rest = line.partition(" ")
+            _, _, name = rest.partition(" ")
+            if kind != "file" or name.endswith(STAGING_SUFFIX) or not valid_name(name):
+                continue
+            get_file(host, "to-host", name, os.path.join(args.dir, name))
+            if not args.keep:
+                host.call("remove", "to-host", name_field(name))
+            print(os.path.join(args.dir, name))
+
+
+def parser():
+    p = argparse.ArgumentParser(prog="cubit-remote", description=__doc__.split("\n")[0])
+    p.add_argument("--host", help="a paired host's name (default: the last paired)")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    s = sub.add_parser("pair", help="pair with a device: type the code it shows")
+    s.add_argument("target", help="HOST[:PORT] (port %d by default)" % DEFAULT_PORT)
+    s.add_argument("--name", help="what to call it here (default: the host)")
+    s.add_argument("--code-stdin", action="store_true", help="read the code from standard input")
+    s.set_defaults(run=command_pair)
+
+    s = sub.add_parser("hosts", help="the paired hosts")
+    s.set_defaults(run=command_hosts)
+    s = sub.add_parser("unpair", help="forget a host's token")
+    s.add_argument("name")
+    s.set_defaults(run=command_unpair)
+    s = sub.add_parser("hello", help="check the pairing; show what the host may do")
+    s.set_defaults(run=command_hello)
+
+    s = sub.add_parser("eval", help="evaluate CCL on the device")
+    s.add_argument("source", nargs="?")
+    s.add_argument("--file")
+    s.set_defaults(run=command_eval)
+    s = sub.add_parser("logs", help="a service's recent log records")
+    s.add_argument("service")
+    s.set_defaults(run=command_logs)
+    s = sub.add_parser("ps", help="the processes")
+    s.set_defaults(run=command_ps)
+
+    for name, function, helptext in (
+            ("ls", command_ls, "list a place"), ("stat", command_stat, "size and SHA-256"),
+            ("rm", command_rm, "remove a file"), ("get", command_get, "download a file"),
+            ("put", command_put, "upload a file or (-r) a directory")):
+        s = sub.add_parser(name, help=helptext)
+        s.add_argument("--place", choices=["workspace", "to-device", "to-host"], default="workspace")
+        if name == "ls":
+            s.add_argument("path", nargs="?")
+        elif name == "put":
+            s.add_argument("local")
+            s.add_argument("remote", nargs="?")
+            s.add_argument("-r", "--recursive", action="store_true")
+        elif name == "get":
+            s.add_argument("remote")
+            s.add_argument("local", nargs="?")
+        else:
+            s.add_argument("remote")
+        s.set_defaults(run=function)
+
+    s = sub.add_parser("build", help="ccl-build a workspace component; follow its output")
+    s.add_argument("component", nargs="?")
+    s.add_argument("--detach", action="store_true", help="print the job and return")
+    s.add_argument("--attach", type=int, metavar="JOB", help="follow a job started earlier")
+    s.add_argument("--cancel", type=int, metavar="JOB", help="interrupt a running job")
+    s.set_defaults(run=command_build)
+
+    s = sub.add_parser("mail", help="the mailbox with the device's agent")
+    mail = s.add_subparsers(dest="mail_command", required=True)
+    m = mail.add_parser("send", help="a file (or --text) into mail/to-device")
+    m.add_argument("file", nargs="?")
+    m.add_argument("--text")
+    m.add_argument("--name")
+    m = mail.add_parser("recv", help="take what mail/to-host holds")
+    m.add_argument("--dir", default=".")
+    m.add_argument("--keep", action="store_true", help="leave the messages on the device")
+    mail.add_parser("ls", help="list mail/to-host")
+    s.set_defaults(run=command_mail)
+    return p
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    try:
+        result = args.run(args)
+    except RemoteError as e:
+        sys.stderr.write("cubit-remote: %s\n" % e)
+        return 1
+    except OSError as e:
+        sys.stderr.write("cubit-remote: %s\n" % e)
+        return 1
+    return result or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

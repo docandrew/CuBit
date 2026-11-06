@@ -12,6 +12,9 @@ procedure Main is
      renames CuBit.Process_IDs.From_Word;
    Narrow : constant Scope := (Connect_TCP, 16#0A00_0200#, 24, 80, 443, False, 4);
    Listener : constant Scope := (Listen_TCP, 16#0A00_020F#, 32, 8080, 8080, False, 4);
+   --  A LAN endpoint whose address DHCP chooses (ccl-remote): any address
+   --  this machine holds, one port.
+   LAN_Listener : constant Scope := (Listen_TCP, 0, 0, 8445, 8445, False, 8);
    Decoded : Scope;
    Success : Boolean;
    Grants : Network_Grants.Table;
@@ -70,6 +73,16 @@ begin
    pragma Assert (Includes (Broad_Outbound_TCP, Narrow));
    pragma Assert (not Includes (Narrow, Broad_Outbound_TCP));
    pragma Assert (not Includes (Broad_Outbound_TCP, Listener));
+   pragma Assert (Valid (LAN_Listener));
+   pragma Assert (Allows (LAN_Listener, Listen_TCP, 16#C0A8_0117#, 8445));
+   pragma Assert (not Allows (LAN_Listener, Listen_TCP, 16#C0A8_0117#, 8446));
+   pragma Assert (not Allows (LAN_Listener, Connect_TCP, 16#C0A8_0117#, 8445));
+   pragma Assert (not Valid ((LAN_Listener with delta Last_Port => 8446)));
+   pragma Assert (not Valid ((LAN_Listener with delta Resolve_Names => True)));
+   pragma Assert (Valid ((LAN_Listener with delta Network => 16#C0A8_0100#, Prefix => 24)));
+   pragma Assert (not Valid ((LAN_Listener with delta Network => 16#E000_0000#, Prefix => 8)));
+   pragma Assert (CuBit.Launch_Policy.Allows (CuBit.Launch_Policy.Declared_Network, LAN_Listener));
+   pragma Assert (not Includes (Listener, LAN_Listener));
    for Prefix in Prefix_Length loop
       declare
          S : constant Scope := (Connect_TCP, 0, Prefix, 1, 65535, False, 4);

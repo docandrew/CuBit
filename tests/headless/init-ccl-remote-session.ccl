@@ -1,0 +1,28 @@
+# The LAN remote session (tests/ccl-remote/remote_session.py): ccl-remote
+# listens on port 8445 (forwarded from the host's loopback), shows its
+# pairing code on the kernel console (this headless machine's screen), and
+# grants the host everything the test exercises. Every parameter is spelled
+# out: the laptop images start it with listen => Remote_Listen.Off.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  # Twelve idle processes: with them more processes run than procmgr's
+  # observer page holds (32 records), so (proc.list) has to read every
+  # page (the test checks it lists them all).
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "sleep.app" (priority 2))
+  (start "ccl-remote.app" (priority 4) (network approve-declared)
+    (arguments (Remote_Parameters listen => Remote_Listen.LAN
+      display => Pairing_Display.Kernel_Console work => "@nvme:0/work"
+      files => true builds => true mail => true)))
+)

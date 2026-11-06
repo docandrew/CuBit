@@ -12,6 +12,9 @@
   (request-network tcp-connect (ipv4 "0.0.0.0" 0)
     (ports 1 65535) (dns allow)
     (connections 8) tcp)
+  # The trust store: the development disk, the live medium, the installed root.
   (filesystem-scope (rights read) "@nvme:0/tls/")
+  (filesystem-scope (rights read) "@cd:0/tls/")
+  (filesystem-scope (rights read) "@ufs:0/tls/")
   (config-scope (rights read) "tls.")
   (request-notification tls manage registration))

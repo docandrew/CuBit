@@ -163,43 +163,70 @@ begin
    R.Build (Empty_Definition, True, W.Success, 1, Input, Output, Good); Check (not Good);
 
    -- The 3-cell envelope is admitted by Types.Define, not silently truncated.
-   for Tail_Count in 13 .. 14 loop
-      declare
-         Dense : Registry;
-         Block, Tail, Whole : Type_Reference;
-         D : CCL.Types.Description :=
-           (Identifier => Named ("Block"), Form => Product, Count => 16, others => <>);
-         Contract : Binding;
-      begin
-         for I in 1 .. 16 loop
-            D.Parts (I) := (Named ("f" & Character'Val (Character'Pos ('a') + I - 1)), Integer_Type);
-         end loop;
-         Define (Dense, D, Block, Status); Check (Status = Defined);
-         D.Identifier := Named ("Tail"); D.Count := Tail_Count;
-         Define (Dense, D, Tail, Status); Check (Status = Defined);
-         D := (Identifier => Named ("Whole"), Form => Product, Count => 15, others => <>);
-         for I in 1 .. 15 loop
-            D.Parts (I) := (Named ("f" & Character'Val (Character'Pos ('a') + I - 1)),
-              (if I = 15 then Tail else Block));
-         end loop;
-         Define (Dense, D, Whole, Status); Check (Status = Defined);
-         Bind (Dense, Whole, [1, 2, 3, 4], Contract, Good); Check (Good);
-         R.Define (Contract, Named ("Snapshot"), Named ("Read"), [5, 6, 7, 8], Definition, Good);
-         Check (Good = (Tail_Count = 13));
-         if Good then
-            Input := Empty (Contract);
-            Append (Input, Product_Cell (15), Built); Check (Built = Added);
-            for I in 1 .. 15 loop
-               Append (Input, Product_Cell (if I = 15 then Tail_Count else 16), Built); Check (Built = Added);
-               for J in 1 .. (if I = 15 then Tail_Count else 16) loop
-                  Append (Input, Integer_Cell (Integer_64 (J)), Built); Check (Built = Added);
+   -- Whole fills the image exactly when Tail has Tail_Fit fields (one more
+   -- is refused): a Group of 16 Blocks, Middle Blocks of 16 Integers, then
+   -- the Tail, sized from Maximum_Cells.
+   declare
+      Envelope : constant := 3;
+      Block_Cells : constant := 1 + 16;
+      Group_Cells : constant := 1 + 16 * Block_Cells;
+      Remaining : constant := Maximum_Cells - Envelope - 1 - Group_Cells - 1;
+      Middle : constant := Remaining / Block_Cells;
+      Tail_Fit : constant := Remaining mod Block_Cells;
+      pragma Compile_Time_Error (Middle + 2 > 16 or else Tail_Fit > 15, "rework the dense shape");
+   begin
+      for Tail_Count in Tail_Fit .. Tail_Fit + 1 loop
+         declare
+            Dense : Registry;
+            Block, Group, Tail, Whole : Type_Reference;
+            D : CCL.Types.Description :=
+              (Identifier => Named ("Block"), Form => Product, Count => 16, others => <>);
+            Contract : Binding;
+            procedure Fill (Image : in out CCL.Objects.Image; Count : Natural) is
+            begin
+               Append (Image, Product_Cell (Count), Built); Check (Built = Added);
+               for J in 1 .. Count loop
+                  Append (Image, Integer_Cell (Integer_64 (J)), Built); Check (Built = Added);
                end loop;
+            end Fill;
+         begin
+            for I in 1 .. 16 loop
+               D.Parts (I) := (Named ("f" & Character'Val (Character'Pos ('a') + I - 1)), Integer_Type);
             end loop;
-            R.Build (Definition, True, W.Success, 1, Input, Output, Good);
-            Is_Choice (R.Found); Check (Output.Used_Cells = Maximum_Cells);
-         end if;
-      end;
-   end loop;
+            Define (Dense, D, Block, Status); Check (Status = Defined);
+            D.Identifier := Named ("Tail"); D.Count := Tail_Count;
+            Define (Dense, D, Tail, Status); Check (Status = Defined);
+            D := (Identifier => Named ("Group"), Form => Product, Count => 16, others => <>);
+            for I in 1 .. 16 loop
+               D.Parts (I) := (Named ("g" & Character'Val (Character'Pos ('a') + I - 1)), Block);
+            end loop;
+            Define (Dense, D, Group, Status); Check (Status = Defined);
+            D := (Identifier => Named ("Whole"), Form => Product, Count => Middle + 2, others => <>);
+            for I in 1 .. Middle + 2 loop
+               D.Parts (I) := (Named ("f" & Character'Val (Character'Pos ('a') + I - 1)),
+                 (if I = 1 then Group elsif I = Middle + 2 then Tail else Block));
+            end loop;
+            Define (Dense, D, Whole, Status); Check (Status = Defined);
+            Bind (Dense, Whole, [1, 2, 3, 4], Contract, Good); Check (Good);
+            R.Define (Contract, Named ("Snapshot"), Named ("Read"), [5, 6, 7, 8], Definition, Good);
+            Check (Good = (Tail_Count = Tail_Fit));
+            if Good then
+               Input := Empty (Contract);
+               Append (Input, Product_Cell (Middle + 2), Built); Check (Built = Added);
+               Append (Input, Product_Cell (16), Built); Check (Built = Added);
+               for I in 1 .. 16 loop
+                  Fill (Input, 16);
+               end loop;
+               for I in 1 .. Middle loop
+                  Fill (Input, 16);
+               end loop;
+               Fill (Input, Tail_Count);
+               R.Build (Definition, True, W.Success, 1, Input, Output, Good);
+               Is_Choice (R.Found); Check (Output.Used_Cells = Maximum_Cells);
+            end if;
+         end;
+      end loop;
+   end;
    -- Shared host adapter consumes errors as data without replay or loss of
    -- lifecycle state; wrong expected value type leaves completion untouched.
    declare

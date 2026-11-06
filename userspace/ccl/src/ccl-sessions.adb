@@ -1133,6 +1133,13 @@ package body CCL.Sessions with SPARK_Mode is
       then
          --  Which operation, why, and how to allow it (docs/ccl-errors.md).
          return CuBit.Failures.Explain (CCL.Types.Image (Outcome.Failed_Operation), Outcome.Failure);
+      elsif Outcome.Status = CCL.Language.Result_Too_Large then
+         --  How large, and how to take it in parts (a list) or narrow it.
+         return CCL.Diagnostics.Message (Outcome.Status) &
+           (if Outcome.List_Total > 0
+            then ":" & Natural'Image (Outcome.List_Total) & " elements; take it in parts, " &
+                 "(first 10 x) or (last 10 x)"
+            else "; take fewer fields or shorter texts");
       elsif Outcome.Status /= CCL.Language.Succeeded then
          return CCL.Diagnostics.Message (Outcome.Status) &
            (if Outcome.Diagnostic = CCL.Language.No_Diagnostic then ""

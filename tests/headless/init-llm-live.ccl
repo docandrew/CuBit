@@ -1,0 +1,23 @@
+# Manual live lane (not a regression): the console asks the real Messages
+# API at api.anthropic.com:443 through llm.svc (production manifest), with
+# the development disk's production trust store and timesync for the
+# clock. Needs the host's internet and a key the user types into
+# (secrets.set (Secret "anthropic-api-key")): run.sh --test llm-live.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "timesync.svc" (priority 5) (network approve-declared))
+  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  # tls.svc must have registered before llm.svc launches, or procmgr
+  # installs no TLS scope for it (it does not wait for tls.svc there):
+  # the display and desktop start in between.
+  (start "secrets.svc" (priority 5)
+    (arguments (Secrets_Parameters
+      grant => (Secret_Grant secret => "anthropic-api-key" holder => Secret_Holder.Llm_Service))))
+  (start "llm.svc" (priority 5) (network approve-declared)
+    (arguments (Llm_Service_Parameters
+      endpoint => "api.anthropic.com:443" api_key_secret => "anthropic-api-key")))
+  (start "ccl-console.app" (priority 3))
+)

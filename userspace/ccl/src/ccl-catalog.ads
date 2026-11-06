@@ -210,8 +210,12 @@ is
    type Granted_Bindings is private;
    --  The bindings one environment can grant: every operation it answers,
    --  across all its interfaces. A program imports at most
-   --  CCL.VM.MAX_IMPORTS of them.
-   MAX_GRANTS : constant := 64;
+   --  CCL.VM.MAX_IMPORTS of them. A named ceiling: the shared host
+   --  environment (with llm.*, secrets.* and agent.*) plus a front end's own
+   --  operations (the Workbench's eight ui.*) passed the old 64 on the
+   --  laptop, where lexicon and Wi-Fi are granted too, and the Workbench
+   --  stopped at startup (Grant_Full); tests/llm/ccl checks the headroom.
+   MAX_GRANTS : constant := 128;
    subtype Grant_Count is Natural range 0 .. MAX_GRANTS;
    type Grant_Result is
      (Grant_Added,

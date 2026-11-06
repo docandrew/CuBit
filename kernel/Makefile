@@ -806,12 +806,27 @@ ccl-control: user_runtime ccl-manifest
 	mkdir -p isodir/licenses
 	cp ../userspace/ccl/remote/CBOR_LICENSE.txt isodir/licenses/cbor_ada.txt
 
+# The LAN remote session (tools/cubit-remote is its host client): off unless
+# its startup entry's arguments say listen => (Remote_Listen.LAN port).
+.PHONY : ccl-remote
+ccl-remote: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/ccl/apps/ccl-remote/build
+	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-remote)
+	# gprbuild does not track the manifest object it links: always relink.
+	rm -f ../userspace/ccl/apps/ccl-remote/build/ccl-remote.app
+	$(NATIVE_GPRBUILD) -p -P ../userspace/ccl/apps/ccl-remote/ccl_remote.gpr
+	cp ../userspace/ccl/apps/ccl-remote/build/ccl-remote.app isodir/boot/ccl-remote.app
+
 .PHONY : test-ccl-remote ccl-web-preview test-ccl-web-preview
 test-ccl-remote:
 	$(ALR) gprbuild -p -P../tests/ccl-remote/remote.gpr
 	../tests/ccl-remote/build/main
 	../tests/ccl-remote/build/host_tests
 	../tests/ccl-remote/build/periodic_tests
+	# The LAN remote session's wire profile, and its host client.
+	../tests/ccl-remote/build/remote_wire_tests
+	../tests/ccl-remote/build/remote_activity_tests
+	python3 -I ../tools/cubit-remote/test_cubit_remote.py
 	# The Observatory decodes these exact bytes (wire.test.mjs).
 	../tests/ccl-remote/build/wire_vectors > ../tests/ccl-remote/build/wire-vectors.json
 	cmp ../tests/ccl-remote/build/wire-vectors.json ../userspace/ccl/tools/ccl-observatory/wire-vectors.json
@@ -833,6 +848,18 @@ prove-ccl-remote:
 	$(ALR) gnatprove -P../tests/ccl-remote/remote.gpr --subdirs=wire-proof \
 		-u control_http.adb control_wire.adb ccl-control.adb --level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/ccl-remote/build/wire-proof/gnatprove/gnatprove.out
+
+# The LAN remote session's wire profile: level 2, no assumptions.
+.PHONY: prove-ccl-remote-wire
+prove-ccl-remote-wire:
+	$(ALR) gnatprove -P../tests/ccl-remote/remote.gpr --subdirs=remote-wire-proof \
+		-u remote_wire.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/ccl-remote/build/remote-wire-proof/gnatprove/gnatprove.out
+
+# The LAN remote session in QEMU: pair, eval, logs, files, mail, a build job.
+.PHONY: test-ccl-remote-session
+test-ccl-remote-session: ccl-remote
+	../tests/headless/run.sh --test ccl-remote-session --accel $(CCL_LAB_ACCEL) --timeout 240
 
 CCL_LAB_ACCEL ?= kvm
 ccl-remote-lab: ccl-control clock netstack
@@ -1235,6 +1262,17 @@ ccl-console: user_runtime ccl-manifest ui-fonts-native
 	$(NATIVE_GPRBUILD) -P ../userspace/ccl/apps/ccl-console/ccl_console.gpr
 	cp ../userspace/ccl/apps/ccl-console/build/ccl-console.app isodir/boot/ccl-console.app
 
+# The Agent app (AGENT-002): the agent's own window over the console's host
+# environment and the agent core.
+.PHONY : agent
+agent: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/ccl/apps/agent/build
+	$(call compile_ccl_manifest,../userspace/ccl/apps/agent)
+	# gprbuild does not track the manifest object it links: always relink.
+	rm -f ../userspace/ccl/apps/agent/build/agent.app
+	$(NATIVE_GPRBUILD) -P ../userspace/ccl/apps/agent/agent_app.gpr
+	cp ../userspace/ccl/apps/agent/build/agent.app isodir/boot/agent.app
+
 # Test-only service used to exercise CCL's typed host-import IPC adapter.
 .PHONY : ccl-test-host
 ccl-test-host: ccl-build user_runtime ccl-manifest
@@ -1279,6 +1317,50 @@ timesync-test: timesync
 	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-installed.bin \
 		isodir/boot/timesync-test.svc
 	cmp $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-installed.bin
+
+# The Messages API client (AGENT-001 slice 1) and the secret store v0
+# (SEC-022) that holds its API key.
+.PHONY : llm secrets llm-test
+llm: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/services/llm/build
+	$(CCL_BUILD) ../userspace/services/llm/component.ccl
+	cp ../userspace/services/llm/build/llm.svc isodir/boot/llm.svc
+
+secrets: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/services/secrets/build
+	$(CCL_BUILD) ../userspace/services/secrets/component.ccl
+	cp ../userspace/services/secrets/build/secrets.svc isodir/boot/secrets.svc
+
+# Headless-test variant for llm-mock: llm.svc with only .cubit.access
+# replaced by tests/llm/manifest-test.ccl (the mock's name and port
+# instead of api.anthropic.com:443), checked as timesync-test is. Only the
+# llm-mock test image installs it; no production image has it.
+LLM_VARIANT := ../tests/llm/build/variant
+llm-test: llm
+	mkdir -p $(LLM_VARIANT)/build/generated
+	cp ../tests/llm/manifest-test.ccl $(LLM_VARIANT)/manifest.ccl
+	$(call compile_ccl_manifest,$(LLM_VARIANT))
+	cmp $(LLM_VARIANT)/build/generated/startup.ads \
+		../userspace/services/llm/build/generated/startup.ads
+	$(ALR) objcopy --dump-section .cubit.startup=$(LLM_VARIANT)/startup-test.bin \
+		$(LLM_VARIANT)/build/manifest.o
+	$(ALR) objcopy --dump-section .cubit.startup=$(LLM_VARIANT)/startup-production.bin \
+		../userspace/services/llm/build/llm.svc
+	cmp $(LLM_VARIANT)/startup-test.bin $(LLM_VARIANT)/startup-production.bin
+	rm -f $(LLM_VARIANT)/access-test.bin $(LLM_VARIANT)/access-production.bin
+	$(ALR) objcopy --dump-section .cubit.access=$(LLM_VARIANT)/access-test.bin \
+		$(LLM_VARIANT)/build/manifest.o
+	$(ALR) objcopy --dump-section .cubit.access=$(LLM_VARIANT)/access-production.bin \
+		../userspace/services/llm/build/llm.svc
+	test -s $(LLM_VARIANT)/access-test.bin
+	test $$(stat -c %s $(LLM_VARIANT)/access-test.bin) -eq \
+		$$(stat -c %s $(LLM_VARIANT)/access-production.bin)
+	! cmp -s $(LLM_VARIANT)/access-test.bin $(LLM_VARIANT)/access-production.bin
+	$(ALR) objcopy --update-section .cubit.access=$(LLM_VARIANT)/access-test.bin \
+		../userspace/services/llm/build/llm.svc isodir/boot/llm-test.svc
+	$(ALR) objcopy --dump-section .cubit.access=$(LLM_VARIANT)/access-installed.bin \
+		isodir/boot/llm-test.svc
+	cmp $(LLM_VARIANT)/access-test.bin $(LLM_VARIANT)/access-installed.bin
 
 .PHONY : timesync-check
 timesync-check: ccl-build user_runtime ccl-manifest
@@ -2271,7 +2353,7 @@ initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAG
 LAPTOP_LIVE_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
 	mixer ps2 xhci virtio-input intel-gpu ufs rtw89 config netmgr wifi procmgr devmgr
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ccl-console logs devices files config-inspector boot-logs \
-	storage-check doom sameboy
+	storage-check doom sameboy tls timesync secrets llm agent tls-roots
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
 # All runnable examples belong in the live workspace. The image regression
 # also requires matching explicit optical placements in the CCL profile.
@@ -2432,7 +2514,7 @@ iso: cubit_kernel initrd
 # Test programs the headless images pack. world builds them too, so no test
 # runs a binary left over from an older ABI (a stale one passes or fails for
 # the wrong reason).
-TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
+TEST_PROGRAMS := logs boot-logs timesync-test llm-test ccl-console log-check \
 	log-fields-check log-retention-check log-exit-probe libc-check cxx-check network-check net-link-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
@@ -2455,7 +2537,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets agent ccl-remote
 
 .PHONY : headless-test
 headless-test: world

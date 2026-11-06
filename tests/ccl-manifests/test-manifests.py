@@ -1458,7 +1458,7 @@ class Manifests(unittest.TestCase):
                     return value
             return None
         for configuration in ('system.ccl', 'tests/hardware/system-live.ccl',
-                              'tests/timesync/system-timesync-test.ccl', 'tests/tls/system-tls-test.ccl',
+                              'tests/timesync/system-timesync-test.ccl', 'tests/tls/system-tls-test.ccl', 'tests/llm/system-llm-test.ccl',
                               'tests/config-turso/native/system-storage-test.ccl'):
             for key, rest in re.findall(r'\(setting "([^"]+)"\s+("[^"]*")?', (ROOT / configuration).read_text()):
                 with self.subTest(configuration=configuration, key=key):

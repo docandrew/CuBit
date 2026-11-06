@@ -1,0 +1,20 @@
+# llm.svc (AGENT-001 slice 1, docs/agent-harness.md): the Messages API
+# client. Its one tls-scope is the only network authority on the agent
+# path; the startup plan names the same endpoint as its parameter and must
+# approve the scope (network approve-declared). The API key is the named
+# secret api_key_secret in secrets.svc, which grants this program's
+# registered role its use. Requested authority only.
+(type Llm_Service_Parameters (record
+  (endpoint String)
+  (api_key_secret String)))
+(Executable_Manifest
+  identity => "com.cubit.llm"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (service "tls" "tls")
+    (service "secrets" "secrets")
+    # Registers the "llm" role; clients request the service by name.
+    (notification "llm" Notify_Access.Manage "registration")]
+  scopes => [(tls "api.anthropic.com:443")]
+  parameters => (Parameter_Signature.Declared "Llm_Service_Parameters"))

@@ -362,7 +362,11 @@ is
       Waiting_On_Task,
       --  A checked program the compiler or verifier refused (a size limit,
       --  a form without bytecode yet). Diagnostic_Subject names the reason.
-      Not_Compiled);
+      Not_Compiled,
+      --  A record or list whose literal is longer than a result carries
+      --  (CCL.VM.MAX_LITERAL_TEXT); a list's length is in List_Total. The
+      --  value was computed: take it in parts, (first k x) (last k x).
+      Result_Too_Large);
 
    type Diagnostic_Code is
      (No_Diagnostic,

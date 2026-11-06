@@ -39,8 +39,11 @@ package body CCL_File_Bindings is
       CCL.Catalog.Resolve_Schema (Catalog, Files.PLACE_KEY, Contracts.Place);
       CCL.Catalog.Resolve_Schema (Catalog, Files.CHILD_KEY, Contracts.Child);
       CCL.Catalog.Resolve_Schema (Catalog, Files.LISTING_KEY, Contracts.Listing);
+      CCL.Catalog.Resolve_Schema (Catalog, Files.EXCERPT_KEY, Contracts.Excerpt);
+      CCL.Catalog.Resolve_Schema (Catalog, Files.TEXT_KEY, Contracts.Text);
       Success := CCL.Objects.Is_Bound (Contracts.Place) and then
-        CCL.Objects.Is_Bound (Contracts.Child) and then CCL.Objects.Is_Bound (Contracts.Listing);
+        CCL.Objects.Is_Bound (Contracts.Child) and then CCL.Objects.Is_Bound (Contracts.Listing) and then
+        CCL.Objects.Is_Bound (Contracts.Excerpt) and then CCL.Objects.Is_Bound (Contracts.Text);
       for Op in Files.Operation loop
          exit when not Success;
          CCL.Catalog.Resolve (Catalog, "fs." & Files.Name (Op), Resolved, Found);
@@ -196,6 +199,55 @@ package body CCL_File_Bindings is
                   end if;
                   if not Built then
                      Reply.Why := Listing_Failure (Result, Joined (Root, Path));
+                  end if;
+               end;
+            end if;
+         when Files.Read =>
+            if Argument.Kind = CCL.Host_Values.Object_Value then
+               Views.Capture (Object, Contracts.Excerpt, Argument.Object, Captured);
+            end if;
+            if Captured then
+               declare
+                  Excerpt : constant Views.Cursor := Views.Root (Object);
+                  Child : constant Views.Cursor := Views.Field (Object, Excerpt, 1);
+                  Place : constant Views.Cursor := Views.Field (Object, Child, 1);
+                  Root : constant String := Views.Text (Object, Views.Field (Object, Place, 1));
+                  Path : constant String := Views.Text (Object, Views.Field (Object, Place, 2));
+                  Name : constant String := Views.Text (Object, Views.Field (Object, Child, 2));
+                  Offset : constant Integer_64 :=
+                    CCL.Objects.Integer_Of (Views.Scalar (Object, Views.Field (Object, Excerpt, 2)));
+                  Length : constant Integer_64 :=
+                    CCL.Objects.Integer_Of (Views.Scalar (Object, Views.Field (Object, Excerpt, 3)));
+                  Where : constant String := Joined (Joined (Root, Path), Name);
+                  Step : CCL.Objects.Build_Result;
+                  use type CCL_Places.Result_Kind;
+               begin
+                  if not Valid_Name (Name) then
+                     Reply.Why := Failures.Failed
+                       (Failures.Invalid_Argument,
+                        """" & Name & """ is not one entry's name (no '/', '\', '.' or '..')");
+                  elsif Length not in 1 .. Files.MAXIMUM_EXCERPT or else Offset not in 0 .. Integer_64 (Natural'Last)
+                  then
+                     Reply.Why := Failures.Failed
+                       (Failures.Invalid_Argument, "an excerpt is 1 to" & Natural'Image (Files.MAXIMUM_EXCERPT) &
+                        " bytes from an offset");
+                  else
+                     declare
+                        Text : String (1 .. Natural (Length));
+                        Last : Natural;
+                        Result : CCL_Places.Result_Kind;
+                     begin
+                        CCL_Places.Read_At (Where, Natural (Offset), Text, Last, Result);
+                        if Result = CCL_Places.Listed_All then
+                           Image := CCL.Objects.Empty (Contracts.Text);
+                           CCL.Objects.Append_Text (Image, Text (1 .. Last), Step);
+                           Built := Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contracts.Text);
+                        end if;
+                        if not Built then
+                           Reply.Why := Listing_Failure
+                             ((if Result = CCL_Places.Listed_All then CCL_Places.Failed else Result), Where);
+                        end if;
+                     end;
                   end if;
                end;
             end if;

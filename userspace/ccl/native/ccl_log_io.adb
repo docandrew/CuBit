@@ -24,6 +24,12 @@ package body CCL_Log_IO is
          CuBit.Logging.Announce (Text, Published, CCL_Native_Bindings.Logstore.Value);
       end if;
    end Announce;
+
+   procedure Note (Text : String) is
+   begin
+      Announce (Text);
+      CuBit.Messages.debugPrint (Text & ASCII.LF);
+   end Note;
    package P renames CuBit.Log_Protocol;
    package L renames CuBit.Log_Records;
    package Logs renames CCL.Interfaces.Logs;
@@ -64,39 +70,36 @@ package body CCL_Log_IO is
    end First_Dot;
 
    function Program_Source (Service : String) return Unsigned_64 is
-      Entries : CCL_Processes.Listing;
-      Count : CCL_Processes.Listed_Count;
-      Total : Natural;
-      Result : CCL_Processes.Result_Kind;
       Found : Unsigned_64 := 0;
       Newest : Unsigned_64 := Unsigned_64'Last;
-      use type CCL_Processes.Result_Kind;
+      Seen, Total : Natural;
+      Result : CCL_Processes.Result_Kind;
+      Suffix : constant String := "." & Service;
+      --  The newest process whose name, name stem or manifest identity's
+      --  last part is Service.
+      procedure Consider (Item : CCL_Processes.Listed) is
+         Name : constant String := Item.Name (1 .. Item.Name_Length);
+         Identity : constant String := Item.Identity (1 .. Item.Identity_Length);
+         Dot : constant Natural := First_Dot (Name);
+         Stem : constant String := (if Dot = 0 then Name else Name (Name'First .. Dot - 1));
+      begin
+         if (Name = Service or else Stem = Service
+             or else (Identity'Length > Suffix'Length
+                      and then Identity (Identity'Last - Suffix'Length + 1 .. Identity'Last) = Suffix))
+           and then Item.Age_Ms <= Newest
+         then
+            Found := Item.Process;
+            Newest := Item.Age_Ms;
+         end if;
+      end Consider;
+      procedure Search is new CCL_Processes.Each (Consider);
    begin
       if Service'Length = 0 then
          return 0;
       end if;
-      CCL_Processes.List (Entries, Count, Total, Result);
-      if Result /= CCL_Processes.Listed_All then
-         return 0;
-      end if;
-      for I in 1 .. Count loop
-         declare
-            Name : constant String := Entries (I).Name (1 .. Entries (I).Name_Length);
-            Identity : constant String := Entries (I).Identity (1 .. Entries (I).Identity_Length);
-            Dot : constant Natural := First_Dot (Name);
-            Stem : constant String := (if Dot = 0 then Name else Name (Name'First .. Dot - 1));
-            Suffix : constant String := "." & Service;
-         begin
-            if (Name = Service or else Stem = Service
-                or else (Identity'Length > Suffix'Length
-                         and then Identity (Identity'Last - Suffix'Length + 1 .. Identity'Last) = Suffix))
-              and then Entries (I).Age_Ms <= Newest
-            then
-               Found := Entries (I).Process;
-               Newest := Entries (I).Age_Ms;
-            end if;
-         end;
-      end loop;
+      --  Every process is looked at (a part read while the table changed
+      --  still names the ones it saw).
+      Search (Seen, Total, Result);
       return Found;
    end Program_Source;
 
@@ -110,23 +113,21 @@ package body CCL_Log_IO is
          --  names, by its whole identity.
          declare
             Word : constant Unsigned_64 := CuBit.Messages.To_Word (Process);
-            Entries : CCL_Processes.Listing;
-            Count : CCL_Processes.Listed_Count;
-            Total : Natural;
+            Whole : Unsigned_64 := Word;
+            Seen, Total : Natural;
             Result : CCL_Processes.Result_Kind;
-            use type CCL_Processes.Result_Kind;
+            procedure Consider (Item : CCL_Processes.Listed) is
+            begin
+               if Unsigned_64 (Item.Pid) = Word then
+                  Whole := Item.Process;
+               end if;
+            end Consider;
+            procedure Search is new CCL_Processes.Each (Consider);
          begin
             if Word <= Unsigned_64 (Unsigned_32'Last) then
-               CCL_Processes.List (Entries, Count, Total, Result);
-               if Result = CCL_Processes.Listed_All then
-                  for I in 1 .. Count loop
-                     if Unsigned_64 (Entries (I).Pid) = Word then
-                        return Entries (I).Process;
-                     end if;
-                  end loop;
-               end if;
+               Search (Seen, Total, Result);
             end if;
-            return Word;
+            return Whole;
          end;
       end if;
       Process := CuBit.Service_Names.Process_Of (Service);

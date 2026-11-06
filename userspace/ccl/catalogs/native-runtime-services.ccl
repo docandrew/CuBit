@@ -45,6 +45,10 @@
   # Test only: the startup-wait headless test's late provider
   # (CuBit.Startup_Wait_Test; procmgr's startup waits, CAP-003).
   (service startup-wait-test 36 read-write)
+  # llm.svc (AGENT-001): the Messages API client; (llm.ask ...) and agents.
+  (service llm 37 read-write)
+  # secrets.svc (SEC-022 v0): named secrets used through grants.
+  (service secrets 38 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)
@@ -61,4 +65,6 @@
   (notification acpi 29 publish-and-manage)
   (notification installer 31 publish-and-manage)
   (notification acpi-registers 35 publish-and-manage)
-  (notification startup-wait-test 36 publish-and-manage))
+  (notification startup-wait-test 36 publish-and-manage)
+  (notification llm 37 publish-and-manage)
+  (notification secrets 38 publish-and-manage))

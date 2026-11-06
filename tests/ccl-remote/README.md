@@ -74,3 +74,24 @@ waits without making requests and checks that native timer wakeups advance the
 run count, then checks stop, replacement generations, and failure isolation.
 Run this against a fresh lab guest with no active widget. This is not a TLS or remote
 authentication test. See the Observatory README for the explicit lab scope.
+
+## LAN remote session (ccl-remote.app, tools/cubit-remote)
+
+`userspace/ccl/apps/ccl-remote` is the endpoint a host's `cubit-remote`
+connects to; `userspace/ccl/remote/remote_wire.ads` is its wire profile
+(framing, token, names, grants). It is off unless its startup entry says
+`listen => Remote_Listen.LAN` (the laptop images start it `Off`).
+
+```sh
+nix develop -c make -C kernel test-ccl-remote          # includes remote_wire_tests and the client's tests
+nix develop -c make -C kernel prove-ccl-remote-wire    # Remote_Wire, level 2
+nix develop -c make -C kernel test-ccl-remote-session  # QEMU: pair, eval, logs, files, mail, a build job
+```
+
+Proved (Remote_Wire, level 2, no assumptions): absence of run-time errors in
+the header and body decoders, the base32 token text codec and the name
+check; constant-time token comparison equals `=`; a decoded body's data
+slice lies inside the body and within the named limits. Tested, not proved:
+the native adapters (transport, filesystem, ccl-build jobs, pairing window),
+which `remote_session.py` exercises against the real endpoint in QEMU.
+Plaintext: the token authenticates each request but nothing is encrypted.

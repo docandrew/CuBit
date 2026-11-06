@@ -727,6 +727,9 @@ is
       --  literal, as the interpreter prints it, when it has one that fits.
       Has_Literal : Boolean := False;
       Literal : Literal_Text := (others => <>);
+      --  Without one: because it is longer than MAX_LITERAL_TEXT (a list's
+      --  length is then in List_Total), not because a part has no literal.
+      Literal_Too_Long : Boolean := False;
       --  Its rows' record type and fields, for a table (Count = 0: none).
       Literal_Shape : CCL.Types.Shapes.Row_Shape := (others => <>);
       --  Waiting_For_Host on a stream view, not an import: the host answers

@@ -101,6 +101,9 @@ class Images(unittest.TestCase):
                                                             "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "teapots.app",
                                                             "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app",
                                                             "calculator.app", "lexicon.svc", "dictionary.app",
+                                                            # The agent path (AGENT-002).
+                                                            "tls.svc", "timesync.svc", "secrets.svc", "llm.svc",
+                                                            "agent.app", "tls/roots.der",
                                                             "Assets/cubit-wallpapers/2",
                                                             "Assets/cubit-icons/4/applications.qoi",
                                                             "Assets/cubit-lexicon/1/english.lexicon",

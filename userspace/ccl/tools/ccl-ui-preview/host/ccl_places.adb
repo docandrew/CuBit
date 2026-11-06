@@ -3,6 +3,7 @@
 with Ada.Calendar.Conversions;
 with Ada.Directories;
 with Ada.Environment_Variables;
+with Ada.Streams.Stream_IO;
 
 package body CCL_Places is
    use Interfaces;
@@ -67,4 +68,69 @@ package body CCL_Places is
       when Dirs.Use_Error => Result := Access_Denied;
       when others => Result := Failed;
    end List;
+
+   procedure Read_At
+     (Path : String; Offset : Natural; Into : out String; Last : out Natural; Result : out Result_Kind)
+   is
+      use Ada.Streams.Stream_IO;
+      File : File_Type;
+      Item : Ada.Streams.Stream_Element_Array (1 .. Ada.Streams.Stream_Element_Offset (Into'Length));
+      Got : Ada.Streams.Stream_Element_Offset;
+   begin
+      Into := [others => ' '];
+      Last := Into'First - 1;
+      if not Dirs.Exists (Path) or else Dirs.Kind (Path) /= Dirs.Ordinary_File then
+         Result := Not_Found; return;
+      end if;
+      Open (File, In_File, Path);
+      if Offset < Natural (Size (File)) then
+         Set_Index (File, Positive_Count (Offset + 1));
+         Read (File, Item, Got);
+         for K in 1 .. Got loop
+            Last := Last + 1;
+            Into (Last) := Character'Val (Item (K));
+         end loop;
+      end if;
+      Close (File);
+      Result := Listed_All;
+   exception
+      when Use_Error => Result := Access_Denied;
+      when others => Result := Failed;
+   end Read_At;
+
+   procedure Create (Path : String; Result : out Result_Kind) is
+      use Ada.Streams.Stream_IO;
+      File : File_Type;
+   begin
+      if not Dirs.Exists (Path) then
+         Ada.Streams.Stream_IO.Create (File, Out_File, Path);
+         Close (File);
+      end if;
+      Result := Listed_All;
+   exception
+      when Use_Error => Result := Access_Denied;
+      when others => Result := Failed;
+   end Create;
+
+   procedure Write_At (Path : String; Offset : Natural; Text : String; Result : out Result_Kind) is
+      use Ada.Streams.Stream_IO;
+      File : File_Type;
+      Item : Ada.Streams.Stream_Element_Array (1 .. Ada.Streams.Stream_Element_Offset (Text'Length));
+   begin
+      if not Dirs.Exists (Path) then
+         Result := Not_Found; return;
+      end if;
+      for K in Text'Range loop
+         Item (Ada.Streams.Stream_Element_Offset (K - Text'First + 1)) := Character'Pos (Text (K));
+      end loop;
+      --  GNAT opens an existing stream file for Out_File without truncating it.
+      Open (File, Out_File, Path);
+      Set_Index (File, Positive_Count (Offset + 1));
+      Write (File, Item);
+      Close (File);
+      Result := Listed_All;
+   exception
+      when Use_Error => Result := Access_Denied;
+      when others => Result := Failed;
+   end Write_At;
 end CCL_Places;

@@ -11,6 +11,9 @@ with CCL_File_Bindings;
 with CCL_Lexicon_Bindings;
 with CCL_Calc_Bindings;
 with CCL_Install_Bindings;
+with CCL_Llm_Bindings;
+with CCL_Secrets_Bindings;
+with CCL_Agent_Bindings;
 with CCL_Process_Bindings;
 with CCL_Wifi_Bindings;
 with CCL_Program_Bindings;
@@ -51,6 +54,8 @@ package body CCL_Host_Environment is
       if Success then CCL_Lexicon_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Calc_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Install_Bindings.Install (Catalog, Grants, Success); end if;
+      if Success then CCL_Llm_Bindings.Install (Catalog, Grants, Success); end if;
+      if Success then CCL_Secrets_Bindings.Install (Catalog, Grants, Success); end if;
       if not Success then return; end if;
       CCL.Interfaces.Clock.Publish (Catalog, Error);
       Success := Error = CCL.Catalog.Catalog_Valid;
@@ -69,6 +74,8 @@ package body CCL_Host_Environment is
       if not Success then return; end if;
       CCL.Catalog.Install (Grants, Resolved, TIMER_EVERY_BINDING, Grant);
       Success := Grant = CCL.Catalog.Grant_Added;
+      --  Last: agent missions' tools are resolved among all of the above.
+      if Success then CCL_Agent_Bindings.Install (Catalog, Grants, Success); end if;
    end Install;
 
    function Handles (Binding : Interfaces.Unsigned_32) return Boolean is
@@ -78,7 +85,8 @@ package body CCL_Host_Environment is
       CCL_Process_Bindings.Handles (Binding) or else CCL_Wifi_Bindings.Handles (Binding) or else
       CCL_Program_Bindings.Handles (Binding) or else
       CCL_Lexicon_Bindings.Handles (Binding) or else CCL_Calc_Bindings.Handles (Binding) or else
-      CCL_Install_Bindings.Handles (Binding));
+      CCL_Install_Bindings.Handles (Binding) or else CCL_Llm_Bindings.Handles (Binding) or else
+      CCL_Secrets_Bindings.Handles (Binding) or else CCL_Agent_Bindings.Handles (Binding));
 
    CLOCK_UNAVAILABLE : constant CuBit.Failures.Failure := CuBit.Failures.Failed
      (CuBit.Failures.Unavailable, "the system clock did not answer",
@@ -114,6 +122,17 @@ package body CCL_Host_Environment is
          CCL_Calc_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Install_Bindings.Handles (Binding) then
          CCL_Install_Bindings.Invoke (Binding, Argument, Streams, Reply);
+      elsif CCL_Llm_Bindings.Handles (Binding) then
+         CCL_Llm_Bindings.Invoke (Binding, Argument, Streams, Reply);
+      elsif CCL_Secrets_Bindings.Handles (Binding) then
+         CCL_Secrets_Bindings.Invoke (Binding, Argument, Reply);
+      elsif CCL_Agent_Bindings.Handles (Binding) then
+         declare
+            Clock_Available : Boolean;
+            Now : constant Interfaces.Unsigned_64 := Monotonic_Ms (Clock_Available);
+         begin
+            CCL_Agent_Bindings.Invoke (Binding, Argument, Streams, Now, Reply);
+         end;
       elsif Binding = CLOCK_BINDING and then
         Argument.Kind = CCL.Host_Values.Integer_Value and then Argument.Integer = 0
       then
@@ -182,6 +201,16 @@ package body CCL_Host_Environment is
          Arrived := Arrived or else From_Programs;
          CCL_Install_Bindings.Pump (Streams, Now, Available, From_Programs);
          Arrived := Arrived or else From_Programs;
+         CCL_Llm_Bindings.Pump (Streams, From_Programs);
+         Arrived := Arrived or else From_Programs;
+         --  Agent missions run their tools through this environment's own
+         --  dispatch, each through its mission's granted view.
+         declare
+            procedure Pump_Agents is new CCL_Agent_Bindings.Pump (Invoke);
+         begin
+            Pump_Agents (Streams, Now, From_Programs);
+            Arrived := Arrived or else From_Programs;
+         end;
       end;
    end Pump_Streams;
 
@@ -208,10 +237,13 @@ package body CCL_Host_Environment is
       Install_Due : constant Interfaces.Unsigned_64 :=
         (if Available then CCL_Install_Bindings.Next_Query_Delay (Now) else Interfaces.Unsigned_64'Last);
       use type Interfaces.Unsigned_64;
+      Waiting : constant Interfaces.Unsigned_64 :=
+        (if CCL_Llm_Bindings.Running or else CCL_Agent_Bindings.Running
+         then Interfaces.Unsigned_64'Min (Install_Due, CCL_Llm_Bindings.Poll_Ms) else Install_Due);
    begin
       if Due = Interfaces.Unsigned_64'Last or else not Available then
-         return Install_Due;
+         return Waiting;
       end if;
-      return Interfaces.Unsigned_64'Min ((if Now >= Due then 0 else Due - Now), Install_Due);
+      return Interfaces.Unsigned_64'Min ((if Now >= Due then 0 else Due - Now), Waiting);
    end Next_Stream_Delay;
 end CCL_Host_Environment;

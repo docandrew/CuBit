@@ -23,10 +23,13 @@ package CCL_Processes is
       Launcher : Natural := 0;
       Age_Ms : Interfaces.Unsigned_64 := 0;
    end record;
-   subtype Listed_Count is Natural range 0 .. Processes.MAXIMUM_LISTED;
-   type Listing is array (1 .. Processes.MAXIMUM_LISTED) of Listed;
-   type Result_Kind is (Listed_All, Not_Granted, Unavailable);
-   --  The first Count processes by pid; Total counts all of them.
-   procedure List
-     (Entries : out Listing; Count : out Listed_Count; Total : out Natural; Result : out Result_Kind);
+   --  Listed_All: every process was visited. Listed_Part: fewer were (the
+   --  table changed while it was read page by page): ask again.
+   type Result_Kind is (Listed_All, Listed_Part, Not_Granted, Unavailable);
+   --  Every process, by pid, however many there are: Visit is called for
+   --  each (nothing is kept here, so no count limits a listing). Seen
+   --  counts the visits; Total is how many processes the source counted.
+   generic
+      with procedure Visit (Item : Listed);
+   procedure Each (Seen, Total : out Natural; Result : out Result_Kind);
 end CCL_Processes;

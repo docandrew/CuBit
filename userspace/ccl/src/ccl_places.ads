@@ -25,4 +25,16 @@ package CCL_Places is
    procedure List
      (Path : String; Entries : out Listing; Count : out Listed_Count;
       Total : out Natural; Result : out Result_Kind);
+
+   --  Files (fs.read; an agent session's record, AGENT-002). Result is
+   --  Listed_All when the operation succeeded.
+   --  The bytes of the file at Path from Offset, up to Into'Length (Last <
+   --  Into'First: none, the file ends there).
+   procedure Read_At
+     (Path : String; Offset : Natural; Into : out String; Last : out Natural; Result : out Result_Kind);
+   --  A new, empty file at Path; one that exists already is left as it is
+   --  (Result Listed_All either way).
+   procedure Create (Path : String; Result : out Result_Kind);
+   --  Text written into the file at Path from Offset.
+   procedure Write_At (Path : String; Offset : Natural; Text : String; Result : out Result_Kind);
 end CCL_Places;

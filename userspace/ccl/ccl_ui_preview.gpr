@@ -6,17 +6,20 @@ with "../lib/tls/sparktls_host.gpr";
 with "cubit_shared.gpr";
 project CCL_UI_Preview is
    for Languages use ("Ada");
-   for Source_Dirs use ("../lib/lexicon", "src", "tools/ccl-ui-preview", "tools/ccl-ui-preview/host",
+   for Source_Dirs use ("../lib/lexicon", "src", "../lib/agent", "tools/ccl-ui-preview", "tools/ccl-ui-preview/host", "apps/agent",
       "../lib/ui", "../lib/calc", "../lib/theme", "../lib/compositor", "../lib/display");
    --  The root package CuBit comes with cubit_shared.gpr (the runtime's).
    for Excluded_Source_Files use ("cubit.ads");
    for Object_Dir use "build/ccl-ui-preview";
    for Exec_Dir use "build/ccl-ui-preview";
-   for Main use ("main.adb", "console_main.adb");
+   for Main use ("main.adb", "console_main.adb", "agent_main.adb");
 
    package Builder is
       for Executable ("main.adb") use "ccl-ui-preview";
       for Executable ("console_main.adb") use "ccl-console-preview";
+      --  The Agent app's window (no llm.svc or secrets.svc on Linux: it
+      --  says why it cannot ask).
+      for Executable ("agent_main.adb") use "agent-preview";
    end Builder;
 
    package Compiler is

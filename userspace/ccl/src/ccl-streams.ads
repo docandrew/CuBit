@@ -13,9 +13,11 @@ package CCL.Streams with SPARK_Mode is
    type Handle is range 0 .. Maximum_Handle;
    No_Handle : constant Handle := 0;
 
-   --  The most elements one window view returns: what one image holds,
-   --  its count cell and then one cell per scalar element.
-   Maximum_Window : constant := CCL.Objects.Maximum_Cells - 1;
+   --  The most elements one window view returns (within what one image
+   --  holds: its count cell and then one cell per scalar element).
+   Maximum_Window : constant := 255;
+   pragma Compile_Time_Error
+     (Maximum_Window > CCL.Objects.Maximum_Cells - 1, "a window must fit one image");
    subtype Window_Length is Positive range 1 .. Maximum_Window;
 
    --  Delivered and dropped elements are counted, never wrapped.

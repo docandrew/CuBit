@@ -29,7 +29,10 @@ DEVICE_INDEX = ROOT / "userspace/ccl/build/image/ccl-device-index"
 DEVICE_INDEX_NAME = "devices.index"
 DRIVER_SUFFIX = ".drv"
 MAX_FILE = 128 * 1024 * 1024
-MAX_TOTAL = 512 * 1024 * 1024
+# The whole resolved image (every placed input together). A named ceiling,
+# not a fit: the laptop live image passed 512 MiB once it carried the agent
+# path (llm, secrets, tls, agent.app) beside Servo; LIM-001.
+MAX_TOTAL = 2 * 1024 * 1024 * 1024
 MAX_FILES = 512
 # A catalog or profile document: CCL.Declarations.MAX_SOURCE.
 MAX_SOURCE = 16 * 1024
@@ -212,6 +215,10 @@ def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROO
                 raise ValueError(f"invalid {item.role.lower()} input: {result.stderr.strip()}")
             if item.role == "STARTUP":
                 for line in result.stdout.splitlines():
+                    # One entry per unindented line; a multi-line typed
+                    # argument continues on indented lines.
+                    if not line.strip() or line[0].isspace():
+                        continue
                     executable = line.split()[0]
                     if not any((f.region == "BOOTSTRAP" and f.destination == executable)
                                or (f.region == "OPTICAL" and f.destination == "apps/" + executable)

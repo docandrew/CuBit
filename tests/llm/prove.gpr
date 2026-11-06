@@ -1,0 +1,18 @@
+--  SPARK proof of the Messages API client core (userspace/lib/llm):
+--    systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 \
+--      gnatprove -P tests/llm/prove.gpr -j2 --level=1
+project Prove is
+   for Source_Dirs use ("../../userspace/lib/llm", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("cubit.ads", "cubit-llm_protocol.ads", "llm_costs.ads", "llm_costs.adb",
+      "llm_requests.ads", "llm_requests.adb", "llm_json.ads", "llm_json.adb",
+      "llm_responses.ads", "llm_responses.adb",
+      "llm_reports.ads", "llm_reports.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "--report=fail", "--no-inlining");
+   end Prove;
+end Prove;

@@ -3,7 +3,7 @@ with "../../../userspace/lib/tls/sparktls_host.gpr";
 with "../../../userspace/ccl/cubit_shared.gpr";
 --  Hosted tests of the CCL console view: events in, results and frames out.
 project Environment_Probe is
-   for Source_Dirs use ("../../../userspace/lib/lexicon", ".", "../../../userspace/ccl/src", "../../../userspace/ccl/tools/ccl-ui-preview", "../../../userspace/ccl/tools/ccl-ui-preview/host",
+   for Source_Dirs use ("../../../userspace/lib/lexicon", ".", "../../../userspace/ccl/src", "../../../userspace/lib/agent", "../../../userspace/ccl/tools/ccl-ui-preview", "../../../userspace/ccl/tools/ccl-ui-preview/host",
                         "../../../userspace/lib/ui", "../../../userspace/lib/theme", "../../../userspace/lib/calc",
                         "../../../userspace/lib/compositor", "../../../userspace/lib/display");
    --  The root package CuBit comes with cubit_shared.gpr (the runtime\'s).

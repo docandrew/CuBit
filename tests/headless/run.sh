@@ -81,7 +81,8 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -329,7 +330,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -655,6 +656,10 @@ with open(sys.argv[1], "wb") as f:
     ccl-remote)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-remote.ccl"
         ;;
+    ccl-remote-session)
+        # The LAN remote session (tests/ccl-remote/remote_session.py drives it).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-remote-session.ccl"
+        ;;
     network-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.ccl"
         ;;
@@ -873,6 +878,30 @@ with open(sys.argv[1], "wb") as f:
         # Needs internet access from the host: a manual, network-dependent
         # lane, not a deterministic regression.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-wget-https.ccl"
+        ;;
+    agent-app)
+        # AGENT-002 step 3: agent.app from the startup plan. The test types
+        # the fake key (sk-ant-test-0000) into its masked entry, asks a
+        # Diagnose mission, and the host's mock Messages API scripts one
+        # tool round (logs_recent, processes_list) and an answer.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-agent-app.ccl"
+        LLM_MOCK_STATE="$(mktemp -d "${TMPDIR:-/tmp}/cubit-llm-mock.XXXXXX")"
+        ;;
+    llm-mock|agent-mock)
+        # AGENT-001 slice 1: (llm.ask ...) in the console through llm.svc
+        # (its test variant) to the host's mock Messages API
+        # (tests/llm/mock_server.py), the key from secrets.svc. No internet,
+        # no real key: the test types sk-ant-test-0000. agent-mock (AGENT-002
+        # step 2): (agent.ask ...) with the Diagnose mission, the mock
+        # scripting the model's tool calls.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-llm-mock.ccl"
+        LLM_MOCK_STATE="$(mktemp -d "${TMPDIR:-/tmp}/cubit-llm-mock.XXXXXX")"
+        ;;
+    llm-live)
+        # Manual lane, like wget-https: the real api.anthropic.com. Needs the
+        # host's internet and the user's key, typed into the console (with
+        # --display gtk) or read by the script from LLM_LIVE_KEY_FILE.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-llm-live.ccl"
         ;;
     storage-grants)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-storage-grants.ccl"
@@ -1297,6 +1326,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] ||
        [ "$TEST_NAME" = "ccl-console" ] ||
+       [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
        [ "$TEST_NAME" = "lexicon" ] ||
        [ "$TEST_NAME" = "dictionary" ] ||
        [ "$TEST_NAME" = "logs" ] ||
@@ -1476,6 +1506,7 @@ if [ -n "$INIT_PROFILE" ]; then
     if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+       [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
        [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] ||
        [ "$TEST_NAME" = "logs" ]; then
         if [ "$TEST_NAME" = "ccl-vm" ]; then
@@ -1485,6 +1516,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if [ "${CCL_CONSOLE_DEMO:-}" = log-exited ]; then
                 CCL_IMAGES="$CCL_IMAGES boot-logs.app log-exit-probe.app"
             fi
+        elif [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ]; then
+            # llm-test.svc is llm.svc with only its tls-scope replaced (the
+            # mock's name and port); it is installed under the production
+            # name the startup plan starts. No other image carries it.
+            CCL_IMAGES="ccl-console.app clock.svc desktop.svc display.svc logstore.svc tls.svc secrets.svc llm-test.svc:llm.svc"
+            if [ "$TEST_NAME" = "agent-app" ]; then
+                CCL_IMAGES="agent.app clock.svc desktop.svc display.svc logstore.svc tls.svc secrets.svc llm-test.svc:llm.svc"
+            fi
+        elif [ "$TEST_NAME" = "llm-live" ]; then
+            CCL_IMAGES="ccl-console.app clock.svc desktop.svc display.svc logstore.svc timesync.svc tls.svc secrets.svc llm.svc"
         elif [ "$TEST_NAME" = "logs" ]; then
             CCL_IMAGES="logs.app clock.svc desktop.svc display.svc"
         elif [ "$TEST_NAME" = "lexicon" ]; then
@@ -1572,8 +1613,10 @@ if [ -n "$INIT_PROFILE" ]; then
                 done
             fi
         fi
-        for CCL_IMAGE_NAME in $CCL_IMAGES; do
-            CCL_IMAGE="$KERNEL_DIR/isodir/boot/$CCL_IMAGE_NAME"
+        for CCL_IMAGE_ENTRY in $CCL_IMAGES; do
+            # SOURCE:TARGET installs a variant under another name.
+            CCL_IMAGE_NAME="${CCL_IMAGE_ENTRY##*:}"
+            CCL_IMAGE="$KERNEL_DIR/isodir/boot/${CCL_IMAGE_ENTRY%%:*}"
             if [ "$CCL_IMAGE_NAME" = desktop.svc ] && [ -n "${CUBIT_DESKTOP_IMAGE:-}" ]; then
                 CCL_IMAGE="$CUBIT_DESKTOP_IMAGE"
             fi
@@ -1741,6 +1784,34 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "ccl-remote-session" ]; then
+        # The endpoint, its work root and the device agent's message in
+        # mail/to-host (the test takes it from the host side).
+        for REMOTE_IMAGE_NAME in ccl-remote.app clock.svc logstore.svc; do
+            debugfs -w -R "rm $REMOTE_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$REMOTE_IMAGE_NAME $REMOTE_IMAGE_NAME" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $REMOTE_IMAGE_NAME (make -C kernel ccl-remote)" >&2
+                exit 1
+            fi
+        done
+        REMOTE_MAIL="$TEMP_DISK.greeting.txt"
+        printf 'hello host, from the device'"'"'s agent\n' > "$REMOTE_MAIL"
+        REMOTE_COMMANDS="$TEMP_DISK.ccl-remote-session"
+        {
+            echo "mkdir work"
+            echo "mkdir work/mail"
+            echo "mkdir work/mail/to-host"
+            echo "rm work/mail/to-host/greeting.txt"
+            echo "write $REMOTE_MAIL work/mail/to-host/greeting.txt"
+        } > "$REMOTE_COMMANDS"
+        debugfs -w -f "$REMOTE_COMMANDS" "$TEMP_DISK" >/dev/null 2>&1
+        rm -f "$REMOTE_COMMANDS" "$REMOTE_MAIL"
+        if ! debugfs -R "stat \"work/mail/to-host/greeting.txt\"" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
+            echo "headless: the remote session's mailbox was not seeded" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "bench-net" ]; then
         for BENCH_NET_IMAGE in logstore.svc net-bench.app; do
@@ -2440,6 +2511,21 @@ SERVO_PAGES_EOF
             fi
         done
     fi
+    if [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ]; then
+        # The test root is tls.svc's whole trust store for this run: only
+        # the mock's certificate verifies.
+        if ! bash "$ROOT_DIR/tests/llm/make-pki.sh" >/dev/null; then
+            echo "headless: failed to make the llm mock's certificate" >&2
+            exit 1
+        fi
+        debugfs -w -R "mkdir tls" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "rm tls/roots.der" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $ROOT_DIR/tests/tls/build/pki/ca.der tls/roots.der" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install the llm mock's trust store" >&2
+            exit 1
+        fi
+    fi
     if [ "$TEST_NAME" = "tls-service" ]; then
         # The test root is the service's trust store for this run.
         debugfs -w -R "mkdir tls" "$TEMP_DISK" >/dev/null 2>&1
@@ -2693,6 +2779,15 @@ if [ "$TEST_NAME" = "tls-service" ]; then
         exit 1
     fi
 fi
+if [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ]; then
+    # Development initrd whose tls.hosts maps the mock's name to the host.
+    if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
+          "$ROOT_DIR/tests/llm/llm-initrd.ccl" \
+          --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
+        echo "headless: failed to prepare the llm-mock settings fixture" >&2
+        exit 1
+    fi
+fi
 if [ "$CONFIG_STORAGE_TEST" = 1 ]; then
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/config-turso/native/storage-initrd.ccl" \
@@ -2740,6 +2835,7 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "config-tree" ] ||
    [ "$TEST_NAME" = "display-grants-virtio-vga" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+   [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
    [ "$TEST_NAME" = "logs" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
@@ -2872,6 +2968,7 @@ fi
 if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+   [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
    [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "boot-timeline" ] ||
@@ -3365,6 +3462,173 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-logs-search.ppm"
                 sleep 0.5
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+        elif [ "$TEST_NAME" = "agent-app" ]; then
+            # agent.app (AGENT-002 step 3): its masked entry takes the fake
+            # key into secrets.svc, then one Diagnose mission runs against
+            # the mock (one tool round, then an answer).
+            agent_ready=0
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                if grep -aF "agent-app: first frame presented" "$SERIAL_LOG" >/dev/null &&
+                   grep -aF "llm: ready for" "$SERIAL_LOG" >/dev/null; then
+                    agent_ready=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$agent_ready" -ne 1 ]; then
+                echo "headless: agent.app or llm.svc did not start" >&2
+                exit 1
+            fi
+            send_text() {
+                python3 -I "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$1" 0.03
+            }
+            wait_marker() {
+                local tries=0
+                while [ $tries -lt "$2" ]; do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null && return 0
+                    sleep 0.1
+                    tries=$((tries + 1))
+                done
+                echo "headless: no '$1' in time" >&2
+                return 1
+            }
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-agent-key-entry.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            # No key yet: the app opens on its masked key entry.
+            send_text 'sk-ant-test-0000'
+            wait_marker "secrets: stored anthropic-api-key" 100 || exit 1
+            wait_marker "agent-app: API key stored in secrets.svc" 50 || exit 1
+            sleep 0.5
+            send_text 'agent-app-diagnose'
+            wait_marker "agent-app: mission 1 started" 100 || exit 1
+            wait_marker "agent-app: mission 1 ended" 900 || exit 1
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-agent-app.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            touch "$LLM_MOCK_STATE/stop"
+            sleep 1
+        elif [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "llm-live" ]; then
+            # The console types into secrets.svc and llm.svc (AGENT-001).
+            llm_ready=0
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                if grep -aF "ccl-console: first frame presented" "$SERIAL_LOG" >/dev/null &&
+                   grep -aF "llm: ready for" "$SERIAL_LOG" >/dev/null; then
+                    llm_ready=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$llm_ready" -ne 1 ]; then
+                echo "headless: the console or llm.svc did not start" >&2
+                exit 1
+            fi
+            send_text() {
+                python3 -I "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$1" 0.03
+            }
+            # Wait up to $2 tenths of a second for a serial marker.
+            wait_marker() {
+                local tries=0
+                while [ $tries -lt "$2" ]; do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null && return 0
+                    sleep 0.1
+                    tries=$((tries + 1))
+                done
+                echo "headless: no '$1' in time" >&2
+                return 1
+            }
+            sleep 0.5
+            send_text '(secrets.status (Secret "anthropic-api-key"))'
+            sleep 1
+            send_text '(secrets.set (Secret "anthropic-api-key"))'
+            sleep 1
+            if [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ]; then
+                # The fake key, typed into the non-echoing entry.
+                send_text 'sk-ant-test-0000'
+            elif [ -n "${LLM_LIVE_KEY_FILE:-}" ]; then
+                send_text "$(tr -d '\n' < "$LLM_LIVE_KEY_FILE")"
+            else
+                echo "headless: type the API key into the console window and press Enter" >&2
+                wait_marker "secrets: stored anthropic-api-key" 1200 || exit 1
+            fi
+            wait_marker "secrets: stored anthropic-api-key" 100 || exit 1
+            send_text '(secrets.status (Secret "anthropic-api-key"))'
+            sleep 1
+            if [ "$TEST_NAME" = "llm-live" ]; then
+                send_text '(define r (llm.ask (Llm_Request prompt => "hello" model => Llm_Model.Default max_tokens => 256 deadline_ms => 60000 cost_ceiling => (Llm_Ceiling.Nano_Usd 100000000) system => "" mission => "llm-live")))'
+                sleep 2
+                send_text '(wait (llm.reply r))'
+                wait_marker "Llm_Reply" 900
+                send_text '(window 64 (llm.text r))'
+                sleep 2
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-llm-live.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                exit 0
+            fi
+            if [ "$TEST_NAME" = "agent-mock" ]; then
+                # A file in the console's workspace for the mission to read.
+                send_text '(define (marker) String "AGENT-FILE-MARKER-42")'
+                sleep 1
+                send_text ':save notes.ccl'
+                wait_marker "workspace saved notes.ccl" 100 || exit 1
+                # The mission's place is the console's workspace root.
+                send_text '(fs.home)'
+                wait_marker "REPL completed: Place:" 100 || exit 1
+                agent_root="$(grep -a "REPL completed: Place:" "$SERIAL_LOG" | tail -1 | sed -n 's/.*Place: (Place "\([^"]*\)".*/\1/p')"
+                if [ -z "$agent_root" ]; then
+                    echo "headless: no workspace root for the mission" >&2
+                    exit 1
+                fi
+                send_text '(define s (agent.ask (Agent_Request mission => Mission.Diagnose prompt => "agent-diagnose" model => Agent_Model.Profile budget => (Agent_Budget tokens => 200000 cost_nano_usd => 1000000000 wall_ms => 300000 tool_calls => 10 request_max_tokens => 4096 request_deadline_ms => 60000) places => ["'"$agent_root"'"] session => "diag")))'
+                sleep 2
+                send_text '(wait (agent.reply s))'
+                wait_marker "Agent_Stop.Completed" 900 || exit 1
+                send_text '(window 64 (agent.transcript s))'
+                sleep 2
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-agent-transcript.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                # The model asks for two calls; the mission allows one.
+                send_text '(define b (agent.ask (Agent_Request mission => Mission.Diagnose prompt => "agent-budget" model => Agent_Model.Profile budget => (Agent_Budget tokens => 200000 cost_nano_usd => 1000000000 wall_ms => 300000 tool_calls => 1 request_max_tokens => 4096 request_deadline_ms => 60000) places => ["'"$agent_root"'"] session => "budget")))'
+                sleep 2
+                send_text '(wait (agent.reply b))'
+                wait_marker "Agent_Stop.Tool_Call_Budget" 600 || exit 1
+                send_text '(logs.recent "llm")'
+                sleep 2
+                touch "$LLM_MOCK_STATE/stop"
+                sleep 1
+                exit_agent_steps=1
+            fi
+            if [ "${exit_agent_steps:-0}" -ne 1 ]; then
+            send_text '(define r (llm.ask (Llm_Request prompt => "hello" model => Llm_Model.Default max_tokens => 1024 deadline_ms => 60000 cost_ceiling => (Llm_Ceiling.Nano_Usd 100000000) system => "Be brief." mission => "llm-mock")))'
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                [ -f "$LLM_MOCK_STATE/part1" ] && break
+                sleep 0.1
+            done
+            sleep 1.5
+            # The first part only: the mock holds the rest.
+            send_text '(window 64 (llm.text r))'
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-llm-partial.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            touch "$LLM_MOCK_STATE/release"
+            send_text '(wait (llm.reply r))'
+            wait_marker "Llm_Stop.End_Turn" 300
+            send_text '(window 64 (llm.text r))'
+            sleep 1.5
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-llm-answer.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            # A ceiling below what 1000 output tokens may cost: a typed stop.
+            send_text '(define b (llm.ask (Llm_Request prompt => "budget" model => Llm_Model.Default max_tokens => 1000 deadline_ms => 60000 cost_ceiling => (Llm_Ceiling.Nano_Usd 1000) system => "" mission => "llm-mock")))'
+            sleep 1
+            send_text '(wait (llm.reply b))'
+            wait_marker "Llm_Stop.Cost_Budget" 300
+            # A deadline the mock outlasts.
+            send_text '(define s (llm.ask (Llm_Request prompt => "slow" model => (Llm_Model.Named "claude-opus-5-5") max_tokens => 64 deadline_ms => 3000 cost_ceiling => Llm_Ceiling.Unlimited system => "" mission => "llm-mock")))'
+            sleep 1
+            send_text '(wait (llm.reply s))'
+            wait_marker "Llm_Stop.Deadline" 300
+            send_text '(logs.recent "llm")'
+            sleep 2
+            send_text '(logs.recent "secrets")'
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-llm-logs.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            touch "$LLM_MOCK_STATE/stop"
+            sleep 1
+            fi
         elif [ "$TEST_NAME" = "ccl-console" ]; then
             console_ready=0
             for ((attempt = 0; attempt < 150; attempt++)); do
@@ -4325,6 +4589,19 @@ fi
 if [ "$TEST_NAME" = "ccl-remote" ]; then
     NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18445-10.0.2.15:8080"
 fi
+if [ "$TEST_NAME" = "ccl-remote-session" ]; then
+    # A LAN host's view: the guest's port 8445 (its startup entry's
+    # Remote_Listen.LAN) forwarded from the host's loopback. The driver
+    # pairs with the code the guest shows on its console, runs the
+    # session and quits QEMU; its status is the test's.
+    REMOTE_SESSION_PORT="${REMOTE_SESSION_PORT:-18447}"
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:$REMOTE_SESSION_PORT-10.0.2.15:8445"
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/ccl-remote/remote_session.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$REMOTE_SESSION_PORT" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "network-authority" ]; then
     NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18444-10.0.2.15:8080"
     python3 "$ROOT_DIR/tests/network-authority/peer.py" "$SERIAL_LOG" &
@@ -4367,6 +4644,12 @@ if [ "$TEST_NAME" = "timesync" ]; then
 fi
 if [ "$TEST_NAME" = "tls-probe" ] || [ "$TEST_NAME" = "tls-service" ]; then
     python3 "$ROOT_DIR/tests/tls/server.py" "$SERIAL_LOG" "$TEST_NAME" &
+    NETWORK_PEER_PID=$!
+fi
+if [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ]; then
+    python3 -I "$ROOT_DIR/tests/llm/mock_server.py" "$LLM_MOCK_STATE" "$TIMEOUT_SECONDS" \
+        "$(case "$TEST_NAME" in agent-mock) echo agent ;; agent-app) echo agent-app ;; *) echo llm ;; esac)" \
+        > "${SERIAL_LOG}.llm-mock.log" 2>&1 &
     NETWORK_PEER_PID=$!
 fi
 if [ "$TEST_NAME" = "servo" ]; then
@@ -4591,6 +4874,14 @@ TEST: PASS metrics
         ;;
     ccl-remote)
         required_markers="ccl-control: native listener ready"
+        ;;
+    ccl-remote-session)
+        required_markers="
+ccl-remote: DEVELOPMENT PLAINTEXT on the LAN, port 8445; grants: diagnose, files, builds, mail
+ccl-remote: listening on 10.0.2.15:8445
+ccl-remote: ready
+ccl-remote: a host paired
+"
         ;;
     network-authority)
         required_markers="
@@ -5519,6 +5810,140 @@ tls: channel 1 established with example.com
 wget: status HTTP/1.1 200 OK
 wget: done
 "
+        ;;
+    llm-mock)
+        required_markers="
+secrets: ready
+llm: ready for llm-mock.cubit.internal:18490
+ccl-console: first frame presented
+secrets: stored anthropic-api-key for process
+secrets: anthropic-api-key used by role 37
+tls: channel 1 established with llm-mock.cubit.internal
+ccl-console: REPL completed: Secret_State: (Secret_State \"anthropic-api-key\" true \"llm\")
+mission \"llm-mock\" model claude-opus-5-5 stop end_turn status 200 input 25 output 12 cache_read 0 cache_write 0 cost_nano_usd 340000
+Llm_Stop.End_Turn
+END-OF-ANSWER
+stop cost_budget
+Llm_Stop.Cost_Budget
+stop deadline
+Llm_Stop.Deadline
+"
+        llm_failed=0
+        # The fake key reaches the mock only: never the serial console,
+        # which also carries every logstore record (CuBit.Log echoes) and
+        # the console's transcript lines.
+        if grep -aF "sk-ant-test-0000" "$SERIAL_LOG" >/dev/null; then
+            echo "headless: the API key appeared in the serial log" >&2
+            llm_failed=1
+        fi
+        if grep -aF "MUST-NOT-ARRIVE" "$SERIAL_LOG" >/dev/null; then
+            echo "headless: text after a cost stop reached the console" >&2
+            llm_failed=1
+        fi
+        # Streaming: the first look at the text had part one only.
+        first_text="$(grep -a "REPL completed: Stream<String>\|REPL completed: List<String>" "$SERIAL_LOG" | grep -aF "Hello from the mock" | head -1)"
+        if [ -z "$first_text" ] || printf '%s' "$first_text" | grep -qF "END-OF-ANSWER"; then
+            echo "headless: the text did not stream (first view: $first_text)" >&2
+            llm_failed=1
+        fi
+        # The usage reached logstore: (logs.recent "llm") shows it.
+        if ! grep -a "REPL completed: List<LogEntry>" "$SERIAL_LOG" | grep -aF "stop end_turn" >/dev/null; then
+            echo "headless: (logs.recent \"llm\") did not show the exchange" >&2
+            llm_failed=1
+        fi
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: the llm mock failed: ${SERIAL_LOG}.llm-mock.log" >&2
+            llm_failed=1
+        fi
+        NETWORK_PEER_PID=""
+        rm -rf "$LLM_MOCK_STATE"
+        if [ "$llm_failed" -ne 0 ]; then
+            exit 1
+        fi
+        ;;
+    agent-app)
+        required_markers="
+agent-app: first frame presented
+secrets: stored anthropic-api-key
+agent-app: API key stored in secrets.svc
+secrets: anthropic-api-key used by role 37
+tls: channel 1 established with llm-mock.cubit.internal
+agent-app: mission 1 started
+mission \"agent.Diagnose session 1\" model claude-opus-5-5 stop tool_use
+mission \"agent.Diagnose session 1\" model claude-opus-5-5 stop end_turn
+tool logs_recent grant logs.recent outcome ok
+tool processes_list grant proc.list outcome ok
+stop completed turns 2 tool_calls 2
+agent-app: mission 1 ended
+"
+        agent_failed=0
+        # The fake key reaches the mock only: never the serial log.
+        if grep -aF "sk-ant-test-0000" "$SERIAL_LOG" >/dev/null; then
+            echo "headless: the API key appeared in the serial log" >&2
+            agent_failed=1
+        fi
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: the agent-app mock's checks failed: ${SERIAL_LOG}.llm-mock.log" >&2
+            agent_failed=1
+        fi
+        NETWORK_PEER_PID=""
+        rm -rf "$LLM_MOCK_STATE"
+        if [ "$agent_failed" -ne 0 ]; then
+            exit 1
+        fi
+        ;;
+    agent-mock)
+        required_markers="
+secrets: anthropic-api-key used by role 37
+tls: channel 1 established with llm-mock.cubit.internal
+workspace saved notes.ccl
+mission \"agent.Diagnose session 1\" model claude-opus-5-5 stop tool_use
+mission \"agent.Diagnose session 1\" model claude-opus-5-5 stop end_turn
+Agent_Stop.Completed
+Agent_Stop.Tool_Call_Budget
+[tool logs_recent]
+[tool files_write]
+[tool files_read]
+not_granted: refused: files_write is not a tool of this Diagnose mission
+END-OF-DIAGNOSIS
+tool logs_recent grant logs.recent outcome ok
+tool files_write grant none outcome not_granted
+tool logs_recent grant logs.recent outcome malformed
+tool files_read grant fs.read outcome ok
+stop tool_call_budget turns 1 tool_calls 0
+stop completed turns 3 tool_calls 5
+"
+        agent_failed=0
+        # The fake key reaches the mock only.
+        if grep -aF "sk-ant-test-0000" "$SERIAL_LOG" >/dev/null; then
+            echo "headless: the API key appeared in the serial log" >&2
+            agent_failed=1
+        fi
+        # Refused calls never ran: the budget turn's calls have no cards.
+        if grep -aF "toolu_budget" "$SERIAL_LOG" | grep -aF "outcome ok" >/dev/null; then
+            echo "headless: a call over the tool budget ran" >&2
+            agent_failed=1
+        fi
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: the agent mock's checks failed: ${SERIAL_LOG}.llm-mock.log" >&2
+            agent_failed=1
+        fi
+        NETWORK_PEER_PID=""
+        rm -rf "$LLM_MOCK_STATE"
+        if [ "$agent_failed" -ne 0 ]; then
+            exit 1
+        fi
+        ;;
+    llm-live)
+        required_markers="
+llm: ready for api.anthropic.com:443
+tls: channel 1 established with api.anthropic.com
+Llm_Stop.End_Turn
+"
+        if grep -aF "sk-ant-" "$SERIAL_LOG" >/dev/null; then
+            echo "headless: something like an API key appeared in the serial log" >&2
+            exit 1
+        fi
         ;;
     tls-service)
         required_markers="

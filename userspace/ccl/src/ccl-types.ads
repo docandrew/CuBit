@@ -10,10 +10,15 @@ package CCL.Types with SPARK_Mode is
    --  registry (name and 16 components); a precompiled manifest schema
    --  would remove this pressure (follow-up).
    --  Declared types one registry holds: every interface's (summed and
-   --  checked in CCL_Host_Environment) and a session's own.
-   Maximum_Declarations : constant := 128;
+   --  checked in CCL_Host_Environment) and a session's own. 160: the
+   --  front ends' interfaces declare 120 types with agent.* (AGENT-002)
+   --  and fs.read, a session keeps 24.
+   Maximum_Declarations : constant := 160;
    Maximum_Components : constant := 16;
-   Maximum_Value_Cells : constant := 256;
+   --  Cells one value image holds (CCL.Objects.Image): as many as fit its
+   --  16 KiB beside the header and the text (48 + 504 * 16 + 8192 bytes),
+   --  so a host's list result carries 55 processes or 83 log records.
+   Maximum_Value_Cells : constant := 504;
 
    type Builtin is (Invalid, Integer_Kind, Boolean_Kind, String_Kind,
                     Character_Kind, Handler_Kind, Unit_Kind);

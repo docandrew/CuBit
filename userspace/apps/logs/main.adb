@@ -77,51 +77,68 @@ procedure Main is
    Unnamed : Boolean := False;
    Page : array (0 .. PO.Page_Bytes - 1) of Unsigned_8 := [others => 0] with Alignment => PO.Page_Bytes;
 
-   --  Names for every running process: its manifest identity, else its name.
+   --  Names for every running process: its manifest identity, else its
+   --  name. procmgr lends a page of records at a time: every page is read.
    procedure Refresh_Names is
-      Loan : CuBit.Memory_Grants.Grant_Reference;
-      Lent, Revoked : Boolean;
-      Request : Message := NULL_MESSAGE;
-      Reply_Tag : MessageTag;
+      --  Reply words: records written, processes in total.
+      Written_Word : constant := 1;
+      Total_Word : constant := 2;
+      First, Written : Natural := 0;
+      Total : Unsigned_64;
    begin
-      CuBit.Memory_Grants.Create_Via_Capability (Startup.Process_Observer, Page'Address, 1, True, Loan, Lent);
-      if not Lent then return; end if;
-      Request.tag := (label => PO.List_Label, length => 1, protocol => 0, ipc => <>, reserved => 0);
-      Request.words (0) := CuBit.Grant_References.Encode (Loan);
-      Reply_Tag := capCall (Startup.Process_Observer, Request, CuBit.Messages.Wait_Forever);
-      CuBit.Memory_Grants.Revoke (Loan, Revoked);
-      if Reply_Tag.label /= Unsigned_32 (PO.Status'Enum_Rep (PO.OK)) then return; end if;
-      for Index in 0 .. Natural (Unsigned_64'Min (Request.words (1), PO.Page_Records)) - 1 loop
+      loop
          declare
-            Base : constant Natural := Index * PO.Record_Bytes;
-            Pid : constant Unsigned_64 :=
-              Unsigned_64 (Page (Base)) or Shift_Left (Unsigned_64 (Page (Base + 1)), 8) or
-              Shift_Left (Unsigned_64 (Page (Base + 2)), 16) or Shift_Left (Unsigned_64 (Page (Base + 3)), 24);
-            Identity_Length : constant Natural :=
-              Natural'Min (Natural (Page (Base + PO.Identity_Length_Offset)), PO.Identity_Bytes);
-            Name_Length : constant Natural := Natural'Min (Natural (Page (Base + PO.Name_Length_Offset)), PO.Name_Bytes);
-            Started : Unsigned_64 := 0;
-            Name : String (1 .. PO.Identity_Bytes);
-            Length : Natural := 0;
+            Loan : CuBit.Memory_Grants.Grant_Reference;
+            Lent, Revoked : Boolean;
+            Request : Message := NULL_MESSAGE;
+            Reply_Tag : MessageTag;
          begin
-            for I in reverse 0 .. 7 loop
-               Started := Shift_Left (Started, 8) or Unsigned_64 (Page (Base + PO.Started_Offset + I));
-            end loop;
-            if Identity_Length > 0 then
-               for I in 1 .. Identity_Length loop
-                  Name (I) := Character'Val (Page (Base + PO.Identity_Offset + I - 1));
-               end loop;
-               Length := Identity_Length;
-            else
-               for I in 1 .. Name_Length loop
-                  Name (I) := Character'Val (Page (Base + PO.Name_Offset + I - 1));
-               end loop;
-               Length := Name_Length;
-            end if;
-            if Length > 0 then
-               Log_View.Name_Source (View, Pid, Name (1 .. Length), Started);
-            end if;
+            CuBit.Memory_Grants.Create_Via_Capability (Startup.Process_Observer, Page'Address, 1, True, Loan, Lent);
+            if not Lent then return; end if;
+            Request.tag := (label => PO.List_Label, length => PO.Paged_Request_Words, protocol => 0, ipc => <>,
+                            reserved => 0);
+            Request.words (0) := CuBit.Grant_References.Encode (Loan);
+            Request.words (PO.First_Record_Word) := Unsigned_64 (First);
+            Reply_Tag := capCall (Startup.Process_Observer, Request, CuBit.Messages.Wait_Forever);
+            CuBit.Memory_Grants.Revoke (Loan, Revoked);
+            if Reply_Tag.label /= Unsigned_32 (PO.Status'Enum_Rep (PO.OK)) then return; end if;
+            Written := Natural (Unsigned_64'Min (Request.words (Written_Word), PO.Page_Records));
+            Total := Request.words (Total_Word);
          end;
+         for Index in 0 .. Written - 1 loop
+            declare
+               Base : constant Natural := Index * PO.Record_Bytes;
+               Pid : constant Unsigned_64 :=
+                 Unsigned_64 (Page (Base)) or Shift_Left (Unsigned_64 (Page (Base + 1)), 8) or
+                 Shift_Left (Unsigned_64 (Page (Base + 2)), 16) or Shift_Left (Unsigned_64 (Page (Base + 3)), 24);
+               Identity_Length : constant Natural :=
+                 Natural'Min (Natural (Page (Base + PO.Identity_Length_Offset)), PO.Identity_Bytes);
+               Name_Length : constant Natural := Natural'Min (Natural (Page (Base + PO.Name_Length_Offset)), PO.Name_Bytes);
+               Started : Unsigned_64 := 0;
+               Name : String (1 .. PO.Identity_Bytes);
+               Length : Natural := 0;
+            begin
+               for I in reverse 0 .. 7 loop
+                  Started := Shift_Left (Started, 8) or Unsigned_64 (Page (Base + PO.Started_Offset + I));
+               end loop;
+               if Identity_Length > 0 then
+                  for I in 1 .. Identity_Length loop
+                     Name (I) := Character'Val (Page (Base + PO.Identity_Offset + I - 1));
+                  end loop;
+                  Length := Identity_Length;
+               else
+                  for I in 1 .. Name_Length loop
+                     Name (I) := Character'Val (Page (Base + PO.Name_Offset + I - 1));
+                  end loop;
+                  Length := Name_Length;
+               end if;
+               if Length > 0 then
+                  Log_View.Name_Source (View, Pid, Name (1 .. Length), Started);
+               end if;
+            end;
+         end loop;
+         First := First + Written;
+         exit when Written = 0 or else Unsigned_64 (First) >= Total;
       end loop;
    end Refresh_Names;
 

@@ -1,4 +1,5 @@
 with CuBit.Canonical_Readers;
+with CCL.Objects.Views;
 
 --  Typed CCL values checked against declared types (docs/ccl-boot-configuration.md,
 --  "Typed settings"; docs/ccl-launch-parameters.md): a value's expression
@@ -25,4 +26,11 @@ package CCL.Typed_Values is
    --  Check Source (one expression) against Root_Name, declared (with the
    --  types it reaches) by Schema, a sequence of CCL (type ...) forms.
    procedure Check (Schema, Root_Name, Source : String; Result : out Check_Result);
+
+   --  As Check, but the value itself, for a reader that uses it (a
+   --  session's records, AGENT-002): Object holds it (bound to a local
+   --  schema identity) when Result.Success. No canonical text is made.
+   procedure Capture_Value
+     (Schema, Root_Name, Source : String; Object : in out CCL.Objects.Views.Snapshot;
+      Result : out Check_Result);
 end CCL.Typed_Values;

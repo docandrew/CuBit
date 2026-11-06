@@ -4,6 +4,11 @@
 (startup v1
   (start "logstore.svc" (priority 5))
   (start "clock.svc" (priority 5))
+  # The agent path (AGENT-002): tls.svc holds the trust store (tls/roots.der)
+  # and connects for llm.svc, whose one tls-scope is the Messages API host.
+  # timesync keeps the wall clock certificate validation needs.
+  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "timesync.svc" (priority 5) (network approve-declared))
   (start "config-storage.svc" (priority 5) (role config-storage))
   (start "display.svc" (priority 5))
   # Dictionary, thesaurus and spelling (docs/lexicon.md).
@@ -13,6 +18,22 @@
   # in software. One image for every machine (HW-002).
   (start "desktop.svc" (priority 4) (render setting "desktop.render.gpu"))
   (start "boot-logs.app" (priority 4))
+  # tls.svc has registered by now (llm.svc's TLS scope needs it). The API
+  # key is the named secret anthropic-api-key, typed into agent.app's
+  # masked entry; only llm.svc's registered role may use it (SEC-022).
+  (start "secrets.svc" (priority 5)
+    (arguments (Secrets_Parameters
+      grant => (Secret_Grant secret => "anthropic-api-key" holder => Secret_Holder.Llm_Service))))
+  (start "llm.svc" (priority 5) (network approve-declared)
+    (arguments (Llm_Service_Parameters
+      endpoint => "api.anthropic.com:443" api_key_secret => "anthropic-api-key")))
+  # The LAN remote session (tools/cubit-remote): off. To let a host on
+  # the LAN connect, change listen to Remote_Listen.LAN (port 8445; grant
+  # files/builds/mail as wanted); it then shows a pairing code in a window.
+  (start "ccl-remote.app" (priority 4) (network approve-declared)
+    (arguments (Remote_Parameters listen => Remote_Listen.Off
+      display => Pairing_Display.Window work => "@mem:0/work"
+      files => false builds => false mail => false)))
   (start "installer.svc" (priority 4))
   (start "ccl-console.app" (priority 3))
 )

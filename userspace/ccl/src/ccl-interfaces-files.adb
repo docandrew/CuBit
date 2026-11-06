@@ -30,6 +30,8 @@ package body CCL.Interfaces.Files with SPARK_Mode is
       if Accepted then CCL.Objects.Bind (Types, Named ("Child"), CHILD_KEY, Bound.Child, Accepted); end if;
       if Accepted then CCL.Objects.Bind (Types, Named ("File_Metadata"), METADATA_KEY, Bound.Metadata, Accepted); end if;
       if Accepted then CCL.Objects.Bind (Types, Listing_Type, LISTING_KEY, Bound.Listing, Accepted); end if;
+      if Accepted then CCL.Objects.Bind (Types, Named ("Excerpt"), EXCERPT_KEY, Bound.Excerpt, Accepted); end if;
+      if Accepted then CCL.Objects.Bind (Types, CCL.Types.String_Type, TEXT_KEY, Bound.Text, Accepted); end if;
    end Define_Types;
 
    procedure Publish
@@ -67,6 +69,11 @@ package body CCL.Interfaces.Files with SPARK_Mode is
             when List =>
               (Argument => CCL.Host_Values.Object_Value, Argument_Schema => PLACE_KEY,
                Result => CCL.Host_Values.Object_Value, Result_Schema => LISTING_KEY,
+               Authority => CCL.VM.Observe_Authority, others => <>),
+            --  Reading is checked by the filesystem service, like listing.
+            when Read =>
+              (Argument => CCL.Host_Values.Object_Value, Argument_Schema => EXCERPT_KEY,
+               Result => CCL.Host_Values.Object_Value, Result_Schema => TEXT_KEY,
                Authority => CCL.VM.Observe_Authority, others => <>));
    begin
       Error := CCL.Catalog.Invalid_Host_Contract;
@@ -76,6 +83,8 @@ package body CCL.Interfaces.Files with SPARK_Mode is
       Publish_Schema (Bound.Child);
       Publish_Schema (Bound.Metadata);
       Publish_Schema (Bound.Listing);
+      Publish_Schema (Bound.Excerpt);
+      Publish_Schema (Bound.Text);
       if not Accepted then
          return;
       end if;

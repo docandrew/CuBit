@@ -1,0 +1,62 @@
+# ccl-remote: the LAN remote session for a host's cubit-remote client
+# (tools/cubit-remote): typed CCL evaluation over read-only interfaces,
+# files in a workspace, ccl-build jobs and a mailbox. Requested authority
+# only; the startup entry decides, and its arguments say whether it listens
+# at all (every parameter is required: no hidden default).
+#
+#   listen   Remote_Listen.Off, or Remote_Listen.LAN: port 8445 on every
+#            address netstack's interfaces hold (the network request below)
+#   display  where the pairing code is shown: Window (the desktop) or
+#            Kernel_Console (serial: headless machines, the QEMU test)
+#   work     the work root holding the workspace and the mailbox
+#            ("@nvme:0/work"; the installed laptop's is "@ufs:0/work")
+#   files    the host may write the workspace
+#   builds   the host may start ccl-build on workspace components
+#   mail     the host may use the mailbox
+(type Remote_Listen (enum Off LAN))
+(type Pairing_Display (enum Window Kernel_Console))
+(type Remote_Parameters (record
+  (listen Remote_Listen)
+  (display Pairing_Display)
+  (work String)
+  (files Boolean)
+  (builds Boolean)
+  (mail Boolean)))
+(Executable_Manifest
+  identity => "com.cubit.ccl-remote"
+  version => "0.1.0"
+  requests => [
+    # "started", "a host paired", refusals: never the token or contents.
+    (service "logstore" "logstore")
+    (service "clock" "clock")
+    # (logs.recent "service"), (logs.minimum): read-only log observation.
+    (service "log-observer" "log-observer")
+    # (proc.list), through procmgr's observer role.
+    (service "process-observer" "process-observer")
+    # Global non-secret Config read, never write/admin.
+    (service "config" "config")
+    (service "filesystem" "filesystem")
+    # Which addresses netstack's interfaces hold (inspection only).
+    (service "network-stack" "network-stack")
+    # Port 8445 on whichever addresses this machine holds (a listen scope
+    # is one port): one listener per interface (at most four) and each
+    # one's connection.
+    (network Network_Action.TCP_Listen "0.0.0.0" 0 8445 8445 false 8 "network")
+    # Builds: ccl-build.app, below.
+    (service "process-manager" "process-manager")
+    # The pairing window (display => Window).
+    (service "desktop" "desktop")]
+  optional => ["log-observer" "process-observer" "process-manager" "desktop"]
+  scopes => [
+    (config-all [File_Right.Read])
+    # The workspace and the mailbox, under the work root.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@ufs:0/work")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
+    # What a build delegates to ccl-build (decision D2), as ccl-build's
+    # own manifest names them.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/storehouse")
+    (filesystem [File_Right.Read] "@nvme:0/toolchain")
+    (filesystem [File_Right.Read] "@nvme:0/cubit-src")]
+  may_launch => [(Launch "ccl-build.app")]
+  parameters => (Parameter_Signature.Declared "Remote_Parameters"))

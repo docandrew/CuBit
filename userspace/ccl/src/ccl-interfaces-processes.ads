@@ -49,7 +49,9 @@ package CCL.Interfaces.Processes with SPARK_Mode is
    PROCESS_FIELDS : constant := 7;
    --  A Process takes its product cell, pid, name, identity, two cells of
    --  state and three Integers; a listing's count cell comes first. The
-   --  result image (CCL.Objects.Maximum_Cells) then holds 28 processes.
+   --  result image (CCL.Objects.Maximum_Cells) then holds 55 processes:
+   --  the named ceiling of one (proc.list) (more running is a refusal
+   --  that says so, never a silent prefix).
    PROCESS_CELLS : constant := 1 + 1 + 1 + 1 + 2 + 3;
    MAXIMUM_LISTED : constant := (CCL.Objects.Maximum_Cells - 1) / PROCESS_CELLS;
 

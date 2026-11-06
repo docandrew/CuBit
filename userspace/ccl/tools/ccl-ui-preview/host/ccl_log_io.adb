@@ -2,6 +2,7 @@
 package body CCL_Log_IO is
    function Available return Boolean is (False);
    procedure Announce (Text : String) is null;
+   procedure Note (Text : String) is null;
    procedure Recent
      (Service : String; Contract : CCL.Objects.Binding;
       Image : out CCL.Objects.Image; Success : out Boolean;

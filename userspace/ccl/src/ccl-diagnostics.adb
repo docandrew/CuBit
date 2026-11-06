@@ -101,7 +101,8 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Stream_Window_Out_Of_Range => "A window holds 1 to 255 elements",
          when Stream_Element_Mismatch => "The stream's elements are not of the type named",
          when Waiting_On_Task => "Waiting for the task to complete",
-         when Not_Compiled => "This program cannot be compiled to bytecode yet");
+         when Not_Compiled => "This program cannot be compiled to bytecode yet",
+         when Result_Too_Large => "The result is too large to show whole");
    end Message;
    function Message (Status : CCL.VM.Execution_Status) return String is
       use CCL.VM;

@@ -46,6 +46,17 @@
   (file optical "desktop" "apps/desktop.svc")
   (file optical "ccl-workbench" "apps/ccl-workbench.app")
   (file optical "ccl-console" "apps/ccl-console.app")
+  # The agent path (AGENT-002): agent.app asks llm.svc, which reaches the
+  # Messages API through tls.svc (its trust store at @cd:0/tls/roots.der)
+  # and uses the API key that secrets.svc holds.
+  (file optical "tls" "apps/tls.svc")
+  (file optical "timesync" "apps/timesync.svc")
+  (file optical "secrets" "apps/secrets.svc")
+  (file optical "llm" "apps/llm.svc")
+  (file optical "agent" "apps/agent.app")
+  (file optical "tls-roots" "apps/tls/roots.der")
+  # The LAN remote session; its startup entry starts it Off.
+  (file optical "ccl-remote" "apps/ccl-remote.app")
   (file optical "devices" "apps/devices.app")
   (file optical "config-inspector" "apps/config-inspector.app")
   (file optical "boot-logs" "apps/boot-logs.app")

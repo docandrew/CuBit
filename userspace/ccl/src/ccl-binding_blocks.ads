@@ -16,13 +16,14 @@ package CCL.Binding_Blocks with Pure, SPARK_Mode is
 
    type Block is
      (Host_Clock, Config, Log, Images, Console, Files, Processes, Programs,
-      Lexicon, Calc, Install, Wifi, Config_Values);
+      Lexicon, Calc, Install, Wifi, Config_Values, Llm, Secrets, Agent);
    --  The representation is the block's number; the compiler refuses two
    --  blocks with one number.
    for Block use
      (Host_Clock => 1, Config => 4, Log => 5, Images => 6, Console => 7,
       Files => 8, Processes => 9, Programs => 10, Lexicon => 11, Calc => 12,
-      Install => 13, Wifi => 14, Config_Values => 15);
+      Install => 13, Wifi => 14, Config_Values => 15, Llm => 16, Secrets => 17,
+      Agent => 18);
 
    BLOCK_WIDTH : constant := 16#1_0000#;
 

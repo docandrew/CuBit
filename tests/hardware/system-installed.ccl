@@ -39,6 +39,11 @@
   (setting "desktop.launch.12-console"
     (Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") icon => (Launch_Icon "Console") category => App_Category.Development
       color => (App_Color.RGB (RGB_Color red => 43 green => 122 blue => 70))))
+  # The in-CuBit agent (AGENT-002): Diagnose missions through llm.svc; the
+  # API key goes into secrets.svc from its masked entry.
+  (setting "desktop.launch.13-agent"
+    (Launch_Entry label => "Agent" action => (Launch_Action.Program "agent.app") icon => (Launch_Icon "Console") category => App_Category.Development
+      color => (App_Color.RGB (RGB_Color red => 122 green => 72 blue => 196))))
   (setting "desktop.launch.20-doom"
     (Launch_Entry label => "DOOM" action => (Launch_Action.Program "doom.elf") icon => (Launch_Icon "Doom") category => App_Category.Games single_instance => true
       color => (App_Color.RGB (RGB_Color red => 179 green => 38 blue => 26))))
@@ -78,4 +83,8 @@
   # Network interfaces: none named, so each one a machine has is
   # Automatic (DHCP for IPv4, SLAAC for IPv6), DNS servers included
   # (docs/net-link.md section 7).
+  # SNTP servers for timesync.svc (host or host:port); a majority of at
+  # least two must agree before the clock is adjusted. TLS to the agent's
+  # API host needs trustworthy time.
+  (setting "time.servers" "time.cloudflare.com 0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org")
 )

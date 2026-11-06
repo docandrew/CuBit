@@ -27,4 +27,8 @@ package CCL_Native_Bindings is
    function Wifi             return CuBit.Handles.Endpoint;   --  "wifi"
    function Lexicon          return CuBit.Handles.Endpoint;   --  "lexicon"
    function Installer        return CuBit.Handles.Endpoint;   --  "installer"
+   --  llm.svc: (llm.ask ...) and its exchanges (CuBit.Llm_Protocol).
+   function Llm              return CuBit.Handles.Endpoint;   --  "llm"
+   --  secrets.svc: (secrets.set ...) and friends (CuBit.Secrets_Protocol).
+   function Secrets          return CuBit.Handles.Endpoint;   --  "secrets"
 end CCL_Native_Bindings;

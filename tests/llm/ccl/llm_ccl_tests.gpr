@@ -1,0 +1,27 @@
+with "../../../userspace/allocator/allocator_runtime_host.gpr";
+with "../../../userspace/lib/tls/sparktls_host.gpr";
+with "../../../userspace/ccl/cubit_shared.gpr";
+--  Linux-hosted tests of llm.* and secrets.* in CCL, with a scripted
+--  CCL_Llm (fake_ccl_llm.adb) instead of the preview's stand-in. Run from
+--  kernel/ inside nix develop:
+--    alr exec -- gprbuild -p -P ../tests/llm/ccl/llm_ccl_tests.gpr && ../tests/llm/ccl/build/llm_ccl_main
+project Llm_Ccl_Tests is
+   for Source_Dirs use (".", "../../../userspace/lib/lexicon", "../../../userspace/ccl/src", "../../../userspace/lib/agent",
+                        "../../../userspace/ccl/tools/ccl-ui-preview",
+                        "../../../userspace/ccl/tools/ccl-ui-preview/host",
+                        "../../../userspace/lib/ui", "../../../userspace/lib/theme", "../../../userspace/lib/calc",
+                        "../../../userspace/lib/compositor", "../../../userspace/lib/display");
+   --  The root package CuBit comes with cubit_shared.gpr; CCL_Llm's body is
+   --  the script's.
+   for Excluded_Source_Files use ("cubit.ads", "ccl_llm.adb", "ccl_log_io.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("llm_ccl_main.adb", "agent_ccl_main.adb");
+   package Naming is
+      for Body ("CCL_Llm") use "fake_ccl_llm.adb";
+      for Body ("CCL_Log_IO") use "fake_ccl_log_io.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end Llm_Ccl_Tests;

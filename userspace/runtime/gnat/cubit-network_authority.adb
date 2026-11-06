@@ -7,9 +7,13 @@ package body CuBit.Network_Authority with SPARK_Mode is
      (Item.Connections /= 0 and then Item.First_Port /= 0 and then
       Item.Last_Port >= Item.First_Port and then
       (Item.Network and Mask (Item.Prefix)) = Item.Network and then
+      --  A listener: one port, on one unicast address (prefix 32) or on
+      --  whichever of this machine's addresses lie in the prefix (netstack
+      --  binds only an address an interface holds): 0.0.0.0/0 is a LAN
+      --  endpoint whose address DHCP chooses (ccl-remote).
       (if Item.Action = Listen_TCP then
-         Item.Prefix = 32 and then Item.Network /= 0 and then
-         Shift_Right (Item.Network, 24) < 224 and then
+         (Item.Prefix = 0 or else
+          (Item.Network /= 0 and then Shift_Right (Item.Network, 24) < 224)) and then
          Item.First_Port = Item.Last_Port and then not Item.Resolve_Names));
 
    function Allows

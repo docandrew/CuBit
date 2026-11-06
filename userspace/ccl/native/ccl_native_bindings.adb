@@ -26,6 +26,8 @@ package body CCL_Native_Bindings is
    Installer_Entry        : constant CuBit.Handles.Endpoint := Named ("installer");
    Network_Stack_Entry    : constant CuBit.Handles.Endpoint := Named ("network-stack");
    Wifi_Entry             : constant CuBit.Handles.Endpoint := Named ("wifi");
+   Llm_Entry              : constant CuBit.Handles.Endpoint := Named ("llm");
+   Secrets_Entry          : constant CuBit.Handles.Endpoint := Named ("secrets");
 
    function Clock            return CuBit.Handles.Endpoint is (Clock_Entry);
    function Logstore         return CuBit.Handles.Services.Logstore.Optional_Endpoint is (Logstore_Entry);
@@ -40,4 +42,6 @@ package body CCL_Native_Bindings is
    function Installer        return CuBit.Handles.Endpoint is (Installer_Entry);
    function Network_Stack    return CuBit.Handles.Endpoint is (Network_Stack_Entry);
    function Wifi             return CuBit.Handles.Endpoint is (Wifi_Entry);
+   function Llm              return CuBit.Handles.Endpoint is (Llm_Entry);
+   function Secrets          return CuBit.Handles.Endpoint is (Secrets_Entry);
 end CCL_Native_Bindings;

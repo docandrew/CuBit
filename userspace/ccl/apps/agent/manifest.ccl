@@ -1,0 +1,34 @@
+# agent.app (AGENT-002, docs/agent-harness.md): the in-CuBit agent's own
+# window. It asks llm.svc, which alone holds the network scope and the use
+# grant for the API key; the app stores the key into secrets.svc through
+# its masked entry and can never read it back. Its missions are Diagnose:
+# read-only tools over the observer grants below, and files read in its
+# workspace. No launch, install, Wi-Fi, log-control or config-write
+# authority: the agent asks, it does not decide what it may do.
+# Requested authority only; the launch path remains in control.
+(Executable_Manifest
+  identity => "com.cubit.agent"
+  version => "0.1.0"
+  requests => [
+    # One "started" record (CuBit.Logging.Announce), and the agent's own
+    # mission, request and tool-call records.
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    (service "clock" "clock")
+    # logs_recent: read-only log observation.
+    (service "log-observer" "log-observer")
+    # processes_list: what runs, through procmgr's observer role.
+    (service "process-observer" "process-observer")
+    # files_list / files_read in the mission's place, and the session record.
+    (service "filesystem" "filesystem")
+    # Every mission's model requests.
+    (service "llm" "llm")
+    # The masked key entry: Store and Status only.
+    (service "secrets" "secrets")]
+  # Without these the app still opens and says why it cannot ask.
+  optional => ["log-observer" "process-observer" "llm" "secrets"]
+  scopes => [
+    # The session record (agent-agent-app.session) and the files a
+    # Diagnose mission may read.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")])

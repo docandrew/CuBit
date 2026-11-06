@@ -71,6 +71,12 @@ package CCL_Stream_Table with SPARK_Mode is
       Pushed : out Boolean);
    procedure Push_Text
      (Item : in out Table; Handle : CCL.Streams.Handle; Line : String; Pushed : out Boolean);
+   --  Text that arrives in pieces (llm.text): Fragment continues the newest
+   --  line until a line feed ends it; a line longer than MAX_LINE wraps
+   --  onto the next. Each new line is an element; the newest line grows
+   --  in place, so a view shows the text as it streams.
+   procedure Append_Text
+     (Item : in out Table; Handle : CCL.Streams.Handle; Fragment : String; Pushed : out Boolean);
    --  No more elements will arrive (a one-shot connector delivered, or the
    --  program ended); what arrived stays readable.
    procedure End_Stream (Item : in out Table; Handle : CCL.Streams.Handle);
@@ -126,6 +132,8 @@ private
       Kind : Element_Kind := Integer_Elements;
       Finished : Boolean := False;
       Pinned : Boolean := False;
+      --  Append_Text: the newest line has not ended.
+      Line_Open : Boolean := False;
       --  A completed task: its result's slot in Results (0: none).
       Result_Slot : Natural range 0 .. MAX_RESULTS := 0;
       --  Text history: Text_Fill lines, the newest at Text_Newest.

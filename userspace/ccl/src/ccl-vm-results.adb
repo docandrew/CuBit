@@ -61,10 +61,12 @@ package body CCL.VM.Results with SPARK_Mode => On is
    subtype Print_Level is Natural range 0 .. 1;
    --  Printing a node's components: they are older nodes, below it.
    function Below (Node : Node_Count) return Print_Bound is (Print_Bound (Node));
+   --  Too_Long: printing stopped because the literal outgrew
+   --  MAX_LITERAL_TEXT (not because a part has no literal).
    procedure Print_Value
      (Arena : Value_Arena; Texts : Text_Regions.Stack; Lists : List_Regions.Stack;
       Types : CCL.Types.Registry; Item : Value; Bound : Print_Bound; Level : Print_Level;
-      Output : in out Literal_Text; Good : in out Boolean)
+      Output : in out Literal_Text; Good, Too_Long : in out Boolean)
      with Subprogram_Variant => (Decreases => Bound, Decreases => Level)
    is
       procedure Add (Text : String) is
@@ -73,6 +75,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
             Output.Data (Length_Of (Output) + 1 .. Length_Of (Output) + Text'Length) := Text;
             Output.Length := Output.Length + Literal_Length (Text'Length);
          else
+            Too_Long := Too_Long or else Good;
             Good := False;
          end if;
       end Add;
@@ -127,7 +130,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
                   end if;
                   if I > 1 then Add (" "); end if;
                   if Good then
-                     Print_Value (Arena, Texts, Lists, Types, Part, Bound, 0, Output, Good);
+                     Print_Value (Arena, Texts, Lists, Types, Part, Bound, 0, Output, Good, Too_Long);
                   end if;
                end loop;
                Add ("]");
@@ -140,7 +143,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
                   Component (Arena, Types, Item, P, Part, Good);
                   exit when not Good;
                   Add (" ");
-                  Print_Value (Arena, Texts, Lists, Types, Part, Below (Item.Node), 1, Output, Good);
+                  Print_Value (Arena, Texts, Lists, Types, Part, Below (Item.Node), 1, Output, Good, Too_Long);
                end loop;
                Add (")");
             elsif D.Form = CCL.Types.Sum and then Item.Alternative <= D.Count then
@@ -152,7 +155,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
                   if Item.Node /= 0 then
                      Component (Arena, Types, Item, 1, Part, Good);
                      if Good then
-                        Print_Value (Arena, Texts, Lists, Types, Part, Below (Item.Node), 1, Output, Good);
+                        Print_Value (Arena, Texts, Lists, Types, Part, Below (Item.Node), 1, Output, Good, Too_Long);
                      end if;
                   else
                      --  A scalar payload carried inline: no node to decrease.
@@ -248,9 +251,10 @@ package body CCL.VM.Results with SPARK_Mode => On is
       then
          declare
             Printed : Boolean := True;
+            Too_Long : Boolean := False;
          begin
             Print_Value (State.Arena, State.Text, State.Lists, Item.Content.Data_Types, State.Result_Value,
-                         Print_Bound'Last, 1, Result.Literal, Printed);
+                         Print_Bound'Last, 1, Result.Literal, Printed, Too_Long);
             --  The literal is for display; a value without one (a Character
             --  field, or longer than a result carries) still completes, and a
             --  host takes it through Native_Objects.Export_Result.
@@ -260,6 +264,12 @@ package body CCL.VM.Results with SPARK_Mode => On is
                  (Item.Content.Data_Types, State.Result_Value.Data_Type);
             else
                Result.Literal := (others => <>);
+               --  Say why, and how long a list is, so a host can tell the
+               --  reader (and take it in parts).
+               Result.Literal_Too_Long := Too_Long;
+               if State.Result_Value.Kind = List_Value then
+                  Result.List_Total := Element_Count (State.Result_Value.Items);
+               end if;
             end if;
          end;
       elsif State.Has_Value and then State.Result_Value.Kind = List_Value then

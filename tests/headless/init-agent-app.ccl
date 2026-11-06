@@ -1,0 +1,22 @@
+# agent-app regression (AGENT-002 step 3): agent.app asks llm.svc, which
+# alone may reach the mock Messages API (its test variant's one tls-scope,
+# approved here) and alone may use the API key secret in secrets.svc (the
+# grant below). The installed llm.svc is the llm-test.svc variant: only its
+# tls-scope differs from production's api.anthropic.com:443. The laptop
+# images start the same services (tests/hardware/init-usb-live.ccl) and
+# launch agent.app from the Desktop's Apps menu instead.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  # tls.svc must have registered before llm.svc launches (its TLS scope).
+  (start "secrets.svc" (priority 5)
+    (arguments (Secrets_Parameters
+      grant => (Secret_Grant secret => "anthropic-api-key" holder => Secret_Holder.Llm_Service))))
+  (start "llm.svc" (priority 5) (network approve-declared)
+    (arguments (Llm_Service_Parameters
+      endpoint => "llm-mock.cubit.internal:18490" api_key_secret => "anthropic-api-key")))
+  (start "agent.app" (priority 3))
+)

@@ -27,9 +27,16 @@
     # (wifi.scan) reads netstack, inspection only.
     (service "network-stack" "network-stack")
     # (wifi.join) ... : wifi.svc.
-    (service "wifi" "wifi")]
-  # Without these the console runs; lexicon.*, system.*, wifi.* say why not.
-  optional => ["lexicon" "installer" "network-stack" "wifi"]
+    (service "wifi" "wifi")
+    # (llm.ask ...): llm.svc, which alone holds the network scope and the
+    # use grant for the API key; the console never sees the key.
+    (service "llm" "llm")
+    # (secrets.set ...): stores a named secret through non-echoing entry;
+    # no operation reads a value back.
+    (service "secrets" "secrets")]
+  # Without these the console runs; lexicon.*, system.*, wifi.*, llm.* and
+  # secrets.* say why not.
+  optional => ["lexicon" "installer" "network-stack" "wifi" "llm" "secrets"]
   scopes => [
     (config-all [File_Right.Read])
     # :files, :save and :load; and the files handed to programs it starts.

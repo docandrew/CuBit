@@ -1,5 +1,6 @@
 with CCL.Evaluation;
 with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Strings.Fixed;
 with Interfaces; use Interfaces;
 with CCL.Catalog; use CCL.Catalog;
 with CCL.Interfaces.Clock;
@@ -124,6 +125,32 @@ begin
       Initialize (Grants); Install (Grants, Forged, 77, Grant); pragma Assert (Grant = Grant_Added);
       Context := (others => <>); Run ("(clock.monotonic-ms)");
       pragma Assert (Result.Status = Host_Contract_Unsupported and Context.Calls = 0);
+   end;
+   -- A list whose literal is longer than a result carries (proc.list,
+   -- logs.recent on a busy machine) is Result_Too_Large with its length,
+   -- never the generic Host_Contract_Unsupported; a part of it prints whole
+   -- (cubit-remote takes such a list in (first k (last i ...)) slices).
+   declare
+      Rows : constant String :=
+        "(each (fn ((n Integer)) (Row n ""a fairly long text that fills the literal quickly"")) " &
+        "(range 1 200))";
+      Types : constant String := "(type Row (record (n Integer) (s String))) ";
+   begin
+      Evaluate (Types & Rows, 1_000_000, Empty, Result);
+      pragma Assert (Result.Status = Result_Too_Large and not Result.Has_Literal);
+      pragma Assert (Result.List_Total = 200);
+      declare
+         Image : constant String := CCL.Sessions.Result_Image (Result);
+      begin
+         Put_Line ("  too large: " & Image);
+         pragma Assert (Ada.Strings.Fixed.Index (Image, "too large") > 0 and
+                        Ada.Strings.Fixed.Index (Image, " 200 elements") > 0);
+      end;
+      Evaluate (Types & "(first 5 (last 20 " & Rows & "))", 1_000_000, Empty, Result);
+      pragma Assert (Result.Status = Succeeded and Result.Has_Literal);
+      pragma Assert (Result.Literal.Data (1 .. 9) = "[(Row 181");
+      Evaluate (Types & "(length " & Rows & ")", 1_000_000, Empty, Result);
+      pragma Assert (Result.Status = Succeeded and Result.Result_Value.Integer = 200);
    end;
    Put_Line ("PASS: interpreter host authority/digest gates, no eager calls, live values, fuel, errors and HH:MM:SS");
 end Host_Tests;

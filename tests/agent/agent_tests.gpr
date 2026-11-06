@@ -1,0 +1,16 @@
+with "../../userspace/ccl/cubit_shared.gpr";
+--  Hosted (Linux) tests of the agent core (userspace/lib/agent, AGENT-002):
+--  tool schemas from CCL signatures, decoding untrusted tool inputs into
+--  typed values, the loop's state machine and budgets, mission checks.
+--  Run from the repository root inside nix develop:
+--    gprbuild -p -P tests/agent/agent_tests.gpr && tests/agent/build/agent_main
+project Agent_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/agent", "../../userspace/ccl/src");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("agent_main.adb");
+   package Compiler is
+      --  Checks on: a decoder bug fails here instead of hiding.
+      for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end Agent_Tests;

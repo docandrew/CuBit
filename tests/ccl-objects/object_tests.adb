@@ -97,7 +97,7 @@ begin
          when 16 => Bad.Cells (6).First := 3;
          when 17 => Bad.Cells (8).First := 1;
          when 18 => Bad.Text (8192) := 'x';
-         when others => Bad.Padding (4048) := 1;
+         when others => Bad.Padding (Padding_Length) := 1;
       end case;
       Check (not Validate (Bad, Contract));
    end loop;

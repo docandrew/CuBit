@@ -1,0 +1,8 @@
+# llm.svc: the Messages API client core (userspace/lib/llm, SPARK-proved
+# free of run-time errors: tests/llm/prove.gpr) behind the "llm" service.
+# Run-time checks stay on while the service's own glue (main.adb) is not
+# proved.
+(Component name => "llm" kind => (Kind.Service Launcher.Process_Manager)
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/llm"]
+    language => Ada_Language.Ada_2022)))

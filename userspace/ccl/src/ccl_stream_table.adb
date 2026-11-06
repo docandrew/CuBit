@@ -242,6 +242,52 @@ package body CCL_Stream_Table with SPARK_Mode is
       end;
    end Push_Text;
 
+   procedure Append_Text
+     (Item : in out Table; Handle : CCL.Streams.Handle; Fragment : String; Pushed : out Boolean)
+   is
+      Slot : constant Natural := Slot_Of (Item, Handle);
+   begin
+      Pushed := Slot /= 0 and then Item.Streams (Slot).Kind = Text_Elements
+        and then not Item.Streams (Slot).Finished;
+      if not Pushed then
+         return;
+      end if;
+      declare
+         S : Stream renames Item.Streams (Slot);
+         procedure New_Line is
+            Next : constant Line_Slot := S.Text_Newest mod TEXT_HISTORY + 1;
+         begin
+            S.Lines (Next) := [others => ' '];
+            S.Lengths (Next) := 0;
+            S.Text_Newest := Next;
+            if S.Text_Fill < TEXT_HISTORY then
+               S.Text_Fill := S.Text_Fill + 1;
+            elsif S.Lost < CCL.Streams.Element_Total'Last then
+               S.Lost := S.Lost + 1;
+            end if;
+            if S.Arrived < CCL.Streams.Element_Total'Last then
+               S.Arrived := S.Arrived + 1;
+            end if;
+         end New_Line;
+      begin
+         for C of Fragment loop
+            if C = ASCII.LF then
+               if not S.Line_Open then
+                  New_Line;
+               end if;
+               S.Line_Open := False;
+            elsif C /= ASCII.CR then
+               if not S.Line_Open or else S.Lengths (S.Text_Newest) = MAX_LINE then
+                  New_Line;
+                  S.Line_Open := True;
+               end if;
+               S.Lengths (S.Text_Newest) := S.Lengths (S.Text_Newest) + 1;
+               S.Lines (S.Text_Newest) (S.Lengths (S.Text_Newest)) := C;
+            end if;
+         end loop;
+      end;
+   end Append_Text;
+
    procedure Open_Task
      (Item : in out Table; Handle : out CCL.Streams.Handle; Pinned : Boolean := False) is
    begin

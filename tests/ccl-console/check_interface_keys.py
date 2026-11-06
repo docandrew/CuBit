@@ -17,7 +17,8 @@ CHECKS = [
       'STATUS_KEY': 'Wifi_Status'}),
     (SRC / 'ccl-interfaces-files.ads',
      {'DIGEST': None, 'KIND_KEY': 'File_Kind', 'PLACE_KEY': 'Place', 'CHILD_KEY': 'Child',
-      'METADATA_KEY': 'File_Metadata', 'LISTING_KEY': 'List-File_Metadata'}),
+      'METADATA_KEY': 'File_Metadata', 'LISTING_KEY': 'List-File_Metadata', 'EXCERPT_KEY': 'Excerpt',
+      'TEXT_KEY': 'String'}),
     (SRC / 'ccl-interfaces-console.ads',
      {'DIGEST': None, 'NOTATION_KEY': 'Notation', 'THEME_KEY': 'Theme', 'STATS_KEY': 'Console_Stats'}),
     (SRC / 'ccl-interfaces-images.ads',
@@ -34,7 +35,14 @@ CHECKS = [
       'REQUEST_KEY': 'Calc_Request'}),
     (SRC / 'ccl-interfaces-install.ads',
      {'DIGEST': None, 'DISK_KEY': 'Disk', 'DISKS_KEY': 'List-Disk', 'REQUEST_KEY': 'Install_Request',
-      'REPORT_KEY': 'Install_Report', 'PROGRESS_KEY': 'Install_Progress'})]
+      'REPORT_KEY': 'Install_Report', 'PROGRESS_KEY': 'Install_Progress'}),
+    (SRC / 'ccl-interfaces-llm.ads',
+     {'DIGEST': None, 'REQUEST_KEY': 'Llm_Request', 'EXCHANGE_KEY': 'Llm_Exchange', 'REPLY_KEY': 'Llm_Reply'}),
+    (SRC / 'ccl-interfaces-secrets.ads',
+     {'DIGEST': None, 'SECRET_KEY': 'Secret', 'STATE_KEY': 'Secret_State'}),
+    (SRC / 'ccl-interfaces-agent.ads',
+     {'DIGEST': None, 'REQUEST_KEY': 'Agent_Request', 'SESSION_KEY': 'Agent_Session',
+      'REPLY_KEY': 'Agent_Reply'})]
 
 
 def constant(text, name):

@@ -1,8 +1,10 @@
 with Ada.Directories;
 with Ada.Text_IO;
 
---  The Linux preview's stand-in for proc.list: the host's /proc. A
---  Linux-hosted demonstration, not CuBit's process table.
+--  The Linux preview's stand-in for proc.list: the host's /proc, limited to
+--  the preview's own session (its terminal's processes), as a CuBit machine
+--  lists its own: the whole host would be hundreds, more than one (proc.list)
+--  result holds. A Linux-hosted demonstration, not CuBit's process table.
 package body CCL_Processes is
    use Interfaces;
    PROC : constant String := "/proc";
@@ -37,15 +39,46 @@ package body CCL_Processes is
       when others => return 0;
    end Uptime_Ms;
 
-   procedure List
-     (Entries : out Listing; Count : out Listed_Count; Total : out Natural; Result : out Result_Kind)
-   is
+   --  The session field of /proc/<pid>/stat ("pid (comm) state ppid pgrp
+   --  session ..."), 0 when it cannot be read.
+   SESSION_FIELD : constant := 6;
+   function Session_Of (Stat_Path : String) return Natural is
+      File : Ada.Text_IO.File_Type;
+   begin
+      Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Stat_Path);
+      declare
+         Line : constant String := Ada.Text_IO.Get_Line (File);
+         Close : Natural := 0;
+         Field : Natural := 2;
+         Start : Natural;
+      begin
+         Ada.Text_IO.Close (File);
+         for I in Line'Range loop
+            if Line (I) = ')' then Close := I; end if;
+         end loop;
+         Start := Close + 2;
+         for I in Close + 2 .. Line'Last + 1 loop
+            if I > Line'Last or else Line (I) = ' ' then
+               Field := Field + 1;
+               if Field = SESSION_FIELD then return Natural'Value (Line (Start .. I - 1)); end if;
+               Start := I + 1;
+            end if;
+         end loop;
+         return 0;
+      end;
+   exception
+      when others =>
+         if Ada.Text_IO.Is_Open (File) then Ada.Text_IO.Close (File); end if;
+         return 0;
+   end Session_Of;
+
+   procedure Each (Seen, Total : out Natural; Result : out Result_Kind) is
       Search : Ada.Directories.Search_Type;
       Item : Ada.Directories.Directory_Entry_Type;
       Now : Unsigned_64;
+      Own_Session : constant Natural := Session_Of (PROC & "/self/stat");
    begin
-      Entries := [others => (others => <>)];
-      Count := 0;
+      Seen := 0;
       Total := 0;
       Result := (if Ada.Directories.Exists (PROC) then Listed_All else Unavailable);
       if Result /= Listed_All then return; end if;
@@ -56,7 +89,9 @@ package body CCL_Processes is
          declare
             Pid_Text : constant String := Ada.Directories.Simple_Name (Item);
          begin
-            if Pid_Text'Length in 1 .. 9 and then (for all C of Pid_Text => C in '0' .. '9') then
+            if Pid_Text'Length in 1 .. 9 and then (for all C of Pid_Text => C in '0' .. '9')
+              and then Session_Of (PROC & "/" & Pid_Text & "/stat") = Own_Session
+            then
                declare
                   File : Ada.Text_IO.File_Type;
                begin
@@ -98,10 +133,8 @@ package body CCL_Processes is
                            end if;
                         end loop;
                         Total := Total + 1;
-                        if Count < Processes.MAXIMUM_LISTED then
-                           Count := Count + 1;
-                           Entries (Count) := Got;
-                        end if;
+                        Seen := Seen + 1;
+                        Visit (Got);
                      end if;
                   end;
                   Ada.Text_IO.Close (File);
@@ -114,5 +147,5 @@ package body CCL_Processes is
          end;
       end loop;
       Ada.Directories.End_Search (Search);
-   end List;
+   end Each;
 end CCL_Processes;

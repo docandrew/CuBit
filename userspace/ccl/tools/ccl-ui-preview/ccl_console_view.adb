@@ -1,5 +1,6 @@
 with CCL.Completions;
 with CCL_Wifi;
+with CCL_Secrets;
 with CCL.Hints;
 with CCL.Highlighting;
 with CCL.Image_Store;
@@ -879,6 +880,11 @@ package body CCL_Console_View is
          Run_Source (Text);
          if CCL_Wifi.Passphrase_Requested then
             State.Secret_Entry := True;
+            State.Secret_For := Wifi_Passphrase;
+            State.Secret_Length := 0;
+         elsif CCL_Secrets.Value_Requested then
+            State.Secret_Entry := True;
+            State.Secret_For := Store_Secret;
             State.Secret_Length := 0;
          end if;
       end Submit;
@@ -937,18 +943,33 @@ package body CCL_Console_View is
                   State.Secret_Length := State.Secret_Length - 1;
                end if;
             when Enter | Run =>
-               CCL_Wifi.Store_Passphrase (State.Secret (1 .. State.Secret_Length), Result);
+               if State.Secret_For = Store_Secret then
+                  declare
+                     Stored : CCL_Secrets.Store_Result;
+                     use type CCL_Secrets.Store_Result;
+                  begin
+                     CCL_Secrets.Store_Value (State.Secret (1 .. State.Secret_Length), Stored);
+                     Set_Notice (State, (if Stored = CCL_Secrets.Stored then "Secret stored with secrets.svc"
+                                         else "Secret not stored: " & CCL_Secrets.Explain (Stored)));
+                  end;
+               else
+                  CCL_Wifi.Store_Passphrase (State.Secret (1 .. State.Secret_Length), Result);
+                  Set_Notice (State, (if Result = CCL_Wifi.Done then "Passphrase stored with wifi.svc"
+                                      else "Passphrase not stored: " & CCL_Wifi.Explain (Result)));
+               end if;
                State.Secret := [others => ' '];
                State.Secret_Length := 0;
                State.Secret_Entry := False;
-               Set_Notice (State, (if Result = CCL_Wifi.Done then "Passphrase stored with wifi.svc"
-                                   else "Passphrase not stored: " & CCL_Wifi.Explain (Result)));
             when Escape =>
-               CCL_Wifi.Cancel_Passphrase;
+               if State.Secret_For = Store_Secret then
+                  CCL_Secrets.Cancel_Value;
+               else
+                  CCL_Wifi.Cancel_Passphrase;
+               end if;
                State.Secret := [others => ' '];
                State.Secret_Length := 0;
                State.Secret_Entry := False;
-               Set_Notice (State, "Passphrase entry cancelled");
+               Set_Notice (State, "Secret entry cancelled");
             when others =>
                null;
          end case;
@@ -2005,7 +2026,9 @@ package body CCL_Console_View is
                --  Stars only: the passphrase itself is never drawn.
                Fill_Rect (IC, G.Input, DOCK);
                Draw_Code_Text (IC, G.Input.x, G.Input.y + 1,
-                 "passphrase for """ & CCL_Wifi.Requested_SSID & """: "
+                 (if State.Secret_For = Store_Secret
+                  then "value for secret """ & CCL_Secrets.Requested_Name & """: "
+                  else "passphrase for """ & CCL_Wifi.Requested_SSID & """: ")
                  & [1 .. State.Secret_Length => '*'], ACCENT, DOCK);
             elsif Text'Length = 0 then
                Draw_Code_Text (IC, G.Input.x, G.Input.y + 1, "an expression, or :env", FAINT, DOCK);

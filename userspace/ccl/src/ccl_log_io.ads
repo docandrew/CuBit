@@ -7,6 +7,10 @@ package CCL_Log_IO is
    --  Publish one record as this process ("started"); nothing when the
    --  process has no logstore binding or the platform has no logstore.
    procedure Announce (Text : String);
+   --  Publish one record as this process and echo it on the debug console,
+   --  as CuBit.Log does for services (the agent's request and tool-call
+   --  records, AGENT-002).
+   procedure Note (Text : String);
    --  Whether this process can ask logstore for records at all.
    function Available return Boolean;
    --  The most recent records of Service (a service name, or a process

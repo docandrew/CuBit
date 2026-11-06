@@ -46,6 +46,8 @@ with CuBit.Clock_Control;
 with CuBit.Disk_Install;
 with CuBit.Installer_Protocol;
 with CuBit.TLS_Protocol;
+with CuBit.Llm_Protocol;
+with CuBit.Secrets_Protocol;
 with CuBit.TLS_Scopes;
 with CuBit.Authority_Policy;
 with CuBit.Log_Protocol;
@@ -538,12 +540,17 @@ procedure main is
      (mailboxOf (Registered_Driver (DRIVER_LOGSTORE)));
 
    --  List: the kernel's table joined with Records, written into one
-   --  page the caller lends. Only a holder of the observer tag may ask.
+   --  page the caller lends, from the process at First on (PO.List_Label's
+   --  paging). Only a holder of the observer tag may ask.
    procedure handleProcessList (sender : Process_ID; msg : Message) is
       Reference : CuBit.Memory_Grants.Grant_Reference;
       Mapped : System.Address;
       Ok, Returned : Boolean;
       Count, Written, Total : Natural := 0;
+      First : constant Natural :=
+        (if msg.tag.length >= PO.Paged_Request_Words
+         then Natural (Unsigned_64'Min (msg.words (PO.First_Record_Word), Unsigned_64 (Natural'Last)))
+         else 0);
       replyMsg : Message := NULL_MESSAGE;
       ignore : Unsigned_64;
       procedure Answer (Result : PO.Status) is
@@ -597,7 +604,8 @@ procedure main is
                --  Reserved slots are suspended and never named.
                if not (Name_Length = 0 and then Item.State = SUSPENDED_STATE) then
                   Total := Total + 1;
-                  if Written < PO.Page_Records then
+                  --  Total - 1 is this process's position in the listing.
+                  if Total > First and then Written < PO.Page_Records then
                      declare
                         R : constant Natural := Written * PO.Record_Bytes;
                      begin
@@ -1505,7 +1513,8 @@ procedure main is
       Role = DRIVER_CLOCK or else Role = CuBit.TLS_Protocol.Service_Role or else
       Role = CuBit.Metric_Protocol.Publisher_Service_Role or else Role = DRIVER_LEXICON or else
       Role = DRIVER_ACPI or else Role = CuBit.Installer_Protocol.Service_Role or else
-      Role = DRIVER_ACPI_REGISTERS or else Role = CuBit.Startup_Wait_Test.Service_Role);
+      Role = DRIVER_ACPI_REGISTERS or else Role = CuBit.Startup_Wait_Test.Service_Role or else
+      Role = CuBit.Llm_Protocol.Service_Role or else Role = CuBit.Secrets_Protocol.Service_Role);
 
    --  For each launched-service role: the live process procmgr started with
    --  its registration, until that process exits.
@@ -1751,6 +1760,13 @@ procedure main is
       elsif Role = CuBit.Startup_Wait_Test.Service_Role then
          --  Test only (tests/startup-wait): from a test's startup plan.
          return systemStartup and then Identity = "com.cubit.startup-wait-test";
+      elsif Role = CuBit.Llm_Protocol.Service_Role then
+         --  An impostor would read every prompt, and secrets.svc grants the
+         --  API key's use to whoever holds this role.
+         return systemStartup and then Identity = "com.cubit.llm";
+      elsif Role = CuBit.Secrets_Protocol.Service_Role then
+         --  An impostor would receive every secret typed into it.
+         return systemStartup and then Identity = "com.cubit.secrets";
       end if;
       return False;
    end registrationAllowed;

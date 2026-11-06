@@ -19,9 +19,17 @@ package CuBit.Process_Observer with Pure, SPARK_Mode is
       (Tag and 16#FFFF_FFFF#) /= 0);
 
    --  List: words (0) a memory grant reference (generation << 32 | slot) of
-   --  one writable page the caller owns. procmgr fills it with records and
-   --  replies (0) Status, (1) records written, (2) processes in total.
+   --  one writable page the caller owns and, when the request has
+   --  Paged_Request_Words words, (1) the position of the first process to
+   --  write (0: from the start; a one-word request starts there too).
+   --  procmgr fills the page with the records from that position on and
+   --  replies (0) Status, (1) records written, (2) processes in total. A
+   --  reader takes every page, First_Record_Word stepping by the records
+   --  written, until it has the total or a page comes back empty (the
+   --  table changed between pages).
    List_Label : constant := 16#0107#;
+   Paged_Request_Words : constant := 2;
+   First_Record_Word : constant := 1;
    type Status is (OK, Denied, Invalid_Request, Unavailable);
    for Status use (OK => 16#F000#, Denied => 16#F002#, Invalid_Request => 16#F003#,
                    Unavailable => 16#F007#);

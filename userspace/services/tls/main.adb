@@ -779,7 +779,15 @@ procedure Main is
    ---------------------------------------------------------------------------
    --  Start-up: trust store, static hosts, buffers.
    ---------------------------------------------------------------------------
-   Roots_Path : constant String := "@nvme:0/tls/roots.der";
+   --  Where the trust store may be, first found wins: the development disk,
+   --  the live medium (its optical tree, @cd:0), and the installed root
+   --  (@ufs:0). Each has a read-only filesystem scope in the manifest.
+   type Roots_Location is (Development_Disk, Live_Medium, Installed_Root);
+   function Roots_Path (Location : Roots_Location) return String is
+     (case Location is
+         when Development_Disk => "@nvme:0/tls/roots.der",
+         when Live_Medium => "@cd:0/tls/roots.der",
+         when Installed_Root => "@ufs:0/tls/roots.der");
    Roots_Capacity : constant := 262_144;
 
    function Load_Roots return Boolean is
@@ -802,15 +810,24 @@ procedure Main is
       if not Granted then
          return False;
       end if;
-      declare
-         Path : String (1 .. Roots_Path'Length) with Import, Address => Buffer_Address;
-      begin
-         Path := Roots_Path;
-      end;
-      Msg := Open_Request (Reference, Roots_Path'Length, OPEN_READ_ONLY);
-      Msg.tag := capCall (FS_Service, Msg, CuBit.Messages.Wait_Forever);
-      if Msg.tag.label /= CuBit.Filesystems.REPLY_OK then
-         CuBit.Log.Warning ("tls: cannot open " & Roots_Path);
+      OK := False;
+      for Location in Roots_Location loop
+         declare
+            Candidate : constant String := Roots_Path (Location);
+            Path : String (1 .. Candidate'Length) with Import, Address => Buffer_Address;
+         begin
+            Path := Candidate;
+            Msg := Open_Request (Reference, Candidate'Length, OPEN_READ_ONLY);
+            Msg.tag := capCall (FS_Service, Msg, CuBit.Messages.Wait_Forever);
+            if Msg.tag.label = CuBit.Filesystems.REPLY_OK then
+               CuBit.Log.Info ("tls: trust store " & Candidate);
+               OK := True;
+               exit;
+            end if;
+         end;
+      end loop;
+      if not OK then
+         CuBit.Log.Warning ("tls: no trust store (tls/roots.der) on @nvme:0, @cd:0 or @ufs:0");
          return False;
       end if;
       Handle := File_Handle (Msg.words (0));

@@ -15,6 +15,7 @@ with CuBit.UI.Clipboard;
 with CCL_Workspace;
 with CCL_Application;
 with CCL_Native_Execution;
+with CCL_Llm_Link;
 with CCL_Native_Bindings;
 
 package body CCL_Desktop_Platform is
@@ -201,7 +202,11 @@ package body CCL_Desktop_Platform is
                Pending_Event := Event; Pending_Found := True;
             end if;
          else
-            CCL_Native_Execution.Deliver (Receipt, Consumed);
+            --  llm.* pulls carry their own token marker (CCL_Llm_Link).
+            CCL_Llm_Link.Deliver (Receipt, Consumed);
+            if not Consumed then
+               CCL_Native_Execution.Deliver (Receipt, Consumed);
+            end if;
             if not Consumed then debugPrint (Name & ": unclaimed IPC completion" & ASCII.LF); end if;
          end if;
       end loop;

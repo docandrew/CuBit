@@ -480,3 +480,25 @@ bash tests/headless/run.sh --test acpi-pci-config --accel kvm
 bash tests/headless/run.sh --test acpi-hardware --accel kvm
 bash tests/headless/run.sh --test capability-security --accel kvm
 ```
+
+## Agent sizes, compaction and agent.app (AGENT-002, LIM-001)
+
+The agent path has no fixed windows: llm.svc renders each request on the
+heap and captures content sized from max_tokens, the client's window is
+sized per ask and its content grows, a tool result is capped by a named
+limit and labelled, and a conversation at its limit is compacted (a
+marker, whole turns dropped, no stale thinking) instead of refused. Each
+hosted case failed on the old fixed sizes (128 KiB content, 6 KiB tool
+results, the 192 KiB ask that stopped a long session with Context_Full).
+agent-app boots agent.app, types the fake key into its masked entry
+(secrets.svc), and runs one mocked Diagnose mission with a tool round;
+the key must never reach the serial log.
+
+```sh
+gprbuild -p -P tests/llm/llm_tests.gpr && tests/llm/build/llm_main
+gprbuild -p -P tests/agent/agent_tests.gpr && tests/agent/build/agent_main
+(cd kernel && alr exec -- gprbuild -p -P ../tests/llm/ccl/llm_ccl_tests.gpr && ../tests/llm/ccl/build/agent_ccl_main)
+bash tests/headless/run.sh --test agent-app --accel kvm --timeout 150
+bash tests/headless/run.sh --test agent-mock --accel kvm --timeout 150
+bash tests/headless/run.sh --test llm-mock --accel kvm --timeout 150
+```

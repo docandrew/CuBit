@@ -5,6 +5,7 @@ with CuBit.Filesystem_Queues;
 with CuBit.Directory_Pages;
 with CuBit.Channel_Protocol;
 with CuBit.Channels;
+with CuBit.Memory_Grants;
 with CCL_Native_Bindings;
 
 --  Places through the filesystem's request queue (docs/filesystem-data-
@@ -260,4 +261,129 @@ package body CCL_Places is
       end loop;
       Close (Directory);
    end List;
+
+   ---------------------------------------------------------------------------
+   --  Files: the filesystem's message requests through one page lent once
+   --  (a file's bytes a page at a time; never a path outside the scopes the
+   --  service checks on every open).
+   ---------------------------------------------------------------------------
+   File_Loan : CuBit.Memory_Grants.Grant_Reference;
+   File_Page : Unsigned_64 := 0;
+   File_Ready : Boolean := False;
+
+   function File_Initialize return Boolean is
+      Raw : Unsigned_64;
+   begin
+      if File_Ready then return True; end if;
+      if File_Page = 0 then
+         Raw := syscall (SYSCALL_SBRK, 2 * PAGE_BYTES);
+         if Raw = Unsigned_64'Last then return False; end if;
+         File_Page := (Raw + PAGE_BYTES - 1) and not Unsigned_64 (PAGE_BYTES - 1);
+      end if;
+      CuBit.Memory_Grants.Create_Via_Capability
+        (CCL_Native_Bindings.Filesystem, To_Address (Integer_Address (File_Page)), 1, True, File_Loan, File_Ready);
+      return File_Ready;
+   end File_Initialize;
+
+   procedure Put_Page (Text : String) is
+      Bytes : String (1 .. Text'Length) with Import, Address => To_Address (Integer_Address (File_Page));
+   begin
+      Bytes := Text;
+   end Put_Page;
+
+   function File_Call (Request : in out Message) return Result_Kind is
+   begin
+      Request.tag := capCall (CCL_Native_Bindings.Filesystem, Request, CuBit.Messages.Wait_Forever);
+      return (if Request.tag.label = REPLY_ALREADY_EXISTS then Listed_All else Outcome (Request.tag.label));
+   end File_Call;
+
+   procedure Open_File (Path : String; Options : Open_Options; File : out File_Handle; Result : out Result_Kind) is
+      Request : Message;
+   begin
+      File := File_Handle (0);
+      if not File_Initialize then Result := Unavailable; return; end if;
+      if Path'Length = 0 or else Path'Length > PAGE_BYTES then Result := Not_Found; return; end if;
+      Put_Page (Path);
+      Request := Open_Request (File_Loan, Path'Length, Options);
+      Request.tag := capCall (CCL_Native_Bindings.Filesystem, Request, CuBit.Messages.Wait_Forever);
+      Result := Outcome (Request.tag.label);
+      if Result = Listed_All then
+         File := File_Handle (Request.words (0));
+      end if;
+   end Open_File;
+
+   procedure Close_File (File : File_Handle) is
+      Request : Message := Close_Request (File);
+      Ignored : Result_Kind;
+   begin
+      Ignored := File_Call (Request);
+   end Close_File;
+
+   procedure Read_At
+     (Path : String; Offset : Natural; Into : out String; Last : out Natural; Result : out Result_Kind)
+   is
+      File : File_Handle;
+      Request : Message;
+      Got : Natural := 0;
+   begin
+      Into := [others => ' '];
+      Last := Into'First - 1;
+      Open_File (Path, OPEN_READ_ONLY, File, Result);
+      if Result /= Listed_All then return; end if;
+      while Got < Into'Length loop
+         declare
+            Wanted : constant Natural := Natural'Min (PAGE_BYTES, Into'Length - Got);
+            Bytes : String (1 .. PAGE_BYTES) with Import, Address => To_Address (Integer_Address (File_Page));
+            N : Natural;
+         begin
+            Request := Read_At_Request (File, File_Loan, Unsigned_64 (Wanted), Unsigned_64 (Offset + Got));
+            Result := File_Call (Request);
+            exit when Result /= Listed_All;
+            N := Natural (Unsigned_64'Min (Request.words (0), Unsigned_64 (Wanted)));
+            exit when N = 0;
+            Into (Into'First + Got .. Into'First + Got + N - 1) := Bytes (1 .. N);
+            Got := Got + N;
+            exit when N < Wanted;
+         end;
+      end loop;
+      Last := Into'First + Got - 1;
+      Close_File (File);
+   end Read_At;
+
+   procedure Create (Path : String; Result : out Result_Kind) is
+      File : File_Handle;
+   begin
+      Open_File (Path, OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE, File, Result);
+      if Result = Listed_All then
+         Close_File (File);
+      elsif Result = Failed then
+         --  It exists already (REPLY_ALREADY_EXISTS): left as it is.
+         Open_File (Path, OPEN_READ_ONLY, File, Result);
+         if Result = Listed_All then Close_File (File); end if;
+      end if;
+   end Create;
+
+   procedure Write_At (Path : String; Offset : Natural; Text : String; Result : out Result_Kind) is
+      File : File_Handle;
+      Request : Message;
+      Done : Natural := 0;
+   begin
+      Open_File (Path, OPEN_READ_WRITE, File, Result);
+      if Result /= Listed_All then return; end if;
+      while Done < Text'Length loop
+         declare
+            N : constant Natural := Natural'Min (PAGE_BYTES, Text'Length - Done);
+         begin
+            Put_Page (Text (Text'First + Done .. Text'First + Done + N - 1));
+            Request := Write_At_Request (File, File_Loan, Unsigned_64 (N), Unsigned_64 (Offset + Done));
+            Result := File_Call (Request);
+            if Result = Listed_All and then Request.words (0) /= Unsigned_64 (N) then
+               Result := Failed;
+            end if;
+            exit when Result /= Listed_All;
+            Done := Done + N;
+         end;
+      end loop;
+      Close_File (File);
+   end Write_At;
 end CCL_Places;

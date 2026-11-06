@@ -187,7 +187,7 @@ begin
    Define (R, D, Ref, Status); Check (Status = Defined and Cells (R, Ref) = 17);
    D.Identifier := Named ("Large"); D.Count := 15;
    for I in 1 .. D.Count loop D.Parts (I).Payload := Ref; end loop;
-   Define (R, D, Ref, Status); Check (Status = Defined and Cells (R, Ref) = Maximum_Value_Cells);
+   Define (R, D, Ref, Status); Check (Status = Defined and Cells (R, Ref) = 1 + 15 * 17);
    D.Identifier := Named ("LargeResource"); D.Form := Resource;
    for I in 1 .. D.Count loop D.Parts (I).Payload := Ref; end loop;
    Define (R, D, Ref, Status); Check (Status = Defined and Cells (R, Ref) = 1);

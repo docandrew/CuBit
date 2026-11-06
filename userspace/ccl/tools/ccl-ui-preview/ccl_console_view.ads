@@ -202,7 +202,11 @@ private
    end record;
    type Shown_Array is array (CCL.Sessions.History_Index) of Shown_Source;
 
-   SECRET_CHARACTERS : constant := 63;   --  a WPA2 passphrase (802.11 J.4.1)
+   --  The longest secret typed: a value for secrets.svc (an API key); a
+   --  WPA2 passphrase is at most 63 (802.11 J.4.1).
+   SECRET_CHARACTERS : constant := 256;
+   --  Where a secret entry goes.
+   type Secret_Target is (Wifi_Passphrase, Store_Secret);
    type View_State is limited record
       Session : CCL.Sessions.Session;
       Meta : Meta_Array := [others => <>];
@@ -237,10 +241,12 @@ private
       --  A short message for the status line, until the next edit.
       Notice : String (1 .. 120) := [others => ' '];
       Notice_Length : Natural range 0 .. 120 := 0;
-      --  Secret entry ((wifi.passphrase "ssid")): what is typed is shown
-      --  as dots, never enters the input or history, and goes to wifi.svc
-      --  on Enter (CCL_Wifi.Store_Passphrase); Escape cancels.
+      --  Secret entry ((wifi.passphrase "ssid"), (secrets.set s)): what is
+      --  typed is shown as stars, never enters the input or history, and
+      --  goes to wifi.svc (CCL_Wifi.Store_Passphrase) or secrets.svc
+      --  (CCL_Secrets.Store_Value) on Enter; Escape cancels.
       Secret_Entry : Boolean := False;
+      Secret_For : Secret_Target := Wifi_Passphrase;
       Secret : String (1 .. SECRET_CHARACTERS) := [others => ' '];
       Secret_Length : Natural range 0 .. SECRET_CHARACTERS := 0;
    end record;

@@ -260,6 +260,14 @@ package body CCL.Evaluation is
                Result.List_Text.Data (1 .. Result.List_Text.Length) :=
                  Step.List_Text.Data (1 .. Result.List_Text.Length);
                Result.List_Text_Ends := Step.List_Text_Ends;
+            elsif Step.Literal_Too_Long then
+               --  Computed, but longer than a result carries: say so, with
+               --  a list's length, never a generic refusal.
+               Result.Status := L.Result_Too_Large; Result.Has_Value := False;
+               if V.Kind = CCL.VM.List_Value then
+                  Result.List_Type := V.Data_Type;
+                  Result.List_Total := CCL.VM.Count_Of (Step.List_Total);
+               end if;
             else
                Result.Status := L.Host_Contract_Unsupported; Result.Has_Value := False;
             end if;
@@ -391,7 +399,9 @@ package body CCL.Evaluation is
          then
             Mismatched := True;
          end if;
-         if Op.Result = CCL.Host_Values.Text_Value then
+         --  A stream's or a task's result is its handle (an Integer), whatever
+         --  its elements are: a Stream<String> answers like a Stream<Integer>.
+         if Op.Result = CCL.Host_Values.Text_Value and then not (Op.Result_Stream or Op.Result_Task) then
             if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Text_Value and then
               not CCL.Host_Values.Within (Reply.Value.Content.Length, Op.Result_Text_Limit)
             then
@@ -403,8 +413,8 @@ package body CCL.Evaluation is
             else
                N.Complete_Text (Item.Program, Machine, "", False);
             end if;
-         elsif Op.Result = CCL.Host_Values.Object_Value and then
-           CCL.Catalog.Schema_Type (Visible_Interfaces, Op.Result_Schema) = CCL.Types.String_Type
+         elsif Op.Result = CCL.Host_Values.Object_Value and then not (Op.Result_Stream or Op.Result_Task)
+           and then CCL.Catalog.Schema_Type (Visible_Interfaces, Op.Result_Schema) = CCL.Types.String_Type
          then
             --  A schema-bound String image: the run takes its text.
             CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Result_Schema, Contract);

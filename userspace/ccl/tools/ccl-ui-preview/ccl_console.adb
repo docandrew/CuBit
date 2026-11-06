@@ -13,6 +13,8 @@ with CCL_Window;
 with CCL_Execution;
 with CCL_Host_Environment;
 with CCL_Program_Bindings;
+with CCL_Llm_Bindings;
+with CCL_Agent_Bindings;
 with CCL_Console_Bindings;
 with CCL.Interfaces.Console;
 with CCL_REPL_Commands;
@@ -259,6 +261,52 @@ package body CCL_Console is
             end if;
          end;
       end loop;
+      --  Each exchange (llm.ask) gets two live cards: its text as it
+      --  streams, and its reply once it ends.
+      declare
+         Exchanges : CCL_Llm_Bindings.Started_Array;
+         Started : Natural;
+         function Image (Value : Unsigned_64) return String is
+            Text : constant String := Unsigned_64'Image (Value);
+         begin
+            return Text (Text'First + 1 .. Text'Last);
+         end Image;
+      begin
+         CCL_Llm_Bindings.Take_Started (Exchanges, Started);
+         for I in 1 .. Started loop
+            declare
+               Exchange : constant String :=
+                 (if Name'Length > 0 and then Started = 1 then Name
+                  else "(Llm_Exchange id => " & Image (Exchanges (I)) & ")");
+            begin
+               Follow (State, "(window 64 (llm.text " & Exchange & "))");
+               Follow (State, "(llm.reply " & Exchange & ")");
+            end;
+         end loop;
+      end;
+      --  Each agent mission (agent.ask) gets two live cards: its transcript
+      --  (text and tool-call cards) as it runs, and its typed reply.
+      declare
+         Missions : CCL_Agent_Bindings.Started_Array;
+         Started : Natural;
+         function Image (Value : Unsigned_64) return String is
+            Text : constant String := Unsigned_64'Image (Value);
+         begin
+            return Text (Text'First + 1 .. Text'Last);
+         end Image;
+      begin
+         CCL_Agent_Bindings.Take_Started (Missions, Started);
+         for I in 1 .. Started loop
+            declare
+               Session : constant String :=
+                 (if Name'Length > 0 and then Started = 1 then Name
+                  else "(Agent_Session id => " & Image (Missions (I)) & ")");
+            begin
+               Follow (State, "(window 64 (agent.transcript " & Session & "))");
+               Follow (State, "(agent.reply " & Session & ")");
+            end;
+         end loop;
+      end;
    end Follow_Started;
    procedure Reevaluate_Live is new CCL.Sessions.Reevaluate_With_Values
      (Live_Context, Invoke_Live, Read_Stream => Read_Live);
