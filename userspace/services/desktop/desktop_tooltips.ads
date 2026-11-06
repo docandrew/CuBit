@@ -17,6 +17,7 @@
 with Client_Tooltip_Policy;
 with Desktop_Status_Items;
 with Desktop_Surface_Limits;
+with CuBit.UI_Metrics;
 
 package Desktop_Tooltips with SPARK_Mode, Pure is
    package TP renames Client_Tooltip_Policy;
@@ -82,9 +83,10 @@ package Desktop_Tooltips with SPARK_Mode, Pure is
 
    --  The box, in logical pixels: text inset by PADDING, a shortcut
    --  HINT_GAP after it; POINTER_GAP below and right of the pointer, or
-   --  FOCUS_GAP from the focused control.
-   PADDING : constant := 6;
-   HINT_GAP : constant := 12;
-   POINTER_GAP : constant := 18;
-   FOCUS_GAP : constant := 4;
+   --  FOCUS_GAP from the focused control: the toolkit's tooltip geometry
+   --  (CuBit.UI.Tooltips), from the UI em (CuBit.UI_Metrics).
+   PADDING : constant := CuBit.UI_Metrics.Tooltip_Padding;
+   HINT_GAP : constant := CuBit.UI_Metrics.Space_L;
+   POINTER_GAP : constant := CuBit.UI_Metrics.Base_Em + CuBit.UI_Metrics.Space_XS;
+   FOCUS_GAP : constant := CuBit.UI_Metrics.Space_S;
 end Desktop_Tooltips;

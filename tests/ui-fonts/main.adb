@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Fonts;
+with CuBit.UI_Metrics;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.Controls;
 with CuBit.UI.State;
@@ -26,7 +27,8 @@ procedure Main is
    Clip : constant Rect := (7, 5, 51, 11);
    Gray : Boolean := False;
 begin
-   pragma Assert (CuBit.Fonts.Glyph'Size = (32 + 32 * 36) * 8);
+   pragma Assert (CuBit.Fonts.Glyph'Size =
+                    (32 + CuBit.UI_Metrics.Glyph_Cell_Columns * CuBit.UI_Metrics.Glyph_Cell_Rows) * 8);
    for Font in CuBit.Fonts.Face loop
       for Size in CuBit.Fonts.Raster_Size loop
          for Code in 32 .. 126 loop
@@ -35,7 +37,9 @@ begin
                  CuBit.Fonts.Get (Font, Character'Val (Code), Size);
             begin
                --  Advances in 1/64 pixel; every phase is its own published cell.
-               pragma Assert (G.Advance in 1 .. 32 * 64 and G.Height in 17 | 34 and G.Origin = CuBit.Fonts.Origin);
+               pragma Assert (G.Advance in 1 .. CuBit.Fonts.Max_Width * 64 and
+                              G.Height in CuBit.Fonts.Line_Height | 2 * CuBit.Fonts.Line_Height and
+                              G.Origin = CuBit.Fonts.Origin);
                pragma Assert (G = CuBit.Fonts.Get (Font, Character'Val (Code), Size));
                for P in CuBit.Fonts.Phase loop
                   pragma Assert (CuBit.Fonts.Get (Font, Character'Val (Code), Size, P).Advance = G.Advance);
@@ -50,13 +54,16 @@ begin
    pragma Assert (Gray);
    pragma Assert (CuBit.Fonts.Get (CuBit.Fonts.Sans, Character'Val (255)) =
                   CuBit.Fonts.Get (CuBit.Fonts.Sans, '?'));
-   pragma Assert (UI_Text_Height = 17 and Code_Text_Height = 17);
-   pragma Assert (Code_Text_Width ("iiWW") = 32);
+   --  The base em is 16 px (user 2026-11-05): IBM Plex's 1.3 em line box
+   --  and its 0.6 em monospace advance, each rounded to whole pixels.
+   pragma Assert (CuBit.UI_Metrics.Base_Em = 16 and CuBit.Fonts.Line_Height = 21 and CuBit.Fonts.Mono_Width = 10);
+   pragma Assert (UI_Text_Height = CuBit.Fonts.Line_Height and Code_Text_Height = CuBit.Fonts.Line_Height);
+   pragma Assert (Code_Text_Width ("iiWW") = 4 * CuBit.Fonts.Mono_Width);
    pragma Assert (UI_Text_Width ("ii") < UI_Text_Width ("WW"));
    --  One measure: kerning pulls AV together; widths are the rounded pen
    --  after unrounded advances, so a long run is not the sum of rounded
-   --  single-character widths; monospace keeps its 8-pixel grid.
-   pragma Assert (UI_Text_Width ("") = 0 and Code_Text_Width ("AV") = 16);
+   --  single-character widths; monospace keeps its Mono_Width grid.
+   pragma Assert (UI_Text_Width ("") = 0 and Code_Text_Width ("AV") = 2 * CuBit.Fonts.Mono_Width);
    pragma Assert (UI_Text_Width ("AVAVAVAVAVAV") < 6 * (UI_Text_Width ("A") + UI_Text_Width ("V")));
    declare
       Second : Natural := 0;
@@ -194,7 +201,8 @@ begin
          for Y in Buffer'Range (1) loop
             for X in Buffer'Range (2) loop
                if not Point_In_Rect (X, Y, R) then pragma Assert (Buffer (Y, X) = Sentinel); end if;
-               if X in 22 .. 37 and Y in 9 .. 24 then
+               --  The icon box: Space_S into a row without a disclosure box.
+               if X in R.x + 4 .. R.x + 4 + CuBit.UI_Metrics.Small_Icon_Edge - 1 and Y in 9 .. 24 then
                   Painted := Painted or Buffer (Y, X) /= CuBit_Alloy.field;
                end if;
             end loop;
@@ -345,7 +353,7 @@ begin
             else
                Draw_Code_Text (Target, 1, 1, "A", 16#FFFFFF#, 16#204060#);
             end if;
-            Width := Unsigned_32 ((9 * N + D - 1) / D);
+            Width := Unsigned_32 (((1 + CuBit.Fonts.Mono_Width) * N + D - 1) / D);
             for Y in Actual'Range (1) loop
                for X in Actual'Range (2) loop
                   Expected := Sentinel;

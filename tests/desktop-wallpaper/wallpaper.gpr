@@ -12,7 +12,7 @@ project Wallpaper is
      "cubit-appearance.adb", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
      "compositor_backdrop_strips.ads", "compositor_backdrop_strips.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb",
      "compositor_sampling.ads", "compositor_sampling.adb", "compositor_text.ads",
-     "compositor_text.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_affine.ads", "compositor_affine.adb");
+     "compositor_text.adb", "compositor_glyph_layout.ads", "cubit-ui_metrics.ads", "compositor_glyph_layout.adb", "compositor_affine.ads", "compositor_affine.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");

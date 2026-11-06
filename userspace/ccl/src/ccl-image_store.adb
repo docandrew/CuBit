@@ -1,5 +1,19 @@
+with Ada.Unchecked_Deallocation;
+
 package body CCL.Image_Store is
    use Interfaces;
+
+   --  Large images: one heap block each.
+   type Large_Pixels is array (Natural range <>) of Pixel;
+   type Large_Access is access Large_Pixels;
+   procedure Free is new Ada.Unchecked_Deallocation (Large_Pixels, Large_Access);
+   type Large_Slot is record
+      Id : Image_Id := No_Image;
+      Width, Height : Natural := 0;
+      Data : Large_Access := null;
+      Used : Unsigned_64 := 0;
+   end record;
+   Large : array (1 .. Maximum_Large_Images) of Large_Slot;
 
    subtype Pixel_Index is Natural range 0 .. Maximum_Pixels - 1;
    type Pixel_Buffer is array (Pixel_Index) of Pixel;
@@ -186,15 +200,79 @@ package body CCL.Image_Store is
       Drafting := False;
    end Discard;
 
-   function Known (Id : Image_Id) return Boolean is (Find (Id) > 0);
+   function Find_Large (Id : Image_Id) return Natural is
+   begin
+      if Id /= No_Image then
+         for I in Large'Range loop
+            if Large (I).Id = Id then return I; end if;
+         end loop;
+      end if;
+      return 0;
+   end Find_Large;
+
+   procedure Keep_Large (Width, Height : Large_Side; Id : out Image_Id) is
+      PRIME : constant Unsigned_64 := 16#0000_0100_0000_01B3#;
+      Hash : Unsigned_64 := 16#CBF2_9CE4_8422_2325#;
+      Count : constant Natural := Width * Height;
+      Data : Large_Access;
+      Target : Natural := Large'First;
+      procedure Mix (Word : Unsigned_32) is
+      begin
+         for Shift in 0 .. 3 loop
+            Hash := (Hash xor (Shift_Right (Unsigned_64 (Word), Shift * 8) and 16#FF#)) * PRIME;
+         end loop;
+      end Mix;
+   begin
+      Id := No_Image;
+      if not Fits_Large (Width, Height) then
+         return;
+      end if;
+      Data := new Large_Pixels (0 .. Count - 1);
+      Mix (Unsigned_32 (Width));
+      Mix (Unsigned_32 (Height));
+      for Y in 0 .. Height - 1 loop
+         for X in 0 .. Width - 1 loop
+            Data (Y * Width + X) := Source (X, Y);
+            Mix (Data (Y * Width + X));
+         end loop;
+      end loop;
+      Hash := Hash and 16#7FFF_FFFF_FFFF_FFFF#;
+      Id := (if Hash = 0 then 1 else Image_Id (Hash));
+      Clock := Clock + 1;
+      --  The same content kept already: the older copy gives way.
+      for I in Large'Range loop
+         if Large (I).Id = Id or else Large (I).Id = No_Image then
+            Target := I;
+            exit;
+         elsif Large (I).Used < Large (Target).Used then
+            Target := I;
+         end if;
+      end loop;
+      if Large (Target).Data /= null then
+         Free (Large (Target).Data);
+      end if;
+      Large (Target) := (Id => Id, Width => Width, Height => Height, Data => Data, Used => Clock);
+   end Keep_Large;
+
+   function Known (Id : Image_Id) return Boolean is (Find (Id) > 0 or else Find_Large (Id) > 0);
    function Width (Id : Image_Id) return Natural is
-     (if Find (Id) > 0 then Slots (Find (Id)).Width else 0);
+     (if Find (Id) > 0 then Slots (Find (Id)).Width
+      elsif Find_Large (Id) > 0 then Large (Find_Large (Id)).Width else 0);
    function Height (Id : Image_Id) return Natural is
-     (if Find (Id) > 0 then Slots (Find (Id)).Height else 0);
+     (if Find (Id) > 0 then Slots (Find (Id)).Height
+      elsif Find_Large (Id) > 0 then Large (Find_Large (Id)).Height else 0);
    function Pixel_At (Id : Image_Id; X, Y : Natural) return Pixel is
       Position : constant Natural := Find (Id);
+      Big : Natural;
    begin
-      if Position = 0 or else X >= Slots (Position).Width or else Y >= Slots (Position).Height then
+      if Position = 0 then
+         Big := Find_Large (Id);
+         if Big = 0 or else X >= Large (Big).Width or else Y >= Large (Big).Height then
+            return 0;
+         end if;
+         return Large (Big).Data (Y * Large (Big).Width + X);
+      end if;
+      if X >= Slots (Position).Width or else Y >= Slots (Position).Height then
          return 0;
       end if;
       return Pool (Slots (Position).Offset + Y * Slots (Position).Width + X);

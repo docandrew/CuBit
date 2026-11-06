@@ -54,9 +54,12 @@ pub enum Kind {
     Resource = 12,
     FirmwareSnapshot = 13,
     AcpiHardware = 14,
+    /// A kernel publication page mapped read-only (KERN-002); the handle
+    /// word is the page's address.
+    Publication = 15,
 }
 
-const LAST_KIND: u8 = Kind::AcpiHardware as u8;
+const LAST_KIND: u8 = Kind::Publication as u8;
 
 /// Whether a program's launch needs a startup capability
 /// (CuBit.Startup_Tables.Need).

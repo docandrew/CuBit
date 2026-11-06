@@ -1,4 +1,5 @@
 with CuBit.Fonts;
+with CuBit.UI_Metrics;
 
 package body CuBit.UI.Menus is
    use type Controls.Pointer_Action;
@@ -14,9 +15,10 @@ package body CuBit.UI.Menus is
      (if S = null then "" else S.all);
    function Lower (C : Character) return Character is
      (if C in 'A' .. 'Z' then Character'Val (Character'Pos (C) + 32) else C);
-   --  The mnemonic underline: its top MNEMONIC_RISE above the line's
-   --  bottom, MNEMONIC_THICKNESS high.
-   MNEMONIC_RISE : constant := 2;
+   package UM renames CuBit.UI_Metrics;
+   --  The mnemonic underline: its top MNEMONIC_DROP below the baseline,
+   --  MNEMONIC_THICKNESS high.
+   MNEMONIC_DROP : constant := UM.Space_XS;
    MNEMONIC_THICKNESS : constant := 1;
 
    --  Under the mnemonic's advance in the caption's own layout (kerned,
@@ -35,7 +37,7 @@ package body CuBit.UI.Menus is
                Right : constant Natural := CuBit.Fonts.Boundary (CuBit.Fonts.Sans, Caption, Before + 1);
             begin
                Fill_Rect (C,
-                 (X + Left, Y + UI_Text_Height - MNEMONIC_RISE,
+                 (X + Left, Y + UM.Ascent + MNEMONIC_DROP,
                   (if Right > Left then Right - Left else 0), MNEMONIC_THICKNESS), Ink);
             end;
             return;
@@ -232,12 +234,12 @@ package body CuBit.UI.Menus is
    --  Popup geometry: rows inside a padded panel; an item's caption at
    --  ITEM_TEXT_LEFT, its shortcut right-aligned SHORTCUT_RIGHT from the
    --  row's end, CAPTION_ROOM covering both insets and the gap between.
-   POPUP_PADDING : constant := 4;
-   ITEM_TEXT_LEFT : constant := 24;
-   SHORTCUT_RIGHT : constant := 8;
-   CAPTION_ROOM : constant := 40;
-   SEPARATOR_HEIGHT : constant := 8;
-   BOTTOM_MARGIN : constant := 8;
+   POPUP_PADDING : constant := UM.Space_S;
+   ITEM_TEXT_LEFT : constant := UM.Small_Icon_Edge + UM.Space_M;
+   SHORTCUT_RIGHT : constant := UM.Space_M;
+   CAPTION_ROOM : constant := ITEM_TEXT_LEFT + UM.Space_XL;
+   SEPARATOR_HEIGHT : constant := UM.Space_M;
+   BOTTOM_MARGIN : constant := UM.Space_M;
 
    function Row_Height_Of (It : Item; Row_Height : Positive) return Natural is
      (if It.Separator then Natural'Min (SEPARATOR_HEIGHT, Row_Height) else Row_Height);

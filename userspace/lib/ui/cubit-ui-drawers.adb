@@ -1,6 +1,6 @@
 package body CuBit.UI.Drawers is
-   TEXT_INSET : constant := 8;
-   ICON_GAP : constant := 6;
+   TEXT_INSET : constant := M.Text_Inset;
+   ICON_GAP : constant := M.Space_S + M.Space_XS;
 
    procedure Layout (S : Drawer_State; Area : Rect; Drawer, Content, Edge : out Rect) is
       Width : constant Natural :=

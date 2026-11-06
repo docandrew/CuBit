@@ -65,7 +65,9 @@ package CCL.Manifests with SPARK_Mode => On is
       Invalid_Handle_Limit, Invalid_Channel_Limit, Unknown_Optional_Name,
       Reserved_Binding_Name, Not_Yet_Supported,
       --  A catalog (client …) that is not a Service_Client (CAP-003).
-      Unknown_Client);
+      Unknown_Client,
+      --  (request-publication NAME) naming no kernel publication (KERN-002).
+      Unknown_Publication);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;

@@ -1,3 +1,4 @@
+with CuBit.UI_Metrics;
 with Ada.Unchecked_Deallocation;
 with CuBit.UI.Widgets;
 
@@ -13,22 +14,23 @@ package body Dictionary_Views is
    ---------------------------------------------------------------------------
    --  Geometry (logical pixels).
    ---------------------------------------------------------------------------
-   TOOLBAR_HEIGHT : constant := 44;
-   STATUS_HEIGHT  : constant := 26;
-   CONTROL_HEIGHT : constant := 28;
-   NAV_WIDTH      : constant := 34;
+   package M renames CuBit.UI_Metrics;
+   CONTROL_HEIGHT : constant := M.Control_Height;
+   TOOLBAR_HEIGHT : constant := CONTROL_HEIGHT + 2 * M.Space_M;
+   STATUS_HEIGHT  : constant := M.Compact_Row_Height;
+   NAV_WIDTH      : constant := CONTROL_HEIGHT + M.Space_S;
    GAP            : constant := 6;
-   TAB_WIDTH      : constant := 104;
+   TAB_WIDTH      : constant := 6 * M.Base_Em + M.Space_M;
    SCROLLBAR_WIDTH : constant := 14;
    PLACEHOLDER_INSET : constant := 6;
    MARGIN         : constant := 32;     --  the page's left and right margins
    TOP_PAD        : constant := 22;
    BOTTOM_PAD     : constant := 28;
-   NUMBER_WIDTH   : constant := 30;     --  "12." before a sense
+   NUMBER_WIDTH   : constant := 2 * M.Base_Em;     --  "12." before a sense
    EXAMPLE_INDENT : constant := 14;     --  examples, under their sense
-   LABEL_WIDTH    : constant := 84;     --  "Synonyms" before a list's words
+   LABEL_WIDTH    : constant := 6 * M.Base_Em;     --  "Synonyms" before a list's words
    COUNT_GAP      : constant := 12;     --  headword to its sense count
-   HEAD_ROW       : constant := 34;
+   HEAD_ROW       : constant := 2 * M.Line_Height;
    RULE_INSET     : constant := 8;      --  the rule under a headword, above the next row
    PART_GAP       : constant := 10;
    SECTION_GAP    : constant := 22;

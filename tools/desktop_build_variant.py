@@ -8,7 +8,8 @@ def directory(metrics,env):
       'CUBIT_INPUT_OVERLAY':(('off','on'),'off'),
       'CUBIT_COMPOSITOR_TIMING':(('off','on'),'off'),
       'CUBIT_COMPOSITOR_STORAGE':(('production','limited'),'production'),
-      'CUBIT_DISPLAY_TEST_MODE':(('production','delayed'),'production')}
+      'CUBIT_DISPLAY_TEST_MODE':(('production','delayed'),'production'),
+      'CUBIT_DESKTOP_FAULT':(('off','exit-once'),'off')}
     chosen={}
     for key,(values,default) in options.items():
         value=env.get(key,default)
@@ -20,6 +21,7 @@ def directory(metrics,env):
     if chosen['CUBIT_INPUT_OVERLAY']=='on':result+='-input-overlay'
     if chosen['CUBIT_COMPOSITOR_TIMING']=='on':result+='-timing'
     if metrics=='on':result+='-metrics'
+    if chosen['CUBIT_DESKTOP_FAULT']=='exit-once':result+='-fault-exit-once'
     if chosen['CUBIT_COMPOSITOR_STORAGE']=='limited':result+='-limited-storage'
     return result
 

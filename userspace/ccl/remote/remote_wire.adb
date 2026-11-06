@@ -363,6 +363,16 @@ package body Remote_Wire with SPARK_Mode is
                   Result := OK;
                end if;
             end if;
+
+         when Capture =>
+            if Length = Capture_Request_Bytes then
+               Item.Output := Output_Number (Data (1));
+               Item.Area_X := Natural (Data (2)) * 256 + Natural (Data (3));
+               Item.Area_Y := Natural (Data (4)) * 256 + Natural (Data (5));
+               Item.Area_Width := Natural (Data (6)) * 256 + Natural (Data (7));
+               Item.Area_Height := Natural (Data (8)) * 256 + Natural (Data (9));
+               Result := OK;
+            end if;
       end case;
       if Result /= OK then
          Item := (Op => Header.Op, Where => Header.Where, others => <>);

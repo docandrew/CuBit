@@ -1,4 +1,5 @@
 with Client_Popup_Layout;
+with CuBit.UI_Metrics;
 
 package body CuBit.UI.Tooltips is
    package TP renames Client_Tooltip_Policy;
@@ -6,10 +7,11 @@ package body CuBit.UI.Tooltips is
 
    --  Below and right of the pointer, clear of the cursor; a keyboard tip
    --  FOCUS_GAP below its control.
-   POINTER_GAP : constant := 18;
-   FOCUS_GAP : constant := 4;
-   PADDING : constant := 6;
-   HINT_GAP : constant := 12;
+   package UM renames CuBit.UI_Metrics;
+   POINTER_GAP : constant := UM.Base_Em + UM.Space_XS;
+   FOCUS_GAP : constant := UM.Space_S;
+   PADDING : constant := UM.Tooltip_Padding;
+   HINT_GAP : constant := UM.Space_L;
 
    procedure Clear (Table : in out Tip_Table) is
    begin

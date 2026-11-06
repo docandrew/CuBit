@@ -108,26 +108,60 @@ package Remote_Wire with SPARK_Mode is
    --                exit code (4), output total (8), first kept offset (8),
    --                then output from offset (at most one chunk).
    --  Build_Cancel  body: job (4). Response: state (1).
+   --  Capture       body: output (1), then the area x, y, width, height (2
+   --                each; all zero: the whole output). One frame of that
+   --                output, as the device composed it, saved as a PNG in
+   --                the Captures place (Capture_Name). Response: result (1,
+   --                Capture_Result), then when Captured: width (4), height
+   --                (4), PNG size (8), its SHA-256 (32) and its name (the
+   --                rest). The host takes it with Get on Captures.
    type Operation is
      (Hello, Evaluate, List, Stat, Get, Put, Commit, Remove,
-      Build_Start, Build_Poll, Build_Cancel);
+      Build_Start, Build_Poll, Build_Cancel, Capture);
    for Operation use
      (Hello => 1, Evaluate => 2, List => 3, Stat => 4, Get => 5, Put => 6,
-      Commit => 7, Remove => 8, Build_Start => 9, Build_Poll => 10, Build_Cancel => 11);
+      Commit => 7, Remove => 8, Build_Start => 9, Build_Poll => 10, Build_Cancel => 11,
+      Capture => 12);
 
-   --  Where a file operation acts. None for the others.
-   type Place is (None, Workspace, Mail_To_Device, Mail_To_Host);
-   for Place use (None => 0, Workspace => 1, Mail_To_Device => 2, Mail_To_Host => 3);
+   --  Where a file operation acts. None for the others. Captures holds the
+   --  device's screenshots (read-only to the host).
+   type Place is (None, Workspace, Mail_To_Device, Mail_To_Host, Captures);
+   for Place use
+     (None => 0, Workspace => 1, Mail_To_Device => 2, Mail_To_Host => 3, Captures => 4);
 
    --  What the paired principal may do (CTX-001 direction): Diagnose is
    --  always granted; the others only when the device's launch parameters
-   --  say so.
-   type Grant is (Diagnose, Files, Builds, Mail);
+   --  say so. Capture: the device's startup entry granted ccl-remote the
+   --  display-capture capability (the person at the device must still
+   --  allow each session's captures; Capture_Off otherwise).
+   type Grant is (Diagnose, Files, Builds, Mail, Capture);
    type Grant_Set is array (Grant) of Boolean;
    Diagnose_Only : constant Grant_Set := [Diagnose => True, others => False];
    function Grant_Bits (Item : Grant_Set) return Unsigned_8 is
      ((if Item (Diagnose) then 1 else 0) + (if Item (Files) then 2 else 0) +
-      (if Item (Builds) then 4 else 0) + (if Item (Mail) then 8 else 0));
+      (if Item (Builds) then 4 else 0) + (if Item (Mail) then 8 else 0) +
+      (if Item (Capture) then 16 else 0));
+
+   --  How a capture ended (the Capture response's first byte).
+   type Capture_Result is
+     (Captured, No_Capability, Capture_Off, Rate_Limited, No_Session, No_Frame,
+      Bad_Output, Bad_Area, Capture_Failed);
+   for Capture_Result use
+     (Captured => 0, No_Capability => 1, Capture_Off => 2, Rate_Limited => 3,
+      No_Session => 4, No_Frame => 5, Bad_Output => 6, Bad_Area => 7, Capture_Failed => 8);
+   Capture_Request_Bytes : constant := 1 + 4 * 2;
+   --  The fixed fields of a Captured response before the name.
+   Capture_Fixed_Bytes : constant := 1 + 4 + 4 + Offset_Bytes + Digest_Bytes;
+   --  Outputs are numbered from 0; areas in the output's pixels.
+   Maximum_Output : constant := 255;
+   subtype Output_Number is Natural range 0 .. Maximum_Output;
+   subtype Area_Field is Natural range 0 .. 65_535;
+   --  The PNG of output N in the Captures place: the newest capture of it
+   --  replaces the one before.
+   function Capture_Name (Output : Output_Number) return String is
+     ("output-" & (if Output >= 100 then [Character'Val (Character'Pos ('0') + Output / 100)] else "") &
+      (if Output >= 10 then [Character'Val (Character'Pos ('0') + (Output / 10) mod 10)] else "") &
+      [Character'Val (Character'Pos ('0') + Output mod 10)] & ".png");
 
    type Status is
      (OK, Malformed, Unauthorized, Not_Granted, Not_Found, Too_Large, Conflict,
@@ -152,19 +186,21 @@ package Remote_Wire with SPARK_Mode is
            (case Where is
                when Workspace => Grants (Diagnose),
                when Mail_To_Device | Mail_To_Host => Grants (Mail),
+               when Captures => Grants (Capture),
                when None => False),
          when Put | Commit =>
            (case Where is
                when Workspace => Grants (Files),
                when Mail_To_Device => Grants (Mail),
-               when Mail_To_Host | None => False),
+               when Mail_To_Host | Captures | None => False),
          when Remove =>
            (case Where is
                when Workspace => Grants (Files),
                when Mail_To_Device | Mail_To_Host => Grants (Mail),
-               when None => False),
+               when Captures | None => False),
          when Build_Start => Grants (Builds) and then Where = Workspace,
-         when Build_Poll | Build_Cancel => Grants (Builds) and then Where = None);
+         when Build_Poll | Build_Cancel => Grants (Builds) and then Where = None,
+         when Capture => Grants (Capture) and then Where = None);
 
    --  Whether Op writes (a write needs a grant beyond Diagnose).
    function Writes (Op : Operation) return Boolean is
@@ -228,6 +264,9 @@ package Remote_Wire with SPARK_Mode is
       Size   : File_Offset := 0;     --  Commit
       Hash   : Digest := [others => 0];
       Job    : Unsigned_32 := 0;
+      --  Capture: the output and the area (all zero: the whole output).
+      Output : Output_Number := 0;
+      Area_X, Area_Y, Area_Width, Area_Height : Area_Field := 0;
       --  Evaluate's source, Put's data: Body (Data_First .. Data_First +
       --  Data_Length - 1) of the body Decode_Body was given.
       Data_First  : Positive := 1;

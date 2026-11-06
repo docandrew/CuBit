@@ -27,7 +27,10 @@
   (Framebuffer Framebuffer_Request) (Render String) (Optional_Render String) (Device_Memory Device_Memory_Request)
   (IO_Ports IO_Port_Request) (Interrupt Interrupt_Request) (DMA DMA_Request)
   (Scheduling Scheduling_Request)
-  (Firmware_Snapshot String) (ACPI_Hardware String)))
+  (Firmware_Snapshot String) (ACPI_Hardware String)
+  # A kernel publication page by name, mapped read-only (KERN-002):
+  # "cpu-times" (CuBit.Publication_Grants).
+  (Publication String)))
 (type File_Right (enum Read Write Execute Create))
 (type Scope_Place (variant (Everything) (Under String)))
 (type Access_Scope (record (rights (List File_Right)) (place Scope_Place)))

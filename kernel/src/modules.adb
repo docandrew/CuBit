@@ -30,6 +30,10 @@ with Owned_Memory_Layout;
 with Launch_Configuration;
 with Process_Launch;
 with Publication_Pages;
+with Cpu_Times_Page;
+with acpi;
+with Config;
+with Time;
 with Util;
 with Physical_Range_Map;
 with Device_Memory_Diagnostics;
@@ -294,6 +298,12 @@ package body Modules with SPARK_Mode => Off is
         Device_Memory_Diagnostics.Publish_Classification;
         -- System facts are final now; every process maps them from its start.
         Publication_Pages.Publish_Facts;
+        -- Per-CPU times: the CPUs kmain starts (acpi.numCPUs, at most
+        -- Config.MAX_SMP_CPUS), each record written from its first boundary.
+        Cpu_Times_Page.Publish
+          (Processors     => Unsigned_64 (Natural'Min (acpi.numCPUs, Config.MAX_SMP_CPUS)),
+           Tick_Frequency => Unsigned_64 (Time.tscFrequencyHz),
+           Memory_Bytes   => Unsigned_64 (BuddyAllocator.getTotalBytes));
         initrdAddr  := 0;
         initrdSize  := 0;
         devmgrPID   := Process.NO_PROCESS;

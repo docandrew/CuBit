@@ -18,6 +18,14 @@ connection: a 28-byte header carrying the pairing token, then a body.
   cubit-remote build --attach JOB | --cancel JOB
   cubit-remote mail send FILE [--name NAME] | mail send --text TEXT --name NAME
   cubit-remote mail recv [--dir DIR] [--keep] | mail ls
+  cubit-remote screenshot [-o FILE.png] [--output N] [--area X,Y,W,H]
+                                                one frame of the device's screen as a PNG
+
+Screenshots need the device's display-capture grant (its startup entry says
+(display-capture approve-declared)) and the person at the device turning on
+"Allow screen capture" (Deskbar, Remote access); otherwise the device says
+why it refused. Each capture shows on the device (a mark in the Deskbar,
+the remote window's activity list, its log) and is rate-limited.
 
 Pairing tokens are stored in ~/.config/cubit-remote/hosts.json (0600, the
 directory 0700) and never printed. Python 3 standard library only.
@@ -59,15 +67,31 @@ DEFAULT_PORT = 8445
 OPERATIONS = {
     "hello": 1, "evaluate": 2, "list": 3, "stat": 4, "get": 5, "put": 6,
     "commit": 7, "remove": 8, "build_start": 9, "build_poll": 10, "build_cancel": 11,
+    "capture": 12,
 }
-PLACES = {"none": 0, "workspace": 1, "to-device": 2, "to-host": 3}
+PLACES = {"none": 0, "workspace": 1, "to-device": 2, "to-host": 3, "captures": 4}
 STATUSES = [
     "OK", "Malformed", "Unauthorized", "Not_Granted", "Not_Found", "Too_Large",
     "Conflict", "Busy", "Failed", "Integrity_Mismatch", "Unavailable",
     "Unsupported_Version", "Locked",
 ]
 JOB_STATES = {1: "running", 2: "exited", 3: "failed-to-start", 4: "cancelled", 5: "unknown"}
-GRANTS = [(1, "diagnose"), (2, "files"), (4, "builds"), (8, "mail")]
+GRANTS = [(1, "diagnose"), (2, "files"), (4, "builds"), (8, "mail"), (16, "capture")]
+# Remote_Wire.Capture_Result, with what the person reads for each refusal.
+CAPTURE_RESULTS = [
+    ("Captured", "captured"),
+    ("No_Capability", "the device grants ccl-remote no display-capture capability "
+                      "(its startup entry needs (display-capture approve-declared))"),
+    ("Capture_Off", "screen capture is off on the device: the person there turns on "
+                    "Allow screen capture (Deskbar, Remote access)"),
+    ("Rate_Limited", "too soon after the last capture; try again in a second"),
+    ("No_Session", "the device's Desktop has no remote session announced"),
+    ("No_Frame", "that output shows no frame yet"),
+    ("Bad_Output", "no such output"),
+    ("Bad_Area", "the area is empty or leaves the output"),
+    ("Capture_Failed", "the capture failed on the device (see its log)"),
+]
+CAPTURE_FIXED_BYTES = 1 + 4 + 4 + 8 + 32
 
 # Whole lists: elements per slice at first (halved while a slice is still
 # too large), and the device's own words for a result it could not carry.
@@ -393,6 +417,50 @@ def get_file(host, place, name, local):
     return size, digest.hexdigest()
 
 
+class CaptureRefused(Exception):
+    """The device answered a capture without a frame (Capture_Result)."""
+
+    def __init__(self, code):
+        self.code = code
+        name, why = CAPTURE_RESULTS[code] if code < len(CAPTURE_RESULTS) else ("result %d" % code, "")
+        self.name = name
+        super().__init__("%s: %s" % (name, why) if why else name)
+
+
+def capture_request(output=0, area=None):
+    """Capture's body: output (1), then x, y, width, height (2 each)."""
+    x, y, w, h = area or (0, 0, 0, 0)
+    if not 0 <= output <= 255 or any(not 0 <= v <= 65535 for v in (x, y, w, h)):
+        raise SystemExit("cubit-remote: an output is 0..255 and an area's fields 0..65535")
+    return struct.pack(">BHHHH", output, x, y, w, h)
+
+
+def parse_capture(body):
+    """(width, height, size, sha256, name) of a Captured response, or
+    CaptureRefused."""
+    if not body:
+        raise RemoteError(1, "an empty capture response")
+    if body[0] != 0:
+        raise CaptureRefused(body[0])
+    if len(body) <= CAPTURE_FIXED_BYTES:
+        raise RemoteError(1, "a short capture response")
+    width, height, size = struct.unpack(">IIQ", body[1:17])
+    return width, height, size, body[17:49], body[49:].decode("ascii", "replace")
+
+
+def screenshot(host, local, output=0, area=None):
+    """Take one frame and download its PNG to local (SHA-256 checked twice:
+    against the stat and against what the capture reported)."""
+    width, height, size, digest, name = parse_capture(host.call("capture", "none", capture_request(output, area)))
+    if not valid_name(name):
+        raise RemoteError(1, "the device named its capture %r" % name)
+    got_size, got_digest = get_file(host, "captures", name, local)
+    if got_size != size or got_digest != digest.hex():
+        os.unlink(local)
+        raise RemoteError(9, "%s is not the frame just captured (it changed)" % name)
+    return width, height, size, got_digest
+
+
 def build_poll(host, job, offset):
     body = host.call("build_poll", "none", struct.pack(">IQ", job, offset))
     state, code, total, first_kept = struct.unpack(">BIQQ", body[:21])
@@ -576,6 +644,26 @@ def command_mail(args):
             print(os.path.join(args.dir, name))
 
 
+def command_screenshot(args):
+    host = selected_host(args)
+    area = None
+    if args.area:
+        try:
+            area = tuple(int(v) for v in args.area.split(","))
+        except ValueError:
+            area = ()
+        if len(area) != 4:
+            raise SystemExit("cubit-remote: --area is X,Y,WIDTH,HEIGHT")
+    local = args.o or "screenshot-%s-%s.png" % (host.name.replace(":", "_"), time.strftime("%Y%m%d-%H%M%S"))
+    try:
+        width, height, size, digest = screenshot(host, local, args.output, area)
+    except CaptureRefused as e:
+        sys.stderr.write("cubit-remote: no screenshot: %s\n" % e)
+        return 2
+    print("saved %s (%dx%d, %d bytes, sha256 %s)" % (local, width, height, size, digest))
+    return 0
+
+
 def parser():
     p = argparse.ArgumentParser(prog="cubit-remote", description=__doc__.split("\n")[0])
     p.add_argument("--host", help="a paired host's name (default: the last paired)")
@@ -610,7 +698,7 @@ def parser():
             ("rm", command_rm, "remove a file"), ("get", command_get, "download a file"),
             ("put", command_put, "upload a file or (-r) a directory")):
         s = sub.add_parser(name, help=helptext)
-        s.add_argument("--place", choices=["workspace", "to-device", "to-host"], default="workspace")
+        s.add_argument("--place", choices=["workspace", "to-device", "to-host", "captures"], default="workspace")
         if name == "ls":
             s.add_argument("path", nargs="?")
         elif name == "put":
@@ -642,6 +730,12 @@ def parser():
     m.add_argument("--keep", action="store_true", help="leave the messages on the device")
     mail.add_parser("ls", help="list mail/to-host")
     s.set_defaults(run=command_mail)
+
+    s = sub.add_parser("screenshot", help="one frame of the device's screen, saved as a PNG")
+    s.add_argument("-o", metavar="FILE.png", help="where to save it (default: screenshot-HOST-TIME.png)")
+    s.add_argument("--output", type=int, default=0, help="the output (monitor) number, from 0")
+    s.add_argument("--area", metavar="X,Y,W,H", help="only this rectangle, in the output's pixels")
+    s.set_defaults(run=command_screenshot)
     return p
 
 

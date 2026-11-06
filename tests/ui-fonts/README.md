@@ -33,7 +33,14 @@ text path into memory at 1:1, renders the same strings with FreeType (light
 auto-hinting with stem darkening, HarfBuzz GPOS kerning, true 1/64-pixel
 placement, blended in linear light), and writes interleaved 1:1 rows, a 4x
 nearest-neighbour zoom and two distances: mean sRGB error on ink pixels, and
-the per-row ink profile error (vertical placement only). `--bench` times 4K
+the per-row ink profile error (vertical placement only). A second sample set
+(`FONT_QUALITY_SET=panel`) holds the Desktop status panel's own strings and
+colours at 1x, also rendered with FreeType blended in sRGB values
+(browser/GTK-like) and with LCD subpixel filtering, for viewing;
+`reference.py --em=PX`, `--nohint` and `FONT.ttf@WEIGHT` serve size, hinting
+and font studies. The run exits non-zero when any density's worst ink or
+row-profile error passes its threshold in `run.sh` (UI-032: the grid-fitted
+1x text measured 38.1 / 16.6%, now 22.0 / 7.9%). `--bench` times 4K
 UI text (opaque, transparent, measure); `--kerning` compares the layout
 tables with HarfBuzz for every printable-ASCII pair. All Linux-hosted;
 FreeType and HarfBuzz come from the pinned nixpkgs and are never part of

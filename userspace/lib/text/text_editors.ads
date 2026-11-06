@@ -1,6 +1,7 @@
 with Interfaces;
 with System;
 with CuBit.UI;
+with CuBit.UI_Metrics;
 with Text_Limits; use Text_Limits;
 with Text_Documents;
 with Text_Syntax;
@@ -32,8 +33,10 @@ package Text_Editors is
    --  The editor's colors from the toolkit's theme (light or dark scheme).
    function Palette_For (Colors : CuBit.UI.Theme; Dark : Boolean) return Palette;
 
-   ROW_HEIGHT : constant := 19;
-   CELL_WIDTH : constant := 8;
+   --  A code line (the UI em's line box, GLYPH_TOP above it) and the
+   --  monospace grid (CuBit.UI_Metrics).
+   ROW_HEIGHT : constant := CuBit.UI_Metrics.Line_Height + 2;
+   CELL_WIDTH : constant := CuBit.UI_Metrics.Mono_Advance;
    RULER_WIDTH : constant := 14;
    MINIMAP_WIDTH : constant := 96;
 

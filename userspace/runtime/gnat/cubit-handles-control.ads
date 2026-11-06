@@ -17,6 +17,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with System;
+with System_Publications;
 with CuBit.Process_IDs;
 with CuBit.Startup_Tables;
 
@@ -85,9 +86,12 @@ package CuBit.Handles.Control is
      (Target : Process_ID; Authority : Process;
       Max_Frames, CPU_Quota : Unsigned_64) return Boolean;
    function Kill (Target : Process_ID; Authority : Process) return Boolean;
+   --  Publications: the kernel publication pages granted to Target (a set
+   --  of System_Publications.Granted_Publication bits), mapped with it.
    function Install_Launch_Block
      (Target : Process_ID; Authority : Process;
-      Block : System.Address; Bytes : Unsigned_64) return Boolean;
+      Block : System.Address; Bytes : Unsigned_64;
+      Publications : Unsigned_64 := System_Publications.No_Publications) return Boolean;
    function Set_CPU (Target : Process_ID; Authority : Process; CPU : Unsigned_64)
      return Boolean;
    --  SEND_CONTROL: 0 accepted, Busy_Word busy, else refused. Authority

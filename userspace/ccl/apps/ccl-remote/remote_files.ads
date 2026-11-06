@@ -13,6 +13,7 @@
 --    <work>/remote             the workspace (uploads, build sources, outputs)
 --    <work>/mail/to-device     the host's messages for the device's agent
 --    <work>/mail/to-host       the device's messages for the host
+--    <work>/captures           screenshots (Remote_Capture), read-only to the host
 --
 --  Uploads go to a staging file (the name plus Remote_Wire.Staging_Suffix)
 --  chunk by chunk; Commit renames it over the name only when its size and

@@ -19,26 +19,29 @@
 --  Theme.menuRule). All values are solid fills: nothing here is a per-pixel blend.
 with CuBit.Appearance;
 with CuBit.Theme;
+with CuBit.UI_Metrics;
 
 package CuBit.UI.Window_Chrome with SPARK_Mode is
-   --  Geometry, in logical pixels.
+   package M renames CuBit.UI_Metrics;
+   --  Geometry, in logical pixels: the bar, its buttons and gaps derive from
+   --  the em (CuBit.UI_Metrics); the border, stripe and rule are hairlines.
    Border_Width       : constant := 1;
    Stripe_Height      : constant := 4;
-   Bar_Height         : constant := 28;
+   Bar_Height         : constant := M.Title_Bar_Height;
    Rule_Height        : constant := 1;
    Bar_Top            : constant := Border_Width + Stripe_Height;
    --  The client starts below the rule.
    Client_Top         : constant := Bar_Top + Bar_Height + Rule_Height;
    --  The title tile: the app's icon, drawn this size (Desktop_Icons).
-   Tile_Size          : constant := 16;
-   Tile_Left          : constant := 8;
-   Tile_Title_Gap     : constant := 6;
+   Tile_Size          : constant := M.Small_Icon_Edge;
+   Tile_Left          : constant := M.Space_M;
+   Tile_Title_Gap     : constant := M.Space_S + M.Space_XS;
    Title_Left         : constant := Tile_Left + Tile_Size + Tile_Title_Gap;
-   Button_Width       : constant := 22;
-   Button_Height      : constant := 20;
-   Button_Gap         : constant := 4;
-   Button_Right_Inset : constant := 6;
-   Glyph_Size         : constant := 10;
+   Button_Width       : constant := M.Title_Button_Width;
+   Button_Height      : constant := M.Title_Button_Height;
+   Button_Gap         : constant := M.Space_S;
+   Button_Right_Inset : constant := M.Space_S + M.Space_XS;
+   Glyph_Size         : constant := M.Title_Glyph;
 
    --  One window button's three colours.
    type Button_Colors is record

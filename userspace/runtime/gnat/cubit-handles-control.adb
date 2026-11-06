@@ -120,9 +120,10 @@ package body CuBit.Handles.Control is
 
    function Install_Launch_Block
      (Target : Process_ID; Authority : Process;
-      Block : System.Address; Bytes : Unsigned_64) return Boolean is
+      Block : System.Address; Bytes : Unsigned_64;
+      Publications : Unsigned_64 := System_Publications.No_Publications) return Boolean is
      (K.Call (K.Install_Launch_Arguments, CuBit.Process_IDs.To_Word (Target),
-              Address_Word (Block), Bytes, K.Word (Authority)) = 0);
+              Address_Word (Block), Bytes, K.Word (Authority), Publications) = 0);
 
    function Set_CPU (Target : Process_ID; Authority : Process; CPU : Unsigned_64)
      return Boolean is

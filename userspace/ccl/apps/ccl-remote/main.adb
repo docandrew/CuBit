@@ -34,6 +34,8 @@ with Remote_Host;
 with Remote_Files;
 with Remote_Jobs;
 with Remote_Activity;
+with Remote_Capture;
+with System;
 
 procedure Main is
    package W renames Remote_Wire;
@@ -41,6 +43,7 @@ procedure Main is
    use type W.Job_State;
    use type W.Operation;
    use type W.Place;
+   use type W.Capture_Result;
    use type Remote_Activity.Kind;
    use type Parameters.Remote_Listen_Value;
    use type Parameters.Pairing_Display_Value;
@@ -64,8 +67,10 @@ procedure Main is
    --  (the token is 128 bits; this only bounds a misbehaving client).
    Maximum_Failed_Attempts : constant := 32;
 
+   --  Capture: the startup entry granted display-capture (Remote_Capture).
    Grants : constant W.Grant_Set :=
-     [W.Diagnose => True, W.Files => P.files, W.Builds => P.builds, W.Mail => P.mail];
+     [W.Diagnose => True, W.Files => P.files, W.Builds => P.builds, W.Mail => P.mail,
+      W.Capture => Remote_Capture.Available];
    Failed_Attempts : Natural := 0;
    Paired : Boolean := False;
    OK : Boolean;
@@ -85,7 +90,7 @@ procedure Main is
 
    function Grant_Names return String is
      ("diagnose" & (if P.files then ", files" else "") & (if P.builds then ", builds" else "") &
-      (if P.mail then ", mail" else ""));
+      (if P.mail then ", mail" else "") & (if Grants (W.Capture) then ", capture" else ""));
 
    function Addresses return String is
       function Join (From : Positive) return String is
@@ -102,11 +107,12 @@ procedure Main is
          when W.Hello => "hello", when W.Evaluate => "evaluate", when W.List => "list",
          when W.Stat => "stat", when W.Get => "get", when W.Put | W.Commit => "put",
          when W.Remove => "rm", when W.Build_Start => "build", when W.Build_Poll => "build poll",
-         when W.Build_Cancel => "build cancel");
+         when W.Build_Cancel => "build cancel", when W.Capture => "capture");
    function Place_Name (Where : W.Place) return String is
      (case Where is
          when W.None => "", when W.Workspace => "workspace",
-         when W.Mail_To_Device => "mail/to-device", when W.Mail_To_Host => "mail/to-host");
+         when W.Mail_To_Device => "mail/to-device", when W.Mail_To_Host => "mail/to-host",
+         when W.Captures => "captures");
    --  What the person reads: a mailbox operation is mail, whatever its verb.
    function Activity_Kind (Op : W.Operation; Where : W.Place) return Remote_Activity.Kind is
      (if Where in W.Mail_To_Device | W.Mail_To_Host and then Op in W.List .. W.Remove
@@ -116,7 +122,8 @@ procedure Main is
                when W.List => Remote_Activity.List, when W.Stat => Remote_Activity.Stat,
                when W.Get => Remote_Activity.Get, when W.Put | W.Commit => Remote_Activity.Put,
                when W.Remove => Remote_Activity.Remove,
-               when W.Build_Start | W.Build_Poll | W.Build_Cancel => Remote_Activity.Build));
+               when W.Build_Start | W.Build_Poll | W.Build_Cancel => Remote_Activity.Build,
+               when W.Capture => Remote_Activity.Capture));
    function Outcome_Of (Result : W.Status) return Remote_Activity.Outcome is
      (case Result is
          when W.OK => Remote_Activity.OK,
@@ -248,6 +255,9 @@ procedure Main is
                      Remote_Pairing.Paired (Remote_Transport.Peer);
                      Log ("a host paired" & (if Remote_Transport.Peer = "" then ""
                                              else " from " & Remote_Transport.Peer));
+                     --  Desktop's Remote access section shows who; its
+                     --  "Allow screen capture" switch starts off again.
+                     Remote_Capture.Announce (Remote_Capture.Paired, Remote_Transport.Peer);
                   end if;
                   Note (Item.Op, Item.Where, "", Remote_Activity.OK);
 
@@ -344,6 +354,54 @@ procedure Main is
                      Result := (if State = W.Unknown_Job then W.Not_Found else W.OK);
                      Note (Item.Op, Item.Where, "job" & Item.Job'Image, Outcome_Of (Result));
                   end;
+
+               when W.Capture =>
+                  --  One frame as a PNG in the Captures place; the host
+                  --  then reads it with Get (chunks, SHA-256 checked).
+                  declare
+                     Outcome : W.Capture_Result;
+                     Width, Height : Natural;
+                     Pixels : System.Address;
+                     Size : Unsigned_64 := 0;
+                     Hash : W.Digest := [others => 0];
+                     Saved : W.Status;
+                     Shot : constant String := W.Capture_Name (Item.Output);
+                     Whole : constant Boolean := Item.Area_Width = 0 and then Item.Area_Height = 0
+                       and then Item.Area_X = 0 and then Item.Area_Y = 0;
+                     Argument : constant String :=
+                       "output" & Item.Output'Image &
+                       (if Whole then "" else " area " & Decimal (Unsigned_64 (Item.Area_X)) & "," &
+                          Decimal (Unsigned_64 (Item.Area_Y)) & " " & Decimal (Unsigned_64 (Item.Area_Width)) &
+                          "x" & Decimal (Unsigned_64 (Item.Area_Height)));
+                  begin
+                     Remote_Capture.Take
+                       (Item.Output, (Item.Area_X, Item.Area_Y, Item.Area_Width, Item.Area_Height),
+                        Outcome, Width, Height, Pixels);
+                     if Outcome = W.Captured then
+                        Remote_Capture.Save_PNG (Shot, Width, Height, Pixels, Size, Hash, Saved);
+                        if Saved /= W.OK then
+                           Outcome := W.Capture_Failed;
+                        end if;
+                     end if;
+                     Remote_Capture.Note
+                       (Argument & (if Outcome = W.Captured
+                                    then " " & Decimal (Unsigned_64 (Width)) & "x" & Decimal (Unsigned_64 (Height)) &
+                                         " -> captures/" & Shot & " (" & Decimal (Size) & " bytes)"
+                                    else ""),
+                        Outcome);
+                     Reply (1) := W.Capture_Result'Enum_Rep (Outcome);
+                     Length := 1;
+                     if Outcome = W.Captured then
+                        W.Put_U32 (Reply, 2, Unsigned_32 (Width));
+                        W.Put_U32 (Reply, 6, Unsigned_32 (Height));
+                        W.Put_U64 (Reply, 10, Size);
+                        for I in W.Digest_Index loop
+                           Reply (18 + I - 1) := Hash (I);
+                        end loop;
+                        Put_Text (Shot, W.Capture_Fixed_Bytes + 1, Length);
+                        Length := W.Capture_Fixed_Bytes + Length;
+                     end if;
+                  end;
             end case;
          end;
       end;
@@ -407,6 +465,8 @@ begin
       Remote_Transport.Close;
       return;
    end if;
+   --  Desktop's Remote access section (only with the display-capture grant).
+   Remote_Capture.Announce (Remote_Capture.Listening, "");
    Log ("ready");
    loop
       if Now >= Next_Refresh then

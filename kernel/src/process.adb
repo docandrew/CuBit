@@ -19,6 +19,8 @@ with BuddyAllocator;
 with Boot_Timeline;
 with Clock_Page;
 with Publication_Pages;
+with Cpu_Times_Page;
+with CPU_Times_Publication;
 with Memory_Accounting;
 with Process_Memory_Budget;
 with Build;
@@ -65,12 +67,17 @@ package body Process is
     -- Separate aligned CPU-local metadata avoids changing assembly-visible
     -- PerCPUData offsets. All reads/writes use the existing Process.lock.
     type Switch_Reason is (Relinquish, Quantum_Expired, Awakened_Peer, Higher_Priority);
+    -- Times: this CPU's record in the CPU-times publication (the kernel's
+    -- copy, written through to the page at each boundary); Memory_Due:
+    -- when this CPU next refreshes the published free memory (TSC).
     type CPU_Accounting_Record is record
         Clock : Accounting.Clock_State;
         Scheduler_Time : Accounting.Totals;
         Shadow : Scheduling_Shadow.CPU_State;
         Turn : Scheduling_Turns.State;
         Reason : Switch_Reason := Relinquish;
+        Times : CPU_Times_Publication.Fields;
+        Memory_Due : Unsigned_64 := 0;
     end record with Alignment => 64;
     cpuAccounting : array (0 .. Config.MAX_CPUS - 1) of CPU_Accounting_Record;
 
@@ -194,17 +201,39 @@ package body Process is
     procedure accountBoundary
       (From_PID, To_PID : ThreadID; Boundary : Accounting_Boundary)
     is
-        CPU : CPU_Accounting_Record renames
-          cpuAccounting (PerCPUData.getCPUNumber);
+        package CTP renames CPU_Times_Publication;
+        CPU_Number : constant Natural := PerCPUData.getCPUNumber;
+        CPU : CPU_Accounting_Record renames cpuAccounting (CPU_Number);
         C : Accounting.Charge;
         Now : constant Unsigned_64 := x86.readOrderedTSC;
         -- Idle threads have the reserved idle PIDs' numbers.
+        function Idle_Thread (PID : ThreadID) return Boolean is
+          (Natural (PID) in Config.IDLE_PID_BASE .. Config.IDLE_PID_BASE + Config.MAX_SMP_CPUS - 1);
         function Observed (PID : ThreadID) return Boolean is
-          (PID /= NO_THREAD and then
-           Natural (PID) not in Config.IDLE_PID_BASE .. Config.IDLE_PID_BASE + Config.MAX_SMP_CPUS - 1);
+          (PID /= NO_THREAD and then not Idle_Thread (PID));
+        -- What a CPU-times interval is: the scheduler between threads, the
+        -- idle thread, or any other thread.
+        function Category (PID : ThreadID) return CTP.Charged_State is
+          (if PID = NO_THREAD then CTP.Scheduling
+           elsif Idle_Thread (PID) then CTP.Idle
+           else CTP.Running);
     begin
         Accounting.Transition
           (CPU.Clock, From_PID, To_PID, Now, C);
+        -- The CPU-times publication (KERN-002): the same interval, by
+        -- category; a faulted clock stops this CPU's counters.
+        if C.Accepted then
+            CPU.Times := CTP.Accounted
+              (CPU.Times, Category (C.Charged_Owner), C.Ticks, Category (To_PID), Now,
+               Started => Boundary in Scheduler_Start | IPC_Handoff);
+        else
+            CPU.Times := CTP.Stopped (CPU.Times, Now);
+        end if;
+        Cpu_Times_Page.Write (CPU_Number, CPU.Times);
+        if Now >= CPU.Memory_Due then
+            CPU.Memory_Due := CTP.Saturating_Add (Now, ticksOf (CTP.Memory_Refresh_Microseconds));
+            Cpu_Times_Page.Set_Free_Memory (Unsigned_64 (BuddyAllocator.getFreeBytes));
+        end if;
         if C.Accepted then
             if C.Charged_Owner = NO_THREAD then
                 Accounting.Add_Time (CPU.Scheduler_Time, C.Ticks);

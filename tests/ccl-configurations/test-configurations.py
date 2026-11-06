@@ -95,6 +95,23 @@ class Configurations(unittest.TestCase):
                 self.reject(base % clause)
             self.reject(base % f'({name} deny) ({name} approve-declared)', 'DUPLICATE_FIELD')
 
+    def test_display_capture_approval_is_explicit(self):
+        """(display-capture approve-declared) (REMOTE-001 screenshots): off
+        unless written, once, beside the entry's other approvals; the
+        manifest's request alone never grants Desktop's capture badge."""
+        base = ('(startup v1 (start "ccl-remote.app" (priority 4) (network approve-declared) %s))')
+        for clause in ('', '(display-capture deny)'):
+            result = self.compile(base % clause)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn('display-capture', result.stdout)
+        result = self.compile(base % '(display-capture approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(' display-capture=approved', result.stdout)
+        for clause in ('(display-capture)', '(display-capture all)',
+                       '(display-capture approve-declared extra)', '(display-capture "screen")'):
+            self.reject(base % clause)
+        self.reject(base % '(display-capture deny) (display-capture approve-declared)', 'DUPLICATE_FIELD')
+
     def test_acpi_pci_config_approval_is_opt_in(self):
         """(acpi-pci-config approve-declared) (ACPI-PCI-001): explicit, once,
         and only beside (acpi-hardware approve-declared): alone it would
@@ -388,6 +405,25 @@ class Configurations(unittest.TestCase):
                 self.reject(policy.replace(old, bad), diagnostic)
         self.assertEqual(self.compile(policy.replace('(budget-us 1500)', '(budget-us 3500)')).returncode, 0)
         # A name started twice is an ambiguous dependency.
+        # (restart on-failure): procmgr's own entries only; once.
+        restart = policy.replace('(start "logstore.svc" (priority 5))',
+                                 '(start "logstore.svc" (priority 5) (restart on-failure))')
+        result = self.compile(restart)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(result.stdout.startswith('logstore.svc pri=5 restart=on-failure\n'), result.stdout)
+        self.assertEqual(self.compile(policy.replace(
+            '(start "logstore.svc" (priority 5))',
+            '(start "logstore.svc" (priority 5) (restart never))')).stdout, result.stdout.replace(
+                ' restart=on-failure', ''))
+        for bad, diagnostic in [
+                ('(restart sometimes)', 'INVALID_LAUNCH_MODE'),
+                ('(restart on-failure) (restart never)', 'DUPLICATE_FIELD')]:
+            with self.subTest(bad=bad):
+                self.reject(policy.replace('(start "logstore.svc" (priority 5))',
+                                           '(start "logstore.svc" (priority 5) ' + bad + ')'), diagnostic)
+        self.reject(policy.replace('(launch per-device) (approve-device))',
+                                   '(launch per-device) (approve-device) (restart on-failure))'),
+                    'INVALID_LAUNCH_MODE')
         twice = policy.replace('(start "logstore.svc" (priority 5))',
                                '(start "logstore.svc" (priority 5)) (start "logstore.svc" (priority 5))')
         self.reject(twice, 'INVALID_DEPENDENCY')

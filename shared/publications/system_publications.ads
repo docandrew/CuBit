@@ -167,6 +167,21 @@ package System_Publications with Pure, SPARK_Mode is
    for Published_Value use (Wall_Clock_Offset => 1, Boot_Display_Native => 2);
 
    ---------------------------------------------------------------------------
+   --  Publications a launcher grants (KERN-002): SYSCALL_INSTALL_LAUNCH_
+   --  ARGUMENTS arg4 is a set of them, one bit each (Bit), and the kernel
+   --  maps each page read-only into the child before it first runs. Only
+   --  what the child's manifest requests, (request-publication NAME), is
+   --  ever granted (procmgr). A set with other bits is refused.
+   ---------------------------------------------------------------------------
+   type Granted_Publication is (CPU_Times);   --  CPU_Times_Publication
+
+   function Bit (P : Granted_Publication) return Unsigned_64 is
+     (Shift_Left (1, Granted_Publication'Pos (P)));
+   No_Publications  : constant := 0;
+   All_Publications : constant :=
+     2 ** (Granted_Publication'Pos (Granted_Publication'Last) + 1) - 1;
+
+   ---------------------------------------------------------------------------
    --  SYSCALL_READ_STATISTICS: arg0 the address of a Statistics record the
    --  kernel fills (caller's own memory, writable), arg1 its size in bytes.
    --  Returns 0, or Unsigned_64'Last if the buffer is not the caller's.

@@ -70,6 +70,7 @@ def main():
         'concurrent-submission': adapter + [tests / 'concurrent-submission-test.c'],
         'slab-submission': adapter + [tests / 'slab-submission-test.c'],
         'submission-lifecycle': adapter + [tests / 'submission-lifecycle-test.c'],
+        'vm-capacity-refusal': adapter + [tests / 'vm-capacity-refusal-test.c'],
     }
     selected = args.fixtures or list(fixtures)
     out = Path(tempfile.mkdtemp(prefix='gpu-timeline.', dir=tests / 'target'))

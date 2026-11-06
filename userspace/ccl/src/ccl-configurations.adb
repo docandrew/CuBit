@@ -178,10 +178,10 @@ package body CCL.Configurations with SPARK_Mode => On is
 
       procedure Launch is
          Executable : Key_Text;
-         Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device,
+         Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device, Have_Restart,
            Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments : Boolean := False;
          Have_ACPI_Hardware, Have_ACPI_Registers, Have_ACPI_PCI_Config,
-           Have_ACPI_Firmware_Data : Boolean := False;
+           Have_ACPI_Firmware_Data, Have_Display_Capture : Boolean := False;
 
          --  (<name> deny) or (<name> approve-declared), once.
          procedure Declared_Approval (Seen : in out Boolean; Approved : out Boolean) is
@@ -280,6 +280,8 @@ package body CCL.Configurations with SPARK_Mode => On is
                Declared_Approval (Have_ACPI_Hardware, Item.Approve_ACPI_Hardware);
             elsif Matches (Name, "acpi-registers") then
                Declared_Approval (Have_ACPI_Registers, Item.Approve_ACPI_Registers);
+            elsif Matches (Name, "display-capture") then
+               Declared_Approval (Have_Display_Capture, Item.Approve_Display_Capture);
             elsif Matches (Name, "acpi-pci-config") then
                Declared_Approval (Have_ACPI_PCI_Config, Item.Approve_ACPI_PCI_Config);
             elsif Matches (Name, "acpi-firmware-data") then
@@ -303,6 +305,15 @@ package body CCL.Configurations with SPARK_Mode => On is
                else Fail (Invalid_Launch_Mode);
                end if;
                Have_Mode := True;
+            elsif Matches (Name, "restart") then
+               --  (restart never) or (restart on-failure), once.
+               if Have_Restart then Fail (Duplicate_Field); end if;
+               Read_Symbol (Reader, Name);
+               if Matches (Name, "never") then Item.Restart := Never;
+               elsif Matches (Name, "on-failure") then Item.Restart := On_Failure;
+               else Fail (Invalid_Launch_Mode);
+               end if;
+               Have_Restart := True;
             elsif Matches (Name, "approve-device") then
                if Have_Device then Fail (Duplicate_Field); end if;
                Item.Approve_Device := True;
@@ -379,6 +390,8 @@ package body CCL.Configurations with SPARK_Mode => On is
          --  a per-device driver may be granted them.
          if Item.Mode = Per_Device xor Item.Approve_Device then Fail (Invalid_Launch_Mode); end if;
          if Item.Mode = Per_Device and then Role /= Application then Fail (Invalid_Role); end if;
+         --  devmgr starts per-device drivers; only procmgr's own entries restart.
+         if Item.Mode = Per_Device and then Item.Restart /= Never then Fail (Invalid_Launch_Mode); end if;
          if Stopped then return; end if;
          Count := Count + 1;
          Result.Plan.Launch_Count := Count;

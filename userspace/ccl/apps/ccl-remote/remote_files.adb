@@ -32,6 +32,7 @@ package body Remote_Files is
    Mail_Directory      : constant String := "/mail";
    To_Device_Directory : constant String := "/mail/to-device";
    To_Host_Directory   : constant String := "/mail/to-host";
+   Captures_Directory  : constant String := "/captures";
 
    function Root (Where : W.Place) return String is
      (Work_Root (1 .. Work_Length) &
@@ -39,6 +40,7 @@ package body Remote_Files is
           when W.Workspace => Workspace_Directory,
           when W.Mail_To_Device => To_Device_Directory,
           when W.Mail_To_Host => To_Host_Directory,
+          when W.Captures => Captures_Directory,
           when W.None => ""));
 
    function Path (Where : W.Place; Name : String) return String is
@@ -119,6 +121,9 @@ package body Remote_Files is
       end if;
       if Made = W.OK then
          Make_Directory (Work_Root (1 .. Work_Length) & To_Host_Directory, Made);
+      end if;
+      if Made = W.OK then
+         Make_Directory (Work_Root (1 .. Work_Length) & Captures_Directory, Made);
       end if;
       Success := Made = W.OK;
    end Initialize;

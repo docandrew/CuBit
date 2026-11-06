@@ -17,6 +17,11 @@ with Compositor_Glyph_Placement;
 with Text_Fit;
 
 package body CuBit.UI is
+   --  Glyph cells are overlaid as Client_Raster masks: one shape.
+   pragma Compile_Time_Error
+     (CuBit.Fonts.Coverage'Length (1) /= Client_Raster.MASK_ROWS or else
+      CuBit.Fonts.Coverage'Length (2) /= Client_Raster.MASK_COLUMNS,
+      "Client_Raster's mask must have CuBit.Fonts.Coverage's shape");
    Selected_Theme : Theme := CuBit_Alloy;
    Palettes : array (CuBit.Appearance.Color_Scheme) of Theme :=
      [CuBit_Alloy, CuBit_Alloy_Dark];
@@ -488,12 +493,6 @@ package body CuBit.UI is
    pragma Compile_Time_Error
      (Glyph_Pen.Unit /= Client_Glyphs.L.Pen_Unit or else Glyph_Pen.Phases /= Client_Glyphs.L.Phases,
       "toolkit pens and density masks must share pen units and phases");
-   --  The normal cell size is density 1, its stems fitted to the pixel grid
-   --  by the font engine at every phase; the double size (density 2) is not.
-   pragma Compile_Time_Error
-     (not (Client_Glyphs.L.Grid_Fit_Denominator < Client_Glyphs.L.Grid_Fit_Numerator) or else
-      2 * Client_Glyphs.L.Grid_Fit_Denominator < Client_Glyphs.L.Grid_Fit_Numerator,
-      "normal cells (density 1) are grid fitted and double cells (density 2) are not");
    procedure Draw_Density_Glyph
      (c : Canvas; Pen : Glyph_Pen.Position; y : Natural; ch : Character; face : CuBit.Fonts.Face; fg : Color)
    is
@@ -654,7 +653,7 @@ package body CuBit.UI is
    --  Monospace cells only: proportional text overlaps (kerning, phases).
    COMPOSITE_ENTRIES : constant := 256;
    COMPOSITE_WIDTH : constant := 64;
-   COMPOSITE_HEIGHT : constant := 34;
+   COMPOSITE_HEIGHT : constant := 2 * CuBit.Fonts.Line_Height;
    subtype Composite_Index is Natural range 0 .. COMPOSITE_ENTRIES - 1;
    type Composite_Key is record
       Face : CuBit.Fonts.Face := CuBit.Fonts.Sans;
@@ -1099,10 +1098,10 @@ package body CuBit.UI is
 
    --  Label insets: a button's text keeps BUTTON_TEXT_INSET from both
    --  sides; a tab's starts TAB_TEXT_LEFT in and ends TAB_TEXT_INSET short.
-   BUTTON_TEXT_INSET : constant := 6;
-   TAB_TEXT_LEFT : constant := 10;
-   TAB_TEXT_INSET : constant := 8;
-   PANE_TITLE_INSET : constant := 12;
+   BUTTON_TEXT_INSET : constant := CuBit.UI_Metrics.Space_S + CuBit.UI_Metrics.Space_XS;
+   TAB_TEXT_LEFT : constant := CuBit.UI_Metrics.Space_M + CuBit.UI_Metrics.Space_XS;
+   TAB_TEXT_INSET : constant := CuBit.UI_Metrics.Space_M;
+   PANE_TITLE_INSET : constant := CuBit.UI_Metrics.Space_L;
 
    package body Control_Renderer is
       procedure Stroke_Sunken (c : Canvas; r : Rect; colors : Theme) is
@@ -1726,7 +1725,7 @@ package body CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme; text : String;
        cursor, selectionStart, selectionEnd : Natural;
        focused : Boolean; hot : Boolean; suggestion : String := "";
-       masked : Boolean := False)
+       masked : Boolean := False; mask : Mask_Style := Fixed_Length)
    is
       face : constant Color := colors.field;
       textX : Natural := r.x + 8;
@@ -1739,14 +1738,20 @@ package body CuBit.UI is
       if Is_Empty (r) then return; end if;
       if masked then
          declare
-            Shown : constant Natural :=
-              (if text'Length = 0 then 0 else Secret_Mask'Length);
+            package M renames CuBit.UI_Masking;
+            use type M.Style;
+            Shown : constant Natural := M.Shown_Length (text'Length, mask);
+            Stand_In : constant String (1 .. Shown) :=
+              (if mask = Per_Character then [others => M.Mask_Character]
+               else M.Fixed_Mask (1 .. Shown));
             Selected : constant Boolean :=
               Shown > 0 and then selectionStart < selectionEnd;
          begin
             Draw_Text_Edit_Field
-              (c, r, colors, Secret_Mask (1 .. Shown), Shown,
-               (if Selected then 0 else Shown), Shown, focused, hot);
+              (c, r, colors, Stand_In, M.Shown_Position (cursor, text'Length, mask),
+               (if mask = Fixed_Length and Selected then 0
+                else M.Shown_Position (selectionStart, text'Length, mask)),
+               M.Shown_Position (selectionEnd, text'Length, mask), focused, hot);
             return;
          end;
       end if;
@@ -2470,4 +2475,12 @@ package body CuBit.UI is
          active    => hot and then pointer.down,
          activated => hot and then pointer.released);
    end Button;
+   procedure Draw_Focus_Ring (c : Canvas; r : Rect; colors : Theme) is
+   begin
+      if r.w > 2 * Focus_Ring_Inset and then r.h > 2 * Focus_Ring_Inset then
+         Stroke_Rect (c, (r.x + Focus_Ring_Inset, r.y + Focus_Ring_Inset,
+                          r.w - 2 * Focus_Ring_Inset, r.h - 2 * Focus_Ring_Inset),
+                      colors.selection, colors.selection);
+      end if;
+   end Draw_Focus_Ring;
 end CuBit.UI;

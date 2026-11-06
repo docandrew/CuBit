@@ -1,10 +1,10 @@
 """Compare CuBit's layout tables (cargo run --example layout_dump) with
 HarfBuzz shaping of every printable-ASCII pair (kern feature only), at the
-13 px em in 1/64 px. Linux-hosted oracle; exit 1 on any mismatch > 1 unit.
+base 16 px em in 1/64 px. Linux-hosted oracle; exit 1 on any mismatch > 1 unit.
 usage: check_kerning.py SANS.ttf MONO.ttf SEMIBOLD.ttf < dump (face numbers 0, 1, 2)"""
 import sys
 import uharfbuzz as hb
-EM64 = 13 * 64
+EM64 = 16 * 64  # CuBit.UI_Metrics.Base_Em
 fonts = []
 for path in sys.argv[1:4]:
     f = hb.Font(hb.Face(hb.Blob.from_file_path(path)))

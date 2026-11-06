@@ -4,6 +4,7 @@ with CCL.Declarations;
 with CCL.Scheduling_Limits;
 with CCL.Resource_Sections;
 with CuBit.Network_Authority;
+with CuBit.Publication_Grants;
 with CuBit.TLS_Scopes;
 
 with CCL.Manifests.Encoding;
@@ -257,6 +258,32 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          end if;
          Store_Request (Item);
       end Add_Request;
+
+      --  (request-publication NAME): a kernel publication page mapped
+      --  read-only into the program when its launcher grants it (KERN-002,
+      --  CuBit.Publication_Grants). The binding is the publication's name.
+      procedure Add_Publication (Optional : Boolean := False) is
+         package PG renames CuBit.Publication_Grants;
+         Item : Request;
+         Found : Boolean := False;
+      begin
+         Item.Kind := Publication_Request;
+         Item.Rights := Read_Only;
+         if Optional then Item.Requirement := CuBit.Startup_Tables.Optional; end if;
+         Read_Binding_Name (Item.Name);
+         if Failed then return; end if;
+         for P in PG.SP.Granted_Publication loop
+            if Is_Text (Item.Name, PG.Name (P)) then
+               Item.Service := PG.Code (P);
+               Found := True;
+            end if;
+         end loop;
+         if not Found then
+            Fail (Unknown_Publication, Cursor);
+            return;
+         end if;
+         Store_Request (Item, Named => True);
+      end Add_Publication;
 
       procedure Network_Integer
         (Low, High : Integer_64; Number : out Integer_64)
@@ -784,6 +811,8 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          elsif Is_Text (Name, "request-network") then Add_Network;
          elsif Is_Text (Name, "request-render") then Add_Request (Render_Request);
          elsif Is_Text (Name, "request-render-optional") then Add_Request (Render_Request, True);
+         elsif Is_Text (Name, "request-publication") then Add_Publication;
+         elsif Is_Text (Name, "request-publication-optional") then Add_Publication (True);
          elsif Is_Text (Name, "filesystem-scope") then Add_Scope (Filesystem_Domain);
          elsif Is_Text (Name, "config-scope") then Add_Scope (Config_Domain);
          elsif Is_Text (Name, "tls-scope") then Add_TLS_Scope;

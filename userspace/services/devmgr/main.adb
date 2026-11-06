@@ -5114,7 +5114,11 @@ begin
       assignCPU (netmgrChild, "netmgr.svc");
       if DL.Start (netmgrChild) then
          debugPrint ("devmgr: netmgr started" & LF);
-         if not waitReady (netmgrPID) then
+         if waitReady (netmgrPID) then
+            --  Its client endpoint (CuBit.Net_Manager_Control) for procmgr's
+            --  launches that name "netmgr" (the Deskbar's network items).
+            DL.Provide (Unsigned_32 (DRIVER_NETMGR), DL.Mailbox (netmgrChild));
+         else
             netmgrPID := No_Process;
          end if;
       else

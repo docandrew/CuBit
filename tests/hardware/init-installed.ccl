@@ -15,7 +15,9 @@
   # GPU rendering is a settings grant (desktop.render.gpu, default on);
   # without a supported GPU devmgr refuses the session and Desktop renders
   # in software. One image for every machine (HW-002).
-  (start "desktop.svc" (priority 4) (render setting "desktop.render.gpu"))
+  # BUG-001: a desktop that fails is started again (procmgr, growing delay).
+  (start "desktop.svc" (priority 4) (render setting "desktop.render.gpu")
+    (restart on-failure))
   (start "boot-logs.app" (priority 4))
   # tls.svc has registered by now (llm.svc's TLS scope needs it). The API
   # key is the named secret anthropic-api-key, typed into agent.app's

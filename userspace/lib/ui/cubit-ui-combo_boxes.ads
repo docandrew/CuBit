@@ -1,9 +1,10 @@
 -- Bounded, non-editable native combo box. Draw after surrounding content so
 -- the popup is on top. Rebuild registrations after state or layout changes.
 with CuBit.UI.Controls;
+with CuBit.UI_Metrics;
 package CuBit.UI.Combo_Boxes is
    Max_Choices : constant := 64;
-   Default_Height : constant Positive := 26;
+   Default_Height : constant Positive := CuBit.UI_Metrics.Control_Height;
    type Text is access constant String;
    type Choice is record
       Caption : Text := null;
@@ -30,7 +31,7 @@ package CuBit.UI.Combo_Boxes is
      (C : Canvas; Map : in out Controls.Control_Map; State : Combo_State;
       Definition : Model; Base : ID_Base; Bounds : Rect; Colors : Theme;
       Focused : Boolean := False; Enabled : Boolean := True;
-      Row_Height : Positive := 26; Visible_Rows : Positive := 8);
+      Row_Height : Positive := Default_Height; Visible_Rows : Positive := 8);
    type Key is (Toggle, Up, Down, Home, End_Key, Commit, Cancel, Tab_Key,
                 Type_Character);
    -- Route focused input: Alt+Down/F4 -> Toggle, Enter/Space -> Commit,

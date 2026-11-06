@@ -41,6 +41,7 @@ with CuBit.Settings;
 with CuBit.Wifi_Driver;
 with CuBit.Wifi_Control;
 with CuBit.Wifi_Scan;
+with CuBit.Wifi_Report;
 with SPARKNaCl;
 with WiFi_Crypto.Legacy_WPA2;
 with Wifi_MLME;
@@ -54,6 +55,7 @@ procedure Main is
    package D renames CuBit.Wifi_Driver;
    package C renames CuBit.Wifi_Control;
    package WS renames CuBit.Wifi_Scan;
+   package WR renames CuBit.Wifi_Report;
    package ST renames Wifi_Station;
    package M renames Wifi_MLME;
    package H renames Wifi_Handshake;
@@ -427,11 +429,195 @@ procedure Main is
       Perform (L);
    end Join;
 
+   function Failure_Of (F : M.Failure) return C.Failure is
+     (case F is
+        when M.None => C.None,
+        when M.Authentication_Refused => C.Authentication_Refused,
+        when M.Authentication_Timeout => C.Authentication_Timeout,
+        when M.Association_Refused => C.Association_Refused,
+        when M.Association_Timeout => C.Association_Timeout,
+        when M.Handshake_Failed => C.Handshake_Failed,
+        when M.Handshake_Timeout => C.Handshake_Timeout,
+        when M.Deauthenticated => C.Deauthenticated,
+        when M.Disassociated => C.Disassociated,
+        when M.Left => C.Left);
+
+   ---------------------------------------------------------------------------
+   --  Watchers (CuBit.Wifi_Control Watch): parked replies, answered with a
+   --  report written into each watcher's lent page when it changed.
+   ---------------------------------------------------------------------------
+   --  Advanced by every change a watcher sees; never 0 (a watcher's first
+   --  Seen of 0 is answered at once).
+   Report_Generation : Unsigned_32 := 1;
+
+   procedure Advance is
+   begin
+      Report_Generation := (if Report_Generation = Unsigned_32'Last then 1 else Report_Generation + 1);
+   end Advance;
+
+   type Watcher is record
+      Present : Boolean := False;
+      Handle  : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+      Client  : Process_ID := No_Process;
+      Page    : CuBit.Memory_Grants.Grant_Reference;
+      Seen    : Unsigned_32 := 0;
+   end record;
+   Watchers : array (1 .. C.Maximum_Watchers) of Watcher;
+
+   function Watched return Boolean is (for some W of Watchers => W.Present);
+
+   --  Which SSIDs have a stored passphrase: read from Config once per SSID
+   --  and kept (set again by Set_Passphrase and Forget). A named ceiling;
+   --  when full it starts over (the next reports read Config again).
+   Remembered_Ceiling : constant := 2 * WS.Maximum_Entries;
+   type Remembered_Entry is record
+      Name  : C.SSID;
+      Known : Boolean := False;
+   end record;
+   Remembered_Cache : array (1 .. Remembered_Ceiling) of Remembered_Entry;
+   Remembered_Count : Natural range 0 .. Remembered_Ceiling := 0;
+
+   function Same_SSID (A, B : C.SSID) return Boolean is
+     (A.Length = B.Length and then (for all I in 1 .. A.Length => A.Octets (I) = B.Octets (I)));
+
+   procedure Note_Remembered (S : C.SSID; Known : Boolean) is
+   begin
+      for I in 1 .. Remembered_Count loop
+         if Same_SSID (Remembered_Cache (I).Name, S) then
+            Remembered_Cache (I).Known := Known;
+            return;
+         end if;
+      end loop;
+      if Remembered_Count = Remembered_Ceiling then
+         Remembered_Count := 0;
+      end if;
+      Remembered_Count := Remembered_Count + 1;
+      Remembered_Cache (Remembered_Count) := (Name => S, Known => Known);
+   end Note_Remembered;
+
+   function SSID_Of (E : WS.BSS_Entry) return C.SSID is
+      S : C.SSID;
+   begin
+      S.Length := E.Length;
+      for I in 1 .. E.Length loop
+         S.Octets (I) := E.SSID (I);
+      end loop;
+      return S;
+   end SSID_Of;
+
+   function Is_Remembered (S : C.SSID) return Boolean is
+   begin
+      if S.Length = 0 then
+         return False;
+      end if;
+      for I in 1 .. Remembered_Count loop
+         if Same_SSID (Remembered_Cache (I).Name, S) then
+            return Remembered_Cache (I).Known;
+         end if;
+      end loop;
+      declare
+         Stored : Startup.Settings.Wifi_Secret.Reading := Startup.Settings.Wifi_Secret.Read (SSID_Hex (S));
+         Known : constant Boolean := Stored.Kind = Present;
+      begin
+         Stored := (Kind => Absent);
+         Note_Remembered (S, Known);
+         return Known;
+      end;
+   end Is_Remembered;
+
+   --  The scan generation the last report carried (the driver's seqlock).
+   Reported_Scan : Unsigned_32 := 0;
+
+   function Scan_Generation return Unsigned_32 is
+     (if Grant_Base = System.Null_Address then 0
+      else Load32 (D.Scan_At + WS.Generation_Word * WS.Word_Bytes));
+
+   --  A newer, settled scan advances the report.
+   procedure Look_At_Scan is
+      G : constant Unsigned_32 := Scan_Generation;
+   begin
+      if G /= Reported_Scan and then G mod 2 = 0 then
+         Reported_Scan := G;
+         Advance;
+      end if;
+   end Look_At_Scan;
+
+   function Current_Report return WR.Report is
+      R : WR.Report;
+      Scan : WS.Scan_Result;
+      Valid : Boolean;
+      State : constant C.State := (if Driver_PID = No_Process then C.No_Radio else ST.State_Of (Station));
+   begin
+      R.Generation := Report_Generation;
+      R.State := State;
+      R.Failure := Failure_Of (ST.Last_Failure (Station));
+      if State in C.Joining .. C.Connected and then WS.Normal (ST.Target_Of (Station)) then
+         R.Target_Valid := True;
+         R.Target := ST.Target_Of (Station);
+      end if;
+      Read_Scan (Scan, Valid);
+      if Valid and then WS.Normal (Scan) then
+         R.Scan := Scan;
+         R.Scan_Generation := Scan_Generation;
+         for I in 1 .. Scan.Summary.Count loop
+            R.Remembered (I) := Scan.Entries (I).RSN and then Is_Remembered (SSID_Of (Scan.Entries (I)));
+         end loop;
+      end if;
+      return R;
+   end Current_Report;
+
+   --  Answer every parked watcher whose report is out of date.
+   procedure Answer_Watchers is
+      Have : Boolean := False;
+      R : WR.Report;
+   begin
+      for W of Watchers loop
+         if W.Present and then W.Seen /= Report_Generation then
+            if not Have then
+               R := Current_Report;
+               Have := True;
+            end if;
+            declare
+               Address : System.Address;
+               Acquired, Returned : Boolean;
+               Ignore : Unsigned_64;
+               Msg : Message := NULL_MESSAGE;
+            begin
+               CuBit.Memory_Grants.Acquire (W.Page, W.Client, 0, C.Page_Bytes,
+                                            CuBit.Memory_Grants.Write_Access, Address, Acquired);
+               if Acquired and then WR.Normal (R) then
+                  declare
+                     Page : WR.Words with Import, Volatile, Address => Address;
+                  begin
+                     Page := WR.Encode (R);
+                  end;
+                  CuBit.Memory_Grants.Return_Acquisition (W.Page, Returned);
+                  Msg.tag := (label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0);
+                  Msg.words (0) := Unsigned_64 (Report_Generation);
+               else
+                  if Acquired then
+                     CuBit.Memory_Grants.Return_Acquisition (W.Page, Returned);
+                  end if;
+                  Msg.tag := (label => REPLY_ERR, length => 1, protocol => 0, ipc => <>, reserved => 0);
+                  Msg.words (0) := Unsigned_64 (C.Refusal'Enum_Rep (C.Malformed));
+               end if;
+               Ignore := replyCap (W.Handle, Msg);
+               W := (others => <>);
+            end;
+         end if;
+      end loop;
+   end Answer_Watchers;
+
    Last_State : C.State := C.No_Radio;
+   Last_Failure : M.Failure := M.None;
 
    procedure Report_State is
       State : constant C.State := (if Driver_PID = No_Process then C.No_Radio else ST.State_Of (Station));
    begin
+      if State /= Last_State or else ST.Last_Failure (Station) /= Last_Failure then
+         Last_Failure := ST.Last_Failure (Station);
+         Advance;
+      end if;
       if State /= Last_State then
          Last_State := State;
          Say ("wifi: " & (case State is
@@ -542,6 +728,7 @@ procedure Main is
       ST.Reset (Station, Own_Address, Join_Limits, Beacon_Timeout);
       Answer (From, REPLY_OK, The_Handle, CuBit.Grant_References.Encode (Grant));
       Say ("wifi: radio attached");
+      Advance;
    end Attach;
 
    procedure Driver_Request (From : Process_ID; Msg : Message) is
@@ -626,6 +813,8 @@ procedure Main is
          Startup.Settings.Wifi_Secret.Write (SSID_Hex (S), Pass, Result);
          Pass := (others => <>);
          if Result = Done then
+            Note_Remembered (S, True);
+            Advance;
             Say ("wifi: passphrase stored for """ & SSID_Text (S) & """");
             Answer (From, REPLY_OK);
          else
@@ -634,18 +823,35 @@ procedure Main is
       end;
    end Store_Passphrase;
 
-   function Failure_Of (F : M.Failure) return C.Failure is
-     (case F is
-        when M.None => C.None,
-        when M.Authentication_Refused => C.Authentication_Refused,
-        when M.Authentication_Timeout => C.Authentication_Timeout,
-        when M.Association_Refused => C.Association_Refused,
-        when M.Association_Timeout => C.Association_Timeout,
-        when M.Handshake_Failed => C.Handshake_Failed,
-        when M.Handshake_Timeout => C.Handshake_Timeout,
-        when M.Deauthenticated => C.Deauthenticated,
-        when M.Disassociated => C.Disassociated,
-        when M.Left => C.Left);
+
+   --  Park a watch (answered at once when the report is newer than Seen).
+   procedure Park_Watch (From : Process_ID; Msg : Message) is
+   begin
+      if not CuBit.Grant_References.Valid_Wire (Msg.words (0))
+        or else Msg.words (1) > Unsigned_64 (Unsigned_32'Last)
+      then
+         Refuse (From, C.Malformed);
+         return;
+      end if;
+      for W of Watchers loop
+         if not W.Present then
+            declare
+               Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+            begin
+               if not Saved.Saved then
+                  Refuse (From, C.Busy);
+                  return;
+               end if;
+               W := (Present => True, Handle => Saved.Handle, Client => From,
+                     Page => CuBit.Grant_References.Decode (Msg.words (0)),
+                     Seen => Unsigned_32 (Msg.words (1)));
+            end;
+            Answer_Watchers;
+            return;
+         end if;
+      end loop;
+      Refuse (From, C.Busy);
+   end Park_Watch;
 
    procedure Control_Request (From : Process_ID; Msg : Message) is
       L : ST.Outputs;
@@ -689,6 +895,31 @@ procedure Main is
             end;
          when C.Set_Passphrase =>
             Store_Passphrase (From, Msg);
+         when C.Watch =>
+            Park_Watch (From, Msg);
+         when C.Refresh =>
+            Look_At_Scan;
+            Answer (From, REPLY_OK);
+         when C.Forget =>
+            declare
+               S : constant C.Decoded_SSID :=
+                 C.Decode ([Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)]);
+               Result : CuBit.Settings.Change_Outcome;
+            begin
+               if not S.Valid then
+                  Refuse (From, C.Malformed);
+                  return;
+               end if;
+               Startup.Settings.Wifi_Secret.Delete (SSID_Hex (S.Item), Result);
+               if Result in Done | Not_Present then
+                  Note_Remembered (S.Item, False);
+                  Advance;
+                  Say ("wifi: passphrase forgotten for """ & SSID_Text (S.Item) & """");
+                  Answer (From, REPLY_OK);
+               else
+                  Refuse (From, C.Not_Stored);
+               end if;
+            end;
       end case;
    end Control_Request;
 
@@ -738,6 +969,10 @@ begin
             Perform (L);
          end if;
          Report_State;
+         if Watched then
+            Look_At_Scan;
+            Answer_Watchers;
+         end if;
       end;
    end loop;
    Say ("wifi: activity wait unavailable", Warn => True);

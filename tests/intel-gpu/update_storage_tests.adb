@@ -51,9 +51,11 @@ begin
    U.Request (Object, 17, 4 * 1024 * 1024, OK, Tables => 6);
    pragma Assert (OK); Finish;
    pragma Assert (B.Committed = Before and S.Updates (17) = Saved);
-   U.Request (Object, 17, 4 * 1024 * 1024, OK); -- Default preserves full-table caller.
+   -- A larger demand grows the same record in place (the default, the
+   -- whole table ceiling, is beyond this 4 MiB account).
+   U.Request (Object, 17, 4 * 1024 * 1024, OK, Tables => 64);
    pragma Assert (OK); Finish;
-   pragma Assert (S.VM.Metadata_Capacity (S.Updates (17).Candidate) = S.Table_Pages);
+   pragma Assert (S.VM.Metadata_Capacity (S.Updates (17).Candidate) >= 64);
    pragma Assert (S.Updates (17) = Saved and S.Table_References.Get (Saved.Table_IDs, 1, 6) = 1017);
    pragma Assert (S.VM.Metadata_Capacity (S.Updates (18).Candidate) = 6);
    pragma Assert (S.Table_References.Get (S.Updates (18).Table_IDs, 1, 6) = 1018);
@@ -63,7 +65,7 @@ begin
    pragma Assert (B.Committed = Before);
    U.Request (Object, 18, 8 * 1024 * 1024, OK);
    pragma Assert (not OK and B.Committed = Before);
-   U.Request (Object, 18, 4 * 1024 * 1024, OK, Tables => 65);
+   U.Request (Object, 18, 4 * 1024 * 1024, OK, Tables => S.Table_Pages + 1);
    pragma Assert (not OK and B.Committed = Before);
    pragma Assert (not Saved.Tables.Ready and S.VM.Backed_Tables (Saved.Candidate) = 0);
    -- Exercise the actual offline VM builder with the demand-sized stores.

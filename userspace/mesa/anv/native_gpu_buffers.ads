@@ -34,6 +34,11 @@ package Native_GPU_Buffers is
    -- Success requires an exact successor after completed publication,
    -- invalidation and resume, NOT merely candidate preparation. Output clears
    -- on failure. Same status codes as Create; never replay uncertain updates.
+   -- Plus Update_Capacity: refused before any change (the driver's table
+   -- ceiling, the session's byte budget or allocation records). The VM and
+   -- its generation are unchanged and the session stays usable; only this
+   -- binding failed (BUG-001). A bind may be retried after freeing memory.
+   Update_Capacity : constant := 5;
    function Update_Binding
      (Endpoint : Native_GPU_Calls.C_Endpoint; Handle : Unsigned_32; GPU, Offset, Bytes : Unsigned_64;
       Remove, Previous : Unsigned_32; Generation : access Unsigned_32)

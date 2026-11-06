@@ -24,6 +24,7 @@ with Config_Worker_Startup;
 with Interfaces; use Interfaces;
 with CCL.Configurations;
 with GPU_Rendering_Settings;
+with Plan_Restarts;
 with CCL.Declarations;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -78,6 +79,8 @@ with CuBit.File_Access;
 with CuBit.Network_Authority;
 with CuBit.Render_Authority;
 with CuBit.Firmware_Snapshot_Authority;
+with CuBit.Publication_Grants;
+with System_Publications;
 with CuBit.Firmware_Snapshot;
 with CuBit.ACPI_Hardware_Authority;
 with CuBit.ACPI_Fixed_Windows;
@@ -95,6 +98,8 @@ with Intel_Render_Launch_Client;
 with CuBit.Input;
 with CuBit.Refusal_Notes;
 with CuBit.Startup_Wait_Test;
+with CuBit.Net_Manager_Control;
+with CuBit.Display_Capture;
 
 procedure main is
    function Image (Process : Process_ID) return String
@@ -903,6 +908,10 @@ procedure main is
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Firmware_Snapshot);
    CAP_TYPE_IO_PORTS : constant Unsigned_64 :=
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.IO_Ports);
+   --  A publication page is no capability: recorded as none, its
+   --  publication code in the record's parameter.
+   CAP_TYPE_PUBLICATION : constant Unsigned_64 :=
+     CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.No_Capability);
 
    ---------------------------------------------------------------------------
    --  The ACPI fixed-hardware I/O windows (coordination/acpi-region-boundary.md,
@@ -1330,7 +1339,7 @@ procedure main is
    --  The startup kinds whose requests are in .cubit.caps.
    function In_Caps (Kind : ST.Capability_Kind) return Boolean is
      (Kind in ST.Endpoint | ST.Notification | ST.Framebuffer | ST.Render | ST.Network
-              | ST.Firmware_Snapshot | ST.ACPI_Hardware);
+              | ST.Firmware_Snapshot | ST.ACPI_Hardware | ST.Publication);
 
    procedure readManifest
      (elfSize : Unsigned_64;
@@ -1462,6 +1471,8 @@ procedure main is
                           Kind /= CuBit.Firmware_Snapshot_Authority.Manifest_Request,
                         when ST.ACPI_Hardware =>
                           Kind /= CuBit.ACPI_Hardware_Authority.Manifest_Request,
+                        when ST.Publication =>
+                          Kind /= CuBit.Publication_Grants.Manifest_Request,
                         when others          => True)
                   then
                      reading := Requests_Disagree;
@@ -1618,6 +1629,8 @@ procedure main is
       then CuBit.Metric_Protocol.Publisher_Service_Role
       elsif Role = CuBit.Process_Observer.Observer_Service_Role then DRIVER_PROCMGR
       elsif Role = CuBit.Disk_Install.Service_Role then DRIVER_DEVMGR
+      --  A read-only copy of the composed frame: Desktop composes it.
+      elsif Role = CuBit.Display_Capture.Service_Role then DRIVER_DESKTOP
       else Role);
 
    --  Say why Program's launch is refused for its required service Label.
@@ -2757,6 +2770,7 @@ procedure main is
       approveACPIRegisters : Boolean := False;
       approvePCIConfig : Boolean := False;
       approveFirmwareData : Boolean := False;
+      approveDisplayCapture : Boolean := False;
       --  The time it has to register a role it provides (Registrant_Ready_By).
       readyDeadlineMs : CCL.Configurations.Ready_Deadline;
       --  Whether it may wait for a starting provider; if it must, Waits
@@ -2788,6 +2802,9 @@ procedure main is
       Recorded : Boolean := False;
       --  The admitted render session (procmgr's copy) and its ticket.
       Render_Endpoint : CuBit.Handles.Endpoint := H.No_Endpoint;
+      --  The kernel publications granted (System_Publications.Bit set),
+      --  mapped with the launch block.
+      Granted_Publications : Unsigned_64 := System_Publications.No_Publications;
       Render_Ticket : Render_Launch.Ticket := 0;
       --  The launch block payload (arguments, description) built for it.
       Block_Length : LA.Block_Length := pendingArgumentBytes;
@@ -2940,6 +2957,10 @@ procedure main is
          --  acpi.svc's endpoint to the backend's named registers: the full
          --  frontend scope, only for an entry approving it.
          isACPIRegisters : constant Boolean := Role = DRIVER_ACPI_REGISTERS;
+         --  netmgr's client endpoint: it reconfigures every interface.
+         isNetManager : constant Boolean := Role = CuBit.Net_Manager_Control.Service_Role;
+         --  Desktop's display-capture badge: only for an entry approving it.
+         isDisplayCapture : constant Boolean := Role = CuBit.Display_Capture.Service_Role;
          use CuBit.Authority_Policy;
          Authority : constant Bootstrap_Authority :=
            (if isAudioControl then Master_Audio
@@ -2951,11 +2972,16 @@ procedure main is
             elsif isLogControl then Log_Control
             elsif isDiskInstall then Disk_Installation
             elsif isInstaller then Installer_Use
+            elsif isNetManager then Network_Configuration
             elsif isACPIRegisters then ACPI_Register_Frontend
+            elsif isDisplayCapture then Display_Capture
             else Log_Publication);
          Approval : constant Decision := Evaluate
            (Requested => True,
-            Installation_Approved => Startup_Approves (Authority, systemStartup, approveACPIRegisters) or else
+            Installation_Approved =>
+              Startup_Approves
+                (Authority, systemStartup,
+                 (if isDisplayCapture then approveDisplayCapture else approveACPIRegisters)) or else
               (isLogObserver and then Log_Viewer_Approved) or else
               (isProcessObserver and then Process_Viewer_Approved) or else
               (isLogControl and then Log_Control_Approved),
@@ -2964,7 +2990,8 @@ procedure main is
       begin
          return (isAudioControl or isLogObserver or isClockControl
                  or isMetricObserver or isProcessObserver or isLogControl
-                 or isDiskInstall or isInstaller or isACPIRegisters)
+                 or isDiskInstall or isInstaller or isACPIRegisters or isNetManager
+                 or isDisplayCapture)
            and then Approval /= Approved;
       end Startup_Only_Denied;
 
@@ -2991,6 +3018,7 @@ procedure main is
          --  An ACPI client: its one client role, the observer badge.
          isACPI : constant Boolean := Role = DRIVER_ACPI;
          isACPIRegisters : constant Boolean := Role = DRIVER_ACPI_REGISTERS;
+         isDisplayCapture : constant Boolean := Role = CuBit.Display_Capture.Service_Role;
          --  The role whose service answers this one.
          Provider_Role : constant Unsigned_64 := Provider_Role_Of (Role);
          Kept : constant H.Rights := Manifest_Rights (Unsigned_64 (R.Rights));
@@ -3019,6 +3047,9 @@ procedure main is
             --  A fixed compile-time stamp; the copy keeps no Grant, so the
             --  holder can never re-badge it (Manifest_Rights).
             Issued_Tag := Unsigned_64 (ACPI_Register_Roles.Frontend_Tag);
+         elsif isDisplayCapture then
+            --  Fixed, like the registers' stamp; the copy keeps no Grant.
+            Issued_Tag := CuBit.Display_Capture.Authority_Tag;
          elsif isAudioControl then
             Issued_Tag := CuBit.Audio_Control.Authority_Tag;
          elsif isClockControl then
@@ -3438,6 +3469,34 @@ procedure main is
             0, Unsigned_64 (ACPI_Window_Total));
       end Mint_ACPI_Hardware;
 
+      --  A kernel publication page (Request.Publication, KERN-002): granted
+      --  to any program whose manifest declares it (it names nothing but
+      --  scheduling statistics); the kernel maps it with the launch block,
+      --  and the entry's handle word is the page's address.
+      procedure Mint_Publication
+        (R : Caps_Request; Index : ST.Entry_Index;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+         package PG renames CuBit.Publication_Grants;
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if Manifest_Rights (Unsigned_64 (R.Rights)) /= H.Read_Only or else not PG.Known (R.Param0)
+           or else R.Param1 /= 0
+         then
+            Warnings.Warn ("procmgr: publication request malformed for pid" & Image (newPID));
+         else
+            Granted_Publications := Granted_Publications or
+              System_Publications.Bit (PG.Publication_Of (R.Param0));
+            Handle := PG.Page_Address (PG.Publication_Of (R.Param0));
+            Outcome := SB.Granted;
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_PUBLICATION, True, Outcome = SB.Granted, Mask (H.Read_Only),
+            0, Unsigned_64 (R.Param0));
+      end Mint_Publication;
+
       procedure Mint
         (Into : in out Build_Context; Item : ST.Startup_Entry; Index : ST.Entry_Index;
          Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
@@ -3460,6 +3519,7 @@ procedure main is
             when ST.Network      => Mint_Network (R, Index, Handle, Outcome);
             when ST.Firmware_Snapshot => Mint_Firmware_Snapshot (R, Index, Handle, Outcome);
             when ST.ACPI_Hardware => Mint_ACPI_Hardware (R, Index, Item, Handle, Outcome);
+            when ST.Publication => Mint_Publication (R, Index, Handle, Outcome);
             when ST.Render =>
                --  The session devmgr admitted before the table was built;
                --  a software start has none.
@@ -4192,7 +4252,8 @@ procedure main is
          end loop;
          LE.Append (launchEnvelope, Envelope_Length, Encoded (1 .. Encoded_Length), Fits);
          if not Fits or else not HC.Install_Launch_Block
-           (newPID, Child.Control, launchEnvelope'Address, Unsigned_64 (Envelope_Length))
+           (newPID, Child.Control, launchEnvelope'Address, Unsigned_64 (Envelope_Length),
+            Granted_Publications)
          then
             debugPrint ("procmgr: launch block not installed" & LF);
             Discard_Authorized_Child;
@@ -4291,6 +4352,7 @@ procedure main is
       approveACPIRegisters : Boolean := False;
       approvePCIConfig : Boolean := False;
       approveFirmwareData : Boolean := False;
+      approveDisplayCapture : Boolean := False;
       readyDeadlineMs : CCL.Configurations.Ready_Deadline;
       mayWait : Boolean;
       Waits : out Awaited_Access;
@@ -4305,7 +4367,7 @@ procedure main is
         (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
          cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
          approveACPIHardware, approveACPIRegisters, approvePCIConfig, approveFirmwareData,
-         readyDeadlineMs, mayWait, Waits);
+         approveDisplayCapture, readyDeadlineMs, mayWait, Waits);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
          -- attempt's launcher resources stay retained independently. The
@@ -4315,7 +4377,7 @@ procedure main is
            (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
             sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole,
             approveFirmwareSnapshot, approveACPIHardware, approveACPIRegisters, approvePCIConfig,
-            approveFirmwareData, readyDeadlineMs, False, Waits);
+            approveFirmwareData, approveDisplayCapture, readyDeadlineMs, False, Waits);
       end if;
       return Result;
    end spawnByName;
@@ -4975,6 +5037,12 @@ procedure main is
    --  until all were.
    Plan_Done : CCL.Configurations.Launch_Number := 0;
    Plan_Running : Boolean := False;
+   --  Supervision (Plan_Restarts, BUG-001): each plan entry's current
+   --  process, and its restart state when the entry says (restart on-failure).
+   subtype Plan_Entry is Positive range 1 .. CCL.Configurations.MAX_LAUNCHES;
+   Plan_PIDs : array (Plan_Entry) of Process_ID := [others => No_Process];
+   Plan_Runs : array (Plan_Entry) of Plan_Restarts.Run;
+   use type Plan_Restarts.Phase;
 
    --  Start plan entry Number; Waits: it waits, parked, instead.
    procedure launchPlanEntry
@@ -5002,6 +5070,7 @@ procedure main is
          approveACPIRegisters => Item.Approve_ACPI_Registers,
          approvePCIConfig => Item.Approve_ACPI_PCI_Config,
          approveFirmwareData => Item.Approve_ACPI_Firmware_Data,
+         approveDisplayCapture => Item.Approve_Display_Capture,
          approveNetwork =>
            (if Item.Approval = Approve_Declared then Declared_Network
             else No_Network),
@@ -5016,6 +5085,8 @@ procedure main is
                      CuBit.Launch_Failure_Text.Explanation (Failure) & LF);
       else
          debugPrint ("procmgr: init launched: " & Name & LF);
+         Plan_PIDs (Number) := PID;
+         Plan_Restarts.Started (Plan_Runs (Number), syscall (SYSCALL_GETTIME));
       end if;
    end launchPlanEntry;
 
@@ -5087,6 +5158,83 @@ procedure main is
       Plan_Running := True;
       continuePlan;
    end processInitCCL;
+
+   ---------------------------------------------------------------------------
+   --  Supervision: a plan entry's process ended. Failed: a nonzero code, or
+   --  killed or faulted. An entry with (restart on-failure) is started again
+   --  when its delay ends (restartDue); procmgr never restarts anything else.
+   ---------------------------------------------------------------------------
+   procedure superviseExit (Exited : Process_ID; Failed : Boolean) is
+      Scheduled : Boolean;
+   begin
+      for Number in 1 .. Startup_Plan.Plan.Launch_Count loop
+         if Plan_PIDs (Number) = Exited and then Exited /= No_Process then
+            Plan_PIDs (Number) := No_Process;
+            declare
+               use type CCL.Configurations.Restart_Policy;
+               Item : CCL.Configurations.Launch_Entry renames Startup_Plan.Plan.Launches (Number);
+               Name : String renames Item.Executable.Data (1 .. Item.Executable.Length);
+               Run : Plan_Restarts.Run renames Plan_Runs (Number);
+            begin
+               if Run.State = Plan_Restarts.Running then
+                  Plan_Restarts.Ended
+                    (Run, syscall (SYSCALL_GETTIME), Failed,
+                     Item.Restart = CCL.Configurations.On_Failure, Scheduled);
+                  if Scheduled then
+                     Warnings.Warn ("procmgr: restarting " & Name & " in" &
+                                    Unsigned_64'Image (Run.Delay_Ms) & " ms (restart" &
+                                    Natural'Image (Run.Restarts + 1) & ")");
+                  end if;
+               end if;
+            end;
+         end if;
+      end loop;
+   end superviseExit;
+
+   --  The earliest restart time, or 0 when none is waiting.
+   function nextRestart return Unsigned_64 is
+      Earliest : Unsigned_64 := 0;
+   begin
+      for Run of Plan_Runs loop
+         if Run.State = Plan_Restarts.Waiting and then
+           (Earliest = 0 or else Run.Due_At < Earliest)
+         then
+            Earliest := Unsigned_64'Max (1, Run.Due_At);
+         end if;
+      end loop;
+      return Earliest;
+   end nextRestart;
+
+   --  Start every entry whose restart delay ended. Not while the plan is
+   --  still starting: its own order and waits come first.
+   procedure restartDue is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Waits : Awaited_Access;
+   begin
+      if Plan_Running then return; end if;
+      for Number in 1 .. Startup_Plan.Plan.Launch_Count loop
+         if Plan_Restarts.Due (Plan_Runs (Number), Now) then
+            declare
+               Item : CCL.Configurations.Launch_Entry renames Startup_Plan.Plan.Launches (Number);
+               Name : String renames Item.Executable.Data (1 .. Item.Executable.Length);
+               Restarts : constant Natural := Plan_Runs (Number).Restarts;
+            begin
+               --  Its providers are running already: never park a restart.
+               launchPlanEntry (Number, False, Waits);
+               if Plan_PIDs (Number) /= No_Process then
+                  Plan_Runs (Number).Restarts := Natural'Min (Restarts, Natural'Last - 1) + 1;
+                  Warnings.Inform ("procmgr: restarted " & Name & " pid" &
+                                   Image (Plan_PIDs (Number)) & " (restart" &
+                                   Natural'Image (Plan_Runs (Number).Restarts) & ")");
+               else
+                  Plan_Restarts.Refused (Plan_Runs (Number), Now);
+                  Warnings.Warn ("procmgr: restart of " & Name & " refused; again in" &
+                                 Unsigned_64'Image (Plan_Runs (Number).Delay_Ms) & " ms");
+               end if;
+            end;
+         end if;
+      end loop;
+   end restartDue;
 
    ---------------------------------------------------------------------------
    --  resumeParked
@@ -5303,12 +5451,22 @@ begin
    --  Main service loop. While launches are parked it also wakes every
    --  Registration_Poll_Ms to look at their providers (resumeParked).
    loop
-      if Parked_First = null then
+      if Parked_First = null and then nextRestart = 0 then
          receive (sender, msg);
          received := True;
       else
-         receiveUntil
-           (syscall (SYSCALL_GETTIME) + Registration_Poll_Ms, sender, msg, received);
+         declare
+            Deadline : Unsigned_64 := Unsigned_64'Last;
+            Restart_At : constant Unsigned_64 := nextRestart;
+         begin
+            if Parked_First /= null then
+               Deadline := syscall (SYSCALL_GETTIME) + Registration_Poll_Ms;
+            end if;
+            if Restart_At /= 0 then
+               Deadline := Unsigned_64'Min (Deadline, Restart_At);
+            end if;
+            receiveUntil (Deadline, sender, msg, received);
+         end;
       end if;
       Warnings.Pump;
       Sources.Pump;
@@ -5391,6 +5549,8 @@ begin
                      clearAuthorityForPID (Exited);
                      releaseNetworkOwner (Exited);
                      releaseFilesystemOwner (Exited);
+                     superviseExit
+                       (Exited, Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0);
                   end;
                end if;
             when CuBit.Control_Events.Grant_Revoked_Label
@@ -5406,5 +5566,6 @@ begin
       if Parked_First /= null then
          resumeParked;
       end if;
+      restartDue;
    end loop;
 end main;

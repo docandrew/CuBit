@@ -11,17 +11,20 @@
 ------------------------------------------------------------------------------
 with CuBit.UI.Controls;
 with CuBit.UI.Icons;
+with CuBit.UI_Metrics;
 
 package CuBit.UI.Drawers is
+   package M renames CuBit.UI_Metrics;
    EDGE_WIDTH : constant := 5;
-   ROW_HEIGHT : constant := 24;
-   SECTION_HEIGHT : constant := 26;
+   ROW_HEIGHT : constant := M.Row_Height;
+   SECTION_HEIGHT : constant := M.Section_Height;
 
+   --  Widths in ems: a drawer holds place names at the base text size.
    type Drawer_State is record
       Open : Boolean := True;
-      Width : Natural := 220;
-      Minimum : Natural := 140;
-      Maximum : Natural := 480;
+      Width : Natural := 14 * M.Base_Em;
+      Minimum : Natural := 9 * M.Base_Em;
+      Maximum : Natural := 30 * M.Base_Em;
    end record;
 
    --  The drawer's part of Area (empty when closed), the rest, and the

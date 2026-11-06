@@ -131,7 +131,7 @@ package body CuBit.UI.Combo_Boxes is
      (C : Canvas; Map : in out Controls.Control_Map; State : Combo_State;
       Definition : Model; Base : ID_Base; Bounds : Rect; Colors : Theme;
       Focused : Boolean := False; Enabled : Boolean := True;
-      Row_Height : Positive := 26; Visible_Rows : Positive := 8) is
+      Row_Height : Positive := Default_Height; Visible_Rows : Positive := 8) is
       -- Damage clipping must not move the field or change popup placement.
       Layout_Canvas : constant Canvas := (C with delta clipEnabled => False);
       R : constant Rect := Clamp_Rect (Layout_Canvas, Bounds);

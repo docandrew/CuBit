@@ -1,10 +1,13 @@
 --  Host-build only the pure wire-ABI units (and CuBit.Failures), not the
 --  CuBit GNAT runtime.
 project CCL_Manifest_ABI is
-   for Source_Dirs use ("../runtime/gnat");
+   for Source_Dirs use ("../runtime/gnat", "../../shared/publications", "../../shared/time");
    for Source_Files use
      ("cubit.ads", "cubit-render_authority.ads", "cubit-firmware_snapshot_authority.ads",
       "cubit-acpi_hardware_authority.ads",
+      --  Kernel publication requests (KERN-002) and the layouts they name.
+      "cubit-publication_grants.ads", "system_publications.ads", "cpu_times_publication.ads",
+      "clock_publication.ads", "clock_publication.adb",
       "cubit-network_authority.ads", "cubit-network_authority.adb",
       "cubit-tls_scopes.ads", "cubit-tls_scopes.adb",
       "cubit-failures.ads", "cubit-failures.adb",

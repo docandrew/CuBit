@@ -1,3 +1,4 @@
+with CuBit.UI_Metrics;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
@@ -42,7 +43,7 @@ procedure Main is
    Key_Prefixes : constant array (1 .. 4) of access constant String :=
      [new String'("DESKTOP-VULKAN:"), new String'("intel-gpu: backing denied"),
       new String'("desktop: software rendering"), new String'("procmgr: render")];
-   Line_Height : constant := 21;
+   Line_Height : constant := CuBit.UI_Metrics.Line_Height + CuBit.UI_Metrics.Space_S;
 
    --  A source filter (bring-up logging convention: one photograph shows
    --  one driver's stages). A record's source is the text before its first

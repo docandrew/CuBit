@@ -1,10 +1,13 @@
 with CuBit.Display_Geometry;
+with CuBit.UI_Metrics;
 package Compositor_Glyph_Layout with SPARK_Mode, Pure is
    package G renames CuBit.Display_Geometry;
    use type G.Scale_Component;
    -- Bundled-font raster request. Metrics and outline parsing are foreign;
-   -- storage geometry and the selected density are compositor policy.
-   Base_Em : constant := 13;
+   -- storage geometry and the selected density are compositor policy. The
+   -- em at a density is Base_Em * Numerator / Denominator: a multiple of
+   -- the base em (CuBit.UI_Metrics), the font engine's check too.
+   Base_Em : constant := CuBit.UI_Metrics.Base_Em;
    -- Bundled faces by the font engine's face number (CuBit.Fonts.Face'Pos):
    -- Sans, Monospace and the emphasis face Sans_Semibold.
    Face_Count : constant := 3;
@@ -19,8 +22,8 @@ package Compositor_Glyph_Layout with SPARK_Mode, Pure is
    -- Every face's whole printable set at one density: the most distinct
    -- glyph keys one frame (one output density) can draw.
    Repertoire : constant := Face_Count * Code_Count;
-   Base_Line : constant := 17;
-   Base_Width_Bound : constant := 32;
+   Base_Line : constant := CuBit.UI_Metrics.Line_Height;
+   Base_Width_Bound : constant := CuBit.UI_Metrics.Glyph_Width_Bound;
    Row_Alignment : constant := 16;
    -- Horizontal subpixel phases (UI-026): a mask holds one raster per phase,
    -- stacked: phase P is rows P * Height .. P * Height + Height - 1, its ink
@@ -29,24 +32,10 @@ package Compositor_Glyph_Layout with SPARK_Mode, Pure is
    Phases : constant := 4;
    Pen_Unit : constant := 64;
    subtype Phase is Natural range 0 .. Phases - 1;
-   -- Grid fitting (UI-026, low density): below Grid_Fit_Numerator /
-   -- Grid_Fit_Denominator device pixels per logical pixel the font engine
-   -- fits each phase's vertical stems to whole pixels of that phase's raster
-   -- (glyphs still go on quarter-pixel phases, so a stem moves at most half
-   -- a pixel and spacing stays even); at and above it, stems keep their
-   -- outline positions. Why 3/2: the bundled faces' standard stem is 1.14
-   -- px at the 13 px em (IBM Plex Sans), and a quarter phase spreads a stem
-   -- over two columns: averaged over the four phases its darkest column
-   -- loses 18% of its contrast at 100% and 8% at 125%, but 1% at 150% (a
-   -- 1.71 px stem keeps a full column at every phase) and none at 200%.
-   Grid_Fit_Numerator : constant := 3;
-   Grid_Fit_Denominator : constant := 2;
-   function Grid_Fitted (Scale : G.UI_Scale) return Boolean is
-     (Natural (Scale.Numerator) * Grid_Fit_Denominator < Grid_Fit_Numerator * Natural (Scale.Denominator));
    -- A glyph origin's fraction of a logical pixel, in 1/Pen_Unit.
    subtype Subpixel is Natural range 0 .. Pen_Unit - 1;
-   Last_Width : constant := 512;
-   Last_Height : constant := 272;
+   Last_Width : constant := Base_Width_Bound * Positive (G.Scale_Component'Last);
+   Last_Height : constant := Base_Line * Positive (G.Scale_Component'Last);
    Maximum_Bytes : constant := Last_Width * Last_Height * Phases;
    subtype Raster_Width is Positive range 1 .. Last_Width;
    subtype Raster_Height is Positive range 1 .. Last_Height;
@@ -58,7 +47,7 @@ package Compositor_Glyph_Layout with SPARK_Mode, Pure is
      ((Base_Width_Bound * Dense_Scale + Row_Alignment - 1) / Row_Alignment) * Row_Alignment *
      Base_Line * Dense_Scale * Phases;
    type Layout is record
-      Em_Numerator : Positive range 13 .. 208;
+      Em_Numerator : Positive range Base_Em .. Base_Em * Positive (G.Scale_Component'Last);
       Em_Denominator : G.Scale_Component;
       Width : Raster_Width;
       Height : Raster_Height;

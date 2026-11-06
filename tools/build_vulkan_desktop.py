@@ -97,7 +97,8 @@ def main():
     if record.get("software_renderer") != "mesa-softpipe":
         raise ValueError("Normal Desktop build must include software Mesa")
     if record.get("build_variant") != {"software_fault": "none", "input_overlay": args.input_overlay, "timing": args.timing, "metrics": args.metrics,
-                                     "storage": "production"}:
+                                     "storage": "production",
+                                     "desktop_fault": scenario.get("CUBIT_DESKTOP_FAULT", "off")}:
         raise ValueError("Built variant does not match requested output")
     destination = source / "userspace/services/desktop" / variant
     destination.mkdir(parents=True, exist_ok=True)

@@ -567,14 +567,14 @@ static int glyph_covered(const struct input *p,int x,int y,int *sx,int *sy)
     return cx>=2*(int64_t)(p->l-p->x)*p->n&&cx<2*(int64_t)(p->r-p->x)*p->n&&
         cy>=2*(int64_t)(p->t-p->y)*p->n&&cy<2*(int64_t)(p->b-p->y)*p->n&&
         x>=p->dl&&x<p->dr&&y>=p->dt&&y<p->db&&
-        *sx>=0&&*sy>=0&&*sx<(32*p->n+p->d-1)/p->d&&*sy<(17*p->n+p->d-1)/p->d;
+        *sx>=0&&*sy>=0&&*sx<(GLYPH_WIDTH_BOUND*p->n+p->d-1)/p->d&&*sy<(GLYPH_LINE*p->n+p->d-1)/p->d;
 }
 /* The stacked mask row of a glyph texel: the placement's phase raster. */
 static int glyph_row(const struct input *p,int sy)
 {
     int64_t step=16*(int64_t)p->d;
     int64_t quarters=floor_ratio(2*((int64_t)(p->l-p->x)*64+p->offset)*p->n+step,2*step);
-    return (int)(quarters-GLYPH_PHASES*floor_ratio(quarters,GLYPH_PHASES))*((17*p->n+p->d-1)/p->d)+sy;
+    return (int)(quarters-GLYPH_PHASES*floor_ratio(quarters,GLYPH_PHASES))*((GLYPH_LINE*p->n+p->d-1)/p->d)+sy;
 }
 static int layer_covered(const struct input *p,int x,int y,int *sx,int *sy)
 {return p->mask==4?glyph_covered(p,x,y,sx,sy):covered(p,x,y,sx,sy);}
@@ -867,6 +867,11 @@ static int submission_guards(const struct cubit_vulkan_submission *valid,
 #endif
 #ifdef CUBIT_VULKAN_BACKDROP_TEST
 #include "vulkan_backdrop_host.h"
+/* Compositor_Glyph_Layout at the UI em (CuBit.UI_Metrics): Base_Em,
+   Base_Line and Base_Width_Bound. */
+#define GLYPH_EM 16u
+#define GLYPH_LINE 21u
+#define GLYPH_WIDTH_BOUND 32u
 #endif
 int run_vulkan_affine_tests(void)
 {
@@ -937,8 +942,8 @@ int run_vulkan_affine_tests(void)
     VkBuffer glyph_upload[6];void *glyph_pixels[6];uint32_t glyph_width[6],glyph_height[6];
     const int glyph_scales[6][2]={{1,1},{5,4},{3,2},{2,1},{3,1},{2,3}};
     for(unsigned i=0;i<6;i++){
-        glyph_width[i]=(32*glyph_scales[i][0]+glyph_scales[i][1]-1)/glyph_scales[i][1];
-        glyph_height[i]=GLYPH_PHASES*((17*glyph_scales[i][0]+glyph_scales[i][1]-1)/glyph_scales[i][1]);
+        glyph_width[i]=(GLYPH_WIDTH_BOUND*glyph_scales[i][0]+glyph_scales[i][1]-1)/glyph_scales[i][1];
+        glyph_height[i]=GLYPH_PHASES*((GLYPH_LINE*glyph_scales[i][0]+glyph_scales[i][1]-1)/glyph_scales[i][1]);
         CHECK(!image_size(phy,d,&glyph_images[i],&glyph_memory[i],VK_FORMAT_R8_UNORM,
             VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,glyph_width[i],glyph_height[i]));
         CHECK(!buffer_size(phy,d,&glyph_upload[i],&glyph_upload_memory[i],&glyph_pixels[i],glyph_width[i]*glyph_height[i]));

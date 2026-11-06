@@ -615,7 +615,7 @@ package body Syscall is
             when SYSCALL_INSTALL_LAUNCH_ARGUMENTS =>
                 Admin.handleInstallLaunchArguments (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, retval);
+                    arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_ALLOC_DMA =>
                 IPC.handleAllocDma (

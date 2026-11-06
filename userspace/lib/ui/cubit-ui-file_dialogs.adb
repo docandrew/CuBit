@@ -1,9 +1,35 @@
 with CuBit.Fonts;
 with CuBit.UI.Widgets;
+with CuBit.UI_Metrics;
 
 package body CuBit.UI.File_Dialogs is
    use CuBit.File_Selection;
-   Row_Height : constant := 22;
+   --  Geometry from the UI em (CuBit.UI_Metrics): a title band, the
+   --  location line, the file table, then the filename field, its hint
+   --  line and the buttons.
+   package M renames CuBit.UI_Metrics;
+   Row_Height : constant := M.Compact_Row_Height;
+   Inset : constant := M.Space_L;
+   Title_Height : constant := M.Compact_Row_Height;
+   Line_Row : constant := M.Dense_Row_Height;
+   Location_Top : constant := 2 + Title_Height + M.Space_M;
+   List_Top : constant := Location_Top + Line_Row + M.Space_M;
+   Button_Width : constant := 6 * M.Base_Em;
+   Button_Height : constant := M.Control_Height;
+   Button_Gap : constant := M.Space_M;
+   Field_Height : constant := M.Control_Height;
+   Label_Width : constant := 5 * M.Base_Em;
+   --  From the frame's bottom: the buttons, the hint line above them, the
+   --  filename field above that.
+   Buttons_Up : constant := Button_Height + Inset;
+   Hint_Up : constant := Buttons_Up + M.Space_XL + Line_Row;
+   Name_Up : constant := Hint_Up + Field_Height + M.Space_S + M.Space_XS;
+   List_Gap : constant := M.Space_L + M.Space_M;
+   Frame_Width : constant := 38 * M.Base_Em;
+   Frame_Height : constant := 25 * M.Base_Em;
+   Confirmation_Width : constant := 30 * M.Base_Em;
+   Confirmation_Height : constant := 12 * M.Base_Em + M.Space_M;
+   Message_Step : constant := M.Line_Height + M.Space_L + 1;
    type Geometry is record
       Frame, List, Rows, Scroll, Name, Confirm, Cancel : Rect;
       Capacity : Positive := 1;
@@ -12,18 +38,23 @@ package body CuBit.UI.File_Dialogs is
    function Layout (Width, Height : Natural) return Geometry is
       G : Geometry;
    begin
-      if Width < 320 or else Height < 280 then return G; end if;
-      G.Frame := (0, 0, Natural'Min (600, Width - 24), Natural'Min (364, Height - 24));
+      if Width < 20 * M.Base_Em or else Height < List_Top + Name_Up + List_Gap + 4 * Row_Height then
+         return G;
+      end if;
+      G.Frame := (0, 0, Natural'Min (Frame_Width, Width - 2 * Inset), Natural'Min (Frame_Height, Height - 2 * Inset));
       G.Frame.x := (Width - G.Frame.w) / 2;
       G.Frame.y := (Height - G.Frame.h) / 2;
-      G.List := (G.Frame.x + 12, G.Frame.y + 62, G.Frame.w - 24, G.Frame.h - 190);
+      G.List := (G.Frame.x + Inset, G.Frame.y + List_Top, G.Frame.w - 2 * Inset,
+                 G.Frame.h - List_Top - Name_Up - List_Gap);
       G.Rows := Layout_Table (G.List).Rows;
       G.Scroll := (G.Rows.x + G.Rows.w - 16, G.Rows.y, 16, G.Rows.h);
       G.Rows.w := G.Rows.w - 16;
       G.Capacity := Positive'Max (1, G.Rows.h / Row_Height);
-      G.Name := (G.Frame.x + 80, G.Frame.y + G.Frame.h - 108, G.Frame.w - 92, 26);
-      G.Confirm := (G.Frame.x + G.Frame.w - 204, G.Frame.y + G.Frame.h - 39, 92, 27);
-      G.Cancel := (G.Frame.x + G.Frame.w - 104, G.Confirm.y, 92, 27);
+      G.Name := (G.Frame.x + Inset + Label_Width, G.Frame.y + G.Frame.h - Name_Up,
+                 G.Frame.w - 2 * Inset - Label_Width, Field_Height);
+      G.Confirm := (G.Frame.x + G.Frame.w - Inset - 2 * Button_Width - Button_Gap,
+                    G.Frame.y + G.Frame.h - Buttons_Up, Button_Width, Button_Height);
+      G.Cancel := (G.Frame.x + G.Frame.w - Inset - Button_Width, G.Confirm.y, Button_Width, Button_Height);
       return G;
    end Layout;
 
@@ -33,20 +64,20 @@ package body CuBit.UI.File_Dialogs is
       G : Geometry := Layout (Width, Height);
    begin
       if Is_Empty (G.Frame) then return G; end if;
-      G.Frame.w := Natural'Min (480, G.Frame.w);
-      G.Frame.h := 196;
+      G.Frame.w := Natural'Min (Confirmation_Width, G.Frame.w);
+      G.Frame.h := Confirmation_Height;
       G.Frame.x := (Width - G.Frame.w) / 2;
       G.Frame.y := (Height - G.Frame.h) / 2;
-      G.Confirm.y := G.Frame.y + G.Frame.h - 39;
+      G.Confirm.y := G.Frame.y + G.Frame.h - Buttons_Up;
       return G;
    end Confirmation_Layout;
 
    function Decision_Bounds (G : Geometry; Choice : Decision) return Rect is
-      W : constant Natural := Natural'Min (92, (G.Frame.w - 40) / 3);
+      W : constant Natural := Natural'Min (Button_Width, (G.Frame.w - 2 * Inset - 2 * Button_Gap) / 3);
    begin
-      return (G.Frame.x + G.Frame.w - 12 - 3 * W - 16 +
-                (W + 8) * (Decision'Pos (Choice) - Decision'Pos (Decision'First)),
-              G.Confirm.y, W, 27);
+      return (G.Frame.x + G.Frame.w - Inset - 3 * W - 2 * Button_Gap +
+                (W + Button_Gap) * (Decision'Pos (Choice) - Decision'Pos (Decision'First)),
+              G.Confirm.y, W, Button_Height);
    end Decision_Bounds;
 
    function Hit_Decision (G : Geometry; X, Y : Natural) return Dialog_Action is
@@ -297,21 +328,24 @@ package body CuBit.UI.File_Dialogs is
       if not State.Visible or else Is_Empty (G.Frame) then return; end if;
       Draw_Button (C, G.Frame, Colors, Button_Normal, "");
       Fill_Vertical_Gradient
-        (C, (G.Frame.x + 2, G.Frame.y + 2, G.Frame.w - 4, 24),
+        (C, (G.Frame.x + 2, G.Frame.y + 2, G.Frame.w - 4, Title_Height),
          Colors.activeTitleTop, Colors.activeTitleBottom);
       Draw_UI_Text_Transparent
-        (With_Clip (C, G.Frame), G.Frame.x + 10, G.Frame.y + 5,
+        (With_Clip (C, G.Frame), G.Frame.x + Inset, G.Frame.y + 2 + (Title_Height - M.Line_Height) / 2,
          (case State.Operation is
             when Open_File => "Open CCL source",
             when Save_New_File => "Save CCL source as a new file",
             when Unsaved_Changes => "Unsaved changes"),
          Colors.selectionText);
       if State.Operation = Unsaved_Changes then
-         Widgets.Label (C, (G.Frame.x + 16, G.Frame.y + 50, G.Frame.w - 32, 24), Colors,
+         Widgets.Label (C, (G.Frame.x + M.Space_XL, G.Frame.y + Location_Top + M.Space_M,
+                            G.Frame.w - 2 * M.Space_XL, Row_Height), Colors,
            "Save changes before opening another file?");
-         Widgets.Label (C, (G.Frame.x + 16, G.Frame.y + 84, G.Frame.w - 32, 24), Colors,
+         Widgets.Label (C, (G.Frame.x + M.Space_XL, G.Frame.y + Location_Top + M.Space_M + Message_Step,
+                            G.Frame.w - 2 * M.Space_XL, Row_Height), Colors,
            (if Filename (State)'Length = 0 then "Untitled CCL source" else Filename (State)));
-         Widgets.Label (C, (G.Frame.x + 16, G.Frame.y + 124, G.Frame.w - 32, 24), Colors,
+         Widgets.Label (C, (G.Frame.x + M.Space_XL, G.Frame.y + Location_Top + M.Space_M + 2 * Message_Step,
+                            G.Frame.w - 2 * M.Space_XL, Row_Height), Colors,
            "Discard loses these edits when another file opens.");
          for Choice in Decision loop
             declare
@@ -328,7 +362,7 @@ package body CuBit.UI.File_Dialogs is
          end loop;
          return;
       end if;
-      Widgets.Label (C, (G.Frame.x + 12, G.Frame.y + 34, G.Frame.w - 24, 20), Colors,
+      Widgets.Label (C, (G.Frame.x + Inset, G.Frame.y + Location_Top, G.Frame.w - 2 * Inset, Line_Row), Colors,
         State.Location_Text (1 .. State.Location_Length));
       Draw_Table_Viewport (C, G.List, Colors);
       Draw_Table_Header (C, Header, Colors, "Name", "Type", "", Columns);
@@ -348,12 +382,12 @@ package body CuBit.UI.File_Dialogs is
         (C, G.Scroll, Colors, 1, Maximum, First, False,
          CuBit.UI.State.Active_Scrollbar_Part (State.Scroll_State) /= Scrollbar_None,
          G.Capacity, CuBit.UI.State.Active_Scrollbar_Part (State.Scroll_State));
-      Widgets.Label (C, (G.Frame.x + 12, G.Name.y, 65, G.Name.h), Colors, "Filename:");
+      Widgets.Label (C, (G.Frame.x + Inset, G.Name.y, Label_Width - M.Space_S, G.Name.h), Colors, "Filename:");
       Draw_Text_Edit_Field
         (C, G.Name, Colors, Filename (State), Editor.Cursor (State.Name) - 1,
          Editor.Selection_First (State.Name) - 1, Editor.Selection_Last (State.Name) - 1,
          State.Focus = Name_Field, False);
-      Widgets.Label (C, (G.Frame.x + 12, G.Name.y + 33, G.Frame.w - 24, 20), Colors,
+      Widgets.Label (C, (G.Frame.x + Inset, G.Frame.y + G.Frame.h - Hint_Up, G.Frame.w - 2 * Inset, Line_Row), Colors,
         (if State.Error_Length > 0 then State.Error_Text (1 .. State.Error_Length)
          elsif State.Operation = Save_New_File then "New .ccl file only; existing files will not be overwritten."
          else "Authorized workspace only. Enter opens; Escape cancels."));

@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.UI; use CuBit.UI;
+with CuBit.UI_Metrics;
 with CuBit.UI.Menus; use CuBit.UI.Menus;
 with CuBit.UI.Controls;
 procedure Menus_Tests is
@@ -52,7 +53,8 @@ begin
    pragma Assert (Valid (D));
    Paint;
    declare
-      UY : constant Natural := (28 - UI_Text_Height) / 2 + UI_Text_Height - 2;
+      --  The mnemonic underline: Space_XS below the baseline (CuBit.UI_Metrics).
+      UY : constant Natural := (28 - UI_Text_Height) / 2 + CuBit.UI_Metrics.Ascent + CuBit.UI_Metrics.Space_XS;
       --  Whether the title's mnemonic underline (under "F") is drawn.
       function Title_Cue return Boolean is
       begin

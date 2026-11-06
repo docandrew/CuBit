@@ -5,11 +5,15 @@
 --  @summary
 --  Stateful widgets that draw themselves and register hit/damage metadata
 ------------------------------------------------------------------------------
+with CuBit.UI_Metrics;
 with Interfaces;
 with CuBit.UI.Widgets.Bluecurve;
 with Icon_Edge_Choice;
 
 package body CuBit.UI.Widgets is
+   --  The Output box's header: its Clear button (CuBit.UI_Metrics).
+   OUTPUT_HEADER : constant := CuBit.UI_Metrics.Compact_Row_Height;
+   OUTPUT_CLEAR_WIDTH : constant := 4 * CuBit.UI_Metrics.Base_Em;
    function Parent_Canvas
       (c : CuBit.UI.Canvas;
        parent : CuBit.UI.Rect) return CuBit.UI.Canvas
@@ -42,11 +46,11 @@ package body CuBit.UI.Widgets is
       then return; end if;
       Group_Box (c, bounds, colors, "Output", content, 8);
       Button (c, st, controls, clearId,
-        (content.x + content.w - 48, content.y, 48, 20), bounds,
+        (content.x + content.w - OUTPUT_CLEAR_WIDTH, content.y, OUTPUT_CLEAR_WIDTH, OUTPUT_HEADER), bounds,
         colors, "Clear", result);
       cleared := result.activated;
-      field := (content.x, content.y + 23, content.w - 18,
-                content.h - 41);
+      field := (content.x, content.y + OUTPUT_HEADER + 3, content.w - 18,
+                content.h - OUTPUT_HEADER - 21);
       for ch of text loop
          if ch = ASCII.LF then
             lines := lines + 1;
@@ -214,7 +218,7 @@ package body CuBit.UI.Widgets is
    end Badge;
 
    --  Room for keys like "Inventory source" before the value column.
-   KEY_COLUMN_WIDTH : constant := 128;
+   KEY_COLUMN_WIDTH : constant := 9 * CuBit.UI_Metrics.Base_Em;
    procedure Key_Value
       (c : CuBit.UI.Canvas;
        bounds : CuBit.UI.Rect;
@@ -902,9 +906,9 @@ package body CuBit.UI.Widgets is
        selectedIndex : in out Natural;
        page : out CuBit.UI.Rect;
        changed : out Boolean;
-       stripHeight : Natural := 30)
+       stripHeight : Natural := CuBit.UI_Metrics.Control_Height + 1)
    is
-      padding : constant Natural := 24;
+      padding : constant Natural := CuBit.UI_Metrics.Space_XL + CuBit.UI_Metrics.Space_M;
       stripH : constant Natural := Natural'Min (stripHeight, bounds.h);
       tabH : constant Natural :=
          (if stripH > 4 then stripH - 4 else stripH);

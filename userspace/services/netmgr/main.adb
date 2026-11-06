@@ -22,6 +22,13 @@
 --  interfaces: running out of memory leaves that interface unmanaged
 --  (logged), never stops netmgr.
 --
+--  Clients holding its "netmgr" endpoint (Desktop) watch every interface
+--  and apply a per-interface setting by stable name
+--  (CuBit.Net_Manager_Control): the watch is the client's own parked
+--  request, answered with a report written into the client's lent page
+--  (CuBit.Net_Manager_Report); an applied setting is decoded with the same
+--  codec as net.interface.<name> and holds until netmgr restarts.
+--
 --  Startup capabilities (its manifest; devmgr answers them at launch):
 --    netstack     -> netstack, badged as the network manager
 --    config       -> config.svc (net.*)
@@ -47,6 +54,9 @@ with CuBit.Net_Management;
 with CuBit.Settings;
 with CuBit.Settings.Readable;
 with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Net_Manager_Control;
+with CuBit.Net_Manager_Report;
 with DHCP_Client;
 with Net_Interface_Settings;
 with Network_Context;
@@ -61,6 +71,8 @@ procedure main is
    package NM renames CuBit.Net_Management;
    package NS renames Net_Interface_Settings;
    package D renames DHCP_Client;
+   package NMC renames CuBit.Net_Manager_Control;
+   package NMR renames CuBit.Net_Manager_Report;
    use type NL.Link_Condition, NL.Interface_Handle, NL.Link_Kind, NL.Generation, NS.Policy;
    use all type CuBit.Settings.Outcome;
 
@@ -123,6 +135,10 @@ procedure main is
       Grant     : MG.Grant_Reference;
       Opened    : Boolean := False;
       Awaiting  : Boolean := False;   --  a DHCP_Await is parked
+      --  The configuration netstack last accepted (what a watcher sees),
+      --  and how many settings a client applied to it.
+      Applied   : NM.Configuration;
+      Applies   : NMR.Apply_Count := 0;
    end record;
    type Record_Access is access all Interface_Record;
    package Records is new System.Address_To_Access_Conversions (Interface_Record);
@@ -178,6 +194,16 @@ procedure main is
 
    function Name_Of (R : Interface_Record) return String is (R.Name.Text (1 .. R.Name.Length));
 
+   --  The report generation watchers see (CuBit.Net_Manager_Control):
+   --  advanced by every change to an interface or to the DNS servers;
+   --  never 0, so a watcher's first Seen of 0 is answered at once.
+   Report_Generation : Unsigned_32 := 1;
+
+   procedure Advance is
+   begin
+      Report_Generation := (if Report_Generation = Unsigned_32'Last then 1 else Report_Generation + 1);
+   end Advance;
+
    ---------------------------------------------------------------------------
    --  Calls to netstack (synchronous, down the layering, with a deadline).
    ---------------------------------------------------------------------------
@@ -220,10 +246,12 @@ procedure main is
    function Call (M : in out Message) return Boolean is
      (capCall (Netstack, M, Deadline_After (Call_Deadline_MS)).label = KA.Reply_OK);
 
-   procedure Configure (R : Interface_Record; C : NM.Configuration) is
+   procedure Configure (R : in out Interface_Record; C : NM.Configuration) is
       M : Message := Request (NM.Configure, NM.Encode (R.Handle, C));
    begin
       if Call (M) then
+         R.Applied := C;
+         Advance;
          if C.Address = NM.No_IPv4 then
             Say ("netmgr: " & Name_Of (R) & " unconfigured");
          else
@@ -245,16 +273,40 @@ procedure main is
       end if;
    end Configure;
 
-   --  The DNS servers from the settings (No_IPv4: none set).
+   --  The DNS servers from the settings (No_IPv4: none set), a client's
+   --  override (Override_Set) and the last lease's.
    Settings_DNS_1, Settings_DNS_2 : NM.IPv4_Word := NM.No_IPv4;
+   Override_DNS_1, Override_DNS_2 : NM.IPv4_Word := NM.No_IPv4;
+   Override_Set : Boolean := False;
+   Lease_DNS_1, Lease_DNS_2 : NM.IPv4_Word := NM.No_IPv4;
+   --  What netstack resolves with now.
+   Used_DNS_1, Used_DNS_2 : NM.IPv4_Word := NM.No_IPv4;
+   Used_From : NMR.DNS_Source := NMR.None;
 
-   procedure Set_DNS (Primary, Secondary : NM.IPv4_Word) is
+   procedure Set_DNS (Primary, Secondary : NM.IPv4_Word; From : NMR.DNS_Source) is
       M : Message := Request (NM.Set_DNS, [Unsigned_64 (Primary), Unsigned_64 (Secondary), 0, 0]);
    begin
       if Call (M) then
          Say ("netmgr: DNS " & IPv4_Image (Primary));
+         Used_DNS_1 := Primary;
+         Used_DNS_2 := Secondary;
+         Used_From := From;
+         Advance;
       end if;
    end Set_DNS;
+
+   --  The DNS servers by precedence: a client's override, then the
+   --  settings, then the last lease's.
+   procedure Apply_DNS is
+   begin
+      if Override_Set then
+         Set_DNS (Override_DNS_1, Override_DNS_2, NMR.Override);
+      elsif Settings_DNS_1 /= NM.No_IPv4 then
+         Set_DNS (Settings_DNS_1, Settings_DNS_2, NMR.Settings);
+      elsif Lease_DNS_1 /= NM.No_IPv4 then
+         Set_DNS (Lease_DNS_1, Lease_DNS_2, NMR.Lease);
+      end if;
+   end Apply_DNS;
 
    ---------------------------------------------------------------------------
    --  DHCP
@@ -328,10 +380,16 @@ procedure main is
                      Image (Unsigned_64 (A.Configured.Prefix)) & " gw " & IPv4_Image (A.Configured.Router));
          Configure (R, (Address => A.Configured.Address, Prefix => A.Configured.Prefix,
                         Gateway => A.Configured.Router, Metric => Automatic_Metric));
-         if Settings_DNS_1 = NM.No_IPv4 and then A.Configured.DNS_1 /= NM.No_IPv4 then
-            Set_DNS (A.Configured.DNS_1, A.Configured.DNS_2);
+         if A.Configured.DNS_1 /= NM.No_IPv4 then
+            Lease_DNS_1 := A.Configured.DNS_1;
+            Lease_DNS_2 := A.Configured.DNS_2;
+            if not Override_Set and then Settings_DNS_1 = NM.No_IPv4 then
+               Set_DNS (Lease_DNS_1, Lease_DNS_2, NMR.Lease);
+            end if;
          end if;
       end if;
+      --  The DHCP phase is part of the report.
+      Advance;
       if A.Send and then R.Opened then
          if R.Client.Current = D.Selecting then
             Say ("netmgr: " & Name_Of (R) & " DHCP DISCOVER");
@@ -379,6 +437,7 @@ procedure main is
          return;
       end if;
       R.Condition := Now_Condition;
+      Advance;
       --  One line per transition, readable from a screen photo
       --  (coordination/release-stack.md): name, kind, MAC, new and old
       --  state, the link report's generation and the reason.
@@ -400,9 +459,7 @@ procedure main is
             when NS.Static =>
                Say ("netmgr: " & Name_Of (R) & " static settings applied");
                Configure (R, R.Setting.Settings);
-               if Settings_DNS_1 /= NM.No_IPv4 then
-                  Set_DNS (Settings_DNS_1, Settings_DNS_2);
-               end if;
+               Apply_DNS;
             when NS.Automatic =>
                if R.Opened then
                   declare
@@ -473,6 +530,7 @@ procedure main is
                      R.Setting := (Kind => NS.Disabled);
                end case;
             end;
+            Advance;
             Say ("netmgr: " & Name_Of (R) & " attached");
             Say ("netmgr: " & Name_Of (R) & " policy " &
                         (case R.Setting.Kind is when NS.Automatic => "automatic (DHCP, SLAAC)",
@@ -484,9 +542,7 @@ procedure main is
                   --  Applied now: netstack keeps the routes unusable while
                   --  the link is not Up.
                   Configure (R, R.Setting.Settings);
-                  if Settings_DNS_1 /= NM.No_IPv4 then
-                     Set_DNS (Settings_DNS_1, Settings_DNS_2);
-                  end if;
+                  Apply_DNS;
                when NS.Automatic =>
                   R.Client := D.Create (S.Item.Address);
                   Open_DHCP (R);
@@ -545,6 +601,7 @@ procedure main is
          Ignore : Boolean;
       begin
          Say ("netmgr: " & Name_Of (R) & " detached");
+         Advance;
          Network_Context.Changed ((Name => R.Name, Handle => R.Handle, Condition => NL.Down));
          if R.Page /= 0 then
             --  The page is netstack's to map until the kernel confirms the
@@ -556,6 +613,272 @@ procedure main is
          end if;
       end;
    end Detached;
+
+   ---------------------------------------------------------------------------
+   --  Clients (CuBit.Net_Manager_Control)
+   ---------------------------------------------------------------------------
+   type Watcher is record
+      Present : Boolean := False;
+      Handle  : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+      Client  : Process_ID := No_Process;
+      Page    : MG.Grant_Reference;
+      Seen    : Unsigned_32 := 0;
+   end record;
+   Watchers : array (1 .. NMC.Maximum_Watchers) of Watcher;
+
+   function Phase_Of (R : Interface_Record) return NMR.DHCP_Phase is
+     (if R.Setting.Kind /= NS.Automatic then NMR.Not_Used
+      else (case R.Client.Current is
+              when D.Idle => NMR.Idle, when D.Selecting => NMR.Selecting,
+              when D.Requesting => NMR.Requesting, when D.Bound => NMR.Bound,
+              when D.Renewing => NMR.Renewing, when D.Rebinding => NMR.Rebinding,
+              when D.Rebooting => NMR.Rebooting));
+
+   function Current_Report return NMR.Report is
+      R : NMR.Report;
+   begin
+      R.Generation := Report_Generation;
+      R.DNS_1 := Used_DNS_1;
+      R.DNS_2 := Used_DNS_2;
+      R.DNS_From := Used_From;
+      for I in 1 .. Capacity loop
+         if Item (I).State = Live then
+            if R.Total < NMR.Interface_Total'Last then
+               R.Total := R.Total + 1;
+            end if;
+            if R.Count < NMR.Maximum_Records then
+               declare
+                  Name : NL.Interface_Name := Item (I).Name;
+               begin
+                  for C in Name.Length + 1 .. NL.Name_Characters loop
+                     Name.Text (C) := ' ';
+                  end loop;
+                  R.Count := R.Count + 1;
+                  R.Interfaces (R.Count) :=
+                    (Name      => Name,
+                     Kind      => Item (I).Kind,
+                     Condition => Item (I).Condition,
+                     Setting   => (case Item (I).Setting.Kind is
+                                     when NS.Automatic => NMR.Automatic,
+                                     when NS.Static => NMR.Static,
+                                     when NS.Disabled => NMR.Disabled),
+                     Settings  => Item (I).Applied,
+                     MAC       => Item (I).MAC,
+                     DHCP      => Phase_Of (Item (I).all),
+                     Applies   => Item (I).Applies);
+               end;
+            end if;
+         end if;
+      end loop;
+      return R;
+   end Current_Report;
+
+   procedure Answer_Watchers is
+      Have : Boolean := False;
+      R : NMR.Report;
+   begin
+      for W of Watchers loop
+         if W.Present and then W.Seen /= Report_Generation then
+            if not Have then
+               R := Current_Report;
+               Have := True;
+            end if;
+            declare
+               Address : System.Address;
+               Acquired, Returned : Boolean;
+               Ignore : Unsigned_64;
+               M : Message := NULL_MESSAGE;
+            begin
+               MG.Acquire (W.Page, W.Client, 0, NMC.Page_Bytes, MG.Write_Access, Address, Acquired);
+               if Acquired and then NMR.Normal (R) then
+                  declare
+                     Page : NMR.Words with Import, Volatile, Address => Address;
+                  begin
+                     Page := NMR.Encode (R);
+                  end;
+                  MG.Return_Acquisition (W.Page, Returned);
+                  M.tag := (label => KA.Reply_OK, length => 1, protocol => 0, ipc => <>, reserved => 0);
+                  M.words (0) := Unsigned_64 (Report_Generation);
+               else
+                  if Acquired then
+                     MG.Return_Acquisition (W.Page, Returned);
+                  end if;
+                  M.tag := (label => KA.Reply_Error, length => 1, protocol => 0, ipc => <>, reserved => 0);
+                  M.words (0) := Unsigned_64 (NMC.Refusal'Enum_Rep (NMC.Malformed));
+               end if;
+               Ignore := replyCap (W.Handle, M);
+               W := (others => <>);
+            end;
+         end if;
+      end loop;
+   end Answer_Watchers;
+
+   procedure Answer_Client (To : Process_ID; OK : Boolean; Why : NMC.Refusal := NMC.Malformed) is
+      Ignore : Unsigned_64;
+   begin
+      Ignore := reply (To, (tag => (label => (if OK then KA.Reply_OK else KA.Reply_Error), length => 1,
+                                    protocol => 0, ipc => <>, reserved => 0),
+                            authorityTag => 0,
+                            words => ((if OK then 0 else Unsigned_64 (NMC.Refusal'Enum_Rep (Why))), 0, 0, 0)));
+   end Answer_Client;
+
+   procedure Park_Watch (From : Process_ID; Msg : Message) is
+   begin
+      if not CuBit.Grant_References.Valid_Wire (Msg.words (0))
+        or else Msg.words (1) > Unsigned_64 (Unsigned_32'Last)
+      then
+         Answer_Client (From, False, NMC.Malformed);
+         return;
+      end if;
+      for W of Watchers loop
+         if not W.Present then
+            declare
+               Saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+            begin
+               if not Saved.Saved then
+                  Answer_Client (From, False, NMC.Busy);
+                  return;
+               end if;
+               W := (Present => True, Handle => Saved.Handle, Client => From,
+                     Page => CuBit.Grant_References.Decode (Msg.words (0)),
+                     Seen => Unsigned_32 (Msg.words (1)));
+            end;
+            Answer_Watchers;
+            return;
+         end if;
+      end loop;
+      Answer_Client (From, False, NMC.Busy);
+   end Park_Watch;
+
+   --  Put Setting in force on R: the old policy's configuration (and DHCP
+   --  client) goes, the new one's comes.
+   procedure Reapply (R : in out Interface_Record; Setting : NS.Interface_Setting) is
+   begin
+      case R.Setting.Kind is
+         when NS.Automatic =>
+            if D.Valid (R.Client) then
+               D.Link_Down (R.Client);
+            end if;
+            Configure (R, (others => <>));
+         when NS.Static =>
+            Configure (R, (others => <>));
+         when NS.Disabled =>
+            null;
+      end case;
+      R.Setting := Setting;
+      R.Applies := (if R.Applies = NMR.Apply_Count'Last then 0 else R.Applies + 1);
+      Say ("netmgr: " & Name_Of (R) & " policy " &
+           (case Setting.Kind is when NS.Automatic => "automatic (DHCP, SLAAC)",
+                                 when NS.Static => "static",
+                                 when NS.Disabled => "disabled") & " (applied by a client)");
+      case Setting.Kind is
+         when NS.Static =>
+            Configure (R, Setting.Settings);
+            Apply_DNS;
+         when NS.Automatic =>
+            if not R.Opened then
+               R.Client := D.Create (R.MAC);
+               Open_DHCP (R);
+            end if;
+            if R.Opened and then R.Condition = NL.Up and then D.Valid (R.Client) then
+               declare
+                  A : D.Action;
+                  Out_Bytes : D.Bytes with Import, Address => Outgoing (R);
+               begin
+                  D.Link_Up (R.Client, syscall (SYSCALL_GETTIME), Random32, Out_Bytes, A);
+                  Act (R, A);
+               end;
+            end if;
+         when NS.Disabled =>
+            null;
+      end case;
+      Advance;
+   end Reapply;
+
+   procedure Apply_Request (From : Process_ID; Msg : Message) is
+      Lengths : constant NMC.Decoded_Lengths := NMC.Decode_Lengths (Msg.words (1));
+      Reference : MG.Grant_Reference;
+      Address : System.Address;
+      Acquired, Returned : Boolean;
+   begin
+      if not Lengths.Valid or else not CuBit.Grant_References.Valid_Wire (Msg.words (0)) then
+         Answer_Client (From, False, NMC.Malformed);
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (Msg.words (0));
+      MG.Acquire (Reference, From, 0, NMC.Page_Bytes, MG.Read_Access, Address, Acquired);
+      if not Acquired then
+         Answer_Client (From, False, NMC.Malformed);
+         return;
+      end if;
+      declare
+         Page : String (1 .. NMC.Page_Bytes) with Import, Volatile, Address => Address;
+         Name : constant String := Page (1 .. Lengths.Name);
+         Source : constant String := Page (Lengths.Name + 1 .. Lengths.Name + Lengths.Source);
+         Setting : NS.Interface_Setting;
+         Decoded : Boolean;
+         Index : Natural := 0;
+      begin
+         MG.Return_Acquisition (Reference, Returned);
+         for I in 1 .. Capacity loop
+            if Item (I).State = Live and then Name_Of (Item (I).all) = Name then
+               Index := I;
+            end if;
+         end loop;
+         if Index = 0 then
+            Answer_Client (From, False, NMC.Unknown_Interface);
+            return;
+         end if;
+         NS.Decode (Source, Setting, Decoded);
+         if not Decoded then
+            Say ("netmgr: " & Name & ": a client's setting did not decode", Warn => True);
+            Answer_Client (From, False, NMC.Invalid_Setting);
+            return;
+         end if;
+         Reapply (Item (Index).all, Setting);
+         Answer_Client (From, True);
+      end;
+   end Apply_Request;
+
+   procedure DNS_Request (From : Process_ID; Msg : Message) is
+   begin
+      if Msg.words (0) > Unsigned_64 (Unsigned_32'Last)
+        or else Msg.words (1) > Unsigned_64 (Unsigned_32'Last)
+        or else Msg.words (2) > Unsigned_64 (NMC.DNS_Choice'Enum_Rep (NMC.DNS_Choice'Last))
+      then
+         Answer_Client (From, False, NMC.Malformed);
+         return;
+      end if;
+      if Msg.words (2) = Unsigned_64 (NMC.DNS_Choice'Enum_Rep (NMC.Use_These)) then
+         if Msg.words (0) = Unsigned_64 (NM.No_IPv4) then
+            Answer_Client (From, False, NMC.Invalid_Setting);
+            return;
+         end if;
+         Override_Set := True;
+         Override_DNS_1 := NM.IPv4_Word (Msg.words (0));
+         Override_DNS_2 := NM.IPv4_Word (Msg.words (1));
+      else
+         Override_Set := False;
+      end if;
+      Apply_DNS;
+      Advance;
+      Answer_Client (From, True);
+   end DNS_Request;
+
+   procedure Client_Request (From : Process_ID; Msg : Message) is
+   begin
+      if not NMC.Is_Operation (Msg.tag.label)
+        or else Natural (Msg.tag.length) /= NMC.Request_Words (NMC.Operation_Of (Msg.tag.label))
+      then
+         Answer_Client (From, False, NMC.Malformed);
+         return;
+      end if;
+      case NMC.Operation_Of (Msg.tag.label) is
+         when NMC.Watch   => Park_Watch (From, Msg);
+         when NMC.Apply   => Apply_Request (From, Msg);
+         when NMC.Set_DNS => DNS_Request (From, Msg);
+      end case;
+   end Client_Request;
 
    procedure Retire_Pages is
    begin
@@ -759,9 +1082,7 @@ begin
    end;
 
    if Startup.Netstack.Present then
-      if Settings_DNS_1 /= NM.No_IPv4 then
-         Set_DNS (Settings_DNS_1, Settings_DNS_2);
-      end if;
+      Apply_DNS;
       Enumerate;
       Watch;
    else
@@ -786,13 +1107,12 @@ begin
          loop
             Poll_Service_Request (Sender, Request_Message, Found);
             exit when not Found;
-            Ignore := reply (Sender, (tag => (label => KA.Reply_Error, length => 0, protocol => 0,
-                                              ipc => <>, reserved => 0),
-                                      authorityTag => 0, words => (others => 0)));
+            Client_Request (Sender, Request_Message);
          end loop;
          Run_Timers;
          Retire_Pages;
          Watch;
+         Answer_Watchers;
       end;
    end loop;
    Say ("netmgr: activity wait unavailable");

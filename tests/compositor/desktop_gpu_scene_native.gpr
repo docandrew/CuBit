@@ -19,7 +19,7 @@ project Desktop_GPU_Scene_Native is
       "compositor_glyph_ffi.adb",
       "compositor_glyph_ffi.ads",
       "compositor_glyph_layout.adb",
-      "compositor_glyph_layout.ads",
+      "compositor_glyph_layout.ads", "cubit-ui_metrics.ads",
       "compositor_glyph_placement.adb",
       "compositor_glyph_placement.ads",
       "compositor_gradient.adb",

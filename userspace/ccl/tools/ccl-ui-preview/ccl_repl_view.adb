@@ -1,4 +1,5 @@
 with CuBit.Fonts;
+with CuBit.UI_Metrics;
 with CCL.Host_Values;
 with CCL.Types;
 with CCL.Call_Context;
@@ -11,7 +12,15 @@ package body CCL_REPL_View is
    function Image (Value : Natural) return String is
      (Natural'Image (Value) (2 .. Natural'Image (Value)'Last));
    use CuBit.UI;
-   Entry_Height : constant := 48;
+   --  From the UI em (CuBit.UI_Metrics): an entry is its source line and
+   --  its result line; the header row holds the Clear button.
+   package M renames CuBit.UI_Metrics;
+   Line_Step : constant := M.Line_Height + M.Space_S;
+   Entry_Height : constant := 2 * M.Line_Height + M.Space_L + M.Space_XS;
+   Header_Row : constant := M.Compact_Row_Height;
+   Hint_Row : constant := M.Line_Height + 3;
+   Clear_Width : constant := 4 * M.Base_Em + M.Space_M;
+   Input_Height : constant := M.Control_Height;
    function Type_Name (Kind : CCL.Host_Values.Value_Kind) return String is
      (case Kind is when CCL.Host_Values.Integer_Value => "Integer",
                    when CCL.Host_Values.Boolean_Value => "Boolean",
@@ -32,9 +41,10 @@ package body CCL_REPL_View is
       G : Geometry;
    begin
       if Bounds.w < 120 or else Bounds.h < 140 then return G; end if;
-      G.Clear := (Bounds.x + Bounds.w - 70, Bounds.y, 70, 24);
-      G.Input := (Bounds.x, Bounds.y + Bounds.h - 27, Bounds.w, 26);
-      G.Transcript := (Bounds.x, Bounds.y + 52, Bounds.w, Bounds.h - 86);
+      G.Clear := (Bounds.x + Bounds.w - Clear_Width, Bounds.y, Clear_Width, Header_Row);
+      G.Input := (Bounds.x, Bounds.y + Bounds.h - Input_Height - 1, Bounds.w, Input_Height);
+      G.Transcript := (Bounds.x, Bounds.y + Header_Row + Hint_Row + 5, Bounds.w,
+                       Bounds.h - Header_Row - Hint_Row - 5 - Input_Height - 8);
       G.Capacity := Positive'Max (1, G.Transcript.h / Entry_Height);
       return G;
    end Layout;
@@ -302,13 +312,13 @@ package body CCL_REPL_View is
    begin
       if Is_Empty (G.Input) then return; end if;
       Fill_Rect (C, Bounds, Colors.face);
-      CuBit.UI.Widgets.Label (C, (Bounds.x, Bounds.y, Bounds.w - 78, 24), Colors,
+      CuBit.UI.Widgets.Label (C, (Bounds.x, Bounds.y, Bounds.w - Clear_Width - M.Space_M, Header_Row), Colors,
         "REPL " & Image (Count) & "/" & Image (CCL.Sessions.Maximum_History) &
         " | kept " & Image (CCL.Sessions.Kept_Definitions (State.Session)) & " defs, " &
         Image (CCL.Sessions.Kept_Values (State.Session)) & " values | :env :reset");
       Draw_Button (C, G.Clear, Colors,
         (if State.Capture = Clear_Capture then Button_Pressed else Button_Normal), "Clear");
-      CuBit.UI.Widgets.Label (C, (Bounds.x, Bounds.y + 27, Bounds.w, 20), Colors,
+      CuBit.UI.Widgets.Label (C, (Bounds.x, Bounds.y + Header_Row + 3, Bounds.w, Hint_Row), Colors,
         (if State.Completion_Hint_Length > 0 then
            State.Completion_Hint (1 .. State.Completion_Hint_Length)
          else "Catalog:" & Natural'Image (Natural (State.Visible_Interfaces)) &
@@ -321,7 +331,7 @@ package body CCL_REPL_View is
       if Count = 0 then
          Draw_UI_Text_Transparent (With_Clip (C, G.Transcript), G.Transcript.x + 6, G.Transcript.y + 6,
            "Try (+ 20 22), then Enter", Colors.muted);
-         Draw_UI_Text_Transparent (With_Clip (C, G.Transcript), G.Transcript.x + 6, G.Transcript.y + 28,
+         Draw_UI_Text_Transparent (With_Clip (C, G.Transcript), G.Transcript.x + 6, G.Transcript.y + 6 + Line_Step,
            "Up/Down recall; wheel reviews history", Colors.muted);
       else
          for Row in 0 .. G.Capacity - 1 loop
@@ -337,7 +347,7 @@ package body CCL_REPL_View is
                   Draw_Code_Text_Fitted (C, Box, Text_X, Y,
                     "> " & One_Line (Entry_Value.Source (1 .. Entry_Value.Source_Length)),
                     Colors.muted, Colors.field);
-                  Draw_UI_Text_Transparent (TC, Text_X, Y + 21,
+                  Draw_UI_Text_Transparent (TC, Text_X, Y + Line_Step,
                     Fit_UI_Text (One_Line (CCL.Sessions.Result_Image (Entry_Value.Outcome)),
                                  (if Box.x + Box.w > Text_X then Box.x + Box.w - Text_X else 0)),
                     Colors.text);

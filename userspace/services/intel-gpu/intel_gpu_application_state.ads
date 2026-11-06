@@ -11,7 +11,19 @@ package Intel_GPU_Application_State is
    -- per render-session slot in growable storage (Intel_GPU_Session_Store),
    -- never on the service thread's stack. Serialized access; no client may
    -- choose an index without authenticated session resolution.
-   Table_Pages : constant := 64;
+   -- Page-table pages one session's VM may hold: a named ceiling, not a
+   -- working size. Table metadata grows on demand from the bootstrap stores,
+   -- and every table page is charged 4 KiB to the session's byte budget like
+   -- a buffer, so that budget is the limit in practice. The ceiling is the
+   -- VM image format's own maximum (Intel_GPU_VM_Image), at least 8 GiB of
+   -- densely mapped buffers; past it an update is refused as CAPACITY
+   -- (Intel_GPU_VM_Refusals), never with the session lost.
+   -- The table count follows the client's address layout, not its byte
+   -- count: anv keeps its state pools in separate GiB regions and its high
+   -- heap at the top of the 48-bit space, and every 2 MiB of buffers needs a
+   -- leaf table. The former working size of 64 was reached by the desktop's
+   -- ~82 MiB of buffers plus one new window (BUG-001).
+   Table_Pages : constant := 4096;
    Bootstrap_Table_Mirrors : constant := 4;
    package VM is new Intel_GPU_VM_Image
      (Table_Pages, Bootstrap_Table_Mirrors, Bootstrap_Insertion_Words => 512,

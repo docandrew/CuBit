@@ -19,6 +19,7 @@ with CuBit.Failures;
 with CuBit.Program_Descriptions;
 with CuBit.Startup_Tables;
 with CuBit.ACPI_Hardware_Authority;
+with CuBit.Publication_Grants;
 
 package body CCL.Manifests.Typed with SPARK_Mode => On is
    use Standard.Interfaces;
@@ -401,6 +402,23 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                end if;
                Item.Kind := ACPI_Hardware_Request;
                Item.Rights := Read_Write;
+               Binding (Body_Cursor, Item);
+         elsif Kind = "Publication" then
+               --  A kernel publication by name (CuBit.Publication_Grants).
+               Item.Kind := Publication_Request;
+               Item.Rights := Read_Only;
+               for P in CuBit.Publication_Grants.SP.Granted_Publication loop
+                  if Text (Body_Cursor) = CuBit.Publication_Grants.Name (P) then
+                     Item.Service := CuBit.Publication_Grants.Code (P);
+                  end if;
+               end loop;
+               if Item.Service = 0 then
+                  Fail (Unknown_Publication,
+                        "no kernel publication is named """ & Text (Body_Cursor) & """",
+                        "name one of CuBit.Publication_Grants, such as """ &
+                        CuBit.Publication_Grants.CPU_Times_Name & """");
+                  return;
+               end if;
                Binding (Body_Cursor, Item);
          elsif Kind = "Network" then
                Item.Kind := Network_Request;

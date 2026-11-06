@@ -29,23 +29,25 @@ procedure Update_Mirror_Failure_Tests is
    OK : Boolean;
    Steps, Before, Callbacks : Natural := 0;
    Charge : Unsigned_64;
+   -- A 64-table update image: its growth, not the whole table ceiling.
+   Tables : constant := 64;
 begin
    S.Extend_Update_Index (Unsigned_64 (To_Integer (Index_RAM'Address)), 4096, OK);
    pragma Assert (OK);
-   U.Request (Object, 17, 1048576, OK); pragma Assert (OK);
+   U.Request (Object, 17, 1048576, OK, Tables => Tables); pragma Assert (OK);
    while U.Pending (Object) loop
       Steps := Steps + 1; pragma Assert (Steps <= 500);
       if Fault_Step /= 0 and then Steps = Fault_Step then B.Owner := False; end if;
       Before := B.Commits;
       U.Step (Object);
       pragma Assert (B.Commits <= Before + 1);
-      if not S.Has_Update (17) or else S.VM.Metadata_Capacity (S.Updates (17).Candidate) < 64 then
+      if not S.Has_Update (17) or else S.VM.Metadata_Capacity (S.Updates (17).Candidate) < Tables then
          pragma Assert (not U.Ready (Object));
       end if;
    end loop;
    if Fault_Step = 0 and Fault_Commit = 0 then
       pragma Assert (U.Ready (Object));
-      pragma Assert (S.VM.Metadata_Capacity (S.Updates (17).Candidate) = 64);
+      pragma Assert (S.VM.Metadata_Capacity (S.Updates (17).Candidate) >= Tables);
       pragma Assert (not S.Updates (17).Tables.Ready);
       Ada.Text_IO.Put_Line ("MIRROR-BASELINE" & Natural'Image (Steps) & Natural'Image (B.Commits));
    else
@@ -54,7 +56,7 @@ begin
       Callbacks := B.Reservations + B.Commits + B.Clears;
       B.Owner := True;
       for Turn in 1 .. 20 loop U.Step (Object); end loop;
-      U.Request (Object, 17, 1048576, OK);
+      U.Request (Object, 17, 1048576, OK, Tables => Tables);
       pragma Assert (not OK and not U.Ready (Object) and not U.Pending (Object));
       pragma Assert (Callbacks = B.Reservations + B.Commits + B.Clears);
       pragma Assert (U.Charged_Bytes (Object) = Charge);

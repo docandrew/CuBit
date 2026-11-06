@@ -16,6 +16,7 @@ with Boot_Timeline_Layout;
 with Capabilities;
 with Capabilities.IRQ;
 with Config;
+with Cpu_Times_Page;
 with Device_Interrupts;
 with Device_Memory_Diagnostics;
 with Device_Vector_ABI;
@@ -934,7 +935,7 @@ package body Syscall.Admin is
     ---------------------------------------------------------------------------
     procedure handleInstallLaunchArguments
        (callerPID        : Process.ProcessID;
-        arg0, arg1, arg2, arg3 : Unsigned_64;
+        arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
         retval           : out Unsigned_64) with
         SPARK_Mode => Off   -- page-table and process-table integration
     is
@@ -952,6 +953,10 @@ package body Syscall.Admin is
               not User_Buffer_Copy.Valid_Range (arg1, arg2)
         then
             println ("LAUNCH-ARGS: invalid source range");
+            return;
+        end if;
+        if (arg4 and not System_Publications.All_Publications) /= 0 then
+            println ("LAUNCH-ARGS: unknown publication granted");
             return;
         end if;
 
@@ -1018,6 +1023,17 @@ package body Syscall.Admin is
                         return;
                     end if;
                 end loop;
+                -- The publications the launcher granted (KERN-002).
+                if (arg4 and System_Publications.Bit
+                      (System_Publications.CPU_Times)) /= 0
+                then
+                    Cpu_Times_Page.Map_Into (Process.addrtab (targetPID), copied);
+                    if not copied then
+                        Process.unlockAddressSpace (targetPID);
+                        println ("LAUNCH-ARGS: CPU times publication unmapped");
+                        return;
+                    end if;
+                end if;
                 Process.unlockAddressSpace (targetPID);
 
                 -- First dispatch enters user mode with RDI = length.

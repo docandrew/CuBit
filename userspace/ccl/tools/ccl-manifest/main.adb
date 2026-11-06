@@ -462,7 +462,7 @@ procedure Main is
          when ST.Process      => "Process",
          when ST.Firmware_Snapshot => "Firmware_Snapshot",
          when ST.ACPI_Hardware => "ACPI_Hardware",
-         when ST.DMA | ST.Resource => "");
+         when ST.DMA | ST.Resource | ST.Publication => "");
 
    --  An enumeration literal's image in Ada's mixed case (IO and DMA stay
    --  upper case, as declared).
@@ -575,7 +575,8 @@ procedure Main is
          when ST.Process       => "Process",
          when ST.Resource      => "Resource",
          when ST.Firmware_Snapshot => "FirmwareSnapshot",
-         when ST.ACPI_Hardware => "AcpiHardware");
+         when ST.ACPI_Hardware => "AcpiHardware",
+         when ST.Publication   => "Publication");
 
    --  The Rust startup accessors (CAP-003): module startup, one function
    --  per endpoint binding, taking the program's startup table

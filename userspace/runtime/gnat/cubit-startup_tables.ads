@@ -93,15 +93,18 @@ package CuBit.Startup_Tables with Pure, SPARK_Mode is
 
    --  What a startup capability is. Wire codes are fixed: a new kind takes
    --  a new code, never an old one.
+   --  Publication: a kernel publication page mapped read-only into the
+   --  program (KERN-002, CuBit.Publication_Grants); its handle word is the
+   --  page's address, not a capability.
    type Capability_Kind is
      (Endpoint, Notification, Framebuffer, Render, Network, Device_Memory,
       IO_Ports, Interrupt, DMA, Scheduling, Process, Resource, Firmware_Snapshot,
-      ACPI_Hardware);
+      ACPI_Hardware, Publication);
    for Capability_Kind use
      (Endpoint => 1, Notification => 2, Framebuffer => 3, Render => 4,
       Network => 5, Device_Memory => 6, IO_Ports => 7, Interrupt => 8,
       DMA => 9, Scheduling => 10, Process => 11, Resource => 12,
-      Firmware_Snapshot => 13, ACPI_Hardware => 14);
+      Firmware_Snapshot => 13, ACPI_Hardware => 14, Publication => 15);
 
    --  A required capability the launcher cannot obtain fails the launch; an
    --  optional one is recorded Absent and the program runs without it.

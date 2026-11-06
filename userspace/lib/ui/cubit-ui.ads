@@ -10,6 +10,8 @@ with System;
 with CuBit.Theme;
 with CuBit.Appearance;
 with Client_Canvas_Geometry;
+with CuBit.UI_Metrics;
+with CuBit.UI_Masking;
 
 package CuBit.UI is
    use type CuBit.Appearance.Color_Scheme;
@@ -238,6 +240,10 @@ package CuBit.UI is
       (c : Canvas; r : Rect; topColor, bottomColor : Color);
    procedure Stroke_Rect
       (c : Canvas; r : Rect; light : Color; dark : Color);
+   --  The keyboard focus ring (CuBit.UI.Focus): a one-pixel line in the
+   --  theme's selection colour, Focus_Ring_Inset inside r.
+   Focus_Ring_Inset : constant := 2;
+   procedure Draw_Focus_Ring (c : Canvas; r : Rect; colors : Theme);
    procedure Draw_Glyph
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color);
    procedure Draw_Text
@@ -292,7 +298,7 @@ package CuBit.UI is
        hot : Boolean; active : Boolean; label : String);
    --  A menu bar title is its label between MENU_TITLE_PADDING on each
    --  side: lay titles out at Menu_Title_Width so none is cut.
-   MENU_TITLE_PADDING : constant := 10;
+   MENU_TITLE_PADDING : constant := CuBit.UI_Metrics.Space_M + CuBit.UI_Metrics.Space_XS;
    function Menu_Title_Width (label : String) return Natural;
    procedure Draw_Status_Bar
       (c : Canvas; r : Rect; colors : Theme; left, right : String);
@@ -306,7 +312,7 @@ package CuBit.UI is
    Default_Table_Columns : constant Table_Column_Layout :=
      (First_Width => 64, Second_Width => 72, Cell_Padding => 5);
    type Table_Text_Style is (Table_Interface_Text, Table_Code_Text);
-   Table_Header_Height : constant Positive := 24;
+   Table_Header_Height : constant Positive := CuBit.UI_Metrics.Header_Height;
    type Table_Regions is record
       Header : Rect;
       Rows   : Rect;
@@ -370,15 +376,22 @@ package CuBit.UI is
    procedure Draw_Text_Field
       (c : Canvas; r : Rect; colors : Theme; text : String;
        focused : Boolean; hot : Boolean);
+   --  How a masked text field stands in for its secret (Draw_Text_Edit_Field).
+   subtype Mask_Style is CuBit.UI_Masking.Style;
+   Fixed_Length  : constant Mask_Style := CuBit.UI_Masking.Fixed_Length;
+   Per_Character : constant Mask_Style := CuBit.UI_Masking.Per_Character;
    procedure Draw_Text_Edit_Field
       (c : Canvas; r : Rect; colors : Theme; text : String;
        cursor, selectionStart, selectionEnd : Natural;
        focused : Boolean; hot : Boolean; suggestion : String := "";
-       masked : Boolean := False);
-   --  A masked (secret) field shows Secret_Mask whatever the text's length,
-   --  so neither content nor length shows on screen; an empty field shows
-   --  nothing. The caret sits after the mask; any selection covers it.
-   Secret_Mask : constant String := "*******";
+       masked : Boolean := False; mask : Mask_Style := Fixed_Length);
+   --  A masked (secret) field never shows its content. Fixed_Length shows
+   --  Secret_Mask whatever the text's length, so the length is hidden too;
+   --  the caret sits after the mask and any selection covers it.
+   --  Per_Character shows one Mask_Character per character, with the caret
+   --  and selection where they are in the text, for secrets whose length
+   --  need not be hidden (a Wi-Fi passphrase). An empty field shows nothing.
+   Secret_Mask : constant String := CuBit.UI_Masking.Fixed_Mask;
    --  Optional display-only suffix, clipped inside the field and drawn in the
    --  muted theme color. It never participates in selection or caret geometry.
    procedure Draw_Multiline_Text_Edit

@@ -1,13 +1,16 @@
 with Ada.Text_IO; use Ada.Text_IO;
 with Glyph_Cache_Model;
 with Compositor_Glyph_Cache;
---  One unit-density stacked phase mask is 32 x 17 x 4 = 2_176 bytes.
+--  One unit-density stacked phase mask (Mask bytes): Base_Width_Bound x
+--  Base_Line x 4 phases.
 procedure Glyph_Cache_Tests is
    package C renames Glyph_Cache_Model;
    use type C.Token, C.Lease, C.Phase, C.State, C.Serial_Number;
    package Small is new Compositor_Glyph_Cache (7, Slot_Count => C.Slot'Last);
    use type Small.Token, Small.Lease;
-   S : C.State := C.Open (8_000);
+   Mask : constant Positive := C.L.Plan ((1, 1)).Bytes;
+   --  Room for three unit-density masks, not four.
+   S : C.State := C.Open (3 * Mask + Mask / 2);
    K : C.Key := (0, 65, (1, 1));
    T, Neighbor, Rejected, Old : C.Token;
    R, Late, New_Read : C.Lease;
@@ -18,7 +21,7 @@ begin
    C.Publish (S, Neighbor, True);
    for Cycle in 1 .. 4_096 loop
       C.Reserve (S, K, T);
-      pragma Assert (T /= C.No_Token and C.Status (S, T) = C.Building and C.Charged (S) = 4_352);
+      pragma Assert (T /= C.No_Token and C.Status (S, T) = C.Building and C.Charged (S) = 2 * Mask);
       if Cycle > 1 then
          declare Before : constant C.State := S;
          begin
@@ -61,10 +64,10 @@ begin
       C.Begin_Retirement (S, T, Accepted); pragma Assert (Accepted);
       C.Acquire (S, T, R); pragma Assert (R = C.No_Lease);
       C.Retired (S, T, False);
-      pragma Assert (C.Current (S, T) and C.Charged (S) = 4_352);
+      pragma Assert (C.Current (S, T) and C.Charged (S) = 2 * Mask);
       C.Reserve (S, K, Rejected); pragma Assert (Rejected = C.No_Token);
       C.Retired (S, T, True);
-      pragma Assert (not C.Current (S, T) and C.Charged (S) = 2_176 and C.Current (S, Neighbor));
+      pragma Assert (not C.Current (S, T) and C.Charged (S) = Mask and C.Current (S, Neighbor));
       if Cycle > 1 then
          declare Before : constant C.State := S;
          begin
@@ -75,7 +78,7 @@ begin
       Old := T;
    end loop;
    -- Outstanding reads saturate at 32, without evicting a pinned mask.
-   S := C.Open (2_176); C.Reserve (S, K, T); C.Publish (S, T, True);
+   S := C.Open (Mask); C.Reserve (S, K, T); C.Publish (S, T, True);
    for I in Held'Range loop C.Acquire (S, T, Held (I)); pragma Assert (Held (I) /= C.No_Lease); end loop;
    C.Acquire (S, T, R);
    pragma Assert (R = C.No_Lease and C.Reader_Count (S) = 32 and C.Victim (S) = 0);
@@ -95,7 +98,7 @@ begin
       pragma Assert (T.Position = I); C.Publish (S, T, True);
    end loop;
    C.Reserve (S, (0, 65, (5, 4)), Rejected);
-   pragma Assert (Rejected = C.No_Token and C.Charged (S) = C.Slot'Last * 2_176);
+   pragma Assert (Rejected = C.No_Token and C.Charged (S) = C.Slot'Last * Mask);
    for I in C.Slot loop
       pragma Assert (C.Victim (S) = I);
       C.Begin_Retirement (S, C.At_Slot (S, I), Accepted); pragma Assert (Accepted);
@@ -120,7 +123,7 @@ begin
    end loop;
    -- Force both non-wrapping identity counters to their last values.
    declare
-      X : Small.State := Small.Open (2_176);
+      X : Small.State := Small.Open (Mask);
       XT : Small.Token;
       XR, Saved : Small.Lease;
       Good : Boolean;

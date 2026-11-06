@@ -1,3 +1,4 @@
+with CuBit.UI_Metrics;
 with Ada.Unchecked_Deallocation;
 with System;
 with Client_Canvas_Geometry;
@@ -29,34 +30,35 @@ package body Calc_Shells is
    ---------------------------------------------------------------------------
    --  Geometry (logical pixels; the desktop scales them to the display).
 
-   MENU_BAR_HEIGHT : constant := 24;
-   MENU_ROW_HEIGHT : constant := 24;
-   MENU_MINIMUM_WIDTH : constant := 200;
+   package M renames CuBit.UI_Metrics;
+   MENU_BAR_HEIGHT : constant := M.Menu_Bar_Height;
+   MENU_ROW_HEIGHT : constant := M.Row_Height;
+   MENU_MINIMUM_WIDTH : constant := 13 * M.Base_Em;
    MENU_BASE : constant := 1;
-   STATUS_HEIGHT : constant := 24;
+   STATUS_HEIGHT : constant := M.Compact_Row_Height;
    MARGIN : constant := 8;
    GAP : constant := 4;
    --  A pad button as designed (the pad stretches with the window).
-   BUTTON_WIDTH : constant := 52;
-   BUTTON_HEIGHT : constant := 32;
-   ENTRY_HEIGHT : constant := 26;
+   BUTTON_WIDTH : constant := 3 * M.Base_Em + M.Space_M;
+   BUTTON_HEIGHT : constant := M.Control_Height + 3;
+   ENTRY_HEIGHT : constant := M.Control_Height;
    ENTRY_INSET : constant := 6;
    --  The big result: the UI face at twice its size.
    BIG_NUMERATOR : constant := 2;
    BIG_DENOMINATOR : constant := 1;
-   BIG_HEIGHT : constant := 34;
+   BIG_HEIGHT : constant := BIG_NUMERATOR * M.Line_Height / BIG_DENOMINATOR;
    --  Digits on the pad: one and a quarter times the UI face.
    KEY_NUMERATOR : constant := 5;
    KEY_DENOMINATOR : constant := 4;
-   SECONDARY_HEIGHT : constant := 18;
+   SECONDARY_HEIGHT : constant := M.Line_Height + 1;
    --  The chips above the entry (angle unit; word size and sign).
-   STRIP_HEIGHT : constant := 20;
+   STRIP_HEIGHT : constant := M.Dense_Row_Height;
    CHIP_PADDING : constant := 7;
    CHIP_GAP : constant := 3;
    --  Programmer mode: the four bases, then the bit field, 16 bits a row.
-   BASE_ROW_HEIGHT : constant := 17;
+   BASE_ROW_HEIGHT : constant := M.Line_Height;
    BASE_LABEL_WIDTH : constant := 34;
-   BIT_ROW_HEIGHT : constant := 17;
+   BIT_ROW_HEIGHT : constant := M.Line_Height;
    BITS_PER_ROW : constant := 16;
    BITS_PER_NIBBLE : constant := 4;
    NIBBLE_GAP : constant := 5;
@@ -64,11 +66,11 @@ package body Calc_Shells is
    --  The bit field of an unbounded word shows its low 64 bits.
    UNBOUNDED_BITS : constant := 64;
    BIT_ROWS : constant := UNBOUNDED_BITS / BITS_PER_ROW;
-   ROW_HEIGHT : constant := 38;
+   ROW_HEIGHT : constant := 2 * M.Line_Height + M.Space_S;
    ROW_INSET : constant := 8;
    DOUBLE_CLICK_MS : constant := 400;
-   HELP_WIDTH : constant := 300;
-   HELP_LINE : constant := 18;
+   HELP_WIDTH : constant := 19 * M.Base_Em;
+   HELP_LINE : constant := M.Line_Height + 1;
    --  Key symbols (Calc_Symbols): their box and stroke, the stroke one and
    --  a half logical pixels rounded to whole physical pixels.
    SYMBOL_BOX : constant := 14;

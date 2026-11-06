@@ -3,9 +3,9 @@
 with "../../userspace/allocator/allocator_runtime_host.gpr";
 with "../../userspace/lib/ui/fonts_host.gpr";
 project Text_Fit_Tests is
-   for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/ccl/tools/ccl-ui-preview/host");
+   for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/display");
    for Source_Files use ("main.adb", "model_width.ads", "model_width.adb", "text_fit_model.ads",
-                         "text_fit.ads", "text_fit.adb", "cubit.ads", "cubit-fonts.ads",
+                         "text_fit.ads", "text_fit.adb", "cubit.ads", "cubit-fonts.ads", "cubit-ui_metrics.ads",
                          "cubit-fonts.adb", "glyph_pen.ads");
    for Object_Dir use "build";
    for Exec_Dir use "build";

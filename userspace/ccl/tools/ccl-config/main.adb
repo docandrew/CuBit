@@ -96,9 +96,11 @@ begin
                   --  profiles dump exactly as before.
                   if Item.Mode = Per_Device then Put (" launch=per-device"); end if;
                   if Item.Approve_Device then Put (" device=approved"); end if;
+                  if Item.Restart = On_Failure then Put (" restart=on-failure"); end if;
                   if Item.Approve_Firmware_Snapshot then Put (" firmware-snapshot=approved"); end if;
                   if Item.Approve_ACPI_Hardware then Put (" acpi-hardware=approved"); end if;
                   if Item.Approve_ACPI_Registers then Put (" acpi-registers=approved"); end if;
+                  if Item.Approve_Display_Capture then Put (" display-capture=approved"); end if;
                   if Item.Approve_ACPI_PCI_Config then Put (" acpi-pci-config=approved"); end if;
                   if Item.Approve_ACPI_Firmware_Data then
                      Put (" acpi-firmware-data=approved");

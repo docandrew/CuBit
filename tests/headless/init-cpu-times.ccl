@@ -1,0 +1,6 @@
+# The per-CPU times publication (KERN-002): one cpu-times-check process,
+# granted the page by its manifest (request-publication cpu-times).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "cpu-times-check.app" (priority 3))
+)

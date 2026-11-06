@@ -158,11 +158,16 @@ def main():
         destination.write_bytes(data)
         copies[str(relative)] = hashlib.sha256(data).hexdigest()
 
+    # Test only (Desktop_Fault_Policy): the headless desktop-restart test.
+    desktop_fault = os.environ.get('CUBIT_DESKTOP_FAULT', 'off')
+    if desktop_fault not in ('off', 'exit-once'):
+        raise ValueError('CUBIT_DESKTOP_FAULT must be off or exit-once')
     env = {**os.environ, 'CUBIT_STACK_SIZE': '16777216', 'NIX_HARDENING_ENABLE': ''}
     # Keep a single declared build variant regardless of ambient scenarios.
     env.update(CUBIT_COMPOSITOR='vulkan', CUBIT_COMPOSITOR_TIMING=args.timing,
                CUBIT_COMPOSITOR_METRICS=args.metrics, CUBIT_COMPOSITOR_STORAGE='production',
-               CUBIT_DISPLAY_TEST_MODE='production', CUBIT_INPUT_OVERLAY=args.input_overlay)
+               CUBIT_DISPLAY_TEST_MODE='production', CUBIT_INPUT_OVERLAY=args.input_overlay,
+               CUBIT_DESKTOP_FAULT=desktop_fault)
 
     def run(command, cwd=out, **kw):
         command = list(map(str, command))
@@ -246,7 +251,7 @@ def main():
             obj = out / 'softpipe.o'
             run([*software[0], *fault_flags, '-c', out / 'userspace/lib/compositor/softpipe.c', '-o', obj], software[1])
             objects.append(obj)
-        directory = desktop / ('build-vulkan' + ('-input-overlay' if args.input_overlay == 'on' else '') + ('-timing' if args.timing == 'on' else '') + ('-metrics' if args.metrics == 'on' else ''))
+        directory = desktop / ('build-vulkan' + ('-input-overlay' if args.input_overlay == 'on' else '') + ('-timing' if args.timing == 'on' else '') + ('-metrics' if args.metrics == 'on' else '') + ('-fault-exit-once' if desktop_fault == 'exit-once' else ''))
         exchange = (directory / 'main.bexch').read_text()
         bound = exchange.split('[BOUND OBJECT FILES]\n', 1)[1].split('\n[', 1)[0].splitlines()
         binary = out / 'desktop-vulkan-compositor.svc'
@@ -274,7 +279,7 @@ def main():
                       binary_sha256=digest(binary), source_manifest=manifest.name,
                       source_manifest_sha256=digest(manifest), software_fallback=True,
                       gpu_drawing_enabled_meaning='Runtime capability, not hardware validation',
-                      build_variant={'software_fault': args.software_fault, 'input_overlay': args.input_overlay, 'timing': args.timing, 'metrics': args.metrics, 'storage': 'production'})
+                      build_variant={'software_fault': args.software_fault, 'input_overlay': args.input_overlay, 'timing': args.timing, 'metrics': args.metrics, 'storage': 'production', 'desktop_fault': desktop_fault})
         print(binary, flush=True)
     finally:
         (out / 'build-inputs.json').write_text(json.dumps(inputs, indent=2) + '\n')

@@ -121,7 +121,8 @@ package body Native_GPU_Buffers is
          Unsigned_64 (Handle) + Shift_Left (Offset / 4096, 32), GPU, Bytes];
       Returned := Native_GPU_Calls.Call (Native_GPU_Calls.Target_Of (Endpoint), Msg);
       if Returned /= Expected or else Msg.tag /= Expected or else
-        Msg.words (0) > 3 or else Msg.words (1) /= 1 or else Msg.words (3) /= 0
+        (Msg.words (0) > 3 and then Msg.words (0) /= Update_Capacity) or else
+        Msg.words (1) /= 1 or else Msg.words (3) /= 0
       then return 4; end if;
       if Msg.words (0) /= 0 then
          if Msg.words (2) /= 0 then return 4; end if;

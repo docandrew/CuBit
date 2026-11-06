@@ -19,6 +19,8 @@ with Display_Logs;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
+with CuBit.Process_IDs.Text;
+with CuBit.Channel_Contracts;
 with CuBit.Capability_Grants;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
@@ -669,6 +671,39 @@ procedure main is
          outputStates (selectedOutput).srcAcquired := False;
       end if;
    end detachOwnerBuffer;
+
+   --  BUG-001: an owner whose process ended (the desktop crashed) still
+   --  holds the lease, so its restart would be refused forever. The grants
+   --  of the buffers it lent end with it: re-acquiring one tells. False when
+   --  it lent none (nothing to ask) or the grant is still live.
+   function ownerEnded return Boolean is
+      State : Output_State renames outputStates (selectedOutput);
+      Grant : MG.Grant_Reference;
+      Found : Boolean := False;
+      Mapped : System.Address;
+      Acquired, Returned : Boolean;
+   begin
+      if State.srcOwner = No_Process or else State.srcOwner /= State.displayOwner then
+         return False;
+      end if;
+      for B in Pool_Wire.Buffer_Slot loop
+         if not Found and then Pool_Registry.Registered (State.Pool, B) then
+            Grant := Pool_Registry.Item (State.Pool, B).Grant;
+            Found := True;
+         end if;
+      end loop;
+      if not Found and then State.srcAcquired then
+         Grant := State.srcGrant;
+         Found := True;
+      end if;
+      if not Found then return False; end if;
+      MG.Acquire (Grant, State.srcOwner, 0, CuBit.Channel_Contracts.Page_Bytes,
+                  MG.Read_Access, Mapped, Acquired);
+      if not Acquired then return True; end if;
+      MG.Return_Acquisition (Grant, Returned);
+      if not Returned then State.presentationFault := True; end if;
+      return False;
+   end ownerEnded;
 
    function isEmpty (r : Rect) return Boolean is
    begin
@@ -2785,6 +2820,29 @@ procedure main is
                outputStates (selectedOutput).leasedOutput := outputStates (selectedOutput).currentOutput;
                replyMsg.words (0) := DISPLAY_OK;
                CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Display_Leased, Startup.Registration);
+            elsif ownerEnded then
+               --  The previous owner ended without releasing (BUG-001): its
+               --  frames have finished (admission waits for that), so return
+               --  what it lent and lease the output to the newcomer.
+               declare
+                  Ended : constant Process_ID := outputStates (selectedOutput).displayOwner;
+               begin
+                  detachOwnerBuffer;
+                  if outputStates (selectedOutput).presentationFault then
+                     replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+                  else
+                     if selectedOutput = 0 and then requestOwner = Ended then
+                        resetRequests;
+                     end if;
+                     outputStates (selectedOutput).displayOwner := from;
+                     outputStates (selectedOutput).leasedOutput := outputStates (selectedOutput).currentOutput;
+                     debugPrint ("display: lease of ended owner pid" &
+                                 CuBit.Process_IDs.Text.Image (Ended) &
+                                 " released; output" & Output_Index'Image (selectedOutput) &
+                                 " leased to pid" & CuBit.Process_IDs.Text.Image (from) & LF);
+                     replyMsg.words (0) := DISPLAY_OK;
+                  end if;
+               end;
             else
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             end if;

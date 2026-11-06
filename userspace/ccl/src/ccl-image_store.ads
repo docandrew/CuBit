@@ -33,6 +33,24 @@ package CCL.Image_Store is
    --  Abandon the build: nothing is stored.
    procedure Discard;
 
+   --  Large images (screen captures: (display.capture)): too big for the
+   --  pool, each held in its own heap allocation (CuAlloc). At most
+   --  Maximum_Large_Images are kept, the oldest giving way, each at most
+   --  Maximum_Large_Pixels (named ceilings: an 8K frame). Known, Width,
+   --  Height and Pixel_At see them like any image; the drawing operations
+   --  refuse them by size (Maximum_Side), as they refuse any image too large.
+   Maximum_Large_Side : constant := 16_384;
+   Maximum_Large_Pixels : constant := 7_680 * 4_320;
+   Maximum_Large_Images : constant := 2;
+   subtype Large_Side is Positive range 1 .. Maximum_Large_Side;
+   function Fits_Large (Width, Height : Large_Side) return Boolean is
+     (Width * Height <= Maximum_Large_Pixels);
+   --  Keep the Width x Height image whose pixels Source gives; Id is its
+   --  content digest (No_Image when it does not fit).
+   generic
+      with function Source (X, Y : Natural) return Pixel;
+   procedure Keep_Large (Width, Height : Large_Side; Id : out Image_Id);
+
    function Known (Id : Image_Id) return Boolean;
    --  Of a known image (0 otherwise).
    function Width (Id : Image_Id) return Natural;

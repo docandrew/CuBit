@@ -1,0 +1,15 @@
+# Remote screenshots (REMOTE-001; tests/ccl-remote/remote_screenshot.py): a
+# desktop and the LAN remote session, which the profile grants Desktop's
+# display-capture endpoint ((display-capture approve-declared): the
+# manifest's request alone is not enough). The person's "Allow screen
+# capture" switch still starts off; the test turns it on by keyboard.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
+    (arguments (Remote_Parameters listen => Remote_Listen.LAN
+      display => Pairing_Display.Kernel_Console work => "@nvme:0/work"
+      files => false builds => false mail => false)))
+)

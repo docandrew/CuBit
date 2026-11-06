@@ -3,7 +3,7 @@ with "../../userspace/allocator/allocator_runtime_host.gpr";
 project Glyph_Memory is
    for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
    for Source_Files use ("glyph_memory_tests.adb", "compositor_glyph_memory.ads", "compositor_glyph_memory.adb",
-     "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb",
+     "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "compositor_glyph_layout.ads", "cubit-ui_metrics.ads", "compositor_glyph_layout.adb",
      "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
    for Object_Dir use "build/glyph-memory/obj";
    for Exec_Dir use "build/glyph-memory";

@@ -7,10 +7,11 @@
 ------------------------------------------------------------------------------
 with CuBit.UI.Controls;
 with CuBit.UI.State;
+with CuBit.UI_Metrics;
 
 package CuBit.UI.Trees is
-   TREE_ROW_HEIGHT : constant Positive := 24;
-   TREE_INDENT     : constant Positive := 18;
+   TREE_ROW_HEIGHT : constant Positive := CuBit.UI_Metrics.Compact_Row_Height;
+   TREE_INDENT     : constant Positive := CuBit.UI_Metrics.Indent;
 
    type Tree_Item_Icon is
      (No_Icon, Computer_Icon, Bus_Icon, Device_Icon, Input_Icon,

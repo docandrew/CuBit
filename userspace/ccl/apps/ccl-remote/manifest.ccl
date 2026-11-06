@@ -45,8 +45,14 @@
     # Builds: ccl-build.app, below.
     (service "process-manager" "process-manager")
     # The pairing window (display => Window).
-    (service "desktop" "desktop")]
-  optional => ["log-observer" "process-observer" "process-manager" "desktop"]
+    (service "desktop" "desktop")
+    # Screenshots (display.capture, cubit-remote screenshot): a read-only
+    # copy of the composed frame. Only a startup entry that also says
+    # (display-capture approve-declared) gets it; the person at the device
+    # must still turn on "Allow screen capture" (the Deskbar's Remote
+    # access section) before any frame is copied.
+    (service "display-capture" "display-capture")]
+  optional => ["log-observer" "process-observer" "process-manager" "desktop" "display-capture"]
   scopes => [
     (config-all [File_Right.Read])
     # The workspace and the mailbox, under the work root.

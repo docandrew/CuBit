@@ -51,11 +51,15 @@ uint32_t cubit_intel_bind_buffer(cubit_endpoint endpoint, uint32_t handle,
  * use update_binding for live changes. No backing release, same status codes. */
 uint32_t cubit_intel_unbind_buffer(cubit_endpoint endpoint, uint32_t handle,
    uint64_t gpu_address, uint64_t bo_offset, uint64_t bytes);
-/* Pending live-update protocol; NOT enabled by the native driver yet.
- * remove=0 bind,1 unbind; previous=0 for initial VM. Caller serializes the
- * session and retains both generations. Success checks exact successor after
- * hardware completion, not just preparation; *generation clears on failure.
- * Same codes as create. Retire on uncertain replies, never replay. */
+/* Live VM update. remove=0 bind,1 unbind; previous=0 for the initial VM.
+ * Caller serializes the session and retains both generations. Success checks
+ * the exact successor after hardware completion, not just preparation;
+ * *generation clears on failure. Same codes as create, plus
+ * CUBIT_INTEL_UPDATE_CAPACITY: refused before any change (the driver's table
+ * ceiling, the session's byte budget or allocation records); the VM and its
+ * generation are unchanged, the session stays usable and only this binding
+ * failed. Retire on uncertain replies (1-4), never replay them. */
+#define CUBIT_INTEL_UPDATE_CAPACITY 5u
 uint32_t cubit_intel_update_binding(cubit_endpoint endpoint, uint32_t handle,
    uint64_t gpu_address, uint64_t bo_offset, uint64_t bytes,
    uint32_t remove, uint32_t previous, uint32_t *generation);

@@ -23,6 +23,21 @@
 --    characters, 802.11 J.4.1); wifi.svc reads it once, stores the
 --    passphrase as the Secret setting and never logs it. The caller wipes
 --    its page.
+--  - Watch (submit: word 0 a grant reference (CuBit.Grant_References wire
+--    form) of one writable page the caller owns, word 1 the last report
+--    generation it has seen) -> parked until wifi.svc's report generation
+--    differs from it, then REPLY_OK with word 0 the generation, after
+--    wifi.svc wrote the report (CuBit.Wifi_Report) into the page. A new
+--    driver, a state change, a newer scan or a passphrase stored or
+--    forgotten advances the generation. At most Maximum_Watchers park at
+--    once (REPLY_ERR Busy past that). Desktop's Wi-Fi item lives on this.
+--  - Refresh (call) -> REPLY_OK: wifi.svc looks at the driver's scan block
+--    now (it has no doorbell for scans) and answers the parked watches
+--    when it changed. A watcher showing the scan list sends it at a low
+--    rate; nothing else polls.
+--  - Forget (call: SSID words 0 .. 3) -> REPLY_OK once the network's
+--    remembered passphrase is gone (or there was none), or REPLY_ERR
+--    Not_Stored.
 --
 --  An SSID travels in four words, 8 octets a word, little endian; its
 --  length is up to its last nonzero octet (an SSID ending in NUL octets
@@ -34,15 +49,18 @@ with Interfaces; use Interfaces;
 
 package CuBit.Wifi_Control with Pure, SPARK_Mode is
 
-   type Operation is (Join, Leave, Status, Set_Passphrase);
-   for Operation use (Join => 16#04A0#, Leave => 16#04A1#, Status => 16#04A2#, Set_Passphrase => 16#04A3#);
+   type Operation is (Join, Leave, Status, Set_Passphrase, Watch, Refresh, Forget);
+   for Operation use
+     (Join => 16#04A0#, Leave => 16#04A1#, Status => 16#04A2#, Set_Passphrase => 16#04A3#,
+      Watch => 16#04A4#, Refresh => 16#04A5#, Forget => 16#04A6#);
 
    function Label (Op : Operation) return Unsigned_32 is (Operation'Enum_Rep (Op));
    function Is_Operation (Value : Unsigned_32) return Boolean is
      (for some Op in Operation => Value = Label (Op));
    function Operation_Of (Value : Unsigned_32) return Operation is
      (if Value = Label (Join) then Join elsif Value = Label (Leave) then Leave
-      elsif Value = Label (Status) then Status else Set_Passphrase)
+      elsif Value = Label (Status) then Status elsif Value = Label (Set_Passphrase) then Set_Passphrase
+      elsif Value = Label (Watch) then Watch elsif Value = Label (Refresh) then Refresh else Forget)
    with Pre => Is_Operation (Value), Post => Label (Operation_Of'Result) = Value;
 
    ---------------------------------------------------------------------------
@@ -94,6 +112,14 @@ package CuBit.Wifi_Control with Pure, SPARK_Mode is
    --  Printable ASCII (J.4.1: 32 .. 126).
    First_Printable : constant := 32;
    Last_Printable  : constant := 126;
+
+   ---------------------------------------------------------------------------
+   --  Watch: how many watches wifi.svc parks at once (a named ceiling: the
+   --  desktop and a console).
+   ---------------------------------------------------------------------------
+   Maximum_Watchers : constant := 4;
+   Watch_Words : constant := 2;
+   Forget_Words : constant := SSID_Words;
 
    ---------------------------------------------------------------------------
    --  Refusals (REPLY_ERR word 0).

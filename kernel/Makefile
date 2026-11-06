@@ -87,6 +87,7 @@ cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr linker.ld M
               $(wildcard ../shared/boot/*.ads ../shared/boot/*.adb) \
               $(wildcard ../shared/capabilities/*.ads ../shared/capabilities/*.adb) \
               $(wildcard ../shared/launch/*.ads ../shared/launch/*.adb) \
+              $(wildcard ../shared/publications/*.ads ../shared/publications/*.adb) \
               $(wildcard src/*.ads src/*.adb src/*.asm src/*.adc \
                          src/services/*.ads src/services/*.adb src/*.inc)
 # Compile and bind only
@@ -826,6 +827,8 @@ test-ccl-remote:
 	# The LAN remote session's wire profile, and its host client.
 	../tests/ccl-remote/build/remote_wire_tests
 	../tests/ccl-remote/build/remote_activity_tests
+	# Screenshots: the PNG encoder, checked by an independent decoder.
+	cd ../tests/ccl-remote && build/png_tests && python3 -I check_png.py
 	python3 -I ../tools/cubit-remote/test_cubit_remote.py
 	# The Observatory decodes these exact bytes (wire.test.mjs).
 	../tests/ccl-remote/build/wire_vectors > ../tests/ccl-remote/build/wire-vectors.json
@@ -1029,6 +1032,11 @@ ccl-workspace-prove:
 ui-editor-test: ui-fonts-host
 	$(ALR) gprbuild -P ../userspace/lib/ui/tests/editor/editor_test.gpr -p
 	../userspace/lib/ui/tests/editor/build/main
+
+.PHONY : ui-focus-test
+ui-focus-test: ui-fonts-host
+	$(ALR) gprbuild -P ../userspace/lib/ui/tests/focus/focus_test.gpr -p
+	../userspace/lib/ui/tests/focus/build/main
 
 .PHONY : ui-surfaces-test
 ui-surfaces-test: ui-fonts-host
@@ -1604,6 +1612,13 @@ clock-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/clock-check/component.ccl
 	cp ../userspace/apps/clock-check/build/clock-check.app isodir/boot/clock-check.app
 
+# The per-CPU times publication (KERN-002, run.sh --test cpu-times).
+.PHONY : cpu-times-check
+cpu-times-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/cpu-times-check/build
+	$(CCL_BUILD) ../userspace/apps/cpu-times-check/component.ccl
+	cp ../userspace/apps/cpu-times-check/build/cpu-times-check.app isodir/boot/cpu-times-check.app
+
 # Boot timeline reader (BOOT-001, docs/boot-timeline.md)
 .PHONY : boot-timeline
 boot-timeline: ccl-build user_runtime ccl-manifest
@@ -2170,7 +2185,9 @@ export CUBIT_MESA_BUILD CUBIT_MESA_BUNDLE CUBIT_MESA_SOURCE CUBIT_MESA_CACHE
 ifeq ($(CUBIT_COMPOSITOR),vulkan)
 desktop: libc
 endif
-export CUBIT_COMPOSITOR CUBIT_COMPOSITOR_TIMING CUBIT_COMPOSITOR_STORAGE CUBIT_DISPLAY_TEST_MODE
+# Test only: the headless desktop-restart test's desktop fails once (BUG-001).
+CUBIT_DESKTOP_FAULT ?= off
+export CUBIT_COMPOSITOR CUBIT_COMPOSITOR_TIMING CUBIT_COMPOSITOR_STORAGE CUBIT_DISPLAY_TEST_MODE CUBIT_DESKTOP_FAULT
 PRESENTATION_BUILD_DIR = $(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build))
 display: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/display/build
@@ -2537,7 +2554,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets agent ccl-remote
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets agent ccl-remote cpu-times-check
 
 .PHONY : headless-test
 headless-test: world

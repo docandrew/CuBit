@@ -178,10 +178,10 @@ begin
    end;
    Decode_Header (Header (0, 0, 0, Counting), H, Result);
    Check (Result = Malformed, "operation 0");
-   Decode_Header (Header (12, 0, 0, Counting), H, Result);
-   Check (Result = Malformed, "operation 12");
-   Decode_Header (Header (1, 4, 0, Counting), H, Result);
-   Check (Result = Malformed, "place 4");
+   Decode_Header (Header (13, 0, 0, Counting), H, Result);
+   Check (Result = Malformed, "operation 13");
+   Decode_Header (Header (1, 5, 0, Counting), H, Result);
+   Check (Result = Malformed, "place 5");
    Decode_Header (Header (6, 1, Maximum_Request_Body + 1, Counting), H, Result);
    Check (Result = Too_Large and then H.Length = 0, "body too large");
    Decode_Header (Header (6, 1, Maximum_Request_Body, Counting), H, Result);
@@ -278,7 +278,30 @@ begin
          end if;
       end loop;
    end loop;
-   Check (Grant_Bits (Diagnose_Only) = 1 and then Grant_Bits ([others => True]) = 15, "grant bits");
+   Check (Grant_Bits (Diagnose_Only) = 1 and then Grant_Bits ([others => True]) = 31, "grant bits");
+
+   --  Screenshots: the Capture grant (the display-capture capability).
+   Check (not Admits ([Diagnose | Files | Builds | Mail => True, others => False], Capture, None),
+          "every launch grant but capture admits no capture");
+   Check (Admits ([Diagnose | Capture => True, others => False], Capture, None), "capture captures");
+   Check (not Admits ([others => True], Capture, Workspace), "capture takes no place");
+   Check (not Admits (Diagnose_Only, Get, Captures), "diagnose cannot read the captures");
+   Check (Admits ([Diagnose | Capture => True, others => False], Get, Captures), "capture reads the captures");
+   for Op in Operation loop
+      if Writes (Op) then
+         Check (not Admits ([others => True], Op, Captures), "nobody writes the captures from the host");
+      end if;
+   end loop;
+   Decode (Capture, None, [2, 0, 10, 1, 0, 2, 128, 0, 50], Item, Result);
+   Check (Result = OK and then Item.Output = 2 and then Item.Area_X = 10 and then Item.Area_Y = 256
+          and then Item.Area_Width = 640 and then Item.Area_Height = 50, "capture request");
+   Decode (Capture, None, [0, 0, 0, 0, 0, 0, 0, 0], Item, Result);
+   Check (Result = Malformed, "a short capture request");
+   Check (Capture_Name (0) = "output-0.png" and then Capture_Name (12) = "output-12.png"
+          and then Capture_Name (255) = "output-255.png", "capture names");
+   for N in Output_Number loop
+      Check (Valid_Name (Capture_Name (N)), "a capture name is a valid name");
+   end loop;
 
    --  Responses.
    declare

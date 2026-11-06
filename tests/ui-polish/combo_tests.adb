@@ -71,7 +71,8 @@ begin
    D.Count := Max_Choices;
    for I in 5 .. Max_Choices loop D.Choices (I) := (A'Unchecked_Access, True); end loop;
    Press (Toggle); Press (End_Key); Paint;
-   pragma Assert (Controls.Hit (Map, 30, 246) = Choice_ID (1, 64));
+   --  The last of 8 visible rows of a popup below R (2-pixel frame).
+   pragma Assert (Controls.Hit (Map, 30, R.y + R.h + 2 + 7 * Default_Height + Default_Height / 2) = Choice_ID (1, 64));
    Handle_Wheel (S, D, Integer'First, Handled); pragma Assert (Handled);
    Press (Commit); pragma Assert (Selection (S) = 1);
    R := (20, 280, 180, 32); Press (Toggle); Press (End_Key); Paint;

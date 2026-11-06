@@ -44,6 +44,7 @@ with CuBit.UI.Menus;
 with CuBit.UI.State;
 with CuBit.UI.Tooltips;
 with CuBit.UI.Widgets;
+with CuBit.UI_Metrics;
 
 --  Shared CCL Workbench. Rendering uses the CuBit UI canvas; the selected
 --  platform adapter is the only presentation, input, and host-service edge.
@@ -79,10 +80,12 @@ package body CCL_Workbench is
    use type CuBit.UI.File_Dialogs.Dialog_Mode;
    use type CuBit.UI.File_Dialogs.Dialog_Action;
 
-   --  Compact native canvas: never downscale the toolkit's 11 px UI font.
+   --  Compact native canvas: never downscale the toolkit's UI font.
    --  The hosted adapter scales this canvas upward when space permits.
-   WIDTH  : constant Natural := 900;
-   HEIGHT : constant Natural := 500;
+   --  Sizes below derive from the UI em (CuBit.UI_Metrics).
+   package M renames CuBit.UI_Metrics;
+   WIDTH  : constant Natural := 960;
+   HEIGHT : constant Natural := 540;
    MAXIMUM_WIDTH  : constant Natural := 1_280;
    MAXIMUM_HEIGHT : constant Natural := 720;
    SOURCE_CAPACITY : constant := CCL_Workspace.Maximum_Source_Bytes;
@@ -92,19 +95,58 @@ package body CCL_Workbench is
 
    CLIENT_TITLE_HEIGHT : constant Natural :=
      (if CCL_Window.Has_System_Chrome /= 0 then 0 else 22);
-   WORKSPACE_TOP : constant Natural := CLIENT_TITLE_HEIGHT + 60;
-   WORKSPACE_BOTTOM : constant Natural := 38;
-   MINIMUM_INSPECTOR_WIDTH : constant Natural := 170;
-   MINIMUM_SOURCE_WIDTH : constant Natural := 320;
-   MINIMUM_DISASSEMBLY_WIDTH : constant Natural := 210;
+   --  The menu bar, then the toolbar: icon buttons a control high, TOOL_GAP
+   --  apart, groups TOOL_GROUP_GAP apart (a separator between them).
+   MENU_BAR_HEIGHT : constant := M.Menu_Bar_Height;
+   TOOL_SIZE : constant Natural := M.Control_Height;
+   TOOL_GAP : constant Natural := M.Space_XS;
+   TOOL_STEP : constant Natural := TOOL_SIZE + TOOL_GAP;
+   TOOL_GROUP_GAP : constant Natural := M.Space_M + M.Space_XS;
+   TOOL_MARGIN : constant Natural := 3;
+   SEPARATOR_WIDTH : constant Natural := M.Space_M;
+   TOOLBAR_HEIGHT : constant Natural := TOOL_SIZE + 2 * TOOL_MARGIN + 1;
+   TOOL_TOP : constant Natural := CLIENT_TITLE_HEIGHT + MENU_BAR_HEIGHT + TOOL_MARGIN;
+   OPEN_X : constant Natural := 5;
+   SAVE_X : constant Natural := OPEN_X + TOOL_STEP;
+   FILE_SEPARATOR_X : constant Natural := OPEN_X + 2 * TOOL_STEP;
+   RUN_X : constant Natural := FILE_SEPARATOR_X + TOOL_GROUP_GAP;
+   COMPILE_X : constant Natural := RUN_X + TOOL_STEP;
+   VM_RUN_X : constant Natural := RUN_X + 2 * TOOL_STEP;
+   PAUSE_X : constant Natural := RUN_X + 3 * TOOL_STEP;
+   STOP_X : constant Natural := RUN_X + 4 * TOOL_STEP;
+   RUN_SEPARATOR_X : constant Natural := RUN_X + 5 * TOOL_STEP;
+   STEP_INTO_X : constant Natural := RUN_SEPARATOR_X + TOOL_GROUP_GAP;
+   STEP_OVER_X : constant Natural := STEP_INTO_X + TOOL_STEP;
+   WATCH_X : constant Natural := STEP_OVER_X + TOOL_STEP + TOOL_GROUP_GAP;
+   WATCH_WIDTH : constant Natural := 5 * M.Base_Em;
+   HANDLER_X : constant Natural := WATCH_X + WATCH_WIDTH + M.Space_M;
+   HANDLER_WIDTH : constant Natural := 8 * M.Base_Em;
+   LIVE_X : constant Natural := HANDLER_X + HANDLER_WIDTH + M.Space_S + M.Space_XS;
+   LIVE_RIGHT_MARGIN : constant Natural := M.Space_M;
+   STATUS_HEIGHT : constant Natural := M.Control_Height;
+   --  The source pane's header row (file name, syntax and REPL toggles).
+   HEADER_ROW : constant Natural := M.Compact_Row_Height;
+   HEADER_GAP : constant Natural := M.Space_S + 1;
+   TOGGLE_WIDTH : constant Natural := 6 * M.Base_Em + M.Space_M;
+   FIND_LABEL_WIDTH : constant Natural := 3 * M.Base_Em;
+   SCROLLBAR_ROOM : constant Natural := 21;
+   --  The disassembly pane: the verifier line under the table, and the
+   --  empty table's note below its header.
+   VERIFIER_ROW : constant Natural := M.Line_Height + 5;
+   NOTE_TOP : constant Natural := M.Header_Height + M.Space_M + M.Space_XS;
+   WORKSPACE_TOP : constant Natural := CLIENT_TITLE_HEIGHT + MENU_BAR_HEIGHT + TOOLBAR_HEIGHT + M.Space_S;
+   WORKSPACE_BOTTOM : constant Natural := STATUS_HEIGHT + M.Space_L;
+   MINIMUM_INSPECTOR_WIDTH : constant Natural := 11 * M.Base_Em;
+   MINIMUM_SOURCE_WIDTH : constant Natural := 20 * M.Base_Em;
+   MINIMUM_DISASSEMBLY_WIDTH : constant Natural := 13 * M.Base_Em;
    SPLITTER_WIDTH : constant Natural := 8;
    MINIMUM_TABLE_COLUMN_WIDTH : constant Natural := 30;
    MINIMUM_INSTRUCTION_COLUMN_WIDTH : constant Natural := 80;
    MINIMUM_OWNERSHIP_COLUMN_WIDTH : constant Natural := 60;
    Bytecode_Columns : CuBit.UI.Table_Column_Layout :=
-     (First_Width => 42, Second_Width => 50, Cell_Padding => 5);
+     (First_Width => 3 * M.Base_Em, Second_Width => 3 * M.Base_Em + M.Space_M, Cell_Padding => 5);
    Locals_Columns : CuBit.UI.Table_Column_Layout :=
-     (First_Width => 54, Second_Width => 44, Cell_Padding => 2);
+     (First_Width => 4 * M.Base_Em, Second_Width => 3 * M.Base_Em, Cell_Padding => 2);
 
    --  Runtime-local bindings, deliberately outside the language/compiler.
    --  Native clock uses its endpoint; UI bindings control one host-owned label.
@@ -215,29 +257,29 @@ package body CCL_Workbench is
    Second_Column_Divider : CuBit.UI.Rect := (others => 0);
    First_Local_Column_Divider : CuBit.UI.Rect := (others => 0);
    Second_Local_Column_Divider : CuBit.UI.Rect := (others => 0);
-   Inspector_Width : Natural := 220;
-   Disassembly_Width : Natural := 258;
+   Inspector_Width : Natural := 15 * M.Base_Em;
+   Disassembly_Width : Natural := 16 * M.Base_Em;
    type Resize_Target is
      (No_Resize, Inspector_Pane, Disassembly_Pane,
       First_Table_Column, Second_Table_Column,
       First_Local_Table_Column, Second_Local_Table_Column);
    Active_Resize : Resize_Target := No_Resize;
    Open_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 5, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+     (x => OPEN_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
    Save_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 34, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+     (x => SAVE_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
    Compile_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 102, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+     (x => COMPILE_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
    VM_Run_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 131, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+     (x => VM_RUN_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
    Pause_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 160, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+     (x => PAUSE_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
    Stop_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 189, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+     (x => STOP_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
    Step_Into_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 228, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+     (x => STEP_INTO_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
    Step_Over_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 257, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+     (x => STEP_OVER_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
    Run_Button_Bounds : CuBit.UI.Rect := (others => 0);
    Run_Button_Pressed : Boolean := False;
    Open_Button_Pressed : Boolean := False;
@@ -249,10 +291,10 @@ package body CCL_Workbench is
    Step_Into_Button_Pressed : Boolean := False;
    Step_Over_Button_Pressed : Boolean := False;
    Watch_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 296, y => CLIENT_TITLE_HEIGHT + 25, w => 62, h => 27);
+     (x => WATCH_X, y => TOOL_TOP, w => WATCH_WIDTH, h => TOOL_SIZE);
    Watch_Button_Pressed : Boolean := False;
    Handler_Button_Bounds : constant CuBit.UI.Rect :=
-     (x => 366, y => CLIENT_TITLE_HEIGHT + 25, w => 118, h => 27);
+     (x => HANDLER_X, y => TOOL_TOP, w => HANDLER_WIDTH, h => TOOL_SIZE);
    Handler_Button_Pressed : Boolean := False;
 
    --  Tooltips on the icon-only toolbar buttons (CuBit.UI.Tooltips): set
@@ -318,9 +360,8 @@ package body CCL_Workbench is
       Show_Shortcuts     => (Help_Menu, T ("Keyboard Shortcuts"), NO_SHORTCUT, 'k', False),
       About_Workbench    => (Help_Menu, T ("About CCL Workbench"), NO_SHORTCUT, 'a', True)];
    MENU_BASE : constant Menus.ID_Base := 1;
-   MENU_BAR_HEIGHT : constant := 22;
-   MENU_ROW_HEIGHT : constant := 24;
-   MENU_MINIMUM_WIDTH : constant := 220;
+   MENU_ROW_HEIGHT : constant := M.Row_Height;
+   MENU_MINIMUM_WIDTH : constant := 14 * M.Base_Em;
    Menu : Menus.Menu_State;
    Menu_Controls : CuBit.UI.Controls.Control_Map;
    --  A press that closed the open menu: its release is the menu's too.
@@ -348,8 +389,9 @@ package body CCL_Workbench is
         CCL.Periodic_Programs.Stopping);
 
    function Live_Label_Bounds return CuBit.UI.Rect is
-     (x => (if CCL.UI_Buttons.Visible (Live_Button) then 490 else 366), y => CLIENT_TITLE_HEIGHT + 25,
-      w => Canvas.width - (if CCL.UI_Buttons.Visible (Live_Button) then 498 else 374), h => 27);
+     (x => (if CCL.UI_Buttons.Visible (Live_Button) then LIVE_X else HANDLER_X), y => TOOL_TOP,
+      w => Canvas.width - (if CCL.UI_Buttons.Visible (Live_Button) then LIVE_X else HANDLER_X) - LIVE_RIGHT_MARGIN,
+      h => TOOL_SIZE);
    Pointer_X, Pointer_Y : Natural := 0;
    Pointer_Known : Boolean := False;
 
@@ -687,7 +729,7 @@ package body CCL_Workbench is
    begin
       CuBit.UI.Fill_Rect (Clipped, Bounds, Colors.face);
       CuBit.UI.Widgets.Label
-        (Clipped, (Bounds.x + 4, Bounds.y + 5, Bounds.w - 8, Bounds.h - 10), Colors,
+        (Clipped, (Bounds.x + 4, Bounds.y + 2, Bounds.w - 8, Bounds.h - 4), Colors,
          (if CCL.UI_Labels.Visible (Live_Host.Label) then
              "CCL label:" & CCL.UI_Labels.Image (Live_Host.Label)
           elsif State = CCL.Periodic_Programs.Empty then "Live label: click Watch"
@@ -2469,6 +2511,8 @@ package body CCL_Workbench is
    procedure Render is
       Execution_Content : CuBit.UI.Rect;
       Editor_Content : CuBit.UI.Rect;
+      --  The source text below the header row (and the Find row).
+      Source_Top : Natural;
       Workspace : constant CuBit.UI.Rect :=
         (x => WORKSPACE_MARGIN, y => WORKSPACE_TOP,
          w => (if Canvas.width > WORKSPACE_MARGIN * 2 then
@@ -2540,8 +2584,8 @@ package body CCL_Workbench is
       --  The menu bar is drawn over the content by Paint (Draw_Menus).
 
       CuBit.UI.Widgets.Toolbar
-        (Canvas, (x => 0, y => CLIENT_TITLE_HEIGHT + 22,
-                  w => Canvas.width, h => 34), Colors);
+        (Canvas, (x => 0, y => CLIENT_TITLE_HEIGHT + MENU_BAR_HEIGHT,
+                  w => Canvas.width, h => TOOLBAR_HEIGHT), Colors);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Open_Button_Bounds, Colors,
          CuBit.UI.Widgets.Open_Document, enabled => CCL_Workspace.Supported,
@@ -2551,14 +2595,14 @@ package body CCL_Workbench is
          CuBit.UI.Widgets.Save_Document, enabled => CCL_Workspace.Supported,
          pressed => Save_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Separator
-        (Canvas, (x => 63, y => CLIENT_TITLE_HEIGHT + 25,
-                  w => 8, h => 27), Colors);
+        (Canvas, (x => FILE_SEPARATOR_X, y => TOOL_TOP,
+                  w => SEPARATOR_WIDTH, h => TOOL_SIZE), Colors);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Compile_Button_Bounds, Colors,
          CuBit.UI.Widgets.Compile_Program,
          pressed => Compile_Button_Pressed);
       Run_Button_Bounds :=
-        (x => 73, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
+        (x => RUN_X, y => TOOL_TOP, w => TOOL_SIZE, h => TOOL_SIZE);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Run_Button_Bounds, Colors, CuBit.UI.Widgets.Interpret_Source,
          pressed => Run_Button_Pressed);
@@ -2577,8 +2621,8 @@ package body CCL_Workbench is
          enabled => (VM_Has_State and then not VM_Snapshot.Terminal) or else CCL.UI_Buttons.Visible (Live_Button),
          pressed => Stop_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Separator
-        (Canvas, (x => 218, y => CLIENT_TITLE_HEIGHT + 25,
-                  w => 8, h => 27), Colors);
+        (Canvas, (x => RUN_SEPARATOR_X, y => TOOL_TOP,
+                  w => SEPARATOR_WIDTH, h => TOOL_SIZE), Colors);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Step_Into_Button_Bounds, Colors,
          CuBit.UI.Widgets.Step_Into,
@@ -2641,10 +2685,11 @@ package body CCL_Workbench is
            STACK_HEADING_TOP_OFFSET + CuBit.UI.UI_Text_Height + 2;
          STACK_LINE_STEP : constant Natural := CuBit.UI.UI_Text_Height;
          MAX_VISIBLE_STACK_VALUES : constant Natural := 2;
-         LOCALS_LABEL_TOP_OFFSET : constant Natural := 140;
-         LOCALS_ROW_HEIGHT : constant Natural := 36;
-         LOCALS_TOP_OFFSET : constant Natural := 158;
-         CATALOG_TEXT_HEIGHT : constant Natural := 18;
+         LOCALS_LABEL_TOP_OFFSET : constant Natural :=
+           STACK_FIRST_TOP_OFFSET + MAX_VISIBLE_STACK_VALUES * STACK_LINE_STEP + M.Line_Height;
+         LOCALS_ROW_HEIGHT : constant Natural := 2 * M.Line_Height + M.Space_XS;
+         LOCALS_TOP_OFFSET : constant Natural := LOCALS_LABEL_TOP_OFFSET + M.Line_Height + 1;
+         CATALOG_TEXT_HEIGHT : constant Natural := M.Line_Height + 1;
          CATALOG_TABLE_GAP : constant Natural := 6;
          Catalog_Y : constant Natural :=
            Execution_Content.y + Execution_Content.h - CATALOG_TEXT_HEIGHT;
@@ -2827,15 +2872,16 @@ package body CCL_Workbench is
       CuBit.UI.Widgets.Group_Box
         (Canvas, Source_Pane_Bounds, Colors,
          (if REPL_Visible then "REPL" else "Source"), Editor_Content, 8);
-      REPL_Toggle := (Editor_Content.x + Editor_Content.w - 86,
-        Editor_Content.y, 86, 22);
-      REPL_Bounds := (Editor_Content.x, Editor_Content.y + 27,
-        Editor_Content.w, (if Editor_Content.h > 27 then Editor_Content.h - 27 else 0));
+      REPL_Toggle := (Editor_Content.x + Editor_Content.w - TOGGLE_WIDTH,
+        Editor_Content.y, TOGGLE_WIDTH, HEADER_ROW);
+      REPL_Bounds := (Editor_Content.x, Editor_Content.y + HEADER_ROW + HEADER_GAP,
+        Editor_Content.w, (if Editor_Content.h > HEADER_ROW + HEADER_GAP
+                           then Editor_Content.h - HEADER_ROW - HEADER_GAP else 0));
       CuBit.UI.Draw_Button (Canvas, REPL_Toggle, Colors,
         (if REPL_Toggle_Pressed then CuBit.UI.Button_Pressed else CuBit.UI.Button_Normal),
         (if REPL_Visible then "Source [F6]" else "REPL [F6]"));
-      Syntax_Toggle := (Editor_Content.x + Editor_Content.w - 176,
-        Editor_Content.y, 86, 22);
+      Syntax_Toggle := (Editor_Content.x + Editor_Content.w - 2 * TOGGLE_WIDTH - M.Space_S,
+        Editor_Content.y, TOGGLE_WIDTH, HEADER_ROW);
       if not REPL_Visible then
          CuBit.UI.Draw_Button (Canvas, Syntax_Toggle, Colors,
            (if Syntax_Toggle_Pressed then CuBit.UI.Button_Pressed else CuBit.UI.Button_Normal),
@@ -2843,27 +2889,28 @@ package body CCL_Workbench is
       end if;
       if REPL_Visible then
          CuBit.UI.Widgets.Label (Canvas,
-           (Editor_Content.x, Editor_Content.y, Editor_Content.w - 94, 22), Colors,
+           (Editor_Content.x, Editor_Content.y, Editor_Content.w - TOGGLE_WIDTH - M.Space_M, HEADER_ROW), Colors,
            "CCL session - Lisp or BASIC");
          CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
       else
       CuBit.UI.Draw_UI_Text_Fitted
-        (Canvas, (Editor_Content.x, Editor_Content.y, Editor_Content.w - 184, 22),
-         Editor_Content.x, Editor_Content.y,
+        (Canvas, (Editor_Content.x, Editor_Content.y, Editor_Content.w - 2 * TOGGLE_WIDTH - M.Space_L,
+                  HEADER_ROW),
+         Editor_Content.x, Editor_Content.y + (HEADER_ROW - M.Line_Height) / 2,
          (if Current_Filename.Length = 0 then "untitled.ccl"
           else CuBit.File_Selection.Value (Current_Filename)) &
            "  |  F5 interpret  |  Compile for VM",
          Colors.muted, Colors.face);
       if Find_Active then
          CuBit.UI.Draw_UI_Text
-           (Canvas, Editor_Content.x, Editor_Content.y + 27,
+           (Canvas, Editor_Content.x, Editor_Content.y + HEADER_ROW - 1 + (HEADER_ROW - M.Line_Height) / 2,
             "Find:", Colors.text, Colors.face);
          CuBit.UI.Draw_Text_Edit_Field
            (Canvas,
-            (x => Editor_Content.x + 38, y => Editor_Content.y + 21,
-             w => (if Editor_Content.w > 44 then
-                      Editor_Content.w - 44 else 1),
-             h => 22),
+            (x => Editor_Content.x + FIND_LABEL_WIDTH, y => Editor_Content.y + HEADER_ROW - 1,
+             w => (if Editor_Content.w > FIND_LABEL_WIDTH + 6 then
+                      Editor_Content.w - FIND_LABEL_WIDTH - 6 else 1),
+             h => HEADER_ROW),
             Colors, CuBit.UI.Editor.Content (Find_Query),
             cursor => CuBit.UI.Editor.Cursor (Find_Query) - 1,
             selectionStart =>
@@ -2871,13 +2918,14 @@ package body CCL_Workbench is
             selectionEnd => CuBit.UI.Editor.Selection_Last (Find_Query) - 1,
             focused => True, hot => False);
       end if;
+      Source_Top := (if Find_Active then 2 * HEADER_ROW + 2 else HEADER_ROW + 2);
       Source_Bounds :=
         (x => Editor_Content.x,
-         y => Editor_Content.y + (if Find_Active then 48 else 24),
+         y => Editor_Content.y + Source_Top,
          w => Editor_Content.w - 18,
          h =>
-           (if Editor_Content.h > (if Find_Active then 69 else 45) then
-               Editor_Content.h - (if Find_Active then 69 else 45)
+           (if Editor_Content.h > Source_Top + SCROLLBAR_ROOM then
+               Editor_Content.h - Source_Top - SCROLLBAR_ROOM
             else 1));
       declare
          Line_Height : constant Positive := CuBit.UI.Code_Text_Height + 2;
@@ -3008,14 +3056,14 @@ package body CCL_Workbench is
         (Canvas,
          (x => Bytecode_Content.x, y => Bytecode_Content.y,
           w => Bytecode_Content.w,
-          h => (if Bytecode_Content.h > 22 then
-                   Bytecode_Content.h - 22 else Bytecode_Content.h)),
+          h => (if Bytecode_Content.h > VERIFIER_ROW then
+                   Bytecode_Content.h - VERIFIER_ROW else Bytecode_Content.h)),
          Colors);
       Bytecode_Table := CuBit.UI.Layout_Table
         ((x => Bytecode_Content.x, y => Bytecode_Content.y,
           w => Bytecode_Content.w,
-          h => (if Bytecode_Content.h > 22 then
-                   Bytecode_Content.h - 22 else Bytecode_Content.h)));
+          h => (if Bytecode_Content.h > VERIFIER_ROW then
+                   Bytecode_Content.h - VERIFIER_ROW else Bytecode_Content.h)));
       Bytecode_Columns.First_Width := Natural'Max
         (MINIMUM_TABLE_COLUMN_WIDTH,
          Natural'Min
@@ -3079,10 +3127,10 @@ package body CCL_Workbench is
             CuBit.UI.Draw_UI_Text_Fitted
               (Canvas,
                (x => Bytecode_Content.x,
-                y => Bytecode_Content.y + Bytecode_Content.h - 20,
-                w => Bytecode_Content.w, h => 18),
+                y => Bytecode_Content.y + Bytecode_Content.h - M.Line_Height - 3,
+                w => Bytecode_Content.w, h => M.Line_Height + 1),
                Bytecode_Content.x,
-               Bytecode_Content.y + Bytecode_Content.h - 20,
+               Bytecode_Content.y + Bytecode_Content.h - M.Line_Height - 3,
                (if Has_Verified then "VM verifier: VALID"
                 else "VM verifier: REJECTED"),
                (if Has_Verified then Colors.text else Colors.muted),
@@ -3091,15 +3139,15 @@ package body CCL_Workbench is
       else
          CuBit.UI.Draw_UI_Text_Fitted
            (Canvas,
-            (x => Bytecode_Content.x, y => Bytecode_Content.y + 34,
-             w => Bytecode_Content.w, h => 44),
-            Bytecode_Content.x + 7, Bytecode_Content.y + 34,
+            (x => Bytecode_Content.x, y => Bytecode_Content.y + NOTE_TOP,
+             w => Bytecode_Content.w, h => 2 * M.Line_Height + 2),
+            Bytecode_Content.x + 7, Bytecode_Content.y + NOTE_TOP,
             "No CCLB artifact", Colors.text, Colors.field);
          CuBit.UI.Draw_UI_Text_Fitted
            (Canvas,
-            (x => Bytecode_Content.x, y => Bytecode_Content.y + 54,
-             w => Bytecode_Content.w, h => 44),
-            Bytecode_Content.x + 7, Bytecode_Content.y + 54,
+            (x => Bytecode_Content.x, y => Bytecode_Content.y + NOTE_TOP + M.Line_Height + 3,
+             w => Bytecode_Content.w, h => 2 * M.Line_Height + 2),
+            Bytecode_Content.x + 7, Bytecode_Content.y + NOTE_TOP + M.Line_Height + 3,
             "Compile to show the bytecode a run uses",
             Colors.muted, Colors.field);
       end if;
@@ -3119,7 +3167,7 @@ package body CCL_Workbench is
 
       CuBit.UI.Draw_Status_Bar
         (Canvas,
-         (x => 0, y => Canvas.height - 26, w => Canvas.width, h => 26), Colors,
+         (x => 0, y => Canvas.height - STATUS_HEIGHT, w => Canvas.width, h => STATUS_HEIGHT), Colors,
          Toolbar_Hint,
          "bounded document, proved viewport");
       Render_Output;
@@ -3147,7 +3195,7 @@ package body CCL_Workbench is
          active => Active_Resize = Disassembly_Pane);
       CuBit.UI.Draw_Status_Bar
         (Canvas,
-         (x => 0, y => Canvas.height - 26, w => Canvas.width, h => 26), Colors,
+         (x => 0, y => Canvas.height - STATUS_HEIGHT, w => Canvas.width, h => STATUS_HEIGHT), Colors,
          Toolbar_Hint,
          "bounded document, proved viewport");
    end Render_Pointer_Feedback;
@@ -4555,7 +4603,8 @@ begin
            not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
          then
             --  Restore both the previous and current label positions.
-            declare Area : constant CuBit.UI.Rect := (366, CLIENT_TITLE_HEIGHT + 25, Canvas.width - 374, 27); begin
+            declare Area : constant CuBit.UI.Rect :=
+              (HANDLER_X, TOOL_TOP, Canvas.width - HANDLER_X - LIVE_RIGHT_MARGIN, TOOL_SIZE); begin
                exit when not Paint (Handle, Area, Button_And_Label);
             end;
             Needs_Render := True; -- also update Stop's enabled state
@@ -4597,7 +4646,8 @@ begin
          elsif Needs_Pointer_Feedback then
             exit when not Paint (Handle, Inspector_Splitter, Pointer_Only);
             exit when not Paint (Handle, Disassembly_Splitter, Pointer_Only);
-            exit when not Paint (Handle, (0, Canvas.height - 26, Canvas.width, 26), Pointer_Only);
+            exit when not Paint (Handle, (0, Canvas.height - STATUS_HEIGHT, Canvas.width, STATUS_HEIGHT),
+                                 Pointer_Only);
             Needs_Pointer_Feedback := False;
          end if;
          if Active_Source_Scrollbar /= No_Scrollbar and then

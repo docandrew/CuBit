@@ -1,0 +1,11 @@
+project Restart_Tests is
+   for Source_Dirs use (".", "../../userspace/services/procmgr");
+   for Source_Files use ("restart_tests.adb", "plan_restarts.ads", "plan_restarts.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("restart_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Restart_Tests;

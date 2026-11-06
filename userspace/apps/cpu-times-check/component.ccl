@@ -1,0 +1,2 @@
+(Component name => "cpu-times-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

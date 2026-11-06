@@ -1,3 +1,4 @@
+with CuBit.UI_Metrics;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.Widgets;
 
@@ -12,13 +13,15 @@ package body Log_View is
    use type Tables.Sort_Order;
    use type CuBit.Log_Protocol.Node_Id;
 
-   --  Layout, in pixels.
-   MARGIN : constant := 8;
-   GAP : constant := 6;
-   TOOLBAR_HEIGHT : constant := 38;
+   --  Layout, in pixels, from the UI em (CuBit.UI_Metrics).
+   package M renames CuBit.UI_Metrics;
+   MARGIN : constant := M.Space_M;
+   GAP : constant := M.Space_S + M.Space_XS;
    CONTROL_HEIGHT : constant := CB.Default_Height;
-   ROW_HEIGHT : constant := 20;
-   DETAIL_HEIGHT : constant := 112;
+   TOOLBAR_HEIGHT : constant := CONTROL_HEIGHT + M.Space_M + 1;
+   ROW_HEIGHT : constant := M.Dense_Row_Height;
+   --  The selected record's detail: five lines and their padding.
+   DETAIL_HEIGHT : constant := 5 * M.Line_Height + M.Space_S + 3;
    STATUS_HEIGHT : constant := CONTROL_HEIGHT;
    KEEP_WIDTH : constant := 170;
    SCROLLBAR_WIDTH : constant := 14;
@@ -27,9 +30,9 @@ package body Log_View is
    SERVICE_WIDTH : constant := 170;
    TIME_WIDTH : constant := 140;
    LEVEL_WIDTH : constant := 150;
-   FOLLOW_WIDTH : constant := 72;
-   CLEAR_WIDTH : constant := 60;
-   ONLY_WIDTH : constant := 56;
+   FOLLOW_WIDTH : constant := 5 * M.Base_Em;
+   CLEAR_WIDTH : constant := 4 * M.Base_Em;
+   ONLY_WIDTH : constant := 4 * M.Base_Em;
    --  The bar marking a search match at a row's left edge.
    MATCH_MARK_WIDTH : constant := 3;
    --  Rows moved by one wheel step, and the most steps one event counts.

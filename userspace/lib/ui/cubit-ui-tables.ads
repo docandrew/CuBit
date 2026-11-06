@@ -7,6 +7,7 @@
 ------------------------------------------------------------------------------
 with CuBit.UI.Controls;
 with CuBit.UI.State;
+with CuBit.UI_Metrics;
 
 package CuBit.UI.Tables is
    --  Draw a three-column header and make both dividers draggable.  Layout is
@@ -77,7 +78,7 @@ package CuBit.UI.Tables is
      (if Layout.Flexible in 1 .. Layout.Count then Layout.Flexible else Layout.Count);
 
    --  Room kept at a sortable header cell's right for the sort mark.
-   SORT_MARK_ROOM : constant := 14;
+   SORT_MARK_ROOM : constant := CuBit.UI_Metrics.Space_L + CuBit.UI_Metrics.Space_XS;
 
    --  The width a column needs to show Content_Width pixels of text (its
    --  widest cell or title) with the cell padding and the sort mark.

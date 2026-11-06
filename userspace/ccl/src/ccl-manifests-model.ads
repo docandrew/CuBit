@@ -5,6 +5,7 @@ with CuBit.Network_Authority;
 with CuBit.Render_Authority;
 with CuBit.Firmware_Snapshot_Authority;
 with CuBit.ACPI_Hardware_Authority;
+with CuBit.Publication_Grants;
 with CuBit.Launch_Authority;
 with CuBit.Program_Descriptions;
 with CuBit.Startup_Tables;
@@ -25,8 +26,8 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    --  endpoint delegation (docs/ccl-driver-manifests.md).
    type Request_Kind is
      (Framebuffer_Request, Service_Request, Notification_Request, Network_Request,
-      Render_Request, Firmware_Snapshot_Request, ACPI_Hardware_Request, Device_Memory_Request,
-      IO_Port_Request, Interrupt_Request, DMA_Request, Scheduling_Request);
+      Render_Request, Firmware_Snapshot_Request, ACPI_Hardware_Request, Publication_Request,
+      Device_Memory_Request, IO_Port_Request, Interrupt_Request, DMA_Request, Scheduling_Request);
    package Sections renames CCL.Resource_Sections;
    for Request_Kind use
      (Framebuffer_Request => 1, Service_Request => 2, Notification_Request => 7,
@@ -34,6 +35,7 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Render_Request => CuBit.Render_Authority.Manifest_Request,
       Firmware_Snapshot_Request => CuBit.Firmware_Snapshot_Authority.Manifest_Request,
       ACPI_Hardware_Request => CuBit.ACPI_Hardware_Authority.Manifest_Request,
+      Publication_Request => CuBit.Publication_Grants.Manifest_Request,
       Device_Memory_Request => Sections.Resource_Kind'Enum_Rep (Sections.Device_Memory),
       IO_Port_Request => Sections.Resource_Kind'Enum_Rep (Sections.IO_Ports),
       Interrupt_Request => Sections.Resource_Kind'Enum_Rep (Sections.Interrupt),

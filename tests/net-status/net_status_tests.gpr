@@ -1,0 +1,48 @@
+--  Hosted tests (and proofs, run.sh --prove) for the Deskbar's network and
+--  load items (UI-027): the wire reports wifi.svc and netmgr write
+--  (CuBit.Wifi_Report, CuBit.Net_Manager_Report, CuBit.Net_Manager_Control),
+--  address parsing and the setting's CCL (Desktop_Net_Address, checked
+--  against netmgr's own codec), the network list and join state machine
+--  (Desktop_Network_Model), the text fields, the addressing editor and the
+--  memory bar (Desktop_Load_Bars).
+project Net_Status_Tests is
+   Runtime := "../../userspace/runtime/gnat";
+   Desktop := "../../userspace/services/desktop";
+   CCL_Src := "../../userspace/ccl/src";
+   for Languages use ("Ada");
+   for Source_Dirs use (".", Desktop, Runtime, CCL_Src, "../../userspace/lib/compositor", "../../userspace/lib/display");
+   for Source_Files use
+     ("main.adb",
+      "desktop_net_address.ads", "desktop_net_address.adb",
+      "desktop_network_model.ads", "desktop_network_model.adb",
+      "desktop_address_editor.ads", "desktop_address_editor.adb",
+      "desktop_load_bars.ads", "desktop_load_bars.adb", "cubit-ui_metrics.ads",
+      "desktop_network_rows.ads", "desktop_network_rows.adb",
+      "desktop_status_machines.ads", "desktop_status_machines.adb",
+      "cubit-async_requests.ads", "cubit-async_requests.adb",
+      "compositor_requests.ads", "compositor_requests.adb",
+      "cubit.ads", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+      "cubit-slot_rings.ads", "cubit-slot_rings.adb", "cubit-frame_rings.ads",
+      "cubit-net_link.ads", "cubit-net_link.adb", "cubit-net_address.ads",
+      "cubit-net_management.ads", "cubit-net_management.adb",
+      "cubit-wifi_scan.ads", "cubit-wifi_scan.adb",
+      "cubit-wifi_control.ads", "cubit-wifi_control.adb",
+      "cubit-wifi_report.ads", "cubit-wifi_report.adb",
+      "cubit-net_manager_control.ads",
+      "cubit-net_manager_report.ads", "cubit-net_manager_report.adb",
+      "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
+      "cubit-canonical_readers.ads", "cubit-canonical_readers.adb",
+      "ccl.ads", "ccl-interfaces.ads", "ccl-interfaces-net_interface.ads",
+      "ccl-setting_codecs.ads", "ccl-setting_codecs-net_interface.ads",
+      "ccl-setting_codecs-net_interface.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-gnatw.X", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end Net_Status_Tests;

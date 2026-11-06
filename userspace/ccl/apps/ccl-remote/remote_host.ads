@@ -6,7 +6,8 @@
 --  The remote session's CCL environment: the shared interpreter over the
 --  read-only interfaces this process's manifest was granted (logs.recent,
 --  logs.minimum, proc.list, config.get/keys, files.home/enter/up/list,
---  images, clock). It is the Diagnose principal: nothing here writes.
+--  images, clock; display.capture with the display-capture grant). It is
+--  the Diagnose principal: nothing here writes.
 --
 --  @description
 --  One persistent session for the paired host, so its definitions and kept

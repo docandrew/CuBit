@@ -13,6 +13,10 @@ package CCL.Configurations with SPARK_Mode => On is
    --  At_Startup launches once at boot; Per_Device launches a driver for
    --  each discovered device its manifest matches (docs/ccl-driver-manifests.md).
    type Launch_Mode is (At_Startup, Per_Device);
+   --  (restart on-failure): procmgr starts the entry's program again when
+   --  it ends with a failure (a nonzero code, killed or faulted), after a
+   --  delay that grows while it keeps failing. Never: it stays ended.
+   type Restart_Policy is (Never, On_Failure);
    MAX_DEPENDENCIES : constant := 4;
    subtype Launch_Number is Natural range 0 .. MAX_LAUNCHES;
    subtype Dependency_Count is Natural range 0 .. MAX_DEPENDENCIES;
@@ -53,6 +57,7 @@ package CCL.Configurations with SPARK_Mode => On is
       Render_Setting : Key_Text;
       Role : Startup_Role := Application;
       Mode : Launch_Mode := At_Startup;
+      Restart : Restart_Policy := Never;
       --  Per_Device drivers only: the manifest's device resources may be
       --  granted for the matched device.
       Approve_Device : Boolean := False;
@@ -73,6 +78,11 @@ package CCL.Configurations with SPARK_Mode => On is
       --  declared "acpi-registers" client endpoint, which procmgr badges
       --  with the full frontend scope (ACPI_Register_Roles.Frontend_Tag).
       Approve_ACPI_Registers : Boolean := False;
+      --  (display-capture approve-declared): the plan approves the
+      --  manifest's declared "display-capture" endpoint, Desktop's endpoint
+      --  badged for a read-only copy of the composed frame
+      --  (CuBit.Display_Capture). Off unless written: never ambient.
+      Approve_Display_Capture : Boolean := False;
       --  (acpi-pci-config approve-declared): on an entry that also approves
       --  acpi-hardware, the grant includes the read-only, uncached PCI
       --  segment 0 bus 0 configuration window (ACPI-PCI-001, the kernel's

@@ -17,14 +17,36 @@ SAMPLES = [
     ("mono", *DARK_ON_LIGHT, "procedure Insert (T : in out Table) is"),
     ("mono", *LIGHT_ON_DARK, "   Count : constant Natural := 0; -- ok"),
 ]
-WIDTH = 480
-ROW = 24
+# The status panel at 1x (UI-032): its real strings and colours, sampled from
+# the QEMU screendumps (panel #D1D5D7, primary ink #172026, secondary
+# #4F5B64, field #FFFFFF, button #DEE1E3) plus the dark title-bar colours.
+PANEL_BG, FIELD_BG, BUTTON_BG = 0xD1D5D7, 0xFFFFFF, 0xDEE1E3
+PRIMARY, SECONDARY = 0x172026, 0x4F5B64
+PANEL = [
+    ("semi", SECONDARY, PANEL_BG, "Quick settings   Network   Notifications"),
+    ("sans", PRIMARY, PANEL_BG, "Do not disturb   Memory   CPU   Mute   100%"),
+    ("sans", SECONDARY, PANEL_BG, "Addressing   Gateway   DNS (all)   No notifications"),
+    ("sans", PRIMARY, FIELD_BG, "10.0.2.15/24   10.0.2.2   10.0.2.3"),
+    ("sans", PRIMARY, BUTTON_BG, "Apply   Revert   DHCP   Static   Off"),
+    ("semi", PRIMARY, PANEL_BG, "Wired   pci-00-10-0   Static"),
+    ("sans", *LIGHT_ON_DARK, "Do not disturb   Addressing   10.0.2.15/24"),
+    ("semi", *LIGHT_ON_DARK, "Quick settings   Notifications   Apply"),
+]
+import os as _os
+if _os.environ.get("FONT_QUALITY_SET") == "panel":
+    SAMPLES = PANEL
+# The UI text size (CuBit.UI_Metrics.Base_Em) and the monospace grid
+# (Mono_Advance); rows hold the 21-pixel line with room around it.
+BASE_EM = 16
+MONO_ADVANCE = 10
+WIDTH = 640
+ROW = 28
 TOP = 4
 LEFT = 8
 
 # Density of a render (FONT_QUALITY_SCALE="n/d"): the reference and the
-# metrics use these physical sizes. Only densities that keep ROW, TOP, LEFT
-# and the mono cell whole (1, 5/4, 3/2, 2) are meaningful.
+# metrics use these physical sizes. Only densities that keep ROW, TOP and
+# LEFT whole (1, 5/4, 3/2, 2) are meaningful.
 import os as _os
 _n, _d = (int(v) for v in _os.environ.get("FONT_QUALITY_SCALE", "1/1").split("/"))
 SCALE = (_n, _d)

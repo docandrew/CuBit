@@ -5,8 +5,11 @@ with CuBit.Audio_Control;
 --  The status area's clock and master volume, read and set without waiting:
 --  each request is submitted to its service and its reply arrives as a
 --  completion in the event loop (docs: desktop loop never blocks on a peer).
---  One request in flight per service; a later volume setting replaces an
---  earlier one not yet sent (only the newest level matters).
+--  One request in flight per service (CuBit.Async_Requests), driven by the
+--  Desktop_Status_Machines clock and audio machines: a later volume setting
+--  replaces an earlier one not yet sent (only the newest level matters),
+--  and a request that fails (not delivered, refused) is asked again at the
+--  next due time instead of stopping the item.
 package Desktop_Status_Refresh is
    use type Interfaces.Unsigned_64;
    --  Submit a clock read; does nothing while one is in flight.

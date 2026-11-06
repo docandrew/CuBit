@@ -7,8 +7,8 @@ begin
       for D in G.Scale_Component loop
          declare
             L : constant Layout := Plan ((N, D));
-            W : constant Natural := Natural (Long_Float'Ceiling (32.0 * Long_Float (N) / Long_Float (D)));
-            H : constant Natural := Natural (Long_Float'Ceiling (17.0 * Long_Float (N) / Long_Float (D)));
+            W : constant Natural := Natural (Long_Float'Ceiling (Long_Float (Base_Width_Bound) * Long_Float (N) / Long_Float (D)));
+            H : constant Natural := Natural (Long_Float'Ceiling (Long_Float (Base_Line) * Long_Float (N) / Long_Float (D)));
          begin
             pragma Assert (Valid (L) and L.Width = W and L.Height = H);
             pragma Assert (L.Bytes <= Maximum_Bytes);
@@ -27,8 +27,10 @@ begin
          end;
       end loop;
    end loop;
-   pragma Assert (Plan ((5, 4)).Height = 22);
-   pragma Assert (Plan ((3, 2)).Height = 26);
+   --  The 21-pixel line at 125% and 150% (the 16-pixel em: CuBit.UI_Metrics).
+   pragma Assert (Base_Line = 21 and Base_Em = 16);
+   pragma Assert (Plan ((5, 4)).Height = 27);
+   pragma Assert (Plan ((3, 2)).Height = 32);
    pragma Assert (Plan ((16, 1)).Bytes = Maximum_Bytes);
    Ada.Text_IO.Put_Line ("GLYPH-LAYOUT: PASS" & Cases'Image & " densities, equivalent ratios and maximum storage bound");
 end Glyph_Layout_Tests;

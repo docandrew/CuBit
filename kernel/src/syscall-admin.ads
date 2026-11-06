@@ -138,9 +138,12 @@ is
     -- length. Returns 0, or -1 with nothing installed except pages that stay
     -- owned by the target (procmgr then discards the child).
     -- arg3 = a process handle with RIGHT_EXECUTE for the target.
+    -- arg4 = the publications granted to the target (a set of
+    -- System_Publications.Granted_Publication bits; other bits refuse the
+    -- call): each page is mapped read-only/NX into it with the arguments.
     procedure handleInstallLaunchArguments
        (callerPID        : Process.ProcessID;
-        arg0, arg1, arg2, arg3 : Unsigned_64;
+        arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
         retval           : out Unsigned_64);
 
     -- SYSCALL_ENABLE_IRQ: a legacy IOAPIC/PIC line (vectors PS2KEYBOARD ..

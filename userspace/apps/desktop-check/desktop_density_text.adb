@@ -62,7 +62,7 @@ begin
             else
                Draw_Code_Text (Target, 1, 1, "A", 16#FFFFFF#, 16#204060#);
             end if;
-            Width := Unsigned_32 ((9 * N + D - 1) / D);
+            Width := Unsigned_32 (((1 + CuBit.Fonts.Mono_Width) * N + D - 1) / D);
             for Y in Actual'Range (1) loop
                for X in Actual'Range (2) loop
                   Expected := Sentinel;

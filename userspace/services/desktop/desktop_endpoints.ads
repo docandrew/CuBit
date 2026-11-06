@@ -32,6 +32,12 @@ package Desktop_Endpoints with SPARK_Mode => Off is
    Mixer_Control   : constant CuBit.Handles.Endpoint :=
      (if Startup.Mixer_Control.Present then Startup.Mixer_Control.Value
       else CuBit.Handles.No_Endpoint);
+   --  wifi.svc's control endpoint (the Wi-Fi item; Desktop_Network_Refresh)
+   --  and netmgr's (the wired item and addressing); null without them.
+   Wifi_Service    : constant CuBit.Handles.Endpoint :=
+     (if Startup.Wifi.Present then Startup.Wifi.Value else CuBit.Handles.No_Endpoint);
+   Net_Manager     : constant CuBit.Handles.Endpoint :=
+     (if Startup.Netmgr.Present then Startup.Netmgr.Value else CuBit.Handles.No_Endpoint);
 
    --  The admitted render session, or the null handle (software start).
    function Render return CuBit.Handles.Endpoint with Global => null;

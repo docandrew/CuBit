@@ -1,3 +1,4 @@
+with CuBit.UI_Metrics;
 with Ada.Unchecked_Deallocation;
 with CuBit.Directory_Paths;
 with CuBit.Filesystems;
@@ -41,20 +42,22 @@ package body Files_View is
    package VP renames Files_Viewport;
 
    --  Layout (logical pixels).
-   MARGIN : constant := 4;
-   PATH_HEIGHT : constant := 24;
-   ROW_HEIGHT : constant := 20;
-   STATUS_HEIGHT : constant := 24;
+   --  From the UI em (CuBit.UI_Metrics): dense rows in the panes.
+   package M renames CuBit.UI_Metrics;
+   MARGIN : constant := M.Space_S;
+   PATH_HEIGHT : constant := M.Compact_Row_Height;
+   ROW_HEIGHT : constant := M.Dense_Row_Height;
+   STATUS_HEIGHT : constant := M.Compact_Row_Height;
    --  The function-key bar: slim, one keycap per F1 .. F10.
-   KEYS_HEIGHT : constant := 22;
+   KEYS_HEIGHT : constant := M.Dense_Row_Height;
    KEY_BADGE_PADDING : constant := 4;
    KEY_GAP : constant := 4;
    SCROLLBAR_WIDTH : constant := 14;
-   TEXT_INSET : constant := 8;
+   TEXT_INSET : constant := M.Text_Inset;
    MARK_BAR_WIDTH : constant := 3;
-   NAME_COLUMN_MINIMUM : constant := 80;
-   OVERLAY_WIDTH : constant := 380;
-   OVERLAY_LINE : constant := 18;
+   NAME_COLUMN_MINIMUM : constant := 5 * M.Base_Em;
+   OVERLAY_WIDTH : constant := 24 * M.Base_Em;
+   OVERLAY_LINE : constant := M.Line_Height + 1;
    OVERLAY_LINES : constant := 6;
    --  Input.
    WHEEL_ROWS : constant := 3;
@@ -81,29 +84,29 @@ package body Files_View is
    --  Change records taken per pump, at most (the rest wait for the next).
    EVENTS_PER_PUMP : constant := 1_024;
    DIALOG_WIDTH : constant := 560;
-   DIALOG_HEIGHT : constant := 150;
+   DIALOG_HEIGHT : constant := 9 * M.Base_Em + M.Space_M;
    PROGRESS_WIDTH : constant := 240;
    --  How long a viewer read may take before it is reported as timed out,
    --  and how long a status message stays (explicit, docs/files-app.md).
    VIEW_DEADLINE_US : constant := 2_000_000;
    MESSAGE_LIFETIME_US : constant := 6_000_000;
-   VIEW_HEADER_HEIGHT : constant := 24;
+   VIEW_HEADER_HEIGHT : constant := M.Compact_Row_Height;
    HEX_BYTES_PER_LINE : constant := 16;
    MAXIMUM_VIEW_COLUMNS : constant := 400;
    BINARY_PROBE_BYTES : constant := 4_096;
-   TOOLBAR_HEIGHT : constant := 34;
-   TAB_HEIGHT : constant := 24;
-   TAB_WIDTH : constant := 168;
+   TOOL_SIZE : constant := M.Control_Height;
+   TOOLBAR_HEIGHT : constant := TOOL_SIZE + M.Space_S + 2;
+   TAB_HEIGHT : constant := M.Compact_Row_Height;
+   TAB_WIDTH : constant := 10 * M.Base_Em + M.Space_M;
    --  Each tab's close button (x) at its right end.
    TAB_CLOSE_SIZE : constant := 16;
    TAB_CLOSE_INSET : constant := 4;
    PANE_MINIMUM : constant := 220;
    MAXIMUM_CLOSED_TABS : constant := 8;
-   TOOL_SIZE : constant := 28;
    TOOL_GAP : constant := 2;
    TOOL_GROUP_GAP : constant := 12;
    SEARCH_WIDTH : constant := 260;
-   SEARCH_HEIGHT : constant := 24;
+   SEARCH_HEIGHT : constant := M.Compact_Row_Height;
    MAXIMUM_PLACES : constant := 12;
    MAXIMUM_BOOKMARKS : constant := 16;
    MAXIMUM_RECENT : constant := 8;

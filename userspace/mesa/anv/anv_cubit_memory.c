@@ -475,12 +475,20 @@ update_bo_live(struct anv_device *device, struct anv_bo *bo,
          gpu, offset, bytes, remove, previous, &generation);
    const bool committed = status == 0 && previous != UINT32_MAX &&
                           generation == previous + 1;
+   /* A bind the driver refused before changing anything (BUG-001): the VM
+    * and its generation are as before, so only this allocation fails and the
+    * device stays usable. Never for an unbind: its BO is being released. */
+   const bool refused = !remove && status == CUBIT_INTEL_UPDATE_CAPACITY;
    if (committed)
       record->vm_generation = generation;
-   else
+   else if (!refused)
       record->vm_failed = true;
    pthread_mutex_unlock(&record->vm_mutex);
    anv_cubit_blocking_note(ANV_CUBIT_BLOCK_VM_UPDATE, started);
+   if (refused) {
+      transport_failure("vm-bind-capacity", status, bo->gem_handle);
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+   }
    if (!committed) {
       transport_failure(remove ? "vm-unbind" : "vm-bind", status, bo->gem_handle);
       /* No queue work after a VM the session cannot trust. */

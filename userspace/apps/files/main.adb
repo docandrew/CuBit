@@ -8,6 +8,7 @@
 --  view's next deadline. Nothing here blocks on the filesystem.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with CuBit.UI_Metrics;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol;
 with CuBit.Logging;
@@ -73,8 +74,8 @@ procedure Main is
    CODE_POINT_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
 
    --  Fits a 1024x768 screen above the taskbar.
-   INITIAL_WIDTH : constant := 860;
-   INITIAL_HEIGHT : constant := 540;
+   INITIAL_WIDTH : constant := 62 * CuBit.UI_Metrics.Base_Em;
+   INITIAL_HEIGHT : constant := 560;
    MINIMUM_WIDTH : constant := 480;
    MINIMUM_HEIGHT : constant := 280;
    --  One pane's explicit capacity (docs/files-app.md, "Limits"): entries

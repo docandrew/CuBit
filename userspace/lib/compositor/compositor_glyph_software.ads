@@ -14,7 +14,7 @@ package Compositor_Glyph_Software with SPARK_Mode, Pure is
    function Prepare (Screen : G.Output; Origin : G.Logical_Point; Offset : L.Subpixel) return Placement;
    type Sample (Valid : Boolean := False) is record
       case Valid is
-         when True => X : Natural range 0 .. 511; Y : Natural range 0 .. 271;
+         when True => X : Natural range 0 .. L.Last_Width - 1; Y : Natural range 0 .. L.Last_Height - 1;
          when False => null;
       end case;
    end record;

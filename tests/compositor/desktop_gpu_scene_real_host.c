@@ -5,6 +5,11 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+/* Compositor_Glyph_Layout at the UI em (CuBit.UI_Metrics): Base_Em,
+   Base_Line and Base_Width_Bound. */
+#define GLYPH_EM 16u
+#define GLYPH_LINE 21u
+#define GLYPH_WIDTH_BOUND 32u
 #define CHECK(x) do { if(!(x)){fprintf(stderr,"Desktop oracle line %d: %s\n",__LINE__,#x);return 1;} } while(0)
 #define VK(x) CHECK((x)==VK_SUCCESS)
 extern int desktop_gpu_scene_real_open(void),desktop_gpu_scene_real_submit(void),desktop_gpu_scene_real_poll_upload(void);
@@ -96,10 +101,10 @@ int run_desktop_real(VkInstance instance,VkPhysicalDevice physical,VkDevice devi
     for(unsigned version=0;version<8;version++){
         const unsigned ns[]={1,5,3,2},ds[]={1,4,2,1};
         const char *codes="AgW?jQm@";
-        unsigned n=ns[version/2],d=ds[version/2],w=(32*n+d-1)/d,h=(17*n+d-1)/d,pitch=(w+15)/16*16;
+        unsigned n=ns[version/2],d=ds[version/2],w=(GLYPH_WIDTH_BOUND*n+d-1)/d,h=(GLYPH_LINE*n+d-1)/d,pitch=(w+15)/16*16;
         unsigned origin_x=(4*n+d)/(2*d),origin_y=(6*n+d)/(2*d);
         unsigned char reference[4096];memset(reference,0xa5,sizeof reference);
-        const struct font_request request={version%2,(unsigned char)codes[version],13*n,d,w,h,pitch,pitch*h};
+        const struct font_request request={version%2,(unsigned char)codes[version],GLYPH_EM*n,d,w,h,pitch,pitch*h};
         struct font_metrics metrics={0};
         CHECK(__real_cubit_font_raster_mask(&request,reference,&metrics)==0&&metrics.advance>0&&metrics.height==h);
         int advance=desktop_gpu_scene_real_start((int)version);

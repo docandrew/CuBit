@@ -118,6 +118,7 @@ with Intel_GPU_Context_Table;
 with Intel_GPU_Context_Table.Waiting;
 with Intel_GPU_Context_Table.Draining;
 with Intel_GPU_VM_Update;
+with Intel_GPU_VM_Refusals;
 with Intel_GPU_VM_Image.Snapshots;
 with Intel_GPU_Application_Image.Updates;
 with Intel_GPU_Native_Context_Read;
@@ -5147,6 +5148,32 @@ procedure Main is
       end if;
       Update_Pending := 0; Update_Table_Pages := 0; Update_Held := False; Update_Index := 0;
    end Finish_VM_Update;
+   --  Table-reservation refusals are logged at most once per this period:
+   --  a client that keeps retrying (a placeholder window redrawn every
+   --  frame) must not flood the log. The line counts the ones in between.
+   Refusal_Report_Ms : constant := 1_000;
+   Refusals_Unreported : Unsigned_64 := 0;
+   Refusal_Reported_At : Unsigned_64 := 0;
+   Refusal_Reported : Boolean := False;
+   function Report_Refusal return Boolean is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   begin
+      if Refusal_Reported and then Now >= Refusal_Reported_At and then
+        Now - Refusal_Reported_At < Refusal_Report_Ms
+      then
+         Refusals_Unreported := Refusals_Unreported + 1;
+         return False;
+      end if;
+      Refusal_Reported := True;
+      Refusal_Reported_At := Now;
+      return True;
+   end Report_Refusal;
+   function Unreported_Refusals return String is
+      Count : constant Unsigned_64 := Refusals_Unreported;
+   begin
+      Refusals_Unreported := 0;
+      return " (and" & Unsigned_64'Image (Count) & " since the last report)";
+   end Unreported_Refusals;
    procedure Handle_VM_Update (From : Process_ID; Msg : Message; Saved_Reply : Boolean := False;
                               Range_Checked : Boolean := False;
                               Range_Reusable : Boolean := False;
@@ -5163,6 +5190,9 @@ procedure Main is
       type Admission_Stage is (Session_Check, Busy_Check, Owner_Check,
         Request_Check, Reserve_Tables, Hold_Context, Save_Reply);
       At_Stage : Admission_Stage := Session_Check;
+      --  Why table reservation refused it, and the plan, for the reply and log.
+      Refusal : Intel_GPU_VM_Refusals.Cause := Intel_GPU_VM_Refusals.Range_Invalid;
+      Planned_Tables, Missing_Tables : Natural := 0;
       Reply_Saved : Boolean := Saved_Reply;
       function Save_Update_Reply return Boolean is
       begin
@@ -5324,6 +5354,12 @@ procedure Main is
                        (if Current_Table_Ticket (Update_Index) = 0 then Needed.Additional_Tables else 0);
                      use type Application_Topology.Plan_Status;
                   begin
+                     Refusal := Intel_GPU_VM_Refusals.Classify
+                       (Planned => Needed.Status = Application_Topology.Ready,
+                        Occupied => Needed.Status = Application_Topology.Occupied,
+                        Fits_Ceiling => Needed.Fits_Quota);
+                     Planned_Tables := Needed.Required_Tables;
+                     Missing_Tables := Needed.Additional_Tables;
                      Update_Table_Pages := 0;
                      Directory_Update := No_Directory_Update;
                      Directory_First_ID := 0; Directory_Invalidated := False;
@@ -5348,9 +5384,19 @@ procedure Main is
                            if Started then return; end if;
                            Live_Metadata_Pending := False; In_Place_Active := False;
                         end if;
+                        --  Nothing changed: the table metadata could not grow.
+                        if Report_Refusal then
+                           Publish_Snapshot ("intel-gpu: VM update refused (capacity) cause=" &
+                             Intel_GPU_VM_Refusals.Name (Intel_GPU_VM_Refusals.Reservation_Refused) &
+                             " tables=" & Natural'Image (Planned_Tables) &
+                             " new=" & Natural'Image (Missing_Tables) &
+                             " provenance=" & Natural'Image (Provenance_Demand) &
+                             " handle=" & Unsigned_64'Image (Msg.words (1) and 16#FFFF_FFFF#) &
+                             Unreported_Refusals);
+                        end if;
                         Response.tag := (label => Application_Binding.Update_Label, length => 4,
                                          protocol => 0, ipc => <>, reserved => 0);
-                        Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
+                        Response.words := [Application_Buffers.Capacity, 1, 0, 0];
                         Delivered := Send_Update_Reply (Response);
                         Update_Index := 0;
                         return;
@@ -5447,9 +5493,27 @@ procedure Main is
             Update_Index := 0;
          end if;
       end if;
-      Publish_Snapshot ("intel-gpu: VM update rejected stage=" & Admission_Stage'Image (At_Stage) &
-        " status=" & Unsigned_64'Image (Code) &
-        " handle=" & Unsigned_64'Image (Msg.words (1) and 16#FFFF_FFFF#));
+      if At_Stage = Reserve_Tables then
+         --  Refused while reserving tables, before any change (BUG-001): a
+         --  capacity refusal leaves the client's session usable.
+         if Intel_GPU_VM_Refusals.Is_Capacity (Refusal) then
+            Code := Application_Buffers.Capacity;
+         end if;
+         if Report_Refusal then
+            Publish_Snapshot ("intel-gpu: VM update refused while reserving tables cause=" &
+              Intel_GPU_VM_Refusals.Name (Refusal) &
+              " status=" & Unsigned_64'Image (Code) &
+              " tables=" & Natural'Image (Planned_Tables) &
+              " new=" & Natural'Image (Missing_Tables) &
+              " ceiling=" & Natural'Image (Application_State.Table_Pages) &
+              " handle=" & Unsigned_64'Image (Msg.words (1) and 16#FFFF_FFFF#) &
+              Unreported_Refusals);
+         end if;
+      else
+         Publish_Snapshot ("intel-gpu: VM update rejected stage=" & Admission_Stage'Image (At_Stage) &
+           " status=" & Unsigned_64'Image (Code) &
+           " handle=" & Unsigned_64'Image (Msg.words (1) and 16#FFFF_FFFF#));
+      end if;
       Response.tag := (label => Application_Binding.Update_Label, length => 4,
                        protocol => 0, ipc => <>, reserved => 0);
       Response.words := [Code, 1, 0, 0];

@@ -25,14 +25,21 @@ package CuBit.Authority_Policy with Pure, SPARK_Mode is
       Disk_Installation,
       --  Asking installer.svc to list and install (CuBit.Installer_Protocol).
       Installer_Use,
+      --  Applying network settings through netmgr (CuBit.Net_Manager_Control:
+      --  per-interface addressing, DNS): the Deskbar's network panel.
+      Network_Configuration,
       --  acpi.svc's full-scope endpoint to acpi-backend.svc's named
       --  registers (role 35, ACPI_Register_Roles.Frontend_Tag).
-      ACPI_Register_Frontend);
+      ACPI_Register_Frontend,
+      --  A read-only copy of the composed frame (CuBit.Display_Capture,
+      --  role 39): Desktop's endpoint badged for capture.
+      Display_Capture);
    --  Authorities the trusted plan must also name in the program's own
-   --  entry, (acpi-registers approve-declared): being started by the plan
-   --  is not enough, and Bootstrap_Approves alone never grants them.
+   --  entry, (acpi-registers approve-declared), (display-capture
+   --  approve-declared): being started by the plan is not enough, and
+   --  Bootstrap_Approves alone never grants them.
    subtype Declared_Authority is Bootstrap_Authority
-     range ACPI_Register_Frontend .. ACPI_Register_Frontend;
+     range ACPI_Register_Frontend .. Display_Capture;
 
    --  Transitional development-image approval: entry in the trusted startup
    --  plan approves declared privileged requests. OP_SPAWN cannot select it.

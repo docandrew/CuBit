@@ -16,6 +16,7 @@
 with CuBit.UI.Controls;
 with CuBit.UI.Icons;
 with Client_Popup_Layout;
+with CuBit.UI_Metrics;
 
 package CuBit.UI.Popup_Menus is
    MAXIMUM_MENUS : constant := 4;           --  the root and its submenus
@@ -55,8 +56,8 @@ package CuBit.UI.Popup_Menus is
    function Depth (S : Popup_State) return Menu_Count;
 
    --  Draw after everything else; registers Base .. Base + MAXIMUM_MENUS - 1.
-   ROW_HEIGHT : constant := 24;
-   SEPARATOR_HEIGHT : constant := 9;
+   ROW_HEIGHT : constant := CuBit.UI_Metrics.Row_Height;
+   SEPARATOR_HEIGHT : constant := CuBit.UI_Metrics.Separator_Height;
    procedure Draw
      (C : Canvas; Map : in out Controls.Control_Map; S : in out Popup_State; M : Model; Colors : Theme;
       Base : Controls.Control_ID);

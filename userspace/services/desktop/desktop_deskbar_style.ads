@@ -20,67 +20,72 @@
 ------------------------------------------------------------------------------
 with CuBit.Appearance;
 with CuBit.Theme;
+with CuBit.UI_Metrics;
 
 package Desktop_Deskbar_Style with SPARK_Mode is
    use type CuBit.Appearance.Color_Scheme;
    subtype Color is CuBit.Theme.Color;
+   package M renames CuBit.UI_Metrics;
 
-   --  Geometry, in logical pixels. A slim bar (40): the buttons keep the
-   --  24-pixel atlas icons at 1:1, so they stay crisp at every density,
-   --  with 4 pixels above and below them inside a 32-pixel button.
-   Bar_Height        : constant := 40;
+   --  Geometry, in logical pixels, derived from the UI em (CuBit.UI_Metrics):
+   --  a slim bar whose buttons hold the large atlas icons (24 pixels at the
+   --  16-pixel em) at 1:1, so they stay crisp at every density, with
+   --  Space_S above and below them; widths are in ems so labels at the base
+   --  text size fit. Rules and stripes are hairlines.
+   Button_Height     : constant := M.Large_Icon_Edge + 2 * M.Space_S;
+   Bar_Height        : constant := Button_Height + 2 * M.Space_S;
    Bar_Edge          : constant := 1;    --  the bar's top rule
-   Bar_Inset         : constant := 8;    --  left and right of the bar's content
-   Button_Height     : constant := 32;
+   Bar_Inset         : constant := M.Space_M;    --  left and right of the bar's content
    Button_Top        : constant := (Bar_Height - Button_Height) / 2;
-   Button_Gap        : constant := 4;
+   Button_Gap        : constant := M.Space_S;
    Stripe_Height     : constant := 3;
-   Icon_Left         : constant := 6;
-   Icon_Label_Gap    : constant := 7;
-   Label_Right       : constant := 10;
-   Apps_Width        : constant := 92;
-   Separator_Height  : constant := 24;
-   Separator_Margin  : constant := 4;
+   Icon_Left         : constant := M.Space_S + M.Space_XS;
+   Icon_Label_Gap    : constant := M.Space_M;
+   Label_Right       : constant := M.Space_M + M.Space_XS;
+   Apps_Width        : constant := 6 * M.Base_Em;
+   Separator_Height  : constant := M.Large_Icon_Edge;
+   Separator_Margin  : constant := M.Space_S;
    --  A task button is as wide as its content (Desktop_Deskbar_Layout),
    --  up to Task_Maximum, and shrinks down to Task_Minimum when crowded.
-   Task_Maximum      : constant := 220;
-   Task_Minimum      : constant := 64;
+   Task_Maximum      : constant := 17 * M.Base_Em;
+   Task_Minimum      : constant := 4 * M.Base_Em;
    --  A group's window count, at the button's right.
-   Count_Width       : constant := 18;
-   Count_Height      : constant := 18;
-   Count_Gap         : constant := 6;
+   Count_Width       : constant := M.Line_Height;
+   Count_Height      : constant := M.Line_Height;
+   Count_Gap         : constant := M.Space_S + M.Space_XS;
    Focus_Inset       : constant := 3;    --  keyboard focus ring inside a button
 
-   Status_Height     : constant := 32;
+   Status_Height     : constant := Button_Height;
    Status_Top        : constant := (Bar_Height - Status_Height) / 2;
-   Status_Padding    : constant := 12;
-   Status_Item_Gap   : constant := 8;
-   Badge_Size        : constant := 18;
+   Status_Padding    : constant := M.Space_L;
+   Status_Item_Gap   : constant := M.Space_M;
+   Badge_Size        : constant := M.Line_Height;
 
    --  The Deskbar panel and the toast, right-aligned above the status button.
-   Panel_Width       : constant := 380;
+   Panel_Width       : constant := 25 * M.Base_Em;
    Panel_Stripe      : constant := 4;
-   Panel_Margin      : constant := 8;
-   Panel_Padding     : constant := 12;
-   Panel_Header      : constant := 40;
-   Panel_Section     : constant := 28;
-   Panel_Row         : constant := 40;
-   Panel_Note_Row    : constant := 52;
-   Panel_Footer      : constant := 28;
+   Panel_Margin      : constant := M.Space_M;
+   Panel_Padding     : constant := M.Space_L;
+   Panel_Row         : constant := M.Line_Height + 2 * M.Space_L;
+   Panel_Header      : constant := Panel_Row;
+   Panel_Section     : constant := M.Section_Height;
+   --  A notification: its title and detail lines, Space_XS apart.
+   Panel_Note_Row    : constant := 2 * M.Line_Height + M.Space_XS + M.Space_L;
+   Panel_Footer      : constant := M.Section_Height;
    Panel_Visible_Notes : constant := 5;
-   Slider_Width      : constant := 180;
-   Slider_Height     : constant := 4;
-   Thumb_Width       : constant := 10;
-   Thumb_Height      : constant := 20;
-   Close_Box         : constant := 18;
-   Toggle_Width      : constant := 44;
-   Toggle_Height     : constant := 22;
-   Toast_Height      : constant := 64;
+   Slider_Width      : constant := 12 * M.Base_Em;
+   Slider_Height     : constant := M.Space_S;
+   Thumb_Width       : constant := M.Space_M + M.Space_XS;
+   Thumb_Height      : constant := M.Line_Height;
+   Close_Box         : constant := M.Line_Height - M.Space_XS;
+   Toggle_Height     : constant := M.Line_Height + M.Space_XS;
+   Toggle_Width      : constant := 2 * Toggle_Height;
+   Toast_Height      : constant := 2 * M.Line_Height + 2 * M.Space_L;
 
    --  A group's window list, above its button.
-   List_Width        : constant := 280;
-   List_Row          : constant := 32;
-   List_Padding      : constant := 4;
+   List_Width        : constant := 22 * M.Base_Em;
+   List_Row          : constant := Button_Height;
+   List_Padding      : constant := M.Space_S;
 
    type Palette is record
       Bar, Bar_Edge, Separator           : Color;

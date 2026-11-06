@@ -13,6 +13,7 @@ with CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.UI.Theme_Data;
+with CuBit.UI.Window_Chrome;
 with Client_Frame_Wakeup;
 with Client_Input_Channel;
 with UI_Desktop_Service;
@@ -29,7 +30,7 @@ package body CuBit.UI.App is
    use type DP.Input_Event_Kind;
 
    WINDOW_CHROME_W : constant Natural := 8;
-   WINDOW_CHROME_H : constant Natural := 34;
+   WINDOW_CHROME_H : constant Natural := CuBit.UI.Window_Chrome.Client_Top;
 
    function Align_Up_Page (value : Unsigned_64) return Unsigned_64 is
    begin

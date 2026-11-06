@@ -81,7 +81,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -283,7 +283,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|clipboard|key-repeat|input-stream|launch-failure|startup-health)
+        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         network-authority)
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
@@ -330,7 +330,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -635,6 +635,12 @@ with open(sys.argv[1], "wb") as f:
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-nmi.ccl"
         if [ "$QEMU_CPUS_EXPLICIT" = 0 ]; then QEMU_CPUS=1; fi
         ;;
+    desktop-restart)
+        # BUG-001: the desktop fails once on purpose (CUBIT_DESKTOP_IMAGE, a
+        # CUBIT_DESKTOP_FAULT=exit-once build); procmgr restarts it and the
+        # display leases the output to the restarted desktop.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-restart.ccl"
+        ;;
     oom-reclaim)
         # A process killed for want of memory is reclaimed while memory is
         # still exhausted: process teardown must not allocate.
@@ -659,6 +665,10 @@ with open(sys.argv[1], "wb") as f:
     ccl-remote-session)
         # The LAN remote session (tests/ccl-remote/remote_session.py drives it).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-remote-session.ccl"
+        ;;
+    remote-screenshot)
+        # Remote screenshots (REMOTE-001; tests/ccl-remote/remote_screenshot.py).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-remote-screenshot.ccl"
         ;;
     network-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.ccl"
@@ -763,6 +773,15 @@ with open(sys.argv[1], "wb") as f:
         # publishes it only for an invariant TSC, which QEMU exposes with
         # +invtsc under KVM (TCG drops the flag: run with --accel kvm).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-clock.ccl"
+        case "$QEMU_CPU_MODEL" in
+            *invtsc*) ;;
+            *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
+        esac
+        ;;
+    cpu-times)
+        # The per-CPU times publication (KERN-002). The check sleeps and
+        # spins by the clock publication, which needs +invtsc (KVM).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-cpu-times.ccl"
         case "$QEMU_CPU_MODEL" in
             *invtsc*) ;;
             *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
@@ -1332,6 +1351,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "logs" ] ||
        [ "$TEST_NAME" = "devmem-denials" ] ||
        [ "$TEST_NAME" = "process-kill" ] ||
+       [ "$TEST_NAME" = "desktop-restart" ] ||
        [ "$TEST_NAME" = "scanout-repair" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
        [ "$TEST_NAME" = "managed-ui" ] ||
@@ -1350,6 +1370,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "desktop-doom" ] ||
        [ "$TEST_NAME" = "virtio-vga-primary" ] ||
        [ "$TEST_NAME" = "usb-hotplug" ] ||
+       [ "$TEST_NAME" = "remote-screenshot" ] ||
        [ "$TEST_NAME" = "boot-timeline" ]; then
         for DESKTOP_TEST_IMAGE_NAME in display.svc desktop.svc virtio-gpu.drv; do
             DESKTOP_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DESKTOP_TEST_IMAGE_NAME"
@@ -1785,7 +1806,7 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "ccl-remote-session" ]; then
+    if [ "$TEST_NAME" = "ccl-remote-session" ] || [ "$TEST_NAME" = "remote-screenshot" ]; then
         # The endpoint, its work root and the device agent's message in
         # mail/to-host (the test takes it from the host side).
         for REMOTE_IMAGE_NAME in ccl-remote.app clock.svc logstore.svc; do
@@ -2041,6 +2062,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $ACPI_SOURCE $ACPI_TARGET" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $ACPI_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "cpu-times" ]; then
+        for CPU_TIMES_IMAGE in logstore.svc cpu-times-check.app; do
+            debugfs -w -R "rm $CPU_TIMES_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CPU_TIMES_IMAGE $CPU_TIMES_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $CPU_TIMES_IMAGE" >&2
                 exit 1
             fi
         done
@@ -2960,7 +2991,7 @@ fi
 
 MONITOR_ARGS=()
 QMP_ARGS=()
-if [ "$TEST_NAME" = "managed-ui" ]; then
+if [ "$TEST_NAME" = "managed-ui" ] || [ "$TEST_NAME" = "remote-screenshot" ]; then
     MONITOR_SOCKET="$(qemu_socket monitor)"
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
@@ -4602,6 +4633,18 @@ if [ "$TEST_NAME" = "ccl-remote-session" ]; then
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$REMOTE_SESSION_PORT" &
     INPUT_INJECTOR_PID=$!
 fi
+if [ "$TEST_NAME" = "remote-screenshot" ]; then
+    # The same LAN host's view as ccl-remote-session, on a desktop: the
+    # driver pairs, captures (the person's switch turned on by keyboard
+    # over the HMP monitor), checks the PNGs and quits QEMU.
+    # REMOTE_SCREENSHOT_OUT: where the PNGs are kept (default: a temp dir).
+    REMOTE_SESSION_PORT="${REMOTE_SESSION_PORT:-18448}"
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:$REMOTE_SESSION_PORT-10.0.2.15:8445"
+    python3 "$ROOT_DIR/tests/ccl-remote/remote_screenshot.py" \
+        "$SERIAL_LOG" "$MONITOR_SOCKET" "$TIMEOUT_SECONDS" "$REMOTE_SESSION_PORT" \
+        ${REMOTE_SCREENSHOT_OUT:+"$REMOTE_SCREENSHOT_OUT"} &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "network-authority" ]; then
     NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18444-10.0.2.15:8080"
     python3 "$ROOT_DIR/tests/network-authority/peer.py" "$SERIAL_LOG" &
@@ -4881,6 +4924,16 @@ ccl-remote: DEVELOPMENT PLAINTEXT on the LAN, port 8445; grants: diagnose, files
 ccl-remote: listening on 10.0.2.15:8445
 ccl-remote: ready
 ccl-remote: a host paired
+"
+        ;;
+    remote-screenshot)
+        required_markers="
+ccl-remote: DEVELOPMENT PLAINTEXT on the LAN, port 8445; grants: diagnose, capture
+ccl-remote: ready
+ccl-remote: a host paired
+desktop: screen capture allowed for the remote session
+desktop: screen captured for process
+ccl-remote: host capture output 0
 "
         ;;
     network-authority)
@@ -5450,6 +5503,31 @@ clock-check: write to the clock page armed
                   fault && /reclaimProcess: stopped PID/ { found = 1 }
                   END { exit !found }' "$SERIAL_LOG"; then
             echo "headless: clock checks failed, or the page write was not refused" >&2
+            exit 1
+        fi
+        ;;
+    cpu-times)
+        required_markers="
+cpu-times-check: CPU times publication granted and present PASS
+cpu-times-check: the counter rate is the clock publication's PASS
+cpu-times-check: free memory is published and within RAM PASS
+cpu-times-check: every started CPU is published PASS
+cpu-times-check: every CPU's counters advance PASS
+cpu-times-check: an idle machine is mostly idle PASS
+cpu-times-check: a spinning thread drives one CPU's worth of busy time PASS
+cpu-times-check: aggregate load shows the spinner PASS
+TEST: PASS cpu-times
+cpu-times-check: write to the CPU times page armed
+"
+        grep -F 'cpu-times-check: ' "$SERIAL_LOG" | grep -E ' (idle|spin) |cost ' || true
+        # The page is read-only: the write faults at its address
+        # (0x5B00_0000_5000) and retires the process; nothing prints after.
+        if grep -F 'cpu-times-check: ' "$SERIAL_LOG" | grep -qF 'FAIL' ||
+           ! awk '/cpu-times-check: write to the CPU times page armed/ { seen = 1 }
+                  seen && /USER-MEMORY-FAULT: pid [0-9]+ address 100055558148096 kind=write-protection/ { fault = 1 }
+                  fault && /reclaimProcess: stopped PID/ { found = 1 }
+                  END { exit !found }' "$SERIAL_LOG"; then
+            echo "headless: CPU times checks failed, or the page write was not refused" >&2
             exit 1
         fi
         ;;
@@ -6114,6 +6192,16 @@ com.cubit.trap-flag-check
             exit 1
         fi
         ;;
+    desktop-restart)
+        required_markers="
+DESKTOP-TEST-FAULT: exiting after the first frame
+procmgr: process com.cubit.desktop
+procmgr: restarting desktop.svc in 1000 ms (restart 1)
+procmgr: restarted desktop.svc pid
+DESKTOP-TEST-FAULT: restarted; taking the display over
+display: lease of ended owner pid
+"
+        ;;
     oom-reclaim)
         required_markers="
 oom-check: holding
@@ -6434,6 +6522,9 @@ desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/
 ccl-workbench: native window ready
+desktop: status network wired=shown wifi=hidden (no adapter)
+desktop: status memory bar
+desktop: status CPU bar
 "
         ;;
     boot-timeline)
@@ -6894,6 +6985,21 @@ EOF
 if [ "$missing" -ne 0 ]; then
     echo "headless: serial log: $SERIAL_LOG" >&2
     exit 1
+fi
+
+if [ "$TEST_NAME" = "desktop-restart" ]; then
+    # Exactly one failure, and the restarted desktop presents frames again.
+    faults=$(grep -cF 'DESKTOP-TEST-FAULT: exiting after the first frame' "$SERIAL_LOG")
+    released=$(grep -cF 'desktop: asynchronous frame released' "$SERIAL_LOG")
+    if [ "$faults" -ne 1 ] || [ "$released" -lt 2 ] ||
+       ! awk '/display: lease of ended owner pid/ { leased = NR }
+              /desktop: asynchronous frame released/ && leased { shown = 1 }
+              END { exit !shown }' "$SERIAL_LOG"; then
+        echo "headless: desktop restart: faults=$faults frames released=$released" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    echo "headless: desktop restarted after its failure and presents again"
 fi
 
 if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = wifi ]; then

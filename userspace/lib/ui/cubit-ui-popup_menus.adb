@@ -2,12 +2,13 @@ package body CuBit.UI.Popup_Menus is
    package L renames Client_Popup_Layout;
    use type Controls.Pointer_Action;
 
-   ICON_COLUMN : constant := 26;
-   ARROW_COLUMN : constant := 18;
-   ACCELERATOR_GAP : constant := 24;
+   package UM renames CuBit.UI_Metrics;
+   ICON_COLUMN : constant := UM.Small_Icon_Edge + UM.Space_M + UM.Space_XS;
+   ARROW_COLUMN : constant := UM.Base_Em + UM.Space_XS;
+   ACCELERATOR_GAP : constant := UM.Base_Em + UM.Space_M;
    FRAME : constant := 3;
-   TEXT_INSET : constant := 6;
-   MINIMUM_WIDTH : constant := 140;
+   TEXT_INSET : constant := UM.Space_S + UM.Space_XS;
+   MINIMUM_WIDTH : constant := 9 * UM.Base_Em;
 
    procedure Clear (M : out Model) is
    begin

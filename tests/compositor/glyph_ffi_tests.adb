@@ -34,7 +34,7 @@ begin
       Pixels := (others => 16#A5#);
       Compositor_Glyph_FFI.Rasterize (0, 65, L, Pixels'Address, Unsigned_64 (L.Bytes - 1), Advance, OK);
       pragma Assert (not OK and Advance = 0);
-      Compositor_Glyph_FFI.Rasterize (2, 65, L, Pixels'Address, Pixels'Length, Advance, OK);
+      Compositor_Glyph_FFI.Rasterize (Face_Count, 65, L, Pixels'Address, Pixels'Length, Advance, OK);
       pragma Assert (not OK and Advance = 0);
       for Pixel of Pixels loop pragma Assert (Pixel = 16#A5#); end loop;
    end;

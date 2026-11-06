@@ -34,7 +34,8 @@ package body Intel_GPU_Application_Image.Updates is
             Object.Update_Failed := True; return;
          end if;
          if Checked_Page = 0 then
-            for P in VM.Page_Number loop
+            --  Only the backed prefix has table identities (zero beyond it).
+            for P in 1 .. VM.Backed_Tables (Source) loop
                if Data_DMA = VM.Table_Backing_DMA (Source, P) then
                   Object.Update_Failed := True; return;
                end if;

@@ -7,6 +7,7 @@
 ------------------------------------------------------------------------------
 with CuBit.UI.Controls;
 with CuBit.UI.State;
+with CuBit.UI_Metrics;
 
 package CuBit.UI.Widgets is
    DEFAULT_PADDING : constant Natural := 8;
@@ -282,7 +283,7 @@ package CuBit.UI.Widgets is
        selectedIndex : in out Natural;
        page : out CuBit.UI.Rect;
        changed : out Boolean;
-       stripHeight : Natural := 30);
+       stripHeight : Natural := CuBit.UI_Metrics.Control_Height + 1);
 
    procedure Horizontal_Slider
       (c : CuBit.UI.Canvas;

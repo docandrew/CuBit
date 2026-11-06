@@ -37,6 +37,9 @@
   (service i2c 32 read-write)
   # wifi.svc (docs/wifi.md): (wifi.join), (wifi.passphrase) ...
   (service wifi 33 read-write)
+  # netmgr.svc (CuBit.Net_Manager_Control): the Deskbar watches every
+  # interface and applies per-interface settings through it.
+  (service netmgr 12 read-write)
   (service gpio 34 read-write)
   # acpi-backend.svc's named ACPI registers: only a startup entry approving
   # (acpi-registers approve-declared) gets this endpoint, badged with
@@ -49,6 +52,10 @@
   (service llm 37 read-write)
   # secrets.svc (SEC-022 v0): named secrets used through grants.
   (service secrets 38 read-write)
+  # Desktop's read-only copy of a composed frame (CuBit.Display_Capture):
+  # only a startup entry approving (display-capture approve-declared) gets
+  # this endpoint, badged with CuBit.Display_Capture.Authority_Tag.
+  (service display-capture 39 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)

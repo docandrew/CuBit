@@ -3,6 +3,7 @@ with Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with Desktop_Wallpaper;
 with CuBit.UI.Window_Chrome;
+with CuBit.UI_Metrics;
 with CuBit.Display_Arrangement;
 with Desktop_Auto_Scale;
 
@@ -21,7 +22,7 @@ package body Desktop_Settings is
    use type L.Named_Display_ID;
    use type G.Logical_Coordinate;
 
-   Sidebar_Width : constant := 132;
+   Sidebar_Width : constant := 9 * CuBit.UI_Metrics.Base_Em;
    function Page_Bounds (B : Rect) return Rect is
      (B.x + Sidebar_Width, B.y, B.w - Sidebar_Width, B.h);
 
@@ -50,8 +51,8 @@ package body Desktop_Settings is
    package TZ renames Time_Zones;
    use type TZ.Time_Zone;
    Zone_Rows : constant := 9;
-   Zone_Row_Height : constant := 22;
-   Zone_List_Width : constant := 380;
+   Zone_Row_Height : constant := CuBit.UI_Metrics.Compact_Row_Height;
+   Zone_List_Width : constant := 24 * CuBit.UI_Metrics.Base_Em;
    Zone_Text_Inset : constant := 8;
    function Zone_List_Box (C : Rect) return Rect is
      (C.x + 20, C.y + 56, Zone_List_Width, Zone_Rows * Zone_Row_Height);
@@ -90,11 +91,11 @@ package body Desktop_Settings is
    --  The Appearance page's wallpaper list: Wallpaper_List_Rows rows of
    --  Wallpaper_Row_Height pixels, scrolled by its Up/Down buttons and keys.
    Wallpaper_List_Rows : constant := 3;
-   Wallpaper_Row_Height : constant := 22;
+   Wallpaper_Row_Height : constant := CuBit.UI_Metrics.Compact_Row_Height;
    Wallpaper_List_Width : constant := 232;
    Wallpaper_Text_Inset : constant := 8;
    Wallpaper_Button_Width : constant := 52;
-   Wallpaper_Button_Height : constant := 28;
+   Wallpaper_Button_Height : constant := CuBit.UI_Metrics.Control_Height;
    Wallpaper_Button_Gap : constant := 8;
    Right_Column : constant := 280;
    Background_Top : constant := 98;
@@ -133,8 +134,8 @@ package body Desktop_Settings is
    package OM renames CuBit.Output_Modes;
    use type OM.Admission, Interfaces.Unsigned_32;
    Mode_Rows : constant := 11;
-   Mode_Row_Height : constant := 20;
-   Mode_List_Width : constant := 510;
+   Mode_Row_Height : constant := CuBit.UI_Metrics.Compact_Row_Height;
+   Mode_List_Width : constant := 32 * CuBit.UI_Metrics.Base_Em;
    Mode_Button_Width : constant := 60;
    Mode_Button_Gap : constant := 10;
    Mode_Text_Inset : constant := 8;

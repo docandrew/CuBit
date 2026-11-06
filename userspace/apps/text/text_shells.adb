@@ -1,3 +1,4 @@
+with CuBit.UI_Metrics;
 with CuBit.Appearance;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.Controls;
@@ -27,27 +28,29 @@ package body Text_Shells is
    use type Menus.Text;
 
    --  Layout, in logical pixels.
-   MENU_BAR_HEIGHT : constant := 24;
-   MENU_ROW_HEIGHT : constant := 24;
-   MENU_MINIMUM_WIDTH : constant := 220;
-   TOOLBAR_HEIGHT : constant := 34;
-   TOOL_SIZE : constant := 26;
-   TOOL_GAP : constant := 2;
-   TOOL_GROUP_GAP : constant := 10;
-   MARGIN : constant := 4;
-   TAB_HEIGHT : constant := 24;
-   MAXIMUM_TAB_WIDTH : constant := 220;
-   FIND_HEIGHT : constant := 30;
-   FIELD_HEIGHT : constant := 22;
-   FIELD_WIDTH : constant := 260;
-   OPTION_WIDTH : constant := 30;
-   STATUS_HEIGHT : constant := 22;
-   PALETTE_WIDTH : constant := 720;
+   --  From the UI em (CuBit.UI_Metrics).
+   package M renames CuBit.UI_Metrics;
+   MENU_BAR_HEIGHT : constant := M.Menu_Bar_Height;
+   MENU_ROW_HEIGHT : constant := M.Row_Height;
+   MENU_MINIMUM_WIDTH : constant := 14 * M.Base_Em;
+   TOOL_SIZE : constant := M.Control_Height;
+   TOOLBAR_HEIGHT : constant := TOOL_SIZE + M.Space_M;
+   TOOL_GAP : constant := M.Space_XS;
+   TOOL_GROUP_GAP : constant := M.Space_M + M.Space_XS;
+   MARGIN : constant := M.Space_S;
+   TAB_HEIGHT : constant := M.Compact_Row_Height;
+   MAXIMUM_TAB_WIDTH : constant := 14 * M.Base_Em;
+   FIELD_HEIGHT : constant := M.Compact_Row_Height;
+   FIND_HEIGHT : constant := FIELD_HEIGHT + M.Space_M;
+   FIELD_WIDTH : constant := 16 * M.Base_Em;
+   OPTION_WIDTH : constant := 2 * M.Base_Em;
+   STATUS_HEIGHT : constant := M.Compact_Row_Height;
+   PALETTE_WIDTH : constant := 45 * M.Base_Em;
    PALETTE_TOP : constant := 60;
    PALETTE_SHOWN : constant := 14;
-   PALETTE_ROW_HEIGHT : constant := 22;
+   PALETTE_ROW_HEIGHT : constant := M.Compact_Row_Height;
    SPLIT_GAP : constant := 3;
-   PANE_HEADER_HEIGHT : constant := 20;
+   PANE_HEADER_HEIGHT : constant := M.Dense_Row_Height;
    --  Work per pump.
    CHUNK_BYTES : constant := 1_048_576;
    CHUNKS_PER_PUMP : constant := 8;

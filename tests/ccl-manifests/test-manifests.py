@@ -121,6 +121,41 @@ class Manifests(unittest.TestCase):
         self.assertEqual(self.sections(typed.stdout), self.sections(keywords.stdout))
         self.assertEqual(typed_bindings, (self.directory / 'startup.ads').read_text())
 
+    # A kernel publication request (KERN-002): the same bytes from both
+    # notations; .cubit.caps kind 14 (CuBit.Publication_Grants) with the
+    # publication's code, and a startup entry of kind Publication (15).
+    PUBLICATION_KEYWORDS = """(executable-manifest v1
+  (identity "com.cubit.cpu-times-check")
+  (version "0.1.0")
+  (request-publication cpu-times))
+"""
+    PUBLICATION_TYPED = """(Executable_Manifest
+  identity => "com.cubit.cpu-times-check"
+  version => "0.1.0"
+  requests => [(Request.Publication "cpu-times")])
+"""
+    PUBLICATION_REQUEST, PUBLICATION_KIND, CPU_TIMES_CODE = 14, 15, 1
+
+    def test_publication_request(self):
+        keywords = self.compile(self.PUBLICATION_KEYWORDS)
+        self.assertEqual(keywords.returncode, 0, keywords.stderr)
+        sections = self.sections(keywords.stdout)
+        typed = self.compile(self.PUBLICATION_TYPED)
+        self.assertEqual(typed.returncode, 0, typed.stderr)
+        self.assertEqual(self.sections(typed.stdout), sections)
+        caps = sections['.cubit.caps']
+        magic, version, count = struct.unpack_from('<IHH', caps, 0)
+        self.assertEqual((magic, version, count), (0x43424954, 1, 1))
+        kind, rights, param0, param1 = struct.unpack_from('<BBxxIQ', caps, 8)
+        self.assertEqual((kind, rights, param0, param1),
+                         (self.PUBLICATION_REQUEST, 1, self.CPU_TIMES_CODE, 0))
+        _, entries = self.startup(sections['.cubit.startup'])
+        self.assertIn(('cpu-times', self.PUBLICATION_KIND, 1, 1, 0), entries)
+        self.reject(self.PUBLICATION_KEYWORDS.replace('cpu-times', 'cpu-secrets'),
+                    diagnostic='UNKNOWN_PUBLICATION')
+        self.reject(self.PUBLICATION_TYPED.replace('cpu-times', 'cpu-secrets'),
+                    diagnostic='no kernel publication is named "cpu-secrets"')
+
     def test_typed_manifest_named_fields_and_defaults(self):
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
         named = self.TLS_TYPED.replace(

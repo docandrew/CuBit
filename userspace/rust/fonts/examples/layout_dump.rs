@@ -1,5 +1,5 @@
 //! Prints the layout tables (advances, GPOS kerning; 1/64 px at the normal
-//! 13 px em) for the Linux-hosted HarfBuzz comparison in tests/ui-fonts.
+//! base em, 16 px) for the Linux-hosted HarfBuzz comparison in tests/ui-fonts.
 use cubit_fonts::{FACE_SANS, FACE_SANS_SEMIBOLD, cubit_font_layout};
 
 fn main() {

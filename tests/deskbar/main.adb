@@ -298,7 +298,10 @@ procedure Main is
              and then DT.Button_Text (DT.Minimize_Button, False, True) = "Minimize"
              and then DT.Button_Text (DT.Close_Button, True, False) = "Close", "window button words");
       Check (DSI.Name (DSI.Volume, False) = "Volume" and then DSI.Name (DSI.Volume, True) = "Volume (muted)"
-             and then DSI.Name (DSI.Network, False) = "Network", "status item names");
+             and then DSI.Name (DSI.Wired, False) = "Wired network" and then DSI.Name (DSI.Wifi, False) = "Wi-Fi"
+             and then DSI.Glyph (DSI.Wifi) and then not DSI.Glyph (DSI.Volume), "status item names");
+      Check (DSI.Name (DSI.Screen_Capture, False) = "Screen captured by the remote session"
+             and then DSI.Glyph (DSI.Screen_Capture), "the screen-captured mark is a named glyph");
    end Tooltips;
    procedure Placement is
       package WP renames Desktop_Window_Placement;

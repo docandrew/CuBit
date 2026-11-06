@@ -1,0 +1,6 @@
+# Per-CPU times publication checks (KERN-002, CPU_Times_Publication): the
+# page granted by its manifest request, read without a system call.
+(executable-manifest v1
+  (identity "com.cubit.cpu-times-check")
+  (version "0.1.0")
+  (request-publication cpu-times))

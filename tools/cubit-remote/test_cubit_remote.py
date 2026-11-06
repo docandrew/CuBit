@@ -81,6 +81,11 @@ class StandIn:
         self.scalar_carry = 3
         self.too_large_text = cr.TOO_LARGE_TEXT + ": %d elements"
         self.evaluations = []
+        # Screenshots: what the next capture answers (Capture_Result), the
+        # PNG it saves, and the requests it saw.
+        self.capture_result = 0
+        self.capture_png = b"\x89PNG\r\n\x1a\nstand-in frame"
+        self.captures = []
         self.server = socket.socket()
         self.server.bind(("127.0.0.1", 0))
         self.server.listen(8)
@@ -147,6 +152,17 @@ class StandIn:
             job, offset = struct.unpack(">IQ", body)
             out = self.jobs[job]
             return 0, struct.pack(">BIQQ", 2, 0, len(out), 0) + out[offset:]
+        if op == 12:
+            if not self.grants & 16:
+                return 3, b""
+            output, x, y, w, h = struct.unpack(">BHHHH", body)
+            self.captures.append((output, x, y, w, h))
+            if self.capture_result != 0:
+                return 0, bytes([self.capture_result])
+            shot = "output-%d.png" % output
+            self.files[(4, shot)] = self.capture_png
+            return 0, (bytes([0]) + struct.pack(">IIQ", w or 1024, h or 768, len(self.capture_png))
+                       + hashlib.sha256(self.capture_png).digest() + shot.encode())
         return 1, b""
 
 
@@ -307,6 +323,65 @@ class Commands(unittest.TestCase):
         with open(os.path.join("inbox", "reply.txt"), "rb") as f:
             self.assertEqual(f.read(), b"hello host")
         self.assertNotIn((3, "reply.txt"), self.device.files)
+
+
+class Screenshots(Commands):
+    def pair(self):
+        self.device.grants = 0b11111
+        super().pair()
+
+    def test_screenshot_saved(self):
+        code, out = self.run_cli("screenshot", "-o", "shot.png", "--output", "1")
+        self.assertEqual(code, 0, out)
+        with open("shot.png", "rb") as f:
+            self.assertEqual(f.read(), self.device.capture_png)
+        self.assertIn("1024x768", out)
+        self.assertEqual(self.device.captures, [(1, 0, 0, 0, 0)])
+
+    def test_screenshot_area(self):
+        code, out = self.run_cli("screenshot", "-o", "part.png", "--area", "10,20,300,200")
+        self.assertEqual(code, 0, out)
+        self.assertIn("300x200", out)
+        self.assertEqual(self.device.captures, [(0, 10, 20, 300, 200)])
+
+    def test_screenshot_refused_with_reason(self):
+        """The switch off: the device's typed reason, no file, exit 2."""
+        self.device.capture_result = 2
+        err = io.StringIO()
+        old = sys.stderr
+        sys.stderr = err
+        try:
+            code, _ = self.run_cli("screenshot", "-o", "off.png")
+        finally:
+            sys.stderr = old
+        self.assertEqual(code, 2)
+        self.assertIn("Capture_Off", err.getvalue())
+        self.assertIn("Allow screen capture", err.getvalue())
+        self.assertFalse(os.path.exists("off.png"))
+
+    def test_capture_not_granted(self):
+        self.device.grants = 0b1111
+        code, _ = self.run_cli("screenshot", "-o", "no.png")
+        self.assertEqual(code, 1)
+        self.assertFalse(os.path.exists("no.png"))
+
+    def test_changed_capture_refused(self):
+        """A PNG that is not the frame the capture reported is not kept."""
+        original = self.device.answer
+
+        def swapping(op, place, token, body):
+            status, payload = original(op, place, token, body)
+            if op == 12:
+                self.device.files[(4, "output-0.png")] = b"another frame"
+            return status, payload
+        self.device.answer = swapping
+        code, _ = self.run_cli("screenshot", "-o", "swapped.png")
+        self.assertEqual(code, 1)
+        self.assertFalse(os.path.exists("swapped.png"))
+
+    def test_grant_names(self):
+        self.assertEqual(cr.grant_names(0b10001), "diagnose, capture")
+        self.assertEqual(cr.capture_request(2, (1, 2, 3, 4)), bytes([2, 0, 1, 0, 2, 0, 3, 0, 4]))
 
 
 if __name__ == "__main__":

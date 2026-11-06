@@ -1,4 +1,5 @@
 with CCL.Completions;
+with CuBit.UI_Metrics;
 with CCL_Wifi;
 with CCL_Secrets;
 with CCL.Hints;
@@ -167,16 +168,17 @@ package body CCL_Console_View is
    ---------------------------------------------------------------------------
    function Column_Width return Positive is (Positive'Max (1, Code_Text_Width ("M")));
    function Line_Height return Positive is (Code_Text_Height + 3);
-   HEADER_HEIGHT  : constant := 34;
-   STATUS_HEIGHT  : constant := 24;
-   MARGIN         : constant := 14;
-   CARD_PADDING   : constant := 8;
-   CARD_GAP       : constant := 8;
+   --  From the UI em (CuBit.UI_Metrics).
+   HEADER_HEIGHT  : constant := CuBit.UI_Metrics.Control_Height + CuBit.UI_Metrics.Space_S + 1;
+   STATUS_HEIGHT  : constant := CuBit.UI_Metrics.Compact_Row_Height;
+   MARGIN         : constant := CuBit.UI_Metrics.Space_L + CuBit.UI_Metrics.Space_XS;
+   CARD_PADDING   : constant := CuBit.UI_Metrics.Space_M;
+   CARD_GAP       : constant := CuBit.UI_Metrics.Space_M;
    GUTTER         : constant := 4;    --  the status bar on a card's left edge
    PROMPT_COLUMNS : constant := 3;    --  "> " plus breathing room
    MAXIMUM_INPUT_ROWS : constant := 12;
    WHEEL_ROWS     : constant := 3;
-   TOOLTIP_PADDING : constant := 7;
+   TOOLTIP_PADDING : constant := CuBit.UI_Metrics.Tooltip_Padding + 1;
    POPUP_COLUMNS  : constant := 44;
 
    type Geometry is record

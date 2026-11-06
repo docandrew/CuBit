@@ -4,6 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* Compositor_Glyph_Layout at the UI em (CuBit.UI_Metrics): Base_Em,
+   Base_Line and Base_Width_Bound. */
+#define GLYPH_EM 16u
+#define GLYPH_LINE 21u
+#define GLYPH_WIDTH_BOUND 32u
 #define CHECK(x) do { if(!(x)){fprintf(stderr,"Desktop oracle line %d: %s\n",__LINE__,#x);return 1;} } while(0)
 #define VK(x) CHECK((x)==VK_SUCCESS)
 extern int desktop_glyph_real_open(void),desktop_glyph_real_submit(void),desktop_glyph_real_poll_upload(void);
@@ -51,7 +56,7 @@ void *__wrap_cubit_vulkan_device_context_request(const struct cubit_mesa_service
 uint32_t __real_cubit_vulkan_device_targets_prepare(uint32_t,uint32_t,struct cubit_vulkan_device_targets *);
 uint32_t __wrap_cubit_vulkan_device_targets_prepare(uint32_t w,uint32_t h,struct cubit_vulkan_device_targets *out)
 {uint32_t result=__real_cubit_vulkan_device_targets_prepare(w,h,out);if(!result)targets=*out;return result;}
-struct font_request {uint32_t face,code,n,d,width,height,pitch,capacity,phases,grid;};
+struct font_request {uint32_t face,code,n,d,width,height,pitch,capacity,phases;};
 /* Compositor_Glyph_Layout.Phases: masks stack one raster per quarter-pixel phase. */
 #define GLYPH_PHASES 4u
 struct font_metrics {uint32_t advance,height;};
@@ -88,11 +93,11 @@ int run_desktop_real(VkInstance instance,VkPhysicalDevice physical,VkDevice devi
     for(unsigned version=0;version<8;version++){
         const unsigned ns[]={1,5,3,2},ds[]={1,4,2,1};
         const char *codes="AgW?jQm@";
-        unsigned n=ns[version/2],d=ds[version/2],w=(32*n+d-1)/d,h=(17*n+d-1)/d,pitch=(w+15)/16*16;
+        unsigned n=ns[version/2],d=ds[version/2],w=(GLYPH_WIDTH_BOUND*n+d-1)/d,h=(GLYPH_LINE*n+d-1)/d,pitch=(w+15)/16*16;
         /* Cell (2, 3), pen offset 0: x to the nearest quarter pixel (its phase), y to the nearest pixel. */
         unsigned quarters=(16*n+d)/(2*d),origin_x=quarters/GLYPH_PHASES,phase=quarters%GLYPH_PHASES,origin_y=(6*n+d)/(2*d);
         unsigned char reference[16384];memset(reference,0xa5,sizeof reference);
-        const struct font_request request={version%2,(unsigned char)codes[version],13*n,d,w,h,pitch,pitch*h*GLYPH_PHASES,GLYPH_PHASES};
+        const struct font_request request={version%2,(unsigned char)codes[version],GLYPH_EM*n,d,w,h,pitch,pitch*h*GLYPH_PHASES,GLYPH_PHASES};
         struct font_metrics metrics={0};
         CHECK(__real_cubit_font_raster_mask(&request,reference,&metrics)==0&&metrics.advance>0&&metrics.height==h);
         int advance=desktop_glyph_real_start((int)version);

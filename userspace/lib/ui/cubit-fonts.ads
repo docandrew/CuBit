@@ -1,5 +1,6 @@
 with Interfaces;
 with Glyph_Pen;
+with CuBit.UI_Metrics;
 
 --  Bundled TrueType fonts rasterized in Rust userspace, never in the kernel.
 --  Published glyphs and layout tables have process lifetime and are
@@ -12,15 +13,17 @@ with Glyph_Pen;
 package CuBit.Fonts is
    type Face is (Sans, Monospace, Sans_Semibold);
    type Raster_Size is (Normal, Double_Size);
-   Line_Height : constant := 17;
-   Mono_Width : constant := 8;
-   Max_Width : constant := 32;
+   --  The line box and the monospace grid at Base_Em (CuBit.UI_Metrics).
+   Line_Height : constant := CuBit.UI_Metrics.Line_Height;
+   Mono_Width : constant := CuBit.UI_Metrics.Mono_Advance;
+   Max_Width : constant := CuBit.UI_Metrics.Glyph_Width_Bound;
    --  Every glyph raster (cells here, density masks too) puts the pen
    --  origin this many logical pixels from its left edge, keeping ink left
    --  of the origin; ink is never clipped at the advance.
-   Origin : constant := 2;
+   Origin : constant := CuBit.UI_Metrics.Glyph_Origin;
    subtype Phase is Glyph_Pen.Phase;
-   type Coverage is array (0 .. 35, 0 .. 31) of Interfaces.Unsigned_8
+   type Coverage is array (0 .. CuBit.UI_Metrics.Glyph_Cell_Rows - 1,
+                           0 .. CuBit.UI_Metrics.Glyph_Cell_Columns - 1) of Interfaces.Unsigned_8
      with Convention => C;
    --  Advance in 1/64 pixel. The pen origin is column Origin on the
    --  baseline; only the ink box (Ink_Width = 0: none) holds coverage.

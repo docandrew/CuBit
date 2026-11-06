@@ -3,7 +3,10 @@ with Intel_GPU_Metadata_Initialize;
 package body Update_Test_Backend is
    type RAM is array (Natural range <>) of Unsigned_8;
    type RAM_Access is access RAM;
-   Memory : constant RAM_Access := new RAM (0 .. 32 * 1024 * 1024 + 4095);
+   --  Reserved address space only: regions are sized by the production
+   --  table ceiling (Intel_GPU_Application_State.Table_Pages), commits by use.
+   Arena_Bytes : constant := 256 * 1024 * 1024;
+   Memory : constant RAM_Access := new RAM (0 .. Arena_Bytes + 4095);
    Raw : constant Unsigned_64 := Unsigned_64 (To_Integer (Memory.all'Address));
    First : constant Unsigned_64 := (Raw + 4095) / 4096 * 4096;
    Next : Unsigned_64 := 0;
@@ -20,7 +23,7 @@ package body Update_Test_Backend is
    function Reserve (Bytes : Unsigned_64) return Unsigned_64 is
       Result : constant Unsigned_64 := First + Next;
    begin
-      pragma Assert (Bytes > 0 and Bytes mod 4096 = 0 and Bytes <= 32 * 1024 * 1024 - Next);
+      pragma Assert (Bytes > 0 and Bytes mod 4096 = 0 and Bytes <= Arena_Bytes - Next);
       pragma Assert (Reservations < Regions'Length);
       Reservations := Reservations + 1;
       Regions (Reservations) := (Result, Bytes, 0); Next := Next + Bytes;

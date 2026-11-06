@@ -15,6 +15,8 @@ with CCL_Image_Bindings;
 with CCL_Log_Bindings;
 with CCL_Native_Bindings;
 with CCL_Process_Bindings;
+with Remote_Capture;
+with Remote_Display_Bindings;
 
 package body Remote_Host is
    use type CCL.Catalog.Catalog_Error;
@@ -32,6 +34,8 @@ package body Remote_Host is
    Grants : CCL.Catalog.Granted_Bindings;
    Session : CCL.Sessions.Session;
    Ready : Boolean := False;
+   --  (display.capture): only with the display-capture grant.
+   Display_Ready : Boolean := False;
 
    procedure Read_Clock (Available : out Boolean; Value : out Unsigned_64) is
       Request : Message := NULL_MESSAGE;
@@ -70,6 +74,8 @@ package body Remote_Host is
          CCL_File_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Image_Bindings.Handles (Binding) then
          CCL_Image_Bindings.Invoke (Binding, Argument, Reply);
+      elsif Display_Ready and then Remote_Display_Bindings.Handles (Binding) then
+         Remote_Display_Bindings.Invoke (Binding, Argument, Reply);
       elsif Binding = CLOCK_BINDING
         and then Argument.Kind = CCL.Host_Values.Integer_Value and then Argument.Integer = 0
       then
@@ -100,6 +106,15 @@ package body Remote_Host is
       if Success then CCL_File_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Image_Bindings.Install (Catalog, Grants, Success); end if;
       if not Success then return; end if;
+      --  Screenshots, when granted. A catalog that cannot take the display
+      --  interface leaves the session without it, not without CCL.
+      if Remote_Capture.Available then
+         Remote_Display_Bindings.Install (Catalog, Grants, Display_Ready);
+         if not Display_Ready then
+            debugPrint ("ccl-remote: the display interface was not published; (display.capture) unavailable" &
+                        ASCII.LF);
+         end if;
+      end if;
       CCL.Interfaces.Clock.Publish (Catalog, Error);
       Success := Error = CCL.Catalog.Catalog_Valid;
       if not Success then return; end if;

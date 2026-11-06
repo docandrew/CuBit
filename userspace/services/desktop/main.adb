@@ -82,7 +82,10 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.System_Facts;
+with CuBit.CPU_Times;
+with CuBit.CPU_Load;
 with CuBit.Display_Protocol;
+with CuBit.Display_Capture;
 with CuBit.Display_Layouts;
 with CuBit.Display_Arrangement;
 with CuBit.Desktop_Messages;
@@ -100,6 +103,7 @@ with Compositor_Cursor;
 with Desktop_Icons;
 with Desktop_Icon_Pixels;
 with CuBit.Fonts;
+with CuBit.UI_Metrics;
 with Text_Fit;
 with CuBit.UI.Window_Chrome;
 with Desktop_Wallpaper;
@@ -124,9 +128,24 @@ with Desktop_Launch_Refresh;
 with CuBit.Child_Exits;
 with CuBit.Launch_Arguments;
 with Desktop_Status_Refresh;
+with Desktop_Network_Refresh;
+with Desktop_Network_Model;
+with Desktop_Network_Rows;
+with Desktop_Address_Editor;
+with Desktop_Net_Address;
+with Desktop_Status_Panel;
+with Desktop_Network_Glyphs;
+with CuBit.UI.Editor;
+with Desktop_Load_Bars;
+with CuBit.Wifi_Control;
+with CuBit.Wifi_Report;
+with CuBit.Net_Manager_Report;
+with CuBit.Net_Link;
 with Desktop_GPU_Wake;
 with Desktop_Launch_Menus;
 with Desktop_Clipboard;
+with Desktop_Capture;
+with Desktop_Capture_Policy;
 with Clipboard_Store;
 with Clipboard_Menu;
 with Key_Repeat;
@@ -160,6 +179,7 @@ with Desktop_Endpoints;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
 with Presentation_Test_Policy;
+with Desktop_Fault_Policy;
 with Desktop_Composition;
 with Compositor_Damage;
 with Compositor_Transition;
@@ -266,7 +286,6 @@ procedure main is
    KEY_RIGHT          : constant Unsigned_8 := 16#4D#;
    KEY_TAB            : constant Unsigned_8 := 16#0F#;
    KEY_SPACE          : constant Unsigned_8 := 16#39#;
-   KEY_DELETE         : constant Unsigned_8 := 16#53#;
    --  Super+N opens the Deskbar panel; Super+T puts keyboard focus on the
    --  taskbar.
    KEY_DESKBAR_N      : constant Unsigned_8 := 16#31#;
@@ -319,6 +338,9 @@ procedure main is
    requestSequence : Unsigned_64 := 0;
    metricsStoppedAnnounced : Boolean := False;
    asyncAnnounced, releaseAnnounced : Boolean := False;
+   --  Desktop_Fault_Policy: this desktop leased the display from an owner
+   --  that ended (it is a restart), so it does not fail on purpose.
+   faultChecked, tookOverDisplay : Boolean := False;
    sparseCopyAnnounced : Boolean := False;
    retiredThrough : Unsigned_64 := 0;
    dragBaseBufferAddr : System.Address := System.Null_Address;
@@ -454,6 +476,10 @@ procedure main is
       Dropped_In_Row : Natural := 0;
    end record;
    presentations : array (Output_Index) of Output_Presentation;
+   --  The target slot of each output's newest presented frame (0: none
+   --  yet): what a display-capture request copies (Desktop_Capture). It
+   --  is never the writer: the next writer is acquired after a present.
+   lastPresented : array (Output_Index) of BP.Slot := [others => 0];
    --  Consecutive dropped frames tolerated on one output before the
    --  transfer counts as broken; and all dropped frames, for the log.
    Max_Dropped_In_Row : constant := 8;
@@ -915,7 +941,6 @@ procedure main is
    --  A press on the status button, panel, window list or toast keeps its
    --  release; a press on the volume slider drags it.
    deskbarPointerCapture : Boolean := False;
-   deskbarSliderDragging : Boolean := False;
    --  The app whose window list is open (by app, so restacking keeps it)
    --  and its selected row.
    groupListOpen : Boolean := False;
@@ -926,12 +951,65 @@ procedure main is
    type Deskbar_Focus is (No_Focus, Apps_Focus, Task_Focus, Status_Focus);
    deskbarFocus : Deskbar_Focus := No_Focus;
    deskbarFocusTask : TG.Group_Count := 0;
-   --  The panel's keyboard row.
-   type Panel_Row is (Volume_Row, Quiet_Row, Note_Row, Clear_Row);
-   panelFocus : Panel_Row := Volume_Row;
-   panelFocusNote : DN.Count := 0;
+   --  The panel's Network section and the status area's network and load
+   --  items (UI-027): the last reports from netmgr and wifi.svc (taken as
+   --  completions, Desktop_Network_Refresh), the Wi-Fi list, a join under
+   --  way, the passphrase field (Desktop's own, never logged or shown) and
+   --  the addressing editor.
+   package DNM renames Desktop_Network_Model;
+   package DNR renames Desktop_Network_Rows;
+   package DAE renames Desktop_Address_Editor;
+   package DNA renames Desktop_Net_Address;
+   package SP renames Desktop_Status_Panel;
+   package NG renames Desktop_Network_Glyphs;
+   package DLB renames Desktop_Load_Bars;
+   package NRF renames Desktop_Network_Refresh;
+   package NMR renames CuBit.Net_Manager_Report;
+   use type DNM.Phase, DNM.Request, DNA.Problem, CuBit.Wifi_Control.State, NRF.Wifi_Command,
+     CuBit.Net_Link.Link_Kind, CuBit.Net_Link.Link_Condition, CuBit.Net_Link.Interface_Name, DNM.Failure;
+   wifiReport : CuBit.Wifi_Report.Report;
+   wifiHave : Boolean := False;
+   netReport : NMR.Report;
+   netHave : Boolean := False;
+   wifiNetworks : DNM.Network_List;
+   wifiNetworkCount : DNM.Network_Count := 0;
+   wifiJoin : DNM.Join_State;
+   --  A join step waiting for wifi.svc's command flight, and a Forget.
+   joinPending : DNM.Request := DNM.Nothing;
+   forgetPending : Boolean := False;
+   forgetName : CuBit.Wifi_Control.SSID;
+   addressEditor : DAE.Editor;
+   memoryUsed : DLB.Percent := 0;
+   memoryKnown : Boolean := False;
+   --  The CPU bars (CuBit.CPU_Times): the last reading, and busy over all
+   --  CPUs and per CPU since the one before.
+   package CL renames CuBit.CPU_Load;
+   cpuReading : CL.Snapshot;
+   cpuAll : CL.Load;
+   cpuLoads : SP.CPU_Loads := [others => CL.Unknown];
+   cpuCount : Natural range 0 .. CL.CTP.Maximum_Processors := 0;
+   --  When the load bars are read next, when the open panel asks wifi.svc
+   --  to look at the scan again, and the earliest of those and a join's
+   --  address wait (the event loop's wake-up).
+   loadDueMs : Unsigned_64 := 0;
+   scanDueMs : Unsigned_64 := 0;
+   trayDueMs : Unsigned_64 := 0;
+   --  How often the open panel refreshes the scan list: wifi.svc has no
+   --  scan doorbell from the driver, so only an open list asks.
+   Scan_Refresh_Ms : constant := 3_000;
+   --  The network items' presence last logged (one line per change).
+   type Presence_Note is (Not_Logged, Hidden_No_Service, Hidden_No_Adapter, Shown);
+   wiredNoted, wifiNoted : Presence_Note := Not_Logged;
    --  The panel drawn last (its height follows the history), for damage.
    panelShown : Rect := (others => 0);
+   --  The panel as the toolkit drew it (Desktop_Status_Panel), presented
+   --  as a retained layer through the client-surface path: its own source
+   --  key (a new one whenever the buffer moves or resizes) and version.
+   --  It is drawn again only when what it shows changed.
+   Panel_Source_Base : constant Unsigned_64 := 16#5354_4154_5553_0000#;   --  "STATUS"
+   panelSurface : Surface;
+   panelSourceSerial : Unsigned_64 := 0;
+   panelDirty : Boolean := True;
    --  Every window gets the next opening order.
    nextTaskOrder : Unsigned_64 := 1;
    --  The date and minute under the panel's clock, from the clock service.
@@ -1132,12 +1210,14 @@ procedure main is
    --  pixel painted by the old geometry is restored during movement.
    WINDOW_VISUAL_MARGIN : constant Natural := DROP_SHADOW_DEPTH + 1;
    TASKBAR_H    : constant Natural := DBS.Bar_Height;
-   MENU_W       : constant Natural := 250;
-   --  Menu layout: category rows every 34 pixels from 42, a separator,
-   --  then Power; a submenu beside the open category, rows every 34.
-   LAUNCH_FIRST_Y : constant Natural := 42;
-   LAUNCH_STEP    : constant Natural := 34;
-   SUBMENU_PAD    : constant Natural := 6;
+   MENU_W       : constant Natural := 16 * CuBit.UI_Metrics.Base_Em;
+   --  Menu layout: category rows every LAUNCH_STEP pixels (a large icon
+   --  and Space_M + Space_XS) below the header, a separator, then Power; a
+   --  submenu beside the open category, rows every LAUNCH_STEP.
+   LAUNCH_STEP    : constant Natural :=
+     CuBit.UI_Metrics.Large_Icon_Edge + CuBit.UI_Metrics.Space_M + CuBit.UI_Metrics.Space_XS;
+   LAUNCH_FIRST_Y : constant Natural := LAUNCH_STEP + CuBit.UI_Metrics.Space_M;
+   SUBMENU_PAD    : constant Natural := CuBit.UI_Metrics.Space_S + CuBit.UI_Metrics.Space_XS;
 
    function MENU_H return Natural is
      (LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2 + 8 + LAUNCH_STEP);
@@ -2521,14 +2601,32 @@ procedure main is
    --  while Desktop holds the granted service behind it. Volume: the mixer
    --  (Desktop's "mixer" startup handle) answered. Network, Bluetooth,
    --  Battery, Power_Profile and Brightness have no service yet.
+   --  Wired and Wi-Fi: while netmgr reports an Ethernet interface, and
+   --  while a Wi-Fi adapter is bound to wifi.svc (Desktop_Network_Model).
+   --  Battery stays hidden until an ACPI battery source exists.
+   --  Screen_Capture: for Desktop_Capture_Policy.Mark_Ms after each
+   --  display-capture copy (who is acting: the remote session).
    function statusShown return DSI.Presence is
-     ([DSI.Volume => masterAudio.Available, others => False]);
+     ([DSI.Volume => masterAudio.Available,
+       DSI.Wired => DNM.Wired_Present (netHave, netReport),
+       DSI.Wifi => DNM.Wifi_Present (wifiHave, wifiReport),
+       DSI.Screen_Capture => Desktop_Capture.Marked,
+       others => False]);
 
-   --  The status button: notification count (when unread), the shown
-   --  items, then the clock.
+   --  The CPU bar (busy over all CPUs) and the memory bar.
+   function loadBarsWidth return Natural is
+     ((if cpuAll.Known then DLB.Bar_Width + DBS.Status_Item_Gap else 0) +
+      (if memoryKnown then DLB.Bar_Width + DBS.Status_Item_Gap else 0));
+
+   --  The panel's System section: while the CPU-times page is readable.
+   function systemShown return Boolean is (cpuCount > 0);
+
+   --  The status button: notification count (when unread), the load
+   --  bars, the shown items, then the clock.
    function statusWidth return Natural is
      (2 * DBS.Status_Padding +
       (if DN.Unread (notifications) > 0 then DBS.Badge_Size + DBS.Status_Item_Gap else 0) +
+      loadBarsWidth +
       DSI.Count (statusShown) * (Desktop_Icons.ICON_SIZE + DBS.Status_Item_Gap) +
       uiTextWidth ("00:00"));
 
@@ -2655,13 +2753,58 @@ procedure main is
    --  The Deskbar panel, right-aligned above the status button: a header
    --  (clock, date), quick settings (volume, do not disturb), then the
    --  newest notifications and a hint line.
+   --  The network the passphrase field is open for (its place in the
+   --  list; 0: none).
+   function passphraseNetwork return Natural is
+   begin
+      if wifiJoin.Current = DNM.Entering_Passphrase then
+         for N in 1 .. wifiNetworkCount loop
+            if DNM.Same (wifiNetworks (N).Name, wifiJoin.Target) then
+               return N;
+            end if;
+         end loop;
+      end if;
+      return 0;
+   end passphraseNetwork;
+
+   --  The interface the addressing editor is open for (its place in
+   --  netmgr's report; 0: closed, or the interface went).
+   function editorInterface return NMR.Record_Count is
+   begin
+      if addressEditor.Open and then netHave then
+         for I in 1 .. netReport.Count loop
+            if netReport.Interfaces (I).Name = addressEditor.Name then
+               return I;
+            end if;
+         end loop;
+      end if;
+      return 0;
+   end editorInterface;
+
+   function netLayout return DNR.Layout is
+     (DNR.Build (netReport, netHave, DNM.Wifi_Present (wifiHave, wifiReport), wifiNetworkCount,
+                 passphraseNetwork, editorInterface));
+
+   --  Everything but the notification rows.
+   --  The Remote access section: while a remote session announced itself.
+   function remoteShown return Boolean is
+     (Desktop_Capture_Policy."/=" (Desktop_Capture.Session, Desktop_Capture_Policy.No_Session));
+
+   function panelFixedHeight return Natural is
+     (Desktop_Status_Panel.Height (netLayout, 0, systemShown, remoteShown) - DBS.Panel_Row);
+
+   --  The newest notifications, as many as fit above the taskbar.
    function panelNoteRows return Natural is
-     (Natural'Min (Natural (DN.Length (notifications)), DBS.Panel_Visible_Notes));
+      fixed : constant Natural := panelFixedHeight;
+      room : constant Natural :=
+        (if taskbarY > fixed + 2 * DBS.Panel_Margin then taskbarY - fixed - 2 * DBS.Panel_Margin else 0);
+   begin
+      return Natural'Min (Natural'Min (Natural (DN.Length (notifications)), DBS.Panel_Visible_Notes),
+                          room / DBS.Panel_Note_Row);
+   end panelNoteRows;
 
    function panelHeight return Natural is
-     (DBS.Panel_Stripe + DBS.Panel_Header + 2 * DBS.Panel_Section + 2 * DBS.Panel_Row +
-      (if panelNoteRows = 0 then DBS.Panel_Row else panelNoteRows * DBS.Panel_Note_Row) +
-      DBS.Panel_Footer);
+     (Desktop_Status_Panel.Height (netLayout, panelNoteRows, systemShown, remoteShown));
 
    --  Panel and toast share the right edge and width.
    function deskbarPopupRect (height : Natural) return Rect is
@@ -2679,38 +2822,6 @@ procedure main is
 
    function panelRect return Rect is (deskbarPopupRect (panelHeight));
    function toastRect return Rect is (deskbarPopupRect (DBS.Toast_Height));
-
-   function panelVolumeRowRect return Rect is
-     ((x => panelRect.x, y => panelRect.y + DBS.Panel_Stripe + DBS.Panel_Header + DBS.Panel_Section,
-       w => panelRect.w, h => DBS.Panel_Row));
-   function panelQuietRowRect return Rect is
-     ((x => panelRect.x, y => panelVolumeRowRect.y + DBS.Panel_Row, w => panelRect.w, h => DBS.Panel_Row));
-   function panelNotesHeaderRect return Rect is
-     ((x => panelRect.x, y => panelQuietRowRect.y + DBS.Panel_Row, w => panelRect.w, h => DBS.Panel_Section));
-   function panelNoteRect (row : Positive) return Rect is
-     ((x => panelRect.x, y => panelNotesHeaderRect.y + DBS.Panel_Section + (row - 1) * DBS.Panel_Note_Row,
-       w => panelRect.w, h => DBS.Panel_Note_Row));
-   function panelNoteCloseRect (row : Positive) return Rect is
-     ((x => panelNoteRect (row).x + panelNoteRect (row).w - DBS.Panel_Padding - DBS.Close_Box,
-       y => panelNoteRect (row).y + (DBS.Panel_Note_Row - DBS.Close_Box) / 2,
-       w => DBS.Close_Box, h => DBS.Close_Box));
-   Clear_All_Text : constant String := "Clear all";
-   function panelClearRect return Rect is
-     ((x => panelNotesHeaderRect.x + panelNotesHeaderRect.w - DBS.Panel_Padding - uiTextWidth (Clear_All_Text),
-       y => panelNotesHeaderRect.y, w => uiTextWidth (Clear_All_Text), h => DBS.Panel_Section));
-   function muteIconRect return Rect is
-     ((x => panelVolumeRowRect.x + DBS.Panel_Padding,
-       y => panelVolumeRowRect.y + (DBS.Panel_Row - Desktop_Icons.ICON_SIZE) / 2,
-       w => Desktop_Icons.ICON_SIZE, h => Desktop_Icons.ICON_SIZE));
-   --  The slider's hit area: its track, as tall as the thumb.
-   function volumeTrackRect return Rect is
-     ((x => muteIconRect.x + Desktop_Icons.ICON_SIZE + 2 * DBS.Status_Item_Gap,
-       y => panelVolumeRowRect.y + (DBS.Panel_Row - DBS.Thumb_Height) / 2,
-       w => DBS.Slider_Width, h => DBS.Thumb_Height));
-   function quietToggleRect return Rect is
-     ((x => panelQuietRowRect.x + panelQuietRowRect.w - DBS.Panel_Padding - DBS.Toggle_Width,
-       y => panelQuietRowRect.y + (DBS.Panel_Row - DBS.Toggle_Height) / 2,
-       w => DBS.Toggle_Width, h => DBS.Toggle_Height));
 
    --  How many windows the open list shows (its app's).
    function groupListMembers return TG.Window_Count is
@@ -3368,6 +3479,8 @@ procedure main is
             Desktop_Pointer_Plane.Collect (completion, requestSequence);
          elsif Desktop_Status_Refresh.Matches (completion.token) then
             Desktop_Status_Refresh.Collect (completion, requestSequence);
+         elsif Desktop_Network_Refresh.Matches (completion.token) then
+            Desktop_Network_Refresh.Collect (completion, requestSequence);
          elsif Desktop_GPU_Wake.Matches (completion.token) then
             Desktop_GPU_Wake.Collect (completion, nowMs);
          elsif outputWatchToken /= 0 and then completion.token = outputWatchToken then
@@ -3515,6 +3628,12 @@ procedure main is
                         if not releaseAnnounced then
                            releaseAnnounced := True;
                            debugPrint ("desktop: asynchronous frame released" & LF);
+                           if Desktop_Fault_Policy.Exit_After_First_Frame and then
+                             not tookOverDisplay
+                           then
+                              debugPrint ("DESKTOP-TEST-FAULT: exiting after the first frame" & LF);
+                              exitCompositor (1);
+                           end if;
                         end if;
                      end if;
                   end;
@@ -3829,6 +3948,7 @@ procedure main is
       BP.Finish_Render (P.Pool, BP.Writer (P.Pool), BP.Completed);
       BP.Present (P.Pool, Held);
       if Held = BP.None then exitCompositor (1); end if;
+      lastPresented (Output) := Held.Buffer;
       declare Frame : constant Compositor_Elapsed.Sample :=
         Compositor_Elapsed.Measure (Frame_Started, timingNow);
       begin
@@ -5377,7 +5497,7 @@ procedure main is
      (settingsFill, settingsStroke, settingsGradient, settingsText,
       Settings_Controls.Draw_Button, Settings_Controls.Draw_Tab, settingsWallpaper);
 
-   --  One window button: a square, bordered tile with a 10-pixel stroke
+   --  One window button: a square, bordered tile with a Glyph_Size stroke
    --  glyph, all solid fills (Window_Chrome geometry and palette).
    type Button_Glyph is (Minimize_Glyph, Maximize_Glyph, Restore_Glyph, Close_Glyph);
 
@@ -5400,7 +5520,7 @@ procedure main is
       strokeRect (r.x, r.y, r.w, r.h, look.Edge, look.Edge);
       case glyph is
          when Minimize_Glyph =>
-            fillRect (gx + 1, gy + 7, G - 2, 1, look.Glyph);
+            fillRect (gx + 1, gy + G - 3, G - 2, 1, look.Glyph);
          when Maximize_Glyph =>
             strokeRect (gx + 1, gy + 1, G - 2, G - 2, look.Glyph, look.Glyph);
          when Restore_Glyph =>
@@ -5728,10 +5848,11 @@ procedure main is
          if selected or else open then
             fillRect (item.x, item.y, item.w, item.h, bg);
          end if;
-         drawIcon (icon, item.x + 8, item.y + 3, bg);
-         drawUIText (item.x + 40, item.y + 7, label, textColor, bg);
+         drawIcon (icon, item.x + 8, item.y + (item.h - Desktop_Icons.ICON_SIZE) / 2, bg);
+         drawUIText (item.x + 40, item.y + (item.h - CuBit.Fonts.Line_Height) / 2, label, textColor, bg);
          if arrow and then item.w > 24 then
-            drawUIText (item.x + item.w - 18, item.y + 7, ">", textColor, bg);
+            drawUIText (item.x + item.w - 18, item.y + (item.h - CuBit.Fonts.Line_Height) / 2, ">",
+                        textColor, bg);
          end if;
       end drawRow;
    begin
@@ -5745,7 +5866,8 @@ procedure main is
       fillRect (r.x, r.y, 4, r.h, C_ACCENT);
 
       drawIcon (Desktop_Icons.Start, r.x + 12, r.y + 10, C_PANEL);
-      drawUIText (r.x + 44, r.y + 14, "CuBit", C_TEXT, C_PANEL);
+      drawUIText (r.x + 44, r.y + 10 + (Desktop_Icons.ICON_SIZE - CuBit.Fonts.Line_Height) / 2, "CuBit",
+                  C_TEXT, C_PANEL);
       for row in 1 .. launchRows loop
          drawRow
            (launchItemRect (row),
@@ -5807,8 +5929,96 @@ procedure main is
                 1, DBS.Separator_Height, C.Separator);
    end drawAppsButton;
 
-   --  The status button: unread notifications, the shown status items and
-   --  the clock. It opens the Deskbar panel.
+   ---------------------------------------------------------------------------
+   --  Network glyphs (square, drawn, not icons: they change with the link).
+   ---------------------------------------------------------------------------
+   procedure drawGlyphPart (x, y : Natural; P : NG.Part; ink : Unsigned_32) is
+   begin
+      if P.Outline then
+         strokeRect (x + P.X, y + P.Y, P.W, P.H, ink, ink);
+      else
+         fillRect (x + P.X, y + P.Y, P.W, P.H, ink);
+      end if;
+   end drawGlyphPart;
+
+   --  Signal strength: four rising bars, Bars of them in Ink.
+   procedure drawSignalGlyph (x, y : Natural; Bars : DNM.Signal_Bars; Ink, Faint : Unsigned_32) is
+   begin
+      for B in NG.Bar_Index loop
+         drawGlyphPart (x, y, NG.Bar (B), (if B <= Natural (Bars) then Ink else Faint));
+      end loop;
+   end drawSignalGlyph;
+
+   --  A wired port; Ink while the link is up.
+   procedure drawWiredGlyph (x, y : Natural; Up : Boolean; Ink, Faint : Unsigned_32) is
+   begin
+      for P in NG.Port_Index loop
+         drawGlyphPart (x, y, NG.Port (P), (if Up then Ink else Faint));
+      end loop;
+   end drawWiredGlyph;
+
+   --  Any Ethernet interface's link is up.
+   function wiredUp return Boolean is
+     (netHave and then
+      (for some I in 1 .. netReport.Count =>
+         netReport.Interfaces (I).Kind = CuBit.Net_Link.Ethernet
+         and then netReport.Interfaces (I).Condition = CuBit.Net_Link.Up));
+
+   --  The Wi-Fi interface's address while its link is up (0: none).
+   function wifiAddress return Unsigned_32 is
+      W : constant NMR.Record_Count :=
+        (if netHave then DNM.Interface_Of (netReport, CuBit.Net_Link.Wireless) else 0);
+   begin
+      if W = 0 or else netReport.Interfaces (W).Condition /= CuBit.Net_Link.Up then
+         return 0;
+      end if;
+      return netReport.Interfaces (W).Settings.Address;
+   end wifiAddress;
+
+   --  The bars of the network joined (0 when none).
+   function wifiBars return DNM.Signal_Bars is
+   begin
+      if wifiReport.State = CuBit.Wifi_Control.Connected then
+         for N in 1 .. wifiNetworkCount loop
+            if wifiNetworks (N).Current then
+               return DNM.Bars_Of (wifiNetworks (N).Signal);
+            end if;
+         end loop;
+      end if;
+      return 0;
+   end wifiBars;
+
+   --  A load bar: used from the bottom, the warning colour when high.
+   procedure drawLoadBar (x : Natural; r : Rect; Used : DLB.Percent) is
+      C : constant DBS.Palette := deskbarColors;
+      top : constant Natural := r.y + (if r.h > DLB.Bar_Height then (r.h - DLB.Bar_Height) / 2 else 0);
+      filled : constant Natural := DLB.Filled (DLB.Bar_Height, Used);
+   begin
+      fillRect (x, top, DLB.Bar_Width, DLB.Bar_Height, C.Track);
+      fillRect (x, top + DLB.Bar_Height - filled, DLB.Bar_Width, filled,
+                (if Used > DLB.High_Percent then C.Badge else C.Focus));
+   end drawLoadBar;
+
+   --  The "screen captured" mark (who is acting: the remote session took a
+   --  frame): a screen outline in the item's ink with a recording dot in
+   --  the badge colour, ICON_SIZE square like the other items.
+   procedure drawCaptureGlyph (x, y : Natural; Ink, Dot : Unsigned_32) is
+      S : constant Natural := Desktop_Icons.ICON_SIZE;
+      Inset : constant := 1;
+      Screen_H : constant Natural := S * 2 / 3;
+      Dot_Size : constant Natural := S / 3;
+      Stand : constant Natural := S / 4;
+   begin
+      fillRect (x + Inset, y + Inset, S - 2 * Inset, 1, Ink);
+      fillRect (x + Inset, y + Inset + Screen_H - 1, S - 2 * Inset, 1, Ink);
+      fillRect (x + Inset, y + Inset, 1, Screen_H, Ink);
+      fillRect (x + S - Inset - 1, y + Inset, 1, Screen_H, Ink);
+      fillRect (x + (S - Stand) / 2, y + Inset + Screen_H + 1, Stand, 2, Ink);
+      fillRect (x + (S - Dot_Size) / 2, y + Inset + (Screen_H - Dot_Size) / 2, Dot_Size, Dot_Size, Dot);
+   end drawCaptureGlyph;
+
+   --  The status button: unread notifications, the load bars, the shown
+   --  status items and the clock. It opens the Deskbar panel.
    procedure drawStatusButton is
       r : constant Rect := statusRect;
       C : constant DBS.Palette := deskbarColors;
@@ -5816,6 +6026,8 @@ procedure main is
       unread : constant Natural := Natural (DN.Unread (notifications));
       x : Natural := r.x + DBS.Status_Padding;
       Badge_Limit : constant := 9;
+      glyphY : constant Natural :=
+        r.y + (if r.h > Desktop_Icons.ICON_SIZE then (r.h - Desktop_Icons.ICON_SIZE) / 2 else 0);
    begin
       if isEmpty (r) then
          return;
@@ -5833,9 +6045,22 @@ procedure main is
             x := x + DBS.Badge_Size + DBS.Status_Item_Gap;
          end;
       end if;
+      if cpuAll.Known then
+         drawLoadBar (x, r, cpuAll.Busy);
+         x := x + DBS.Status_Item_Gap + DLB.Bar_Width;
+      end if;
+      if memoryKnown then
+         drawLoadBar (x, r, memoryUsed);
+         x := x + DBS.Status_Item_Gap + DLB.Bar_Width;
+      end if;
       for I in DSI.Item loop
          if shown (I) then
-            drawIconIn (DSI.Icon (I, masterAudio.Muted), r, x - r.x, C.Status);
+            case I is
+               when DSI.Wired => drawWiredGlyph (x, glyphY, wiredUp, C.Active_Text, C.Muted);
+               when DSI.Wifi  => drawSignalGlyph (x, glyphY, wifiBars, C.Active_Text, C.Track);
+               when DSI.Screen_Capture => drawCaptureGlyph (x, glyphY, C.Active_Text, C.Badge);
+               when others    => drawIconIn (DSI.Icon (I, masterAudio.Muted), r, x - r.x, C.Status);
+            end case;
             x := x + Desktop_Icons.ICON_SIZE + DBS.Status_Item_Gap;
          end if;
       end loop;
@@ -5845,164 +6070,98 @@ procedure main is
       end if;
    end drawStatusButton;
 
-   --  "16:42" for a minute of the day.
-   function minuteText (m : DN.Minute_Of_Day) return String is
-      hours : constant Natural := Natural (m) / 60;
-      minutes : constant Natural := Natural (m) mod 60;
-      function digit (v : Natural) return Character is (Character'Val (Character'Pos ('0') + v));
-   begin
-      return [digit (hours / 10), digit (hours mod 10), ':', digit (minutes / 10), digit (minutes mod 10)];
-   end minuteText;
 
    function noteAccent (N : DN.Notification) return Unsigned_32 is
      (if N.Accent.Declared then Unsigned_32 (N.Accent.Value) else CuBit.UI.Current_Theme.accent);
 
-   --  A section heading inside the panel.
-   procedure drawPanelSection (r : Rect; label : String) is
-      C : constant DBS.Palette := deskbarColors;
+   --  The joined network's name ("" when none).
+   function joinedText return String is
    begin
-      fillRect (r.x + 1, r.y, (if r.w > 2 then r.w - 2 else 0), r.h, C.Section);
-      fillRect (r.x + 1, r.y, (if r.w > 2 then r.w - 2 else 0), 1, C.Row_Rule);
-      drawBoldText (r.x + DBS.Panel_Padding, r.y + (r.h - CuBit.Fonts.Line_Height) / 2,
-                    label, C.Section_Text, C.Section);
-   end drawPanelSection;
+      for N in 1 .. wifiNetworkCount loop
+         if wifiNetworks (N).Current then
+            return DNM.Text_Of (wifiNetworks (N).Name);
+         end if;
+      end loop;
+      return "";
+   end joinedText;
 
+   function panelView return SP.View is
+     ((Clock      => clockText,
+       Date       => SP.To_Short
+         (if clockDateKnown
+          then DBL.Weekday_Name (DBL.Day_Of_Week (clockDate.Year, clockDate.Month, clockDate.Day)) &
+               Natural'Image (clockDate.Day) & " " & DBL.Month_Name (clockDate.Month)
+          else ""),
+       Audio      => masterAudio.Available,
+       Level      => masterAudio.Level,
+       Muted      => masterAudio.Muted,
+       Quiet      => DN.Quiet (notifications),
+       Note_Rows  => panelNoteRows,
+       Wifi_Shown => DNM.Wifi_Present (wifiHave, wifiReport),
+       Wifi_State => wifiReport.State,
+       Joined     => SP.To_Short (joinedText),
+       Wifi_Address => wifiAddress,
+       Wifi_Bars  => wifiBars,
+       System_Shown => systemShown,
+       CPU_Count  => cpuCount,
+       CPU_All    => cpuAll,
+       CPUs       => cpuLoads,
+       Memory_Known => memoryKnown,
+       Memory_Used  => memoryUsed,
+       Remote_Shown => remoteShown,
+       Remote_Paired => Desktop_Capture_Policy."=" (Desktop_Capture.Session, Desktop_Capture_Policy.Paired),
+       Remote_Peer => SP.To_Short (Desktop_Capture.Peer),
+       Capture_Allowed => Desktop_Capture.Allowed));
+
+   --  Render the panel (the toolkit's pass), reporting what the user did.
+   procedure renderPanel (acts : in out SP.Action_List) is
+   begin
+      SP.Render (panelView, notifications, netLayout, netReport, wifiNetworks, wifiNetworkCount,
+                 wifiJoin, addressEditor, acts);
+      panelDirty := False;
+      --  New pixels: a new source when the buffer moved or resized, else a
+      --  new version of the same one.
+      if panelSurface.bufferAddr /= SP.Buffer or else panelSurface.bufferH /= SP.Buffer_Height then
+         if panelSurface.id /= 0 then
+            Desktop_Compositor.Retire_Source (Compositor_Source_Content.Source_Key (panelSurface.id));
+         end if;
+         panelSourceSerial := panelSourceSerial + 1;
+         panelSurface := (others => <>);
+         panelSurface.id := Panel_Source_Base + panelSourceSerial;
+         panelSurface.bufferAttached := SP.Buffer /= System.Null_Address;
+         panelSurface.bufferAddr := SP.Buffer;
+         panelSurface.bufferW := SP.Buffer_Width;
+         panelSurface.bufferH := SP.Buffer_Height;
+         panelSurface.bufferPitch := SP.Buffer_Pitch;
+         panelSurface.bufferFormat := PIXEL_FORMAT_BGRA8888;
+      end if;
+      panelSurface.contentVersion := Compositor_Source_Content."+" (panelSurface.contentVersion, 1);
+      Desktop_Compositor.Note_Source_Change
+        (Compositor_Source_Content.Source_Key (panelSurface.id),
+         Compositor_Source_Content.Whole
+           (Natural'Min (SP.Buffer_Height, Compositor_Source_Content.Maximum_Rows)));
+   end renderPanel;
+
+   --  The panel's layer: rendered again only when marked (input, a model
+   --  change), then composed like a client surface.
    procedure drawDeskbarPanel is
       r : constant Rect := panelRect;
-      C : constant DBS.Palette := deskbarColors;
-      lineY : constant Natural := (DBS.Panel_Row - CuBit.Fonts.Line_Height) / 2;
-      inner : constant Natural := (if r.w > 2 then r.w - 2 else 0);
    begin
       if not deskbarPanelOpen or else isEmpty (r) then
          return;
       end if;
+      if panelDirty or else SP.Buffer_Height /= r.h then
+         declare
+            ignored : SP.Action_List;
+         begin
+            --  A passive pass: no input is pending, so nothing is reported.
+            renderPanel (ignored);
+         end;
+      end if;
       drawDappledShadow (r.x, r.y, r.w, r.h);
-      drawBox (r, C.Panel, C.Panel_Edge);
-      fillRect (r.x, r.y, r.w, DBS.Panel_Stripe, C.Panel_Stripe);
-
-      --  The clock and the date.
-      declare
-         y : constant Natural := r.y + DBS.Panel_Stripe + (DBS.Panel_Header - CuBit.Fonts.Line_Height) / 2;
-      begin
-         drawBoldText (r.x + DBS.Panel_Padding, y, clockText, C.Active_Text, C.Panel);
-         if clockDateKnown then
-            declare
-               date : constant String :=
-                 DBL.Weekday_Name (DBL.Day_Of_Week (clockDate.Year, clockDate.Month, clockDate.Day)) &
-                 Natural'Image (clockDate.Day) & " " & DBL.Month_Name (clockDate.Month);
-            begin
-               drawUIText (r.x + r.w - DBS.Panel_Padding - uiTextWidth (date), y, date, C.Muted, C.Panel);
-            end;
-         end if;
-      end;
-
-      --  Quick settings: what has a granted service behind it.
-      drawPanelSection ((r.x, r.y + DBS.Panel_Stripe + DBS.Panel_Header, r.w, DBS.Panel_Section),
-                        "Quick settings");
-      declare
-         row : constant Rect := panelVolumeRowRect;
-         track : constant Rect := volumeTrackRect;
-         barY : constant Natural := track.y + (track.h - DBS.Slider_Height) / 2;
-         filled : constant Natural := DBL.Offset_Of (track.w, masterAudio.Level);
-      begin
-         fillRect (row.x + 1, row.y, inner, row.h, C.Row);
-         if masterAudio.Available then
-            drawIconIn (DSI.Icon (DSI.Volume, masterAudio.Muted), row, muteIconRect.x - row.x, C.Row);
-            fillRect (track.x, barY, track.w, DBS.Slider_Height, C.Track);
-            fillRect (track.x, barY, filled, DBS.Slider_Height,
-                      (if masterAudio.Muted then C.Muted else C.Focus));
-            drawBox ((x => track.x + filled - (if filled >= DBS.Thumb_Width / 2 then DBS.Thumb_Width / 2 else filled),
-                      y => track.y, w => DBS.Thumb_Width, h => DBS.Thumb_Height), C.Thumb, C.Thumb_Edge);
-            drawUIText (track.x + track.w + 2 * DBS.Status_Item_Gap, row.y + lineY,
-                        (if masterAudio.Muted then "Muted" else countText (masterAudio.Level) & "%"),
-                        C.Active_Text, C.Row);
-         else
-            drawUIText (row.x + DBS.Panel_Padding, row.y + lineY, "Sound: no mixer", C.Muted, C.Row);
-         end if;
-         if panelFocus = Volume_Row then
-            drawFocusRing (row);
-         end if;
-      end;
-      declare
-         row : constant Rect := panelQuietRowRect;
-         toggle : constant Rect := quietToggleRect;
-         on : constant Boolean := DN.Quiet (notifications);
-         state : constant String := (if on then "On" else "Off");
-      begin
-         fillRect (row.x + 1, row.y, inner, row.h, C.Row);
-         fillRect (row.x + 1, row.y, inner, 1, C.Row_Rule);
-         drawUIText (row.x + DBS.Panel_Padding, row.y + lineY, "Do not disturb", C.Active_Text, C.Row);
-         drawBox (toggle, (if on then C.Focus else C.Row), (if on then C.Focus else C.Track));
-         drawUIText (toggle.x + (toggle.w - uiTextWidth (state)) / 2,
-                     toggle.y + (toggle.h - CuBit.Fonts.Line_Height) / 2, state,
-                     (if on then C.Focus_Text else C.Muted), (if on then C.Focus else C.Row));
-         if panelFocus = Quiet_Row then
-            drawFocusRing (row);
-         end if;
-      end;
-
-      --  The notification history, newest first.
-      declare
-         header : constant Rect := panelNotesHeaderRect;
-         total : constant Natural := Natural (DN.Length (notifications));
-      begin
-         drawPanelSection (header, (if total = 0 then "Notifications"
-                                    else "Notifications (" & countText (total) & ")"));
-         if total > 0 then
-            drawUIText (panelClearRect.x, header.y + (header.h - CuBit.Fonts.Line_Height) / 2,
-                        Clear_All_Text, C.Focus, C.Section);
-            if panelFocus = Clear_Row then
-               drawFocusRing (panelClearRect);
-            end if;
-         end if;
-         if total = 0 then
-            declare
-               row : constant Rect := (header.x, header.y + DBS.Panel_Section, header.w, DBS.Panel_Row);
-            begin
-               fillRect (row.x + 1, row.y, inner, row.h, C.Row);
-               drawUIText (row.x + DBS.Panel_Padding, row.y + lineY, "No notifications", C.Muted, C.Row);
-            end;
-         end if;
-         for K in 1 .. panelNoteRows loop
-            declare
-               N : constant DN.Notification := DN.Item (notifications, DN.Position (K));
-               row : constant Rect := panelNoteRect (K);
-               close : constant Rect := panelNoteCloseRect (K);
-               textX : constant Natural := row.x + DBS.Panel_Padding + Desktop_Icons.ICON_SIZE + DBS.Icon_Label_Gap;
-               stamp : constant String :=
-                 (if N.Posted_At.Known then minuteText (N.Posted_At.Minute) else "");
-               room : constant Natural :=
-                 (if close.x > textX + DBS.Status_Item_Gap then close.x - textX - DBS.Status_Item_Gap else 0);
-               titleRoom : constant Natural :=
-                 (if room > uiTextWidth (stamp) + DBS.Status_Item_Gap
-                  then room - uiTextWidth (stamp) - DBS.Status_Item_Gap else 0);
-               titleInk : constant Unsigned_32 :=
-                 (if N.Level = DN.Critical then C.Badge else C.Active_Text);
-            begin
-               fillRect (row.x + 1, row.y, inner, row.h, C.Row);
-               fillRect (row.x + 1, row.y, inner, 1, C.Row_Rule);
-               --  The source app's colour, as on its task button.
-               fillRect (row.x + 1, row.y + 1, DBS.Stripe_Height, row.h - 1, noteAccent (N));
-               drawIcon (N.Icon, row.x + DBS.Panel_Padding, row.y + DBS.Panel_Padding, C.Row);
-               drawBoldText (textX, row.y + DBS.Panel_Padding - 2, fitText (DN.Title_Of (N), titleRoom, CuBit.Fonts.Sans_Semibold),
-                             titleInk, C.Row);
-               if stamp'Length > 0 then
-                  drawUIText (close.x - DBS.Status_Item_Gap - uiTextWidth (stamp), row.y + DBS.Panel_Padding - 2,
-                              stamp, C.Muted, C.Row);
-               end if;
-               drawUIText (textX, row.y + DBS.Panel_Padding - 2 + CuBit.Fonts.Line_Height + 1,
-                           fitText (DN.Detail_Of (N), room), C.Muted, C.Row);
-               drawBox (close, C.Row, C.Row_Rule);
-               drawUIText (close.x + (close.w - uiTextWidth ("x")) / 2,
-                           close.y + (close.h - CuBit.Fonts.Line_Height) / 2, "x", C.Muted, C.Row);
-               if panelFocus = Note_Row and then Natural (panelFocusNote) = K then
-                  drawFocusRing (row);
-               end if;
-            end;
-         end loop;
-      end;
-      drawUIText (r.x + DBS.Panel_Padding, r.y + r.h - DBS.Panel_Footer + (DBS.Panel_Footer - CuBit.Fonts.Line_Height) / 2,
-                  "Esc closes   Arrows move   Del dismisses", C.Muted, C.Panel);
+      if panelSurface.bufferAttached and then SP.Buffer_Height = r.h then
+         drawClientBuffer (panelSurface, r.x, r.y, r.w, r.h);
+      end if;
    end drawDeskbarPanel;
 
    --  The toasted notification: shown briefly above the status button.
@@ -6078,10 +6237,10 @@ procedure main is
 
    --  Clipboard manager geometry: a fixed-size panel centred above the
    --  taskbar, Clipboard_Menu.Visible_Rows rows of two text lines each.
-   CLIP_MENU_W : constant := 480;
-   CLIP_HEADER_H : constant := 38;
-   CLIP_ROW_H : constant := 44;
-   CLIP_FOOTER_H : constant := 28;
+   CLIP_MENU_W : constant := 30 * CuBit.UI_Metrics.Base_Em;
+   CLIP_HEADER_H : constant := CuBit.UI_Metrics.Line_Height + 2 * CuBit.UI_Metrics.Space_L;
+   CLIP_ROW_H : constant := 2 * CuBit.UI_Metrics.Line_Height + CuBit.UI_Metrics.Space_M;
+   CLIP_FOOTER_H : constant := CuBit.UI_Metrics.Section_Height;
    CLIP_PREVIEW_CHARS : constant := 52;
 
    function clipboardMenuRect return Rect is
@@ -6245,6 +6404,7 @@ procedure main is
    --  Deskbar state changes. Each adds what it changes to damage.
    procedure damagePanel (damage : in out Rect) is
    begin
+      panelDirty := True;
       damage := unionRect (damage, unionRect (panelShown, panelRect));
    end damagePanel;
 
@@ -6254,7 +6414,11 @@ procedure main is
          damagePanel (damage);
          damage := unionRect (damage, statusRect);
          deskbarPanelOpen := False;
-         deskbarSliderDragging := False;
+         --  A passphrase being typed goes with the panel, wiped.
+         if wifiJoin.Current = DNM.Entering_Passphrase then
+            DNM.Cancel (wifiJoin);
+         end if;
+         SP.Wipe_Passphrase;
          --  A toast still due shows again.
          damage := unionRect (damage, toastRect);
       end if;
@@ -6281,8 +6445,10 @@ procedure main is
       damage := unionRect (damage, toastRect);
       DN.Hide_Toast (notifications);
       deskbarPanelOpen := True;
-      panelFocus := Volume_Row;
-      panelFocusNote := 0;
+      panelDirty := True;
+      SP.Opened;
+      --  An open list asks for the newest scan at once.
+      scanDueMs := 0;
       --  Opening the panel shows every notification: none is unread now.
       DN.Mark_Read (notifications);
       damage := unionRect (damage, unionRect (oldStatus, statusRect));
@@ -6402,7 +6568,7 @@ procedure main is
       Bg     : constant Unsigned_32 := 16#00203648#;
       Left   : constant := 24;
       First_Row : constant := 140;
-      Row_Height : constant := 24;
+      Row_Height : constant := CuBit.UI_Metrics.Row_Height;
       Section_Gap : constant := 10;
       Kept   : constant Notes.Notes := Desktop_Bootstrap_Logs.Current;
       Y      : Natural := First_Row;
@@ -6874,6 +7040,7 @@ procedure main is
       end if;
       if deskbarPanelOpen then
          DN.Mark_Read (notifications);
+         panelDirty := True;
          scheduleRedrawRect (unionRect (panelShown, panelRect));
       end if;
       debugPrint ("desktop: notification posted id=" & Decimal (Unsigned_64 (id)) &
@@ -8499,6 +8666,45 @@ procedure main is
             if clipboardMenuOpen then
                reloadClipboardMenu;
                scheduleRedrawRect (inflateRect (clipboardMenuRect, 4));
+            end if;
+         end;
+         return;
+      end if;
+      if Desktop_Capture.Handles (request.tag.label) then
+         declare
+            Frames : Desktop_Capture.Frame_Array;
+            Changed : Boolean;
+            oldStatus : constant Rect := statusRect;
+         begin
+            statsRequests := statsRequests + 1;
+            --  Each output's newest presented target: complete, immutable
+            --  until it is acquired as a writer again (never this turn).
+            for Output in Output_Index loop
+               declare
+                  P : Output_Presentation renames presentations (Output);
+                  Slot : constant BP.Slot := lastPresented (Output);
+               begin
+                  if P.Enabled and then Slot in BP.Live_Slot and then
+                    Slot /= BP.Writer (P.Pool).Buffer and then
+                    P.Targets (Slot).Address /= System.Null_Address and then
+                    Natural (P.Geometry.Width) <= CuBit.Display_Capture.Maximum_Side and then
+                    Natural (P.Geometry.Height) <= CuBit.Display_Capture.Maximum_Side
+                  then
+                     Frames (Natural (Output)) :=
+                       (Present => True, Address => P.Targets (Slot).Address,
+                        Width => Natural (P.Geometry.Width), Height => Natural (P.Geometry.Height),
+                        Pitch => P.Pitch);
+                  elsif P.Enabled then
+                     Frames (Natural (Output)).Width := Natural'Min
+                       (Natural (P.Geometry.Width), CuBit.Display_Capture.Maximum_Side);
+                  end if;
+               end;
+            end loop;
+            Desktop_Capture.Handle (from, request, Frames, nowMs, replyMsg, Changed);
+            ignore := reply (from, replyMsg);
+            if Changed then
+               scheduleRedrawRect (unionRect (oldStatus, statusRect));
+               if deskbarPanelOpen then panelDirty := True; scheduleRedrawRect (panelRect); end if;
             end if;
          end;
          return;
@@ -10223,6 +10429,188 @@ procedure main is
       return clampWindowRect (s, r);
    end previewRectFromPointer;
 
+   --  The join's next step (defined with the panel's network actions).
+   procedure runJoinRequest (next : DNM.Request);
+
+   --  The load bars: the kernel's CPU-times page (CuBit.CPU_Times, a few
+   --  loads, no system call) at a low rate, since it has no change event.
+   --  The status button is drawn again only when a bar's filled pixels
+   --  change, the open panel only when its figures do.
+   procedure refreshLoad (now : Unsigned_64) is
+      reading : CL.Snapshot;
+      newAll : CL.Load;
+      newLoads : SP.CPU_Loads := [others => CL.Unknown];
+      newCount : Natural range 0 .. CL.CTP.Maximum_Processors;
+      used : DLB.Percent;
+      usedKnown : Boolean;
+      oldStatus : constant Rect := statusRect;
+      oldPanel : constant Rect := (if deskbarPanelOpen then panelRect else (others => 0));
+
+      use type CL.Load, SP.CPU_Loads;
+
+      function Pixels (L : CL.Load) return Integer is
+        (if L.Known then DLB.Filled (DLB.Bar_Height, L.Busy) else -1);
+   begin
+      if now = Unsigned_64'Last or else now < loadDueMs then
+         return;
+      end if;
+      loadDueMs := now + DLB.Refresh_Interval_Ms;
+      CuBit.CPU_Times.Read (reading);
+      newCount := Natural (reading.Count);
+      newAll := CL.Aggregate (cpuReading, reading);
+      for C in 0 .. newCount - 1 loop
+         newLoads (C) := CL.CPU (cpuReading.CPUs (C), reading.CPUs (C));
+      end loop;
+      cpuReading := reading;
+      usedKnown := CuBit.CPU_Times.Memory_Bytes > 0;
+      used := DLB.Used_Percent (CuBit.CPU_Times.Memory_Bytes, CuBit.CPU_Times.Free_Memory_Bytes);
+
+      if newAll.Known and then not cpuAll.Known then
+         debugPrint ("desktop: status CPU bar " & countText (newAll.Busy) & "% busy over" &
+                     Natural'Image (CL.Present (reading)) & " CPUs" & LF);
+      end if;
+      if usedKnown and then not memoryKnown then
+         debugPrint ("desktop: status memory bar " & countText (used) & "% used" & LF);
+      end if;
+      declare
+         statusChanged : constant Boolean :=
+           Pixels (newAll) /= Pixels (cpuAll) or else usedKnown /= memoryKnown
+           or else (usedKnown and then DLB.Filled (DLB.Bar_Height, used) /= DLB.Filled (DLB.Bar_Height, memoryUsed));
+         panelChanged : constant Boolean :=
+           newCount /= cpuCount or else newAll /= cpuAll or else newLoads /= cpuLoads
+           or else usedKnown /= memoryKnown or else used /= memoryUsed;
+      begin
+         cpuAll := newAll;
+         cpuLoads := newLoads;
+         cpuCount := newCount;
+         memoryKnown := usedKnown;
+         memoryUsed := used;
+         if statusChanged then
+            scheduleRedrawRect (unionRect (oldStatus, statusRect));
+         end if;
+         if panelChanged and then deskbarPanelOpen then
+            panelDirty := True;
+            scheduleRedrawRect (unionRect (oldPanel, panelRect));
+         end if;
+      end;
+   end refreshLoad;
+
+   --  The network items: watches kept submitted, reports and command
+   --  results applied as they arrive, the join's next step, the open
+   --  panel's scan refresh. Nothing here waits.
+   procedure refreshNetwork (now : Unsigned_64) is
+      wifiFresh, netFresh, have : Boolean;
+      oldStatus : constant Rect := statusRect;
+      oldPanel : constant Rect := (if deskbarPanelOpen then panelRect else (others => 0));
+      changed : Boolean := False;
+      next : DNM.Request;
+      wifiResult : NRF.Wifi_Result;
+      netResult : NRF.Net_Result;
+      w : CuBit.Wifi_Report.Report;
+      n : NMR.Report;
+   begin
+      NRF.Start (now, requestSequence);
+      NRF.Take_Net (n, have, netFresh);
+      if netFresh then
+         netReport := n;
+         netHave := have;
+         changed := True;
+         if addressEditor.Open and then editorInterface = 0 then
+            DAE.Close (addressEditor);
+         end if;
+      end if;
+      NRF.Take_Wifi (w, have, wifiFresh);
+      if wifiFresh then
+         wifiHave := have;
+         if have then
+            wifiReport := w;
+            if CuBit.Wifi_Report.Normal (w) then
+               DNM.Build_List (w, wifiNetworks, wifiNetworkCount);
+            end if;
+         else
+            wifiReport := (others => <>);
+            wifiNetworkCount := 0;
+         end if;
+         changed := True;
+      end if;
+      if (wifiFresh or else netFresh) and then wifiHave then
+         DNM.Observe (wifiJoin, wifiReport, wifiAddress, now, next);
+         runJoinRequest (next);
+      end if;
+      NRF.Take_Wifi_Result (wifiResult);
+      case wifiResult.Done is
+         when NRF.Store_Passphrase | NRF.Join =>
+            DNM.Finished (wifiJoin, (if wifiResult.Done = NRF.Join then DNM.Join else DNM.Store_Passphrase),
+                          wifiResult.Delivered, wifiResult.OK, wifiResult.Why_Not, next);
+            runJoinRequest (next);
+            changed := True;
+         when NRF.Forget | NRF.Refresh | NRF.None =>
+            null;
+      end case;
+      NRF.Take_Net_Result (netResult);
+      if netResult.Fresh then
+         DAE.Finished (addressEditor, netResult.Delivered and then netResult.OK);
+         changed := True;
+      end if;
+      declare
+         phase : constant DNM.Phase := wifiJoin.Current;
+         why : constant DNM.Failure := wifiJoin.Why;
+      begin
+         DNM.Tick (wifiJoin, now);
+         changed := changed or else phase /= wifiJoin.Current or else DNM."/=" (why, wifiJoin.Why);
+      end;
+      --  Queued steps once wifi.svc's command flight is free.
+      if NRF.Wifi_Free and then joinPending /= DNM.Nothing then
+         runJoinRequest (joinPending);
+      end if;
+      if NRF.Wifi_Free and then forgetPending then
+         forgetPending := False;
+         NRF.Forget (forgetName, requestSequence);
+      end if;
+      if deskbarPanelOpen and then DNM.Wifi_Present (wifiHave, wifiReport) and then now /= Unsigned_64'Last
+        and then now >= scanDueMs and then NRF.Wifi_Free
+      then
+         scanDueMs := now + Scan_Refresh_Ms;
+         NRF.Refresh (requestSequence);
+      end if;
+      trayDueMs := loadDueMs;
+      if deskbarPanelOpen and then DNM.Wifi_Present (wifiHave, wifiReport) and then scanDueMs < trayDueMs then
+         trayDueMs := scanDueMs;
+      end if;
+      if wifiJoin.Current = DNM.Waiting_Address and then wifiJoin.Why = DNM.None
+        and then wifiJoin.Since + DNM.Address_Wait_Ms < trayDueMs
+      then
+         trayDueMs := wifiJoin.Since + DNM.Address_Wait_Ms;
+      end if;
+      if changed then
+         scheduleRedrawRect (unionRect (oldStatus, statusRect));
+         if deskbarPanelOpen then
+            panelDirty := True;
+            scheduleRedrawRect (unionRect (oldPanel, panelRect));
+         end if;
+      end if;
+      --  One line per presence change (headless tests read it).
+      declare
+         wired : constant Presence_Note :=
+           (if not netHave then Hidden_No_Service
+            elsif DNM.Wired_Present (netHave, netReport) then Shown else Hidden_No_Adapter);
+         wifi : constant Presence_Note :=
+           (if not wifiHave then Hidden_No_Service
+            elsif DNM.Wifi_Present (wifiHave, wifiReport) then Shown else Hidden_No_Adapter);
+         function word (p : Presence_Note) return String is
+           (case p is
+              when Shown => "shown",
+              when Hidden_No_Adapter => "hidden (no adapter)",
+              when Hidden_No_Service | Not_Logged => "hidden (no service)");
+      begin
+         if wired /= wiredNoted or else wifi /= wifiNoted then
+            wiredNoted := wired;
+            wifiNoted := wifi;
+            debugPrint ("desktop: status network wired=" & word (wired) & " wifi=" & word (wifi) & LF);
+         end if;
+      end;
+   end refreshNetwork;
+
    --  The clock and volume arrive as completions (Desktop_Status_Refresh):
    --  this only applies fresh replies and submits the next reads when due.
    procedure refreshStatus is
@@ -10249,7 +10637,7 @@ procedure main is
             nextText := [digit (stamp.Hour / 10), digit (stamp.Hour mod 10), ':',
                          digit (stamp.Minute / 10), digit (stamp.Minute mod 10)];
             if not clockDateKnown or else clockDate.Day /= stamp.Day then
-               if deskbarPanelOpen then scheduleRedrawRect (panelRect); end if;
+               if deskbarPanelOpen then panelDirty := True; scheduleRedrawRect (panelRect); end if;
             end if;
             clockDate := stamp;
             clockDateKnown := True;
@@ -10264,7 +10652,7 @@ procedure main is
          if clockText /= nextText then
             clockText := nextText;
             scheduleRedrawRect (statusRect);
-            if deskbarPanelOpen then scheduleRedrawRect (panelRect); end if;
+            if deskbarPanelOpen then panelDirty := True; scheduleRedrawRect (panelRect); end if;
          end if;
       end if;
       Desktop_Status_Refresh.Take_Audio (audio, fresh);
@@ -10276,7 +10664,7 @@ procedure main is
             --  The volume item appears or goes with the mixer.
             scheduleRedrawRect (unionRect (oldStatus, statusRect));
          end;
-         if deskbarPanelOpen then scheduleRedrawRect (panelVolumeRowRect); end if;
+         if deskbarPanelOpen then panelDirty := True; scheduleRedrawRect (panelRect); end if;
       end if;
       declare
          ended : Boolean;
@@ -10284,6 +10672,15 @@ procedure main is
          DN.Expire_Toast (notifications, now, ended);
          if ended then scheduleRedrawRect (toastRect); end if;
       end;
+      declare
+         oldStatus : constant Rect := statusRect;
+         ended : Boolean;
+      begin
+         Desktop_Capture.Tick (now, ended);
+         if ended then scheduleRedrawRect (unionRect (oldStatus, statusRect)); end if;
+      end;
+      refreshLoad (now);
+      refreshNetwork (now);
       if now = Unsigned_64'Last or else now < statusDueMs then return; end if;
       statusDueMs := (if now < Unsigned_64'Last - Status_Interval_Ms
                       then now + Status_Interval_Ms else Unsigned_64'Last - 1);
@@ -10299,16 +10696,6 @@ procedure main is
       --  The mixer's reply (its resulting state) redraws the status area.
       Desktop_Status_Refresh.Set_Audio (level, muted, requestSequence);
    end setMasterAudio;
-
-   --  The volume slider's level at pointer x.
-   function sliderLevel (x : Natural) return CuBit.Audio_Control.Percent is
-      track : constant Rect := volumeTrackRect;
-   begin
-      if track.w = 0 or else track.x > DBL.Max_Coordinate or else track.w > DBL.Max_Coordinate then
-         return masterAudio.Level;
-      end if;
-      return DBL.Level_At (track.x, track.w, Natural'Min (x, DBL.Max_Coordinate));
-   end sliderLevel;
 
    procedure stepVolume (up : Boolean) is
    begin
@@ -10364,32 +10751,149 @@ procedure main is
       end if;
    end activateListRow;
 
-   --  A press inside the open panel.
-   procedure panelPress (x, y : Natural; damage : in out Rect) is
+   ---------------------------------------------------------------------------
+   --  Network actions (each submits; replies come back as completions).
+   ---------------------------------------------------------------------------
+   --  The join's next step, now or once wifi.svc's command flight is free.
+   procedure runJoinRequest (next : DNM.Request) is
    begin
-      if masterAudio.Available and then pointInRect (x, y, muteIconRect) then
-         setMasterAudio (masterAudio.Level, not masterAudio.Muted);
-      elsif masterAudio.Available and then pointInRect (x, y, volumeTrackRect) then
-         deskbarSliderDragging := True;
-         setMasterAudio (sliderLevel (x), masterAudio.Muted);
-      elsif pointInRect (x, y, quietToggleRect) then
-         DN.Set_Quiet (notifications, not DN.Quiet (notifications));
-         damagePanel (damage);
-      elsif DN.Length (notifications) > 0 and then pointInRect (x, y, panelClearRect) then
-         DN.Clear (notifications);
-         panelFocus := Volume_Row;
-         damagePanel (damage);
+      if next = DNM.Nothing then
+         return;
+      elsif next = DNM.Forget then
+         forgetPending := True;
+         forgetName := wifiJoin.Target;
+      elsif not NRF.Wifi_Free then
+         joinPending := next;
       else
-         for K in 1 .. panelNoteRows loop
-            if pointInRect (x, y, panelNoteCloseRect (K)) then
-               damagePanel (damage);
-               DN.Dismiss (notifications, DN.Item (notifications, DN.Position (K)).Id);
-               panelFocus := Volume_Row;
-               exit;
-            end if;
-         end loop;
+         joinPending := DNM.Nothing;
+         case next is
+            when DNM.Store_Passphrase => NRF.Store_Passphrase (wifiJoin.Target, SP.Passphrase.all, requestSequence);
+            when DNM.Join             => NRF.Join (wifiJoin.Target, requestSequence);
+            when DNM.Nothing | DNM.Forget => null;
+         end case;
       end if;
-   end panelPress;
+   end runJoinRequest;
+
+   procedure chooseNetwork (n : Positive) is
+      next : DNM.Request;
+   begin
+      if n <= wifiNetworkCount then
+         SP.Wipe_Passphrase;
+         DNM.Choose (wifiJoin, wifiNetworks (n), next);
+         runJoinRequest (next);
+         --  A secured network asks right under its row: type there.
+         if wifiJoin.Current = DNM.Entering_Passphrase then
+            SP.Focus_Passphrase;
+         end if;
+      end if;
+   end chooseNetwork;
+
+   procedure forgetNetwork (n : Positive) is
+   begin
+      if n <= wifiNetworkCount and then wifiNetworks (n).Remembered then
+         forgetPending := True;
+         forgetName := wifiNetworks (n).Name;
+         if DNM.Same (wifiJoin.Target, forgetName) then
+            DNM.Cancel (wifiJoin);
+         end if;
+      end if;
+   end forgetNetwork;
+
+   procedure enterPassphrase is
+      next : DNM.Request;
+   begin
+      DNM.Passphrase_Entered (wifiJoin, CuBit.UI.Editor.Length (SP.Passphrase.all), next);
+      runJoinRequest (next);
+   end enterPassphrase;
+
+   --  Open (or close) the addressing editor under interface I's row.
+   procedure toggleEditor (i : Natural) is
+   begin
+      if i = 0 or else i > netReport.Count then
+         return;
+      elsif addressEditor.Open and then editorInterface = i then
+         DAE.Close (addressEditor);
+      else
+         DAE.Open_For (addressEditor, netReport.Interfaces (i), netReport.DNS_1, netReport.DNS_2);
+         SP.Load_Fields (addressEditor);
+      end if;
+   end toggleEditor;
+
+   procedure applyEditor (revert : Boolean) is
+      submit : Boolean;
+      source : DAE.Source_Text;
+      dns1, dns2 : Unsigned_32;
+      changed : Boolean;
+      problem : DNA.Problem;
+   begin
+      if revert then
+         DAE.Start_Revert (addressEditor, submit);
+         --  The fields show what is being put back.
+         SP.Load_Fields (addressEditor);
+      else
+         DAE.Start_Apply (addressEditor, submit);
+      end if;
+      if not submit then
+         return;
+      end if;
+      DAE.Plan (addressEditor, source, dns1, dns2, changed, problem);
+      if problem = DNA.None and then source.Length > 0 and then NRF.Net_Free
+        and then addressEditor.Name.Length > 0
+      then
+         NRF.Apply (addressEditor.Name.Text (1 .. addressEditor.Name.Length), DAE.Image (source),
+                    changed, dns1, dns2, requestSequence);
+      else
+         DAE.Finished (addressEditor, False);
+      end if;
+   end applyEditor;
+
+   --  What the user did in the panel (Desktop_Status_Panel), applied to
+   --  Desktop's models; the panel is drawn again.
+   procedure applyPanelActions (acts : SP.Action_List; damage : in out Rect) is
+      oldPanel : constant Rect := panelRect;
+   begin
+      for K in 1 .. acts.Count loop
+         declare
+            A : SP.Action renames acts.Items (K);
+         begin
+            case A.Kind is
+               when SP.Set_Volume => setMasterAudio (A.Level, masterAudio.Muted);
+               when SP.Toggle_Mute => setMasterAudio (masterAudio.Level, not masterAudio.Muted);
+               when SP.Set_Quiet => DN.Set_Quiet (notifications, A.Flag);
+               when SP.Clear_Notes => DN.Clear (notifications);
+               when SP.Dismiss_Note => DN.Dismiss (notifications, A.Note);
+               when SP.Toggle_Editor => toggleEditor (A.Index);
+               when SP.Choose_Network => chooseNetwork (A.Index);
+               when SP.Forget_Network => forgetNetwork (A.Index);
+               when SP.Enter_Passphrase => enterPassphrase;
+               when SP.Cancel_Passphrase =>
+                  DNM.Cancel (wifiJoin);
+                  SP.Wipe_Passphrase;
+               when SP.Choose_Method => DAE.Choose (addressEditor, A.Method);
+               when SP.Field_Edited =>
+                  DAE.Set_Field (addressEditor, A.Field, SP.Field_Content (A.Field));
+               when SP.Apply => applyEditor (False);
+               when SP.Revert => applyEditor (True);
+               when SP.Close_Editor => DAE.Close (addressEditor);
+               when SP.Set_Capture => Desktop_Capture.Set_Allowed (A.Flag, nowMs);
+            end case;
+         end;
+      end loop;
+      damagePanel (damage);
+      damage := unionRect (damage, unionRect (oldPanel, unionRect (panelRect, statusRect)));
+   end applyPanelActions;
+
+   --  Pointer input over the open panel (a gesture that started there):
+   --  the toolkit's pass with the pointer, then its actions.
+   procedure panelPointer (x, y : Natural; down, pressed, released : Boolean; damage : in out Rect) is
+      r : constant Rect := panelRect;
+      acts : SP.Action_List;
+   begin
+      SP.Pointer ((if x > r.x then x - r.x else 0), (if y > r.y then y - r.y else 0),
+                  down, pressed, released);
+      renderPanel (acts);
+      applyPanelActions (acts, damage);
+   end panelPointer;
 
    --  A press the Deskbar owns: the status button, the open panel or
    --  window list (a press outside closes it), or the toast (opens the
@@ -10400,7 +10904,7 @@ procedure main is
          toggleDeskbarPanel (damage);
       elsif deskbarPanelOpen then
          if pointInRect (x, y, panelRect) then
-            panelPress (x, y, damage);
+            panelPointer (x, y, True, True, False, damage);
          else
             closeDeskbarPanel (damage);
          end if;
@@ -10473,71 +10977,17 @@ procedure main is
       end if;
    end leaveTaskbarFocus;
 
-   --  The panel's rows for the keyboard: volume, do not disturb, each shown
-   --  notification, then Clear all.
-   procedure movePanelFocus (forward : Boolean) is
-      notes : constant DN.Count := DN.Count (panelNoteRows);
-   begin
-      case panelFocus is
-         when Volume_Row =>
-            if forward then panelFocus := Quiet_Row; end if;
-         when Quiet_Row =>
-            if forward and then notes > 0 then
-               panelFocus := Note_Row;
-               panelFocusNote := 1;
-            elsif not forward then
-               panelFocus := Volume_Row;
-            end if;
-         when Note_Row =>
-            if forward then
-               if panelFocusNote < notes then
-                  panelFocusNote := panelFocusNote + 1;
-               else
-                  panelFocus := Clear_Row;
-               end if;
-            elsif panelFocusNote > 1 then
-               panelFocusNote := panelFocusNote - 1;
-            else
-               panelFocus := Quiet_Row;
-            end if;
-         when Clear_Row =>
-            if not forward then
-               panelFocus := (if notes > 0 then Note_Row else Quiet_Row);
-               panelFocusNote := notes;
-            end if;
-      end case;
-   end movePanelFocus;
 
    procedure panelKey (code : Unsigned_8; damage : in out Rect) is
+      acts : SP.Action_List;
+      handled : Boolean;
    begin
-      damagePanel (damage);
-      if code = KEY_ESCAPE then
+      SP.Key (code, keyChar (code), desktopShiftDown, acts, handled);
+      if handled then
+         renderPanel (acts);
+         applyPanelActions (acts, damage);
+      elsif code = KEY_ESCAPE then
          closeDeskbarPanel (damage);
-      elsif code = KEY_UP or else (code = KEY_TAB and then desktopShiftDown) then
-         movePanelFocus (False);
-      elsif code = KEY_DOWN or else code = KEY_TAB then
-         movePanelFocus (True);
-      elsif panelFocus = Volume_Row and then code in KEY_LEFT | KEY_RIGHT then
-         stepVolume (code = KEY_RIGHT);
-      elsif code in KEY_ENTER | KEY_SPACE then
-         case panelFocus is
-            when Volume_Row => setMasterAudio (masterAudio.Level, not masterAudio.Muted);
-            when Quiet_Row => DN.Set_Quiet (notifications, not DN.Quiet (notifications));
-            when Clear_Row =>
-               DN.Clear (notifications);
-               panelFocus := Volume_Row;
-            when Note_Row => null;
-         end case;
-      elsif code = KEY_DELETE and then panelFocus = Note_Row and then
-        panelFocusNote in 1 .. DN.Length (notifications)
-      then
-         DN.Dismiss (notifications, DN.Item (notifications, panelFocusNote).Id);
-         if panelFocusNote > DN.Count (panelNoteRows) then
-            panelFocusNote := DN.Count (panelNoteRows);
-         end if;
-         if panelFocusNote = 0 then
-            panelFocus := Quiet_Row;
-         end if;
       end if;
    end panelKey;
 
@@ -10626,6 +11076,7 @@ procedure main is
          end if;
          left := left + DBS.Badge_Size + DBS.Status_Item_Gap;
       end if;
+      left := left + loadBarsWidth;
       for I in DSI.Item loop
          if shown (I) then
             if x >= left and then x < left + Desktop_Icons.ICON_SIZE then
@@ -10972,11 +11423,11 @@ procedure main is
             deskbarPointerCapture := True;
             leaveTaskbarFocus (damage);
             deskbarPress (cursorX, cursorY, damage);
-         elsif deskbarSliderDragging and then leftDown then
-            setMasterAudio (sliderLevel (cursorX), masterAudio.Muted);
+         elsif deskbarPanelOpen then
+            --  A drag (the volume slider) and the release that ends it.
+            panelPointer (cursorX, cursorY, leftDown, False, not leftDown and then leftWasDown, damage);
          end if;
          if not leftDown then
-            deskbarSliderDragging := False;
             deskbarPointerCapture := False;
          end if;
          scheduleRedrawRect (damage);
@@ -11986,6 +12437,7 @@ procedure main is
       Renderer : Desktop_Compositor.Target_Release;
       Confirmed : Boolean;
    begin
+      lastPresented (Output) := 0;
       Desktop_Wallpaper_Layers.Release (Natural (Output));
       if CP.Current (P.Transfer) = CP.Prepared then
          -- No successful publication occurred. Retire only this local hold;
@@ -12160,6 +12612,19 @@ procedure main is
       if not validDisplayInfo (Info) then return; end if;
       -- Output zero retains the bounded shell-to-Desktop handoff retry.
       -- An optional output must not delay startup behind an existing owner.
+      if Desktop_Fault_Policy.Exit_After_First_Frame and then Output = 0 and then
+        not faultChecked
+      then
+         --  Test only: an earlier owner still holds the lease when this
+         --  desktop is the restart of one that ended.
+         faultChecked := True;
+         Response := callDisplay (OP_DISPLAY_GET_STATUS, Output => Output);
+         tookOverDisplay := Response.tag.label = OP_DISPLAY_GET_STATUS and then
+           Response.tag.length = 4 and then Response.words (2) /= 0;
+         if tookOverDisplay then
+            debugPrint ("DESKTOP-TEST-FAULT: restarted; taking the display over" & LF);
+         end if;
+      end if;
       for Attempt in 1 .. (if Output = 0 and then Wait_For_Owner then 100 else 1) loop
          Response := callDisplay (OP_DISPLAY_ACQUIRE, Output => Output);
          exit when Response.tag.label = OP_DISPLAY_ACQUIRE and then
@@ -13531,6 +13996,7 @@ begin
               nextInputDeadline = 0 and then statusDueMs = 0 and then
               Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) = Unsigned_64'Last and then
               DN.Toast_Due (notifications) = DN.Never and then
+              not Desktop_Capture.Marked and then
               TTP.Next_Deadline (tipState) = TTP.NEVER and then
               modeTrial.Current = Desktop_Mode_Trial.Idle and then
               not KR.Armed (keyRepeat) and then
@@ -13552,6 +14018,11 @@ begin
                   if statusDueMs /= 0 and then
                     (nextDueMs = 0 or else statusDueMs < nextDueMs)
                   then nextDueMs := statusDueMs; end if;
+                  --  The memory bar, the open panel's scan refresh and a
+                  --  join's address wait (refreshNetwork).
+                  if trayDueMs /= 0 and then
+                    (nextDueMs = 0 or else trayDueMs < nextDueMs)
+                  then nextDueMs := trayDueMs; end if;
                   declare
                      secretDue : constant Unsigned_64 :=
                        Desktop_Clipboard.Next_Deadline (Unsigned_64'Last);
@@ -13564,6 +14035,10 @@ begin
                   if DN.Toast_Due (notifications) /= DN.Never and then
                     (nextDueMs = 0 or else DN.Toast_Due (notifications) < nextDueMs)
                   then nextDueMs := DN.Toast_Due (notifications); end if;
+                  --  The "screen captured" mark's end (Desktop_Capture).
+                  if Desktop_Capture.Marked and then
+                    (nextDueMs = 0 or else Desktop_Capture.Mark_End < nextDueMs)
+                  then nextDueMs := Desktop_Capture.Mark_End; end if;
                   --  A tooltip's delay (Client_Tooltip_Policy; GETTIME ms).
                   if TTP.Next_Deadline (tipState) /= TTP.NEVER and then
                     (nextDueMs = 0 or else TTP.Next_Deadline (tipState) < nextDueMs)

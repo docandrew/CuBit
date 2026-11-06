@@ -19,6 +19,13 @@ package Intel_GPU_Buffer_Requests is
    Denied : constant Unsigned_64 := 1;
    Bad_Request : constant Unsigned_64 := 2;
    Unavailable : constant Unsigned_64 := 3;
+   --  A live VM update refused before any change: a named ceiling, the
+   --  session's byte budget or its allocation records cannot take the new
+   --  page tables (Intel_GPU_VM_Refusals). The VM, its generation and every
+   --  reservation are as before; the client fails only that binding and
+   --  keeps its session. 4 is the client libraries' own invalid-transport
+   --  code, so the wire value is 5.
+   Capacity : constant Unsigned_64 := 5;
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
    type Service is limited private;
    Accounting_Label : constant Unsigned_32 := 16#0A30#;

@@ -7,5 +7,6 @@
   (start "logstore.svc" (priority 5))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
+  # BUG-001: a desktop that fails is started again (procmgr, growing delay).
+  (start "desktop.svc" (priority 4) (restart on-failure))
 )

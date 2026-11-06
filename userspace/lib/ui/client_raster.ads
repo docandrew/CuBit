@@ -46,8 +46,8 @@ package Client_Raster with Pure, SPARK_Mode is
                      (if Inside (I, Pitch, R) then Target (I) = Value else Target (I) = Target'Old (I)));
 
    --  A bitmap glyph's coverage (CuBit.Fonts.Coverage's shape).
-   MASK_ROWS : constant := 36;
-   MASK_COLUMNS : constant := 32;
+   MASK_ROWS : constant := 44;      --  CuBit.UI_Metrics.Glyph_Cell_Rows
+   MASK_COLUMNS : constant := 40;   --  CuBit.UI_Metrics.Glyph_Cell_Columns
    subtype Mask_Row is Natural range 0 .. MASK_ROWS - 1;
    subtype Mask_Column is Natural range 0 .. MASK_COLUMNS - 1;
    type Mask is array (Mask_Row, Mask_Column) of Byte;

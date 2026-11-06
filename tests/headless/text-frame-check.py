@@ -11,7 +11,7 @@ import sys
 CURRENT_LINE = (0xFF, 0xF9, 0xE0)   # Alloy light current-line tint (Text_Editors palette)
 COLUMNS = range(320, 900)           # right of the text, inside Text's window
 MIN_SHARE = 0.9                     # a tinted pixel row: most of these columns
-BAND_HEIGHT = range(15, 22)         # one text row (19 pixels, the glyph rows within)
+BAND_HEIGHT = range(19, 26)         # one text row (Text_Editors.ROW_HEIGHT: 23 pixels at the 16 px em)
 
 
 def read_ppm(path):

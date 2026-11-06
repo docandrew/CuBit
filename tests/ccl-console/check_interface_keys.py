@@ -24,6 +24,7 @@ CHECKS = [
     (SRC / 'ccl-interfaces-images.ads',
      {'DIGEST': None, 'IMAGE_KEY': 'Image', 'SIZE_KEY': 'Size', 'SERIES_KEY': 'List-Integer',
       'GRID_KEY': 'Grid', 'IMAGES_KEY': 'List-Image', 'SCALED_KEY': 'Scaled'}),
+    (SRC / 'ccl-interfaces-display.ads', {'DIGEST': None, 'AREA_KEY': 'Capture_Area'}),
     (SRC / 'ccl-interfaces-logs.ads',
      {'DIGEST': None, 'SCHEMA_KEY': 'List-LogEntry', 'SEVERITY_KEY': 'Severity'}),
     (SRC / 'ccl-interfaces-lexicon.ads',
