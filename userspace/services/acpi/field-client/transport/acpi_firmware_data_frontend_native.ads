@@ -15,6 +15,8 @@ package ACPI_Firmware_Data_Frontend_Native is
    procedure Exchange (Connection : in out Channel; Deadline : IPC.Time_Instant;
       Request : IPC.Packet; Reply : out IPC.Packet;
       Received : out CuBit.Handles.IPC.Carried; Delivered : out IPC.Delivery);
+   -- Process-local bounded transport facts; no authority or replay evidence.
+   function Diagnostic_Line (Ordinal : Positive) return String;
    function Present (Item : CuBit.Handles.IPC.Carried) return Boolean;
    procedure Dispose (Item : in out CuBit.Handles.IPC.Carried; Closed : out Boolean);
 private

@@ -288,7 +288,8 @@ begin
         (not Stop_Requested and then not Loop_Failed and then not Lock_Requests.Closing (Lock_State)
          and then not Catalog.Observe (Hardware).Quarantined);
       package Firmware_Data is new ACPI_Native_Firmware_Backend
-        (CuBit.Handles.IPC.Close,Data_Lease.Check,Data_Caller,Data_Admission,Kernel_Map_Page_Limit);
+        (CuBit.Handles.IPC.Close,Data_Lease.Check,Data_Caller,Data_Admission,Kernel_Map_Page_Limit,
+         Allow_Writes => False);
 
       use type Lock_Owner.Outcome, FACS.Outcome, Signaling.Outcome, Signaling.Bank, Catalog.W.Window_ID;
       function Unique_Window

@@ -1,0 +1,9 @@
+{
+  "label": "QEMU 11.1.0 q35 reference table",
+  "source": "https://gitlab.com/qemu-project/qemu/-/raw/v11.1.0/tests/data/acpi/x86/q35/MCFG",
+  "provided_file": "/home/doc/cubit-build-tmp/qemu-11.1.0-q35-MCFG/MCFG",
+  "bytes": 60,
+  "sha256": "5274632ea7572e49d97249c05ada4b2f597ad0603ba801538ddef4bd91add994",
+  "kind": "bios-tables-test expected-table blob; not captured from a CuBit run",
+  "live_capture_pending": true
+}

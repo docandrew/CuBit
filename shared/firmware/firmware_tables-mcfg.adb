@@ -7,6 +7,26 @@ package body Firmware_Tables.MCFG with SPARK_Mode is
    First_Bus_Offset : constant := 10;
    Last_Bus_Offset : constant := 11;
    Reserved_Offset : constant := 12;
+   Word_Width : constant := 2;
+   DWord_Width : constant := 4;
+   function Read_Word (Data : Bytes; Offset : Natural) return Unsigned_16
+     with Pre => Data'Length >= Word_Width
+       and then Offset <= Data'Length - Word_Width
+   is
+   begin
+      return Unsigned_16 (Data (Data'First + Offset)) or
+        Shift_Left (Unsigned_16 (Data (Data'First + Offset + 1)), Bits_Per_Byte);
+   end Read_Word;
+   function Read_DWord (Data : Bytes; Offset : Natural) return Unsigned_32
+     with Pre => Data'Length >= DWord_Width
+       and then Offset <= Data'Length - DWord_Width
+   is
+   begin
+      return Unsigned_32 (Data (Data'First + Offset)) or
+      Shift_Left (Unsigned_32 (Data (Data'First + Offset + 1)), Bits_Per_Byte) or
+      Shift_Left (Unsigned_32 (Data (Data'First + Offset + 2)), 2 * Bits_Per_Byte) or
+      Shift_Left (Unsigned_32 (Data (Data'First + Offset + 3)), 3 * Bits_Per_Byte);
+   end Read_DWord;
    function Read_LE (Data : Bytes; Offset : Natural; Width : Positive)
      return Unsigned_64
      with Pre => Width <= 8 and then Data'Length >= Width
@@ -45,10 +65,10 @@ package body Firmware_Tables.MCFG with SPARK_Mode is
       begin
          return (Valid => True, Value =>
            (Base => Read_LE (Data, Offset + Base_Offset, 8),
-            Segment => Unsigned_16 (Read_LE (Data, Offset + Segment_Offset, 2)),
+            Segment => Read_Word (Data, Offset + Segment_Offset),
             First_Bus => Data (Data'First + Offset + First_Bus_Offset),
             Last_Bus => Data (Data'First + Offset + Last_Bus_Offset),
-            Reserved => Unsigned_32 (Read_LE (Data, Offset + Reserved_Offset, 4))));
+            Reserved => Read_DWord (Data, Offset + Reserved_Offset)));
       end;
    end Read_Allocation;
 end Firmware_Tables.MCFG;

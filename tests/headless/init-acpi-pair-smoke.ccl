@@ -7,7 +7,7 @@
 (startup v1
   (start "logstore.svc" (priority 5))
   (start "acpi-backend.svc" (priority 4)
-    (firmware-snapshot approve-declared) (acpi-hardware approve-declared))
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (acpi-firmware-data approve-declared))
   (start "acpi.svc" (priority 3)
     (firmware-snapshot approve-declared) (acpi-registers approve-declared))
   (start "acpi-metrics-check.app" (priority 2))

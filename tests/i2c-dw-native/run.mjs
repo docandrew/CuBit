@@ -7,6 +7,9 @@ const mode=process.argv[2],output=process.argv[3];
 if(!['tests','semantic'].includes(mode)||!path.isAbsolute(output??'')||process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Need tests|semantic, absolute private output and pinned environment');
 const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const inventory=JSON.parse(fs.readFileSync(here+'/sources.json')),pins={};
+for(const [relative,expected]of Object.entries(inventory.native_context??{})){
+ const p=root+'/'+relative;if(fs.realpathSync(p)!==p||sha(p)!==expected)throw Error('Native context drift '+relative);pins[p]=expected;
+}
 for(const [relative,expected]of Object.entries(inventory.production)){
  const p=root+'/'+relative;if(fs.realpathSync(p)!==p||sha(p)!==expected)throw Error('Production drift '+relative);pins[p]=expected;
 }

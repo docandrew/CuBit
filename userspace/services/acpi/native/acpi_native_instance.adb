@@ -28,6 +28,9 @@ with ACPI_Unprovisioned_Regions;
 with AML_Execute;
 with ACPI_Native_Evaluation;
 with ACPI_Native_Fields;
+with ACPI_Native_Data;
+with ACPI_Capacity_Diagnostics;
+with AML_Field_Access;
 with ACPI_Native_Snapshot_Load.With_Driver;
 with CuBit.Handles.Startup;
 with CuBit.Monotonic;
@@ -37,6 +40,33 @@ package body ACPI_Native_Instance is
    use type ACPI_Native_Server.Stop_Reason;
    use type L.State_Access;
    use type L.R.Tick;
+   Maximum_Diagnostic_Records : constant Positive := 8;
+   -- Failure-only passive snapshot. No cleanup, retry, clock or authority.
+   procedure Report_Firmware_Session is
+      Ready, Pending : Boolean := False;
+      Observation : AML_Field_Access.Observation := AML_Field_Access.No_Observation;
+      Capacity : ACPI_Capacity_Diagnostics.Report := ACPI_Capacity_Diagnostics.No_Report;
+      function Bit (Value : Boolean) return String is (if Value then "1" else "0");
+   begin
+      ACPI_Native_Data.Session.Inspect (Ready, Pending, Observation, Capacity);
+      ACPI_Native_Log.Warning
+        ("acpi: stage firmware-session fail SNAPSHOT ready=" & Bit (Ready) &
+         " pending=" & Bit (Pending) & " uncertain=" & Bit (Observation.Present) &
+         " capacity=" & Bit (ACPI_Capacity_Diagnostics.Present (Capacity)));
+      ACPI_Native_Log.Warning ("acpi: stage firmware-state fail " & ACPI_Native_Data.Session.Diagnostic_Summary);
+      for I in 1 .. Maximum_Diagnostic_Records loop
+         declare Line : constant String := ACPI_Native_Data.Session.Diagnostic_Line (I); begin
+            if Line'Length /= 0 then ACPI_Native_Log.Warning ("acpi: stage firmware-client fail " & Line); end if;
+         end;
+         declare Line : constant String := ACPI_Native_Data.Native.Diagnostic_Line (I); begin
+            if Line'Length /= 0 then ACPI_Native_Log.Warning ("acpi: stage firmware-rpc fail " & Line); end if;
+         end;
+      end loop;
+      if ACPI_Capacity_Diagnostics.Present (Capacity) then
+         ACPI_Native_Log.Warning
+           ("acpi: stage firmware-capacity fail " & ACPI_Capacity_Diagnostics.Format (Capacity));
+      end if;
+   end Report_Firmware_Session;
    -- Native monotonic samples and snapshot deadlines are microseconds.
    Startup_Timeout_Microseconds : constant L.R.Tick := 10_000_000;
    -- Separate absolute deadlines: snapshot/delays use microseconds; register
@@ -230,6 +260,7 @@ package body ACPI_Native_Instance is
             " copy=" & Name (Result.Startup.Copy.Status));
          if Result.Startup.Status = L.Startup_Refused then
             if Result.Startup.Completion.Execution.Modules.Field_Failure.Present then
+               Report_Firmware_Session;
                ACPI_Native_Log.Warning
                  (ACPI_Startup_Diagnostics.Format_Field_Failure
                     (Result.Startup.Completion, ACPI_Native_Fields.Observe.Capacity) & " " &

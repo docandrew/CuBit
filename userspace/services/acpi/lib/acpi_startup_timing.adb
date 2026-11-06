@@ -14,7 +14,8 @@ package body ACPI_Startup_Timing with SPARK_Mode is
       when Scalar_Read => "SCALAR_READ",when Scalar_Write => "SCALAR_WRITE",
       when Lock_Acquire => "LOCK_ACQUIRE",when Lock_Release => "LOCK_RELEASE",when Lock_Other => "LOCK_OTHER",
       when Scoped_Select => "SCOPED_SELECT",when Scoped_Read => "SCOPED_READ",when Scoped_Query => "SCOPED_QUERY",
-      when Other_RPC => "OTHER_RPC",when AML_Sleep => "AML_SLEEP",when AML_Stall => "AML_STALL");
+      when Other_RPC => "OTHER_RPC",when AML_Sleep => "AML_SLEEP",when AML_Stall => "AML_STALL",
+      when Firmware_Data_RPC => "FIRMWARE_DATA");
    function Classify (Label : Interfaces.Unsigned_32) return Kind is
       package I renames ACPI_Inventory_Protocol; package R renames ACPI_Region_Protocol;
       package N renames ACPI_NVS_Protocol; package C renames ACPI_PCI_Protocol;

@@ -22,7 +22,14 @@ function rooted(relative) {
   return p;
 }
 const pins={[catalogPath]:sha(catalogPath)}, files=[], names=new Set();
+const allowedKinds=new Set(['production','runtime-pure','test','generated','model','test-dependency']);
+for(const entry of catalog.native_context_inputs??[]) {
+  if(entry.kind!=='native-context') throw Error('Invalid context classification');
+  const p=rooted(entry.path);if(sha(p)!==entry.sha256) throw Error('Native context baseline changed: '+entry.path);
+  pins[p]=entry.sha256;
+}
 for(const entry of catalog.inputs) {
+  if(!allowedKinds.has(entry.kind)) throw Error('Unclassified selected source '+entry.path);
   const p=rooted(entry.path), name=path.basename(p);
   if(!/\.ad[bs]$/.test(name) || names.has(name)) throw Error('Invalid/duplicate Ada source '+name);
   names.add(name);

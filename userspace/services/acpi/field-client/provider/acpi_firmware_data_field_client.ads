@@ -37,6 +37,17 @@ package ACPI_Firmware_Data_Field_Client is
       Demand, Capacity, Requested_Bytes : Word := 0;
    end record;
    function Observe_Capacity (Owner : Context) return Capacity_Report;
+   -- Passive evidence from the most recent actual publication RPC. It is
+   -- retained through cleanup; a local precondition/cache hit does not invent
+   -- an exchange. Transport failure and validated backend refusal are distinct.
+   type Publication_Diagnostic is record
+      Present : Boolean := False;
+      Transport : RPC.Outcome := RPC.Invalid_Request;
+      Has_Remote : Boolean := False;
+      Remote : P.Outcome := P.Invalid_Request;
+      Deadline : IPC.Time_Instant := 0;
+   end record;
+   function Observe_Publication (Owner : Context) return Publication_Diagnostic;
    procedure Publish (Owner : in out Context; Region : F.L.Region;
       Deadline : IPC.Time_Instant; Reply : out Result);
    -- The immutable deadline is supplied by the enclosing Field owner. A
@@ -93,5 +104,6 @@ private
       Expected : P.Effect_Kind := P.No_Effect;
       Width : F.T.Access_Width := F.T.Qword_Access;
       Capacity : Capacity_Report;
+      Publication : Publication_Diagnostic;
    end record;
 end ACPI_Firmware_Data_Field_Client;

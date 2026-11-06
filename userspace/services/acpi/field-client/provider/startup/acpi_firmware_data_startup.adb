@@ -12,33 +12,97 @@ package body ACPI_Firmware_Data_Startup is
    function Session_Pending (IO : Client.Context) return Boolean is
       R : constant Client.Statistics := Client.Observe (IO);
    begin return R.Working or else R.Failed or else (R.Depth = 0 and then R.Cleanup_Due); end Session_Pending;
+   Maximum_Diagnostic_Records : constant Positive := 8;
+   subtype Diagnostic_Index is Positive range 1 .. Maximum_Diagnostic_Records;
+   type Diagnostic_Operation is (Publishing_Data, Opening_Data, Accessing_Data, Closing_Data, Cleaning_Data);
+   type Diagnostic_Record is record
+      Operation : Diagnostic_Operation := Publishing_Data;
+      Result : Client.Outcome := Client.Not_Ready;
+      Record_ID, Offset, Value : F.Word := 0;
+      Depth : Natural := 0;
+      Failed, Cleanup_Due : Boolean := False;
+   end record;
+   Trace : array (Diagnostic_Index) of Diagnostic_Record;
+   Next_Record : Diagnostic_Index := Diagnostic_Index'First;
+   Recorded : Natural range 0 .. Maximum_Diagnostic_Records := 0;
+   First_Failure : Diagnostic_Record;
+   Have_Failure : Boolean := False;
+   function Bit (Value : Boolean) return String is (if Value then "1" else "0");
+   function Name (Value : Diagnostic_Operation) return String is
+     (case Value is when Publishing_Data => "PUBLISH",when Opening_Data => "BEGIN",
+      when Accessing_Data => "DATUM",when Closing_Data => "END",when Cleaning_Data => "CLEANUP");
+   function Name (Value : Client.Outcome) return String is
+     (case Value is when Client.Ready => "READY",when Client.Completed => "COMPLETED",
+      when Client.Denied => "DENIED",when Client.Invalid_Request => "INVALID_REQUEST",
+      when Client.Not_Ready => "NOT_READY",when Client.Allocation_Refused => "ALLOCATION_REFUSED",
+      when Client.Exhausted => "EXHAUSTED",when Client.Pending => "PENDING",when Client.Failed => "FAILED",
+      when Client.Closed => "CLOSED",when Client.Reentered => "REENTERED");
+   procedure Remember (Operation : Diagnostic_Operation; IO : Client.Context;
+      Result : Client.Result; Record_ID : F.Identifier := F.No_ID; Offset : F.Word := 0) is
+      Stats : constant Client.Statistics := Client.Observe (IO);
+      Item : constant Diagnostic_Record := (Operation,Result.Status,F.Word (Record_ID),Offset,Result.Value,
+         Stats.Depth,Stats.Failed,Stats.Cleanup_Due);
+   begin
+      Trace (Next_Record) := Item;
+      if Next_Record = Diagnostic_Index'Last then Next_Record := Diagnostic_Index'First;
+      else Next_Record := Next_Record+1; end if;
+      if Recorded < Maximum_Diagnostic_Records then Recorded := Recorded+1; end if;
+      if not Have_Failure and then Result.Status not in Client.Ready | Client.Completed | Client.Closed then
+         First_Failure := Item; Have_Failure := True;
+      end if;
+   end Remember;
+   Publication : Client.Publication_Diagnostic;
+   function Publication_Summary return String is
+      (" publish-attempt=" & Bit (Publication.Present) &
+       " publish-transport=" & (if Publication.Present then Publication.Transport'Image else "NONE") &
+       " publish-wire=" & (if Publication.Has_Remote then Publication.Remote'Image else "NONE") &
+       " publish-until-ms=" & Publication.Deadline'Image);
+   function Diagnostic_Summary return String is
+     ("initialized=" & Bit (Initialized) & " stopped=" & Bit (Stopped) &
+      " clock-broken=" & Bit (Clock_Broken) & " working=" & Bit (Working) &
+      " provider-ready=" & Bit (Provider.Ready (Owner)) & " provider-pending=" & Bit (Provider.Pending (Owner)) &
+      " startup-until-ms=" & Startup_Until'Image & " retained-clock-ms=" & Last_Clock'Image &
+      " first-failure=" & (if Have_Failure then Name (First_Failure.Operation) & ":" & Name (First_Failure.Result) else "NONE") & Publication_Summary);
+   function Diagnostic_Line (Ordinal : Positive) return String is
+      Index : Diagnostic_Index;
+   begin
+      if Ordinal > Recorded then return ""; end if;
+      Index := Diagnostic_Index (((Natural (Next_Record)-1+Maximum_Diagnostic_Records-Recorded+Ordinal-1)
+         mod Maximum_Diagnostic_Records)+1);
+      declare Item : constant Diagnostic_Record := Trace (Index); begin
+         return "op=" & Name (Item.Operation) & " result=" & Name (Item.Result) &
+           " record=" & Item.Record_ID'Image & " offset=" & Item.Offset'Image &
+           " value=" & Item.Value'Image & " depth=" & Item.Depth'Image &
+           " failed=" & Bit (Item.Failed) & " cleanup=" & Bit (Item.Cleanup_Due);
+      end;
+   end Diagnostic_Line;
    procedure Publish (IO : in out Client.Context; Region : F.L.Region; Deadline : IPC.Time_Instant;
       Record_ID : out F.Identifier; Status : out A.Completion) is
       R : Client.Result;
    begin
-      Client.Publish (IO,Region,Deadline,R); Record_ID := R.ID;
+      Client.Publish (IO,Region,Deadline,R); Publication := Client.Observe_Publication (IO); Remember (Publishing_Data,IO,R,R.ID); Record_ID := R.ID;
       Status := (case R.Status is when Client.Ready => A.Completed,
          when Client.Pending => A.Indeterminate, when others => A.Denied);
    end Publish;
    procedure Begin_Data (IO : in out Client.Context; Requires_Lock : Boolean;
       Deadline : IPC.Time_Instant; Domain, Sequence : F.Word; Accepted : out Boolean) is
       R : Client.Result;
-   begin Client.Begin_Field (IO,Requires_Lock,Deadline,Domain,Sequence,R); Accepted := R.Status = Client.Ready; end Begin_Data;
+   begin Client.Begin_Field (IO,Requires_Lock,Deadline,Domain,Sequence,R); Remember (Opening_Data,IO,R); Accepted := R.Status = Client.Ready; end Begin_Data;
    procedure Datum (IO : in out Client.Context; Record_ID : F.Identifier; Offset : F.Word;
       Width : F.T.Access_Width; For_Write : Boolean; Input : F.Word;
       Value : out F.Word; Status : out A.Completion) is
       R : Client.Result;
    begin
-      Client.Access_Datum (IO,Record_ID,Offset,Width,For_Write,Input,R); Value := R.Value;
+      Client.Access_Datum (IO,Record_ID,Offset,Width,For_Write,Input,R); Remember (Accessing_Data,IO,R,Record_ID,Offset); Value := R.Value;
       Status := (case R.Status is when Client.Completed => A.Completed,
          when Client.Pending => A.Indeterminate, when others => A.Denied);
    end Datum;
    procedure End_Data (IO : in out Client.Context; Deadline : IPC.Time_Instant; Accepted : out Boolean) is
       R : Client.Result;
-   begin Client.End_Field (IO,Deadline,R); Accepted := R.Status = Client.Closed; end End_Data;
+   begin Client.End_Field (IO,Deadline,R); Remember (Closing_Data,IO,R); Accepted := R.Status = Client.Closed; end End_Data;
    procedure Stop_Data (IO : in out Client.Context; Deadline : IPC.Time_Instant; Accepted : out Boolean) is
       R : Client.Result;
-   begin Client.Cleanup (IO,Deadline,R); Accepted := R.Status = Client.Closed; end Stop_Data;
+   begin Client.Cleanup (IO,Deadline,R); Remember (Cleaning_Data,IO,R); Accepted := R.Status = Client.Closed; end Stop_Data;
    procedure Publication_Deadline (Deadline : out IPC.Time_Instant) is
    begin
       Deadline := (if Initialized and then Working and then Phase = Resolving

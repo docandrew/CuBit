@@ -8,7 +8,7 @@ package ACPI_Startup_Timing with Pure, SPARK_Mode is
       Inventory_Header, Inventory_Part, NVS_Header, NVS_Describe, NVS_Read,
       PCI_Header, PCI_Describe, PCI_Read, Scalar_Read, Scalar_Write,
       Lock_Acquire, Lock_Release, Lock_Other, Scoped_Select, Scoped_Read,
-      Scoped_Query, Other_RPC, AML_Sleep, AML_Stall);
+      Scoped_Query, Other_RPC, AML_Sleep, AML_Stall, Firmware_Data_RPC);
    function Name (Item : Kind) return String;
    function External (Item : Kind) return Boolean is (Item >= Inventory_Header);
    type Counters is record

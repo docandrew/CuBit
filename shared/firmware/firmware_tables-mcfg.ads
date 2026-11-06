@@ -33,7 +33,11 @@ package Firmware_Tables.MCFG with SPARK_Mode, Pure is
    -- arrays are structurally representable. Revision/reserved bits, zero or
    -- unaligned bases, and reversed/overlapping bus ranges are retained: they
    -- require separate compatibility/resource policy before any hardware use.
-   function Decode (Data : Bytes) return Table_Metadata;
+   function Decode (Data : Bytes) return Table_Metadata
+     with Post => (if Decode'Result.Valid then
+       Data'Length >= Fixed_Size
+       and then (Data'Length - Fixed_Size) mod Allocation_Size = 0
+       and then Decode'Result.Count = (Data'Length - Fixed_Size) / Allocation_Size);
    -- Revalidates supplied bytes; no descriptor can authorize another buffer.
    -- Zero and out-of-range indices fail without returning an allocation.
    function Read_Allocation (Data : Bytes; Index : Natural)

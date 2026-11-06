@@ -8,7 +8,7 @@ package body ACPI_Field_Protocol_Frames with SPARK_Mode is
    package C renames ACPI_PCI_Protocol;
    package G renames ACPI_Global_Lock_Protocol;
    package D renames ACPI_Locked_NVS_Protocol;
-   use type Interfaces.Unsigned_32, D.Reply_Kind;
+   use type D.Reply_Kind;
    function Owned_Label (Label : Interfaces.Unsigned_32) return Boolean is
      (Label in N.Header_Operation | N.Describe_Operation | N.Read_Operation
       or else G.Owned_Label (Label) or else D.Owned_Label (Label) or else C.Owned_Label (Label));

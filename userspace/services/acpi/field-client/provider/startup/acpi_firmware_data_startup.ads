@@ -41,6 +41,9 @@ package ACPI_Firmware_Data_Startup is
       Ticket : ACPI_Global_Lock_Protocol.Ticket; Accepted : in out Boolean);
    procedure End_Field (Accepted : in out Boolean);
    procedure Cleanup (Accepted : in out Boolean);
+   -- Passive copied diagnostic text only; no clock/RPC/cleanup or policy use.
+   function Diagnostic_Summary return String;
+   function Diagnostic_Line (Ordinal : Positive) return String;
    function Completed_Fault return A.Observation;
 private
    Connection : Channel;

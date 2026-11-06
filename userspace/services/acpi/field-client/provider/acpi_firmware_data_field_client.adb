@@ -4,6 +4,8 @@ package body ACPI_Firmware_Data_Field_Client is
    use type Word, Identifier, IPC.Time_Instant, F.T.Access_Width, F.L.Region, F.Operation;
    use type P.Outcome, P.Effect_Kind, RPC.Outcome;
    use type Regions.Outcome, Frames.Outcome, Descriptors.Outcome;
+   function Observe_Publication (Owner : Context) return Publication_Diagnostic is
+      (Owner.Publication);
    function Observe_Capacity (Owner : Context) return Capacity_Report is (Owner.Capacity);
    function Has_Frames (Owner : Context) return Boolean is
    begin
@@ -68,6 +70,10 @@ package body ACPI_Firmware_Data_Field_Client is
          Reply.Status := Allocation_Refused; Owner.Working := False; return;
       end if;
       Invoke (Owner,(F.Publish,Item.Client,Region,Deadline),P.No_Effect,F.T.Qword_Access,Deadline,Answer);
+      Owner.Publication := (Present => True, Transport => Answer.Status,
+         Has_Remote => Answer.Reply.Valid,
+         Remote => (if Answer.Reply.Valid then Answer.Reply.Item.Status else P.Invalid_Request),
+         Deadline => Deadline);
       if Answer.Status = RPC.Completed and then Answer.Reply.Item.Status = P.Ready then
          Item.Server := Identifier (Answer.Reply.Item.Value); Item.Stage := Published;
          Reply := (Ready,Item.Server,0);
