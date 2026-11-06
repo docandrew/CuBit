@@ -1,0 +1,8 @@
+# Headless trap-flag test: trap-flag-check sets RFLAGS.TF and executes
+# SYSCALL; the kernel must mask TF on entry, survive, and kill the process
+# for the user-mode single-step trap that follows SYSRET.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "trap-flag-check.app" (priority 5))
+)

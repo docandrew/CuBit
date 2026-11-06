@@ -19,6 +19,7 @@ with TextIO; use TextIO;
 with Time;
 with Scheduler_Timing;
 with x86;
+with ACPI;
 
 -- MMIO register overlays, IPI delivery and bootstrap hardware sequencing.
 package body Lapic
@@ -169,6 +170,11 @@ is
     -- LVT masking, bit 16
     ---------------------------------------------------------------------------
     LVT_MASKED          : constant Unsigned_32 := 16#0001_0000#;
+    -- LINT0/LINT1: delivery mode NMI (bits 8-10 = 100b) and input pin
+    -- polarity, bit 13 (set: active low). NMI delivery is always edge
+    -- triggered (bit 15 must stay clear).
+    LVT_DELIVERY_NMI    : constant Unsigned_32 := 16#0000_0400#;
+    LVT_ACTIVE_LOW      : constant Unsigned_32 := 16#0000_2000#;
 
     ---------------------------------------------------------------------------
     -- Values for the LVT Timer Register (lvtTimer), bits 17-18
@@ -425,9 +431,24 @@ is
                 (if Build.OneShot_Scheduling then Scheduler_Timing.OneShot_Ticks_Per_Millisecond
                  else Scheduler_Timing.Ticks_Per_Millisecond)));
 
-        -- Disable LINT0, LINT1
+        -- Disable LINT0, LINT1, then wire the MADT's local APIC NMI input
+        -- (usually LINT1) for NMI delivery, so platform NMIs reach the
+        -- kernel instead of being masked away.
         write(lvtLINT0, Unsigned_32(lvtLINT0) or LVT_MASKED);
         write(lvtLINT1, Unsigned_32(lvtLINT1) or LVT_MASKED);
+        if ACPI.lapicNMIPresent then
+            declare
+                nmiLVT : constant Unsigned_32 := LVT_DELIVERY_NMI or
+                    (if ACPI.lapicNMIFlags.polarity = ACPI.MPS_INTI_POLARITY_ACTIVE_LOW
+                     then LVT_ACTIVE_LOW else 0);
+            begin
+                if ACPI.lapicNMILINT = 0 then
+                    write(lvtLINT0, nmiLVT);
+                else
+                    write(lvtLINT1, nmiLVT);
+                end if;
+            end;
+        end if;
 
         -- clear error status reg
         write(esr, 0);

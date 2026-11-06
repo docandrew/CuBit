@@ -176,11 +176,35 @@ is
     -- what the CPU was doing when the exception fired.
     --
     -- IST 1 = NMI, IST 2 = Double Fault, IST 3 = Machine Check
+    --
+    -- These exceptions can arrive anywhere, including the instructions
+    -- between SYSCALL and SWAPGS or between SWAPGS and SYSRET, where the
+    -- saved CS no longer says which GS base is live (and user code sets its
+    -- own GS base with WRGSBASE). Their entry stubs therefore never guess:
+    -- they save the live GS base, load this CPU's from the slot at the top of
+    -- the IST stack, and restore the saved value exactly on return. Each
+    -- stack is aligned to its own size, so the stub finds the slot from RSP
+    -- alone. IST_STACK_SIZE and IST_CPU_DATA_OFFSET must match cubit.inc.
     ---------------------------------------------------------------------------
-    IST_STACK_SIZE : constant := 4096;  -- 4 KiB per IST stack
+    IST_STACK_SIZE      : constant := 4096;  -- 4 KiB per IST stack
+    IST_SLOT_BYTES      : constant := 16;    -- keeps the frame top 16-aligned
+    IST_FRAME_BYTES     : constant := IST_STACK_SIZE - IST_SLOT_BYTES;
+    IST_CPU_DATA_OFFSET : constant := IST_FRAME_BYTES;
 
-    type ISTStack is array (1..IST_STACK_SIZE) of Interfaces.Unsigned_8
-        with Alignment => 16;
+    type ISTFrames is array (1 .. IST_FRAME_BYTES) of Interfaces.Unsigned_8;
+
+    type ISTStack is record
+        frames      : ISTFrames;              -- exception frames grow down
+        cpuDataAddr : Interfaces.Unsigned_64; -- this CPU's PerCPUData
+        reserved    : Interfaces.Unsigned_64;
+    end record with Alignment => IST_STACK_SIZE;
+
+    for ISTStack use record
+        frames      at 0 range 0 .. IST_FRAME_BYTES * 8 - 1;
+        cpuDataAddr at IST_CPU_DATA_OFFSET range 0 .. 63;
+        reserved    at IST_CPU_DATA_OFFSET + 8 range 0 .. 63;
+    end record;
+    for ISTStack'Size use IST_STACK_SIZE * 8;
 
     type ISTStacks is record
         nmiStack          : ISTStack;   -- IST 1

@@ -73,11 +73,23 @@ global isr255   ; Spurious
 ; For exceptions WITHOUT an error code, the CPU pushes:
 ;   [rsp+0] = RIP, [rsp+8] = CS, ...
 ; so CS is at rsp+8.
+; Entry macros end with LFENCE on both paths (the "SWAPGS" Spectre variant):
+; without it the CPU can speculate past the CS test with the wrong GS base
+; and load through an attacker-chosen GS. The return path needs no fence.
 %macro swapGSIfFromProcess 0
     test qword [rsp+8], 3             ; are bottom 2 bits of CS set?
     je %%fromKernel
     swapgs
 %%fromKernel:
+    lfence
+%endmacro
+
+; Return path: CS is at rsp+8 once the frame is popped back to RIP.
+%macro swapGSOnReturnToProcess 0
+    test qword [rsp+8], 3
+    je %%toKernel
+    swapgs
+%%toKernel:
 %endmacro
 
 ; For exceptions WITH an error code pushed by the CPU, the stack is:
@@ -88,6 +100,7 @@ global isr255   ; Spurious
     je %%fromKernel
     swapgs
 %%fromKernel:
+    lfence
 %endmacro
 
 ;------------------------------------------------------------------------------
@@ -108,12 +121,11 @@ isr1:
 	push long 1
 	jmp isrCommon
 
-; NMI
+; NMI (IST 1, GS-exact entry)
 isr2:
-    swapGSIfFromProcess
 	push long 0
 	push long 2
-	jmp isrCommon
+	jmp istCommon
 
 ; breakpoint
 isr3:
@@ -150,12 +162,10 @@ isr7:
 	push long 7
 	jmp isrCommon
 
-; double fault (CPU pushes error code)
+; double fault (IST 2, GS-exact entry; CPU pushes error code)
 isr8:
-    swapGSIfFromProcessErr
-	; returns error code
 	push long 8
-	jmp isrCommon
+	jmp istCommon
 
 ; coprocessor segment overrun
 isr9:
@@ -219,12 +229,11 @@ isr17:
 	push long 17
 	jmp isrCommon
 
-; machine check exception
+; machine check exception (IST 3, GS-exact entry)
 isr18:
-    swapGSIfFromProcess
 	push long 0
 	push long 18
-	jmp isrCommon
+	jmp istCommon
 
 ; Interrupts 19-31: reserved
 isr19:
@@ -428,5 +437,72 @@ interruptReturn:
     add rsp, 16
     
     ; Put the user's GS back.
-    swapGSIfFromProcess
+    swapGSOnReturnToProcess
+    iretq
+
+; Entry for the IST exceptions (NMI, double fault, machine check). They can
+; arrive between SYSCALL and SWAPGS or between SWAPGS and SYSRET, where the
+; saved CS does not tell which GS base is live, and user code chooses its own
+; GS base with WRGSBASE. So never SWAPGS here: save the live GS base, load this
+; CPU's PerCPUData from the slot at the top of the IST stack (each IST stack is
+; aligned to its size), and on return restore exactly what was live. r12 holds
+; the saved base across the call (callee-saved); the frame keeps its own copy
+; of r12. RDMSR/WRMSR rather than RDGSBASE so this works before CR4.FSGSBASE.
+istCommon:
+    push r15
+    push r14
+    push r13
+    push r12
+    push r11
+    push r10
+    push r9
+    push r8
+    push rdi
+    push rsi
+    push rbp
+    push rdx
+    push rcx
+    push rbx
+    push rax
+
+    mov ecx, MSR_GS_BASE
+    rdmsr
+    shl rdx, 32
+    or rax, rdx
+    mov r12, rax                        ; GS base live at the exception
+
+    mov rax, rsp
+    and rax, ~(IST_STACK_SIZE - 1)      ; base of this IST stack
+    mov rax, [rax + IST_CPU_DATA_OFFSET]
+    mov rdx, rax
+    shr rdx, 32
+    wrmsr                               ; GS base := this CPU's PerCPUData
+
+    mov rdi, rsp
+    call interruptHandler
+
+    cli
+    mov rax, r12
+    mov rdx, r12
+    shr rdx, 32
+    mov ecx, MSR_GS_BASE
+    wrmsr                               ; restore the GS base that was live
+
+    pop rax
+    pop rbx
+    pop rcx
+    pop rdx
+    pop rbp
+    pop rsi
+    pop rdi
+    pop r8
+    pop r9
+    pop r10
+    pop r11
+    pop r12
+    pop r13
+    pop r14
+    pop r15
+
+    add rsp, 16                         ; interrupt # and error code
     iretq

@@ -1396,6 +1396,20 @@ fault-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/fault-check/component.ccl
 	cp ../userspace/apps/fault-check/build/fault-check.app isodir/boot/fault-check.app
 
+# Syscall-entry trap flag regression (SEC-023 #1): headless --test trap-flag.
+.PHONY : trap-flag-check
+trap-flag-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/trap-flag-check/build
+	$(CCL_BUILD) ../userspace/apps/trap-flag-check/component.ccl
+	cp ../userspace/apps/trap-flag-check/build/trap-flag-check.app isodir/boot/trap-flag-check.app
+
+# NMI survival regression (SEC-023): headless --test nmi.
+.PHONY : nmi-check
+nmi-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/nmi-check/build
+	$(CCL_BUILD) ../userspace/apps/nmi-check/component.ccl
+	cp ../userspace/apps/nmi-check/build/nmi-check.app isodir/boot/nmi-check.app
+
 # Out-of-memory reclaim check (headless oom-reclaim): teardown allocates nothing.
 .PHONY : oom-check
 oom-check: ccl-build user_runtime ccl-manifest
@@ -2441,7 +2455,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

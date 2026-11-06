@@ -12,6 +12,15 @@
 SAVED_PROCESS_RSP       equ 8
 SAVED_KERNEL_RSP        equ 16
 
+; IST stacks - make sure these match IST_STACK_SIZE and IST_CPU_DATA_OFFSET
+; in percpudata.ads. Each IST stack is aligned to its size; this CPU's
+; PerCPUData address sits at IST_CPU_DATA_OFFSET from the stack's base.
+IST_STACK_SIZE          equ 4096
+IST_CPU_DATA_OFFSET     equ 4080
+
+; GS base MSR - make sure this matches x86.MSRs.GS_BASE
+MSR_GS_BASE             equ 0xC0000101
+
 ; GDT segment offsets - make sure these match those in segment.ads
 GDT_OFFSET_KERNEL_CODE  equ 8
 GDT_OFFSET_KERNEL_DATA  equ 16

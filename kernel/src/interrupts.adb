@@ -179,7 +179,43 @@ is
         Measure_Boot_IRQ : constant Boolean := interruptNumber = TIMER
           and then intController = LEGACY_PIC and then Boot_Timer_Probe.Enabled;
         Boot_IRQ_Stamp : Unsigned_64 := 0;
+        -- NMI handler: lock-free, writes directly to the serial port. Do NOT
+        -- acquire any spinlocks here: an NMI can fire while a lock is held,
+        -- leading to instant deadlock. It runs before the address-space
+        -- switch below and never touches CR3: an NMI can land in user mode or
+        -- in kernel code working in a process's address space, and returning
+        -- with the kernel-only page tables would leave that code without its
+        -- mappings. The kernel is mapped in every address space.
+        procedure handleNMI is
+            perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
+            cpuData : PerCPUData.PerCPUData with
+                Import, Volatile, Address => perCPUAddr;
+            nmiMsg : constant String := "NMI on CPU " & ASCII.LF;
+        begin
+            -- Record NMI state per-CPU
+            cpuData.nmiCount := cpuData.nmiCount + 1;
+
+            if cpuData.nmiInProgress then
+                -- Nested NMI - just count and return
+                return;
+            end if;
+
+            cpuData.nmiInProgress := True;
+
+            -- Log directly to serial port (bypasses TextIO lock)
+            for C of nmiMsg loop
+                Serial.send (Config.serialMirrorPort, C);
+            end loop;
+
+            cpuData.nmiInProgress := False;
+        end handleNMI;
     begin
+        if interruptNumber = NMI then
+            -- Runs on IST 1 and returns via iretq; no EOI needed.
+            handleNMI;
+            return;
+        end if;
+
         if Measure_Boot_IRQ then
             Boot_Timer_Probe.Enter_IRQ (Boot_IRQ_Stamp);
         end if;
@@ -195,33 +231,7 @@ is
 
         case interruptNumber is
             when NMI =>
-                -- NMI handler: lock-free, writes directly to serial port.
-                -- Do NOT acquire any spinlocks here - NMI can fire while
-                -- a lock is held, leading to instant deadlock.
-                handleNMI : declare
-                    perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
-                    cpuData : PerCPUData.PerCPUData with
-                        Import, Volatile, Address => perCPUAddr;
-                    nmiMsg : constant String := "NMI on CPU " & ASCII.LF;
-                begin
-                    -- Record NMI state per-CPU
-                    cpuData.nmiCount := cpuData.nmiCount + 1;
-
-                    if cpuData.nmiInProgress then
-                        -- Nested NMI - just count and return
-                        return;
-                    end if;
-
-                    cpuData.nmiInProgress := True;
-
-                    -- Log directly to serial port (bypasses TextIO lock)
-                    for C of nmiMsg loop
-                        Serial.send (Config.serialMirrorPort, C);
-                    end loop;
-
-                    cpuData.nmiInProgress := False;
-                end handleNMI;
-                -- NMI runs on IST 1, returns via iretq - no EOI needed
+                -- Handled before the address-space switch, above.
                 return;
 
             when DOUBLE_FAULT =>

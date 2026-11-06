@@ -514,7 +514,28 @@ package body acpi is
                     when NMI =>
                         println(" Found APIC NMI");
                     when LAPIC_NMI =>
-                        println(" Found Local APIC NMI");
+                        print(" Found Local APIC NMI:");
+                        ThisLAPICNMI : declare
+                            record_i : LAPICNMIRecord with Import, Volatile,
+                                Address => To_Address (entries_i);
+                        begin
+                            if entryHeader.length < (LAPICNMIRecord'Size / 8) or else
+                               record_i.lapicLINT > LAPIC_LINT_Index'Last
+                            then
+                                println(" WARNING: Bad Local APIC NMI record");
+                            elsif record_i.processorID = LAPIC_NMI_ALL_PROCESSORS then
+                                lapicNMIPresent := True;
+                                lapicNMILINT := record_i.lapicLINT;
+                                lapicNMIFlags := record_i.flags;
+                                print(" all processors, LINT");
+                                println(record_i.lapicLINT);
+                            else
+                                lapicNMIPerProcessor := lapicNMIPerProcessor + 1;
+                                print(" processor UID ");
+                                print(record_i.processorID);
+                                println(" (per-processor records not applied yet)");
+                            end if;
+                        end ThisLAPICNMI;
                     when LAPIC_ADDR_OVERRIDE =>
                         println(" Found Local APIC Address Override");
                     when LOCAL_SAPIC =>

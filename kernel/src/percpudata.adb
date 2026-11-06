@@ -38,9 +38,6 @@ is
     is
         use Segment;
 
-        -- On syscall entry, CPU will clear RFLAGS for each bit set here:
-        -- TF, DF, IF, IOPL, AC and NT
-        SYSCALL_FLAG_MASK : constant Unsigned_64 := 16#47600#;
         function PATtoU64 is new Ada.Unchecked_Conversion (x86.PATRegister, Unsigned_64);
         newPAT : x86.PATRegister;
     begin
@@ -53,24 +50,23 @@ is
         -- Set the PAT register up the way we want it.
         x86.wrmsr (x86.MSRs.PAT, PATtoU64 (newPAT));
 
-        -- Set up IST stacks for critical exceptions.
-        -- Stack grows downward, so IST pointer = base + size (top of stack).
+        -- Set up IST stacks for critical exceptions. Each stack's slot holds
+        -- this CPU's PerCPUData address for the GS-exact entry stubs; the IST
+        -- pointer is the top of the frame area, just below the slot.
         setupIST : declare
+            cpuDataWord : constant Unsigned_64 := Util.addrToNum (cpuDataAddr);
+
+            function frameTop (stack : ISTStack) return Unsigned_64 is
+                (Util.addrToNum (stack.frames'Address +
+                    System.Storage_Elements.Storage_Offset (IST_FRAME_BYTES)));
         begin
-            -- IST 1: NMI stack (top of nmiStack)
-            cpuData.tss.ist1 := Util.addrToNum (
-                allISTStacks(cpuNum).nmiStack'Address +
-                System.Storage_Elements.Storage_Offset(IST_STACK_SIZE));
+            allISTStacks(cpuNum).nmiStack.cpuDataAddr          := cpuDataWord;
+            allISTStacks(cpuNum).doubleFaultStack.cpuDataAddr  := cpuDataWord;
+            allISTStacks(cpuNum).machineCheckStack.cpuDataAddr := cpuDataWord;
 
-            -- IST 2: Double Fault stack
-            cpuData.tss.ist2 := Util.addrToNum (
-                allISTStacks(cpuNum).doubleFaultStack'Address +
-                System.Storage_Elements.Storage_Offset(IST_STACK_SIZE));
-
-            -- IST 3: Machine Check stack
-            cpuData.tss.ist3 := Util.addrToNum (
-                allISTStacks(cpuNum).machineCheckStack'Address +
-                System.Storage_Elements.Storage_Offset(IST_STACK_SIZE));
+            cpuData.tss.ist1 := frameTop (allISTStacks(cpuNum).nmiStack);
+            cpuData.tss.ist2 := frameTop (allISTStacks(cpuNum).doubleFaultStack);
+            cpuData.tss.ist3 := frameTop (allISTStacks(cpuNum).machineCheckStack);
         end setupIST;
 
         cpuData.cpuNum := cpuNum;
@@ -186,7 +182,7 @@ is
         -- Compatibility-mode not supported (CSTAR), but we'll load it anyway
         x86.wrmsr (x86.MSRs.CSTAR, Util.addrToNum(syscallEntryPoint'Address));
 
-        x86.wrmsr (x86.MSRs.FMASK, SYSCALL_FLAG_MASK);
+        x86.wrmsr (x86.MSRs.FMASK, x86.SYSCALL_ENTRY_FLAGS_MASK);
 
     end setup;
 

@@ -329,7 +329,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -620,6 +620,19 @@ with open(sys.argv[1], "wb") as f:
         # A process the kernel kills for a fault is recorded, logged and
         # shown on the Desktop bootstrap screen.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-process-kill.ccl"
+        ;;
+    trap-flag)
+        # SYSCALL with RFLAGS.TF set: the kernel masks TF on entry and
+        # survives; the process dies for the user-mode single-step trap.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-trap-flag.ccl"
+        ;;
+    nmi)
+        # NMIs injected while a user process spins: the kernel's NMI path
+        # must leave CR3 and the GS base as it found them. One CPU, so the
+        # NMI lands in the spinning process and the kernel's NMI line is
+        # not interleaved with other CPUs' copies of it.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-nmi.ccl"
+        if [ "$QEMU_CPUS_EXPLICIT" = 0 ]; then QEMU_CPUS=1; fi
         ;;
     oom-reclaim)
         # A process killed for want of memory is reclaimed while memory is
@@ -1981,8 +1994,8 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "process-kill" ]; then
-        for KILL_IMAGE in logstore.svc clock.svc fault-check.app; do
+    if [ "$TEST_NAME" = "process-kill" ] || [ "$TEST_NAME" = "trap-flag" ] || [ "$TEST_NAME" = "nmi" ]; then
+        for KILL_IMAGE in logstore.svc clock.svc fault-check.app trap-flag-check.app nmi-check.app; do
             debugfs -w -R "rm $KILL_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$KILL_IMAGE $KILL_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
@@ -2772,6 +2785,16 @@ if [ "$BENCH_LOAD" = 1 ]; then echo "headless: load_workers=$LOAD_WORKERS"; fi
 ACCEL_ARGS=()
 if [ -n "$QEMU_ACCEL" ]; then
     ACCEL_ARGS=(-accel "$QEMU_ACCEL")
+fi
+# Under KVM, expose the host's invariant TSC as real hardware does (QEMU
+# masks it unless asked, even with -cpu host). Without it the kernel does not
+# share the clock publication page, every clock read becomes a syscall, and
+# per-frame and per-message syscall counts are inflated. TCG drops the flag.
+if [ "$QEMU_ACCEL" = "kvm" ]; then
+    case "$QEMU_CPU_MODEL" in
+        *invtsc*) ;;
+        *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
+    esac
 fi
 
 AUDIO_ARGS=(-audiodev none,id=snd0)
@@ -4169,6 +4192,30 @@ if { [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-
     fi
     python3 "$ROOT_DIR/tests/headless/$observer" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
+    INPUT_INJECTOR_PID=$!
+fi
+
+if [ "$TEST_NAME" = "nmi" ]; then
+    # Inject NMIs through the HMP monitor once nmi-check is spinning.
+    MONITOR_SOCKET="$(qemu_socket monitor)"
+    rm -f "$MONITOR_SOCKET"
+    MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
+    NMI_INJECTIONS=8
+    (
+        deadline=$((SECONDS + TIMEOUT_SECONDS))
+        until grep -aqF 'nmi-check: spinning' "$SERIAL_LOG" 2>/dev/null; do
+            [ "$SECONDS" -ge "$deadline" ] && exit 0
+            sleep 0.2
+        done
+        for _ in $(seq "$NMI_INJECTIONS"); do
+            if printf 'nmi\n' | nc -N -U "$MONITOR_SOCKET" >>"${SERIAL_LOG%.log}-nmi-inject.log" 2>&1; then
+                echo "headless: nmi injected" >>"${SERIAL_LOG%.log}-nmi-inject.log"
+            else
+                echo "headless: nmi injection failed" >>"${SERIAL_LOG%.log}-nmi-inject.log"
+            fi
+            sleep 0.3
+        done
+    ) &
     INPUT_INJECTOR_PID=$!
 fi
 
@@ -5611,6 +5658,36 @@ name=fault-check.app
 procmgr: process com.cubit.fault-check
 DESKTOP-BOOTSTRAP-NOTE: kernel: process killed #
 "
+        ;;
+    nmi)
+        required_markers="
+nmi-check: spinning
+NMI on CPU
+nmi-check: round 20
+nmi-check: done
+"
+        # The process that was running when the NMIs landed is never killed.
+        if grep -aqF 'name=nmi-check' "$SERIAL_LOG" ||
+           grep -aqF 'DOUBLE FAULT' "$SERIAL_LOG" ||
+           grep -aqF 'KERNEL PANIC' "$SERIAL_LOG"; then
+            echo "headless: nmi: a process or the kernel died after an NMI" >&2
+            exit 1
+        fi
+        ;;
+    trap-flag)
+        required_markers="
+trap-flag-check: setting TF, then SYSCALL
+kind=exception vector=1
+com.cubit.trap-flag-check
+"
+        # The kernel survived the syscall and the trap came from user mode;
+        # before the fix the #DB hit in ring 0 on the user's stack pointer.
+        if grep -aqF 'DOUBLE FAULT' "$SERIAL_LOG" ||
+           grep -aqF 'trap-flag-check: FAIL' "$SERIAL_LOG" ||
+           grep -aqF 'KERNEL PANIC' "$SERIAL_LOG"; then
+            echo "headless: trap-flag: kernel faulted, or the single-step did not trap" >&2
+            exit 1
+        fi
         ;;
     oom-reclaim)
         required_markers="

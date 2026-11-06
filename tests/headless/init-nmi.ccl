@@ -1,0 +1,7 @@
+# Headless nmi test: nmi-check spins in user mode while the harness injects
+# NMIs through the QEMU monitor; it must finish, and the kernel must log them.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "nmi-check.app" (priority 5))
+)

@@ -1,0 +1,5 @@
+# Syscall-entry trap flag check: sets TF and makes a syscall, so the kernel
+# kills it for a user-mode single-step trap. No authority.
+(executable-manifest v1
+  (identity "com.cubit.trap-flag-check")
+  (version "0.1.0"))

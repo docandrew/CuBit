@@ -643,6 +643,19 @@ package acpi is
         lapicLINT           at 5 range 0..7;
     end record;
 
+    -- The local APIC input the MADT wires to NMI on every processor (a Local
+    -- APIC NMI record with LAPIC_NMI_ALL_PROCESSORS), which LAPIC setup
+    -- unmasks with NMI delivery so platform NMIs (watchdog, NMI button, bus
+    -- errors) reach the kernel. Records naming one processor are counted but
+    -- not applied yet: that needs the ACPI processor UID to APIC ID mapping.
+    subtype LAPIC_LINT_Index is Unsigned_8 range 0 .. 1;
+    lapicNMIPresent       : Boolean := False;
+    lapicNMILINT          : LAPIC_LINT_Index := 1;
+    lapicNMIFlags         : MPSInterruptFlags :=
+        (polarity => MPS_INTI_POLARITY_BUS, triggerMode => MPS_INTI_TRIGGER_BUS,
+         reserved1 => 0, reserved2 => 0);
+    lapicNMIPerProcessor  : Natural := 0;
+
     ---------------------------------------------------------------------------
     -- LAPICAddressOverrideRecord
     -- Local APIC Address Override Structure. This optional structure supports

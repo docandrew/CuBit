@@ -1,0 +1,4 @@
+# NMI survival check: spins in user mode while NMIs are injected. No authority.
+(executable-manifest v1
+  (identity "com.cubit.nmi-check")
+  (version "0.1.0"))

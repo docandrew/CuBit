@@ -17,9 +17,34 @@ is
     DPL_KERNEL : constant PrivilegeLevel := 0;
     DPL_USER   : constant PrivilegeLevel := 3;
 
-    -- FLAGS (EFLAGS/RFLAGS) register
-    -- TODO: add more here
-    FLAGS_INTERRUPT : constant Unsigned_64 := 16#0200#;
+    -- FLAGS (EFLAGS/RFLAGS) register bits
+    FLAGS_CARRY      : constant Unsigned_64 := 16#0000_0001#;
+    FLAGS_PARITY     : constant Unsigned_64 := 16#0000_0004#;
+    FLAGS_AUXILIARY  : constant Unsigned_64 := 16#0000_0010#;
+    FLAGS_ZERO       : constant Unsigned_64 := 16#0000_0040#;
+    FLAGS_SIGN       : constant Unsigned_64 := 16#0000_0080#;
+    FLAGS_TRAP       : constant Unsigned_64 := 16#0000_0100#;
+    FLAGS_INTERRUPT  : constant Unsigned_64 := 16#0000_0200#;
+    FLAGS_DIRECTION  : constant Unsigned_64 := 16#0000_0400#;
+    FLAGS_OVERFLOW   : constant Unsigned_64 := 16#0000_0800#;
+    FLAGS_IOPL       : constant Unsigned_64 := 16#0000_3000#;
+    FLAGS_NESTED     : constant Unsigned_64 := 16#0000_4000#;
+    FLAGS_RESUME     : constant Unsigned_64 := 16#0001_0000#;
+    FLAGS_ALIGNMENT  : constant Unsigned_64 := 16#0004_0000#;
+    FLAGS_IDENTIFY   : constant Unsigned_64 := 16#0020_0000#;
+
+    -- RFLAGS bits SYSCALL clears on kernel entry (the FMASK MSR), as Linux
+    -- does. TF must be here: a user program that sets TF and then executes
+    -- SYSCALL would otherwise take a single-step #DB on the first kernel
+    -- instruction, while RSP still holds the user's chosen stack pointer,
+    -- and the CPU would write the exception frame wherever that points.
+    -- The arithmetic flags and AC/NT/RF/ID/IOPL/DF/IF give the kernel a known
+    -- flags state; IF stays clear until the entry path has switched stacks.
+    SYSCALL_ENTRY_FLAGS_MASK : constant Unsigned_64 :=
+        FLAGS_CARRY or FLAGS_PARITY or FLAGS_AUXILIARY or FLAGS_ZERO or
+        FLAGS_SIGN or FLAGS_TRAP or FLAGS_INTERRUPT or FLAGS_DIRECTION or
+        FLAGS_OVERFLOW or FLAGS_IOPL or FLAGS_NESTED or FLAGS_RESUME or
+        FLAGS_ALIGNMENT or FLAGS_IDENTIFY;
 
     CR4_SMEP : constant Unsigned_64 := 16#0010_0000#;  -- bit 20
     CR4_SMAP : constant Unsigned_64 := 16#0020_0000#;  -- bit 21
