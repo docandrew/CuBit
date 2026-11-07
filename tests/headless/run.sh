@@ -81,8 +81,8 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, or boot-timeline (--accel kvm --timeout 60)
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -330,7 +330,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -435,6 +435,9 @@ cleanup() {
     fi
     cp "$GRUB_BAK" "$GRUB_CFG"
     rm -f "$GRUB_BAK"
+    if [ -n "${LARGE_MODULE:-}" ]; then
+        rm -f "$LARGE_MODULE"
+    fi
     if [ -n "$TEMP_DISK" ]; then
         # --keep-logs keeps the guest's disk too, for inspecting what it wrote.
         if [ "$KEEP_LOGS" -eq 1 ] && [ -n "$SERIAL_LOG" ]; then
@@ -1100,6 +1103,21 @@ if [ "$BENCH_LOAD" = 1 ]; then
         INIT_PROFILE="$TEMP_LOAD_PROFILE"
     fi
 fi
+# BUG-002: the early boot allocator sizes itself from the memory map. The
+# boot-shell-nvme boot at 8, 16 and 32 GiB (buddy metadata grows with the top of
+# RAM), and with a large boot module that GRUB loads into low memory, which
+# the retained boot arena then covers (as a toolchain-carrying live initrd).
+case "$TEST_NAME" in
+    boot-memory-8g) QEMU_MEMORY="${QEMU_MEMORY:-8G}" ;;
+    boot-memory-16g) QEMU_MEMORY="${QEMU_MEMORY:-16G}" ;;
+    # SeaBIOS leaves the 7 MiB test initrd low, so 8 and 16 GiB fit even the
+    # old 64 MiB window; 32 GiB of buddy metadata did not.
+    boot-memory-32g) QEMU_MEMORY="${QEMU_MEMORY:-32G}" ;;
+    boot-large-module) QEMU_MEMORY="${QEMU_MEMORY:-2G}" ;;
+esac
+# Size of the synthetic boot-large-module payload: the ~340 MiB live-rw.ext2.
+LARGE_MODULE_MIB=340
+LARGE_MODULE="$KERNEL_DIR/isodir/boot/large-module.img"
 # desktop-vm mirrors run-desktop (2 GiB): large GPU banks (modes up to
 # 1920x1080) need at least 1 GiB (devmgr LARGE_BANK_MINIMUM_MEMORY).
 if [ "$TEST_NAME" = desktop-vm ]; then
@@ -2836,10 +2854,27 @@ if [ "$TEST_NAME" = "timesync" ]; then
         exit 1
     fi
 fi
+if [ "$TEST_NAME" = "boot-large-module" ]; then
+    # Listed before init.img in the default (NVMe shell) entry, so GRUB loads
+    # it first, right above the kernel, and init.img lands above it.
+    truncate -s "${LARGE_MODULE_MIB}M" "$LARGE_MODULE"
+    awk '/^menuentry / { entry++ }
+         entry == 5 && /module \/boot\/initrd.img init.img/ {
+             print "    module /boot/large-module.img large-module.img"
+         }
+         { print }' "$GRUB_BAK" > "$GRUB_CFG.large"
+    sed 's/^set default=.*/set default=4/' "$GRUB_CFG.large" > "$GRUB_CFG"
+    rm -f "$GRUB_CFG.large"
+    if ! grep -q 'large-module.img' "$GRUB_CFG"; then
+        echo "headless: could not add the large boot module" >&2
+        exit 1
+    fi
+fi
 if ! grub-mkrescue -o "$KERNEL_DIR/cubit_kernel.iso" "$KERNEL_DIR/isodir" >/dev/null 2>&1; then
     echo "headless: grub-mkrescue failed" >&2
     exit 1
 fi
+rm -f "$LARGE_MODULE"
 cp "$GRUB_BAK" "$GRUB_CFG"
 
 VIDEO_ARGS=(-device virtio-gpu-pci)
@@ -4781,7 +4816,7 @@ if [ ! -s "$SERIAL_LOG" ]; then
 fi
 
 case "$TEST_NAME" in
-    boot-shell-nvme)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module)
         required_markers="
 devmgr: startup complete, entering service loop
 procmgr: ready, entering receive loop

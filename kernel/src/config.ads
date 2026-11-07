@@ -24,9 +24,6 @@ is
     -- Debug flags that can be set at runtime
     debugFlag : Boolean := False;
 
-    -- Amount of memory that BootAllocator can allocate (in whole frames)
-    MAX_BOOT_ALLOC : constant := 2**26; -- (64 MiB)
-
     -- Explicit early-boot workspace budget, not a Multiboot format limit.
     -- Decoder output is caller-sized; excess records fail closed, never truncate.
     MAX_BOOT_MEMORY_REGIONS : constant := 1024;

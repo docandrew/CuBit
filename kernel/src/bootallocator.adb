@@ -17,6 +17,7 @@ is
         use type FF.Count;
         use type FF.Region_Kind;
         use type FF.Decision;
+        use type FF.Block_Order;
         -- Depends on the linear physical -> higher-half mapping.
         stackEnd : constant Virtmem.PFN := Virtmem.vaddrToPFN (Virtmem.STACK_TOP);
     begin
@@ -33,20 +34,42 @@ is
                 end if;
             end if;
         end loop;
+        -- Admit by aligned blocks, as buddy setup tiles RAM: a block wholly
+        -- free of reservations is admitted at once, one inside a reservation
+        -- (such as the retained boot arena) is skipped at once, and only
+        -- blocks straddling a boundary are halved. The window is 2**18
+        -- frames, so per-frame classification against the whole map would
+        -- cost a map walk for every frame.
         for Owner in Map'Range loop
             if Map (Owner).Kind = FF.Usable then
                 declare
-                    Cursor : FF.Boundary := FF.First (Map (Owner).Pages);
+                    Cursor : FF.Boundary := FF.Boundary'Max
+                      (FF.First (Map (Owner).Pages), FF.Count (stackEnd) + 1);
                     Limit : constant FF.Boundary := FF.Boundary'Min
                       (FF.Limit (Map (Owner).Pages), MAX_BOOT_PFN + 1);
                 begin
                     while Cursor < Limit loop
-                        if Cursor > FF.Count (stackEnd) and then
-                          FF.Classify (Map, Owner, Cursor, Cursor) = FF.Admit
-                        then
-                            Frames.Admit (reservations, Frames.Payload_Frame (Cursor));
-                        end if;
-                        Cursor := Cursor + 1;
+                        declare
+                            Order : FF.Block_Order := FF.Largest_Block
+                              (Cursor, Limit - 1, FF.Block_Order'Last);
+                            Pages : FF.Count := FF.Block_Pages (Order);
+                            Action : FF.Decision;
+                        begin
+                            loop
+                                Action := FF.Classify
+                                  (Map, Owner, Cursor, Cursor + Pages - 1);
+                                exit when Action /= FF.Split;
+                                -- Classify never splits a single frame.
+                                Order := Order - 1;
+                                Pages := Pages / 2;
+                            end loop;
+                            if Action = FF.Admit then
+                                for Item in Cursor .. Cursor + Pages - 1 loop
+                                    Frames.Admit (reservations, Frames.Payload_Frame (Item));
+                                end loop;
+                            end if;
+                            Cursor := Cursor + Pages;
+                        end;
                     end loop;
                 end;
             end if;

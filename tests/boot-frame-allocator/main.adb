@@ -10,7 +10,13 @@ procedure Main is
       Exhaustive : Boolean;
    procedure Exercise;
 
+   -- A call, not a static expression: the production-sized arena's 2**Last
+   -- masks would exceed the compiler's static-value capacity when folded.
+   function Mask_Bits_For (Last : Positive; Exhaustive : Boolean) return Natural is
+     (if Exhaustive then Last else 0);
+
    procedure Exercise is
+      Mask_Bits : constant Natural := Mask_Bits_For (Last, Exhaustive);
       package Core is new Boot_Frame_Allocator (Last);
       type Oracle_Bitmap is array (Core.Frame) of Boolean;
       Expected : Oracle_Bitmap := [others => False];
@@ -106,7 +112,7 @@ procedure Main is
       Claim (Last);
 
       if Exhaustive then
-         for Mask in 0 .. 2 ** Last - 1 loop
+         for Mask in 0 .. 2 ** Mask_Bits - 1 loop
             for First_Size in Core.Request_Size loop
                for Second_Size in Core.Request_Size loop
                   Pattern (Mask);
@@ -148,7 +154,7 @@ procedure Main is
 
    procedure Small is new Exercise (10, True);
    procedure Singleton is new Exercise (1, True);
-   procedure Production is new Exercise (16_383, False);
+   procedure Production is new Exercise (262_143, False);
 begin
    Singleton;
    Small;

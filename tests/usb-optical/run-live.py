@@ -36,6 +36,8 @@ parser.add_argument('--invalid-clock-fixture', action='store_true',
                     help='seed a zero CPUID.15 denominator and require the real PIT fallback')
 parser.add_argument('--uefi-firmware', type=pathlib.Path, default=pathlib.Path('/usr/share/OVMF/OVMF_CODE_4M.fd'))
 parser.add_argument('--timeout', type=int, default=180)
+parser.add_argument('--memory', default='4G',
+                    help='guest RAM; 8G/16G check boot allocation sized from the memory map (BUG-002)')
 parser.add_argument('--disk-first', action='store_true', help='non-optical LUN 0, CD LUN 1')
 parser.add_argument('--usb-flash', action='store_true',
                     help='boot the ISO image on a 512-byte USB disk, as with dd to a flash drive')
@@ -110,7 +112,7 @@ command = ['qemu-system-x86_64', '-enable-kvm', '-machine', 'q35', '-cpu', 'host
            # 8 MiB of VGA memory: the fixtures below assume the 1920x1080
            # firmware mode, and the live GRUB entry asks for 3840x2160 and
            # 2560x1440 first (they do not fit, so 1920x1080 is chosen).
-           '-smp', str(args.cpus), '-m', '4G', '-nodefaults', '-device', 'VGA,vgamem_mb=8',
+           '-smp', str(args.cpus), '-m', args.memory, '-nodefaults', '-device', 'VGA,vgamem_mb=8',
            '-device', 'qemu-xhci,id=xhci',
            '-drive', f'file={image},if=none,id=cd,media=cdrom,format=raw,readonly=on',
            '-device', f'usb-bot,id=usbcd,bus=xhci.0,port={cd_port}',

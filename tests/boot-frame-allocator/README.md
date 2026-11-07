@@ -1,7 +1,7 @@
 # Boot-frame reservation core
 
 `kernel/src/boot_frame_allocator.*` is the production implementation, not a
-parallel model. `BootAllocator` instantiates it for PFNs 0..16,383. The private
+parallel model. `BootAllocator` instantiates it for PFNs 0..262,143. The private
 state contains a one-bit-per-frame availability map and an inclusive high-water
 mark. PFN zero is never admitted or allocated. The physical-address/firmware
 adapter remains outside this focused proof.
@@ -14,8 +14,13 @@ Admission is idempotent and permitted only before a successful reservation.
 The unused public boot `free` API and old private search/bit-mutation routines
 were removed; existing kernel callers only reserve and query boot memory.
 
-The boot adapter now scans only its bounded arena rather than traversing all
-firmware-listed RAM beyond 64 MiB. It checks external bitmap-query bounds before
+The arena is the 1 GiB bootstrap window boot.asm maps (BUG-002 replaced the
+fixed 64 MiB `Config.MAX_BOOT_ALLOC`): page-table frames allocated before the
+kernel switches address spaces must be reachable through that mapping, and
+boot modules must lie in it. Which frames are free comes from the firmware map
+minus the retained boot arena (kernel, loader metadata, every module). The
+adapter admits aligned blocks, so a reservation is skipped at block, not frame,
+granularity, and it never traverses firmware-listed RAM above the window. It checks external bitmap-query bounds before
 indexing, including in the unchecked kernel. It retains the existing firmware
 region/page admission policy; conflicting memory classifications and partial
 pages are **not** solved by idempotent admission.
@@ -70,7 +75,7 @@ first-fit results, exact counts/high-water and failure-state equality. Hosted
 assertions are enabled; kernel builds remain optimized `-O2 -gnatp`, without
 `-gnata`.
 
-Pinned x86-64 codegen checks show a 2,048-byte bitmap plus a four-byte high-water
+Pinned x86-64 codegen checks show a 32,768-byte bitmap plus a four-byte high-water
 field. Reservation is a leaf routine with no helper calls, division, bulk copies
 or proof code, and eight-byte static stack usage (return-address accounting).
 The bitmap query uses direct shift/mask indexing. This is codegen evidence, not

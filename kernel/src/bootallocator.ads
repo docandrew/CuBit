@@ -7,7 +7,6 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
-with Config;
 with Buddy_Boot_Admission;
 with Boot_Frame_Allocator;
 with MemoryAreas;
@@ -19,9 +18,23 @@ package BootAllocator with
     Initializes => (BitmapState, initialized),
     SPARK_Mode => On
 is
-    -- 2**18 = 4 KiB/page * 64 pages/bitmap word.
-    MAX_BITMAP_BLOCKS : constant := Config.MAX_BOOT_ALLOC / 2**18;
-    MAX_BOOT_PFN : constant := Buddy_Boot_Admission.Last_Frame (MAX_BITMAP_BLOCKS);
+    -- The boot allocator covers the bootstrap window that boot.asm maps
+    -- (identity and linear, 512 x 2 MiB), and only that window. This is the
+    -- one physical ceiling, not a capacity budget: Mem_mgr.setup writes the
+    -- page-table frames it allocates here through the bootstrap linear map,
+    -- before switchAddressSpace maps the rest of RAM. Boot modules must lie
+    -- in this window too (Boot_Modules.Window_End). WHICH frames are free is
+    -- derived from the firmware memory map in setup: usable RAM, minus the
+    -- retained boot arena (kernel, stack, loader metadata and every module,
+    -- wherever the loader placed them), minus anything reserved.
+    BOOTSTRAP_FRAMES : constant :=
+      Virtmem.BOOTSTRAP_PHYSICAL_LIMIT / Virtmem.FRAME_SIZE;
+    FRAMES_PER_BITMAP_WORD : constant := Buddy_Boot_Admission.Bit_Index'Last + 1;
+    BITMAP_WORDS : constant := BOOTSTRAP_FRAMES / FRAMES_PER_BITMAP_WORD;
+    pragma Compile_Time_Error
+      (BOOTSTRAP_FRAMES mod FRAMES_PER_BITMAP_WORD /= 0,
+       "Bootstrap window must fill whole boot bitmap words");
+    MAX_BOOT_PFN : constant := Buddy_Boot_Admission.Last_Frame (BITMAP_WORDS);
     subtype AllocSize is Positive range 1 .. MAX_BOOT_PFN;
 
     initialized : Boolean := False with Ghost;
