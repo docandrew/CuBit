@@ -1,0 +1,8 @@
+# hello: the smallest app built entirely on CuBit (SELF-002), its manifest
+# step included (tests/device-builds: no step answered from the host).
+# It says hello in a log record and on the console, then waits until it is
+# asked to stop (CuBit.Control_Events.Stop).
+(Executable_Manifest
+  identity => "com.cubit.hello"
+  version => "0.1.0"
+  requests => [(service "logstore" "logstore")])

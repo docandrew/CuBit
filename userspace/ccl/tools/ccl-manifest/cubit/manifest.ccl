@@ -1,0 +1,16 @@
+# ccl-manifest on CuBit (SELF-002): the manifest compiler, with the full
+# Ada runtime of the GCC port (userspace/ports/gcc) and the CuBit libc. It
+# is the manifest step's tool when ccl-build runs on CuBit (build-params.ccl,
+# CuBit's manifest_tool), installed at @system/tools/ccl-manifest.app,
+# which ccl-build's launch table names. It reads the step's inputs and
+# writes its outputs, all named on its argv, in the step directory: like
+# the GCC port's programs it has no file scopes of its own and works in
+# the places its launcher delegates (the Storehouse).
+(Executable_Manifest
+  identity => "com.cubit.ccl-manifest"
+  version => "0.1.0"
+  requests => [(service "filesystem" "filesystem")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")])

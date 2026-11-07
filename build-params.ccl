@@ -6,20 +6,24 @@
     # On Linux: GCC/GNAT 15.3, the compiler that also runs on CuBit:
     # nixpkgs' pkgsCross.musl64 gnat15 (flake.nix exports it as
     # CUBIT_GNAT), and nixpkgs' unwrapped binutils, for ld (CUBIT_BINUTILS).
+    # The manifest tool is the tree's own build (make -C kernel ccl-manifest).
     (Host_Toolchains Build_Host.Linux
       (Toolchain "gnat-15.3.0-x86_64-linux-musl"
         "537d17c4afd57c05b36e797bc507d2d340336488c026cacd660bc74fcc85f608"
         prefix => "x86_64-unknown-linux-musl-")
       (Toolchain "binutils-2.46"
-        "12b0a97cfd6fccff837ffc7a521a6716bffb9da7e339ace12900b9131301b037" prefix => ""))
+        "12b0a97cfd6fccff837ffc7a521a6716bffb9da7e339ace12900b9131301b037" prefix => "")
+      (Manifest_Tool.Checkout "userspace/ccl/build/manifest/ccl-manifest"))
     # On CuBit: the same GCC 15.3 built for CuBit (userspace/ports/gcc),
     # installed at @system/toolchain with binutils 2.46's as and ld
-    # (userspace/ports/binutils): one tree for both.
+    # (userspace/ports/binutils): one tree for both. The manifest tool is
+    # ccl-manifest.app (make -C kernel ccl-manifest-app), from the same
+    # sources, installed at @system/tools (ccl-build's launch table).
     (Host_Toolchains Build_Host.CuBit
       (Toolchain "gnat-15.3.0-cubit" "7e3492c1d52aba8227bc65bd1dd607e6b0774a7f3360819fc1f8fd7f32826cd4" prefix => "")
-      (Toolchain "gnat-15.3.0-cubit" "7e3492c1d52aba8227bc65bd1dd607e6b0774a7f3360819fc1f8fd7f32826cd4" prefix => ""))]
+      (Toolchain "gnat-15.3.0-cubit" "7e3492c1d52aba8227bc65bd1dd607e6b0774a7f3360819fc1f8fd7f32826cd4" prefix => "")
+      (Manifest_Tool.Installed "/tools/ccl-manifest.app"))]
   runtime => "userspace/runtime"
-  manifest_tool => "userspace/ccl/build/manifest/ccl-manifest"
   manifest_schema => "userspace/ccl/interfaces/executable-manifest.ccl"
   process_manager_catalog => "userspace/ccl/catalogs/native-runtime-services.ccl"
   device_manager_catalog => "userspace/ccl/catalogs/driver-services.ccl"

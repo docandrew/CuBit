@@ -2408,8 +2408,9 @@ if [ -n "$INIT_PROFILE" ]; then
     fi
     if [ "$TEST_NAME" = "ccl-build-native" ]; then
         # The launcher, ccl-build.app and the comparer at the root; the
-        # toolchain; the source subset in @nvme:0/cubit-src; the Storehouse
-        # with the manifest step's seed; Linux's ps2.drv in @nvme:0/work.
+        # toolchain; the manifest step's tool at @nvme:0/tools; the source
+        # subset in @nvme:0/cubit-src; an empty Storehouse; Linux's ps2.drv
+        # in @nvme:0/work.
         CBN_DIR="$ROOT_DIR/tests/ccl-build-native/build"
         if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest ccl-build >/dev/null ||
            ! bash "$ROOT_DIR/tests/ccl-build-native/build.sh" "$KERNEL_DIR/isodir/boot"; then
@@ -2431,7 +2432,8 @@ if [ -n "$INIT_PROFILE" ]; then
         CBN_COMMANDS="$TEMP_DISK.ccl-build-native"
         {
             cbn_install_tree "$CBN_DIR/cubit-src" cubit-src
-            cbn_install_tree "$CBN_DIR/seed" storehouse
+            cbn_install_tree "$CBN_DIR/tools" tools
+            echo "mkdir storehouse"
             echo "mkdir work"
             echo "rm work/expected-ps2.drv"
             echo "write $CBN_DIR/expected-ps2.drv work/expected-ps2.drv"
@@ -2439,7 +2441,7 @@ if [ -n "$INIT_PROFILE" ]; then
         debugfs -w -f "$CBN_COMMANDS" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         rm -f "$CBN_COMMANDS"
         for CBN_CHECK in ccl-build.app cubit-src/build-params.ccl cubit-src/userspace/runtime/adalib/libgnat-user.a \
-          cubit-src/userspace/services/ps2/main.adb storehouse/actions work/expected-ps2.drv \
+          cubit-src/userspace/services/ps2/main.adb tools/ccl-manifest.app work/expected-ps2.drv \
           toolchain/libexec/gcc/x86_64-linux-musl/15.3.0/gnat1; do
             if ! debugfs -R "stat \"$CBN_CHECK\"" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
                 echo "headless: $CBN_CHECK was not installed" >&2
@@ -5025,6 +5027,8 @@ swap-probe: build 1 running
 swap-probe: build 1 stopping
 swap-probe: build 2 running
 ccl-remote: host app rollback swap-probe
+ccl-remote: host build userspace/apps/hello/component.ccl
+hello: hello from an app built on CuBit
 "
         ;;
     ccl-remote-session)

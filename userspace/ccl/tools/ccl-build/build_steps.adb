@@ -106,6 +106,16 @@ package body Build_Steps is
             then
                Fail ("the program is not an executable input");
             end if;
+         when Installed_Program =>
+            declare
+               Path : constant String := To_String (S.Tool.Path);
+            begin
+               if Path'Length < 2 or else Path (Path'First) /= '/'
+                 or else not Storehouse.Paths.Is_Relative (Path (Path'First + 1 .. Path'Last))
+               then
+                  Fail ("installed program """ & Path & """ is not an absolute path without . or ..");
+               end if;
+            end;
       end case;
       if S.Capture /= 0 and then S.Capture not in 1 .. S.Outputs.Last_Index then
          Fail ("unix.stdout is captured to no output");
@@ -130,6 +140,9 @@ package body Build_Steps is
          when Input_Program =>
             W.Add_Unsigned (Interfaces.Unsigned_64 (S.Tool.Index));
             W.Add_Text ("");
+         when Installed_Program =>
+            W.Add_Digest (S.Tool.Contents);
+            W.Add_Text (To_String (S.Tool.Path));
       end case;
       W.Add_Array (Natural (S.Arguments.Length));
       for A of S.Arguments loop
@@ -330,7 +343,8 @@ package body Build_Steps is
    function Program_Path (Store : Build_Store.Store; S : Step; Root : String) return String is
      (case S.Tool.Kind is
         when Toolchain_Program => Store.Path_Of (Tree, S.Tool.Toolchain) / To_String (S.Tool.Path),
-        when Input_Program => Root / To_String (S.Inputs (S.Tool.Index).Path));
+        when Input_Program => Root / To_String (S.Inputs (S.Tool.Index).Path),
+        when Installed_Program => To_String (S.Tool.Path));
 
    function Command_Image (Store : Build_Store.Store; S : Step; Root : String) return String is
       Result : Unbounded_String := To_Unbounded_String (Program_Path (Store, S, Root));

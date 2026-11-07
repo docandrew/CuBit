@@ -693,9 +693,14 @@ package body Build_Ada_Programs is
          declare
             Manifest_Source : constant String := Directory / Manifest_File;
             S : Step := New_Step ("manifest " & Manifest_Source, Objects);
-            Tool_Input : constant Input_Number := Add_Input
-              (S, To_String (Profile.Manifest_Tool), Executable_File,
-               Snapshot (To_String (Profile.Manifest_Tool), Executable_File));
+            Tool_Path : constant String := To_String (Profile.Manifest_Tool.Path);
+            --  The source tree's tool is the step's first input (Linux);
+            --  an installed one is no input.
+            Tool_Input : constant Natural :=
+              (case Profile.Manifest_Tool.Kind is
+                  when Build_Declarations.Checkout =>
+                     Add_Input (S, Tool_Path, Executable_File, Snapshot (Tool_Path, Executable_File)),
+                  when Build_Declarations.Installed => 0);
             Catalog_File : constant String := To_String (Profile.Catalogs (Program.Manifest_Catalog));
             Catalog : constant Input_Number := Add_Input
               (S, Catalog_File, Regular_File, Snapshot (Catalog_File, Regular_File));
@@ -719,7 +724,20 @@ package body Build_Ada_Programs is
             Startup : constant Output_Number := Add_Output (S, Generated / Startup_Spec);
             Outcome : Build_Steps.Outcome;
          begin
-            S.Tool := (Kind => Input_Program, Index => Tool_Input, others => <>);
+            --  The tool: the source tree's build, as an input (Linux), or
+            --  the one installed on this host, run where it is and named
+            --  by its contents (CuBit: build-params.ccl).
+            case Profile.Manifest_Tool.Kind is
+               when Build_Declarations.Checkout =>
+                  S.Tool := (Kind => Input_Program, Index => Tool_Input, others => <>);
+               when Build_Declarations.Installed =>
+                  if not Ada.Directories.Exists (Tool_Path) then
+                     raise Step_Error with "the manifest tool " & Tool_Path &
+                       " is not installed (build-params.ccl names it for this host)";
+                  end if;
+                  S.Tool :=(Kind => Installed_Program, Path => Profile.Manifest_Tool.Path,
+                             Contents => Build_Store.Hash_File (Tool_Path), others => <>);
+            end case;
             Piece_Of (S, Input_Path, Catalog);
             Piece_Of (S, Input_Path, Source);
             Literal (S, "--startup-output");

@@ -1,18 +1,61 @@
 with "ccl_manifest_abi.gpr";
 --  SHA-256 identities (.cubit.parameters) through the verified SPARK stack.
 with "../lib/tls/sparktls_host.gpr";
+--  ccl-manifest, the manifest compiler (docs/ccl-manifests.md). Two
+--  targets, as ccl_build.gpr's:
+--    linux  hosted on Linux (the default): build/manifest/ccl-manifest,
+--           the tool Linux builds run (build-params.ccl, Linux's
+--           manifest_tool) and make -C kernel runs.
+--    cubit  ccl-manifest.app, native on CuBit with the full Ada runtime of
+--           the GCC port and the CuBit libc (make -C kernel
+--           ccl-manifest-app, like ccl-build-app): the tool ccl-build runs
+--           for the manifest step on CuBit (build-params.ccl, CuBit's
+--           manifest_tool), installed at @system/tools. The same sources,
+--           so the same step products, byte for byte, on both hosts.
 project CCL_Manifest is
+   type Tool_Targets is ("linux", "cubit");
+   Tool_Target : Tool_Targets := external ("CCL_TOOL_TARGET", "linux");
    for Languages use ("Ada");
    for Source_Dirs use ("src", "tools/ccl-manifest");
-   for Object_Dir use "build/manifest";
-   for Exec_Dir use "build/manifest";
    for Main use ("main.adb");
+
+   Checked := ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   --  cubit: CUBIT_TOOLCHAIN is the GCC port's toolchain tree, and
+   --  CCL_MANIFEST_OBJECT this program's own manifest object (as
+   --  ccl_build.gpr's CCL_BUILD_MANIFEST).
+   Tree := external ("CUBIT_TOOLCHAIN", "");
+   Library := Tree & "/lib/gcc/x86_64-linux-musl/15.3.0";
+   --  The main thread's stack: the declaration buffers are the main
+   --  procedure's locals (Linux gives a main thread 8 MiB).
+   Main_Stack_Bytes := "16777216";   --  16 MiB
+   Executable := "";
+   Target_Compiler := ();
+   Target_Linker := ();
+   case Tool_Target is
+      when "linux" =>
+         for Object_Dir use "build/manifest";
+         for Exec_Dir use "build/manifest";
+         Executable := "ccl-manifest";
+      when "cubit" =>
+         for Object_Dir use "build/manifest-cubit";
+         for Exec_Dir use "build/manifest-cubit";
+         Executable := "ccl-manifest.app";
+         --  Native code has no red zone (what the toolchain's specs add).
+         Target_Compiler := ("-mno-red-zone");
+         Target_Linker :=
+           ("-specs=" & Library & "/specs", "-B" & Library & "/", "-B" & Tree & "/lib/",
+            "-no-pie", "-fno-use-linker-plugin", "-Wl,-z,stack-size=" & Main_Stack_Bytes,
+            external ("CCL_MANIFEST_OBJECT", ""));
+   end case;
+
    package Builder is
-      for Executable ("main.adb") use "ccl-manifest";
+      for Executable ("main.adb") use Executable;
    end Builder;
    package Compiler is
-      -- Linux host only: assertions/checks stay enabled for this build tool.
-      for Default_Switches ("Ada") use
-        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+      --  Assertions and checks stay enabled for this build tool.
+      for Default_Switches ("Ada") use Checked & Target_Compiler;
    end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use Target_Linker;
+   end Linker;
 end CCL_Manifest;

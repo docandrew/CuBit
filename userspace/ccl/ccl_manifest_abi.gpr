@@ -24,9 +24,19 @@ project CCL_Manifest_ABI is
       "cubit-channel_limits.ads", "cubit-channel_declarations.ads", "cubit-channel_declarations.adb",
       --  Config scopes against the setting catalog (CAP-003).
       "cubit-config_inspection.ads", "cubit-config_inspection.adb");
-   for Object_Dir use "build/manifest-abi";
+   --  The full Ada runtime the including tool runs on: the Linux host's,
+   --  or the GCC port's libgnat on CuBit (ccl_manifest.gpr's cubit target).
+   type Tool_Targets is ("linux", "cubit");
+   Tool_Target : Tool_Targets := external ("CCL_TOOL_TARGET", "linux");
+   Target := ();
+   case Tool_Target is
+      when "linux" => for Object_Dir use "build/manifest-abi";
+      when "cubit" =>
+         for Object_Dir use "build/manifest-abi-cubit";
+         Target := ("-mno-red-zone");   --  native code has no red zone
+   end case;
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-I-");
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-I-") & Target;
    end Compiler;
 end CCL_Manifest_ABI;

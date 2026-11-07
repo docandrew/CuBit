@@ -827,6 +827,8 @@ test-ccl-remote:
 	# The LAN remote session's wire profile, and its host client.
 	../tests/ccl-remote/build/remote_wire_tests
 	../tests/ccl-remote/build/remote_activity_tests
+	# Build output as whole lines (byte-by-byte stderr regression).
+	../tests/ccl-remote/build/remote_output_lines_tests
 	# Screenshots: the PNG encoder, checked by an independent decoder.
 	cd ../tests/ccl-remote && build/png_tests && python3 -I check_png.py
 	python3 -I ../tools/cubit-remote/test_cubit_remote.py
@@ -1180,26 +1182,37 @@ ccl-build:
 # The same compiler driver for native assembly (manifest objects).
 NATIVE_CC = $(CUBIT_GNAT)/bin/x86_64-unknown-linux-musl-gcc -B$(CUBIT_BINUTILS)/bin/
 
-# ccl-build on CuBit (SELF-002): the same sources with the CuBit body of
-# Build_Platform, on the GCC port's full Ada runtime (libgnat, libgnarl)
+# The CCL tools on CuBit (SELF-002): ccl-build.app and ccl-manifest.app,
+# the same sources as the Linux tools (ccl-build with the CuBit body of
+# Build_Platform), on the GCC port's full Ada runtime (libgnat, libgnarl)
 # and the CuBit libc, cross-built by the same GNAT 15.3 with the native
 # configuration and the port's toolchain tree as the runtime. Build the
 # tree first: userspace/ports/gcc/build.sh (tests/gnat/build.sh runs it).
-CCL_BUILD_APP_TREE := $(abspath ../userspace/ports/gcc/build/toolchain)
-CCL_BUILD_APP_RUNTIME := $(CCL_BUILD_APP_TREE)/lib/gcc/x86_64-linux-musl/15.3.0
-CCL_BUILD_APP_MANIFEST := ../userspace/ccl/build/ccl-build-cubit/manifest
-.PHONY: ccl-build-app
+CCL_TOOL_APP_TREE := $(abspath ../userspace/ports/gcc/build/toolchain)
+CCL_TOOL_APP_RUNTIME := $(CCL_TOOL_APP_TREE)/lib/gcc/x86_64-linux-musl/15.3.0
+# ccl_tool_app TARGET,PROJECT,OBJECTS,MANIFEST_CCL,MANIFEST_VARIABLE: the
+# tool's manifest object in ../userspace/ccl/build/OBJECTS/manifest, then
+# PROJECT's cubit target linked with it (MANIFEST_VARIABLE names it).
+define ccl_tool_app
+@test -f $(CCL_TOOL_APP_RUNTIME)/adalib/libgnat.a || \
+  { echo "$(1): no toolchain tree; run userspace/ports/gcc/build.sh first" >&2; exit 1; }
+mkdir -p ../userspace/ccl/build/$(3)/manifest
+../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl \
+  $(4) --output ../userspace/ccl/build/$(3)/manifest/manifest.S
+$(NATIVE_CC) -c ../userspace/ccl/build/$(3)/manifest/manifest.S -o ../userspace/ccl/build/$(3)/manifest/manifest.o
+$(ALR) gprbuild $(subst -XCUBIT_RUNTIME=$(abspath ../userspace/runtime),-XCUBIT_RUNTIME=$(CCL_TOOL_APP_RUNTIME),$(CUBIT_NATIVE_GPRBUILD_CONFIG)) \
+  -p -q -P $(2) -XCCL_TOOL_TARGET=cubit -XCUBIT_TOOLCHAIN=$(CCL_TOOL_APP_TREE) \
+  -X$(5)=$(abspath ../userspace/ccl/build/$(3)/manifest/manifest.o)
+endef
+.PHONY: ccl-build-app ccl-manifest-app
 ccl-build-app: ccl-manifest
-	@test -f $(CCL_BUILD_APP_RUNTIME)/adalib/libgnat.a || \
-	  { echo "ccl-build-app: no toolchain tree; run userspace/ports/gcc/build.sh first" >&2; exit 1; }
-	mkdir -p $(CCL_BUILD_APP_MANIFEST)
-	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl \
-	  ../userspace/ccl/tools/ccl-build/cubit/manifest.ccl --output $(CCL_BUILD_APP_MANIFEST)/manifest.S
-	$(NATIVE_CC) -c $(CCL_BUILD_APP_MANIFEST)/manifest.S -o $(CCL_BUILD_APP_MANIFEST)/manifest.o
-	$(ALR) gprbuild $(subst -XCUBIT_RUNTIME=$(abspath ../userspace/runtime),-XCUBIT_RUNTIME=$(CCL_BUILD_APP_RUNTIME),$(CUBIT_NATIVE_GPRBUILD_CONFIG)) \
-	  -p -q -P ../userspace/ccl/ccl_build.gpr -XCCL_TOOL_TARGET=cubit -XCUBIT_TOOLCHAIN=$(CCL_BUILD_APP_TREE) \
-	  -XCCL_BUILD_MANIFEST=$(abspath $(CCL_BUILD_APP_MANIFEST)/manifest.o)
+	$(call ccl_tool_app,$@,../userspace/ccl/ccl_build.gpr,ccl-build-cubit,../userspace/ccl/tools/ccl-build/cubit/manifest.ccl,CCL_BUILD_MANIFEST)
 	cp ../userspace/ccl/build/ccl-build-cubit/ccl-build.app isodir/boot/ccl-build.app
+# The manifest step's tool on CuBit (build-params.ccl's CuBit
+# manifest_tool), which the device-build payload installs at @system/tools
+# (tests/device-builds/build.sh).
+ccl-manifest-app: ccl-manifest
+	$(call ccl_tool_app,$@,../userspace/ccl/ccl_manifest.gpr,manifest-cubit,../userspace/ccl/tools/ccl-manifest/cubit/manifest.ccl,CCL_MANIFEST_OBJECT)
 
 # One checked result supplies both the ELF requests and optional Ada bindings.
 # Named fixed bindings in this catalog preserve shared-runtime ABI conventions.
@@ -2403,7 +2416,8 @@ usb-live-install-iso: usb-live-iso installer install-efi installed-initrd
 
 # SELF-002: the device-build payload, the one tree an image needs to build
 # apps on the device (tests/device-builds/build.sh): the toolchain at
-# /toolchain, a seeded Storehouse, the source subset in work/remote and the
+# /toolchain, the manifest step's tool at /tools (ccl-manifest.app), an
+# empty Storehouse, the source subset in work/remote and the
 # mailbox, as tests/device-builds/build/root/ and its ext2 image root.ext2
 # (also the Linux reference builds the tests compare with).
 .PHONY: device-build-root

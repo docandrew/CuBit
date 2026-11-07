@@ -22,7 +22,8 @@ with CuBit.Parameter_Signatures;
 with SPARKNaCl;
 with SPARKTLSCrypto.Hashing.SHA256;
 
---  Linux-hosted file boundary only. No process execution or network access.
+--  A file boundary only, on Linux and on CuBit (ccl-manifest.app, the
+--  manifest step of builds there). No process execution or network access.
 --  stdout receives assembly only after the complete declaration validates.
 procedure Main is
    use Ada.Command_Line;
@@ -81,6 +82,13 @@ procedure Main is
    Settings_Read : Boolean := False;
    Settings_Why : CuBit.Failures.Failure;
    Hex : constant String := "0123456789abcdef";
+   --  The stack of the tasks the CCL interpreter runs on: it recurses with
+   --  large frames (about 240 KiB each), more than a default 8 MiB main
+   --  stack holds for a typed manifest and its schema. 64 MiB, as
+   --  ccl-build's evaluation task: CuBit refuses a 256 MiB task stack
+   --  (Tasking_Error at activation), and every manifest in the tree
+   --  compiles to the same bytes with this one.
+   Interpreter_Stack_Bytes : constant := 64 * 1024 * 1024;
 
    --  The setting catalog's directory and schema: settings/ and
    --  setting-catalog.ccl beside the manifest schema.
@@ -1107,7 +1115,7 @@ begin
          Plan : Ada.Strings.Unbounded.Unbounded_String;
       begin
          declare
-            task Generation with Storage_Size => 256 * 1024 * 1024;
+            task Generation with Storage_Size => Interpreter_Stack_Bytes;
             task body Generation is
                Text : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
                Last : Natural;
@@ -1149,7 +1157,7 @@ begin
          Why : CuBit.Failures.Failure;
       begin
          declare
-            task Generation with Storage_Size => 256 * 1024 * 1024;
+            task Generation with Storage_Size => Interpreter_Stack_Bytes;
             task body Generation is
             begin
                Asset_Catalogs.Emit_Codecs (Argument (2), Generated, Why);
@@ -1167,7 +1175,7 @@ begin
    --  ccl-manifest --setting-kinds OUTPUT [--settings DIR] [--schema FILE]
    if Argument_Count >= 2 and then Argument (1) = "--setting-kinds" then
       declare
-         task Generation with Storage_Size => 256 * 1024 * 1024;
+         task Generation with Storage_Size => Interpreter_Stack_Bytes;
          task body Generation is
          begin
             Read_Settings;
@@ -1190,7 +1198,7 @@ begin
          Why : CuBit.Failures.Failure;
       begin
          declare
-            task Generation with Storage_Size => 256 * 1024 * 1024;
+            task Generation with Storage_Size => Interpreter_Stack_Bytes;
             task body Generation is
             begin
                Read_Settings;
@@ -1229,7 +1237,7 @@ begin
    --  than a default 8 MiB stack holds for a typed manifest and its schema,
    --  so the compilation runs on a task with room for it.
    declare
-      task Compilation with Storage_Size => 256 * 1024 * 1024;
+      task Compilation with Storage_Size => Interpreter_Stack_Bytes;
       task body Compilation is
       begin
          CCL.Manifests.Compile

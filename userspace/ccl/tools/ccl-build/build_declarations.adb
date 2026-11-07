@@ -306,6 +306,13 @@ package body Build_Declarations is
                Found := True;
                Result.Compiler_Tools := Toolchain_Of (Object, Named (Object, Item, "toolchain"));
                Result.Binutils := Toolchain_Of (Object, Named (Object, Item, "binutils"));
+               declare
+                  Tool : constant Views.Cursor := Named (Object, Item, "manifest_tool");
+               begin
+                  Result.Manifest_Tool :=
+                    (Kind => Manifest_Tool_Kind'Value (Alternative (Object, Tool)),
+                     Path => To_Unbounded_String (Views.Text (Object, Views.Payload (Object, Tool))));
+               end;
             end if;
          end;
       end loop;
@@ -314,7 +321,6 @@ package body Build_Declarations is
            Build_Platform.Build_Host'Image (Build_Platform.This_Host);
       end if;
       Result.Runtime := Field (Object, Root, "runtime");
-      Result.Manifest_Tool := Field (Object, Root, "manifest_tool");
       Result.Manifest_Schema := Field (Object, Root, "manifest_schema");
       Result.Catalogs (Process_Manager) := Field (Object, Root, "process_manager_catalog");
       Result.Catalogs (Device_Manager) := Field (Object, Root, "device_manager_catalog");

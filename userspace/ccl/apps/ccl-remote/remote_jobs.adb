@@ -9,6 +9,7 @@ with CuBit.Outlet_Rings;
 with CuBit.Program_Descriptions;
 with CuBit.Stream_Regions;
 with CuBit.Streams;
+with Remote_Output_Lines;
 with Startup;
 
 package body Remote_Jobs is
@@ -94,10 +95,31 @@ package body Remote_Jobs is
       end loop;
    end Record_Output;
 
-   Line_Bytes : constant := 512;
+   Read_Bytes : constant := 512;
+
+   --  Whole lines into the current job's output: standard output's as
+   --  written, standard error's prefixed. A ring gives what the program
+   --  wrote in any pieces (byte by byte, for an unbuffered standard
+   --  error), so each outlet's partial line waits for its line feed.
+   Assemblers : array (Outlet_Index) of Remote_Output_Lines.Assembler;
+
+   procedure Record_Stdout_Line (Line : String) is
+   begin
+      Record_Output (Jobs (Current), Line & LF);
+   end Record_Stdout_Line;
+
+   procedure Record_Stderr_Line (Line : String) is
+   begin
+      Record_Output (Jobs (Current), Stderr_Prefix & Line & LF);
+   end Record_Stderr_Line;
+
+   procedure Feed_Stdout is new Remote_Output_Lines.Feed (Record_Stdout_Line);
+   procedure Feed_Stderr is new Remote_Output_Lines.Feed (Record_Stderr_Line);
+   procedure Finish_Stdout is new Remote_Output_Lines.Finish (Record_Stdout_Line);
+   procedure Finish_Stderr is new Remote_Output_Lines.Finish (Record_Stderr_Line);
 
    procedure Drain is
-      Buffer : String (1 .. Line_Bytes);
+      Buffer : String (1 .. Read_Bytes);
       Read : Natural;
    begin
       if Current = 0 then
@@ -110,21 +132,22 @@ package body Remote_Jobs is
                  (Ring_Bases (O), Ring_Pages, Buffer'Address, Buffer'Length);
                exit when Read = 0;
                if O = Outlet_Index'Last then
-                  Record_Output (Jobs (Current), Stderr_Prefix);
-               end if;
-               Record_Output (Jobs (Current), Buffer (1 .. Read));
-               if Buffer (Read) /= LF then
-                  Record_Output (Jobs (Current), [1 => LF]);
+                  Feed_Stderr (Assemblers (O), Buffer (1 .. Read));
+               else
+                  Feed_Stdout (Assemblers (O), Buffer (1 .. Read));
                end if;
             end loop;
          end if;
       end loop;
    end Drain;
 
+   --  The run ended: everything it wrote, a last unterminated line too.
    procedure Revoke_Outlets is
       Revoked : Boolean;
    begin
       Drain;
+      Finish_Stdout (Assemblers (Outlet_Index'First));
+      Finish_Stderr (Assemblers (Outlet_Index'Last));
       for O in Outlet_Index loop
          if Lent (O) then
             CuBit.Memory_Grants.Revoke (Ring_References (O), Revoked);
@@ -145,6 +168,9 @@ package body Remote_Jobs is
       Grant : Unsigned_64;
    begin
       Rings.Count := 0;
+      for A of Assemblers loop
+         Remote_Output_Lines.Reset (A);
+      end loop;
       CuBit.Launching.Describe (Launcher, Program, Descriptor, Length, Result, Failure);
       if Result /= CuBit.Launching.Launched or else Length = 0 then
          return;

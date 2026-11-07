@@ -97,11 +97,23 @@ package Build_Declarations is
    subtype Manifest_Catalog is Catalog range Process_Manager .. Device_Manager;
    type Catalog_Paths is array (Manifest_Catalog) of Unbounded_String;
 
-   --  The repository's build parameters; the toolchains are the ones its
-   --  toolchains list names for this host (Build_Platform.This_Host).
+   --  The manifest step's tool, as this host's toolchains entry names it
+   --  (build.ccl's Manifest_Tool): a program in the source tree (Path
+   --  relative to it), run as the step's input, or one installed on this
+   --  host (Path absolute), run in place and named by its SHA-256.
+   type Manifest_Tool_Kind is (Checkout, Installed);
+   type Manifest_Tool is record
+      Kind : Manifest_Tool_Kind := Checkout;
+      Path : Unbounded_String;
+   end record;
+
+   --  The repository's build parameters; the toolchains and the manifest
+   --  tool are the ones its toolchains list names for this host
+   --  (Build_Platform.This_Host).
    type Parameters is record
       Compiler_Tools, Binutils : Toolchain;
-      Runtime, Manifest_Tool, Manifest_Schema : Unbounded_String;
+      Manifest_Tool : Build_Declarations.Manifest_Tool;
+      Runtime, Manifest_Schema : Unbounded_String;
       Catalogs : Catalog_Paths;
       Target, Binder : String_Vectors.Vector;
       Linker : Link_Vectors.Vector;

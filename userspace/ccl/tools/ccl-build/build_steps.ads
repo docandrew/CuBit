@@ -47,12 +47,20 @@ package Build_Steps is
       Tree : Digest := [others => 0];    --  Toolchain_Path
    end record;
 
-   type Program_Kind is (Toolchain_Program, Input_Program);
+   --  What a step runs: a program inside a toolchain tree, one of the
+   --  step's inputs, or a program installed on the build host at an
+   --  absolute name (Path), run in place and named in the step by its
+   --  SHA-256 (Contents): build-params.ccl's Installed manifest tool, on
+   --  CuBit, where launch tables name programs exactly and a step
+   --  directory's copy could not be started. Appended last, so the
+   --  encoding of the other kinds, and their steps' identities, stay.
+   type Program_Kind is (Toolchain_Program, Input_Program, Installed_Program);
    type Program is record
       Kind : Program_Kind := Toolchain_Program;
       Toolchain : Digest := [others => 0];    --  a tree entry
-      Path : Unbounded_String;                --  inside the toolchain
+      Path : Unbounded_String;                --  inside the toolchain; installed: absolute
       Index : Natural := 0;                   --  an input of the step
+      Contents : Digest := [others => 0];     --  installed: its SHA-256
    end record;
 
    package Input_Vectors is new Ada.Containers.Vectors (Input_Number, Input);

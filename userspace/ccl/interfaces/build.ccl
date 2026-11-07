@@ -1,6 +1,7 @@
 # CCL build declarations (docs/ccl-build.md). Three documents use them:
-# - build-params.ccl, one Parameters value: toolchain pins, the runtime,
-#   the manifest tool and catalogs, and what every native link shares;
+# - build-params.ccl, one Parameters value: toolchain pins and manifest
+#   tools by host, the runtime, the catalogs, and what every native link
+#   shares;
 # - build-catalog.ccl, one Build_Catalog value: named code profiles and the
 #   libraries components may use;
 # - each component's component.ccl, one Component value that names only
@@ -79,11 +80,19 @@
 # on (one per host): nixpkgs' trees on Linux; on CuBit the GCC port's tree
 # (userspace/ports/gcc), which holds its binutils too.
 (type Build_Host (enum Linux CuBit))
-(type Host_Toolchains (record (host Build_Host) (toolchain Toolchain) (binutils Toolchain)))
+# The manifest step's tool (ccl-manifest) a build host runs: a program in
+# the source tree, run as the step's input (Linux: the tree's own build), or
+# one installed on the host at an absolute name, run where it is and named
+# in the step by its SHA-256 (CuBit: launch tables name programs exactly,
+# so a copy in a step directory could not be started). Both are built from
+# the same sources and write the same bytes.
+(type Manifest_Tool (variant (Checkout String) (Installed String)))
+(type Host_Toolchains (record
+  (host Build_Host) (toolchain Toolchain) (binutils Toolchain) (manifest_tool Manifest_Tool)))
 
 (type Parameters (record
   (toolchains (List Host_Toolchains)) (runtime String)
-  (manifest_tool String) (manifest_schema String)
+  (manifest_schema String)
   (process_manager_catalog String) (device_manager_catalog String)
   (target (List String)) (binder (List String)) (linker (List Link_Argument))))
 

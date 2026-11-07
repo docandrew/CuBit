@@ -17,13 +17,10 @@
 #   mail     the host may use the mailbox
 (type Remote_Listen (enum Off LAN))
 (type Pairing_Display (enum Window Kernel_Console))
-(type Remote_Parameters (record
-  (listen Remote_Listen)
-  (display Pairing_Display)
-  (work String)
-  (files Boolean)
-  (builds Boolean)
-  (mail Boolean)))
+# Compact: line breaks and indentation count against the CCL source limit,
+# which the manifest schema mostly fills (comments' text does not).
+(type Remote_Parameters (record (listen Remote_Listen) (display Pairing_Display)
+(work String) (files Boolean) (builds Boolean) (mail Boolean)))
 (Executable_Manifest
   identity => "com.cubit.ccl-remote"
   version => "0.1.0"
@@ -40,19 +37,15 @@
     (service "filesystem" "filesystem")
     # Which addresses netstack's interfaces hold (inspection only).
     (service "network-stack" "network-stack")
-    # Port 8445 on whichever addresses this machine holds (a listen scope
-    # is one port): one listener per interface (at most four) and each
-    # one's connection.
+    # Port 8445 on this machine's addresses (a listen scope is one port):
+    # one listener per interface (at most four) and its connection.
     (network Network_Action.TCP_Listen "0.0.0.0" 0 8445 8445 false 8 "network")
     # Builds: ccl-build.app, below.
     (service "process-manager" "process-manager")
     # The pairing window (display => Window).
     (service "desktop" "desktop")
-    # Screenshots (display.capture, cubit-remote screenshot): a read-only
-    # copy of the composed frame. Only a startup entry that also says
-    # (display-capture approve-declared) gets it; the person at the device
-    # must still turn on "Allow screen capture" (the Deskbar's Remote
-    # access section) before any frame is copied.
+    # Screenshots: only with (display-capture approve-declared) and the
+    # Deskbar's "Allow screen capture" on (its Remote access section).
     (service "display-capture" "display-capture")]
   optional => ["log-observer" "process-observer" "process-manager" "desktop" "display-capture"]
   scopes => [
@@ -62,12 +55,11 @@
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@ufs:0/work")
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")
-    # What a build delegates to ccl-build (decision D2), as ccl-build's
-    # own manifest names them (on the system volume).
+    # What builds delegate to ccl-build (D2) and its manifest names.
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
     (filesystem [File_Right.Read] "@system/toolchain")
+    (filesystem [File_Right.Read] "@system/tools")
     (filesystem [File_Right.Read] "@system/cubit-src")]
-  # Builds, and apps built here (Remote_Apps generations; procmgr asks
-  # the Desktop's "Allow app replacement" switch).
+  # Builds; apps built here (procmgr asks "Allow app replacement").
   may_launch => [(Launch "ccl-build.app") (Launch "@system/work/generations/")]
   parameters => (Parameter_Signature.Declared "Remote_Parameters"))

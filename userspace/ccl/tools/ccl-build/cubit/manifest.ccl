@@ -4,7 +4,9 @@
 # Storehouse; it exports products into the work place (--out).
 #
 # Steps run the toolchain's gcc driver and gnatbind (the driver runs gnat1,
-# as and ld itself, from its own launch table) through the libc's
+# as and ld itself, from its own launch table), and the manifest tool
+# installed at @system/tools (build-params.ccl; this program reads it to
+# name it in the step by its SHA-256), through the libc's
 # posix_spawn, which passes on whole the places this program's launcher
 # delegated to it (decision D2): a launcher must delegate the Storehouse,
 # the toolchain and the source checkout for the steps to see them. Each
@@ -24,11 +26,13 @@
   scopes => [
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
     (filesystem [File_Right.Read] "@system/toolchain")
+    (filesystem [File_Right.Read] "@system/tools")
     (filesystem [File_Right.Read] "@system/cubit-src")
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")]
   may_launch => [
     (Launch "toolchain/bin/gcc")
-    (Launch "toolchain/bin/gnatbind")]
+    (Launch "toolchain/bin/gnatbind")
+    (Launch "tools/ccl-manifest.app")]
   outlets => [
     (Outlet "unix.stdout" Element.Text pages => 4)
     (Outlet "unix.stderr" Element.Text pages => 4)]

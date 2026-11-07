@@ -6,7 +6,8 @@ device-build), the device-build live image (tests/usb-optical/run-live.py
 Usage: device_build.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT BUILD_DIR
                        [--build-only] [--memory-report FILE] [--qemu-pid PID]
 
-  --build-only      build 1 only (pair, put, build, SHA-256, download)
+  --build-only      swap-probe's build 1 and hello's build only (pair, put,
+                    build, SHA-256, download)
   --memory-report   while build 1 runs, sample (proc.list) on the device and
                     QEMU's resident memory; write the peaks as JSON to FILE
   --qemu-pid        QEMU's process, for its resident memory (VmRSS/VmHWM)
@@ -15,9 +16,9 @@ The guest's system volume (@system) holds the device-build payload
 (tests/device-builds/build.sh): an installed root on QEMU's UFS disk
 (make-disk.py), the live RAM root (@mem:0) or the installed root the
 device-build live image's installer wrote: the CuBit toolchain at
-/toolchain, a Storehouse at /storehouse seeded with the manifest step, and
-the source subset an app's build reads at /work/remote. Like a LAN host,
-this pairs with the
+/toolchain, the manifest step's tool at /tools/ccl-manifest.app, an empty
+Storehouse at /storehouse (every step runs on CuBit), and the source subset
+an app's build reads at /work/remote. Like a LAN host, this pairs with the
 code the guest shows on its console and, with tools/cubit-remote:
   - puts swap-probe's sources (build 1) into the workspace;
   - builds it on CuBit (ccl-build.app, started by ccl-remote), following
@@ -28,7 +29,12 @@ code the guest shows on its console and, with tools/cubit-remote:
   - builds again, which must run no step (every step answered from the
     Storehouse);
   - puts build 2 (one source line changed) and checks that only the steps
-    the change reaches run, and that the product is the Linux build 2's.
+    the change reaches run, and that the product is the Linux build 2's;
+  - puts hello (userspace/apps/hello: an app, identity and manifest.ccl
+    the device has never seen) and builds it, its manifest step too
+    (ccl-manifest.app, on CuBit): the product, downloaded, is byte for byte
+    the Linux build's (BUILD_DIR/expected-hello.*). With --build-only that
+    is all.
 Between and after the builds it swaps the running app (SELF-002 phase B,
 cubit-remote app replace | rollback | status):
   - with the Desktop's "Allow app replacement" switch off (as at boot) a
@@ -41,7 +47,9 @@ cubit-remote app replace | rollback | status):
   - replace with build 2: "build 1 stopping", then "build 2 running";
     generation 2, previous generation 1 stopped in time;
   - rollback: "build 2 stopping", "build 1 running" again; status names
-    generation 1 with build 1's SHA-256, previous generation 2.
+    generation 1 with build 1's SHA-256, previous generation 2;
+  - replace hello with its build: generation 1 runs, and its hello line is
+    in logstore ((logs.recent "com.cubit.hello")).
 Then quits QEMU. Prints PASS/FAIL lines and the times; exits 1 on any failure.
 """
 import argparse
@@ -75,7 +83,19 @@ deadline = time.monotonic() + timeout
 CODE = re.compile(rb"ccl-remote: pairing code ([0-9A-Z-]{31})")
 LISTENING = b"ccl-remote: listening on "
 APP = "userspace/apps/swap-probe"
-PRODUCT = "out/%s/build/swap-probe.app" % APP
+HELLO = "userspace/apps/hello"
+HELLO_IDENTITY = "com.cubit.hello"
+HELLO_LINE = "hello: hello from an app built on CuBit"
+HELLO_LOG_SECONDS = 20
+APP_SOURCES = ("component.ccl", "manifest.ccl", "main.adb")
+
+
+def product_of(app):
+    """Where the build exports an app's program, in the workspace."""
+    return "out/%s/build/%s.app" % (app, app.rsplit("/", 1)[1])
+
+
+PRODUCT = product_of(APP)
 STATE_RUNNING, STATE_EXITED = 1, 2
 STATUS_NOT_FOUND = 4
 # Remote_Wire.App_Result, Instance_State, Stop_Kind.
@@ -194,16 +214,17 @@ def pair():
     return None
 
 
-def put_app(host, n):
-    for name in ("component.ccl", "manifest.ccl", "main.adb"):
-        cr.put_file(host, "workspace", str(build_dir / ("app-%d" % n) / name), "%s/%s" % (APP, name))
+def put_app(host, n, app=APP):
+    """Put an app's sources (BUILD_DIR/app-N) into the workspace."""
+    for name in APP_SOURCES:
+        cr.put_file(host, "workspace", str(build_dir / ("app-%s" % n) / name), "%s/%s" % (app, name))
 
 
-def build(host, label):
+def build(host, label, app=APP):
     """Start a build of the app and follow it; (state, exit code, output, seconds)."""
     started = time.monotonic()
     job = struct.unpack(">I", host.call("build_start", "workspace",
-                                        cr.name_field(APP + "/component.ccl")))[0]
+                                        cr.name_field(app + "/component.ccl")))[0]
     offset, output, state, code = 0, b"", STATE_RUNNING, 0
     while time.monotonic() < deadline:
         state, code, total, first_kept, out = cr.build_poll(host, job, offset)
@@ -360,20 +381,12 @@ def main():
         report_memory(sampler, before, seconds)
     check(state == STATE_EXITED and code == 0, "build 1 on CuBit exits 0")
     check(len(ran_steps(text)) > 0, "build 1 ran %d steps on CuBit" % len(ran_steps(text)))
-    try:
-        size, digest = cr.remote_stat(host, "workspace", PRODUCT)
-    except cr.RemoteError as e:
-        size, digest = 0, b""
-        check(False, "stat %s: %s" % (PRODUCT, e))
-    check(digest.hex() == expected[1],
-          "build 1's swap-probe.app (%d bytes) is the Linux build's: sha256 %s" % (size, digest.hex()))
-    work = tempfile.mkdtemp(prefix="cubit-device-build-")
-    local = os.path.join(work, "swap-probe.app")
-    cr.get_file(host, "workspace", PRODUCT, local)
-    check(Path(local).read_bytes() == (build_dir / "expected-build-1.app").read_bytes(),
-          "the downloaded product is byte for byte the Linux build")
+    check(any(manifest_step(APP) in s for s in ran_steps(text)),
+          "build 1's manifest step ran on CuBit (no Storehouse seed)")
+    check_product(host, APP, "build-1", "build 1")
     print("device-build: TIME build-1 %.1f s" % seconds, flush=True)
     if options.build_only:
+        build_hello(host)
         return
 
     # Phase B: the app swapped for its build, gated by the Desktop's switch.
@@ -431,6 +444,62 @@ def main():
           "status: the state names generation 1 (build 1's SHA-256), running")
     for op in (b"replace", b"rollback", b"status"):
         check(wait_for_serial(b"ccl-remote: host app " + op), "app %s is an activity line on the device" % op.decode())
+
+    # A new app, its manifest built on the device, swapped in and heard from.
+    build_hello(host)
+    report = app(host, "app_replace", product_of(HELLO))
+    expected_hello = (build_dir / "expected-hello.sha256").read_text().strip()
+    check(report["refused"] is None and report["result"] == APP_REPLACED and report["current"] == 1
+          and report["instance"] == INSTANCE_RUNNING and report["current_sha256"] == expected_hello,
+          "replace hello with its build: generation 1 runs, its SHA-256 the Linux build's")
+    check(wait_for_serial(HELLO_LINE.encode()), "the device shows \"%s\"" % HELLO_LINE)
+    expression = '(logs.recent "%s")' % HELLO_IDENTITY
+    end = min(deadline, time.monotonic() + HELLO_LOG_SECONDS)
+    found, text = False, ""
+    while not found and time.monotonic() < end:
+        ok, text = cr.evaluate_whole(host, expression)
+        found = ok and HELLO_LINE in text
+        if not found:
+            time.sleep(0.5)
+    check(found, "logstore holds hello's line: %s -> %s" % (expression, text[:200]))
+
+
+def manifest_step(app):
+    """The label of an app's manifest step in ccl-build's "ran" lines."""
+    return "manifest %s/manifest.ccl" % app
+
+
+def check_product(host, app, expected_name, label):
+    """The product's SHA-256 (stat on the device) and its downloaded bytes
+    against the Linux build's (BUILD_DIR/expected-NAME.sha256, .app)."""
+    product = product_of(app)
+    expected = (build_dir / ("expected-%s.sha256" % expected_name)).read_text().strip()
+    try:
+        size, digest = cr.remote_stat(host, "workspace", product)
+    except cr.RemoteError as e:
+        size, digest = 0, b""
+        check(False, "stat %s: %s" % (product, e))
+    check(digest.hex() == expected,
+          "%s's %s (%d bytes) is the Linux build's: sha256 %s" % (label, Path(product).name, size, digest.hex()))
+    work = tempfile.mkdtemp(prefix="cubit-device-build-")
+    local = os.path.join(work, Path(product).name)
+    cr.get_file(host, "workspace", product, local)
+    check(Path(local).read_bytes() == (build_dir / ("expected-%s.app" % expected_name)).read_bytes(),
+          "%s: the downloaded product is byte for byte the Linux build" % label)
+    os.remove(local)
+    os.rmdir(work)
+
+
+def build_hello(host):
+    """hello, built entirely on the device: its manifest step runs there."""
+    put_app(host, "hello", HELLO)
+    state, code, text, seconds = build(host, "hello", HELLO)
+    steps = ran_steps(text)
+    check(state == STATE_EXITED and code == 0, "hello (a new app and manifest) builds on CuBit, exit 0")
+    check(any(manifest_step(HELLO) in s for s in steps),
+          "hello's manifest step ran on CuBit (ccl-manifest.app): %d steps" % len(steps))
+    check_product(host, HELLO, "hello", "hello")
+    print("device-build: TIME hello %.1f s" % seconds, flush=True)
 
 
 try:

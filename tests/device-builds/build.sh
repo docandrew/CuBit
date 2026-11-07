@@ -7,9 +7,11 @@
 #     (gnat-15.3.0-cubit), and ccl-build.app (as tests/ccl-build-native);
 #   - root/: the system volume the image boots with, the installed root on
 #     QEMU's UFS disk (@ufs:0, which storage.system-volume makes the
-#     filesystem's @system): toolchain/, storehouse/ (the manifest step's
-#     seed, below), work/remote/ (the source subset an app's build reads,
-#     without the app: the host puts that) and work/mail/;
+#     filesystem's @system): toolchain/, tools/ccl-manifest.app (the
+#     manifest step's tool on CuBit, build-params.ccl; make -C kernel
+#     ccl-manifest-app), storehouse/ (empty: every step runs on CuBit),
+#     work/remote/ (the source subset an app's build reads, without the
+#     app: the host puts that) and work/mail/;
 #   - root.ext2: that tree as an ext2 image (4 KiB blocks), sized to what
 #     it holds plus Build_Headroom_MiB for the Storehouse and the products.
 #     The one device-build payload: the headless test puts it in a GPT
@@ -19,12 +21,12 @@
 #     live RAM root does (the CCL samples in work/, tmp/), and that
 #     image's installer copies its files onto the installed root.
 #     Reproducible: fixed times, UUID and hash seed, owner 0;
-#   - the Linux reference: swap-probe.app (userspace/apps/swap-probe) built
-#     by the Linux ccl-build from the same subset into a private store, at
-#     build 1 and build 2 (Build edited as the test edits it), each one's
-#     SHA-256 in expected-build-N.sha256;
-#   - seed: the manifest step's result from that store, by identity (the
-#     manifest tool is still a Linux program: tests/ccl-build-native).
+#   - the Linux reference, built by the Linux ccl-build (and Linux's
+#     ccl-manifest) from the same subset into a private store:
+#     swap-probe.app (userspace/apps/swap-probe) at build 1 and build 2
+#     (Build edited as the test edits it), each one's SHA-256 in
+#     expected-build-N.sha256, and hello.app (userspace/apps/hello, the
+#     app with a manifest the device has never seen) in expected-hello.*.
 # Run in the Nix shell under the shared build lock, after make -C kernel
 # world (libc, user runtime, ccl-manifest, ccl-build).
 set -euo pipefail
@@ -74,6 +76,10 @@ if [[ $identity != "$pinned" ]]; then
     exit 1
 fi
 make -s -C "$repo/kernel" ccl-build-app >/dev/null
+# The manifest step's tool on CuBit, where build-params.ccl names it.
+make -s -C "$repo/kernel" ccl-manifest-app >/dev/null
+mkdir -p "$root/tools" "$root/storehouse"
+cp "$repo/userspace/ccl/build/manifest-cubit/ccl-manifest.app" "$root/tools/ccl-manifest.app"
 
 # The source subset an Ada app's build reads (as tests/ccl-build-native's
 # for ps2, without the input library), in the workspace.
@@ -89,13 +95,13 @@ copy build-params.ccl build-catalog.ccl \
     userspace/ccl/interfaces/build.ccl userspace/ccl/interfaces/executable-manifest.ccl \
     userspace/ccl/interfaces/setting-catalog.ccl userspace/ccl/interfaces/settings \
     userspace/ccl/catalogs/driver-services.ccl userspace/ccl/catalogs/native-runtime-services.ccl \
-    userspace/ccl/build/manifest/ccl-manifest \
     userspace/runtime/ada_source_path userspace/runtime/ada_object_path \
     userspace/runtime/gnat userspace/runtime/adalib \
     shared/time shared/interrupts shared/launch shared/publications shared/capabilities shared/boot \
     userspace/c/link.ld userspace/c/build/crt0.o
 
-# The app as the host puts it (build 1), and build 2 as the test edits it.
+# The apps as the host puts them: swap-probe at build 1, and build 2 as the
+# test edits it; hello as it is.
 app=userspace/apps/swap-probe
 for n in 1 2; do
     remove "$b/app-$n"
@@ -106,27 +112,34 @@ for n in 1 2; do
     touch -r "$repo/$app/main.adb" "$b/app-$n/main.adb"
 done
 grep -q 'Build : constant String := "2";' "$b/app-2/main.adb"
+hello=userspace/apps/hello
+remove "$b/app-hello"
+mkdir -p "$b/app-hello"
+cp -p "$repo/$hello/component.ccl" "$repo/$hello/manifest.ccl" "$repo/$hello/main.adb" "$b/app-hello/"
 
-# The Linux reference of each build, from the subset plus the app, in a
-# private store (never the shared one); the manifest step's seed from it.
+# The Linux reference of each, from the subset plus the app (and Linux's
+# manifest tool, where build-params.ccl names it for Linux), in a private
+# store (never the shared one).
 reference=$b/reference
-remove "$b/host-store" "$b/seed"
-for n in 1 2; do
-    remove "$reference"
+remove "$b/host-store" "$b/seed" "$b/seed.log"
+reference_build() {  # reference_build APP SOURCES NAME: expected-NAME.app and .sha256
+    local product
+    remove "$reference" "$b/host-out"
     cp -r "$src" "$reference"
-    mkdir -p "$reference/$app"
-    cp -p "$b/app-$n/"* "$reference/$app/"
-    remove "$b/host-out"
+    mkdir -p "$reference/userspace/ccl/build/manifest" "$reference/$1"
+    cp -p "$repo/userspace/ccl/build/manifest/ccl-manifest" "$reference/userspace/ccl/build/manifest/"
+    cp -p "$2/"* "$reference/$1/"
     "$tool" build --store "$b/host-store" --source-root "$reference" \
         --import "gnat-15.3.0-x86_64-linux-musl=$CUBIT_GNAT" --import "binutils-2.46=$CUBIT_BINUTILS" \
-        --out "$b/host-out" "$reference/$app/component.ccl" > "$b/host-build-$n.log"
-    sha256sum "$b/host-out/$app/build/swap-probe.app" | cut -d' ' -f1 > "$b/expected-build-$n.sha256"
-    cp "$b/host-out/$app/build/swap-probe.app" "$b/expected-build-$n.app"
-done
+        --out "$b/host-out" "$reference/$1/component.ccl" > "$b/host-$3.log"
+    product=$b/host-out/$1/build/$(basename "$1").app
+    sha256sum "$product" | cut -d' ' -f1 > "$b/expected-$3.sha256"
+    cp "$product" "$b/expected-$3.app"
+}
+reference_build "$app" "$b/app-1" build-1
+reference_build "$app" "$b/app-2" build-2
+reference_build "$hello" "$b/app-hello" hello
 remove "$reference" "$b/host-out"
-# Both builds share the manifest step (only main.adb differs).
-python3 -I "$repo/tests/ccl-build-native/seed.py" "$b/host-store" "$b/host-build-1.log" \
-    "manifest $app/manifest.ccl" "$root/storehouse" > "$b/seed.log"
 
 # The RAM root image: its contents plus the headroom, in whole MiB.
 used_kib=$(du -sk --apparent-size "$root" | cut -f1)
@@ -139,6 +152,7 @@ tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$Root_Epoch" \
 SOURCE_DATE_EPOCH=$Root_Epoch mke2fs -q -t ext2 -b 4096 -m 0 -F -U "$Root_UUID" \
     -E "hash_seed=$Root_Hash_Seed" -d "$b/root.tar" "$b/root.ext2" "${size_mib}M"
 rm -f "$b/root.tar"
-echo "device-build: toolchain $identity; root $((used_kib / 1024)) MiB in $files files," \
-     "image ${size_mib} MiB; build 1 $(cat "$b/expected-build-1.sha256");" \
-     "build 2 $(cat "$b/expected-build-2.sha256"); $(tail -1 "$b/seed.log")"
+echo "device-build: toolchain $identity; ccl-manifest.app $(sha256sum "$root/tools/ccl-manifest.app" | cut -d' ' -f1);" \
+     "root $((used_kib / 1024)) MiB in $files files, image ${size_mib} MiB;" \
+     "build 1 $(cat "$b/expected-build-1.sha256"); build 2 $(cat "$b/expected-build-2.sha256");" \
+     "hello $(cat "$b/expected-hello.sha256")"

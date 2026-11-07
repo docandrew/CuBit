@@ -8,18 +8,14 @@
 #     the identity build-params.ccl pins for CuBit (gnat-15.3.0-cubit);
 #   - ccl-build.app (make -C kernel ccl-build-app) and the test launcher,
 #     ccl-build-check.app;
+#   - tools/ccl-manifest.app (make -C kernel ccl-manifest-app): the manifest
+#     step's tool on CuBit, installed where build-params.ccl names it
+#     (@system/tools), so every step, the manifest's too, runs on CuBit;
 #   - cubit-src: the source subset ps2.drv's build reads (the program, the
 #     input library, the prebuilt user runtime and crt0.o, the declarations
-#     and the manifest tool);
+#     and Linux's manifest tool, for the reference);
 #   - the Linux reference: ps2.drv built by the Linux ccl-build from that
-#     subset into a private store (never the shared one);
-#   - seed: the manifest step's result from that store, by identity. The
-#     manifest tool is a Linux program in this slice (its step identity
-#     names its bytes, so the step is the same on both hosts), and CuBit
-#     launches only programs a launch table names exactly, which a tool
-#     placed in a step directory is not: the image carries the step's
-#     result instead (binary substitution), and every other step runs on
-#     CuBit.
+#     subset into a private store (never the shared one).
 # Run in the Nix shell under the shared build lock, after make -C kernel
 # world (libc, user runtime, ccl-manifest, ccl-build).
 set -euo pipefail
@@ -59,8 +55,11 @@ if [[ $identity != "$pinned" ]]; then
     exit 1
 fi
 
-# ccl-build.app and the launcher.
-make -s -C "$repo/kernel" ccl-build-app >/dev/null
+# ccl-build.app, the manifest tool and the launcher.
+make -s -C "$repo/kernel" ccl-build-app ccl-manifest-app >/dev/null
+remove "$b/tools"
+mkdir -p "$b/tools"
+cp "$repo/userspace/ccl/build/manifest-cubit/ccl-manifest.app" "$b/tools/ccl-manifest.app"
 mkdir -p "$here/check/build/generated"
 "$repo/userspace/ccl/build/manifest/ccl-manifest" \
     "$repo/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/check/manifest.ccl" \
@@ -104,9 +103,6 @@ remove "$b/host-store" "$b/host-out"
     --import "gnat-15.3.0-x86_64-linux-musl=$CUBIT_GNAT" --import "binutils-2.46=$CUBIT_BINUTILS" \
     --out "$b/host-out" "$src/userspace/services/ps2/component.ccl" > "$b/host-build.log"
 cp "$b/host-out/userspace/services/ps2/build/ps2.drv" "$b/expected-ps2.drv"
-
-# The manifest step's result, by identity.
-remove "$b/seed"
-python3 -I "$here/seed.py" "$b/host-store" "$b/host-build.log" \
-    "manifest userspace/services/ps2/manifest.ccl" "$b/seed" > "$b/seed.log"
-echo "ccl-build-native: toolchain $identity; $(grep -c '^ran ' "$b/host-build.log") steps on Linux; seed $(tail -1 "$b/seed.log")"
+remove "$b/seed" "$b/seed.log"
+echo "ccl-build-native: toolchain $identity; $(grep -c '^ran ' "$b/host-build.log") steps on Linux;" \
+     "ccl-manifest.app $(sha256sum "$b/tools/ccl-manifest.app" | cut -d' ' -f1)"

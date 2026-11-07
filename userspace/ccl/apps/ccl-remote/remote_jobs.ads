@@ -14,8 +14,9 @@
 --  Busy meanwhile.
 --
 --  Output: each job keeps the newest Output_Bytes of what ccl-build wrote
---  (stdout lines as written, stderr lines prefixed "[stderr] "), with the
---  total it ever wrote. A poll from an offset older than the oldest kept
+--  (stdout lines as written, stderr lines prefixed "[stderr] ": whole
+--  lines, however the outlets deliver them, and a last unterminated line
+--  when the run ends; Remote_Output_Lines), with the total it ever wrote. A poll from an offset older than the oldest kept
 --  byte is told the first kept offset, so a slow host sees exactly how much
 --  it missed; nothing is dropped silently.
 --

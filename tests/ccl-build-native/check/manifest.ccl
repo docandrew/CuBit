@@ -2,7 +2,8 @@
 # the native ccl-build.app on ps2.drv's sources, interrupts one build,
 # checks that the next recovers and makes Linux's program byte for byte,
 # and that a build after it runs no step. It delegates to ccl-build the
-# places ccl-build's steps need (decision D2): it holds each of them.
+# places ccl-build's steps need (decision D2): it holds each of them, and
+# what ccl-build's manifest requests (@system/tools: the manifest tool).
 (Executable_Manifest
   identity => "com.cubit.ccl-build-check"
   version => "0.1.0"
@@ -10,6 +11,7 @@
   scopes => [
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
     (filesystem [File_Right.Read] "@system/toolchain")
+    (filesystem [File_Right.Read] "@system/tools")
     (filesystem [File_Right.Read] "@system/cubit-src")
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")
     # binutils-compare's own scope, as its manifest spells it (procmgr
