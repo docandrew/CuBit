@@ -1,0 +1,106 @@
+# The device-build live medium as QEMU tests it (tests/device-builds
+# run-live.sh): images/laptop-build.ccl exactly, except that the startup
+# plans (live and installed) show ccl-remote's pairing code on the kernel
+# console (serial) instead of in a window, so the host side can pair.
+# run-live.sh checks that this is the only difference.
+# Only the services needed to reach USB ISO9660 belong in bootstrap.
+# Membership is not launch approval or a capability grant.
+(system-image v1
+  (catalog "cubit-native-v1")
+  (layout optical)
+  (provider "usb-optical")
+  (kernel "kernel")
+  (boot-menu "grub-usb-live")
+  (settings "system-live")
+  (startup "init-usb-live-build-test")
+  (file bootstrap "devmgr" "devmgr.svc")
+  (file bootstrap "filesystem" "filesystem.svc")
+  (file bootstrap "ramdisk" "ramdisk.drv")
+  (file bootstrap "ps2" "ps2.drv")
+  (file bootstrap "xhci" "xhci.drv")
+  # Every driver is in every image; devmgr starts those whose declared
+  # devices are present (docs/device-matching.md). Drivers devmgr starts
+  # before the optical filesystem is attached live in bootstrap.
+  (file bootstrap "ata" "ata.drv")
+  (file bootstrap "nvme" "nvme.drv")
+  (file bootstrap "virtio-input" "virtio-input.drv")
+  # The live RAM root (@mem:0, the system volume): the device-build
+  # payload (tests/device-builds/build.sh): toolchain/, storehouse/,
+  # work/remote/ (the source subset), work/mail/, the CCL samples.
+  (file bootstrap "live-rw-build" "live-rw.ext2")
+  (file optical "netstack" "apps/netstack.svc")
+  (file optical "virtio-net" "apps/virtio-net.drv")
+  (file optical "virtio-gpu" "apps/virtio-gpu.drv")
+  (file optical "intel-gpu" "apps/intel-gpu.drv")
+  (file optical "ufs" "apps/ufs.drv")
+  (file optical "installer" "apps/installer.svc")
+  # The bootstrap filesystem resolves application paths beneath apps/.
+  (file optical "intel-guc" "apps/firmware/intel/tgl_guc_70.bin")
+  (file optical "intel-firmware-license" "licenses/Intel-GPU.txt")
+  (file optical "hda" "apps/hda.drv")
+  (file optical "rtw89" "apps/rtw89.drv")
+  (file optical "mixer" "apps/mixer.svc")
+  (file optical "config" "apps/config.svc")
+  (file optical "config-storage" "apps/config-storage.svc")
+  (file optical "servo" "apps/cubitshell.app")
+  (file optical "netmgr" "apps/netmgr.svc")
+  (file optical "wifi" "apps/wifi.svc")
+  # ACPI: the AML frontend and the hardware backend (coordination/acpi-region-boundary.md).
+  (file optical "acpi" "apps/acpi.svc")
+  (file optical "acpi-backend" "apps/acpi-backend.svc")
+  (file optical "procmgr" "apps/procmgr.svc")
+  (file optical "logstore" "apps/logstore.svc")
+  (file optical "clock" "apps/clock.svc")
+  (file optical "display" "apps/display.svc")
+  (file optical "desktop" "apps/desktop.svc")
+  (file optical "ccl-workbench" "apps/ccl-workbench.app")
+  (file optical "ccl-console" "apps/ccl-console.app")
+  # The agent path (AGENT-002): agent.app asks llm.svc, which reaches the
+  # Messages API through tls.svc (its trust store at @cd:0/tls/roots.der)
+  # and uses the API key that secrets.svc holds.
+  (file optical "tls" "apps/tls.svc")
+  (file optical "timesync" "apps/timesync.svc")
+  (file optical "secrets" "apps/secrets.svc")
+  (file optical "llm" "apps/llm.svc")
+  (file optical "agent" "apps/agent.app")
+  (file optical "tls-roots" "apps/tls/roots.der")
+  # The LAN remote session, listening with builds granted, and the
+  # builder it starts (ccl-build.app, against @system).
+  (file optical "ccl-remote" "apps/ccl-remote.app")
+  (file optical "ccl-build" "apps/ccl-build.app")
+  (file optical "devices" "apps/devices.app")
+  (file optical "config-inspector" "apps/config-inspector.app")
+  (file optical "boot-logs" "apps/boot-logs.app")
+  (file optical "logs" "apps/logs.app")
+  (file optical "gpu-viewer" "apps/gpu-viewer.app")
+  (file optical "files" "apps/files.app")
+  (file optical "doom" "apps/doom.elf")
+  (file optical "sameboy" "apps/sameboy.app")
+  (file optical "teapots" "apps/teapots.app")
+  (file optical "calculator" "apps/calculator.app")
+  # Dictionary asks lexicon.svc (docs/lexicon.md).
+  (file optical "lexicon" "apps/lexicon.svc")
+  (file optical "dictionary" "apps/dictionary.app")
+  (file optical "doom-wad" "apps/doom1.wad")
+  (file optical "sameboy-test" "apps/sameboy/00.gb")
+  # Asset packages (docs/assets.md); @cd:0 is rooted at apps/.
+  (file optical "wallpapers" "apps/Assets/cubit-wallpapers/2")
+  (file optical "icons-applications" "apps/Assets/cubit-icons/4/applications.qoi")
+  # The lexicon image and its WordNet/SCOWL notices, side by side.
+  (file optical "lexicon-english" "apps/Assets/cubit-lexicon/1/english.lexicon")
+  (file optical "lexicon-notice" "apps/Assets/cubit-lexicon/1/LEXICON-NOTICE")
+  # Read-only originals; editable copies also seed live-rw.ext2's /work.
+  (file optical "ccl-button-clock" "samples/ccl/button-clock.ccl")
+  (file optical "ccl-button-output" "samples/ccl/button-output.ccl")
+  (file optical "ccl-config-inspector" "samples/ccl/config-inspector.ccl")
+  (file optical "ccl-config-counter" "samples/ccl/config-counter.ccl")
+  (file optical "ccl-config-counter-read" "samples/ccl/config-counter-read.ccl")
+  (file optical "ccl-enums" "samples/ccl/enums.ccl")
+  (file optical "ccl-variants" "samples/ccl/variants.ccl")
+  (file optical "ccl-clock-label" "samples/ccl/clock-label.ccl")
+  (file optical "ccl-function-clock-label" "samples/ccl/function-clock-label.ccl")
+  (file optical "ccl-monotonic-clock" "samples/ccl/monotonic-clock.ccl")
+  (file optical "sameboy-license" "licenses/SameBoy.txt")
+  (file optical "openlibm-notices" "licenses/openlibm")
+  (file optical "mesa-notices" "licenses/mesa")
+)

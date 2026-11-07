@@ -86,6 +86,7 @@ package Ext2_Format with Pure, SPARK_Mode is
 
    --  New inodes: rw-r--r-- regular files and rwxr-xr-x directories.
    Regular_Mode   : constant Unsigned_16 := 16#81A4#;   --  S_IFREG | 0644
+   Executable_Mode : constant Unsigned_16 := 16#81ED#;  --  S_IFREG | 0755
    Directory_Mode : constant Unsigned_16 := 16#41ED#;   --  S_IFDIR | 0755
 
    --  The file type of an i_mode value.

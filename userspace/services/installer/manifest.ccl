@@ -2,7 +2,9 @@
 # disk-install (startup-approved); clients reach it through the installer
 # role, which is startup-approved too. It reads the install payload (esp/,
 # root/ and INDEX) from the live medium's install/ directory, and the image
-# closure INDEX names from the rest of that medium (read only).
+# closure INDEX names from the rest of that medium (read only). The
+# device-build live image's INDEX also names its live RAM root's files
+# (@mem:0: the toolchain, the Storehouse and the workspace).
 (Executable_Manifest
   identity => "com.cubit.installer"
   version => "0.1.0"
@@ -16,4 +18,7 @@
   optional => ["logstore"]
   scopes => [
     (filesystem [File_Right.Read] "@cd:0/")
-    (filesystem [File_Right.Read] "@nvme:0/install")])
+    (filesystem [File_Right.Read] "@nvme:0/install")
+    (filesystem [File_Right.Read] "@mem:0/toolchain")
+    (filesystem [File_Right.Read] "@mem:0/storehouse")
+    (filesystem [File_Right.Read] "@mem:0/work")])

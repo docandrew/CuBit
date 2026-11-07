@@ -43,6 +43,7 @@ package body Build_Platform is
    O_CLOEXEC : constant int := 8#2000000#;
    ENOENT : constant := 2;
    EINTR : constant := 4;
+   EINVAL : constant := 22;
    EEXIST : constant := 17;
    EWOULDBLOCK : constant := 11;
    LOCK_SH : constant int := 1;
@@ -419,7 +420,12 @@ package body Build_Platform is
       if Descriptor < 0 then
          raise Platform_Error with "open " & Name;
       end if;
-      Check (c_fsync (Descriptor), "fsync", Name);
+      --  EINVAL: the volume cannot synchronize because it keeps nothing
+      --  across a restart (the live RAM root, @mem:0): a store there is
+      --  as durable as it can be once written. Any other failure stands.
+      if c_fsync (Descriptor) /= 0 and then GNAT.OS_Lib.Errno /= EINVAL then
+         raise Platform_Error with "fsync " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
+      end if;
       Check (c_close (Descriptor), "close", Name);
    end Sync;
 

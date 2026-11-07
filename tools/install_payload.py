@@ -4,7 +4,10 @@ fallback loader EFI/BOOT/BOOTX64.EFI, the kernel BOOT/KERNEL and the
 installed system's bootstrap archive BOOT/INITRD.IMG), root/ (the image
 closure) and INDEX, one "esp/<path>" or "root/<path>" line per file. A
 line may instead name, after a tab, where the file already is below the
-medium's root: the live image's closure is not stored twice.
+medium's root: the live image's closure is not stored twice; or a whole
+CuBit name ("@mem:0/..."): the device-build live image's RAM root. After
+another tab, "executable" marks a file that runs (mode 0755). A line
+"root/<path>/" is a directory (for empty ones).
 
 ESP names are 8.3 (FAT32 without long names). The realizer adds a payload
 derived from an image's checked plan (realize.py --install-efi); this
@@ -20,6 +23,7 @@ import sys
 ESP_LOADER = "EFI/BOOT/BOOTX64.EFI"
 ESP_KERNEL = "BOOT/KERNEL"
 ESP_INITRD = "BOOT/INITRD.IMG"
+EXECUTABLE = "executable"
 
 
 def safe(name: str) -> str:
@@ -28,11 +32,16 @@ def safe(name: str) -> str:
     return name
 
 
-def entries(efi: bytes, kernel: bytes, initrd: bytes, root: dict, on_medium: dict = None) -> dict:
+def entries(efi: bytes, kernel: bytes, initrd: bytes, root: dict, on_medium: dict = None,
+            executable: frozenset = frozenset(), directories: frozenset = frozenset()) -> dict:
     """The payload's files by path relative to its directory, INDEX last.
     root maps installed names to bytes stored in the payload; on_medium
-    maps installed names to paths below the medium's root."""
+    maps installed names to paths below the medium's root (or whole CuBit
+    names); executable names those of them that run; directories names
+    directories to make even when empty."""
     on_medium = on_medium or {}
+    if not executable <= on_medium.keys():
+        raise ValueError("only files named where they are may be marked executable")
     result = {f"esp/{ESP_LOADER}": efi, f"esp/{ESP_KERNEL}": kernel, f"esp/{ESP_INITRD}": initrd}
     for name in sorted(root):
         result[f"root/{safe(name)}"] = root[name]
@@ -40,7 +49,10 @@ def entries(efi: bytes, kernel: bytes, initrd: bytes, root: dict, on_medium: dic
     for name in sorted(on_medium):
         if name in root:
             raise ValueError(f"root path given twice: {name}")
-        lines.append(f"root/{safe(name)}\t{safe(on_medium[name])}")
+        mark = f"\t{EXECUTABLE}" if name in executable else ""
+        lines.append(f"root/{safe(name)}\t{safe(on_medium[name])}{mark}")
+    for name in sorted(directories):
+        lines.append(f"root/{safe(name)}/")
     result["INDEX"] = ("\n".join(lines) + "\n").encode("ascii")
     return result
 

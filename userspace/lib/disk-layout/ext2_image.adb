@@ -619,7 +619,7 @@ package body Ext2_Image with SPARK_Mode is
 
    procedure Put_File
      (Item : Volume; Layout : Tree_Layout; Data : in out Block_Image; Slot : Natural;
-      File : Entry_Index; Size : Unsigned_64; Created : Unsigned_32)
+      File : Entry_Index; Size : Unsigned_64; Created : Unsigned_32; Executable : Boolean)
      with Pre => Valid (Item) and then Slot < Inodes_Per_Block
    is
       Count : constant Unsigned_64 := Layout.Data (File);
@@ -627,7 +627,8 @@ package body Ext2_Image with SPARK_Mode is
       Start : constant Unsigned_64 := Unsigned_64'Min (Layout.Start (File), Unsigned_64 (Item.Blocks));
       Block : Unsigned_64;
    begin
-      Put_Inode (Data, Slot, EF.Regular_Mode, File_Links, Size,
+      Put_Inode (Data, Slot, (if Executable then EF.Executable_Mode else EF.Regular_Mode),
+                 File_Links, Size,
                  Unsigned_64'Min (Count, Maximum_Blocks) + Unsigned_64'Min (Meta, Maximum_Blocks),
                  Created);
       if Count > 0 then
@@ -683,7 +684,8 @@ package body Ext2_Image with SPARK_Mode is
                                           Layout.Data (E), Request.Created);
                         when Regular_File =>
                            Put_File (Item, Layout, Result, Slot, E,
-                                     Files.Entries (E).Size, Request.Created);
+                                     Files.Entries (E).Size, Request.Created,
+                                     Files.Entries (E).Executable);
                      end case;
                   end if;
                end;

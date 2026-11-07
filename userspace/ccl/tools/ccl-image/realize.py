@@ -28,7 +28,10 @@ DEVICE_INDEX = ROOT / "userspace/ccl/build/image/ccl-device-index"
 # The generated driver index devmgr binds devices by (docs/device-matching.md).
 DEVICE_INDEX_NAME = "devices.index"
 DRIVER_SUFFIX = ".drv"
-MAX_FILE = 128 * 1024 * 1024
+# One placed file. A named ceiling, not a fit: the device-build live RAM
+# root (live-rw.ext2 carrying the toolchain, a Storehouse and the source
+# subset, tests/device-builds/build.sh) is about 350 MiB; LIM-001.
+MAX_FILE = 512 * 1024 * 1024
 # The whole resolved image (every placed input together). A named ceiling,
 # not a fit: the laptop live image passed 512 MiB once it carried the agent
 # path (llm, secrets, tls, agent.app) beside Servo; LIM-001.
@@ -420,16 +423,59 @@ INSTALL_PAYLOAD = "apps/install/"
 APPLICATIONS = "apps/"
 # procmgr reads the startup plan by this name, the installed root's here.
 INSTALLED_STARTUP = "init.ccl"
+# The live RAM root: the bootstrap file ramdisk.drv serves as @mem:0.
+LIVE_ROOT_FILE = "live-rw.ext2"
+LIVE_ROOT_VOLUME = "@mem:0"
+EXECUTE_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 
-def add_install_payload(files, efi, initrd, startup):
+def live_root_files(files):
+    """The regular files of the plan's live RAM root (an ext2 image), by
+    path below its root, each with whether it runs (any execute bit), and
+    its directories (the installer makes empty ones too), read
+    from the image itself with debugfs. Only directories and regular files:
+    the installer lays out nothing else."""
+    images = [f.data for f in files if f.region == "BOOTSTRAP" and f.destination == LIVE_ROOT_FILE]
+    directories = []
+    if len(images) != 1:
+        raise ValueError(f"--install-live-root needs exactly one bootstrap {LIVE_ROOT_FILE}")
+    names = []
+    with tempfile.TemporaryDirectory(prefix="ccl-image-live-root.") as directory:
+        image = Path(directory) / LIVE_ROOT_FILE
+        image.write_bytes(images[0])
+        pending = [""]
+        while pending:
+            parent = pending.pop()
+            listing = subprocess.run(["debugfs", "-R", f"ls -p /{parent}", str(image)],
+                                     capture_output=True, text=True, timeout=60, check=True)
+            for line in listing.stdout.splitlines():
+                # /inode/mode/uid/gid/name/size/
+                fields = line.split("/")
+                if len(fields) < 7 or fields[5] in ("", ".", "..", "lost+found"):
+                    continue
+                mode, name = int(fields[2], 8), fields[5]
+                path = f"{parent}/{name}" if parent else name
+                if stat.S_ISDIR(mode):
+                    pending.append(path)
+                    directories.append(path)
+                elif stat.S_ISREG(mode):
+                    names.append((path, bool(mode & EXECUTE_BITS)))
+                else:
+                    raise ValueError(f"live root holds a file the installer cannot lay out: {path}")
+    return sorted(names), sorted(directories)
+
+
+def add_install_payload(files, efi, initrd, startup, live_root=False):
     """The payload installer.svc installs from (tools/install_payload.py),
     derived from the checked plan: the root closure is every optical file
     (minus the live medium's own boot files and private cartridges) at its
     path below the optical root, named in INDEX where it already is (not
     stored twice); the ESP the loader, this plan's kernel and the installed
     system's bootstrap archive; and the installed system's startup plan,
-    init.ccl on the installed root."""
+    init.ccl on the installed root. With live_root, the installed root
+    also gets every file of the live RAM root (the device-build tree:
+    toolchain, Storehouse, workspace), named in INDEX by its @mem:0 name:
+    installer.svc reads it from the running live system."""
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / INSTALLED_STARTUP
         path.write_bytes(startup)
@@ -447,14 +493,25 @@ def add_install_payload(files, efi, initrd, startup):
             continue   # outside the optical filesystem's root: not readable there
         name = item.destination[len(APPLICATIONS):]
         on_medium[name] = name
+    executable, directories = set(), frozenset()
+    if live_root:
+        names, directories = live_root_files(files)
+        directories = frozenset(directories)
+        for name, runs in names:
+            if name in on_medium or name == INSTALLED_STARTUP:
+                raise ValueError(f"live root file shadows the image closure: {name}")
+            on_medium[name] = f"{LIVE_ROOT_VOLUME}/{name}"
+            if runs:
+                executable.add(name)
     added = []
-    for name, data in install_payload.entries(efi, kernels[0], initrd, {INSTALLED_STARTUP: startup}, on_medium).items():
+    for name, data in install_payload.entries(efi, kernels[0], initrd, {INSTALLED_STARTUP: startup}, on_medium,
+                                              frozenset(executable), directories).items():
         added.append(File("OPTICAL", "CONTENT", "install-payload", INSTALL_PAYLOAD + name, data))
     return files + added
 
 
 def realize(files, report, output, audit_usb=False, grub_directory=None, debug_dir=None,
-            install_efi=None, install_initrd=None, install_startup=None):
+            install_efi=None, install_initrd=None, install_startup=None, install_live_root=False):
     optical_layout = report["layout"] == "OPTICAL_IMAGE"
     # Layout comes from the checked CCL plan, not the burner's preferred
     # filename. Optical images may use .img without changing their contents.
@@ -467,8 +524,11 @@ def realize(files, report, output, audit_usb=False, grub_directory=None, debug_d
         if report["layout"] != "OPTICAL_IMAGE" or install_initrd is None or install_startup is None:
             raise ValueError("an install payload needs an optical image, --install-initrd and --install-startup")
         files = add_install_payload(files, read_regular(install_efi), read_regular(install_initrd),
-                                    read_regular(install_startup))
+                                    read_regular(install_startup), install_live_root)
         report["install_payload"] = True
+        report["install_live_root"] = install_live_root
+    elif install_live_root:
+        raise ValueError("--install-live-root needs --install-efi")
     # Retain staging and its input hashes for inspection/reproduction.
     directory = Path(tempfile.mkdtemp(prefix="cubit-ccl-image."))
     bootstrap, optical = stage(files, directory)
@@ -532,6 +592,9 @@ def main():
                         help="the installed system's bootstrap archive for the install payload")
     parser.add_argument("--install-startup", type=Path,
                         help="the installed system's startup plan (init.ccl on its root)")
+    parser.add_argument("--install-live-root", action="store_true",
+                        help="the installed root also gets the live RAM root's files (live-rw.ext2, "
+                             "read from @mem:0 at install time)")
     args = parser.parse_args()
     inputs = {}
     try:
@@ -548,7 +611,8 @@ def main():
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
             realize(files, report, args.output, args.audit_usb, args.grub_directory, args.debug_dir,
-                    args.install_efi, args.install_initrd, args.install_startup)
+                    args.install_efi, args.install_initrd, args.install_startup,
+                    args.install_live_root)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f"ccl-image: {error}\n")
 

@@ -39,6 +39,8 @@ def main() -> None:
     put(esp, "BOOT/KERNEL", 2 * MIB + 5)
     put(esp, "BOOT/INITRD.IMG", 700 * KIB)
     put(root, "apps/netstack.svc", 1 * MIB + 3)
+    put(root, "toolchain/bin/gcc", 64 * KIB + 1)
+    os.chmod(os.path.join(root, "toolchain/bin/gcc"), 0o755)   # mode 0755 on the root
     put(root, "apps/big.bin", 6 * MIB + 4097)          # double indirect
     put(root, "apps/firmware/intel/tgl_guc_70.bin", 330 * KIB)
     put(root, "apps/Assets/cubit-icons/4/applications.qoi", 90 * KIB)
@@ -56,7 +58,8 @@ def write_index(esp: str, root: str) -> None:
             dirs.sort()
             for name in sorted(files):
                 path = os.path.relpath(os.path.join(directory, name), top)
-                lines.append(f"{label}/{path}")
+                mark = "\t\texecutable" if os.access(os.path.join(directory, name), os.X_OK) else ""
+                lines.append(f"{label}/{path}{mark}")
     with open(os.path.join(os.path.dirname(os.path.abspath(esp)), "INDEX"), "w") as f:
         f.write("\n".join(lines) + "\n")
 

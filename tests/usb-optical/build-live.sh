@@ -52,8 +52,32 @@ elif [[ ${3:-} == --install ]]; then
     extra_inputs=(--install-efi isodir/boot/install-bootx64.efi
                   --install-initrd isodir/boot/installed-initrd.img
                   --install-startup ../tests/hardware/init-installed.ccl)
+elif [[ ${3:-} == --device-build || ${3:-} == --device-build-test ]]; then
+    # SELF-002: the live medium that builds apps on the device. Its live
+    # RAM root is the device-build payload (tests/device-builds/build.sh,
+    # make device-build-root); its install payload carries the image
+    # closure and that RAM root's files onto the installed root, whose
+    # startup plan grants builds too. --device-build-test is the same
+    # image with the pairing code on the kernel console (QEMU's serial),
+    # for tests/device-builds/run-live.sh.
+    profile=../images/laptop-build.ccl
+    output=cubit_live_build_uefi.img
+    installed_startup=../tests/hardware/init-installed-build.ccl
+    if [[ ${3:-} == --device-build-test ]]; then
+        profile=../images/laptop-build-test.ccl
+        output=cubit_live_build_test_uefi.img
+        installed_startup=../tests/device-builds/init-installed-build-test.ccl
+    fi
+    make install-efi installed-initrd installer ccl-build-app
+    test -s ../tests/device-builds/build/root.ext2 || {
+        echo 'missing the device-build payload; run make -C kernel device-build-root first' >&2
+        exit 1
+    }
+    extra_inputs=(--install-efi isodir/boot/install-bootx64.efi
+                  --install-initrd isodir/boot/installed-initrd.img
+                  --install-startup "$installed_startup" --install-live-root)
 elif [[ -n ${3:-} ]]; then
-    echo 'Expected --install, --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
+    echo 'Expected --install, --device-build, --device-build-test, --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
     exit 2
 fi
 if [[ -n ${SAMEBOY_ROMS_DIR:-} ]]; then

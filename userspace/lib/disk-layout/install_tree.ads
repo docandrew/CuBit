@@ -14,7 +14,10 @@ with Interfaces; use Interfaces;
 
 package Install_Tree with SPARK_Mode, Pure is
 
-   Maximum_Entries : constant := 4096;
+   --  A named ceiling, not a fit: the device-build image installs its
+   --  toolchain, Storehouse and source subset (about 3,500 entries) beside
+   --  the image closure; LIM-001.
+   Maximum_Entries : constant := 16_384;
    subtype Entry_Count is Natural range 0 .. Maximum_Entries;
    subtype Entry_Index is Positive range 1 .. Maximum_Entries;
    --  An entry's parent: 0 is the volume's root directory.
@@ -37,6 +40,9 @@ package Install_Tree with SPARK_Mode, Pure is
 
    type Tree_Entry is record
       Kind   : Entry_Kind := Regular_File;
+      --  A regular file that runs (its mode 0755, not 0644): a tree's
+      --  identity covers it (ccl-build's toolchain pin).
+      Executable : Boolean := False;
       Parent : Parent_Index := Volume_Root;
       First  : Pool_Index := 1;
       Length : Name_Length := 1;
@@ -69,7 +75,8 @@ package Install_Tree with SPARK_Mode, Pure is
 
    procedure Add
      (Item : in out Tree; Kind : Entry_Kind; Parent : Parent_Index;
-      Name : String; Size : File_Size; Result : out Add_Result)
+      Name : String; Size : File_Size; Result : out Add_Result;
+      Executable : Boolean := False)
      with Pre => Item.Count <= Maximum_Entries,
           Post => (if Result = Added then Item.Count = Item.Count'Old + 1
                    else Item.Count = Item.Count'Old);

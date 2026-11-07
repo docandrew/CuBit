@@ -2401,6 +2401,26 @@ usb-live-uefi-iso: usb-live-iso
 usb-live-install-iso: usb-live-iso installer install-efi installed-initrd
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --install
 
+# SELF-002: the device-build payload, the one tree an image needs to build
+# apps on the device (tests/device-builds/build.sh): the toolchain at
+# /toolchain, a seeded Storehouse, the source subset in work/remote and the
+# mailbox, as tests/device-builds/build/root/ and its ext2 image root.ext2
+# (also the Linux reference builds the tests compare with).
+.PHONY: device-build-root
+device-build-root: libc user_runtime ccl-manifest ccl-build ccl-remote
+	bash ../tests/device-builds/build.sh isodir/boot
+
+# SELF-002: the UEFI live medium that builds on the device: its live RAM
+# root (@mem:0, @system) is the device-build payload, ccl-remote listens
+# with builds granted, and its installer carries the same payload onto the
+# installed root (cubit_live_build_uefi.img). The -test image differs only
+# in showing the pairing code on the serial console (tests/device-builds/run-live.sh).
+.PHONY: usb-live-build-uefi-iso usb-live-build-test-uefi-iso
+usb-live-build-uefi-iso: usb-live-iso installer install-efi installed-initrd device-build-root
+	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --device-build
+usb-live-build-test-uefi-iso: usb-live-iso installer install-efi installed-initrd device-build-root
+	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --device-build-test
+
 # Match the working desktop frontend: SDL's native Wayland display can leave
 # a running guest without a visible window on the development workstation.
 # This target only reuses the completed ISO; it never refreshes its contents.

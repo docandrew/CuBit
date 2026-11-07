@@ -7,7 +7,9 @@
 --  esp/ (the boot files), root/ (the image closure) and INDEX, the list of
 --  their files (one "esp/<path>" or "root/<path>" per line; directories
 --  follow from the paths, sizes from the files; a line may name, after a
---  tab, where the file is below the medium's root). Walk builds the two
+--  tab, where the file is below the medium's root or by its whole CuBit
+--  name, and after another tab "executable"; "root/<path>/" is a
+--  directory, for empty ones). Walk builds the two
 --  Install_Trees from it; Read gives a file's bytes to the layout writer.
 --  The installer's manifest scopes say what it may read (the live
 --  medium).

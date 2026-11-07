@@ -14,6 +14,7 @@ with Ada.Streams; use Ada.Streams;
 with Ada.Streams.Stream_IO; use Ada.Streams.Stream_IO;
 with Ada.Text_IO;
 with Ada.Directories;
+with GNAT.OS_Lib;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Install_Tree;
 with Interfaces; use Interfaces;
@@ -143,7 +144,8 @@ procedure Main is
          begin
             Install_Tree.Add
               (Files, (if Is_Directory then Install_Tree.Directory else Install_Tree.Regular_File),
-               Parent, Name, (if Is_Directory then 0 else Unsigned_64 (Size (Full))), Added);
+               Parent, Name, (if Is_Directory then 0 else Unsigned_64 (Size (Full))), Added,
+               Executable => not Is_Directory and then GNAT.OS_Lib.Is_Executable_File (Full));
             if Added /= Install_Tree.Added then
                raise Program_Error with "payload entry refused: " & Full;
             end if;

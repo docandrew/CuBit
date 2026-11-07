@@ -5303,6 +5303,7 @@ libc-check: opendir and readdir PASS
 libc-check: a file outside the scope is denied PASS
 libc-check: create and write a file PASS
 libc-check: fstat: type, size, links, inode PASS
+libc-check: fsync on a disk that persists PASS
 libc-check: a write sets mtime and ctime to the wall clock PASS
 libc-check: stat by name agrees with fstat PASS
 libc-check: the directory's mtime follows its entries PASS
@@ -7163,8 +7164,8 @@ if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = install ]; th
         python3 -I -c 'import shutil, sys, pathlib
 payload = pathlib.Path(sys.argv[1])
 for line in (payload / "INDEX").read_text().splitlines():
-    if "\t" in line:
-        name, where = line.split("\t")
+    if "\t" in line and line.split("\t")[1]:
+        name, where = line.split("\t")[:2]
         target = payload / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(payload / where.removeprefix("install/"), target)' "$CHECK_PAYLOAD"

@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
-"""The headless device-build test's host side (tests/headless/run.sh).
+"""The device-build test's host side: the headless test (tests/headless/run.sh
+device-build), the device-build live image (tests/usb-optical/run-live.py
+--device-build) and its installed system (tests/install-reboot/run.sh).
 
 Usage: device_build.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT BUILD_DIR
+                       [--build-only] [--memory-report FILE] [--qemu-pid PID]
 
-The guest boots with an installed root on QEMU's UFS disk
-(tests/device-builds/build.sh, make-disk.py) that the filesystem names
-@system: the CuBit toolchain at /toolchain, a Storehouse at /storehouse
-seeded with the manifest step, and the source subset an app's build reads
-at /work/remote. Like a LAN host, this pairs with the
+  --build-only      build 1 only (pair, put, build, SHA-256, download)
+  --memory-report   while build 1 runs, sample (proc.list) on the device and
+                    QEMU's resident memory; write the peaks as JSON to FILE
+  --qemu-pid        QEMU's process, for its resident memory (VmRSS/VmHWM)
+
+The guest's system volume (@system) holds the device-build payload
+(tests/device-builds/build.sh): an installed root on QEMU's UFS disk
+(make-disk.py), the live RAM root (@mem:0) or the installed root the
+device-build live image's installer wrote: the CuBit toolchain at
+/toolchain, a Storehouse at /storehouse seeded with the manifest step, and
+the source subset an app's build reads at /work/remote. Like a LAN host,
+this pairs with the
 code the guest shows on its console and, with tools/cubit-remote:
   - puts swap-probe's sources (build 1) into the workspace;
   - builds it on CuBit (ccl-build.app, started by ccl-remote), following
@@ -34,7 +44,7 @@ cubit-remote app replace | rollback | status):
     generation 1 with build 1's SHA-256, previous generation 2.
 Then quits QEMU. Prints PASS/FAIL lines and the times; exits 1 on any failure.
 """
-import hashlib
+import argparse
 import json
 import os
 import re
@@ -42,14 +52,25 @@ import socket
 import struct
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "cubit-remote"))
 import cubit_remote as cr  # noqa: E402
 
+parser = argparse.ArgumentParser(description="the device-build test's host side")
+parser.add_argument("serial")
+parser.add_argument("qmp_socket")
+parser.add_argument("timeout", type=float)
+parser.add_argument("port", type=int)
+parser.add_argument("build_dir", type=Path)
+parser.add_argument("--build-only", action="store_true")
+parser.add_argument("--memory-report", type=Path)
+parser.add_argument("--qemu-pid", type=int)
+options = parser.parse_args()
 serial, qmp_socket, timeout, port, build_dir = (
-    sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), Path(sys.argv[5]))
+    options.serial, options.qmp_socket, options.timeout, options.port, options.build_dir)
 deadline = time.monotonic() + timeout
 CODE = re.compile(rb"ccl-remote: pairing code ([0-9A-Z-]{31})")
 LISTENING = b"ccl-remote: listening on "
@@ -251,6 +272,75 @@ def ran_steps(text):
     return [line for line in text.splitlines() if line.startswith("ran ")]
 
 
+# (proc.list)'s Process records (CCL.Interfaces.Processes): pid, name,
+# identity, state, memory (bytes), launcher, age.
+PROCESS = re.compile(r'\(Process (\d+) "([^"]*)" "[^"]*" Run_State\.\w+ (\d+) -?\d+ \d+\)')
+MEMORY_SAMPLE_SECONDS = 1.0
+KIB = 1024
+
+
+def qemu_memory_kib(pid):
+    """QEMU's resident set and its peak (KiB): the guest RAM it has touched."""
+    found = {}
+    try:
+        for line in Path("/proc/%d/status" % pid).read_text().splitlines():
+            key, _, value = line.partition(":")
+            if key in ("VmRSS", "VmHWM"):
+                found[key] = int(value.split()[0])
+    except (OSError, ValueError):
+        pass
+    return found
+
+
+class MemorySampler(threading.Thread):
+    """Samples (proc.list) on the device while a build runs: the sum of
+    every process's memory and the largest process, at their peaks."""
+
+    def __init__(self, host):
+        super().__init__(daemon=True)
+        self.host = host
+        self.stop = threading.Event()
+        self.samples = 0
+        self.peak_total = 0
+        self.peak_process = (0, "")
+        self.peak_processes = 0
+
+    def run(self):
+        while not self.stop.is_set():
+            try:
+                ok, text = cr.evaluate_whole(self.host, "(proc.list)")
+            except (OSError, cr.RemoteError, SystemExit):
+                ok, text = False, ""
+            listed = PROCESS.findall(text) if ok else []
+            if listed:
+                self.samples += 1
+                total = sum(int(memory) for _, _, memory in listed)
+                if total > self.peak_total:
+                    self.peak_total, self.peak_processes = total, len(listed)
+                for _, name, memory in listed:
+                    if int(memory) > self.peak_process[0]:
+                        self.peak_process = (int(memory), name)
+            self.stop.wait(MEMORY_SAMPLE_SECONDS)
+
+
+def report_memory(sampler, before, seconds):
+    after = qemu_memory_kib(options.qemu_pid) if options.qemu_pid else {}
+    report = {
+        "build_seconds": round(seconds, 1),
+        "proc_list_samples": sampler.samples,
+        "peak_sum_of_process_memory_bytes": sampler.peak_total,
+        "processes_at_that_peak": sampler.peak_processes,
+        "peak_single_process_bytes": sampler.peak_process[0],
+        "peak_single_process": sampler.peak_process[1],
+        "qemu_rss_kib_before_build": before.get("VmRSS"),
+        "qemu_rss_kib_after_build": after.get("VmRSS"),
+        "qemu_peak_rss_kib": after.get("VmHWM"),
+    }
+    options.memory_report.write_text(json.dumps(report, indent=2) + "\n")
+    print("device-build: MEMORY %s" % json.dumps(report), flush=True)
+    check(sampler.samples > 0, "memory: %d (proc.list) samples during build 1" % sampler.samples)
+
+
 def main():
     host = pair()
     if host is None:
@@ -258,7 +348,16 @@ def main():
     expected = {n: (build_dir / ("expected-build-%d.sha256" % n)).read_text().strip() for n in (1, 2)}
 
     put_app(host, 1)
+    sampler = None
+    if options.memory_report:
+        before = qemu_memory_kib(options.qemu_pid) if options.qemu_pid else {}
+        sampler = MemorySampler(host)
+        sampler.start()
     state, code, text, seconds = build(host, "build 1")
+    if sampler is not None:
+        sampler.stop.set()
+        sampler.join()
+        report_memory(sampler, before, seconds)
     check(state == STATE_EXITED and code == 0, "build 1 on CuBit exits 0")
     check(len(ran_steps(text)) > 0, "build 1 ran %d steps on CuBit" % len(ran_steps(text)))
     try:
@@ -274,6 +373,8 @@ def main():
     check(Path(local).read_bytes() == (build_dir / "expected-build-1.app").read_bytes(),
           "the downloaded product is byte for byte the Linux build")
     print("device-build: TIME build-1 %.1f s" % seconds, flush=True)
+    if options.build_only:
+        return
 
     # Phase B: the app swapped for its build, gated by the Desktop's switch.
     report = app(host, "app_replace", PRODUCT)

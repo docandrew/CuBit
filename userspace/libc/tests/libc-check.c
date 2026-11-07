@@ -322,6 +322,9 @@ int main(void)
 	clock_gettime(CLOCK_REALTIME, &after);
 	check(fstat(wfd, &wst) == 0 && S_ISREG(wst.st_mode) && wst.st_size == 5 &&
 	      wst.st_nlink == 1 && wst.st_ino > 2, "fstat: type, size, links, inode");
+	/* A disk that persists synchronizes (a RAM root answers EINVAL:
+	 * tests/device-builds/run-live.sh builds on one). */
+	check(fsync(wfd) == 0, "fsync on a disk that persists");
 	/* Whole seconds on ext2: the write's second, within the call. */
 	check(wst.st_mtim.tv_sec >= before.tv_sec && wst.st_mtim.tv_sec <= after.tv_sec &&
 	      wst.st_ctim.tv_sec == wst.st_mtim.tv_sec,

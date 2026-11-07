@@ -63,6 +63,7 @@ package body CuBit.Libc_Files is
    REPLY_ALREADY_EXISTS    : constant := 16#F00A#;
    REPLY_NOT_FOUND         : constant := 16#F00B#;
    REPLY_SHARING_VIOLATION : constant := 16#F00F#;
+   REPLY_DURABILITY_UNSUPPORTED : constant := 16#F00D#;
    REPLY_NOT_EMPTY         : constant := 16#F010#;
    REPLY_IS_DIRECTORY      : constant := 16#F011#;
    REPLY_INVALID_MOVE      : constant := 16#F012#;
@@ -1685,7 +1686,13 @@ package body CuBit.Libc_Files is
          Dirty_Rebuild;                  --  the flush harvested this handle's
       end if;
       Unlock;
-      return (if Label = K.Reply_OK then 0 else To_Errno (Label));
+      --  A volume that keeps nothing across a restart (the live RAM root)
+      --  or cannot be written (an optical disc) cannot synchronize: POSIX
+      --  fsync's EINVAL ("does not support synchronization"), never EIO,
+      --  which says written data may be lost.
+      return (if Label = K.Reply_OK then 0
+              elsif Label = REPLY_DURABILITY_UNSUPPORTED then Error (EINVAL)
+              else To_Errno (Label));
    end Flush;
 
    --  An advisory lock on the handle's file (FQ.Queue_Lock): Options as

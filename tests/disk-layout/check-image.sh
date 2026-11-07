@@ -68,5 +68,12 @@ if [ -n "$ROOT_DIR" ]; then
     else
         head -20 "$WORK/root-diff.txt"; fail "root files read back identical" /dev/null
     fi
+    # The files that run (mode 0755) are the payload's executable ones.
+    executables() { (cd "$1" && find . -type f -perm -u+x | sort); }
+    if [ "$(executables "$ROOT_DIR")" = "$(executables "$WORK/root-out")" ]; then
+        pass "root executables keep their mode"
+    else
+        fail "root executables keep their mode" /dev/null
+    fi
 fi
 exit "$FAILED"

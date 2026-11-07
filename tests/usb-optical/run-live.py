@@ -9,6 +9,7 @@ import argparse
 import array
 import json
 import math
+import os
 import pathlib
 import re
 import socket
@@ -76,7 +77,22 @@ parser.add_argument('--sameboy-local-rom', action='store_true',
                     help='also launch explicitly staged ROM 01; never supplies or downloads a cartridge')
 parser.add_argument('--sameboy-second-local-rom', action='store_true',
                     help='also exercise explicitly staged ROM 02')
+parser.add_argument('--device-build', type=pathlib.Path, metavar='BUILD_DIR',
+                    help='SELF-002, the device-build live image: a NIC with the guest\'s ccl-remote '
+                         'port forwarded, then tests/device-builds/device_build.py against the live '
+                         'system (BUILD_DIR: tests/device-builds/build, the Linux references)')
+parser.add_argument('--device-build-port', type=int, default=18449,
+                    help='host loopback port forwarded to the guest\'s ccl-remote (8445)')
+parser.add_argument('--device-build-options', default='',
+                    help='further device_build.py options, e.g. "--build-only"')
+parser.add_argument('--install-to', type=pathlib.Path, metavar='DISK',
+                    help='SYS-001 from the device-build live image: a blank writable UFS disk at DISK '
+                         '(--install-disk-mib) and, typed at the CCL console, an install onto it '
+                         'from @cd:0/install; QEMU then quits (tests/install-reboot boots the disk)')
+parser.add_argument('--install-disk-mib', type=int, default=2048)
 args = parser.parse_args()
+if args.install_to and args.ufs:
+    parser.error('--install-to brings its own UFS disk; drop --ufs')
 if args.boot_log_window_controls and not args.boot_log_delivery:
     parser.error('--boot-log-window-controls requires --boot-log-delivery')
 if args.quiet_xhci and (args.boot_logs or args.boot_logs_menu or args.eject):
@@ -127,6 +143,20 @@ if args.ufs:
     command += ['-drive', f'file={ufs_disk},if=none,id=ufs0,format=raw,readonly=on',
                 '-device', 'ufs,serial=cubitufs,id=ufs',
                 '-device', 'ufs-lu,drive=ufs0,bus=ufs,lun=0']
+if args.install_to:
+    # QEMU's UFS model (4 KiB blocks, as the IdeaPad's disk), blank and
+    # writable: the installer formats it.
+    with args.install_to.open('wb') as blank:
+        blank.truncate(args.install_disk_mib * 1024 * 1024)
+    command += ['-drive', f'file={args.install_to},if=none,id=ufs0,format=raw',
+                '-device', 'ufs,serial=cubitufs,id=ufs',
+                '-device', 'ufs-lu,drive=ufs0,bus=ufs,lun=0']
+# The device-build driver's own QMP connection (this script keeps the first).
+device_build_monitor = run / 'device-build.sock'
+if args.device_build:
+    command += ['-netdev', f'user,id=net0,hostfwd=tcp:127.0.0.1:{args.device_build_port}-:8445',
+                '-device', 'virtio-net-pci,netdev=net0',
+                '-qmp', f'unix:{device_build_monitor},server,nowait']
 if args.usb_flash:
     command[command.index(f'file={image},if=none,id=cd,media=cdrom,format=raw,readonly=on')] = f'file={image},if=none,id=cd,format=raw,readonly=on'
     command[command.index(f'scsi-cd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1')] = f'scsi-hd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1'
@@ -297,6 +327,83 @@ with (run / 'qemu.log').open('w') as log:
             print('SMP TIMEOUT PASS: halted AP reports logical ID, APIC ID and stage', flush=True)
             sys.exit(0)
         wait_for('desktop: display info ready')
+        if args.install_to:
+            # The console (started last, so it has the keyboard) answers
+            # with the disk's identity; the install names it back. QEMU's
+            # UFS model reports no serial number.
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                'send_text', root / 'tests/ccl-console/send-text.py')
+            send_text = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(send_text)
+            wait_for('installer: registered')
+            wait_for('ufs: bring-up complete')
+            wait_for('ccl-console: first frame presented')
+            time.sleep(2)
+            # The console's window is the last surface the Desktop placed:
+            # a click in it gives it the keyboard whatever opened before.
+            surfaces = re.findall(r'desktop: surface \d+ at (\d+), (\d+) size (\d+) x (\d+)',
+                                  serial.read_text(errors='replace'))
+            if surfaces:
+                x, y, w, h = (int(v) for v in surfaces[-1])
+                mouse_step, corner_steps = 60, 60
+                for _ in range(corner_steps):
+                    hmp(f'mouse_move {-mouse_step} {-mouse_step}')
+                at = [0, 0]
+                target = [x + w // 2, y + h // 2]
+                while at != target:
+                    dx, dy = (max(-mouse_step, min(mouse_step, b - a)) for a, b in zip(at, target))
+                    hmp(f'mouse_move {dx} {dy}')
+                    at = [at[0] + dx, at[1] + dy]
+                time.sleep(0.2)
+                hmp('mouse_button 1')
+                time.sleep(0.1)
+                hmp('mouse_button 0')
+                time.sleep(0.5)
+            hmp(f'screendump {run}/install-before.ppm')
+            # The UFS model's block, the smallest ESP (Disk_Layout), and a
+            # bytes-per-inode ratio with room for the payload's ~4,000 files.
+            ufs_block_bytes, esp_mib, inode_ratio = 4096, 260, 16384
+            key_seconds = 0.05
+            blocks = args.install_disk_mib * 1024 * 1024 // ufs_block_bytes
+            entry = ('(wait (system.install (Install_Request disk => 0 confirm => '
+                     f'(Disk_Identity "QEMU UFS" "" {blocks} {ufs_block_bytes}) '
+                     f'inode_ratio => {inode_ratio} esp_mib => {esp_mib} source => "@cd:0/install")))')
+            started = time.monotonic()
+            for c in entry:
+                hmp(f'sendkey {send_text.key(c)}')
+                time.sleep(key_seconds)
+            hmp('sendkey ret')
+            time.sleep(2)
+            hmp(f'screendump {run}/install-typed.ppm')
+            wait_for('REPL completed: Install_Report:')
+            hmp(f'screendump {run}/install-done.ppm')
+            text = serial.read_text(errors='replace')
+            outcome = re.findall(r'installer: install (?:done|refused or failed): ([^\n]*)', text)
+            print(f'install: {outcome[-1] if outcome else "no outcome"} in '
+                  f'{time.monotonic() - started:.1f} s', flush=True)
+            for line in re.findall(r'installer: installing to disk[^\n]*', text):
+                print(line, flush=True)
+            if not outcome or outcome[-1].strip() != 'installed':
+                raise RuntimeError('the install from @cd:0/install failed; see serial.log')
+            print('DEVICE-BUILD INSTALL PASS: installed onto the UFS disk from the live image', flush=True)
+            sys.exit(0)
+        if args.device_build:
+            wait_for('ccl-remote: listening on ')
+            driver = [sys.executable, str(root / 'tests/device-builds/device_build.py'),
+                      str(serial), str(device_build_monitor),
+                      str(max(1, int(deadline - time.monotonic()))), str(args.device_build_port),
+                      str(args.device_build.resolve()), '--memory-report', str(run / 'memory.json'),
+                      '--qemu-pid', str(process.pid)] + args.device_build_options.split()
+            os.environ['DEVICE_BUILD_KEEP_RUNNING'] = '1'
+            result = subprocess.run(driver)
+            text = serial.read_text(errors='replace')
+            if any(marker in text for marker in ['EXCEPTION', 'PANIC']):
+                raise RuntimeError('native fault; see serial.log')
+            if result.returncode != 0:
+                raise RuntimeError('device-build driver reported failures')
+            print(f'DEVICE-BUILD LIVE PASS (logs: {run})', flush=True)
+            sys.exit(0)
         if args.boot_log_delivery:
             wait_for('boot-logs: window ready')
             wait_for('boot-logs: logstore: typed diagnostics ready')

@@ -16,8 +16,8 @@
     # installed at @system/toolchain with binutils 2.46's as and ld
     # (userspace/ports/binutils): one tree for both.
     (Host_Toolchains Build_Host.CuBit
-      (Toolchain "gnat-15.3.0-cubit" "ad5b14aa6e82cd5946c69c6390daa02048642a500e5bcfd9b1dfc4bf3db4d1fa" prefix => "")
-      (Toolchain "gnat-15.3.0-cubit" "ad5b14aa6e82cd5946c69c6390daa02048642a500e5bcfd9b1dfc4bf3db4d1fa" prefix => ""))]
+      (Toolchain "gnat-15.3.0-cubit" "7e3492c1d52aba8227bc65bd1dd607e6b0774a7f3360819fc1f8fd7f32826cd4" prefix => "")
+      (Toolchain "gnat-15.3.0-cubit" "7e3492c1d52aba8227bc65bd1dd607e6b0774a7f3360819fc1f8fd7f32826cd4" prefix => ""))]
   runtime => "userspace/runtime"
   manifest_tool => "userspace/ccl/build/manifest/ccl-manifest"
   manifest_schema => "userspace/ccl/interfaces/executable-manifest.ccl"

@@ -14,12 +14,61 @@
 #        install-efi installed-initrd, inside nix develop, under the
 #        build lock). CUBIT_INSTALLED_DISK=<copy of an installed disk>
 #        skips the install and boots that disk.
+#        CUBIT_INSTALLED_DEVICE_BUILD=<tests/device-builds/build> with
+#        CUBIT_INSTALLED_DISK=<a disk the device-build live image installed
+#        (tests/device-builds/run-live.sh)> boots that disk once with a NIC
+#        and builds an app on it through ccl-remote instead
+#        (tests/device-builds/device_build.py --build-only: the product's
+#        SHA-256 must be the Linux build's).
 set -u
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 BOOT="$ROOT_DIR/kernel/isodir/boot"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/cubit-install-reboot.XXXXXX")"
 DISK="$WORK/ufs.img"
 BOOT_SECONDS=120
+
+QEMU_SHARE="$(dirname "$(readlink -f "$(command -v qemu-system-x86_64)")")/../share/qemu"
+FIRMWARE="$QEMU_SHARE/edk2-x86_64-code.fd"
+
+if [ -n "${CUBIT_INSTALLED_DEVICE_BUILD:-}" ]; then
+    # SELF-002 on the installed system: the disk boots alone (as below),
+    # with the guest's ccl-remote port forwarded to the host's loopback.
+    # gnat1 is large and procmgr reads it whole: 4 GiB.
+    DEVICE_BUILD_SECONDS=900
+    DEVICE_BUILD_PORT="${DEVICE_BUILD_PORT:-18450}"
+    LOG="$WORK/device-build.log"
+    QMP="$WORK/qmp.sock"
+    cp "${CUBIT_INSTALLED_DISK:?the installed disk}" "$DISK" || exit 1
+    qemu-system-x86_64 -machine q35 -accel kvm -cpu host -smp 4 -m 4G \
+      -display none -no-reboot -serial "file:$LOG" -qmp "unix:$QMP,server=on,wait=off" \
+      -drive "if=pflash,format=raw,unit=0,readonly=on,file=$FIRMWARE" \
+      -drive "file=$DISK,if=none,id=firmware,format=raw,readonly=on,file.locking=off" \
+      -device virtio-blk-pci,drive=firmware,bootindex=0,logical_block_size=4096,physical_block_size=4096 \
+      -drive "file=$DISK,if=none,id=ufs0,format=raw,file.locking=off" \
+      -device ufs,serial=cubitufs,id=ufs -device ufs-lu,drive=ufs0,bus=ufs,lun=0 \
+      -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$DEVICE_BUILD_PORT-:8445" \
+      -device virtio-net-pci,netdev=net0 &
+    QEMU_PID=$!
+    python3 "$ROOT_DIR/tests/device-builds/device_build.py" "$LOG" "$QMP" "$DEVICE_BUILD_SECONDS" \
+        "$DEVICE_BUILD_PORT" "$CUBIT_INSTALLED_DEVICE_BUILD" --build-only \
+        --memory-report "$WORK/memory.json" --qemu-pid "$QEMU_PID"
+    STATUS=$?
+    kill "$QEMU_PID" 2>/dev/null
+    wait "$QEMU_PID" 2>/dev/null
+    for MARKER in "devmgr: disk 0 attached as @ufs:0 (writable)" "FS Server: @system is @ufs:0"; do
+        if ! grep -qaF "$MARKER" "$LOG"; then
+            echo "install-reboot: the installed boot lacks: $MARKER" >&2
+            STATUS=1
+        fi
+    done
+    if [ "$STATUS" = 0 ]; then
+        echo "INSTALL-REBOOT DEVICE-BUILD: PASS"
+        rm -rf "$WORK"
+    else
+        echo "INSTALL-REBOOT DEVICE-BUILD: FAIL (logs: $WORK)"
+    fi
+    exit "$STATUS"
+fi
 # logstore flushes the persistent log every second (log_persistence.ads).
 FLUSH_SECONDS=3
 FIRST_MARKER="install-boot-check: first boot of the installed system"
@@ -53,9 +102,6 @@ elif ! CCL_CONSOLE_DEMO=install CUBIT_INSTALL_PAYLOAD="$WORK/payload" CUBIT_INST
     echo "install-reboot: the install failed (work: $WORK)" >&2
     exit 1
 fi
-
-QEMU_SHARE="$(dirname "$(readlink -f "$(command -v qemu-system-x86_64)")")/../share/qemu"
-FIRMWARE="$QEMU_SHARE/edk2-x86_64-code.fd"
 
 disk_boot() {
     local LOG="$1"

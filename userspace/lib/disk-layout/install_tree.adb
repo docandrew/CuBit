@@ -13,7 +13,8 @@ package body Install_Tree with SPARK_Mode is
 
    procedure Add
      (Item : in out Tree; Kind : Entry_Kind; Parent : Parent_Index;
-      Name : String; Size : File_Size; Result : out Add_Result) is
+      Name : String; Size : File_Size; Result : out Add_Result;
+      Executable : Boolean := False) is
    begin
       if Item.Count = Maximum_Entries then
          Result := Tree_Full;
@@ -37,7 +38,8 @@ package body Install_Tree with SPARK_Mode is
       end loop;
       Item.Count := Item.Count + 1;
       Item.Entries (Item.Count) :=
-        (Kind => Kind, Parent => Parent, First => Item.Used + 1, Length => Name'Length,
+        (Kind => Kind, Executable => Kind = Regular_File and then Executable,
+         Parent => Parent, First => Item.Used + 1, Length => Name'Length,
          Size => (if Kind = Directory then 0 else Size));
       Item.Names (Item.Used + 1 .. Item.Used + Name'Length) := Name;
       Item.Used := Item.Used + Name'Length;

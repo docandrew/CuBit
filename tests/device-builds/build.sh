@@ -11,8 +11,14 @@
 #     seed, below), work/remote/ (the source subset an app's build reads,
 #     without the app: the host puts that) and work/mail/;
 #   - root.ext2: that tree as an ext2 image (4 KiB blocks), sized to what
-#     it holds plus Build_Headroom_MiB for the Storehouse and the products
-#     (run.sh puts it in a GPT partition: tests/device-builds/make-disk.py);
+#     it holds plus Build_Headroom_MiB for the Storehouse and the products.
+#     The one device-build payload: the headless test puts it in a GPT
+#     partition (tests/device-builds/make-disk.py); the device-build live
+#     image (make -C kernel usb-live-build-uefi-iso) boots it as its live
+#     RAM root (live-rw.ext2, @mem:0), so it also carries what the plain
+#     live RAM root does (the CCL samples in work/, tmp/), and that
+#     image's installer copies its files onto the installed root.
+#     Reproducible: fixed times, UUID and hash seed, owner 0;
 #   - the Linux reference: swap-probe.app (userspace/apps/swap-probe) built
 #     by the Linux ccl-build from the same subset into a private store, at
 #     build 1 and build 2 (Build edited as the test edits it), each one's
@@ -34,6 +40,11 @@ tool=$repo/userspace/ccl/build/ccl-build/ccl-build
 # Room for the Storehouse's entries, the steps' scratch copies and the
 # exported products of a few small builds.
 Build_Headroom_MiB=96
+# The root image's fixed identity and times (reproducible builds): its
+# files' times, the filesystem's UUID and directory hash seed.
+Root_Epoch=0
+Root_UUID=5b0e7c2a-2f4d-4c38-9e5a-00000000d0b1
+Root_Hash_Seed=5b0e7c2a-2f4d-4c38-9e5a-00000000d0b2
 mkdir -p "$b"
 remove() {  # remove PATH...: also Storehouse entries, which are read-only
     local p
@@ -47,7 +58,10 @@ bash "$repo/tests/binutils/build.sh" "$out" >/dev/null
 bash "$repo/userspace/ports/gcc/build.sh" "$out" >/dev/null
 root=$b/root
 remove "$root"
-mkdir -p "$root/work/remote" "$root/work/mail/to-host" "$root/work/mail/to-device"
+mkdir -p "$root/work/remote" "$root/work/mail/to-host" "$root/work/mail/to-device" "$root/tmp"
+# What the plain live RAM root holds too (kernel/Makefile laptop_live_rw.img):
+# editable copies of the CCL samples in work/.
+cp "$repo"/userspace/ccl/samples/*.ccl "$root/work/"
 cp -r "$repo/userspace/ports/gcc/build/toolchain" "$root/toolchain"
 mkdir -p "$root/toolchain/x86_64-linux-musl/bin"
 cp "$out/as.app" "$root/toolchain/x86_64-linux-musl/bin/as"
@@ -118,8 +132,13 @@ python3 -I "$repo/tests/ccl-build-native/seed.py" "$b/host-store" "$b/host-build
 used_kib=$(du -sk --apparent-size "$root" | cut -f1)
 files=$(find "$root" | wc -l)
 size_mib=$(( (used_kib * 5 / 4) / 1024 + files * 4 / 1024 + Build_Headroom_MiB ))
-rm -f "$b/root.ext2"
-mke2fs -q -t ext2 -b 4096 -m 0 -F -d "$root" "$b/root.ext2" "${size_mib}M"
+# From a tar stream, so names are in order and owners and times fixed.
+rm -f "$b/root.ext2" "$b/root.tar"
+tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$Root_Epoch" \
+    -C "$root" -cf "$b/root.tar" .
+SOURCE_DATE_EPOCH=$Root_Epoch mke2fs -q -t ext2 -b 4096 -m 0 -F -U "$Root_UUID" \
+    -E "hash_seed=$Root_Hash_Seed" -d "$b/root.tar" "$b/root.ext2" "${size_mib}M"
+rm -f "$b/root.tar"
 echo "device-build: toolchain $identity; root $((used_kib / 1024)) MiB in $files files," \
      "image ${size_mib} MiB; build 1 $(cat "$b/expected-build-1.sha256");" \
      "build 2 $(cat "$b/expected-build-2.sha256"); $(tail -1 "$b/seed.log")"

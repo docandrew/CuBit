@@ -67,10 +67,14 @@ package body Installer_Payload is
    --  medium lists no directories). A line may name where the file is
    --  instead, after a tab: a path below the medium's root (the live
    --  image's own files, which the image closure is, are not stored
-   --  twice). Written by the image build.
+   --  twice), or a whole CuBit name (the live RAM root's files). Written
+   --  by the image build.
    Index_Name : constant String := "/INDEX";
    Medium_Separator : constant Character := ASCII.HT;
-   Maximum_Index : constant := 256 * 1024;
+   --  A named ceiling: the device-build image's INDEX (the image closure
+   --  and about 3,500 toolchain, Storehouse and source files, each named
+   --  twice) is about 400 KiB.
+   Maximum_Index : constant := 1024 * 1024;
    subtype Index_Position is Natural range 0 .. Maximum_Index;
    Index_Text : String (1 .. Maximum_Index);
    Index_Length : Index_Position := 0;
@@ -96,9 +100,18 @@ package body Installer_Payload is
       return Source_Root (1 .. Source_Length);
    end Medium;
 
+   --  A medium path that starts with this is a whole CuBit name instead
+   --  ("@mem:0/toolchain/..."): the live RAM root's files, which the
+   --  device-build live image installs too (realize.py --install-live-root).
+   Volume_Mark : constant Character := '@';
+
+   function Names_Volume (Item : File_Source) return Boolean is
+     (Item.Medium_Relative and then Index_Text (Item.First) = Volume_Mark);
+
    function Source_Path (Item : File_Source) return String is
-     ((if Item.Medium_Relative then Medium else Source_Root (1 .. Source_Length))
-      & "/" & Index_Text (Item.First .. Item.Last));
+     (if Names_Volume (Item) then Index_Text (Item.First .. Item.Last)
+      else (if Item.Medium_Relative then Medium else Source_Root (1 .. Source_Length))
+           & "/" & Index_Text (Item.First .. Item.Last));
 
    --  Opens Path; on success its handle.
    function Open (Path : String; Handle : out File_Handle) return Boolean is
@@ -190,18 +203,20 @@ package body Installer_Payload is
 
    --  Adds the file at payload path Line (esp/... or root/...), its bytes
    --  at Source, and the directories its path implies.
-   procedure Add_Path (Line : String; Source : File_Source; Result : in out Walk_Result);
+   procedure Add_Path
+     (Line : String; Source : File_Source; Executable : Boolean; Result : in out Walk_Result);
 
-   --  Adds one index line's file.
+   --  After the medium path, a third field may mark a file that runs (mode
+   --  0755): its tree's identity covers that (the toolchain's pin).
+   Executable_Mark : constant String := "executable";
+
+   --  Adds one index line's file: "<path>", or "<path>" TAB "<where>",
+   --  optionally followed by TAB "executable" ("<where>" empty: stored in
+   --  the payload); or a directory, "<path>/".
    procedure Add_Line (Whole : String; Result : in out Walk_Result) is
       Line_Last : Natural := Whole'Last;
       Source : File_Source := (First => Whole'First, Last => Whole'Last, Medium_Relative => False);
-      Volume : Disk_Layout.Install_Volume;
-      Rest_First : Positive;
-      Parent : Install_Tree.Parent_Index := Install_Tree.Volume_Root;
-      Component_First : Positive;
-      Added : Install_Tree.Add_Result;
-      Size : Unsigned_64;
+      Executable : Boolean := False;
    begin
       for I in Whole'Range loop
          if Whole (I) = Medium_Separator then
@@ -210,14 +225,32 @@ package body Installer_Payload is
             exit;
          end if;
       end loop;
+      if Source.Medium_Relative then
+         for I in Source.First .. Source.Last loop
+            if Whole (I) = Medium_Separator then
+               if Whole (I + 1 .. Whole'Last) /= Executable_Mark then
+                  Result := Unreadable;
+                  return;
+               end if;
+               Executable := True;
+               Source.Last := I - 1;
+               exit;
+            end if;
+         end loop;
+         if Executable and then Source.Last < Source.First then
+            --  "<path>" TAB TAB "executable": stored in the payload.
+            Source := (First => Whole'First, Last => Line_Last, Medium_Relative => False);
+         end if;
+      end if;
       if Source.Last < Source.First then
          Result := Unreadable;
          return;
       end if;
-      Add_Path (Whole (Whole'First .. Line_Last), Source, Result);
+      Add_Path (Whole (Whole'First .. Line_Last), Source, Executable, Result);
    end Add_Line;
 
-   procedure Add_Path (Line : String; Source : File_Source; Result : in out Walk_Result) is
+   procedure Add_Path
+     (Line : String; Source : File_Source; Executable : Boolean; Result : in out Walk_Result) is
       Volume : Disk_Layout.Install_Volume;
       Rest_First : Positive;
       Parent : Install_Tree.Parent_Index := Install_Tree.Volume_Root;
@@ -261,7 +294,11 @@ package body Installer_Payload is
          end if;
       end loop;
       if Component_First > Line'Last then
-         Result := Unreadable;
+         --  "root/<path>/", alone on its line: a directory, made above
+         --  (an empty one: the mailbox's, tmp/).
+         if Source.Medium_Relative or else Executable then
+            Result := Unreadable;
+         end if;
          return;
       end if;
       if not Size_Of (Source_Path (Source), Size) then
@@ -272,7 +309,7 @@ package body Installer_Payload is
          return;
       end if;
       Install_Tree.Add (Trees (Volume), Install_Tree.Regular_File, Parent,
-                        Line (Component_First .. Line'Last), Size, Added);
+                        Line (Component_First .. Line'Last), Size, Added, Executable);
       if Added /= Install_Tree.Added then
          Result := (if Added = Install_Tree.Tree_Full then Too_Large else Unreadable);
       else
