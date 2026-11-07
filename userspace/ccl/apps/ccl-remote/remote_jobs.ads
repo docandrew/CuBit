@@ -37,9 +37,10 @@ package Remote_Jobs is
    Output_Bytes : constant := 262_144;
    Orphan_Retention_Ms : constant := 3_600_000;
 
-   --  Work: the work root ("@nvme:0/work"); its volume holds the
-   --  Storehouse and the toolchain. Without a process manager grant a
-   --  started job ends Failed_To_Start, saying why.
+   --  Work: the work root ("@system/work"). Builds need it on the system
+   --  volume, which holds the Storehouse and the toolchain (Start answers
+   --  Unavailable otherwise). Without a process manager grant a started
+   --  job ends Failed_To_Start, saying why.
    procedure Initialize (Work : String);
 
    procedure Start (Component : String; Job : out Interfaces.Unsigned_32; Result : out W.Status);

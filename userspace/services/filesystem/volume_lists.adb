@@ -14,6 +14,7 @@ package body Volume_Lists with SPARK_Mode is
       Result := Invalid_Name;
       if Name'Length = 0 or else Name'Length > Maximum_Name_Bytes
         or else Name = Boot_Archive_Name or else Name = Optical_Name
+        or else Name = System_Name
       then
          return;
       end if;
@@ -84,6 +85,15 @@ package body Volume_Lists with SPARK_Mode is
                             else Separator);
          return;
       end if;
+      if Path (Path'First + 1 .. Separator - 1) = System_Name then
+         if List.System /= No_Volume then
+            Volume := List.System;
+            Selection := Known_Volume;
+            Relative_First := (if Separator <= Path'Last then Separator + 1
+                               else Separator);
+         end if;
+         return;
+      end if;
       for I in 1 .. List.Used loop
          if Name (List, I) = Path (Path'First + 1 .. Separator - 1) then
             Volume := I;
@@ -113,6 +123,72 @@ package body Volume_Lists with SPARK_Mode is
       List.Items (Volume).Device.Endpoint := Endpoint;
       Attached := True;
    end Attach;
+
+   procedure Choose_System (List : in out State; Volume : Volume_Index; Rank : System_Rank) is
+   begin
+      if Rank > List.Rank then
+         List.System := Volume;
+         List.Rank := Rank;
+      end if;
+   end Choose_System;
+
+   procedure Other_Spelling
+     (List : State; Path : String; Result : out String; Length : out Natural;
+      Found : out Boolean)
+   is
+      --  Whether Path starts with "@" & Volume and then ends or goes on
+      --  with '/'; Rest is the index after the volume name.
+      procedure Starts
+        (Volume : String; Matches : out Boolean; Rest : out Positive)
+        with Pre => Path'Last < Positive'Last and then Path'Length > 0
+      is
+      begin
+         Matches := False;
+         Rest := Path'First;
+         if Volume'Length > 0 and then Volume'Length < Path'Length
+           and then Path (Path'First) = '@'
+           and then Path (Path'First + 1 .. Path'First + Volume'Length) = Volume
+           and then (Volume'Length + 1 = Path'Length
+                     or else Path (Path'First + Volume'Length + 1) = '/')
+         then
+            Matches := True;
+            Rest := Path'First + Volume'Length + 1;
+         end if;
+      end Starts;
+
+      procedure Spell (Volume : String; Rest : Positive) is
+         Tail : constant Natural := (if Rest > Path'Last then 0 else Path'Last - Rest + 1);
+      begin
+         if Volume'Length + 1 + Tail <= Result'Length then
+            Result (1) := '@';
+            Result (2 .. Volume'Length + 1) := Volume;
+            if Tail > 0 then
+               Result (Volume'Length + 2 .. Volume'Length + 1 + Tail) := Path (Rest .. Path'Last);
+            end if;
+            Length := Volume'Length + 1 + Tail;
+            Found := True;
+         end if;
+      end Spell;
+
+      Matches : Boolean;
+      Rest : Positive;
+   begin
+      Result := [others => ' '];
+      Length := 0;
+      Found := False;
+      if List.System = No_Volume or else Path'Length = 0 then
+         return;
+      end if;
+      Starts (System_Name, Matches, Rest);
+      if Matches then
+         Spell (Name (List, List.System), Rest);
+         return;
+      end if;
+      Starts (Name (List, List.System), Matches, Rest);
+      if Matches then
+         Spell (System_Name, Rest);
+      end if;
+   end Other_Spelling;
 
    function Find (List : State; Name : String) return Volume_Reference is
    begin

@@ -166,4 +166,53 @@ package Desktop_Status_Machines with SPARK_Mode, Pure is
      and then (if E.Kind = Done and then E.Result /= Answered then not S.Shown and then S.Phase = Waiting)
      and then (if E.Kind = Done and then E.Result = Answered and then S'Old.Phase = Watching
                then S.Shown);
+
+   ---------------------------------------------------------------------------
+   --  A switch another service holds (procmgr's "Allow app replacement")
+   ---------------------------------------------------------------------------
+   --  Confirmed: what the service last confirmed (off until then: procmgr
+   --  starts with it off). One request in flight; a flip meanwhile is
+   --  queued (the newest wins) and sent when it ends. A refused or
+   --  undelivered request leaves Confirmed as it was, so the panel goes
+   --  back to the service's state: the flip is answered, never lost.
+   type Switch_Phase is (Idle, Switching);
+
+   type Switch_State is record
+      Phase     : Switch_Phase := Idle;
+      Confirmed : Boolean := False;
+      Sent      : Boolean := False;   --  in flight (Switching)
+      Queued    : Boolean := False;   --  Wanted is still to be sent
+      Wanted    : Boolean := False;
+   end record;
+
+   type Switch_Event_Kind is (Flip, Done);
+   type Switch_Event (Kind : Switch_Event_Kind := Flip) is record
+      case Kind is
+         when Flip => Value : Boolean;
+         when Done => Result : Outcome;
+      end case;
+   end record;
+
+   --  Submit: send Value.
+   type Switch_Action is record
+      Submit : Boolean := False;
+      Value  : Boolean := False;
+   end record;
+
+   --  What the panel shows: the newest wish while one is pending.
+   function Shown (S : Switch_State) return Boolean is
+     (if S.Queued then S.Wanted elsif S.Phase = Switching then S.Sent else S.Confirmed);
+
+   procedure Step (S : in out Switch_State; E : Switch_Event; Act : out Switch_Action)
+   with Post =>
+     --  A flip shows at once.
+     (if E.Kind = Flip then Shown (S) = E.Value)
+     --  Only an answered request changes what is confirmed.
+     and then (if E.Kind = Done and then E.Result = Answered and then S'Old.Phase = Switching
+               then S.Confirmed = S'Old.Sent else S.Confirmed = S'Old.Confirmed)
+     --  One request at a time, and it is what is in flight.
+     and then (if Act.Submit then S.Phase = Switching and then S.Sent = Act.Value
+                 and then (S'Old.Phase = Idle or else E.Kind = Done))
+     and then (if E.Kind = Done and then S'Old.Phase = Switching and then not Act.Submit
+               then S.Phase = Idle and then not S.Queued);
 end Desktop_Status_Machines;

@@ -55,4 +55,28 @@ package Remote_Files is
      (Where : W.Place; Name : String; Size : W.File_Offset; Hash : W.Digest;
       Result : out W.Status);
    procedure Remove (Where : W.Place; Name : String; Result : out W.Status);
+
+   ---------------------------------------------------------------------------
+   --  The work root's own files (Remote_Apps' generations): Name is
+   --  relative to the work root, outside the host's places, and made by
+   --  this process only. Replacing writes go to a staging file renamed
+   --  over the name, as uploads do.
+   ---------------------------------------------------------------------------
+   function Work_Path (Name : String) return String;
+   procedure Make_Work_Directory (Name : String; Result : out W.Status);
+   procedure Hash_Work
+     (Name : String; Size : out Interfaces.Unsigned_64; Hash : out W.Digest; Result : out W.Status);
+   --  Copy Where's Name to the work root's Target: its size and the
+   --  SHA-256 of the bytes copied.
+   procedure Copy_To_Work
+     (Where : W.Place; Name : String; Target : String;
+      Size : out Interfaces.Unsigned_64; Hash : out W.Digest; Result : out W.Status);
+   --  A small text file (at most one chunk), written whole or read whole
+   --  (Text (Text'First .. Text'First + Length - 1); a longer file is
+   --  Too_Large).
+   procedure Write_Work_Text (Name : String; Text : String; Result : out W.Status)
+     with Pre => Text'Length < W.Maximum_Chunk_Bytes;
+   procedure Read_Work_Text
+     (Name : String; Text : out String; Length : out Natural; Result : out W.Status)
+     with Pre => Text'Length < W.Maximum_Chunk_Bytes;
 end Remote_Files;

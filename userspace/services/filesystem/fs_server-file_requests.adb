@@ -176,9 +176,17 @@ package body Fs_Server.File_Requests is
                   return;
                end if;
             end if;
-            for V in 1 .. Count (Volumes) loop
+            --  The system volume first (Volume_Lists.System_Name): an
+            --  unqualified program name is the system's, not whichever
+            --  disk was registered first.
+            for Turn in 0 .. Count (Volumes) loop
                exit when inodeNum /= 0 or else pathStatus /= Ext2.Lookup_Not_Found;
+               if (Turn = 0 and then System_Volume (Volumes) /= No_Volume)
+                 or else (Turn > 0 and then Turn /= System_Volume (Volumes))
+               then
                declare
+                  V : constant Volume_Index :=
+                    (if Turn = 0 then System_Volume (Volumes) else Turn);
                   admission : Admission_Result;
                begin
                   ensureVolume (V, admission);
@@ -193,6 +201,7 @@ package body Fs_Server.File_Requests is
                      return;
                   end if;
                end;
+               end if;
             end loop;
             --  Automatic creation retains its existing RAM-workspace default,
             --  rather than selecting an arbitrary disk that missed the name.

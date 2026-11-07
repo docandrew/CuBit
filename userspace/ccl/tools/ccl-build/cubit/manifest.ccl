@@ -11,18 +11,21 @@
 # step then holds all of them; per-step places (only the step's directory
 # writable, only its inputs readable) are CCL-004.
 #
-# Paths: @nvme:0/storehouse is the Storehouse until FS-020's
-# @system/Storehouse, @nvme:0/toolchain the GCC port's tree as installed
-# (--prefix=/toolchain), @nvme:0/cubit-src the source checkout.
+# Paths, on the system volume (@system: the installed root, the live
+# medium's RAM root, or the development disk): @system/storehouse is the
+# Storehouse until FS-020's @system/Storehouse, @system/toolchain the GCC
+# port's tree as installed (--prefix=/toolchain, which the libc resolves
+# on @system), @system/cubit-src the source checkout, @system/work the
+# work place.
 (Executable_Manifest
   identity => "com.cubit.ccl-build"
   version => "0.1.0"
   requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
   scopes => [
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/storehouse")
-    (filesystem [File_Right.Read] "@nvme:0/toolchain")
-    (filesystem [File_Right.Read] "@nvme:0/cubit-src")
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")]
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
+    (filesystem [File_Right.Read] "@system/toolchain")
+    (filesystem [File_Right.Read] "@system/cubit-src")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")]
   may_launch => [
     (Launch "toolchain/bin/gcc")
     (Launch "toolchain/bin/gnatbind")]

@@ -9,9 +9,11 @@
 #   display  where the pairing code is shown: Window (the desktop) or
 #            Kernel_Console (serial: headless machines, the QEMU test)
 #   work     the work root holding the workspace and the mailbox
-#            ("@nvme:0/work"; the installed laptop's is "@ufs:0/work")
+#            ("@system/work": the system volume's, the only one builds
+#            accept; or a named volume's, "@ufs:0/work")
 #   files    the host may write the workspace
-#   builds   the host may start ccl-build on workspace components
+#   builds   the host may start ccl-build on workspace components and
+#            replace apps with their products
 #   mail     the host may use the mailbox
 (type Remote_Listen (enum Off LAN))
 (type Pairing_Display (enum Window Kernel_Console))
@@ -59,10 +61,13 @@
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@ufs:0/work")
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")
     # What a build delegates to ccl-build (decision D2), as ccl-build's
-    # own manifest names them.
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/storehouse")
-    (filesystem [File_Right.Read] "@nvme:0/toolchain")
-    (filesystem [File_Right.Read] "@nvme:0/cubit-src")]
-  may_launch => [(Launch "ccl-build.app")]
+    # own manifest names them (on the system volume).
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
+    (filesystem [File_Right.Read] "@system/toolchain")
+    (filesystem [File_Right.Read] "@system/cubit-src")]
+  # Builds, and apps built here (Remote_Apps generations; procmgr asks
+  # the Desktop's "Allow app replacement" switch).
+  may_launch => [(Launch "ccl-build.app") (Launch "@system/work/generations/")]
   parameters => (Parameter_Signature.Declared "Remote_Parameters"))

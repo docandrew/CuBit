@@ -33,6 +33,7 @@ with Remote_Pairing;
 with Remote_Host;
 with Remote_Files;
 with Remote_Jobs;
+with Remote_Apps;
 with Remote_Activity;
 with Remote_Capture;
 with System;
@@ -107,7 +108,9 @@ procedure Main is
          when W.Hello => "hello", when W.Evaluate => "evaluate", when W.List => "list",
          when W.Stat => "stat", when W.Get => "get", when W.Put | W.Commit => "put",
          when W.Remove => "rm", when W.Build_Start => "build", when W.Build_Poll => "build poll",
-         when W.Build_Cancel => "build cancel", when W.Capture => "capture");
+         when W.Build_Cancel => "build cancel", when W.Capture => "capture",
+         when W.App_Replace => "replace", when W.App_Rollback => "rollback",
+         when W.App_Status => "status");
    function Place_Name (Where : W.Place) return String is
      (case Where is
          when W.None => "", when W.Workspace => "workspace",
@@ -123,19 +126,31 @@ procedure Main is
                when W.Get => Remote_Activity.Get, when W.Put | W.Commit => Remote_Activity.Put,
                when W.Remove => Remote_Activity.Remove,
                when W.Build_Start | W.Build_Poll | W.Build_Cancel => Remote_Activity.Build,
-               when W.Capture => Remote_Activity.Capture));
+               when W.Capture => Remote_Activity.Capture,
+               when W.App_Replace | W.App_Rollback | W.App_Status => Remote_Activity.App));
    function Outcome_Of (Result : W.Status) return Remote_Activity.Outcome is
      (case Result is
          when W.OK => Remote_Activity.OK,
-         when W.Unauthorized | W.Not_Granted | W.Locked => Remote_Activity.Refused,
+         when W.Unauthorized | W.Not_Granted | W.Locked | W.Capacity => Remote_Activity.Refused,
          when others => Remote_Activity.Failed);
+
+   function Status_Name (Result : W.Status) return String is
+     (case Result is
+         when W.OK => "ok", when W.Malformed => "malformed", when W.Unauthorized => "unauthorized",
+         when W.Not_Granted => "not granted", when W.Not_Found => "not found",
+         when W.Too_Large => "too large", when W.Conflict => "conflict", when W.Busy => "busy",
+         when W.Failed => "failed", when W.Integrity_Mismatch => "SHA-256 mismatch",
+         when W.Unavailable => "the work root is not on @system",
+         when W.Unsupported_Version => "unsupported version", when W.Locked => "locked",
+         when W.Capacity => "too many apps");
 
    --  One operation of the host: kept for the window and logged.
    procedure Note (Op : W.Operation; Where : W.Place; Argument : String; Result : Remote_Activity.Outcome) is
       Kind : constant Remote_Activity.Kind := Activity_Kind (Op, Where);
       --  A mailbox verb says what was done in it ("mail get mail/to-host/x").
       Shown : constant String :=
-        (if Kind = Remote_Activity.Mail then Verb (Op) & (if Argument'Length > 0 then " " else "") & Argument
+        (if Kind in Remote_Activity.Mail | Remote_Activity.App
+         then Verb (Op) & (if Argument'Length > 0 then " " else "") & Argument
          else Argument);
    begin
       Remote_Activity.Add (Now, Kind, Shown, Result);
@@ -402,6 +417,33 @@ procedure Main is
                         Length := W.Capture_Fixed_Bytes + Length;
                      end if;
                   end;
+
+               when W.App_Replace | W.App_Rollback | W.App_Status =>
+                  --  An app built here swapped for its running copy
+                  --  (Remote_Apps); procmgr asks the Desktop's switch.
+                  declare
+                     Done : Remote_Apps.Report;
+                     App : constant String :=
+                       (if Item.Op = W.App_Replace then W.App_Of_Product (Name) else Name);
+                  begin
+                     case Item.Op is
+                        when W.App_Replace => Remote_Apps.Replace (Name, Done, Result);
+                        when W.App_Rollback => Remote_Apps.Rollback (Name, Done, Result);
+                        when others => Remote_Apps.Query (Name, Done, Result);
+                     end case;
+                     if Result = W.OK then
+                        Remote_Apps.Encode (Done, Reply);
+                        Length := W.App_Response_Bytes;
+                     end if;
+                     Note (Item.Op, Item.Where,
+                           (if Result = W.OK then Remote_Apps.Image (App, Done)
+                            else App & " (" & Status_Name (Result) & ")"),
+                           (if Result /= W.OK then Outcome_Of (Result)
+                            else (case Done.Result is
+                                     when W.Replaced | W.Rolled_Back | W.Reported => Remote_Activity.OK,
+                                     when W.Switch_Off | W.No_Previous => Remote_Activity.Refused,
+                                     when W.Start_Failed | W.Stop_Failed => Remote_Activity.Failed)));
+                  end;
             end case;
          end;
       end;
@@ -450,6 +492,7 @@ begin
       return;
    end if;
    Remote_Jobs.Initialize (P.work.Data (1 .. P.work.Length));
+   Remote_Apps.Initialize (P.work.Data (1 .. P.work.Length));
    Remote_Transport.Initialize (OK);
    if not OK then
       Log ("no network authority (the startup entry needs (network approve-declared)); not listening");

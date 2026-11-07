@@ -115,6 +115,30 @@ package CuBit.Launch_Authority with SPARK_Mode is
    function Contains (Item : Table_Bytes; Name : String) return Boolean
    with Pre => Item'First = 1 and then Valid (Item);
 
+   --  Staged programs (SELF-002, docs: device-build): a table name that is
+   --  a directory, a CuBit name ending in '/' ("@system/work/generations/"),
+   --  admits the programs staged beneath it, such as an app built on this
+   --  machine. Whether Name is beneath one of the table's directories: it
+   --  starts with that name, goes on past it, and has no "." or ".."
+   --  component and no empty one (the filesystem refuses those too). The
+   --  program then starts exactly as a named one: its manifest is read
+   --  and its authority attenuated to its launcher's. Nothing checks who
+   --  built it (signed admission is not built yet).
+   Staging_Mark : constant Character := '/';
+   --  procmgr's staged-launch switch, set only by the registered Desktop
+   --  ("Allow app replacement"): words (0) = Staged_Switch_On or
+   --  Staged_Switch_Off. Reply OK or ERR.
+   Staged_Switch_Operation : constant := 16#0111#;
+   Staged_Switch_Off : constant := 0;
+   Staged_Switch_On  : constant := 1;
+   --  End a child that did not stop in time: words (0) = its identity;
+   --  only its launcher may. Reply OK or ERR.
+   End_Child_Operation : constant := 16#0110#;
+   --  The filesystem read right (CuBit.File_Access wire bit 0).
+   Read_Right : constant Unsigned_8 := 1;
+   function Admits_Staged (Item : Table_Bytes; Name : String) return Boolean
+   with Pre => Item'First = 1 and then Valid (Item);
+
    ---------------------------------------------------------------------------
    --  Attenuation. Scopes are procmgr's access entries (service, rights
    --  bits, prefix). A child's scope is covered when the launcher holds one

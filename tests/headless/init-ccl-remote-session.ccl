@@ -23,6 +23,6 @@
   (start "sleep.app" (priority 2))
   (start "ccl-remote.app" (priority 4) (network approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
-      display => Pairing_Display.Kernel_Console work => "@nvme:0/work"
+      display => Pairing_Display.Kernel_Console work => "@system/work"
       files => true builds => true mail => true)))
 )

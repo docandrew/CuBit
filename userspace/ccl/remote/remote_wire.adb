@@ -181,6 +181,55 @@ package body Remote_Wire with SPARK_Mode is
         and then Name (Component_First .. Name'Last) /= "..";
    end Valid_Nonempty_Name;
 
+   function Encode_App_Response
+     (Result : App_Result; Current, Previous : Generation; Instance : Instance_State;
+      Stop : Stop_Kind; Current_Hash, Previous_Hash : Digest) return App_Response
+   is
+      Hashes_At : constant := 1 + 2 * Generation_Bytes + 2;
+      Data : App_Response := [others => 0];
+   begin
+      Data (1) := App_Result'Enum_Rep (Result);
+      Put_U32 (Data, 2, Current);
+      Put_U32 (Data, 2 + Generation_Bytes, Previous);
+      Data (2 + 2 * Generation_Bytes) := Instance_State'Enum_Rep (Instance);
+      Data (3 + 2 * Generation_Bytes) := Stop_Kind'Enum_Rep (Stop);
+      for I in Digest_Index loop
+         Data (Hashes_At + I) := Current_Hash (I);
+         Data (Hashes_At + Digest_Bytes + I) := Previous_Hash (I);
+      end loop;
+      return Data;
+   end Encode_App_Response;
+
+   function Valid_App_Name (Name : String) return Boolean is
+     (Name'Length in 1 .. Maximum_App_Name_Bytes
+      and then (for all C of Name => C /= '/')
+      and then Valid_Name (Name));
+
+   function App_Of_Product (Product : String) return String is
+      First : Positive := Positive'First;
+   begin
+      if Product'Length <= Product_Suffix'Length
+        or else Product (Product'Last - Product_Suffix'Length + 1 .. Product'Last) /= Product_Suffix
+      then
+         return "";
+      end if;
+      First := Product'First;
+      for I in Product'Range loop
+         pragma Loop_Invariant (First in Product'First .. I);
+         if Product (I) = '/' then
+            First := I + 1;
+         end if;
+      end loop;
+      if First > Product'Last - Product_Suffix'Length then
+         return "";
+      end if;
+      declare
+         Name : constant String := Product (First .. Product'Last - Product_Suffix'Length);
+      begin
+         return (if Valid_App_Name (Name) then Name else "");
+      end;
+   end App_Of_Product;
+
    ---------------------------------------------------------------------------
    --  Requests
    ---------------------------------------------------------------------------
@@ -243,6 +292,7 @@ package body Remote_Wire with SPARK_Mode is
              Pre  => Data'First = 1 and then Length = Data'Length,
              Post => (if Taken then After = Name_Length_Bytes + Item.Name_Last + 1 and then
                         After - 1 <= Length) and then
+                     (if Taken and then not Empty_Allowed then Item.Name_Last > 0) and then
                      Item.Op = Item.Op'Old and then Item.Where = Item.Where'Old and then
                      Item.Data_Length = Item.Data_Length'Old and then
                      Item.Data_First = Item.Data_First'Old and then Item.Job = Item.Job'Old
@@ -298,6 +348,22 @@ package body Remote_Wire with SPARK_Mode is
          when List | Stat | Remove | Build_Start =>
             Take_Name (Empty_Allowed => Header.Op = List, Taken => Taken);
             if Taken and then After - 1 = Length then
+               Result := OK;
+            end if;
+
+         when App_Replace =>
+            Take_Name (Empty_Allowed => False, Taken => Taken);
+            if Taken and then After - 1 = Length
+              and then App_Of_Product (Item.Name (1 .. Item.Name_Last))'Length > 0
+            then
+               Result := OK;
+            end if;
+
+         when App_Rollback | App_Status =>
+            Take_Name (Empty_Allowed => False, Taken => Taken);
+            if Taken and then After - 1 = Length
+              and then Valid_App_Name (Item.Name (1 .. Item.Name_Last))
+            then
                Result := OK;
             end if;
 

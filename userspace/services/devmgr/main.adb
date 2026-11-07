@@ -2022,7 +2022,7 @@ procedure main is
    --  for the system disk).
    function Attach_Storage_With
      (Which : Fs_Attachments.Device; Ordinal : Fs_Attachments.Device_Ordinal;
-      Copy : H.Derivation) return Boolean;
+      Copy : H.Derivation; System_Disk : Boolean := False) return Boolean;
 
    function Attach_Storage
      (Which : Fs_Attachments.Device; Driver : DL.Child;
@@ -2037,13 +2037,14 @@ procedure main is
 
    function Attach_Storage_With
      (Which : Fs_Attachments.Device; Ordinal : Fs_Attachments.Device_Ordinal;
-      Copy : H.Derivation) return Boolean
+      Copy : H.Derivation; System_Disk : Boolean := False) return Boolean
    is
       Request : Message :=
         (tag => (label => Fs_Attachments.Attach_Label, length => Fs_Attachments.Attach_Words,
                  protocol => 0, ipc => <>, reserved => 0),
          authorityTag => 0,
-         words => [Fs_Attachments.Device_Code (Which), Unsigned_64 (Ordinal), 0, 0]);
+         words => [Fs_Attachments.Device_Code (Which), Unsigned_64 (Ordinal),
+                   (if System_Disk then Fs_Attachments.System_Disk else Fs_Attachments.Data_Disk), 0]);
       Reply : MessageTag;
    begin
       if not H.Valid (Filesystem_Endpoint) then
@@ -3856,7 +3857,8 @@ procedure main is
         (Fs_Attachments.UFS_Device, Fs_Attachments.Device_Ordinal (Disk),
          (if Writable
           then H.Badged (Driver, H.Read_Write, CuBit.Block_Devices.Write_Authority_Tag)
-          else H.Copy (Driver, H.Read_Write)))
+          else H.Copy (Driver, H.Read_Write)),
+         System_Disk => Writable)
       then
          Warnings.Inform ("devmgr: disk" & Natural'Image (Disk) & " attached as @ufs:" &
                           Natural'Image (Disk) (2 .. Natural'Image (Disk)'Last) &

@@ -26,13 +26,14 @@ with Interfaces;
 
 package Remote_Activity is
    --  What the host did, as the person reads it.
-   type Kind is (Hello, Evaluate, List, Stat, Get, Put, Remove, Build, Mail, Capture);
+   type Kind is (Hello, Evaluate, List, Stat, Get, Put, Remove, Build, Mail, Capture, App);
    type Outcome is (OK, Refused, Failed);
    function Kind_Name (Item : Kind) return String is
      (case Item is
          when Hello => "hello", when Evaluate => "evaluate", when List => "list",
          when Stat => "stat", when Get => "get", when Put => "put", when Remove => "rm",
-         when Build => "build", when Mail => "mail", when Capture => "capture");
+         when Build => "build", when Mail => "mail", when Capture => "capture",
+         when App => "app");
    function Outcome_Name (Item : Outcome) return String is
      (case Item is when OK => "ok", when Refused => "refused", when Failed => "failed");
 

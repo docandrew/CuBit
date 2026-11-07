@@ -20,12 +20,20 @@ connection: a 28-byte header carrying the pairing token, then a body.
   cubit-remote mail recv [--dir DIR] [--keep] | mail ls
   cubit-remote screenshot [-o FILE.png] [--output N] [--area X,Y,W,H]
                                                 one frame of the device's screen as a PNG
+  cubit-remote app replace PRODUCT              a workspace build's product becomes the
+                                                app's next generation and replaces it
+  cubit-remote app rollback APP | app status APP
 
 Screenshots need the device's display-capture grant (its startup entry says
 (display-capture approve-declared)) and the person at the device turning on
 "Allow screen capture" (Deskbar, Remote access); otherwise the device says
 why it refused. Each capture shows on the device (a mark in the Deskbar,
 the remote window's activity list, its log) and is rate-limited.
+
+App replacement needs the builds grant, a work root on the device's
+system volume, and the person at the device turning on "Allow app
+replacement" (Deskbar, Remote access); the device keeps each generation
+(and its SHA-256) under its work root, outside the workspace.
 
 Pairing tokens are stored in ~/.config/cubit-remote/hosts.json (0600, the
 directory 0700) and never printed. Python 3 standard library only.
@@ -67,13 +75,13 @@ DEFAULT_PORT = 8445
 OPERATIONS = {
     "hello": 1, "evaluate": 2, "list": 3, "stat": 4, "get": 5, "put": 6,
     "commit": 7, "remove": 8, "build_start": 9, "build_poll": 10, "build_cancel": 11,
-    "capture": 12,
+    "capture": 12, "app_replace": 13, "app_rollback": 14, "app_status": 15,
 }
 PLACES = {"none": 0, "workspace": 1, "to-device": 2, "to-host": 3, "captures": 4}
 STATUSES = [
     "OK", "Malformed", "Unauthorized", "Not_Granted", "Not_Found", "Too_Large",
     "Conflict", "Busy", "Failed", "Integrity_Mismatch", "Unavailable",
-    "Unsupported_Version", "Locked",
+    "Unsupported_Version", "Locked", "Capacity",
 ]
 JOB_STATES = {1: "running", 2: "exited", 3: "failed-to-start", 4: "cancelled", 5: "unknown"}
 GRANTS = [(1, "diagnose"), (2, "files"), (4, "builds"), (8, "mail"), (16, "capture")]
@@ -92,6 +100,24 @@ CAPTURE_RESULTS = [
     ("Capture_Failed", "the capture failed on the device (see its log)"),
 ]
 CAPTURE_FIXED_BYTES = 1 + 4 + 4 + 8 + 32
+# Remote_Wire.App_Result, with what the person reads for each refusal.
+APP_RESULTS = [
+    ("Replaced", "replaced"),
+    ("Rolled_Back", "rolled back"),
+    ("Reported", "reported"),
+    ("Switch_Off", "app replacement is off on the device: the person there turns on "
+                   "Allow app replacement (Deskbar, Remote access)"),
+    ("Start_Failed", "the generation did not start (see the device's log); "
+                     "the one stopped for it runs again"),
+    ("Stop_Failed", "the running instance did not end, even when ended; nothing was started"),
+    ("No_Previous", "the app has no previous generation"),
+]
+APP_RESULT_DONE = (0, 1, 2)
+INSTANCE_STATES = {0: "not started", 1: "running", 2: "exited"}
+STOP_KINDS = {0: "", 1: "stopped", 2: "ended after the stop deadline"}
+APP_RESPONSE_BYTES = 1 + 4 + 4 + 1 + 1 + 32 + 32
+MAXIMUM_APP_NAME_BYTES = 64
+PRODUCT_SUFFIX = ".app"
 
 # Whole lists: elements per slice at first (halved while a slice is still
 # too large), and the device's own words for a result it could not carry.
@@ -158,6 +184,19 @@ def valid_name(name):
         if any(not (c.isascii() and (c.isalnum() or c in "._-+")) for c in part):
             return False
     return True
+
+
+def valid_app_name(name):
+    """Remote_Wire.Valid_App_Name: one component, at most 64 bytes."""
+    return 1 <= len(name) <= MAXIMUM_APP_NAME_BYTES and "/" not in name and valid_name(name)
+
+
+def app_of_product(product):
+    """Remote_Wire.App_Of_Product: the app a product is, or ""."""
+    if len(product) <= len(PRODUCT_SUFFIX) or not product.endswith(PRODUCT_SUFFIX):
+        return ""
+    name = product.rsplit("/", 1)[-1][:-len(PRODUCT_SUFFIX)]
+    return name if valid_app_name(name) else ""
 
 
 def name_field(name):
@@ -461,6 +500,60 @@ def screenshot(host, local, output=0, area=None):
     return width, height, size, got_digest
 
 
+class AppRefused(Exception):
+    """An app operation the device answered without doing (App_Result)."""
+
+    def __init__(self, report):
+        self.report = report
+        code = report["result"]
+        name, why = APP_RESULTS[code] if code < len(APP_RESULTS) else ("result %d" % code, "")
+        self.name = name
+        super().__init__("%s: %s" % (name, why))
+
+
+def parse_app(body):
+    """App_Response as a dict: result, current, previous, instance, stop,
+    current_sha256, previous_sha256 (hex)."""
+    if len(body) != APP_RESPONSE_BYTES:
+        raise RemoteError(1, "an app response of %d bytes" % len(body))
+    result, current, previous, instance, stop = struct.unpack(">BIIBB", body[:11])
+    return {"result": result, "current": current, "previous": previous, "instance": instance,
+            "stop": stop, "current_sha256": body[11:43].hex(), "previous_sha256": body[43:75].hex()}
+
+
+def app_request(operation, name):
+    """(place, body) of an app operation on name (a product or an app)."""
+    if operation == "app_replace":
+        if not valid_name(name) or not app_of_product(name):
+            raise SystemExit("cubit-remote: %r is not a product (.../APP.app) in the workspace" % name)
+        return "workspace", name_field(name)
+    if not valid_app_name(name):
+        raise SystemExit("cubit-remote: %r is not an app's name" % name)
+    return "none", name_field(name)
+
+
+def app_call(host, operation, name):
+    """One app operation; its report, or AppRefused."""
+    place, body = app_request(operation, name)
+    report = parse_app(host.call(operation, place, body))
+    if report["result"] not in APP_RESULT_DONE:
+        raise AppRefused(report)
+    return report
+
+
+def app_image(app, report):
+    def gen(n):
+        return "generation %d" % n
+    if not report["current"]:
+        return "%s: no generation" % app
+    text = "%s: %s %s (sha256 %s)" % (app, gen(report["current"]), INSTANCE_STATES.get(report["instance"], "?"),
+                                      report["current_sha256"])
+    if report["previous"]:
+        stop = STOP_KINDS.get(report["stop"], "")
+        text += "; previous %s%s" % (gen(report["previous"]), " " + stop if stop else "")
+    return text
+
+
 def build_poll(host, job, offset):
     body = host.call("build_poll", "none", struct.pack(">IQ", job, offset))
     state, code, total, first_kept = struct.unpack(">BIQQ", body[:21])
@@ -664,6 +757,23 @@ def command_screenshot(args):
     return 0
 
 
+APP_COMMANDS = {"replace": ("app_replace", "replaced"), "rollback": ("app_rollback", "rolled back"),
+                "status": ("app_status", "reported")}
+
+
+def command_app(args):
+    host = selected_host(args)
+    operation, done = APP_COMMANDS[args.app_command]
+    app = app_of_product(args.name) if operation == "app_replace" else args.name
+    try:
+        report = app_call(host, operation, args.name)
+    except AppRefused as e:
+        sys.stderr.write("cubit-remote: %s not %s: %s\n" % (app or args.name, done, e))
+        return 2
+    print(app_image(app, report))
+    return 0
+
+
 def parser():
     p = argparse.ArgumentParser(prog="cubit-remote", description=__doc__.split("\n")[0])
     p.add_argument("--host", help="a paired host's name (default: the last paired)")
@@ -736,6 +846,16 @@ def parser():
     s.add_argument("--output", type=int, default=0, help="the output (monitor) number, from 0")
     s.add_argument("--area", metavar="X,Y,W,H", help="only this rectangle, in the output's pixels")
     s.set_defaults(run=command_screenshot)
+
+    s = sub.add_parser("app", help="apps built on the device: swap in a product, roll back")
+    app = s.add_subparsers(dest="app_command", required=True)
+    a = app.add_parser("replace", help="a product in the workspace (.../APP.app) becomes APP's next generation")
+    a.add_argument("name", metavar="PRODUCT")
+    a = app.add_parser("rollback", help="start APP's previous generation again")
+    a.add_argument("name", metavar="APP")
+    a = app.add_parser("status", help="APP's generations and whether it runs")
+    a.add_argument("name", metavar="APP")
+    s.set_defaults(run=command_app)
     return p
 
 

@@ -29,6 +29,7 @@ with CuBit.Program_Descriptions;
 with CuBit.Outlet_Rings;
 with CuBit.Streams;
 with CuBit.Memory_Grants;
+with CuBit.Messages;
 
 with CuBit.Handles;
 with CuBit.Handles.Services;
@@ -108,6 +109,21 @@ package CuBit.Launching is
    procedure Send_Control
      (Started : Child; Kind : CuBit.Control_Events.Control_Kind;
       Result : out Control_Result);
+
+   --  End Started, which this process launched, after a Stop it did not
+   --  obey within the launcher's own deadline (procmgr kills it with the
+   --  process authority it holds; CuBit.Launch_Authority.End_Child_Operation).
+   --  Its exit then arrives as usual (Wait, Poll_Exit).
+   procedure End_Child (Through : Launcher; Started : Child; Result : out Launch_Result);
+
+   --  The Desktop's "Allow app replacement" switch, told to procmgr
+   --  (CuBit.Launch_Authority.Staged_Switch_Operation): the request, which
+   --  the Desktop submits to procmgr without waiting (capSubmit; its event
+   --  loop never blocks on a peer), and whether procmgr's reply (the
+   --  completion's message) confirms it. procmgr refuses every caller but
+   --  the registered Desktop.
+   function Set_Staged_Launches (Allowed : Boolean) return CuBit.Messages.Message;
+   function Staged_Launches_Set (Reply : CuBit.Messages.Message) return Boolean;
 
    --  This process's own launch table (CuBit.Launch_Authority, procmgr's
    --  OP_LAUNCH_TABLE): Table (1 .. Length), Length 0 when it may start

@@ -432,6 +432,32 @@ begin
              "launch table names match exactly");
       Check (LT.Valid ([16#4C#, 16#4E#, 16#43#, 16#48#, 1, 0, 0, 0]),
              "an empty launch table is valid");
+      --  Staged programs: a directory entry admits names beneath it only.
+      declare
+         Staging : constant LT.Table_Bytes :=
+           [16#4C#, 16#4E#, 16#43#, 16#48#, 1, 0, 2, 0] &
+           Name_Entry ("ccl-build.app") & Name_Entry ("@system/work/generations/");
+      begin
+         Check (LT.Valid (Staging), "a table with a staging directory validates");
+         Check (LT.Admits_Staged (Staging, "@system/work/generations/swap-probe/2.app")
+                and then LT.Admits_Staged (Staging, "@system/work/generations/a")
+                and then not LT.Contains (Staging, "@system/work/generations/a"),
+                "a staging directory admits programs beneath it");
+         Check (not LT.Admits_Staged (Staging, "@system/work/generations/")
+                and then not LT.Admits_Staged (Staging, "@system/work/generations")
+                and then not LT.Admits_Staged (Staging, "@system/work/generationsx/a")
+                and then not LT.Admits_Staged (Staging, "@system/work/generations/../x")
+                and then not LT.Admits_Staged (Staging, "@system/work/generations/a/../../x")
+                and then not LT.Admits_Staged (Staging, "@system/work/generations/./a")
+                and then not LT.Admits_Staged (Staging, "@system/work/generations//a")
+                and then not LT.Admits_Staged (Staging, "@system/work/generations/a/")
+                and then not LT.Admits_Staged (Staging, "@system/work/generations/a/..")
+                and then not LT.Admits_Staged (Staging, "ccl-build.app/x")
+                and then not LT.Admits_Staged (Staging, "@nvme:0/work/generations/a"),
+                "a staging directory admits nothing else");
+         Check (not LT.Admits_Staged (Table, "@system/work/generations/a"),
+                "a table without a directory admits no staged program");
+      end;
       M := Table;
       M (7) := 4;
       Check (not LT.Valid (M), "launch table with too many names");

@@ -13,6 +13,9 @@ package body Fs_Server.Access_Control is
    ---------------------------------------------------------------------------
    MAX_ACL_ENTRIES : constant := CuBit.File_Access.Maximum_Entries;
    MAX_ACL_PROFILES : constant := 32;
+   --  Room past the longest scope for a name respelled with a longer
+   --  volume name ("@system" is 7 bytes; Volume_Lists names up to 48).
+   Volume_Lists_Spare : constant := Volume_List.Maximum_Name_Bytes;
 
    type ACLProfile is record
       pid    : Process_ID := No_Process;
@@ -43,11 +46,26 @@ package body Fs_Server.Access_Control is
       path : String;
       rights : Unsigned_8) return Boolean
    is
+      --  The same name with "@system" spelled as the system volume's own
+      --  name, or the other way round (Volume_Lists.Other_Spelling): a
+      --  scope written either way covers a name written either way.
+      other : String (1 .. path'Length + Volume_Lists_Spare);
+      otherLength : Natural;
+      spelled : Boolean := False;
    begin
       for profile of aclProfiles loop
          if profile.active and then profile.pid = sender then
-            return CuBit.File_Access.Allows
-              (profile.policy, path, CuBit.File_Access.Rights_From_Wire (rights));
+            if CuBit.File_Access.Allows
+              (profile.policy, path, CuBit.File_Access.Rights_From_Wire (rights))
+            then
+               return True;
+            end if;
+            if path'Last < Positive'Last then
+               Other_Spelling (Volumes, path, other, otherLength, spelled);
+            end if;
+            return spelled and then CuBit.File_Access.Allows
+              (profile.policy, other (1 .. otherLength),
+               CuBit.File_Access.Rights_From_Wire (rights));
          end if;
       end loop;
       return False;

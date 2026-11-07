@@ -9,8 +9,10 @@ package body CuBit.Identity_Tables is
    Keys : array (Valid_Index) of Process_ID := [others => No_Process];   --  free
    Used : Natural := 0;
 
+   --  The top Capacity_Bits of the hash (0 .. Capacity - 1), plus one: the
+   --  sum is converted, never the 0 a hash's top bits can be.
    function Home (Key : Process_ID) return Valid_Index is
-     (Valid_Index (Shift_Right (Hash (Key), 64 - Capacity_Bits)) + 1);
+     (Valid_Index (Shift_Right (Hash (Key), 64 - Capacity_Bits) + 1));
 
    function Next (I : Valid_Index) return Valid_Index is
      (if I = Capacity then 1 else I + 1);

@@ -13,11 +13,11 @@
       (Toolchain "binutils-2.46"
         "12b0a97cfd6fccff837ffc7a521a6716bffb9da7e339ace12900b9131301b037" prefix => ""))
     # On CuBit: the same GCC 15.3 built for CuBit (userspace/ports/gcc),
-    # installed at @nvme:0/toolchain with binutils 2.46's as and ld
+    # installed at @system/toolchain with binutils 2.46's as and ld
     # (userspace/ports/binutils): one tree for both.
     (Host_Toolchains Build_Host.CuBit
-      (Toolchain "gnat-15.3.0-cubit" "c98d0f42eb54d6ab03557194589bd8ddd61a465b112512ee396ca4d0ba105718" prefix => "")
-      (Toolchain "gnat-15.3.0-cubit" "c98d0f42eb54d6ab03557194589bd8ddd61a465b112512ee396ca4d0ba105718" prefix => ""))]
+      (Toolchain "gnat-15.3.0-cubit" "ad5b14aa6e82cd5946c69c6390daa02048642a500e5bcfd9b1dfc4bf3db4d1fa" prefix => "")
+      (Toolchain "gnat-15.3.0-cubit" "ad5b14aa6e82cd5946c69c6390daa02048642a500e5bcfd9b1dfc4bf3db4d1fa" prefix => ""))]
   runtime => "userspace/runtime"
   manifest_tool => "userspace/ccl/build/manifest/ccl-manifest"
   manifest_schema => "userspace/ccl/interfaces/executable-manifest.ccl"

@@ -59,6 +59,9 @@ begin
    Reject_Name (".");
    Reject_Name ("bad" & Character'Val (0));
    Reject_Name ((1 .. Maximum_Name_Bytes + 1 => 'x'));
+   Reject_Name (System_Name);
+   --  No system volume yet: "@system" names nothing, and nothing is respelled.
+   Resolve ("@system/toolchain", Unknown_Volume, No_Volume, "");
 
    Register (List, "mem:0", (13, 0, 128), First, Result);
    pragma Assert (Result = Registered and First = 1);
@@ -88,6 +91,57 @@ begin
       Shifted : String (101 .. 111) := "@nvme:1/123";
    begin
       Resolve (Shifted, Known_Volume, Third, "123");
+   end;
+
+   --  "@system": the boot's root, by rank; the choice only rises.
+   declare
+      Other : String (1 .. 64);
+      Length : Natural;
+      Found : Boolean;
+      procedure Spelled (Path, Expected : String) is
+      begin
+         Other_Spelling (List, Path, Other, Length, Found);
+         pragma Assert (Found and then Other (1 .. Length) = Expected);
+      end Spelled;
+      procedure Not_Spelled (Path : String) is
+      begin
+         Other_Spelling (List, Path, Other, Length, Found);
+         pragma Assert (not Found and Length = 0);
+      end Not_Spelled;
+   begin
+      Not_Spelled ("@system/x");
+      Choose_System (List, Second, Development_Disk);
+      pragma Assert (System_Volume (List) = Second and System_Choice (List) = Development_Disk);
+      Resolve ("@system/toolchain/bin/gcc", Known_Volume, Second, "toolchain/bin/gcc");
+      Resolve ("@system", Known_Volume, Second, "");
+      Resolve ("@systemx/a", Unknown_Volume, No_Volume, "");
+      Spelled ("@system/toolchain", "@nvme:0/toolchain");
+      Spelled ("@system", "@nvme:0");
+      Spelled ("@system/", "@nvme:0/");
+      Spelled ("@nvme:0/storehouse/x", "@system/storehouse/x");
+      Spelled ("@nvme:0", "@system");
+      Not_Spelled ("@nvme:1/x");
+      Not_Spelled ("@nvme:0x/y");
+      Not_Spelled ("@systemx/y");
+      Not_Spelled ("toolchain/bin/gcc");
+      Not_Spelled ("");
+      --  Too long for Result: not respelled (the caller denies).
+      Other_Spelling (List, "@system/" & (1 .. 60 => 'a'), Other, Length, Found);
+      pragma Assert (not Found and Length = 0);
+      --  The live RAM root outranks the development disk; a lower rank
+      --  afterwards changes nothing; the installed root outranks both.
+      Choose_System (List, First, Live_Root);
+      pragma Assert (System_Volume (List) = First);
+      Spelled ("@system/work", "@mem:0/work");
+      Spelled ("@mem:0/work", "@system/work");
+      Not_Spelled ("@nvme:0/work");
+      Choose_System (List, Second, Development_Disk);
+      pragma Assert (System_Volume (List) = First and System_Choice (List) = Live_Root);
+      Choose_System (List, Third, Installed_Root);
+      pragma Assert (System_Volume (List) = Third and System_Choice (List) = Installed_Root);
+      Resolve ("@system/a", Known_Volume, Third, "a");
+      Choose_System (List, First, Live_Root);
+      pragma Assert (System_Volume (List) = Third);
    end;
 
    --  Equal inode numbers on different volumes must not share metadata.

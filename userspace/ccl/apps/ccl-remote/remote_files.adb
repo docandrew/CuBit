@@ -218,9 +218,9 @@ package body Remote_Files is
       end if;
    end List;
 
-   procedure Stat
-     (Where : W.Place; Name : String; Size : out Unsigned_64; Hash : out W.Digest;
-      Result : out W.Status)
+   --  The size and SHA-256 of the file the filesystem names Text.
+   procedure Hash_Path
+     (Text : String; Size : out Unsigned_64; Hash : out W.Digest; Result : out W.Status)
    is
       File : File_Handle;
       Got : Natural;
@@ -229,7 +229,7 @@ package body Remote_Files is
    begin
       Size := 0;
       Hash := [others => 0];
-      Open (Path (Where, Name), OPEN_READ_ONLY, File, Result);
+      Open (Text, OPEN_READ_ONLY, File, Result);
       if Result /= W.OK then
          return;
       end if;
@@ -259,6 +259,13 @@ package body Remote_Files is
       for I in W.Digest_Index loop
          Hash (I) := Output (SPARKNaCl.N32 (I) - 1);
       end loop;
+   end Hash_Path;
+
+   procedure Stat
+     (Where : W.Place; Name : String; Size : out Unsigned_64; Hash : out W.Digest;
+      Result : out W.Status) is
+   begin
+      Hash_Path (Path (Where, Name), Size, Hash, Result);
    end Stat;
 
    procedure Get
@@ -364,4 +371,145 @@ package body Remote_Files is
       Request := Path_Request (OP_UNLINK, Text'Length);
       Result := Call (Request);
    end Remove;
+
+   ---------------------------------------------------------------------------
+   --  The work root's own files
+   ---------------------------------------------------------------------------
+   function Work_Path (Name : String) return String is
+     (Work_Root (1 .. Work_Length) & "/" & Name);
+
+   procedure Hash_Work
+     (Name : String; Size : out Unsigned_64; Hash : out W.Digest; Result : out W.Status) is
+   begin
+      Hash_Path (Work_Path (Name), Size, Hash, Result);
+   end Hash_Work;
+
+   procedure Make_Work_Directory (Name : String; Result : out W.Status) is
+   begin
+      Make_Directory (Work_Path (Name), Result);
+   end Make_Work_Directory;
+
+   --  Rename the work root's From over To.
+   procedure Rename_Work (From, To : String; Result : out W.Status) is
+      Old_Path : constant String := Work_Path (From);
+      New_Path : constant String := Work_Path (To);
+      Request : Message;
+   begin
+      Place_Text (Old_Path & New_Path);
+      Request := Rename_Request (Loan, Old_Path'Length, New_Path'Length);
+      Result := Call (Request);
+   end Rename_Work;
+
+   --  Write the buffer's first Count bytes to File at Offset.
+   procedure Write_At (File : File_Handle; Offset : Unsigned_64; Count : Natural; Result : out W.Status) is
+      Request : Message := Write_At_Request (File, Loan, Unsigned_64 (Count), Offset);
+   begin
+      Result := Call (Request);
+      if Result = W.OK and then Request.words (0) /= Unsigned_64 (Count) then
+         Result := W.Failed;
+      end if;
+   end Write_At;
+
+   procedure Copy_To_Work
+     (Where : W.Place; Name : String; Target : String;
+      Size : out Unsigned_64; Hash : out W.Digest; Result : out W.Status)
+   is
+      Source, Copy : File_Handle;
+      Got : Natural;
+      Context : SHA.Context;
+      Output : SHA.Digest;
+      Closed : W.Status := W.OK;
+   begin
+      Size := 0;
+      Hash := [others => 0];
+      Open (Path (Where, Name), OPEN_READ_ONLY, Source, Result);
+      if Result /= W.OK then
+         return;
+      end if;
+      Open (Work_Path (Staging (Target)), OPEN_READ_WRITE or OPEN_CREATE or OPEN_TRUNCATE, Copy, Result);
+      if Result /= W.OK then
+         Close (Source, Closed);
+         return;
+      end if;
+      SHA.Init (Context);
+      loop
+         Read_At (Source, Size, Buffer_Bytes, Got, Result);
+         exit when Result /= W.OK or else Got = 0;
+         if Size + Unsigned_64 (Got) > W.Maximum_File_Bytes then
+            Result := W.Too_Large;
+            exit;
+         end if;
+         declare
+            Chunk : SPARKNaCl.Byte_Seq (0 .. SPARKNaCl.N32 (Got) - 1)
+              with Import, Address => To_Address (Integer_Address (Buffer_Address));
+         begin
+            SHA.Update (Context, Chunk);
+         end;
+         Write_At (Copy, Size, Got, Result);
+         exit when Result /= W.OK;
+         Size := Size + Unsigned_64 (Got);
+         exit when Got < Buffer_Bytes;
+      end loop;
+      Close (Source, Result);
+      Close (Copy, Result);
+      if Result = W.OK then
+         Rename_Work (Staging (Target), Target, Result);
+      end if;
+      if Result /= W.OK then
+         Size := 0;
+         return;
+      end if;
+      SHA.Final (Context, Output);
+      for I in W.Digest_Index loop
+         Hash (I) := Output (SPARKNaCl.N32 (I) - 1);
+      end loop;
+   end Copy_To_Work;
+
+   procedure Write_Work_Text (Name : String; Text : String; Result : out W.Status) is
+      File : File_Handle;
+   begin
+      Open (Work_Path (Staging (Name)), OPEN_READ_WRITE or OPEN_CREATE or OPEN_TRUNCATE, File, Result);
+      if Result /= W.OK then
+         return;
+      end if;
+      if Text'Length > 0 then
+         Place_Text (Text);
+         Write_At (File, 0, Text'Length, Result);
+      end if;
+      Close (File, Result);
+      if Result = W.OK then
+         Rename_Work (Staging (Name), Name, Result);
+      end if;
+   end Write_Work_Text;
+
+   procedure Read_Work_Text
+     (Name : String; Text : out String; Length : out Natural; Result : out W.Status)
+   is
+      File : File_Handle;
+      Got : Natural;
+   begin
+      Text := [others => ' '];
+      Length := 0;
+      Open (Work_Path (Name), OPEN_READ_ONLY, File, Result);
+      if Result /= W.OK then
+         return;
+      end if;
+      --  One byte more than Text holds tells a longer file.
+      Read_At (File, 0, Text'Length + 1, Got, Result);
+      if Result = W.OK and then Got > Text'Length then
+         Result := W.Too_Large;
+      elsif Result = W.OK and then Got > 0 then
+         declare
+            Bytes : String (1 .. Got)
+              with Import, Address => To_Address (Integer_Address (Buffer_Address));
+         begin
+            Text (Text'First .. Text'First + Got - 1) := Bytes;
+            Length := Got;
+         end;
+      end if;
+      Close (File, Result);
+      if Result /= W.OK then
+         Length := 0;
+      end if;
+   end Read_Work_Text;
 end Remote_Files;

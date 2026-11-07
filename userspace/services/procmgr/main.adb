@@ -4469,6 +4469,88 @@ procedure main is
    end parkRequest;
 
    ---------------------------------------------------------------------------
+   --  Staged programs (SELF-002, device builds): a launch-table directory
+   --  (CuBit.Launch_Authority.Admits_Staged) admits programs beneath it
+   --  while the device owner allows it: the Desktop's "Allow app
+   --  replacement" switch, which only the registered Desktop sets
+   --  (Staged_Switch_Operation). Off until then. The launcher must also
+   --  hold a read scope covering the program's name. A staged program is
+   --  not signature-checked: signed admission is not built yet.
+   ---------------------------------------------------------------------------
+   Staged_Switch_Operation : constant Unsigned_32 := CuBit.Launch_Authority.Staged_Switch_Operation;
+   End_Child_Operation     : constant Unsigned_32 := CuBit.Launch_Authority.End_Child_Operation;
+   Staged_Launches_Allowed : Boolean := False;
+
+   type Launch_Admission is (Named, Staged, Staged_Switch_Off, Not_Admitted);
+
+   function admitLaunch (Launcher : Launch_State; Name : String) return Launch_Admission is
+      Readable : Boolean := False;
+   begin
+      if Launcher.Table_Length = 0 then
+         return Not_Admitted;
+      elsif LAuth.Contains (Launcher.Table (1 .. Launcher.Table_Length), Name) then
+         return Named;
+      elsif not LAuth.Admits_Staged (Launcher.Table (1 .. Launcher.Table_Length), Name) then
+         return Not_Admitted;
+      end if;
+      for h in 1 .. Launcher.Scope_Count loop
+         Readable := Readable or else LAuth.Scope_Covered
+           (Launcher.Scopes (h).Service, Launcher.Scopes (h).Rights,
+            Launcher.Scopes (h).Prefix (1 .. Launcher.Scopes (h).Length),
+            SERVICE_FS, CuBit.Launch_Authority.Read_Right, Name);
+      end loop;
+      if not Readable then
+         return Not_Admitted;
+      end if;
+      return (if Staged_Launches_Allowed then Staged else Staged_Switch_Off);
+   end admitLaunch;
+
+   --  Staged_Switch_Operation: words (0) = 1 allows staged launches, 0
+   --  stops them (running staged programs keep running). Only from the
+   --  registered Desktop.
+   procedure handleStagedSwitch (sender : Process_ID; msg : Message) is
+   begin
+      if sender = No_Process or else sender /= Registered_Driver (DRIVER_DESKTOP)
+        or else msg.tag.length /= 1 or else msg.words (0) not in LAuth.Staged_Switch_Off | LAuth.Staged_Switch_On
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      Staged_Launches_Allowed := msg.words (0) = LAuth.Staged_Switch_On;
+      Warnings.Inform ("procmgr: staged app launches " &
+                       (if Staged_Launches_Allowed then "allowed" else "stopped") &
+                       " by the Desktop switch");
+      sendReply (sender, REPLY_OK, 0);
+   end handleStagedSwitch;
+
+   --  End_Child_Operation: words (0) = a child's identity. Only its
+   --  launcher may end it (after a Stop it did not obey in time); procmgr
+   --  kills it with the process authority it holds.
+   procedure handleEndChild (sender : Process_ID; msg : Message) is
+      Child : constant Process_ID := From_Word (msg.words (0));
+      Known : Records.Index;
+   begin
+      if msg.tag.length /= 1 or else Child = No_Process then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      Known := Records.Find (Child);
+      if Known = 0 or else not Records.Values (Known).Valid
+        or else Records.Values (Known).Launcher /= sender
+        or else not Valid (Records.Values (Known).Control)
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      Warnings.Inform ("procmgr: ending " &
+        Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) &
+        " pid" & Image (Child) & " for its launcher");
+      sendReply (sender,
+                 (if killProcess (Child, Records.Values (Known).Control) = 0
+                  then REPLY_OK else REPLY_ERR), 0);
+   end handleEndChild;
+
+   ---------------------------------------------------------------------------
    --  handleLaunch
    --  OP_LAUNCH (CuBit.Launch_Arguments): spawn a program with launch
    --  arguments. The name and block are copied out of the requester's grant
@@ -4596,10 +4678,22 @@ procedure main is
          --  no search path. Refused before anything is read or runs.
          declare
             Launcher : Launch_State renames Launches.Values (launchIndex (sender));
+            Admission : constant Launch_Admission := admitLaunch (Launcher, Name);
          begin
-            if Launcher.Table_Length = 0 or else not LAuth.Contains
-              (Launcher.Table (1 .. Launcher.Table_Length), Name)
-            then
+            if Admission = Staged_Switch_Off then
+               Warnings.Warn ("procmgr: " & CuBit.Failures.Explain
+                 ("Starting the staged program " & Name,
+                  CuBit.Failures.Failed
+                    (CuBit.Failures.Not_Granted,
+                     "the Desktop's Allow app replacement switch is off",
+                     "turn on Allow app replacement in the Desktop's status panel")));
+               Fail (LA.Not_Granted);
+               return;
+            elsif Admission = Staged then
+               Warnings.Inform ("procmgr: staged program " & Name &
+                                " started by its launcher's staging directory;" &
+                                " not signature-checked (signed admission is not built)");
+            elsif Admission = Not_Admitted then
                debugPrint ("procmgr: " & CuBit.Failures.Explain
                  ("Starting " & Name,
                   CuBit.Failures.Failed
@@ -4809,9 +4903,7 @@ procedure main is
       begin
          --  Only programs the requester may launch: the same check as
          --  OP_LAUNCH, before anything is read.
-         if Launcher.Table_Length = 0 or else not LAuth.Contains
-           (Launcher.Table (1 .. Launcher.Table_Length), Name)
-         then
+         if admitLaunch (Launcher, Name) not in Named | Staged then
             Reason := LA.Not_Granted;
          else
             elfSize := readFileFromFS (Name);
@@ -5479,6 +5571,10 @@ begin
                handleLaunch (sender, msg);
             when LAuth.Table_Operation =>
                handleLaunchTable (sender, msg);
+            when Staged_Switch_Operation =>
+               handleStagedSwitch (sender, msg);
+            when End_Child_Operation =>
+               handleEndChild (sender, msg);
             when CuBit.Launch_Grants.Places_Operation =>
                handleDelegatedPlaces (sender, msg);
             when CuBit.Program_Descriptions.Description_Operation =>

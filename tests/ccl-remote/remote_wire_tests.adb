@@ -178,8 +178,12 @@ begin
    end;
    Decode_Header (Header (0, 0, 0, Counting), H, Result);
    Check (Result = Malformed, "operation 0");
-   Decode_Header (Header (13, 0, 0, Counting), H, Result);
-   Check (Result = Malformed, "operation 13");
+   Decode_Header (Header (16, 0, 0, Counting), H, Result);
+   Check (Result = Malformed, "operation 16");
+   Decode_Header (Header (13, 1, 0, Counting), H, Result);
+   Check (Result = OK and then H.Op = App_Replace and then H.Where = Workspace, "operation 13: app replace");
+   Decode_Header (Header (15, 0, 0, Counting), H, Result);
+   Check (Result = OK and then H.Op = App_Status, "operation 15: app status");
    Decode_Header (Header (1, 5, 0, Counting), H, Result);
    Check (Result = Malformed, "place 5");
    Decode_Header (Header (6, 1, Maximum_Request_Body + 1, Counting), H, Result);
@@ -302,6 +306,57 @@ begin
    for N in Output_Number loop
       Check (Valid_Name (Capture_Name (N)), "a capture name is a valid name");
    end loop;
+
+   --  Apps built on the device (Remote_Apps): the Builds grant, products
+   --  by their app's name, app names one component.
+   Check (Admits ([Diagnose | Builds => True, others => False], App_Replace, Workspace)
+          and then Admits ([Diagnose | Builds => True, others => False], App_Rollback, None)
+          and then Admits ([Diagnose | Builds => True, others => False], App_Status, None),
+          "builds replace, roll back and report apps");
+   Check (not Admits ([Diagnose | Files | Mail | Capture => True, others => False], App_Replace, Workspace)
+          and then not Admits ([Diagnose | Files | Mail | Capture => True, others => False], App_Status, None),
+          "every grant but builds admits no app operation");
+   Check (not Admits ([others => True], App_Replace, None)
+          and then not Admits ([others => True], App_Rollback, Workspace)
+          and then not Admits ([others => True], App_Replace, Mail_To_Device),
+          "a product is in the workspace; an app takes no place");
+   Check (Writes (App_Replace) and then Writes (App_Rollback) and then not Writes (App_Status),
+          "replace and rollback write");
+   Check (App_Of_Product ("out/userspace/apps/swap-probe/build/swap-probe.app") = "swap-probe"
+          and then App_Of_Product ("swap-probe.app") = "swap-probe"
+          and then App_Of_Product (".app") = "" and then App_Of_Product ("a/.app") = ""
+          and then App_Of_Product ("swap-probe") = "" and then App_Of_Product ("a.app/b") = ""
+          and then App_Of_Product ("x/" & [1 .. Maximum_App_Name_Bytes + 1 => 'a'] & ".app") = ""
+          and then App_Of_Product ("x/" & [1 .. Maximum_App_Name_Bytes => 'a'] & ".app")'Length
+                   = Maximum_App_Name_Bytes,
+          "the app a product is");
+   Check (Valid_App_Name ("swap-probe") and then not Valid_App_Name ("a/b")
+          and then not Valid_App_Name ("") and then not Valid_App_Name ("..")
+          and then not Valid_App_Name ([1 .. Maximum_App_Name_Bytes + 1 => 'a']), "app names");
+   Decode (App_Replace, Workspace, Name_Field ("out/x/build/swap-probe.app"), Item, Result);
+   Check (Result = OK and then Item.Name (1 .. Item.Name_Last) = "out/x/build/swap-probe.app", "app replace");
+   Decode (App_Replace, Workspace, Name_Field ("out/x/build/swap-probe"), Item, Result);
+   Check (Result = Malformed, "app replace of a name that is no product");
+   Decode (App_Replace, Workspace, Name_Field ("../swap-probe.app"), Item, Result);
+   Check (Result = Malformed, "app replace outside the workspace");
+   Decode (App_Rollback, None, Name_Field ("swap-probe"), Item, Result);
+   Check (Result = OK and then Item.Name (1 .. Item.Name_Last) = "swap-probe", "app rollback");
+   Decode (App_Status, None, Name_Field ("apps/swap-probe"), Item, Result);
+   Check (Result = Malformed, "an app's name is one component");
+   Decode (App_Status, None, Name_Field (""), Item, Result);
+   Check (Result = Malformed, "app status needs a name");
+   --  The App_Response vector (tools/cubit-remote/test_cubit_remote.py
+   --  decodes the same bytes).
+   declare
+      R : constant App_Response := Encode_App_Response
+        (Replaced, 2, 1, Running, Stopped, [others => 16#AB#], [others => 16#01#]);
+      Expected : constant Byte_Array :=
+        [0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 1] & [1 .. Digest_Bytes => 16#AB#] & [1 .. Digest_Bytes => 16#01#];
+   begin
+      Check (R'Length = 75 and then R = Expected, "the app response vector");
+      Check (Encode_App_Response (Switch_Off, 0, 0, Not_Started, None_Running, [others => 0], [others => 0])
+               = [3] & [2 .. App_Response_Bytes => 0], "a refused app response");
+   end;
 
    --  Responses.
    declare

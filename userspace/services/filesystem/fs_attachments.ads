@@ -9,7 +9,8 @@
 --  A block driver that starts after the filesystem (ATA, NVMe, the USB
 --  optical drive) reaches it by an offer: devmgr calls the filesystem with
 --  CALL_OFFERING_CAPABILITY, Attach_Label, words (0) = the device's
---  Device_Code and words (1) its Device_Ordinal, offering a Read+Write copy
+--  Device_Code, words (1) its Device_Ordinal and words (2) whether it is
+--  the system disk (Data_Disk, System_Disk), offering a Read+Write copy
 --  of the driver's endpoint. devmgr starts one driver per controller; the
 --  ordinal is the controller's place among those of its kind in PCI
 --  location order, and names its volume (@nvme:0, @nvme:1). The
@@ -23,7 +24,11 @@ with Interfaces; use Interfaces;
 
 package Fs_Attachments with Pure is
    Attach_Label : constant Unsigned_32 := 16#0090#;
-   Attach_Words : constant := 2;
+   Attach_Words : constant := 3;
+   --  words (2): whether the disk is the installed system's root
+   --  (storage.system-volume), which the filesystem then names @system.
+   Data_Disk   : constant := 0;
+   System_Disk : constant := 1;
 
    --  UFS_Device: a disk behind a generic storage driver (UFS); its
    --  volume (@ufs:N) is the GPT disk's Linux filesystem partition.

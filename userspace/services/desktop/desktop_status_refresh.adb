@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with CuBit.Async_Requests;
 with CuBit.Handles;
+with CuBit.Launching;
 with Desktop_Endpoints;
 with Desktop_Status_Machines;
 package body Desktop_Status_Refresh is
@@ -37,11 +38,17 @@ package body Desktop_Status_Refresh is
    Clock_Value : Clocks.Snapshot;
    Audio_Value : Audio.State;
    Clock_Fresh, Audio_Fresh : Boolean := False;
+   Replacement_Flight : AR.Tracker;
+   Replacement_Machine : SM.Switch_State;
+   Replacement_Changed : Boolean := False;
+   Replacement_Outcome : SM.Outcome := SM.Answered;
 
    function Token_Of (F : AR.Tracker) return Unsigned_64 is
      (if AR.State (F) = AR.In_Flight then AR.Pending_Token (F) else 0);
    function Clock_Token return Unsigned_64 is (Token_Of (Clock_Flight));
    function Audio_Token return Unsigned_64 is (Token_Of (Audio_Flight));
+   function Replacement_Token return Unsigned_64 is (Token_Of (Replacement_Flight));
+   function Replacement_Shown return Boolean is (SM.Shown (Replacement_Machine));
 
    --  Submit Msg on a free flight; False when it was not submitted.
    function Submit (Flight : in out AR.Tracker; Service : CuBit.Handles.Endpoint; Msg : Message;
@@ -109,6 +116,34 @@ package body Desktop_Status_Refresh is
       SM.Step (Audio_Machine, (Kind => SM.Set, Value => (Level, Muted)), Act);
       Perform_Audio (Act, Sequence);
    end Set_Audio;
+
+   procedure Perform_Replacement (Act : SM.Switch_Action; Sequence : in out Unsigned_64) is
+      Again : SM.Switch_Action;
+   begin
+      if Act.Submit and then not Submit (Replacement_Flight, Desktop_Endpoints.Process_Manager,
+                                         CuBit.Launching.Set_Staged_Launches (Act.Value), Sequence)
+      then
+         --  Not sent: the panel goes back to what procmgr confirmed.
+         SM.Step (Replacement_Machine, (Kind => SM.Done, Result => SM.Not_Delivered), Again);
+         Perform_Replacement (Again, Sequence);
+      end if;
+   end Perform_Replacement;
+
+   procedure Set_Replacement (On : Boolean; Sequence : in out Unsigned_64) is
+      Act : SM.Switch_Action;
+   begin
+      SM.Step (Replacement_Machine, (Kind => SM.Flip, Value => On), Act);
+      Perform_Replacement (Act, Sequence);
+   end Set_Replacement;
+
+   procedure Take_Replacement (Confirmed : out Boolean; Changed : out Boolean;
+                               Answered : out Boolean) is
+   begin
+      Confirmed := Replacement_Machine.Confirmed;
+      Answered := Replacement_Outcome = SM.Answered;
+      Changed := Replacement_Changed;
+      Replacement_Changed := False;
+   end Take_Replacement;
 
    function Envelope (Reply : Message) return Boolean is
      (Reply.tag.label = Reply_OK and then Reply.tag.length = Reply_Words
@@ -188,6 +223,20 @@ package body Desktop_Status_Refresh is
          begin
             SM.Step (Audio_Machine, (Kind => SM.Done, Result => Result), Act);
             Perform_Audio (Act, Sequence);
+         end;
+      elsif C.token = Replacement_Token then
+         Drain (Replacement_Flight, C);
+         declare
+            Result : constant SM.Outcome :=
+              (if not Delivered then SM.Not_Delivered
+               elsif CuBit.Launching.Staged_Launches_Set (C.msg) then SM.Answered else SM.Refused);
+            Act : SM.Switch_Action;
+         begin
+            SM.Step (Replacement_Machine, (Kind => SM.Done, Result => Result), Act);
+            --  Shown changes either way (confirmed, or back to procmgr's).
+            Replacement_Changed := True;
+            Replacement_Outcome := Result;
+            Perform_Replacement (Act, Sequence);
          end;
       end if;
    end Collect;

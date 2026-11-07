@@ -1,0 +1,18 @@
+# The device-build test (tests/device-builds/device_build.py drives it): the
+# LAN remote session with builds granted, its work root on the system volume
+# (@system/work: the installed root on the UFS disk), its pairing code on
+# the kernel console (this headless machine's screen). A desktop, so that
+# the person's "Allow app replacement" switch (the status panel's Remote
+# access section) can be turned on by a click before a staged app starts:
+# ccl-remote is granted Desktop's display-capture endpoint, which is what
+# shows that section.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
+    (arguments (Remote_Parameters listen => Remote_Listen.LAN
+      display => Pairing_Display.Kernel_Console work => "@system/work"
+      files => true builds => true mail => true)))
+)

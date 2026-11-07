@@ -130,6 +130,8 @@ package body Fs_Server.Storage is
                 Ready_Role => 0, Transfer_Pages => 128),
                Default_Write_Volume, Result);
             if Result = Registered then
+               --  The live medium's RAM root is its system volume.
+               Choose_System (Volumes, Volume_Index (Default_Write_Volume), Live_Root);
                ensureVolume (Volume_Index (Default_Write_Volume), admission);
                if admission = Admitted then
                   debugPrint ("FS Server: Writable memory filesystem ready." & LF);
@@ -159,6 +161,9 @@ package body Fs_Server.Storage is
          debugPrint ("FS Server: volume list initialization failed." & LF);
          return;
       end if;
+      --  The development disk is the system volume unless a live RAM root
+      --  or an installed root outranks it.
+      Choose_System (Volumes, Volume, Development_Disk);
       ok := True;
    end registerVolumes;
 
@@ -174,17 +179,20 @@ package body Fs_Server.Storage is
       Attached : Boolean := False;
       Volume : Volume_Reference := No_Volume;
       Result : Registration_Result;
+      System_Disk : Boolean;
    begin
       if sender = No_Process or else sender /= Registered_Driver (DRIVER_DEVMGR)
         or else msg.tag.length /= Fs_Attachments.Attach_Words
         or else not CuBit.Handles.IPC.Offers (msg)
         or else msg.words (1) > Fs_Attachments.Maximum_Ordinal
+        or else msg.words (2) not in Fs_Attachments.Data_Disk | Fs_Attachments.System_Disk
       then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
       Device := msg.words (0);
       Ordinal := Fs_Attachments.Device_Ordinal (msg.words (1));
+      System_Disk := msg.words (2) = Fs_Attachments.System_Disk;
       declare
          Offered : constant CuBit.Handles.IPC.Accepted_Endpoint :=
            CuBit.Handles.IPC.Accept_Endpoint (CuBit.Handles.IPC.Accept_Offered (sender));
@@ -222,6 +230,11 @@ package body Fs_Server.Storage is
             if Volume /= No_Volume then
                Volume_List.Attach (Volumes, Volume, Offered.Value, Attached);
                if Attached then
+                  if System_Disk then
+                     --  An installed system's root (storage.system-volume).
+                     Choose_System (Volumes, Volume, Installed_Root);
+                     debugPrint ("FS Server: @system is @" & Volume_List.Name (Volumes, Volume) & LF);
+                  end if;
                   bumpNamespace;   --  a new volume's names resolve
                end if;
             end if;

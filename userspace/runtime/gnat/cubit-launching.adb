@@ -185,6 +185,34 @@ package body CuBit.Launching is
    Table_Lent : Boolean := False;
    Table_Reference : CuBit.Memory_Grants.Grant_Reference;
 
+   procedure End_Child (Through : Launcher; Started : Child; Result : out Launch_Result) is
+      Msg : Message := NULL_MESSAGE;
+      Reply : MessageTag;
+   begin
+      if not CuBit.Handles.Valid (Through.Service) then
+         Result := No_Process_Manager;
+         return;
+      end if;
+      Msg.tag := (label => CuBit.Launch_Authority.End_Child_Operation,
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
+      Msg.words (0) := CuBit.Process_IDs.To_Word (Started.Process);
+      Reply := capCall (Through.Service, Msg, CuBit.Messages.Wait_Forever);
+      Result := (if Reply.label = CuBit.Kernel_ABI.Reply_OK then Launched else Refused);
+   end End_Child;
+
+   function Set_Staged_Launches (Allowed : Boolean) return CuBit.Messages.Message is
+      Msg : Message := NULL_MESSAGE;
+   begin
+      Msg.tag := (label => CuBit.Launch_Authority.Staged_Switch_Operation,
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
+      Msg.words (0) := (if Allowed then CuBit.Launch_Authority.Staged_Switch_On
+                        else CuBit.Launch_Authority.Staged_Switch_Off);
+      return Msg;
+   end Set_Staged_Launches;
+
+   function Staged_Launches_Set (Reply : CuBit.Messages.Message) return Boolean is
+     (Reply.tag.label = CuBit.Kernel_ABI.Reply_OK);
+
    procedure Launch_Table
      (Through   : Launcher;
       Table  : out CuBit.Launch_Authority.Table_Bytes;

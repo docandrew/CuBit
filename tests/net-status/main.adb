@@ -548,7 +548,7 @@ procedure Main is
       package CR renames Compositor_Requests;
       package AR renames CuBit.Async_Requests;
       use type SM.Clock_State, SM.Clock_Action, SM.Audio_Action_Kind, SM.Audio_Phase, SM.Setting,
-        SM.Loan_State, SM.Loan_Action, SM.Watch_Action, SM.Watch_Phase, AR.Phase;
+        SM.Loan_State, SM.Loan_Action, SM.Watch_Action, SM.Watch_Phase, SM.Switch_Phase, AR.Phase;
       Clock : SM.Clock_State := SM.Idle;
       CA : SM.Clock_Action;
       Audio : SM.Audio_State;
@@ -625,6 +625,37 @@ procedure Main is
       Check (WA = SM.Lend_And_Submit, "watched again on a fresh page");
       SM.Step (W, (Kind => SM.Lend_Failed, Now => 30), WA);
       Check (W.Loan = SM.Free and then W.Phase = SM.Waiting, "a failed lend waits");
+
+      --  procmgr's "Allow app replacement" switch: off until confirmed,
+      --  one request at a time, the newest flip wins, a refusal shows
+      --  procmgr's state again.
+      declare
+         S : SM.Switch_State;
+         A : SM.Switch_Action;
+      begin
+         Check (not SM.Shown (S) and then not S.Confirmed, "switch: off at boot");
+         SM.Step (S, (Kind => SM.Flip, Value => False), A);
+         Check (not A.Submit, "switch: flipping to what is confirmed sends nothing");
+         SM.Step (S, (Kind => SM.Flip, Value => True), A);
+         Check (A.Submit and then A.Value and then SM.Shown (S) and then not S.Confirmed,
+                "switch: a flip is sent and shown, not yet confirmed");
+         SM.Step (S, (Kind => SM.Flip, Value => False), A);
+         Check (not A.Submit and then not SM.Shown (S), "switch: a flip while one is in flight waits");
+         SM.Step (S, (Kind => SM.Done, Result => SM.Answered), A);
+         Check (S.Confirmed and then A.Submit and then not A.Value,
+                "switch: confirmed on, then the queued off is sent");
+         SM.Step (S, (Kind => SM.Done, Result => SM.Refused), A);
+         Check (S.Confirmed and then SM.Shown (S) and then not A.Submit and then S.Phase = SM.Idle,
+                "switch: refused, it shows procmgr's state (on) again");
+         SM.Step (S, (Kind => SM.Flip, Value => False), A);
+         SM.Step (S, (Kind => SM.Done, Result => SM.Not_Delivered), A);
+         Check (S.Confirmed and then SM.Shown (S), "switch: undelivered, it shows procmgr's state");
+         SM.Step (S, (Kind => SM.Flip, Value => False), A);
+         SM.Step (S, (Kind => SM.Done, Result => SM.Answered), A);
+         Check (not S.Confirmed and then not SM.Shown (S) and then not A.Submit, "switch: off again");
+         SM.Step (S, (Kind => SM.Done, Result => SM.Answered), A);
+         Check (not S.Confirmed and then not A.Submit, "switch: a stray completion changes nothing");
+      end;
    end Machine_Tests;
 
    procedure Load_Tests is

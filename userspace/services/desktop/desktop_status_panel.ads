@@ -79,6 +79,10 @@ package Desktop_Status_Panel is
       Remote_Paired  : Boolean := False;
       Remote_Peer    : Short_Text;          --  the paired host's address
       Capture_Allowed : Boolean := False;   --  the person's switch
+      --  procmgr's "Allow app replacement" switch (staged launches of apps
+      --  built on this machine; Desktop_Status_Refresh), shown in the
+      --  Remote access section: its own state, not the capture switch's.
+      Replacement_Allowed : Boolean := False;
    end record;
 
    --  The panel's height for this content.
@@ -93,7 +97,9 @@ package Desktop_Status_Panel is
       Toggle_Editor, Choose_Network, Forget_Network, Enter_Passphrase, Cancel_Passphrase,
       Choose_Method, Field_Edited, Apply, Revert, Close_Editor,
       --  "Allow screen capture" (Flag: the new state).
-      Set_Capture);
+      Set_Capture,
+      --  "Allow app replacement" (Flag: the new state).
+      Set_Replacement);
 
    type Action is record
       Kind   : Action_Kind := Set_Volume;
@@ -140,6 +146,10 @@ package Desktop_Status_Panel is
 
    --  The panel opened: focus starts on the first control.
    procedure Opened;
+
+   --  Where the last render drew the "Allow app replacement" switch, in
+   --  panel coordinates (its centre); Drawn False when it was not drawn.
+   procedure Replacement_Switch (X, Y : out Natural; Drawn : out Boolean);
 
    --  Focus the passphrase field once the next render draws it.
    procedure Focus_Passphrase;

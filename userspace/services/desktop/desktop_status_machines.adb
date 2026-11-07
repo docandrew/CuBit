@@ -140,4 +140,38 @@ package body Desktop_Status_Machines with SPARK_Mode is
             end if;
       end case;
    end Step;
+
+   procedure Step (S : in out Switch_State; E : Switch_Event; Act : out Switch_Action) is
+   begin
+      Act := (others => <>);
+      case E.Kind is
+         when Flip =>
+            if S.Phase = Switching then
+               S.Wanted := E.Value;
+               S.Queued := E.Value /= S.Sent;
+            else
+               S.Queued := False;
+            end if;
+            if S.Phase = Idle and then E.Value /= S.Confirmed then
+               S.Phase := Switching;
+               S.Sent := E.Value;
+               Act := (Submit => True, Value => E.Value);
+            end if;
+         when Done =>
+            if S.Phase = Switching then
+               if E.Result = Answered then
+                  S.Confirmed := S.Sent;
+               end if;
+               S.Phase := Idle;
+               if S.Queued then
+                  S.Queued := False;
+                  if S.Wanted /= S.Confirmed then
+                     S.Phase := Switching;
+                     S.Sent := S.Wanted;
+                     Act := (Submit => True, Value => S.Wanted);
+                  end if;
+               end if;
+            end if;
+      end case;
+   end Step;
 end Desktop_Status_Machines;

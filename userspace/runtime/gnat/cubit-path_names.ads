@@ -5,7 +5,7 @@
 --  @summary
 --  Path names to CuBit names (docs/self-hosting.md, item 2): what a program
 --  writes ("src/a.c", "/tls/x", "@usb:0/y") to the name the filesystem
---  service is sent ("@nvme:0/src/a.c").
+--  service is sent ("@system/src/a.c").
 --
 --  @description
 --  A CuBit name is a volume ("@" and its name, no '/') then "/component"s;
@@ -33,7 +33,10 @@ package CuBit.Path_Names with Pure, SPARK_Mode is
    --  a long path resolve to a short name.
    Maximum_Path_Bytes : constant := 4096;
 
-   System_Volume : constant String := "@nvme:0";  --  "@system" later
+   --  The system volume: an alias the filesystem service resolves to the
+   --  boot's root (an installed disk, the live medium's RAM root, or the
+   --  development disk @nvme:0; Volume_Lists.System_Name).
+   System_Volume : constant String := "@system";
    Volume_Mark   : constant Character := '@';
    Separator     : constant Character := '/';
    Dot           : constant Character := '.';

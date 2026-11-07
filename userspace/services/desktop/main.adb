@@ -1010,6 +1010,8 @@ procedure main is
    panelSurface : Surface;
    panelSourceSerial : Unsigned_64 := 0;
    panelDirty : Boolean := True;
+   --  The panel's place was logged since it last opened (renderPanel).
+   panelPlaceLogged : Boolean := True;
    --  Every window gets the next opening order.
    nextTaskOrder : Unsigned_64 := 1;
    --  The date and minute under the panel's clock, from the clock service.
@@ -6111,7 +6113,8 @@ procedure main is
        Remote_Shown => remoteShown,
        Remote_Paired => Desktop_Capture_Policy."=" (Desktop_Capture.Session, Desktop_Capture_Policy.Paired),
        Remote_Peer => SP.To_Short (Desktop_Capture.Peer),
-       Capture_Allowed => Desktop_Capture.Allowed));
+       Capture_Allowed => Desktop_Capture.Allowed,
+       Replacement_Allowed => Desktop_Status_Refresh.Replacement_Shown));
 
    --  Render the panel (the toolkit's pass), reporting what the user did.
    procedure renderPanel (acts : in out SP.Action_List) is
@@ -6119,6 +6122,24 @@ procedure main is
       SP.Render (panelView, notifications, netLayout, netReport, wifiNetworks, wifiNetworkCount,
                  wifiJoin, addressEditor, acts);
       panelDirty := False;
+      --  Where the panel and its app replacement switch are, once per
+      --  opening (the log reader, and a test's pointer, find them).
+      if not panelPlaceLogged then
+         declare
+            r : constant Rect := panelRect;
+            sx, sy : Natural;
+            drawn : Boolean;
+         begin
+            SP.Replacement_Switch (sx, sy, drawn);
+            debugPrint ("desktop: status panel open at " & Decimal (Unsigned_64 (r.x)) & "," &
+                        Decimal (Unsigned_64 (r.y)) & " (" & Decimal (Unsigned_64 (r.w)) & "x" &
+                        Decimal (Unsigned_64 (r.h)) & ")" &
+                        (if drawn then "; Allow app replacement switch at " &
+                           Decimal (Unsigned_64 (r.x + sx)) & "," & Decimal (Unsigned_64 (r.y + sy))
+                         else "") & LF);
+         end;
+         panelPlaceLogged := True;
+      end if;
       --  New pixels: a new source when the buffer moved or resized, else a
       --  new version of the same one.
       if panelSurface.bufferAddr /= SP.Buffer or else panelSurface.bufferH /= SP.Buffer_Height then
@@ -6446,6 +6467,7 @@ procedure main is
       DN.Hide_Toast (notifications);
       deskbarPanelOpen := True;
       panelDirty := True;
+      panelPlaceLogged := False;
       SP.Opened;
       --  An open list asks for the newest scan at once.
       scanDueMs := 0;
@@ -10655,6 +10677,18 @@ procedure main is
             if deskbarPanelOpen then panelDirty := True; scheduleRedrawRect (panelRect); end if;
          end if;
       end if;
+      declare
+         confirmed, changed, answered : Boolean;
+      begin
+         Desktop_Status_Refresh.Take_Replacement (confirmed, changed, answered);
+         if changed then
+            debugPrint ("desktop: Allow app replacement " &
+                        (if not answered then "not changed (procmgr refused or did not answer); "
+                         else "") &
+                        (if confirmed then "on" else "off") & LF);
+            if deskbarPanelOpen then panelDirty := True; scheduleRedrawRect (panelRect); end if;
+         end if;
+      end;
       Desktop_Status_Refresh.Take_Audio (audio, fresh);
       if fresh and then audio /= masterAudio then
          declare
@@ -10876,6 +10910,10 @@ procedure main is
                when SP.Revert => applyEditor (True);
                when SP.Close_Editor => DAE.Close (addressEditor);
                when SP.Set_Capture => Desktop_Capture.Set_Allowed (A.Flag, nowMs);
+               when SP.Set_Replacement =>
+                  debugPrint ("desktop: Allow app replacement switched " &
+                              (if A.Flag then "on" else "off") & " (asking procmgr)" & LF);
+                  Desktop_Status_Refresh.Set_Replacement (A.Flag, requestSequence);
             end case;
          end;
       end loop;

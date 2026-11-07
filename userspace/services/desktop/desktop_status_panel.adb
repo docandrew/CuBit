@@ -56,6 +56,7 @@ package body Desktop_Status_Panel is
    ID_Revert     : constant := 67;
    ID_Passphrase : constant := 68;
    ID_Capture    : constant := 69;
+   ID_Replacement : constant := 70;
    pragma Compile_Time_Error
      (ID_Note_Base + DBS.Panel_Visible_Notes >= ID_Row_Base
       or else ID_Row_Base + DNR.Maximum_Rows >= ID_Forget_Base
@@ -136,10 +137,23 @@ package body Desktop_Status_Panel is
    function Net_Height (Net : DNR.Layout) return Natural is
      (if Net.Count = 0 then 0 else DBS.Panel_Section + DNR.Total_Height (Net));
 
+   --  Remote access: who paired, Allow screen capture, Allow app replacement.
+   Remote_Rows : constant := 3;
+   --  The "Allow app replacement" switch as last drawn (Replacement_Switch).
+   Replacement_X, Replacement_Y : Natural := 0;
+   Replacement_Drawn : Boolean := False;
+
+   procedure Replacement_Switch (X, Y : out Natural; Drawn : out Boolean) is
+   begin
+      X := Replacement_X;
+      Y := Replacement_Y;
+      Drawn := Replacement_Drawn;
+   end Replacement_Switch;
+
    function Height (Net : DNR.Layout; Note_Rows : Natural; System_Shown, Remote_Shown : Boolean)
      return Natural is
      (DBS.Panel_Stripe + DBS.Panel_Header + 2 * DBS.Panel_Section + 2 * DBS.Panel_Row
-      + (if Remote_Shown then DBS.Panel_Section + 2 * DBS.Panel_Row else 0)
+      + (if Remote_Shown then DBS.Panel_Section + Remote_Rows * DBS.Panel_Row else 0)
       + (if System_Shown then DBS.Panel_Section + 2 * DBS.Panel_Row else 0)
       + Net_Height (Net)
       + (if Note_Rows = 0 then DBS.Panel_Row else Note_Rows * DBS.Panel_Note_Row)
@@ -420,6 +434,28 @@ package body Desktop_Status_Panel is
                Add (Acts, (Kind => Set_Capture, Flag => Allowed, others => <>));
             end if;
             Ring (C, (B.x - 4, B.y - 4, B.w + 8, B.h + 8), ID_Capture, Colors);
+         end;
+         Y := Y + DBS.Panel_Row;
+         --  Apps built on this machine (cubit-remote app replace) start
+         --  only while this is on: procmgr's switch, off at boot.
+         R := Row_Rect (DBS.Panel_Row);
+         Line (R);
+         declare
+            B : constant Rect := (Width - Pad - Box, R.y + (R.h - Box) / 2, Box, Box);
+            Replacing : Boolean := V.Replacement_Allowed;
+         begin
+            Draw_UI_Text_Transparent (C, Pad, Text_Y (R), "Allow app replacement", Colors.text);
+            W.Checkbox (C, UI, Map, ID_Replacement, B, Full, Colors, Replacing, Result);
+            if Keyed (ID_Replacement) then
+               Replacing := not Replacing;
+            end if;
+            if Replacing /= V.Replacement_Allowed then
+               Add (Acts, (Kind => Set_Replacement, Flag => Replacing, others => <>));
+            end if;
+            Ring (C, (B.x - 4, B.y - 4, B.w + 8, B.h + 8), ID_Replacement, Colors);
+            Replacement_X := B.x + B.w / 2;
+            Replacement_Y := B.y + B.h / 2;
+            Replacement_Drawn := True;
          end;
          Y := Y + DBS.Panel_Row;
       end Remote_Section;
@@ -799,6 +835,7 @@ package body Desktop_Status_Panel is
       Fill_Rect (C, (0, 0, Width, DBS.Panel_Stripe), Colors.accent);
       Y := DBS.Panel_Stripe;
       Header;
+      Replacement_Drawn := False;
       if V.Remote_Shown then
          Remote_Section;
       end if;

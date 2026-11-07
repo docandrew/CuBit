@@ -22,6 +22,8 @@ package body Remote_Jobs is
    package PP renames CuBit.Program_Descriptions;
 
    Program : constant String := "ccl-build.app";
+   --  Where ccl-build's places are (its manifest, Build_Platform on CuBit).
+   System_Volume : constant String := "@system";
    Toolchain_Import : constant String := "gnat-15.3.0-cubit";
    Stderr_Prefix : constant String := "[stderr] ";
    LF : constant Character := ASCII.LF;
@@ -44,8 +46,11 @@ package body Remote_Jobs is
    Next_Id : Unsigned_32 := 1;
    Current : Job_Index'Base := 0;            --  the running job's slot
 
-   --  The work root, its volume ("@nvme:0") and its POSIX spelling
-   --  ("/work": absolute names are the system volume's).
+   --  The work root, its volume ("@system") and its POSIX spelling
+   --  ("/work": absolute names are the system volume's). ccl-build is
+   --  given POSIX names (its core joins paths like any POSIX tool), so
+   --  builds need the work root on the system volume, where the
+   --  Storehouse and the toolchain are.
    Root_Bytes : constant := 64;
    Work_Root : String (1 .. Root_Bytes) := [others => ' '];
    Work_Length : Natural range 0 .. Root_Bytes := 0;
@@ -219,6 +224,11 @@ package body Remote_Jobs is
       elsif Volume_Length = 0 then
          Result := W.Unavailable;
          return;
+      elsif Volume /= System_Volume then
+         --  ccl-build's names would point at another volume than the
+         --  places it is given: refuse rather than build somewhere else.
+         Result := W.Unavailable;
+         return;
       end if;
       Accepted := True;
       LA.Start (Block);
@@ -238,9 +248,9 @@ package body Remote_Jobs is
       --  What ccl-build's steps need (decision D2): the Storehouse, the
       --  toolchain, and the workspace (sources in, products out).
       LG.Start (Places);
-      LG.Add (Places, LG.All_Rights, Volume & "/storehouse", Added);
+      LG.Add (Places, LG.All_Rights, System_Volume & "/storehouse", Added);
       Accepted := Accepted and Added;
-      LG.Add (Places, LG.Read_Right, Volume & "/toolchain", Added);
+      LG.Add (Places, LG.Read_Right, System_Volume & "/toolchain", Added);
       Accepted := Accepted and Added;
       LG.Add (Places, LG.All_Rights, Work & "/remote", Added);
       Accepted := Accepted and Added;

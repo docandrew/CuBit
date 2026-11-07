@@ -65,6 +65,41 @@ class Framing(unittest.TestCase):
         self.assertEqual(frame[12:28], COUNTING)
 
 
+class Apps(unittest.TestCase):
+    # The same bytes as tests/ccl-remote/remote_wire_tests.adb's vector.
+    VECTOR = bytes([0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 1]) + b"\xab" * 32 + b"\x01" * 32
+
+    def test_response_vector(self):
+        report = cr.parse_app(self.VECTOR)
+        self.assertEqual((report["result"], report["current"], report["previous"], report["instance"],
+                          report["stop"]), (0, 2, 1, 1, 1))
+        self.assertEqual(report["current_sha256"], "ab" * 32)
+        self.assertEqual(report["previous_sha256"], "01" * 32)
+        with self.assertRaises(cr.RemoteError):
+            cr.parse_app(self.VECTOR[:-1])
+
+    def test_request_frames(self):
+        place, body = cr.app_request("app_replace", "out/x/build/swap-probe.app")
+        frame = cr.request_bytes("app_replace", place, COUNTING, body)
+        self.assertEqual(frame[4:8], bytes([1, 13, 1, 0]))
+        self.assertEqual(frame[28:], b"\x00\x1aout/x/build/swap-probe.app")
+        place, body = cr.app_request("app_rollback", "swap-probe")
+        self.assertEqual(cr.request_bytes("app_rollback", place, COUNTING, body)[4:8], bytes([1, 14, 0, 0]))
+        self.assertEqual(cr.OPERATIONS["app_status"], 15)
+        self.assertEqual(cr.STATUSES[13], "Capacity")
+
+    def test_names(self):
+        self.assertEqual(cr.app_of_product("out/userspace/apps/swap-probe/build/swap-probe.app"), "swap-probe")
+        for bad in (".app", "a/.app", "swap-probe", "a.app/b", "x/" + "a" * 65 + ".app"):
+            self.assertEqual(cr.app_of_product(bad), "", bad)
+        self.assertEqual(len(cr.app_of_product("x/" + "a" * 64 + ".app")), 64)
+        self.assertFalse(cr.valid_app_name("a/b"))
+        with self.assertRaises(SystemExit):
+            cr.app_request("app_status", "apps/swap-probe")
+        with self.assertRaises(SystemExit):
+            cr.app_request("app_replace", "out/swap-probe")
+
+
 class StandIn:
     """The endpoint's semantics, enough to drive whole commands."""
 
@@ -86,6 +121,10 @@ class StandIn:
         self.capture_result = 0
         self.capture_png = b"\x89PNG\r\n\x1a\nstand-in frame"
         self.captures = []
+        # Apps: what the next app operation answers (App_Result), and the
+        # generations the stand-in keeps: app -> [current, previous].
+        self.app_result = 0
+        self.apps = {}
         self.server = socket.socket()
         self.server.bind(("127.0.0.1", 0))
         self.server.listen(8)
@@ -163,6 +202,23 @@ class StandIn:
             self.files[(4, shot)] = self.capture_png
             return 0, (bytes([0]) + struct.pack(">IIQ", w or 1024, h or 768, len(self.capture_png))
                        + hashlib.sha256(self.capture_png).digest() + shot.encode())
+        if op in (13, 14, 15):
+            (p, n), _ = name()
+            app = cr.app_of_product(n) if op == 13 else n
+            gens = self.apps.setdefault(app, [0, 0])
+            result = self.app_result
+            if result == 0 and op == 13:
+                gens[:] = [gens[0] + 1, gens[0]]
+            elif result == 0 and op == 14:
+                if not gens[1]:
+                    result = 6
+                else:
+                    gens.reverse()
+                    result = 1
+            elif result == 0:
+                result = 2
+            return 0, (struct.pack(">BIIBB", result, gens[0], gens[1], 1 if gens[0] else 0, 1 if op != 15 else 0)
+                       + b"\x11" * 32 + b"\x22" * 32)
         return 1, b""
 
 
@@ -323,6 +379,45 @@ class Commands(unittest.TestCase):
         with open(os.path.join("inbox", "reply.txt"), "rb") as f:
             self.assertEqual(f.read(), b"hello host")
         self.assertNotIn((3, "reply.txt"), self.device.files)
+
+
+class AppCommands(Commands):
+    def err(self, *argv):
+        err = io.StringIO()
+        old = sys.stderr
+        sys.stderr = err
+        try:
+            code, out = self.run_cli(*argv)
+        finally:
+            sys.stderr = old
+        return code, out, err.getvalue()
+
+    def test_replace_and_rollback(self):
+        code, out = self.run_cli("app", "replace", "out/a/build/swap-probe.app")
+        self.assertEqual(code, 0, out)
+        self.assertIn("swap-probe: generation 1 running", out)
+        code, out = self.run_cli("app", "replace", "out/a/build/swap-probe.app")
+        self.assertIn("generation 2 running", out)
+        self.assertIn("previous generation 1 stopped", out)
+        code, out = self.run_cli("app", "rollback", "swap-probe")
+        self.assertEqual(code, 0)
+        self.assertIn("swap-probe: generation 1 running", out)
+        code, out = self.run_cli("app", "status", "swap-probe")
+        self.assertEqual(code, 0)
+        self.assertIn("generation 1", out)
+
+    def test_switch_off_refused_with_reason(self):
+        self.device.app_result = 3
+        code, _, err = self.err("app", "replace", "out/a/build/swap-probe.app")
+        self.assertEqual(code, 2)
+        self.assertIn("Switch_Off", err)
+        self.assertIn("Allow app replacement", err)
+
+    def test_rollback_without_previous(self):
+        self.run_cli("app", "replace", "out/a/build/swap-probe.app")
+        code, _, err = self.err("app", "rollback", "swap-probe")
+        self.assertEqual(code, 2)
+        self.assertIn("No_Previous", err)
 
 
 class Screenshots(Commands):

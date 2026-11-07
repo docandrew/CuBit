@@ -1,0 +1,16 @@
+# The device-build test's system profile (tests/device-builds): the
+# development settings it needs, with the installed root on QEMU's UFS
+# disk as the system volume (storage.system-volume), as on the installed
+# laptop. devmgr attaches that disk before procmgr, writable, and tells the
+# filesystem it is the system disk: the filesystem names it @system, so
+# absolute names ("/toolchain", "/storehouse") are on it.
+(system-config v1
+  (setting "storage.system-volume" "ufs:0")
+  (setting "clock.time-zone" "UTC")
+  (setting "cubit.config.storage.database" ":memory:")
+  (setting "logs.minimum-level" "Severity.Information")
+  (setting "net.interface.pci-00-10-0"
+    (Net_Interface.Static (Static_Interface address => "::ffff:10.0.2.15" prefix => 120
+      gateway => (Gateway.Via "::ffff:10.0.2.2"))))
+  (setting "net.dns.primary" "::ffff:10.0.2.3")
+)

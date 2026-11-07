@@ -43,8 +43,11 @@ procedure Main is
 
    --  The places the tools and the program work in: the work place, and
    --  the toolchain read-only.
-   Work      : constant String := "@nvme:0/work";
-   Toolchain : constant String := "@nvme:0/toolchain";
+   --  The system volume's spelling (the development disk here): gnat1
+   --  needs a POSIX working directory, and the libc shows only @system
+   --  names as POSIX paths (CuBit.Path_Names.Display).
+   Work      : constant String := "@system/work";
+   Toolchain : constant String := "@system/toolchain";
 
    --  What a program writes to one of its text outlets (unix.stderr for
    --  the tools, unix.stdout for the program): a ring lent for each run

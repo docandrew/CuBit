@@ -115,13 +115,22 @@ package Remote_Wire with SPARK_Mode is
    --                Capture_Result), then when Captured: width (4), height
    --                (4), PNG size (8), its SHA-256 (32) and its name (the
    --                rest). The host takes it with Get on Captures.
+   --  App_Replace   body: a product's name in the workspace (".../<app>.app").
+   --                It becomes the app's next generation, outside the
+   --                workspace; the running instance is stopped and the new
+   --                one started (Remote_Apps). Response: App_Response.
+   --  App_Rollback  body: an app's name (App_Of_Product). Its previous
+   --                generation is started again in place of the current
+   --                one. Response: App_Response.
+   --  App_Status    body: an app's name. Response: App_Response.
    type Operation is
      (Hello, Evaluate, List, Stat, Get, Put, Commit, Remove,
-      Build_Start, Build_Poll, Build_Cancel, Capture);
+      Build_Start, Build_Poll, Build_Cancel, Capture,
+      App_Replace, App_Rollback, App_Status);
    for Operation use
      (Hello => 1, Evaluate => 2, List => 3, Stat => 4, Get => 5, Put => 6,
       Commit => 7, Remove => 8, Build_Start => 9, Build_Poll => 10, Build_Cancel => 11,
-      Capture => 12);
+      Capture => 12, App_Replace => 13, App_Rollback => 14, App_Status => 15);
 
    --  Where a file operation acts. None for the others. Captures holds the
    --  device's screenshots (read-only to the host).
@@ -163,22 +172,89 @@ package Remote_Wire with SPARK_Mode is
       (if Output >= 10 then [Character'Val (Character'Pos ('0') + (Output / 10) mod 10)] else "") &
       [Character'Val (Character'Pos ('0') + Output mod 10)] & ".png");
 
+   --  Capacity: a named ceiling of the endpoint was reached (Remote_Apps'
+   --  Maximum_Apps); nothing was done.
    type Status is
      (OK, Malformed, Unauthorized, Not_Granted, Not_Found, Too_Large, Conflict,
-      Busy, Failed, Integrity_Mismatch, Unavailable, Unsupported_Version, Locked);
+      Busy, Failed, Integrity_Mismatch, Unavailable, Unsupported_Version, Locked,
+      Capacity);
    for Status use
      (OK => 0, Malformed => 1, Unauthorized => 2, Not_Granted => 3, Not_Found => 4,
       Too_Large => 5, Conflict => 6, Busy => 7, Failed => 8, Integrity_Mismatch => 9,
-      Unavailable => 10, Unsupported_Version => 11, Locked => 12);
+      Unavailable => 10, Unsupported_Version => 11, Locked => 12, Capacity => 13);
 
    type Job_State is (Running, Exited, Failed_To_Start, Cancelled, Unknown_Job);
    for Job_State use
      (Running => 1, Exited => 2, Failed_To_Start => 3, Cancelled => 4, Unknown_Job => 5);
 
+   ---------------------------------------------------------------------------
+   --  Apps built on the device (SELF-002, Remote_Apps)
+   ---------------------------------------------------------------------------
+   --  How an app operation ended (App_Response's first byte):
+   --    Replaced        the new generation runs; the instance before it, if
+   --                    one ran, ended (Stop_Kind says how)
+   --    Rolled_Back     the previous generation runs again
+   --    Reported        App_Status: the state as it is
+   --    Switch_Off      procmgr refused the staged program: the Desktop's
+   --                    "Allow app replacement" switch is off. Nothing was
+   --                    stopped or started
+   --    Start_Failed    the generation did not start (the device's log says
+   --                    why); the instance stopped for it was started again
+   --    Stop_Failed     the running instance did not end, even when ended
+   --                    after its deadline; nothing was started
+   --    No_Previous     a rollback with no previous generation
+   type App_Result is
+     (Replaced, Rolled_Back, Reported, Switch_Off, Start_Failed, Stop_Failed, No_Previous);
+   for App_Result use
+     (Replaced => 0, Rolled_Back => 1, Reported => 2, Switch_Off => 3, Start_Failed => 4,
+      Stop_Failed => 5, No_Previous => 6);
+
+   --  The current generation's instance, as this endpoint started it.
+   type Instance_State is (Not_Started, Running, Exited);
+   for Instance_State use (Not_Started => 0, Running => 1, Exited => 2);
+
+   --  How the instance an operation replaced ended: Stopped (it obeyed
+   --  Stop before the deadline) or Ended (procmgr ended it after).
+   type Stop_Kind is (None_Running, Stopped, Ended);
+   for Stop_Kind use (None_Running => 0, Stopped => 1, Ended => 2);
+
+   --  Generations count from 1 per app; 0 is none.
+   subtype Generation is Unsigned_32;
+   No_Generation : constant Generation := 0;
+   Generation_Bytes : constant := 4;
+
+   --  App_Response: result (1), current generation (4), previous
+   --  generation (4), instance (1), stop (1), the current generation's
+   --  SHA-256 (32), the previous one's (32; zero when none).
+   App_Response_Bytes : constant :=
+     1 + 2 * Generation_Bytes + 1 + 1 + 2 * Digest_Bytes;
+
+   subtype App_Response is Byte_Array (1 .. App_Response_Bytes);
+   function Encode_App_Response
+     (Result : App_Result; Current, Previous : Generation; Instance : Instance_State;
+      Stop : Stop_Kind; Current_Hash, Previous_Hash : Digest) return App_Response;
+
+   --  An app's name: one component of a valid name, at most
+   --  Maximum_App_Name_Bytes ("swap-probe").
+   Maximum_App_Name_Bytes : constant := 64;
+   Product_Suffix : constant String := ".app";
+   function Valid_App_Name (Name : String) return Boolean
+     with Pre => Name'Length <= Maximum_Name_Bytes and then Name'Last < Positive'Last;
+   --  The app a product is ("out/x/build/swap-probe.app": "swap-probe"):
+   --  its last component without Product_Suffix; "" when that is not an
+   --  app's name.
+   function App_Of_Product (Product : String) return String
+     with Pre  => Product'Length <= Maximum_Name_Bytes and then Product'Last < Positive'Last,
+          Post => App_Of_Product'Result'Length = 0 or else
+                  (App_Of_Product'Result'Length <= Maximum_App_Name_Bytes
+                   and then Valid_App_Name (App_Of_Product'Result));
+
    --  Whether Grants admit Op on Where. Diagnose reads (the workspace,
    --  evaluation); Files writes the workspace; Mail reads and writes the
    --  mailbox (to-device: the host writes; to-host: the host reads and
-   --  removes); Builds starts and follows builds of workspace components.
+   --  removes); Builds starts and follows builds of workspace components
+   --  and replaces apps with their products (procmgr still asks the
+   --  Desktop's switch).
    function Admits (Grants : Grant_Set; Op : Operation; Where : Place) return Boolean is
      (case Op is
          when Hello | Evaluate => Grants (Diagnose) and then Where = None,
@@ -198,13 +274,14 @@ package Remote_Wire with SPARK_Mode is
                when Workspace => Grants (Files),
                when Mail_To_Device | Mail_To_Host => Grants (Mail),
                when Captures | None => False),
-         when Build_Start => Grants (Builds) and then Where = Workspace,
-         when Build_Poll | Build_Cancel => Grants (Builds) and then Where = None,
+         when Build_Start | App_Replace => Grants (Builds) and then Where = Workspace,
+         when Build_Poll | Build_Cancel | App_Rollback | App_Status =>
+           Grants (Builds) and then Where = None,
          when Capture => Grants (Capture) and then Where = None);
 
    --  Whether Op writes (a write needs a grant beyond Diagnose).
    function Writes (Op : Operation) return Boolean is
-     (Op in Put | Commit | Remove | Build_Start | Build_Cancel);
+     (Op in Put | Commit | Remove | Build_Start | Build_Cancel | App_Replace | App_Rollback);
 
    ---------------------------------------------------------------------------
    --  The token
@@ -274,7 +351,8 @@ package Remote_Wire with SPARK_Mode is
    end record;
 
    --  The body for Header (its token already compared). Result: OK, or
-   --  Malformed for a body of the wrong shape, an invalid name, a zero
+   --  Malformed for a body of the wrong shape, an invalid name (an app
+   --  operation's: an invalid app name), a zero
    --  job, or an offset or size beyond Maximum_File_Bytes; Too_Large for
    --  a put whose end passes Maximum_File_Bytes.
    procedure Decode_Body
@@ -289,7 +367,10 @@ package Remote_Wire with SPARK_Mode is
                         Item.Data_First - 1 + Item.Data_Length <= Data'Last) and then
                      (if Item.Op = Put then Item.Data_Length <= Maximum_Chunk_Bytes) and then
                      (if Item.Op = Evaluate then Item.Data_Length <= Maximum_Source_Bytes) and then
-                     (if Item.Op in Build_Poll | Build_Cancel then Item.Job /= 0));
+                     (if Item.Op in Build_Poll | Build_Cancel then Item.Job /= 0) and then
+                     (if Item.Op in App_Rollback | App_Status then
+                        Item.Name_Last in 1 .. Maximum_App_Name_Bytes) and then
+                     (if Item.Op = App_Replace then Item.Name_Last > 0));
 
    ---------------------------------------------------------------------------
    --  Encoding responses

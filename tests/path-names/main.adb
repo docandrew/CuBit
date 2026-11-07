@@ -148,11 +148,11 @@ begin
    Expect ("@nvme:0/", "src/a.c", "@nvme:0/src/a.c");
    Expect ("@nvme:0/build", "../src/./a.c", "@nvme:0/src/a.c");
    Expect ("@nvme:0/a/b", "../../..", "@nvme:0/");
-   Expect ("@nvme:0/a", "/tls/roots.der", "@nvme:0/tls/roots.der");
-   Expect ("@nvme:0/a", "/../../tls//x/", "@nvme:0/tls/x");
+   Expect ("@nvme:0/a", "/tls/roots.der", "@system/tls/roots.der");
+   Expect ("@nvme:0/a", "/../../tls//x/", "@system/tls/x");
    Expect ("", "@usb:0/x/../y", "@usb:0/y");
    Expect ("", "@usb:0", "@usb:0/");
-   Expect ("", "/", "@nvme:0/");
+   Expect ("", "/", "@system/");
    Expect ("@usb:0/data", "..", "@usb:0/");
    Expect ("@nvme:0/a", "...", "@nvme:0/a/...");
    Expect ("@nvme:0/a", "..x/.y", "@nvme:0/a/..x/.y");
@@ -175,16 +175,20 @@ begin
       Expect ("@nvme:0/", "x/" & Long (1 .. 200) & "/../y", "@nvme:0/x/y");
    end;
 
-   Check (Shown ("@nvme:0/") = "/", "display root");
-   Check (Shown ("@nvme:0/src") = "/src", "display system volume path");
+   Check (Shown ("@system/") = "/", "display root");
+   Check (Shown ("@system/src") = "/src", "display system volume path");
    Check (Shown ("@usb:0/x") = "@usb:0/x", "display other volume");
-   Check (Shown ("@nvme:0x/y") = "@nvme:0x/y", "display volume with system prefix");
-   Check (Shown ("@nvme:01") = "@nvme:01", "display longer volume name");
+   --  A device name is shown as it is, even when it is the system volume:
+   --  only the filesystem service knows which device @system is.
+   Check (Shown ("@nvme:0/src") = "@nvme:0/src", "display a device volume");
+   Check (Shown ("@systemx/y") = "@systemx/y", "display volume with system prefix");
+   Check (Shown ("@system1") = "@system1", "display longer volume name");
 
    ------------------------------------------------------------ C entry points
    declare
       use type Interfaces.C.long;
       Base : aliased constant String := "@nvme:0/build";
+      On_System : aliased constant String := "@system/build";
       Path : aliased constant String := "../src" & Character'Val (0);
       Empty : aliased constant String := "" & Character'Val (0);
       Output : aliased String (1 .. 64) := [others => '#'];
@@ -216,10 +220,10 @@ begin
                 "C resolve: no terminator within PATH_MAX");
       end;
       R := CuBit.Path_Names_C.Display
-        (Base'Address, Base'Length, Output'Address, Output'Length);
+        (On_System'Address, On_System'Length, Output'Address, Output'Length);
       Check (R = 7 and then Output (1 .. 7) = "/build" & Character'Val (0),
              "C display with terminator");
-      R := CuBit.Path_Names_C.Display (Base'Address, Base'Length, Output'Address, 6);
+      R := CuBit.Path_Names_C.Display (On_System'Address, On_System'Length, Output'Address, 6);
       Check (R = -CuBit.Path_Names_C.ERANGE, "C display: ERANGE");
    end;
 

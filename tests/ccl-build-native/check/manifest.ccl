@@ -8,10 +8,13 @@
   version => "0.1.0"
   requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
   scopes => [
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/storehouse")
-    (filesystem [File_Right.Read] "@nvme:0/toolchain")
-    (filesystem [File_Right.Read] "@nvme:0/cubit-src")
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")]
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
+    (filesystem [File_Right.Read] "@system/toolchain")
+    (filesystem [File_Right.Read] "@system/cubit-src")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")
+    # binutils-compare's own scope, as its manifest spells it (procmgr
+    # checks a child's scopes against its launcher's by their text).
+    (filesystem [File_Right.Read] "@nvme:0/work")]
   may_launch => [
     (Launch "ccl-build.app")
     (Launch "binutils-compare.app")])

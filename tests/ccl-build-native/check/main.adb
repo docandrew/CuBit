@@ -55,10 +55,10 @@ procedure Main is
 
    --  The places, as ccl-build's manifest names them (absolute POSIX names
    --  are the system volume's).
-   Storehouse : constant String := "@nvme:0/storehouse";
-   Toolchain  : constant String := "@nvme:0/toolchain";
-   Sources    : constant String := "@nvme:0/cubit-src";
-   Work       : constant String := "@nvme:0/work";
+   Storehouse : constant String := "@system/storehouse";
+   Toolchain  : constant String := "@system/toolchain";
+   Sources    : constant String := "@system/cubit-src";
+   Work       : constant String := "@system/work";
    Program    : constant String := "ccl-build.app";
    LF : constant Character := ASCII.LF;
    --  ccl-build's command line (one argument per line, after argv[0]): ps2

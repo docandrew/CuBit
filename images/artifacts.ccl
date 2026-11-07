@@ -78,6 +78,8 @@
   (artifact "init-laptop-live" repository "tests/hardware/init-laptop-live.ccl")
   (artifact "grub-usb-live" repository "tests/hardware/grub-usb-live.cfg")
   (artifact "live-rw" repository "kernel/laptop_live_rw.img")
+  # The device-build test's settings: the UFS disk is the system volume.
+  (artifact "system-device-build" repository "tests/device-builds/system.ccl")
   (artifact "ccl-button-clock" repository "userspace/ccl/samples/button-clock.ccl")
   (artifact "ccl-button-output" repository "userspace/ccl/samples/button-output.ccl")
   (artifact "ccl-config-inspector" repository "userspace/ccl/samples/config-inspector.ccl")
