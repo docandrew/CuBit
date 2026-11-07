@@ -6,7 +6,7 @@ with "../../../lib/calc/calc_flags.gpr";
 with "../../../lib/tls/sparktls_cubit.gpr";
 project Agent_App is
    for Languages use ("Ada");
-   for Source_Dirs use (".", "../../../lib/lexicon", "../../../lib/lexicon/channel", "../../src", "../../../lib/agent", "../../native", "../../tools/ccl-ui-preview",
+   for Source_Dirs use (".", "../../../lib/lexicon", "../../../lib/bible", "../../../lib/bible/native", "../../../lib/lexicon/channel", "../../src", "../../../lib/agent", "../../native", "../../tools/ccl-ui-preview",
       "../../../lib/ui", "../../../lib/calc", "../../../lib/theme", "../../../lib/config", "../../../lib/compositor", "../../../lib/display", "../../../allocator/src");
    for Object_Dir use "build";
    for Main use ("agent_main.adb");

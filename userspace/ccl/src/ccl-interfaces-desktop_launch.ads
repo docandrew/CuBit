@@ -14,7 +14,7 @@
 --  app's icon is a new atlas row, not a change to this schema.
 package CCL.Interfaces.Desktop_Launch with SPARK_Mode, Pure is
    TYPE_SOURCE : constant String :=
-     "(type App_Category (enum System Development Web Games Media Tools)) " &
+     "(type App_Category (enum System Development Web Games Media Tools Reference)) " &
      "(type Launch_Icon (record (name String))) " &
      "(type Launch_Action (variant (Program String) (Settings))) " &
      "(type Color_Channel (range 0 255)) " &
@@ -25,5 +25,5 @@ package CCL.Interfaces.Desktop_Launch with SPARK_Mode, Pure is
      "(single_instance Boolean false) (color App_Color App_Color.Theme_Accent)))";
    ROOT_TYPE_NAME : constant String := "Launch_Entry";
    --  The categories, in declaration order (for the desktop's Ada side).
-   type App_Category is (System, Development, Web, Games, Media, Tools);
+   type App_Category is (System, Development, Web, Games, Media, Tools, Reference);
 end CCL.Interfaces.Desktop_Launch;

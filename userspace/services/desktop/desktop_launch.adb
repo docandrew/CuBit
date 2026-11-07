@@ -16,7 +16,8 @@ package body Desktop_Launch is
    function Group_Of (Member : Codec.App_Category_Value) return DL.App_Category is
      (case Member is
          when Codec.System => DL.System, when Codec.Development => DL.Development, when Codec.Web => DL.Web,
-         when Codec.Games => DL.Games, when Codec.Media => DL.Media, when Codec.Tools => DL.Tools);
+         when Codec.Games => DL.Games, when Codec.Media => DL.Media, when Codec.Tools => DL.Tools,
+         when Codec.Reference => DL.Reference);
 
    --  An RGB value's channels (Color_Channel: 0 .. 255, by its range type).
    Channel_Span : constant := 16#100#;

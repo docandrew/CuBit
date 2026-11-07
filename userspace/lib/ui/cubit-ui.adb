@@ -9,6 +9,7 @@ with Client_Raster;
 with System.Storage_Elements; use System.Storage_Elements;
 with Font8x16;
 with CuBit.Fonts;
+with CuBit.Reading_Faces;
 with Icon_Edge_Choice;
 with Glyph_Pen;
 with Client_Glyphs;
@@ -493,35 +494,65 @@ package body CuBit.UI is
    pragma Compile_Time_Error
      (Glyph_Pen.Unit /= Client_Glyphs.L.Pen_Unit or else Glyph_Pen.Phases /= Client_Glyphs.L.Phases,
       "toolkit pens and density masks must share pen units and phases");
+   --  A raster size's em over the base em.
+   function Size_Numerator (Size : CuBit.Fonts.Raster_Size) return Positive is
+     (case Size is when CuBit.Fonts.Normal => 1, when CuBit.Fonts.Double_Size => 2, when CuBit.Fonts.Small => 3);
+   function Size_Denominator (Size : CuBit.Fonts.Raster_Size) return Positive is
+     (case Size is when CuBit.Fonts.Small => 4, when others => 1);
+
    procedure Draw_Density_Glyph
-     (c : Canvas; Pen : Glyph_Pen.Position; y : Natural; ch : Character; face : CuBit.Fonts.Face; fg : Color)
+     (c : Canvas; Pen : Glyph_Pen.Position; y : Natural; ch : Character; face : CuBit.Fonts.Face; fg : Color;
+      Size : CuBit.Fonts.Raster_Size := CuBit.Fonts.Normal)
    is
       package G renames Client_Canvas_Geometry;
       package F renames Client_Glyphs;
       package P renames Compositor_Glyph_Placement;
+      use type CuBit.Fonts.Face;
       Key : F.C.Key;
       View : F.View;
       Layout : F.L.Layout;
+      --  The raster's em: the canvas density times the size's, in lowest
+      --  terms; a size the masks cannot express at this density is not drawn.
+      Em_N : Positive := c.densityNumerator * Size_Numerator (Size);
+      Em_D : Positive := c.densityDenominator * Size_Denominator (Size);
+      --  The raster's left edge, Origin pixels of its own em left of the pen.
+      Margin : constant Natural :=
+        CuBit.Fonts.Origin * Glyph_Pen.Unit * Size_Numerator (Size) / Size_Denominator (Size);
+      Edge_Pen : constant Natural := (if Pen > Margin then Pen - Margin else 0);
+      --  The edge may lie left of the canvas: placed signed, clipped after.
+      Signed_Edge : constant Integer := Integer (Pen) - Integer (Margin);
+      Edge_Pixel : constant Integer :=
+        (if Signed_Edge >= 0 then Signed_Edge / Glyph_Pen.Unit
+         else -((-Signed_Edge + Glyph_Pen.Unit - 1) / Glyph_Pen.Unit));
       Pen_X : constant Natural := Pen / Glyph_Pen.Unit;
-      Box_X : constant Natural := (if Pen_X > CuBit.Fonts.Origin then Pen_X - CuBit.Fonts.Origin else 0);
+      Box_X : constant Natural := Edge_Pen / Glyph_Pen.Unit;
       Place : P.Subpixel_Origin;
       Clipped : constant Rect := Raster_Rect
-        (c, (Box_X, y, CuBit.Fonts.Max_Width, CuBit.Fonts.Line_Height));
+        (c, (Box_X, y, CuBit.Fonts.Max_Width * Size_Numerator (Size) / Size_Denominator (Size) + 1,
+             CuBit.Fonts.Line_Height * Size_Numerator (Size) / Size_Denominator (Size) + 1));
       Left, Top, Right, Bottom, X0, Y0 : Integer;
    begin
-      if c.addr = System.Null_Address or else Is_Empty (Clipped) or else
+      for Divisor in reverse 2 .. 4 loop
+         while Em_N mod Divisor = 0 and then Em_D mod Divisor = 0 loop
+            Em_N := Em_N / Divisor;
+            Em_D := Em_D / Divisor;
+         end loop;
+      end loop;
+      if c.addr = System.Null_Address or else Is_Empty (Clipped) or else Em_N > 16 or else Em_D > 16 or else
         Pen_X > G.Logical_Edge'Last - c.originX or else y > G.Logical_Edge'Last - c.originY
       then return; end if;
       Key := (CuBit.Fonts.Face'Pos (face),
-        (if Character'Pos (ch) in 32 .. 126 then Character'Pos (ch) else 63),
-        (F.L.G.Scale_Component (c.densityNumerator), F.L.G.Scale_Component (c.densityDenominator)));
+        (if Character'Pos (ch) in 32 .. 126
+           or else (face in CuBit.Fonts.Reading_Face and then Character'Pos (ch) in 16#80# .. 16#FF#)
+         then Character'Pos (ch) else 63),
+        (F.L.G.Scale_Component (Em_N), F.L.G.Scale_Component (Em_D)));
       F.Read (Density_Fonts, Key, View);
       if not F.Ready (View) then return; end if;
       Layout := F.Raster (View);
       --  The raster's left column in the surface, less the canvas's own
       --  first column (Edge of its origin): canvas-relative.
       Place := P.Snap_Phase
-        (P.G.Logical_Coordinate (c.originX + Pen_X - CuBit.Fonts.Origin), Pen mod Glyph_Pen.Unit, 0,
+        (P.G.Logical_Coordinate (c.originX + Edge_Pixel), Signed_Edge - Edge_Pixel * Glyph_Pen.Unit, 0,
          (P.G.Scale_Component (c.densityNumerator), P.G.Scale_Component (c.densityDenominator)));
       Left := Integer (Place.Pixel) - Integer (G.Edge (c.originX, c.densityNumerator, c.densityDenominator));
       Top := Integer (G.Relative (c.originY, y, c.densityNumerator, c.densityDenominator));
@@ -629,10 +660,11 @@ package body CuBit.UI is
       Left : Natural;
       Lost : Natural := 0;
    begin
-      if Width = 0 or else Glyph.Ink_Height = 0 or else Ink_Left > CuBit.Fonts.Max_Width or else
-        Width > CuBit.Fonts.Max_Width or else Glyph.Ink_Top > Unsigned_32 (CuBit.Fonts.Max_Width) or else
-        Glyph.Ink_Height > Unsigned_32 (CuBit.Fonts.Max_Width) or else Pen_X > Natural'Last / 2 or else
-        y > Natural'Last / 2
+      if Width = 0 or else Glyph.Ink_Height = 0 or else Ink_Left > Client_Raster.MASK_COLUMNS or else
+        Width > Client_Raster.MASK_COLUMNS - Ink_Left or else
+        Glyph.Ink_Top > Unsigned_32 (Client_Raster.MASK_ROWS) or else
+        Glyph.Ink_Height > Unsigned_32 (Client_Raster.MASK_ROWS) - Glyph.Ink_Top or else
+        Pen_X > Natural'Last / 2 or else y > Natural'Last / 2
       then return; end if;
       if Pen_X + Ink_Left >= CuBit.Fonts.Origin then
          Left := Pen_X + Ink_Left - CuBit.Fonts.Origin;
@@ -909,7 +941,7 @@ package body CuBit.UI is
    --  is already filled with bg.
    procedure Draw_Sans_Glyphs
      (c : Canvas; x, y : Natural; text : String; fg : Color; Opaque : Boolean := False; bg : Color := 0;
-      Face : CuBit.Fonts.Face := CuBit.Fonts.Sans)
+      Face : CuBit.Fonts.Face := CuBit.Fonts.Sans; Size : CuBit.Fonts.Raster_Size := CuBit.Fonts.Normal)
    is
       Over : constant Ramp_Access :=
         (if Opaque and then c.densityNumerator = c.densityDenominator then Ramp_For (fg, bg) else null);
@@ -917,16 +949,16 @@ package body CuBit.UI is
          pragma Unreferenced (Index);
       begin
          if c.densityNumerator /= c.densityDenominator then
-            Draw_Density_Glyph (c, Pen, y, Ch, Face, fg);
+            Draw_Density_Glyph (c, Pen, y, Ch, Face, fg, Size);
          else
-            Blit_Ink (c, CuBit.Fonts.Get (Face, Ch, CuBit.Fonts.Normal, Glyph_Pen.Phase_Of (Pen)),
+            Blit_Ink (c, CuBit.Fonts.Get (Face, Ch, Size, Glyph_Pen.Phase_Of (Pen)),
                       Pen_Pixel (Pen), y, fg, bg, Over);
          end if;
       end Place;
       procedure Each is new CuBit.Fonts.Lay_Out (Place);
    begin
       if x > Glyph_Pen.Last_Pixel then return; end if;
-      Each (Face, text, x);
+      Each (Face, text, x, Size);
    end Draw_Sans_Glyphs;
 
    --  The run is visible at all (before measuring or rasterizing anything).
@@ -958,6 +990,36 @@ package body CuBit.UI is
       end if;
       Draw_Sans_Glyphs (c, x, y, text, fg);
    end Draw_UI_Text_Transparent;
+
+   function Font_Of (face : Text_Face) return CuBit.Fonts.Face is
+     (case face is
+         when Interface_Face => CuBit.Fonts.Sans, when Emphasis_Face => CuBit.Fonts.Sans_Semibold,
+         when Code_Face => CuBit.Fonts.Monospace, when Reading_Face => CuBit.Reading_Faces.Chosen_Face);
+   function Raster_Of (size : Text_Size) return CuBit.Fonts.Raster_Size is
+     (case size is
+         when Body_Size => CuBit.Fonts.Normal, when Heading_Size => CuBit.Fonts.Double_Size,
+         when Superscript_Size => CuBit.Fonts.Small);
+
+   function Styled_Text_Width (text : String; face : Text_Face; size : Text_Size := Body_Size) return Natural is
+     (CuBit.Fonts.Width (Font_Of (face), text, Raster_Of (size)));
+   function Styled_Line_Height (face : Text_Face; size : Text_Size := Body_Size) return Natural is
+     (CuBit.Fonts.Line_Height * Size_Numerator (Raster_Of (size)) / Size_Denominator (Raster_Of (size)));
+   function Styled_Baseline (face : Text_Face; size : Text_Size := Body_Size) return Natural is
+     (CuBit.Fonts.Baseline (Font_Of (face), Raster_Of (size)));
+
+   procedure Draw_Styled_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color; face : Text_Face; size : Text_Size := Body_Size)
+   is
+      Height : constant Natural := Styled_Line_Height (face, size);
+   begin
+      if text'Length = 0 or else x >= c.width or else y >= c.height or else
+        (c.clipEnabled and then
+           (x >= c.clip.x + c.clip.w or else y >= c.clip.y + c.clip.h or else y + Height <= c.clip.y))
+      then
+         return;
+      end if;
+      Draw_Sans_Glyphs (c, x, y, text, fg, Face => Font_Of (face), Size => Raster_Of (size));
+   end Draw_Styled_Text_Transparent;
 
    procedure Draw_Emphasis_Text_Transparent
       (c : Canvas; x, y : Natural; text : String; fg : Color)

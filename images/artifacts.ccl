@@ -59,6 +59,7 @@
   (artifact "calculator" repository "kernel/isodir/boot/calculator.app")
   (artifact "lexicon" repository "kernel/isodir/boot/lexicon.svc")
   (artifact "dictionary" repository "kernel/isodir/boot/dictionary.app")
+  (artifact "bible" repository "kernel/isodir/boot/bible.app")
   (artifact "kernel" repository "kernel/cubit_kernel")
   (artifact "system-default" repository "system.ccl")
   (artifact "system-live" repository "tests/hardware/system-live.ccl")
@@ -101,9 +102,11 @@
   # The wallpaper package as built: its catalog and whatever pictures the
   # source list (assets/wallpapers/wallpapers.ccl) declares.
   (artifact "wallpapers" repository-tree "kernel/build/Assets/cubit-wallpapers/2")
-  (artifact "icons-applications" repository "kernel/build/Assets/cubit-icons/4/applications.qoi")
+  (artifact "icons-applications" repository "kernel/build/Assets/cubit-icons/5/applications.qoi")
   (artifact "lexicon-english" repository "kernel/build/Assets/cubit-lexicon/1/english.lexicon")
   (artifact "lexicon-notice" repository "kernel/build/Assets/cubit-lexicon/1/LEXICON-NOTICE")
+  # The Bible's translations and their notices (APP-005, tools/build_bible.py).
+  (artifact "bible-texts" repository-tree "kernel/build/Assets/cubit-bible/1")
   (artifact "doom-wad" supplied-file "doom-wad")
   (artifact "intel-guc" supplied-file "intel-guc")
   (artifact "intel-firmware-license" supplied-file "intel-firmware-license")

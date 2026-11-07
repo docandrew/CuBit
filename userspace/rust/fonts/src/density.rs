@@ -55,16 +55,17 @@ fn render_with(r: &Request, pixels: &mut [u8], style: Style) -> Option<Metrics> 
     if pixels.len() < bytes {
         return None;
     }
-    let font = Face::parse(face_bytes(r.face as usize), 0).ok()?;
+    let face = r.face as usize;
+    let font = Face::parse(face_bytes(face)?, 0).ok()?;
     let density = r.em_numerator as f32 / BASE_EM / r.em_denominator as f32;
     let ratio = (r.em_numerator as f32 / r.em_denominator as f32) / f32::from(font.units_per_em());
-    let code = printable(r.code);
-    let id = font.glyph_index(char::from_u32(code)?)?;
+    let code = printable(face, r.code);
+    let id = font.glyph_index(char_of(code)?)?;
     let advance = round_positive_metric(f32::from(font.glyph_hor_advance(id)?) * ratio).max(1);
     if advance > r.width {
         return None;
     }
-    let baseline = round_positive_metric(f32::from(font.ascender()) * ratio) as i32;
+    let (baseline, _) = line_box(face, &font, r.em_numerator as f32 / r.em_denominator as f32);
     let zones = zones(&font, ratio, style.hinted);
     let darken = darken(&font, ratio, style);
     let raster = (r.pitch * r.height) as usize;
@@ -180,8 +181,8 @@ mod tests {
     fn density_masks_match_reference_and_preserve_padding() {
         use ab_glyph::{Font, FontRef, Glyph, PxScale};
         let mut cases = 0;
-        for face in 0..FACES as u32 {
-            let font = FontRef::try_from_slice(face_bytes(face as usize)).unwrap();
+        for face in 0..BUNDLED_FACES as u32 {
+            let font = FontRef::try_from_slice(face_bytes(face as usize).unwrap()).unwrap();
             for n in 1..=16 {
                 for d in 1..=16 {
                     for code in 32..=126 {
@@ -240,7 +241,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(cases, 256 * 95 * FACES);
+        assert_eq!(cases, 256 * 95 * BUNDLED_FACES);
     }
     #[test]
     fn ffi_rejections_do_not_write_and_unknown_code_maps_to_question() {

@@ -70,14 +70,18 @@
   # Dictionary asks lexicon.svc (docs/lexicon.md).
   (file optical "lexicon" "apps/lexicon.svc")
   (file optical "dictionary" "apps/dictionary.app")
+  # The Bible reads its texts from the cubit-bible package (APP-005).
+  (file optical "bible" "apps/bible.app")
   (file optical "doom-wad" "apps/doom1.wad")
   (file optical "sameboy-test" "apps/sameboy/00.gb")
   # Asset packages (docs/assets.md); @cd:0 is rooted at apps/.
   (file optical "wallpapers" "apps/Assets/cubit-wallpapers/2")
-  (file optical "icons-applications" "apps/Assets/cubit-icons/4/applications.qoi")
+  (file optical "icons-applications" "apps/Assets/cubit-icons/5/applications.qoi")
   # The lexicon image and its WordNet/SCOWL notices, side by side.
   (file optical "lexicon-english" "apps/Assets/cubit-lexicon/1/english.lexicon")
   (file optical "lexicon-notice" "apps/Assets/cubit-lexicon/1/LEXICON-NOTICE")
+  # The Bible's translations (KJV, BSB, WEB) and their BIBLE-NOTICE.
+  (file optical "bible-texts" "apps/Assets/cubit-bible/1")
   # Read-only originals; editable copies also seed live-rw.ext2's /work.
   (file optical "ccl-button-clock" "samples/ccl/button-clock.ccl")
   (file optical "ccl-button-output" "samples/ccl/button-output.ccl")

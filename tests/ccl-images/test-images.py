@@ -100,14 +100,15 @@ class Images(unittest.TestCase):
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app",
                                                             "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "teapots.app",
                                                             "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app",
-                                                            "calculator.app", "lexicon.svc", "dictionary.app",
+                                                            "calculator.app", "lexicon.svc", "dictionary.app", "bible.app",
                                                             # The agent path (AGENT-002).
                                                             "tls.svc", "timesync.svc", "secrets.svc", "llm.svc",
                                                             "agent.app", "tls/roots.der",
                                                             "Assets/cubit-wallpapers/2",
-                                                            "Assets/cubit-icons/4/applications.qoi",
+                                                            "Assets/cubit-icons/5/applications.qoi",
                                                             "Assets/cubit-lexicon/1/english.lexicon",
-                                                            "Assets/cubit-lexicon/1/LEXICON-NOTICE"})
+                                                            "Assets/cubit-lexicon/1/LEXICON-NOTICE",
+                                                            "Assets/cubit-bible/1"})
                                      - {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv", "xhci.drv",
                                         "ata.drv", "nvme.drv", "storage-check.app"})
                     self.assertFalse(any("network-check" in row[2] or "ccl-control" in row[2] for row in rows))

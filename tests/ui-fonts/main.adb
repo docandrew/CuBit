@@ -29,8 +29,8 @@ procedure Main is
 begin
    pragma Assert (CuBit.Fonts.Glyph'Size =
                     (32 + CuBit.UI_Metrics.Glyph_Cell_Columns * CuBit.UI_Metrics.Glyph_Cell_Rows) * 8);
-   for Font in CuBit.Fonts.Face loop
-      for Size in CuBit.Fonts.Raster_Size loop
+   for Font in CuBit.Fonts.Bundled_Face loop
+      for Size in CuBit.Fonts.Normal .. CuBit.Fonts.Double_Size loop
          for Code in 32 .. 126 loop
             declare
                G : constant CuBit.Fonts.Glyph_Access :=

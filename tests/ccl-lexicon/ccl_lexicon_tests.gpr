@@ -7,7 +7,7 @@ with "../../userspace/ccl/cubit_shared.gpr";
 with "../../userspace/lib/ui/fonts_host.gpr";
 with "../../userspace/lib/tls/sparktls_host.gpr";
 project CCL_Lexicon_Tests is
-   for Source_Dirs use (".", "../../userspace/lib/lexicon", "../../userspace/ccl/src",
+   for Source_Dirs use (".", "../../userspace/lib/lexicon", "../../userspace/lib/bible", "../../userspace/ccl/src",
                         "../../userspace/ccl/tools/ccl-ui-preview", "../../userspace/ccl/tools/ccl-ui-preview/host",
                         "../../userspace/lib/ui", "../../userspace/lib/theme",
                         "../../userspace/lib/compositor", "../../userspace/lib/display");

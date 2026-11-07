@@ -5822,7 +5822,8 @@ procedure main is
          when CCL.Interfaces.Desktop_Launch.Web => Desktop_Icons.Category_Web,
          when CCL.Interfaces.Desktop_Launch.Games => Desktop_Icons.Category_Games,
          when CCL.Interfaces.Desktop_Launch.Media => Desktop_Icons.Category_Media,
-         when CCL.Interfaces.Desktop_Launch.Tools => Desktop_Icons.Category_Tools);
+         when CCL.Interfaces.Desktop_Launch.Tools => Desktop_Icons.Category_Tools,
+         when CCL.Interfaces.Desktop_Launch.Reference => Desktop_Icons.Category_Reference);
 
    procedure drawLaunchMenu is
       r : constant Rect := launchMenuRect;

@@ -30,7 +30,7 @@ CCL_TARGET = ROOT / "userspace/ccl/src/ccl-interfaces-desktop_launch-icons.ads"
 SIZE = 24          # the design edge: Desktop's 1x icon (Deskbar, Apps menu)
 EDGES = (16, 24, 32, 48, 64)
 ICON_PACKAGE = "cubit-icons"
-ICON_PACKAGE_VERSION = 4
+ICON_PACKAGE_VERSION = 5
 ATLAS_FILE = "applications.qoi"
 
 # (Ada literal, PNG at SIZE, what it shows); the other edges are the same
@@ -74,6 +74,8 @@ ICONS = (
     ("Status_Battery", "assets/desktop-icons/png/battery-24.png", "Deskbar status: battery"),
     ("Status_Volume", "assets/desktop-icons/png/volume-24.png", "Deskbar status: volume"),
     ("Status_Muted", "assets/desktop-icons/png/volume-muted-24.png", "Deskbar status: volume muted"),
+    ("Bible", "assets/desktop-icons/png/bible-24.png", "Bible (APP-005)"),
+    ("Category_Reference", "assets/desktop-icons/png/reference-24.png", "Reference category"),
 )
 
 

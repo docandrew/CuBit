@@ -16,7 +16,7 @@ is
    --  CCL_Host_Environment checks at compile time that the most it can
    --  publish (MOST_INTERFACES: its interfaces, every program a front end
    --  may launch, the front end's own) fits.
-   MAX_INTERFACES  : constant := 32;
+   MAX_INTERFACES  : constant := 40;
    MAX_OPERATIONS  : constant := 16;
 
    subtype Parameter_Count is Natural range 0 .. 1;

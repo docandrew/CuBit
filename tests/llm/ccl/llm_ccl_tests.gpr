@@ -6,7 +6,7 @@ with "../../../userspace/ccl/cubit_shared.gpr";
 --  kernel/ inside nix develop:
 --    alr exec -- gprbuild -p -P ../tests/llm/ccl/llm_ccl_tests.gpr && ../tests/llm/ccl/build/llm_ccl_main
 project Llm_Ccl_Tests is
-   for Source_Dirs use (".", "../../../userspace/lib/lexicon", "../../../userspace/ccl/src", "../../../userspace/lib/agent",
+   for Source_Dirs use (".", "../../../userspace/lib/lexicon", "../../../userspace/lib/bible", "../../../userspace/ccl/src", "../../../userspace/lib/agent",
                         "../../../userspace/ccl/tools/ccl-ui-preview",
                         "../../../userspace/ccl/tools/ccl-ui-preview/host",
                         "../../../userspace/lib/ui", "../../../userspace/lib/theme", "../../../userspace/lib/calc",

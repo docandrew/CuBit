@@ -290,7 +290,7 @@ with (run / 'qemu.log').open('w') as log:
         # The menu's top rows are the categories that hold entries, in
         # App_Category order (CCL.Interfaces.Desktop_Launch; the default is
         # Tools); each opens a submenu of its entries in key order (UI-013).
-        categories = ['System', 'Development', 'Web', 'Games', 'Media', 'Tools']
+        categories = ['System', 'Development', 'Web', 'Games', 'Media', 'Tools', 'Reference']
         def category_of(rest):
             found = re.search(r'category\s*=>\s*App_Category\.(\w+)', rest)
             return found.group(1) if found else 'Tools'

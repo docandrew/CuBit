@@ -43,7 +43,10 @@
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
     # The toolchain, read-only: handed to gcc (its toolchain parameter).
-    (filesystem [File_Right.Read] "@nvme:0/toolchain")]
+    (filesystem [File_Right.Read] "@nvme:0/toolchain")
+    # bible.*: the Bible's translations (APP-005), read only.
+    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-bible/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")]
   # Each becomes a CCL interface generated from its description: as.run,
   # ld.run, gcc.run (named by the last component), and their ports
   # (as.unix.stderr ...).

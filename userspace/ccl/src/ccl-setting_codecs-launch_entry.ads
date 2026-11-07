@@ -17,7 +17,7 @@ package CCL.Setting_Codecs.Launch_Entry with SPARK_Mode, Pure is
    type Launch_Icon_Value is record
       name : Text := CuBit.Canonical_Readers.Empty_Text;
    end record;
-   type App_Category_Value is (System, Development, Web, Games, Media, Tools);
+   type App_Category_Value is (System, Development, Web, Games, Media, Tools, Reference);
    type Color_Channel_Value is range 0 .. 255;
    type RGB_Color_Value is record
       red : Color_Channel_Value := Color_Channel_Value'First;

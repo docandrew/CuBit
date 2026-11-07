@@ -41,6 +41,11 @@ CHECKS = [
      {'DIGEST': None, 'REQUEST_KEY': 'Llm_Request', 'EXCHANGE_KEY': 'Llm_Exchange', 'REPLY_KEY': 'Llm_Reply'}),
     (SRC / 'ccl-interfaces-secrets.ads',
      {'DIGEST': None, 'SECRET_KEY': 'Secret', 'STATE_KEY': 'Secret_State'}),
+    (SRC / 'ccl-interfaces-bible.ads',
+     {'DIGEST': None, 'PARSE_KEY': 'Parse_Result', 'VERSE_KEY': 'Verse_Result',
+      'PASSAGE_RESULT_KEY': 'Passage_Result', 'SEARCH_KEY': 'Search_Result', 'REFERENCE_KEY': 'Reference',
+      'PASSAGE_KEY': 'Passage', 'VERSE_QUERY_KEY': 'Verse_Query', 'PASSAGE_QUERY_KEY': 'Passage_Query',
+      'SEARCH_QUERY_KEY': 'Search_Query'}),
     (SRC / 'ccl-interfaces-agent.ads',
      {'DIGEST': None, 'REQUEST_KEY': 'Agent_Request', 'SESSION_KEY': 'Agent_Session',
       'REPLY_KEY': 'Agent_Reply'})]

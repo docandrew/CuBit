@@ -60,8 +60,12 @@
     (Launch_Entry label => "Calculator" action => (Launch_Action.Program "calculator.app") icon => (Launch_Icon "Calculator") category => App_Category.Tools
       color => (App_Color.RGB (RGB_Color red => 18 green => 165 blue => 143))))
   (setting "desktop.launch.56-dictionary"
-    (Launch_Entry label => "Dictionary" action => (Launch_Action.Program "dictionary.app") icon => (Launch_Icon "Dictionary") category => App_Category.Tools
+    (Launch_Entry label => "Dictionary" action => (Launch_Action.Program "dictionary.app") icon => (Launch_Icon "Dictionary") category => App_Category.Reference
       color => (App_Color.RGB (RGB_Color red => 196 green => 40 blue => 62))))
+  # The Bible (APP-005), beside the Dictionary in the quiet Reference group.
+  (setting "desktop.launch.57-bible"
+    (Launch_Entry label => "Bible" action => (Launch_Action.Program "bible.app") icon => (Launch_Icon "Bible") category => App_Category.Reference
+      color => (App_Color.RGB (RGB_Color red => 70 green => 96 blue => 184))))
   (setting "desktop.launch.60-sameboy"
     (Launch_Entry label => "SameBoy" action => (Launch_Action.Program "sameboy.app") icon => (Launch_Icon "Gameboy") category => App_Category.Games
       color => (App_Color.RGB (RGB_Color red => 116 green => 116 blue => 154))))

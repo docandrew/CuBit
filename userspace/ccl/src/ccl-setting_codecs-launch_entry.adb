@@ -71,6 +71,9 @@ package body CCL.Setting_Codecs.Launch_Entry with SPARK_Mode is
       elsif R.Next_Is_Word (Source, Position, "App_Category.Tools") then
          R.Expect_Word (Source, Position, OK, "App_Category.Tools");
          Item := Tools;
+      elsif R.Next_Is_Word (Source, Position, "App_Category.Reference") then
+         R.Expect_Word (Source, Position, OK, "App_Category.Reference");
+         Item := Reference;
       else
          OK := False;
       end if;

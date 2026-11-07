@@ -1,0 +1,58 @@
+{
+  "comment": "The Bible texts of the cubit-bible asset package (APP-005), pinned by SHA-256. tools/build_bible.py fetches each once (https only, empty environment), refuses a mismatch, converts it and copies the licence statements below into BIBLE-NOTICE. The files are untrusted data: they are read as zip archives of USFM text and never executed. eBible.org regenerates its archives; a changed archive is refused, never used: re-pin it after checking the change (tools/build_bible.py --pin NAME).",
+  "translations": [
+    {
+      "name": "kjv",
+      "abbreviation": "KJV",
+      "title": "King James Version (1769) with Apocrypha",
+      "url": "https://ebible.org/Scriptures/eng-kjv_usfm.zip",
+      "sha256": "121790462a6093a4a02c1f829a8dd755d6c7e2b0c012b22c6f728db0a482cada",
+      "retrieved": "2026-11-06",
+      "publisher": "eBible.org and the CrossWire Bible Society (archive dated 2026-11-03)",
+      "licence": "Public Domain. The King James Version of 1611, Oxford standard text of 1769, with the Apocrypha. Outside the United Kingdom it is in the public domain; in the United Kingdom the rights are vested in the Crown under letters patent (the Queen's/King's Printer's patent), so printing it there or importing printed copies needs permission. eBible.org: \"You may copy the King James Version of the Holy Bible freely.\""
+    },
+    {
+      "name": "bsb",
+      "abbreviation": "BSB",
+      "title": "Berean Standard Bible",
+      "url": "https://ebible.org/Scriptures/engbsb_usfm.zip",
+      "sha256": "75ca91d5a5c69ca4cbdeabdb03ea1a458db20cf3966abe15d86df086acf7fbc4",
+      "retrieved": "2026-11-06",
+      "publisher": "BSB Publishing, LLC, through eBible.org (archive dated 2026-10-30)",
+      "licence": "Public Domain. The Berean Standard Bible was dedicated to the public domain by BSB Publishing on 30 April 2023 (berean.bible/terms.htm): it may be freely copied, distributed, published and translated."
+    },
+    {
+      "name": "web",
+      "abbreviation": "WEB",
+      "title": "World English Bible with the Deuterocanon",
+      "url": "https://ebible.org/Scriptures/eng-web_usfm.zip",
+      "sha256": "05b0440bd8994dd4da7cc53dd8167a759ed7c09617e4a562c64eb9b3343589c8",
+      "retrieved": "2026-11-06",
+      "publisher": "eBible.org (Michael Paul Johnson; 2020 stable text, archive dated 2026-10-30)",
+      "licence": "Public Domain. \"The World English Bible is in the Public Domain. That means that it is not copyrighted. However, 'World English Bible' is a Trademark of eBible.org. ... All we ask is that if you CHANGE the actual text of the World English Bible in any way, you not call the result the World English Bible any more.\" CuBit does not change the text: footnotes, cross-references and Strong's numbers are left out, and the words are unchanged."
+    }
+  ],
+  "fonts": [
+    {
+      "name": "literata",
+      "title": "Literata 3.103 Regular (Google Fonts / TypeTogether)",
+      "url": "https://raw.githubusercontent.com/googlefonts/literata/0c2761b727a1b3a7cffd313c37f0f5163dfc7a63/fonts/ttf/Literata-Regular.ttf",
+      "sha256": "0390890de9bb9d5862a6ba4125b82c61792ccc3d66b63e73eee75c1a16fcd208",
+      "licence": "SIL Open Font License 1.1 (userspace/lib/ui/licenses/LITERATA_OFL.txt). The Bible app embeds it (userspace/apps/bible/component.ccl pins the same digest)."
+    },
+    {
+      "name": "source-serif-4",
+      "title": "Source Serif 4.005 Regular (Adobe)",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-serif/2823e993c53fca27c5c8749f529b56a5a7c77b6b/TTF/SourceSerif4-Regular.ttf",
+      "sha256": "e5a4ee6a3d87bb9024796be390c6771e2a0eb1883dae25effaf57ca01668e24b",
+      "licence": "SIL Open Font License 1.1 (userspace/lib/ui/licenses/). The Bible app embeds it (userspace/apps/bible/component.ccl pins the same digest)."
+    },
+    {
+      "name": "eb-garamond",
+      "title": "EB Garamond 12 Regular (Octavio Pardo, Georg Duffner)",
+      "url": "https://raw.githubusercontent.com/octaviopardo/EBGaramond12/106a4a6d377987459ae5e68673a4570f13b957fb/fonts/ttf/EBGaramond-Regular.ttf",
+      "sha256": "2028dc06d3c130b4761693481436a32a8e35ed500bf58c25c53de004106125b8",
+      "licence": "SIL Open Font License 1.1 (userspace/lib/ui/licenses/). The Bible app embeds it (userspace/apps/bible/component.ccl pins the same digest)."
+    }
+  ]
+}

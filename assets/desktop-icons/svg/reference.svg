@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c99a62"/><stop offset="1" stop-color="#7a5126"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e0405a"/><stop offset="1" stop-color="#8e1023"/></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe58a"/><stop offset="1" stop-color="#c8901c"/></linearGradient><linearGradient id="g4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe58a"/><stop offset="1" stop-color="#c8901c"/></linearGradient><linearGradient id="g5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4660b8"/><stop offset="1" stop-color="#1b2a66"/></linearGradient><linearGradient id="g6" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe58a"/><stop offset="1" stop-color="#c8901c"/></linearGradient><linearGradient id="g7" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe58a"/><stop offset="1" stop-color="#c8901c"/></linearGradient><linearGradient id="g8" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e2d6bd"/></linearGradient></defs>
+<polygon points="4.00,40.00 44.00,40.00 44.00,44.00 4.00,44.00" fill="url(#g1)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="9.00,8.00 21.00,8.00 21.00,40.00 9.00,40.00" fill="url(#g2)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="10.50,13.00 19.50,13.00 19.50,15.20 10.50,15.20" fill="url(#g3)"/>
+<polygon points="10.50,34.00 19.50,34.00 19.50,36.20 10.50,36.20" fill="url(#g4)"/>
+<polyline points="11.00,9.60 19.00,9.60" fill="none" stroke="#ffffff" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="23.00,12.00 35.00,12.00 35.00,40.00 23.00,40.00" fill="url(#g5)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="24.50,17.00 33.50,17.00 33.50,19.20 24.50,19.20" fill="url(#g6)"/>
+<polygon points="24.50,34.00 33.50,34.00 33.50,36.20 24.50,36.20" fill="url(#g7)"/>
+<polyline points="25.00,13.60 33.00,13.60" fill="none" stroke="#ffffff" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="35.00,15.00 39.00,17.00 39.00,40.00 35.00,40.00" fill="url(#g8)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+</svg>

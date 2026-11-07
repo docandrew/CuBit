@@ -9,6 +9,7 @@ with CCL_Image_Bindings;
 with CCL_Image_Loading;
 with CCL_File_Bindings;
 with CCL_Lexicon_Bindings;
+with CCL_Bible_Bindings;
 with CCL_Calc_Bindings;
 with CCL_Install_Bindings;
 with CCL_Llm_Bindings;
@@ -52,6 +53,7 @@ package body CCL_Host_Environment is
       if Success then CCL_Wifi_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Program_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Lexicon_Bindings.Install (Catalog, Grants, Success); end if;
+      if Success then CCL_Bible_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Calc_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Install_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Llm_Bindings.Install (Catalog, Grants, Success); end if;
@@ -84,7 +86,8 @@ package body CCL_Host_Environment is
       CCL_Image_Loading.Handles (Binding) or else CCL_File_Bindings.Handles (Binding) or else
       CCL_Process_Bindings.Handles (Binding) or else CCL_Wifi_Bindings.Handles (Binding) or else
       CCL_Program_Bindings.Handles (Binding) or else
-      CCL_Lexicon_Bindings.Handles (Binding) or else CCL_Calc_Bindings.Handles (Binding) or else
+      CCL_Lexicon_Bindings.Handles (Binding) or else CCL_Bible_Bindings.Handles (Binding) or else
+      CCL_Calc_Bindings.Handles (Binding) or else
       CCL_Install_Bindings.Handles (Binding) or else CCL_Llm_Bindings.Handles (Binding) or else
       CCL_Secrets_Bindings.Handles (Binding) or else CCL_Agent_Bindings.Handles (Binding));
 
@@ -118,6 +121,8 @@ package body CCL_Host_Environment is
          CCL_Program_Bindings.Invoke (Binding, Argument, Streams, Reply);
       elsif CCL_Lexicon_Bindings.Handles (Binding) then
          CCL_Lexicon_Bindings.Invoke (Binding, Argument, Reply);
+      elsif CCL_Bible_Bindings.Handles (Binding) then
+         CCL_Bible_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Calc_Bindings.Handles (Binding) then
          CCL_Calc_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Install_Bindings.Handles (Binding) then

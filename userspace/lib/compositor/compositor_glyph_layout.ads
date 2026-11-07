@@ -8,20 +8,25 @@ package Compositor_Glyph_Layout with SPARK_Mode, Pure is
    -- em at a density is Base_Em * Numerator / Denominator: a multiple of
    -- the base em (CuBit.UI_Metrics), the font engine's check too.
    Base_Em : constant := CuBit.UI_Metrics.Base_Em;
-   -- Bundled faces by the font engine's face number (CuBit.Fonts.Face'Pos):
-   -- Sans, Monospace and the emphasis face Sans_Semibold.
-   Face_Count : constant := 3;
+   -- Faces by the font engine's face number (CuBit.Fonts.Face'Pos): the
+   -- bundled Sans, Monospace and emphasis face Sans_Semibold, then the
+   -- reading-face slots a program fills itself (APP-005).
+   Face_Count : constant := 6;
+   Bundled_Face_Count : constant := 3;
    subtype Face_Index is Natural range 0 .. Face_Count - 1;
    Sans_Face : constant Face_Index := 0;
    Semibold_Face : constant Face_Index := 2;
-   -- Rasterized code points: printable ASCII.
+   -- Rasterized code points: printable ASCII, and for the reading face the
+   -- Windows-1252 upper half (16#80# .. 16#FF#; the font engine draws '?'
+   -- for any other face's).
    First_Code : constant := 32;
-   Last_Code : constant := 126;
+   Last_ASCII : constant := 126;
+   Last_Code : constant := 255;
    subtype Code_Point is Natural range First_Code .. Last_Code;
-   Code_Count : constant := Last_Code - First_Code + 1;
-   -- Every face's whole printable set at one density: the most distinct
-   -- glyph keys one frame (one output density) can draw.
-   Repertoire : constant := Face_Count * Code_Count;
+   Code_Count : constant := Last_ASCII - First_Code + 1;
+   -- Every bundled face's whole printable set at one density: the most
+   -- distinct glyph keys one Desktop frame (one output density) can draw.
+   Repertoire : constant := Bundled_Face_Count * Code_Count;
    Base_Line : constant := CuBit.UI_Metrics.Line_Height;
    Base_Width_Bound : constant := CuBit.UI_Metrics.Glyph_Width_Bound;
    Row_Alignment : constant := 16;

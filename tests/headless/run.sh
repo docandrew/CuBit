@@ -81,8 +81,8 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, or boot-timeline (--accel kvm --timeout 60)
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
@@ -283,7 +283,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart)
+        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|bible|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         network-authority)
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
@@ -330,7 +330,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -615,6 +615,12 @@ with open(sys.argv[1], "wb") as f:
         ;;
     dictionary)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-dictionary.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    bible)
+        # The Bible (APP-005): the app reads its translations (about 9 MB
+        # each) from the cubit-bible asset package.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bible.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     logs)
@@ -1380,6 +1386,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
        [ "$TEST_NAME" = "lexicon" ] ||
        [ "$TEST_NAME" = "dictionary" ] ||
+       [ "$TEST_NAME" = "bible" ] ||
        [ "$TEST_NAME" = "logs" ] ||
        [ "$TEST_NAME" = "devmem-denials" ] ||
        [ "$TEST_NAME" = "process-kill" ] ||
@@ -1434,8 +1441,14 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
         WALLPAPER_ITEMS=$(cd "$KERNEL_DIR/build/Assets" && find "$WALLPAPER_PACKAGE" -maxdepth 1 -type f | sort)
+        # The Bible's package only where the Bible runs (25 MB).
+        BIBLE_ITEMS=""
+        if [ "$TEST_NAME" = "bible" ]; then
+            BIBLE_ITEMS="cubit-bible/1/kjv.bible cubit-bible/1/bsb.bible cubit-bible/1/web.bible cubit-bible/1/BIBLE-NOTICE"
+        fi
         for ASSET_ITEM in $WALLPAPER_ITEMS \
-          cubit-icons/4/applications.qoi cubit-lexicon/1/english.lexicon cubit-lexicon/1/LEXICON-NOTICE; do
+          cubit-icons/5/applications.qoi cubit-lexicon/1/english.lexicon cubit-lexicon/1/LEXICON-NOTICE \
+          $BIBLE_ITEMS; do
             ASSET_PACKAGE="Assets/${ASSET_ITEM%/*}"
             debugfs -w -R "mkdir ${ASSET_PACKAGE%/*}" "$TEMP_DISK" >/dev/null 2>&1
             debugfs -w -R "mkdir $ASSET_PACKAGE" "$TEMP_DISK" >/dev/null 2>&1
@@ -1561,7 +1574,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
        [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
-       [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] ||
+       [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] || [ "$TEST_NAME" = "bible" ] ||
        [ "$TEST_NAME" = "logs" ]; then
         if [ "$TEST_NAME" = "ccl-vm" ]; then
             CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
@@ -1586,6 +1599,8 @@ if [ -n "$INIT_PROFILE" ]; then
             CCL_IMAGES="ccl-console.app lexicon.svc clock.svc desktop.svc display.svc logstore.svc"
         elif [ "$TEST_NAME" = "dictionary" ]; then
             CCL_IMAGES="dictionary.app lexicon.svc clock.svc desktop.svc display.svc logstore.svc"
+        elif [ "$TEST_NAME" = "bible" ]; then
+            CCL_IMAGES="bible.app clock.svc desktop.svc display.svc logstore.svc"
         else
             CCL_IMAGES="ccl-workbench.app clock.svc desktop.svc display.svc"
             if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then
@@ -3084,7 +3099,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
-   [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] ||
+   [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] || [ "$TEST_NAME" = "bible" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "boot-timeline" ] ||
    { [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; }; then
@@ -4374,6 +4389,57 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 lexicon_keys esc r e c i e v e
                 lexicon_shot dictionary-not-found
             fi
+        elif [ "$TEST_NAME" = "bible" ]; then
+            # The Bible (APP-005) by keyboard: it opens at John 1; a typed
+            # reference opens John 3; words search; Tab is the next
+            # translation; Ctrl+Page Down the next chapter. Each passage shown
+            # is a serial marker ("bible: showing John 3 (KJV)").
+            bible_wait() {
+                local attempt
+                for ((attempt = 0; attempt < 300; attempt++)); do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null 2>&1 && return 0
+                    sleep 0.1
+                done
+                echo "headless: the Bible did not report: $1" >&2
+                exit 1
+            }
+            bible_keys() {
+                local key
+                for key in "$@"; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            }
+            bible_shot() {
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-$1.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                sleep 0.5
+            }
+            bible_wait "bible: window ready"
+            bible_wait "bible: showing John 1 (KJV, Literata)"
+            bible_shot bible-john-1
+            bible_keys j o h n spc 3 ret
+            bible_wait "bible: showing John 3 (KJV, Literata)"
+            bible_shot bible-john-3-literata
+            # F8: the next reading face, live (each shown once).
+            bible_keys f8
+            bible_wait "bible: showing John 3 (KJV, Source Serif 4)"
+            bible_shot bible-john-3-source-serif-4
+            bible_keys f8
+            bible_wait "bible: showing John 3 (KJV, EB Garamond)"
+            bible_shot bible-john-3-eb-garamond
+            bible_keys f8
+            bible_wait "bible: showing John 3 (KJV, Literata)"
+            bible_keys f a i t h
+            bible_shot bible-search-faith
+            bible_keys esc tab
+            bible_wait "bible: showing John 3 (BSB, Literata)"
+            bible_keys ctrl-pgdn
+            bible_wait "bible: showing John 4 (BSB, Literata)"
+            bible_shot bible-john-4-bsb
+            bible_keys p s spc 2 3 ret
+            bible_wait "bible: showing Psalm 23 (BSB, Literata)"
+            bible_shot bible-psalm-23-bsb
         elif [ "$TEST_NAME" = "text" ]; then
             # CuBit Text (docs/text-editor.md) by keyboard only: open the
             # granted document, type a line at its end, save (sibling, flush,
@@ -6458,6 +6524,20 @@ dictionary: window ready
 ui-app: protected frame published
 "
         ;;
+    bible)
+        required_markers="
+bible: starting
+bible: window ready
+ui-app: protected frame published
+bible: showing John 1 (KJV, Literata)
+bible: showing John 3 (KJV, Literata)
+bible: showing John 3 (KJV, Source Serif 4)
+bible: showing John 3 (KJV, EB Garamond)
+bible: showing John 3 (BSB, Literata)
+bible: showing John 4 (BSB, Literata)
+bible: showing Psalm 23 (BSB, Literata)
+"
+        ;;
     ccl-workspace)
         required_markers="
 clock: registered
@@ -6632,7 +6712,7 @@ mixer: HDA period IRQ active
 display: gpu not primary, using linear-fb
 desktop: wallpaper catalog @nvme:0/Assets/cubit-wallpapers/2/catalog.ccl loaded 1 wallpaper(s)
 desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/2/cubes.qoi size= 2048 x 576
-desktop: icons loaded @nvme:0/Assets/cubit-icons/4/applications.qoi
+desktop: icons loaded @nvme:0/Assets/cubit-icons/5/applications.qoi
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/

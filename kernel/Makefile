@@ -630,7 +630,7 @@ test-qoi: wallpaper-assets icon-assets
 		--reference ../tests/qoi/build/reference >/dev/null
 	$(ALR) gprbuild -q -p -P ../tests/qoi/qoi.gpr
 	../tests/qoi/build/qoi_tests ../tests/qoi/build/fixtures ../tests/qoi/build/Assets ../tests/qoi/build/reference
-	python3 ../tools/build_icon_assets.py ../tests/qoi/build/Assets/cubit-icons/4 \
+	python3 ../tools/build_icon_assets.py ../tests/qoi/build/Assets/cubit-icons/5 \
 		--reference ../tests/qoi/build/reference >/dev/null
 	python3 ../tests/qoi/make_icon_fixtures.py ../tests/qoi/build/fixtures
 	$(ALR) gprbuild -q -p -P ../tests/qoi/icon_store.gpr
@@ -1910,6 +1910,16 @@ dictionary: ccl-build user_runtime ccl-manifest ui-fonts-native
 	$(CCL_BUILD) ../userspace/apps/dictionary/component.ccl
 	cp ../userspace/apps/dictionary/build/dictionary.app isodir/boot/dictionary.app
 
+# The Bible (APP-005): its proved core in userspace/lib/bible, the reading
+# face (Literata) linked in from its pinned download, the texts read from
+# the cubit-bible asset package (bible-assets).
+.PHONY : bible
+bible: ccl-build user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/bible/build
+	rm -f ../userspace/apps/bible/build/bible.app
+	$(CCL_BUILD) ../userspace/apps/bible/component.ccl
+	cp ../userspace/apps/bible/build/bible.app isodir/boot/bible.app
+
 # Build the live writable-storage diagnostic app.
 # HW-001 step 4: whole-disk writes behind the block write grant (headless
 # ufs-write); the installer's stand-in, holding disk-install.
@@ -2169,7 +2179,7 @@ $(WALLPAPER_STAMP): $(WALLPAPER_SOURCES) ../tools/build_wallpaper_assets.py ../t
 # Desktop's application icon atlas (Desktop_Icon_Assets): the CuBit icon
 # PNGs at every exported edge, in Desktop_Icons.Icon_ID order, packed by
 # tools/build_icon_assets.py.
-ICON_PACKAGE := $(ASSET_ROOT)/cubit-icons/4
+ICON_PACKAGE := $(ASSET_ROOT)/cubit-icons/5
 ICON_ASSETS := build/$(ICON_PACKAGE)/applications.qoi
 ICON_SOURCES := $(wildcard ../assets/desktop-icons/png/*.png) $(wildcard ../assets/penny/penny-*.png)
 ICON_DISK_FILES = --file "$(ICON_PACKAGE)/applications.qoi=$(ICON_ASSETS)"
@@ -2191,10 +2201,25 @@ $(LEXICON_ASSETS) &: ../tools/build_lexicon.py ../flake.lock ../flake.nix
 	$(ALR) python3 -I ../tools/build_lexicon.py build/$(LEXICON_PACKAGE)/english.lexicon \
 		--notice build/$(LEXICON_PACKAGE)/LEXICON-NOTICE
 
+# The Bible (APP-005): the KJV with the Apocrypha, the BSB and the WEB with
+# the deuterocanon, from the public-domain sources pinned by SHA-256 in
+# assets/bible/sources.json (fetched once, https only; a changed source is
+# refused), compiled into one read-only image each; their provenance and
+# licences in BIBLE-NOTICE.
+BIBLE_PACKAGE := $(ASSET_ROOT)/cubit-bible/1
+BIBLE_ASSETS := $(foreach t,kjv bsb web,build/$(BIBLE_PACKAGE)/$(t).bible) build/$(BIBLE_PACKAGE)/BIBLE-NOTICE
+BIBLE_DISK_FILES = $(foreach f,$(BIBLE_ASSETS),--file "$(BIBLE_PACKAGE)/$(notdir $(f))=$(f)")
+
+.PHONY : bible-assets
+bible-assets: $(BIBLE_ASSETS)
+$(BIBLE_ASSETS) &: ../tools/build_bible.py ../assets/bible/sources.json
+	$(ALR) python3 -I ../tools/build_bible.py build/$(BIBLE_PACKAGE)
+
 # Every asset package the desktop session reads (Desktop: wallpapers and
-# icons; lexicon.svc: the lexicon), and their disk placements.
-DESKTOP_ASSETS = $(WALLPAPER_ASSETS) $(ICON_ASSETS) $(LEXICON_ASSETS)
-DESKTOP_ASSET_DISK_FILES = $(WALLPAPER_DISK_FILES) $(ICON_DISK_FILES) $(LEXICON_DISK_FILES)
+# icons; lexicon.svc: the lexicon; bible.app: the Bible), and their disk
+# placements.
+DESKTOP_ASSETS = $(WALLPAPER_ASSETS) $(ICON_ASSETS) $(LEXICON_ASSETS) $(BIBLE_ASSETS)
+DESKTOP_ASSET_DISK_FILES = $(WALLPAPER_DISK_FILES) $(ICON_DISK_FILES) $(LEXICON_DISK_FILES) $(BIBLE_DISK_FILES)
 
 # Build the userspace display scanout service prototype
 .PHONY : display
@@ -2271,7 +2296,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/config-inspector.app isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app isodir/boot/trace-viewer.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc isodir/boot/timesync.svc isodir/boot/tls.svc isodir/boot/config-storage.svc \
-	isodir/boot/lexicon.svc isodir/boot/dictionary.app \
+	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/bible.app \
 	isodir/boot/desktop-shell.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
@@ -2303,15 +2328,18 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app isodir/boot/text.app \
 	isodir/boot/calculator.app isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/trace-viewer.app isodir/boot/config-storage.svc \
-	isodir/boot/lexicon.svc isodir/boot/dictionary.app \
+	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/bible.app \
 	$(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
+
+# The session's startup profile (the Bible demo starts the Bible too).
+DESKTOP_INIT ?= ../tests/headless/init-desktop-session.ccl
 
 .PHONY : prepare-desktop-disk
 prepare-desktop-disk: $(DESKTOP_ASSETS)
 	python3 ../tools/prepare_desktop_disk.py "$(DESKTOP_BASE_DISK)" "$(DESKTOP_SCRATCH_DISK)" --replace \
 		--boot $(DESKTOP_OVERLAY) \
-		--file "init.ccl=../tests/headless/init-desktop-session.ccl" $(DESKTOP_SAMPLE_ARGS) \
+		--file "init.ccl=$(DESKTOP_INIT)" $(DESKTOP_SAMPLE_ARGS) \
 		$(DESKTOP_ASSET_DISK_FILES)
 
 .PHONY : servo
@@ -2331,7 +2359,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop-metrics display logstore \
 	desktop-shell devices files text calculator config-inspector ccl-workbench ccl-console logs trace-viewer config-storage clock timesync tls doom sameboy \
-	lexicon dictionary
+	lexicon dictionary bible
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -2401,7 +2429,7 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage teapots calculator lexicon dictionary $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage teapots calculator lexicon dictionary bible $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
@@ -2597,7 +2625,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets agent ccl-remote cpu-times-check
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets agent ccl-remote cpu-times-check
 
 .PHONY : headless-test
 headless-test: world

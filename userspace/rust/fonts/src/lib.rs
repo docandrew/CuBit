@@ -1,4 +1,5 @@
-//! Shared userspace TrueType rasterizer. Only bundled font bytes are accepted.
+//! Shared userspace TrueType rasterizer. Only bundled font bytes, and a
+//! program's own embedded face (`cubit_font_register`), are accepted.
 #![cfg_attr(target_os = "none", no_std)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
@@ -12,7 +13,7 @@ use alloc::boxed::Box;
 use core::{
     cell::UnsafeCell,
     ptr,
-    sync::atomic::{AtomicPtr, AtomicU8, Ordering},
+    sync::atomic::{AtomicU8, AtomicUsize, Ordering},
 };
 use outline::{Darken, Outline, Zones};
 use ttf_parser::{Face, GlyphId, Tag, gpos::PairAdjustment, gpos::PositioningSubtable};
@@ -24,17 +25,49 @@ const SEMIBOLD: &[u8] = include_bytes!(env!("IBM_PLEX_SANS_SEMIBOLD_FONT"));
 pub const FACE_SANS: u32 = 0;
 pub const FACE_MONO: u32 = 1;
 pub const FACE_SANS_SEMIBOLD: u32 = 2;
+/// The reading faces: up to READING_SLOTS faces a program embeds (or, later,
+/// the system font store hands it) and registers itself, one per slot
+/// (`cubit_font_register`; the Bible app's Literata, Source Serif 4 and EB
+/// Garamond). No bytes are linked into other programs; until a slot is
+/// registered its glyphs are null. Each slot is its own face number, so its
+/// cells and every density-mask cache stay valid when a reader switches.
+pub const FACE_SERIF: u32 = 3;
+pub const READING_SLOTS: usize = 3;
 /// Glyph cell columns and rows (CuBit.UI_Metrics.Glyph_Cell_Columns/_Rows,
 /// the shape of CuBit.Fonts.Coverage): the double-size raster's widest
 /// glyph past its origin in whole 8-pixel blocks, and its line plus 2.
 pub const WIDTH: usize = 40;
 pub const HEIGHT: usize = 44;
-const FACES: usize = 3;
-const SIZES: usize = 2;
+const FACES: usize = BUNDLED_FACES + READING_SLOTS;
+/// The faces linked into every program (the density masks' and the
+/// layout tests' faces).
+const BUNDLED_FACES: usize = 3;
+/// Raster sizes, in `CuBit.Fonts.Raster_Size` order: the base em, twice it,
+/// and the small em (superscripts: verse numbers, footnote marks).
+const SIZES: usize = 3;
+pub const SIZE_NORMAL: u32 = 0;
+pub const SIZE_DOUBLE: u32 = 1;
+pub const SIZE_SMALL: u32 = 2;
+/// The small em: three quarters of the base em, a whole multiple of it over
+/// a denominator up to 16 at every UI density (the density masks' rule).
+pub const SMALL_EM_NUMERATOR: u32 = 3;
+pub const SMALL_EM_DENOMINATOR: u32 = 4;
 const FIRST_CODE: u32 = 32;
 const LAST_CODE: u32 = 126;
 const CHARACTERS: usize = (LAST_CODE - FIRST_CODE + 1) as usize;
+/// The reading face also draws 16#80# .. 16#FF# as Windows-1252: curly
+/// quotes, dashes, the ellipsis, the pilcrow and the Latin-1 letters
+/// (Bible_Text maps UTF-8 to these).
+const FIRST_EXTENDED: u32 = 0x80;
+const LAST_EXTENDED: u32 = 0xFF;
+pub const EXTENDED: usize = (LAST_EXTENDED - FIRST_EXTENDED + 1) as usize;
 const FALLBACK_CODE: u32 = b'?' as u32;
+/// Windows-1252 at 16#80# .. 16#9F# (0: unassigned, drawn as '?').
+const WINDOWS_1252_HIGH: [u16; 32] = [
+    0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0,
+    0x017D, 0, 0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A,
+    0x0153, 0, 0x017E, 0x0178,
+];
 /// Logical em and line box of the normal raster size, in pixels: the UI's
 /// base em (CuBit.UI_Metrics.Base_Em) and its line, the faces' ascender
 /// plus descender at that em, rounded (`base_line_is_the_fonts_line_box`).
@@ -51,6 +84,9 @@ pub const ORIGIN: u32 = 2;
 pub const PHASES: u32 = 4;
 /// Fixed-point layout unit: 1/64 pixel.
 pub const PEN_UNIT: f32 = 64.0;
+/// A registered face's bytes: at most this many (Literata Regular is
+/// 320 KiB).
+pub const MAXIMUM_REGISTERED_BYTES: usize = 4 * 1024 * 1024;
 /// How glyphs are shaped before rasterizing: light (vertical-only) hinting
 /// and stem darkening, at every density. Tests turn them off to compare with
 /// ab_glyph.
@@ -86,16 +122,73 @@ pub(crate) fn darken(font: &Face, ratio: f32, style: Style) -> Darken {
     if DARKEN_Y { d } else { Darken { y: 0.0, ..d } }
 }
 
-fn face_bytes(face: usize) -> &'static [u8] {
+// The registered reading faces: each slot's bytes' address and length,
+// published once (release) and never changed.
+static SERIF_BYTES: [AtomicUsize; READING_SLOTS] = [const { AtomicUsize::new(0) }; READING_SLOTS];
+static SERIF_LENGTH: [AtomicUsize; READING_SLOTS] = [const { AtomicUsize::new(0) }; READING_SLOTS];
+
+/// A reading face's slot, if `face` is one.
+fn slot(face: usize) -> Option<usize> {
+    face.checked_sub(BUNDLED_FACES).filter(|&s| s < READING_SLOTS)
+}
+
+/// A face's font bytes: bundled, or registered (None until it is).
+pub(crate) fn face_bytes(face: usize) -> Option<&'static [u8]> {
     match face as u32 {
-        FACE_SANS => SANS,
-        FACE_MONO => MONO,
-        _ => SEMIBOLD,
+        FACE_SANS => Some(SANS),
+        FACE_MONO => Some(MONO),
+        FACE_SANS_SEMIBOLD => Some(SEMIBOLD),
+        _ if slot(face).is_some() => {
+            let slot = slot(face)?;
+            let address = SERIF_BYTES[slot].load(Ordering::Acquire);
+            if address == 0 {
+                return None;
+            }
+            let length = SERIF_LENGTH[slot].load(Ordering::Relaxed);
+            // SAFETY: cubit_font_register's caller guarantees the bytes are
+            // immutable and live for the process; published once, above.
+            Some(unsafe { core::slice::from_raw_parts(address as *const u8, length) })
+        }
+        _ => None,
     }
 }
 
-fn printable(code: u32) -> u32 {
-    if (FIRST_CODE..=LAST_CODE).contains(&code) { code } else { FALLBACK_CODE }
+/// The face draws 16#80# .. 16#FF# (Windows-1252).
+pub(crate) fn extended(face: usize) -> bool {
+    slot(face).is_some()
+}
+
+/// Characters a face draws: printable ASCII, and for the reading face the
+/// Windows-1252 upper half.
+const fn repertoire(face: usize) -> usize {
+    if face >= BUNDLED_FACES { CHARACTERS + EXTENDED } else { CHARACTERS }
+}
+
+/// The code a face draws for `code`: itself, or '?'.
+pub(crate) fn printable(face: usize, code: u32) -> u32 {
+    if (FIRST_CODE..=LAST_CODE).contains(&code)
+        || (extended(face) && (FIRST_EXTENDED..=LAST_EXTENDED).contains(&code) && char_of(code).is_some())
+    {
+        code
+    } else {
+        FALLBACK_CODE
+    }
+}
+
+/// The character of a printable code: ASCII, Windows-1252 above it.
+pub(crate) fn char_of(code: u32) -> Option<char> {
+    match code {
+        0x80..=0x9F => match WINDOWS_1252_HIGH[(code - 0x80) as usize] {
+            0 => None,
+            unicode => char::from_u32(u32::from(unicode)),
+        },
+        _ => char::from_u32(code),
+    }
+}
+
+/// A printable code's slot in its face's repertoire.
+fn slot_of(code: u32) -> usize {
+    if code <= LAST_CODE { (code - FIRST_CODE) as usize } else { CHARACTERS + (code - FIRST_EXTENDED) as usize }
 }
 
 fn round_positive_metric(value: f32) -> u32 {
@@ -106,8 +199,54 @@ pub(crate) fn zones(font: &Face, ratio: f32, hinted: bool) -> Zones {
     if hinted { Zones::measure(font, ratio) } else { Zones::unhinted(ratio) }
 }
 
+/// A raster size's em as a fraction of the base em.
+fn size_scale(size: usize) -> f32 {
+    match size as u32 {
+        SIZE_NORMAL => 1.0,
+        SIZE_DOUBLE => 2.0,
+        _ => SMALL_EM_NUMERATOR as f32 / SMALL_EM_DENOMINATOR as f32,
+    }
+}
+
+/// A face's line box at an em of `em` pixels: its baseline row and height.
+/// The bundled faces' is their ascender and BASE_LINE (scaled). A
+/// registered face's ascender may be far above its ink (Literata's is
+/// 1.18 em, for stacked accents it does not need here), so its baseline
+/// sits just above the tallest glyph it draws, in the same line box.
+pub(crate) fn line_box(face: usize, font: &Face, em: f32) -> (i32, u32) {
+    let ratio = em / f32::from(font.units_per_em());
+    let height = round_positive_metric(BASE_LINE as f32 * em / BASE_EM);
+    let ascender = if face < BUNDLED_FACES { f32::from(font.ascender()) } else { f32::from(tallest(face, font)) };
+    (round_positive_metric(ascender * ratio) as i32, height)
+}
+
+// Each registered face's tallest glyph (font units), measured once.
+static TALLEST: [AtomicUsize; READING_SLOTS] = [const { AtomicUsize::new(0) }; READING_SLOTS];
+
+fn tallest(face: usize, font: &Face) -> i16 {
+    let Some(slot) = slot(face) else { return font.ascender() };
+    let known = TALLEST[slot].load(Ordering::Relaxed);
+    if known != 0 {
+        return known as i16;
+    }
+    let mut top: i16 = font.ascender().min(font.units_per_em() as i16);
+    let mut highest: i16 = 1;
+    for code in (FIRST_CODE..=LAST_CODE).chain(FIRST_EXTENDED..=LAST_EXTENDED) {
+        if printable(face, code) != code {
+            continue;
+        }
+        let bounds = char_of(code).and_then(|c| font.glyph_index(c)).and_then(|id| font.glyph_bounding_box(id));
+        if let Some(b) = bounds {
+            highest = highest.max(b.y_max);
+        }
+    }
+    top = top.min(highest);
+    TALLEST[slot].store(top.max(1) as usize, Ordering::Relaxed);
+    top.max(1)
+}
+
 /// Stable C/Ada ABI. Coverage is grayscale, not LCD subpixel color. The pen
-/// origin is column `origin` on baseline row round(ascender); the cell keeps
+/// origin is column `origin` on baseline row `baseline`; the cell keeps
 /// all ink, also left of the origin and past the advance. Rows/columns
 /// outside the ink box are zero.
 #[repr(C)]
@@ -122,7 +261,8 @@ pub struct Cell {
     pub ink_top: u32,
     pub ink_width: u32,
     pub ink_height: u32,
-    pub reserved: u32,
+    /// The baseline's row: text in different faces or sizes lines up by it.
+    pub baseline: u32,
     pub alpha: [[u8; WIDTH]; HEIGHT],
 }
 impl Cell {
@@ -134,23 +274,19 @@ impl Cell {
         ink_top: 0,
         ink_width: 0,
         ink_height: 0,
-        reserved: 0,
+        baseline: 0,
         alpha: [[0; WIDTH]; HEIGHT],
     };
 }
 
 fn rasterize(face: usize, size: usize, code: u32, phase: u32, style: Style) -> Option<Cell> {
-    let font = Face::parse(face_bytes(face), 0).ok()?;
-    let scale = if size == 0 { 1.0 } else { 2.0 };
-    let ratio = BASE_EM * scale / f32::from(font.units_per_em());
-    let id = font.glyph_index(char::from_u32(code)?)?;
+    let font = Face::parse(face_bytes(face)?, 0).ok()?;
+    let em = BASE_EM * size_scale(size);
+    let ratio = em / f32::from(font.units_per_em());
+    let id = font.glyph_index(char_of(code)?)?;
     let advance = libm::roundf(f32::from(font.glyph_hor_advance(id)?) * ratio * PEN_UNIT) as u32;
-    let mut cell = Cell {
-        advance: advance.max(1),
-        height: BASE_LINE * scale as u32,
-        ..Cell::EMPTY
-    };
-    let baseline = round_positive_metric(f32::from(font.ascender()) * ratio) as i32;
+    let (baseline, height) = line_box(face, &font, em);
+    let mut cell = Cell { advance: advance.max(1), height, baseline: baseline as u32, ..Cell::EMPTY };
     let shift = ORIGIN as f32 + phase as f32 / PHASES as f32;
     let zones = zones(&font, ratio, style.hinted);
     if let Outline::Ready(prepared) = outline::prepare(
@@ -177,70 +313,121 @@ fn rasterize(face: usize, size: usize, code: u32, phase: u32, style: Style) -> O
 
 // Published cells: only the thread winning BUILDING writes; a release
 // publication makes the heap cell permanently immutable and never evicted.
-const EMPTY: u8 = 0;
-const BUILDING: u8 = 1;
-const READY: u8 = 2;
-const FAILED: u8 = 3;
+// An entry is one word: EMPTY, BUILDING, FAILED or the cell's address.
+const EMPTY: usize = 0;
+const BUILDING: usize = 1;
+const FAILED: usize = 2;
+const READY_STATE: u8 = 2;
 struct Entry {
-    state: AtomicU8,
-    cell: AtomicPtr<Cell>,
+    cell: AtomicUsize,
 }
 impl Entry {
     const fn new() -> Self {
-        Self { state: AtomicU8::new(EMPTY), cell: AtomicPtr::new(ptr::null_mut()) }
+        Self { cell: AtomicUsize::new(EMPTY) }
     }
 }
-// Three faces, two native raster sizes, four phases, printable ASCII: a bounded
-// table of pointers; a cell (1,184 bytes) is allocated the first time it is
-// drawn, so a process pays only for the glyphs and phases it uses.
-static CACHE: [Entry; FACES * SIZES * PHASES as usize * CHARACTERS] =
-    [const { Entry::new() }; FACES * SIZES * PHASES as usize * CHARACTERS];
+/// Where a face's cells start in CACHE: per face, sizes x phases x its
+/// repertoire, lazily allocated (a cell is 1,184 bytes; a process pays
+/// only for the glyphs, sizes and phases it draws).
+const fn face_base(face: usize) -> usize {
+    let mut base = 0;
+    let mut f = 0;
+    while f < face {
+        base += SIZES * PHASES as usize * repertoire(f);
+        f += 1;
+    }
+    base
+}
+const CACHE_ENTRIES: usize = face_base(FACES);
+static CACHE: [Entry; CACHE_ENTRIES] = [const { Entry::new() }; CACHE_ENTRIES];
 
-/// Returns a permanent, read-only cell, or null for unsupported face/size/phase.
-/// Unknown characters intentionally map to '?'; UTF-8 shaping is separate.
+/// Returns a permanent, read-only cell, or null for unsupported
+/// face/size/phase or an unregistered face. Unknown characters map to '?';
+/// UTF-8 shaping is separate.
 #[unsafe(no_mangle)]
 pub extern "C" fn cubit_font_glyph(face: u32, size: u32, code: u32, phase: u32) -> *const Cell {
     if face as usize >= FACES || size as usize >= SIZES || phase >= PHASES {
         return ptr::null();
     }
-    let code = printable(code);
-    let index = ((face as usize * SIZES + size as usize) * PHASES as usize + phase as usize) * CHARACTERS
-        + (code - FIRST_CODE) as usize;
+    let face = face as usize;
+    let code = printable(face, code);
+    let index = face_base(face) + (size as usize * PHASES as usize + phase as usize) * repertoire(face) + slot_of(code);
     let entry = &CACHE[index];
     loop {
-        match entry.state.load(Ordering::Acquire) {
-            READY => return entry.cell.load(Ordering::Relaxed),
-            FAILED => return ptr::null(),
+        match entry.cell.load(Ordering::Acquire) {
             EMPTY => {
-                if entry
-                    .state
-                    .compare_exchange(EMPTY, BUILDING, Ordering::Acquire, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    match rasterize(face as usize, size as usize, code, phase, STYLE) {
+                if face_bytes(face).is_none() {
+                    return ptr::null(); // not registered yet: never cached
+                }
+                if entry.cell.compare_exchange(EMPTY, BUILDING, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                    match rasterize(face, size as usize, code, phase, STYLE) {
                         Some(cell) => {
-                            entry.cell.store(Box::into_raw(Box::new(cell)), Ordering::Relaxed);
-                            entry.state.store(READY, Ordering::Release);
-                            return entry.cell.load(Ordering::Relaxed);
+                            let address = Box::into_raw(Box::new(cell)) as usize;
+                            entry.cell.store(address, Ordering::Release);
+                            return address as *const Cell;
                         }
                         None => {
-                            entry.state.store(FAILED, Ordering::Release);
+                            entry.cell.store(FAILED, Ordering::Release);
                             return ptr::null();
                         }
                     }
                 }
             }
-            _ => core::hint::spin_loop(),
+            BUILDING => core::hint::spin_loop(),
+            FAILED => return ptr::null(),
+            address => return address as *const Cell,
         }
     }
 }
 
+/// Registers a reading face slot (`FACE_SERIF` + 0 .. READING_SLOTS - 1):
+/// `length` bytes at `bytes`, a
+/// TrueType font the program embeds (ccl-build's pinned `embedded` blob).
+/// 0: registered (or already registered with these bytes); 1: refused
+/// (another face, a null pointer, an empty or oversized font, or other
+/// bytes already registered); 2: not a font this engine draws (it must
+/// parse, hold every printable ASCII glyph, and fit the line box).
+///
+/// # Safety
+/// The bytes must stay valid and unchanged for the rest of the process:
+/// they are read on every cold glyph, never copied.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cubit_font_register(face: u32, bytes: *const u8, length: usize) -> u32 {
+    let Some(slot) = slot(face as usize) else { return 1 };
+    if bytes.is_null() || length == 0 || length > MAXIMUM_REGISTERED_BYTES {
+        return 1;
+    }
+    let address = bytes as usize;
+    match SERIF_BYTES[slot].load(Ordering::Acquire) {
+        0 => {}
+        known if known == address && SERIF_LENGTH[slot].load(Ordering::Relaxed) == length => return 0,
+        _ => return 1,
+    }
+    // SAFETY: the caller guarantees `length` readable bytes that live for
+    // the process.
+    let data: &'static [u8] = unsafe { core::slice::from_raw_parts(bytes, length) };
+    let Ok(font) = Face::parse(data, 0) else { return 2 };
+    for code in FIRST_CODE..=LAST_CODE {
+        if char_of(code).and_then(|c| font.glyph_index(c)).is_none() {
+            return 2;
+        }
+    }
+    SERIF_LENGTH[slot].store(length, Ordering::Relaxed);
+    if SERIF_BYTES[slot].compare_exchange(0, address, Ordering::Release, Ordering::Acquire).is_err() {
+        return if SERIF_BYTES[slot].load(Ordering::Acquire) == address { 0 } else { 1 };
+    }
+    0
+}
+
 /// Per-face layout metrics at the normal (logical) size, in 1/64 pixel:
-/// unhinted advances and GPOS pair kerning, indexed by code - 32.
+/// unhinted advances and GPOS pair kerning, indexed by code - 32; then, for
+/// the reading face, the advances of 16#80# .. 16#FF# (unkerned; 0 for
+/// codes it does not draw, which are drawn as '?').
 #[repr(C)]
 pub struct Layout {
     pub advance: [u32; CHARACTERS],
     pub kerning: [[i16; CHARACTERS]; CHARACTERS],
+    pub extended_advance: [u32; EXTENDED],
 }
 struct LayoutEntry {
     state: AtomicU8,
@@ -251,10 +438,17 @@ struct LayoutEntry {
 unsafe impl Sync for LayoutEntry {}
 static LAYOUTS: [LayoutEntry; FACES] = [const {
     LayoutEntry {
-        state: AtomicU8::new(EMPTY),
-        layout: UnsafeCell::new(Layout { advance: [0; CHARACTERS], kerning: [[0; CHARACTERS]; CHARACTERS] }),
+        state: AtomicU8::new(0),
+        layout: UnsafeCell::new(Layout {
+            advance: [0; CHARACTERS],
+            kerning: [[0; CHARACTERS]; CHARACTERS],
+            extended_advance: [0; EXTENDED],
+        }),
     }
 }; FACES];
+const LAYOUT_EMPTY: u8 = 0;
+const LAYOUT_BUILDING: u8 = 1;
+const LAYOUT_FAILED: u8 = 3;
 
 const KERN_FEATURE: Tag = Tag::from_bytes(b"kern");
 const SCRIPTS: [Tag; 2] = [Tag::from_bytes(b"latn"), Tag::from_bytes(b"DFLT")];
@@ -330,14 +524,26 @@ fn build_kerning(font: &Face, lookups: &[u16], ids: &[GlyphId; CHARACTERS], kern
     }
 }
 
+
 fn build_layout(face: usize, layout: &mut Layout) -> Option<()> {
-    let font = Face::parse(face_bytes(face), 0).ok()?;
+    let font = Face::parse(face_bytes(face)?, 0).ok()?;
     let ratio = BASE_EM / f32::from(font.units_per_em());
     let scaled = |units: f32| libm::roundf(units * ratio * PEN_UNIT);
     let mut ids = [GlyphId(0); CHARACTERS];
     for (i, id) in ids.iter_mut().enumerate() {
         *id = font.glyph_index(char::from_u32(FIRST_CODE + i as u32)?)?;
         layout.advance[i] = (scaled(f32::from(font.glyph_hor_advance(*id)?)) as u32).max(1);
+    }
+    if extended(face) {
+        for (i, advance) in layout.extended_advance.iter_mut().enumerate() {
+            let code = FIRST_EXTENDED + i as u32;
+            let drawn = if printable(face, code) == code { code } else { FALLBACK_CODE };
+            let id = char_of(drawn).and_then(|c| font.glyph_index(c));
+            *advance = match id.and_then(|id| font.glyph_hor_advance(id)) {
+                Some(units) => (scaled(f32::from(units)) as u32).max(1),
+                None => layout.advance[(FALLBACK_CODE - FIRST_CODE) as usize],
+            };
+        }
     }
     let mut lookups = [0u16; LOOKUPS_MAX];
     let count = kern_lookups(&font, &mut lookups);
@@ -348,23 +554,27 @@ fn build_layout(face: usize, layout: &mut Layout) -> Option<()> {
     Some(())
 }
 
-/// Returns the face's permanent layout table, or null for an unknown face.
+/// Returns the face's permanent layout table, or null for an unknown face
+/// or a reading face not yet registered.
 #[unsafe(no_mangle)]
 pub extern "C" fn cubit_font_layout(face: u32) -> *const Layout {
     let Some(entry) = LAYOUTS.get(face as usize) else { return ptr::null() };
     loop {
         match entry.state.load(Ordering::Acquire) {
-            READY => return entry.layout.get().cast_const(),
-            FAILED => return ptr::null(),
-            EMPTY => {
+            READY_STATE => return entry.layout.get().cast_const(),
+            LAYOUT_FAILED => return ptr::null(),
+            LAYOUT_EMPTY => {
+                if face_bytes(face as usize).is_none() {
+                    return ptr::null(); // not registered yet: never cached
+                }
                 if entry
                     .state
-                    .compare_exchange(EMPTY, BUILDING, Ordering::Acquire, Ordering::Relaxed)
+                    .compare_exchange(LAYOUT_EMPTY, LAYOUT_BUILDING, Ordering::Acquire, Ordering::Relaxed)
                     .is_ok()
                 {
                     // SAFETY: this thread exclusively owns the unpublished table.
                     let built = build_layout(face as usize, unsafe { &mut *entry.layout.get() });
-                    entry.state.store(if built.is_some() { READY } else { FAILED }, Ordering::Release);
+                    entry.state.store(if built.is_some() { READY_STATE } else { LAYOUT_FAILED }, Ordering::Release);
                 }
             }
             _ => core::hint::spin_loop(),
@@ -383,9 +593,9 @@ mod tests {
 
     #[test]
     fn unhinted_outlines_match_reference_renderer_at_every_phase() {
-        for face in 0..FACES {
-            let font = FontRef::try_from_slice(face_bytes(face)).unwrap();
-            for size in 0..SIZES {
+        for face in 0..BUNDLED_FACES {
+            let font = FontRef::try_from_slice(face_bytes(face).unwrap()).unwrap();
+            for size in 0..2 {
                 let ratio = BASE_EM * (size + 1) as f32 / font.units_per_em().unwrap();
                 for phase in 0..PHASES {
                     for code in FIRST_CODE..=LAST_CODE {
@@ -429,12 +639,12 @@ mod tests {
     /// row (a glyph that did would be clipped).
     #[test]
     fn base_line_is_the_fonts_line_box() {
-        for face in 0..FACES {
-            let font = Face::parse(face_bytes(face), 0).unwrap();
+        for face in 0..BUNDLED_FACES {
+            let font = Face::parse(face_bytes(face).unwrap(), 0).unwrap();
             let ratio = BASE_EM / f32::from(font.units_per_em());
             let height = f32::from(font.ascender()) - f32::from(font.descender()) + f32::from(font.line_gap());
             assert_eq!(round_positive_metric(height * ratio), BASE_LINE, "face {face}");
-            for size in 0..SIZES {
+            for size in 0..2 {
                 for code in FIRST_CODE..=LAST_CODE {
                     let cell = rasterize(face, size, code, PHASES - 1, STYLE).unwrap();
                     assert!((cell.height as usize) < HEIGHT);
@@ -448,7 +658,7 @@ mod tests {
 
     #[test]
     fn cells_are_bounded_and_cached() {
-        for face in 0..FACES as u32 {
+        for face in 0..BUNDLED_FACES as u32 {
             for size in 0..SIZES as u32 {
                 for phase in 0..PHASES {
                     for code in FIRST_CODE..=LAST_CODE {
@@ -517,7 +727,7 @@ mod tests {
         // A flat-topped, flat-bottomed lowercase glyph: its top and bottom ink
         // rows are solid after hinting (edges on the pixel grid), and the
         // hinting never moves ink sideways.
-        for face in 0..FACES {
+        for face in 0..BUNDLED_FACES {
             let hinted = Style { hinted: true, darkened: false };
             let x = rasterize(face, 0, b'x' as u32, 0, hinted).unwrap();
             let plain = rasterize(face, 0, b'z' as u32, 0, PLAIN).unwrap();
@@ -528,7 +738,7 @@ mod tests {
             // Thin mono bars cover a little under a pixel once on the grid.
             assert!(row_max(&z, top) >= 230 && row_max(&z, bottom) >= 230, "face {face}");
             assert!(top == 0 || row_max(&z, top - 1) == 0, "nothing above the x-height row");
-            let ratio = BASE_EM / f32::from(Face::parse(face_bytes(face), 0).unwrap().units_per_em());
+            let ratio = BASE_EM / f32::from(Face::parse(face_bytes(face).unwrap(), 0).unwrap().units_per_em());
             let baseline = round_positive_metric(1025.0 * ratio);
             assert_eq!(bottom, baseline - 1, "baseline row above round(ascender)");
             assert_eq!(x.ink_top, z.ink_top, "x and z share the x-height");
@@ -567,7 +777,7 @@ mod tests {
             }
             sum / weight
         };
-        for face in 0..FACES {
+        for face in 0..BUNDLED_FACES {
             for code in "lIHnmhu".chars() {
                 let dark = rasterize(face, 0, code as u32, 0, STYLE).unwrap();
                 let plain = rasterize(face, 0, code as u32, 0, undarkened).unwrap();
@@ -621,10 +831,58 @@ mod tests {
         assert!(sans.kerning.iter().flatten().all(|&k| f32::from(k.abs()) < 0.15 * BASE_EM * PEN_UNIT));
     }
 
+
+    /// The reading face: registered once from a program's own bytes (here
+    /// Plex Sans stands in for Literata), drawn at every size with the
+    /// Windows-1252 upper half, laid out with its extended advances.
+    #[test]
+    fn reading_face_registration_and_repertoire() {
+        assert!(cubit_font_glyph(FACE_SERIF, 0, b'A' as u32, 0).is_null() || face_bytes(FACE_SERIF as usize).is_some());
+        assert_eq!(unsafe { cubit_font_register(FACE_SANS, SANS.as_ptr(), SANS.len()) }, 1, "bundled faces are fixed");
+        assert_eq!(unsafe { cubit_font_register(FACE_SERIF, ptr::null(), 10) }, 1);
+        let junk: &'static [u8] = &[0u8; 64];
+        assert_eq!(unsafe { cubit_font_register(FACE_SERIF, junk.as_ptr(), junk.len()) }, 2, "not a font");
+        assert_eq!(unsafe { cubit_font_register(FACE_SERIF, SANS.as_ptr(), SANS.len()) }, 0);
+        assert_eq!(unsafe { cubit_font_register(FACE_SERIF, SANS.as_ptr(), SANS.len()) }, 0, "again: same bytes");
+        assert_eq!(unsafe { cubit_font_register(FACE_SERIF, MONO.as_ptr(), MONO.len()) }, 1, "other bytes refused");
+        // Another slot holds another face, beside the first.
+        assert_eq!(unsafe { cubit_font_register(FACE_SERIF + 1, MONO.as_ptr(), MONO.len()) }, 0);
+        assert_ne!(cubit_font_glyph(FACE_SERIF, 0, b'a' as u32, 0), cubit_font_glyph(FACE_SERIF + 1, 0, b'a' as u32, 0));
+        let (one, two) = unsafe { (&*cubit_font_layout(FACE_SERIF), &*cubit_font_layout(FACE_SERIF + 1)) };
+        assert_ne!(one.advance, two.advance, "each slot lays out its own face");
+        assert_eq!(unsafe { cubit_font_register(FACE_SERIF + READING_SLOTS as u32, MONO.as_ptr(), MONO.len()) }, 1,
+                   "past the last slot");
+        for size in 0..SIZES as u32 {
+            for code in (FIRST_CODE..=LAST_CODE).chain(FIRST_EXTENDED..=LAST_EXTENDED) {
+                let cell = unsafe { &*cubit_font_glyph(FACE_SERIF, size, code, 1) };
+                assert!(cell.height <= HEIGHT as u32 && cell.baseline < cell.height);
+                assert!(cell.ink_left + cell.ink_width <= WIDTH as u32);
+                assert!(cell.ink_top + cell.ink_height <= cell.height);
+            }
+        }
+        // Curly quotes, dashes, the ellipsis and the pilcrow have their own
+        // glyphs; an unassigned code is '?'.
+        let quote = cubit_font_glyph(FACE_SERIF, 0, 0x93, 0);
+        assert_ne!(quote, cubit_font_glyph(FACE_SERIF, 0, b'?' as u32, 0));
+        assert_ne!(quote, cubit_font_glyph(FACE_SERIF, 0, b'"' as u32, 0));
+        assert_eq!(cubit_font_glyph(FACE_SERIF, 0, 0x81, 0), cubit_font_glyph(FACE_SERIF, 0, b'?' as u32, 0));
+        // The bundled faces keep printable ASCII.
+        assert_eq!(cubit_font_glyph(FACE_SANS, 0, 0x93, 0), cubit_font_glyph(FACE_SANS, 0, b'?' as u32, 0));
+        let layout = unsafe { &*cubit_font_layout(FACE_SERIF) };
+        let em_dash = unsafe { &*cubit_font_glyph(FACE_SERIF, 0, 0x97, 0) };
+        assert_eq!(layout.extended_advance[0x97 - 0x80], em_dash.advance);
+        assert!(layout.extended_advance.iter().all(|&a| a > 0));
+        // The small size is three quarters of the normal em.
+        let normal = unsafe { &*cubit_font_glyph(FACE_SERIF, SIZE_NORMAL, b'M' as u32, 0) };
+        let small = unsafe { &*cubit_font_glyph(FACE_SERIF, SIZE_SMALL, b'M' as u32, 0) };
+        assert!((small.advance as f32 - normal.advance as f32 * 0.75).abs() <= 1.0);
+        assert!(small.height < normal.height && small.ink_height < normal.ink_height);
+    }
+
     #[test]
     fn invalid_requests() {
         assert!(cubit_font_glyph(FACES as u32, 0, 65, 0).is_null());
-        assert!(cubit_font_glyph(0, 2, 65, 0).is_null());
+        assert!(cubit_font_glyph(0, SIZES as u32, 65, 0).is_null());
         assert!(cubit_font_glyph(0, 0, 65, PHASES).is_null());
         assert_eq!(cubit_font_glyph(0, 0, u32::MAX, 1), cubit_font_glyph(0, 0, 63, 1));
     }
@@ -638,7 +896,7 @@ mod tests {
                         let cell = unsafe { &*cubit_font_glyph(0, 1, code, t % PHASES) };
                         assert!(cell.advance > 0);
                     }
-                    assert!(!cubit_font_layout(t % FACES as u32).is_null());
+                    assert!(!cubit_font_layout(t % BUNDLED_FACES as u32).is_null());
                 });
             }
         });

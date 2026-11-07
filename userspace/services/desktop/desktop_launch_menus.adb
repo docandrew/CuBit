@@ -81,7 +81,8 @@ package body Desktop_Launch_Menus is
    function Category_Name (Group : Category) return String is
      (case Group is
          when DL.System => "System", when DL.Development => "Development", when DL.Web => "Web",
-         when DL.Games => "Games", when DL.Media => "Media", when DL.Tools => "Tools");
+         when DL.Games => "Games", when DL.Media => "Media", when DL.Tools => "Tools",
+         when DL.Reference => "Reference");
 
    procedure Reset (S : out Menu_State) is
    begin

@@ -618,19 +618,26 @@ def volume_muted():
     return speaker("volume-muted", muted=True)
 
 
+# Per book: its outline ink, its spine's shadow and its ribbon.
+BOOK_INKS = {
+    "dictionary": ("#2a0d10", "#1a0408", "#2f7fd0"),
+    "thesaurus": ("#06261c", "#03190f", "#e3243b"),
+    "bible": ("#0b1030", "#060a24", "#e3243b"),
+}
+
+
 def book(name, cover, cover_dark, emblem):
     """A bound book stood a little open to the right: its cover, the page
     block on its fore edge, a gold band across the spine and a ribbon."""
     i = Icon(name)
-    ink = "#2a0d10" if name == "dictionary" else "#06261c"
+    ink, spine_shadow, ribbon = BOOK_INKS[name]
     # The page block behind the cover: cream, ruled with its leaves.
     i.poly([(30, 5), (40, 10), (40, 42), (30, 38)], i.gradient("#fffaf0", "#e2d6bd", x2=1), ink=ink)
     for y in (13, 18, 23, 28, 33):
         i.line([(32, y - 4 + (y - 13) * 0.0), (38.5, y - 0.7)], "#c9b996", 0.9)
     i.poly([(10, 42), (30, 38), (40, 42), (20, 46)], i.gradient("#f7efdc", "#cdbd98", x2=1), ink=ink)
     # The spine's thickness, then the front cover over it.
-    i.poly([(6, 10), (10, 8), (10, 42), (6, 44)], i.gradient(cover_dark, "#1a0408" if name == "dictionary"
-                                                             else "#03190f", x2=1), ink=ink)
+    i.poly([(6, 10), (10, 8), (10, 42), (6, 44)], i.gradient(cover_dark, spine_shadow, x2=1), ink=ink)
     i.poly([(10, 8), (30, 4), (30, 38), (10, 42)], i.gradient(cover, cover_dark, x2=1, y2=1), ink=ink)
     # Gold bands near the spine's top and foot.
     for y in (12, 34):
@@ -638,8 +645,7 @@ def book(name, cover, cover_dark, emblem):
     # The emblem, in gold, in the cover's middle.
     emblem(i)
     # A ribbon bookmark hanging from the pages.
-    i.poly([(26, 39), (29, 38.4), (29, 46), (27.5, 44.5), (26, 46.6)], "#e3243b" if name != "dictionary"
-           else "#2f7fd0", ink=ink, width=1.2)
+    i.poly([(26, 39), (29, 38.4), (29, 46), (27.5, 44.5), (26, 46.6)], ribbon, ink=ink, width=1.2)
     # Light from the upper left along the cover's top edge.
     i.line([(11.5, 9.6), (28.5, 6.2)], "#ffffff", 1.1)
     return i
@@ -667,11 +673,42 @@ def thesaurus():
     return book("thesaurus", "#2fc48a", "#0b6b45", emblem)
 
 
+def bible():
+    """Bible: a deep blue bound book with a gold cross on its cover and a
+    red ribbon (APP-005)."""
+    def emblem(i):
+        gold = i.gradient("#fff1a8", "#d99a1e", x2=1, y2=1)
+        # A Latin cross, upright on the cover's slant: the long stem and the
+        # bar a third of the way down.
+        i.path("M 18.9 14.3 L 21.3 13.8 L 21.3 18.6 L 25.0 17.9 L 25.0 20.3 L 21.3 21.0 L 21.3 30.6 "
+               "L 18.9 31.1 L 18.9 21.5 L 15.2 22.2 L 15.2 19.8 L 18.9 19.1 Z", gold, ink="#5a2a00", width=1.0)
+    return book("bible", "#4660b8", "#1b2a66", emblem)
+
+
+def reference():
+    """Reference category: two books upright on a shelf, crimson and deep
+    blue, gold bands on their spines."""
+    i = Icon("reference")
+    ink = "#1d1030"
+    # The shelf.
+    i.poly([(4, 40), (44, 40), (44, 44), (4, 44)], i.gradient("#c99a62", "#7a5126"), ink=ink)
+    # A crimson book, then a deep blue one beside it.
+    for x0, top, cover, dark in ((9, 8, "#e0405a", "#8e1023"), (23, 12, "#4660b8", "#1b2a66")):
+        i.poly([(x0, top), (x0 + 12, top), (x0 + 12, 40), (x0, 40)], i.gradient(cover, dark, x2=1), ink=ink)
+        for y in (top + 5, 34):
+            i.poly([(x0 + 1.5, y), (x0 + 10.5, y), (x0 + 10.5, y + 2.2), (x0 + 1.5, y + 2.2)],
+                   i.gradient("#ffe58a", "#c8901c", x2=1), ink=None)
+        i.line([(x0 + 2, top + 1.6), (x0 + 10, top + 1.6)], "#ffffff", 1.0)
+    # A cream page edge showing past the blue book.
+    i.poly([(35, 15), (39, 17), (39, 40), (35, 40)], i.gradient("#fffaf0", "#e2d6bd", x2=1), ink=ink)
+    return i
+
+
 ICONS = (cubit_logo, workbench, console, logs, trace, doom, devices, files, gameboy, settings,
          inspector, mesa, boot, power, system, development, web, games, media, tools,
          clipboard, clip_text, clip_value, clip_mask, clip_pin,
          text, teapots, calculator, dictionary, thesaurus, agent, archive, wifi, battery, volume,
-         volume_muted)
+         volume_muted, bible, reference)
 
 
 def main():

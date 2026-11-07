@@ -6,7 +6,7 @@ with "../lib/tls/sparktls_host.gpr";
 with "cubit_shared.gpr";
 project CCL_UI_Preview is
    for Languages use ("Ada");
-   for Source_Dirs use ("../lib/lexicon", "src", "../lib/agent", "tools/ccl-ui-preview", "tools/ccl-ui-preview/host", "apps/agent",
+   for Source_Dirs use ("../lib/lexicon", "../lib/bible", "src", "../lib/agent", "tools/ccl-ui-preview", "tools/ccl-ui-preview/host", "apps/agent",
       "../lib/ui", "../lib/calc", "../lib/theme", "../lib/compositor", "../lib/display");
    --  The root package CuBit comes with cubit_shared.gpr (the runtime's).
    for Excluded_Source_Files use ("cubit.ads");

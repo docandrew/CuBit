@@ -9,7 +9,7 @@ function Native_Glyph_Test return Boolean is
    OK, Ink : Boolean;
    procedure Report with Import, Convention => C, External_Name => "compositor_glyph_report";
 begin
-   for Face in CuBit.Fonts.Face loop
+   for Face in CuBit.Fonts.Bundled_Face loop
       for Index in Scales'Range loop
          declare L : constant Layout := Plan (Scales (Index));
          begin

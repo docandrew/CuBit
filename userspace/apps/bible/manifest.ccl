@@ -1,0 +1,23 @@
+# The Bible (APP-005): reads the public-domain translations in the
+# cubit-bible asset package, read-only, and nothing else. No network, no
+# service of its own: the texts are public, read-only data, so reading them
+# needs no authority a separate process would hold (split by authority).
+# Requested authority only; the launch path remains in control.
+(Executable_Manifest
+  identity => "com.cubit.bible"
+  version => "1.0.0"
+  requests => [
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    # system.assets.root: where the cubit-bible package lives.
+    (service "config" "config")
+    (service "filesystem" "filesystem")]
+  scopes => [
+    (config [File_Right.Read] "system.assets.")
+    # The reader's remembered face and translation.
+    (config [File_Right.Read File_Right.Write] "bible.")
+    # Exactly the Bible package on each image's system volume.
+    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-bible/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")
+    (filesystem [File_Right.Read] "@ufs:0/Assets/cubit-bible/")])

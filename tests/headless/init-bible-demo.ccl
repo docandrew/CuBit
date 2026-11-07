@@ -1,0 +1,14 @@
+# The Bible demo (APP-005): the full desktop session, as a user sees it
+# (the Apps menu's Reference group holds Dictionary and Bible), with the
+# Bible started. tests/bible-app/make-demo.sh builds the disk with it.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "display.svc" (priority 5))
+  (start "lexicon.svc" (priority 4))
+  (start "metrics.svc" (priority 2))
+  (start "desktop.svc" (priority 4))
+  (start "bible.app" (priority 3))
+)

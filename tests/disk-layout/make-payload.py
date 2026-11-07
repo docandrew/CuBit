@@ -43,7 +43,7 @@ def main() -> None:
     os.chmod(os.path.join(root, "toolchain/bin/gcc"), 0o755)   # mode 0755 on the root
     put(root, "apps/big.bin", 6 * MIB + 4097)          # double indirect
     put(root, "apps/firmware/intel/tgl_guc_70.bin", 330 * KIB)
-    put(root, "apps/Assets/cubit-icons/4/applications.qoi", 90 * KIB)
+    put(root, "apps/Assets/cubit-icons/5/applications.qoi", 90 * KIB)
     put(root, "empty.txt", 0)
     put(root, "licenses/a-file-with-a-rather-long-name-to-pack-records.txt", 4096)
     for i in range(300):                               # a multi-block directory

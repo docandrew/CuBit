@@ -259,6 +259,20 @@ package CuBit.UI is
    function Emphasis_Text_Width (text : String) return Natural;
    procedure Draw_Emphasis_Text_Transparent
       (c : Canvas; x, y : Natural; text : String; fg : Color);
+   --  Styled text: a face and a size of the one text layout. Reading_Face
+   --  is the reading face chosen among those the program offered
+   --  (CuBit.Reading_Faces, APP-005); with none it measures 0 and draws
+   --  nothing. Its text may hold Windows-1252 above 16#7F# (curly
+   --  quotes, dashes, the pilcrow: Bible_Text.To_Face). Heading_Size is twice
+   --  the base em, Superscript_Size three quarters of it. A run is drawn with
+   --  its line box's top at y; Styled_Baseline is the baseline's row in it.
+   type Text_Face is (Interface_Face, Emphasis_Face, Code_Face, Reading_Face);
+   type Text_Size is (Body_Size, Heading_Size, Superscript_Size);
+   function Styled_Text_Width (text : String; face : Text_Face; size : Text_Size := Body_Size) return Natural;
+   function Styled_Line_Height (face : Text_Face; size : Text_Size := Body_Size) return Natural;
+   function Styled_Baseline (face : Text_Face; size : Text_Size := Body_Size) return Natural;
+   procedure Draw_Styled_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color; face : Text_Face; size : Text_Size := Body_Size);
    function Code_Text_Width (text : String) return Natural;
    function Code_Text_Height return Natural;
    procedure Draw_Code_Text
