@@ -54,7 +54,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
 with Buddy_Metadata;
-with BootAllocator;
+with BootAllocator; use type BootAllocator.Allocator_Phase;
 with Config;
 with Firmware_Frames;
 with Process_Identities;
@@ -200,8 +200,7 @@ is
         Global  => (In_Out      => (freeLists, BuddyAllocator.initialized,
                                     BootAllocator.BitmapState,
                                     x86.interruptsEnabled),
-                    Input       => Virtmem.MAX_PHYS_USABLE,
-                    Proof_In    => BootAllocator.initialized),
+                    Input       => Virtmem.MAX_PHYS_USABLE),
         Depends => (freeLists                  => (Map,
                                                    BootAllocator.BitmapState,
                                                    Virtmem.MAX_PHYS_USABLE),
@@ -210,8 +209,24 @@ is
                     BuddyAllocator.initialized  => null,
                     null                        => (freeLists,
                                                    BuddyAllocator.initialized)),
-        Pre     => BootAllocator.initialized,
-        Post    => BuddyAllocator.initialized;
+        Pre     => BootAllocator.Phase = BootAllocator.Active,
+        Post    => BuddyAllocator.initialized and then
+                   BootAllocator.Phase = BootAllocator.Active;
+
+    ---------------------------------------------------------------------------
+    -- adoptFrames
+    -- Take frames the allocator has never managed: boot memory setup left
+    -- reserved (a boot module, loader metadata, the boot allocator's own
+    -- section) whose last reader is done. Every frame must still be in its
+    -- never-admitted state, so no memory is admitted twice (a violation is a
+    -- kernel panic). Tiled into aligned blocks like setup; the managed total
+    -- grows by the frames adopted. Takes the allocator lock.
+    ---------------------------------------------------------------------------
+    procedure adoptFrames (first : Virtmem.PhysAddress; frames : Positive) with
+        Global  => (In_Out      => (freeLists, lock, totalManagedBytes,
+                                    x86.interruptsEnabled),
+                    Proof_In    => BuddyAllocator.initialized),
+        Pre     => BuddyAllocator.initialized;
 
     ---------------------------------------------------------------------------
     -- alloc

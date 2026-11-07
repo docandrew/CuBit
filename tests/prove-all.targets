@@ -14,6 +14,7 @@ kernel-spark-boundaries | kcore    | kernel | make check-spark-boundaries
 interrupt-state         | kernel   | kernel | make prove-interrupt-state
 lock-ownership          | kernel   | kernel | make prove-lock-ownership
 process-lifetime        | kernel   | kernel | make prove-process-lifetime
+boot-reclaim            | boot     | kernel | make prove-boot-reclaim
 frame-pins              | kernel   | kernel | make prove-frame-pins
 tlb-reclamation         | kernel   | kernel | make prove-tlb-reclamation
 capability-policy       | kernel   | kernel | make prove-capability-policy

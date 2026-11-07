@@ -38,12 +38,16 @@ package body Process.User_Memory is
             Page, Unsigned_64 (Virtmem.MAX_PHYS_USABLE));
          if Frame = 0 then return; end if;
          BuddyAllocator.pinOwnedFrame (Virtmem.PhysAddress (Frame), BuddyAllocator.Frame_Owner (Caller), Pinned);
-         -- The initrd is permanently reserved boot RAM, explicitly mapped
-         -- read-only into devmgr. It has no process owner to pin; unlike MMIO
-         -- or arbitrary foreign frames it cannot disappear during this copy.
-         if not Pinned and then not Modules.residentInitrdRange
-           (Integer_Address (Frame) + Integer_Address (Within_Page), Storage_Count (Count))
-         then return; end if;
+         -- Boot-image pages (mapped read-only from the initrd) have no
+         -- process owner to pin. They stay the image's while the image lock
+         -- is held, and Copy_Resident copies only under it: a concurrent
+         -- release by a sibling thread cannot give them away mid-copy.
+         if not Pinned then
+            Modules.Copy_Resident
+              (Integer_Address (Frame) + Integer_Address (Within_Page), Storage_Count (Count),
+               Destination + Storage_Offset (Destination_Offset), Success);
+            return;
+         end if;
          Util.memCopy (Destination + Storage_Offset (Destination_Offset),
                        Virtmem.P2Va (Virtmem.PhysAddress (Frame)) + Storage_Offset (Within_Page),
                        Storage_Count (Count));

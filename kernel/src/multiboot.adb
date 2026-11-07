@@ -149,6 +149,58 @@ package body Multiboot with SPARK_Mode => On is
         end if;
         return bootFramebuffer.Value;
     end Framebuffer;
+    -- Loader metadata as merged whole-page spans (Loader_Metadata_Count).
+    metadataSpans : array (1 .. Maximum_Metadata_Spans) of Page_Span;
+    metadataCount : Metadata_Count := 0;
+
+    function Loader_Metadata_Count return Metadata_Count is
+      (if bootSnapshotReady then metadataCount else 0) with SPARK_Mode => Off;
+
+    function Loader_Metadata (Index : Positive) return Page_Span
+      with SPARK_Mode => Off
+    is
+    begin
+        if not bootSnapshotReady or else Index > metadataCount then
+            raise MemoryAreas.InvalidMemoryMap with "Loader metadata span is not published";
+        end if;
+        return metadataSpans (Index);
+    end Loader_Metadata;
+
+    -- Record the pages of one loader record (validated: inside the bootstrap
+    -- window, in usable RAM, clear of the kernel). Spans that overlap or
+    -- touch merge, so a page is listed once however many records share it.
+    procedure Note_Metadata (Base, Length : Integer_Address)
+      with SPARK_Mode => Off
+    is
+        Page : constant Integer_Address := Integer_Address (Boot_Modules.Page_Bytes);
+        Item : Page_Span :=
+          (First => Boot_Modules.Address (Base - Base mod Page),
+           Limit => Boot_Modules.Address
+             ((Base + Length + Page - 1) - (Base + Length + Page - 1) mod Page));
+        Merged : Boolean := True;
+    begin
+        while Merged loop
+            Merged := False;
+            for I in 1 .. metadataCount loop
+                if metadataSpans (I).First <= Item.Limit and then
+                  Item.First <= metadataSpans (I).Limit
+                then
+                    Item := (First => Boot_Modules.Address'Min (Item.First, metadataSpans (I).First),
+                             Limit => Boot_Modules.Address'Max (Item.Limit, metadataSpans (I).Limit));
+                    metadataSpans (I) := metadataSpans (metadataCount);
+                    metadataCount := metadataCount - 1;
+                    Merged := True;
+                    exit;
+                end if;
+            end loop;
+        end loop;
+        if metadataCount = Maximum_Metadata_Spans then
+            raise MemoryAreas.InvalidMemoryMap with "Loader metadata span capacity exceeded";
+        end if;
+        metadataCount := metadataCount + 1;
+        metadataSpans (metadataCount) := Item;
+    end Note_Metadata;
+
     type Captured_Module is record
         Descriptor : MBModule;
         Name : Boot_Modules.Module_Name;
@@ -320,8 +372,12 @@ package body Multiboot with SPARK_Mode => On is
         Count : Natural;
         Result : Decoder.Status;
         moduleCount : Boot_Modules.Module_Count := 0;
-        bootEnd : Integer_Address :=
+        -- The kernel image, its bootstrap stacks and everything below them
+        -- from 1 MiB: never released. Modules and loader metadata are
+        -- reserved exactly instead (BOOT_RESERVED records below).
+        kernelEnd : constant Integer_Address :=
           Virtmem.V2P (To_Address (Virtmem.STACK_TOP));
+        Next : Natural;
 
         procedure Require_Boot_Window (Base, Length : Integer_Address) is
         begin
@@ -368,8 +424,7 @@ package body Multiboot with SPARK_Mode => On is
         if bootUsesTags then
             Count := bootMapCount;
             Require_Source_RAM (Integer_Address (bootInfoPhysical), Integer_Address (bootInfoBytes));
-            bootEnd := Integer_Address'Max (bootEnd,
-              Integer_Address (bootInfoPhysical) + Integer_Address (bootInfoBytes));
+            Note_Metadata (Integer_Address (bootInfoPhysical), Integer_Address (bootInfoBytes));
             moduleCount := bootTagged.Module_Count;
             for I in 1 .. moduleCount loop
                 capturedModules (I).Descriptor :=
@@ -399,10 +454,8 @@ package body Multiboot with SPARK_Mode => On is
         Require_Source_RAM (Integer_Address (mbinfo.mmap_addr),
                             Integer_Address (mbinfo.mmap_length));
         Require_Source_RAM (Integer_Address (bootInfoPhysical), Multiboot_Entry.Header_Bytes);
-        bootEnd := Integer_Address'Max (bootEnd,
-          Integer_Address (mbinfo.mmap_addr) + Integer_Address (mbinfo.mmap_length));
-        bootEnd := Integer_Address'Max (bootEnd,
-          Integer_Address (bootInfoPhysical) + Multiboot_Entry.Header_Bytes);
+        Note_Metadata (Integer_Address (mbinfo.mmap_addr), Integer_Address (mbinfo.mmap_length));
+        Note_Metadata (Integer_Address (bootInfoPhysical), Multiboot_Entry.Header_Bytes);
         if mbinfo.flags.hasModules and then mbinfo.mods_count /= 0 then
             if mbinfo.mods_count > Boot_Modules.Maximum_Modules then
                 raise MemoryAreas.InvalidMemoryMap with "Boot module catalog capacity exceeded";
@@ -410,8 +463,8 @@ package body Multiboot with SPARK_Mode => On is
             moduleCount := Boot_Modules.Module_Count (mbinfo.mods_count);
             Require_Source_RAM (Integer_Address (mbinfo.mods_addr),
                                 Integer_Address (moduleCount) * Module_Bytes);
-            bootEnd := Integer_Address'Max (bootEnd,
-              Integer_Address (mbinfo.mods_addr) + Integer_Address (moduleCount) * Module_Bytes);
+            Note_Metadata (Integer_Address (mbinfo.mods_addr),
+                           Integer_Address (moduleCount) * Module_Bytes);
             for I in 1 .. moduleCount loop
                 declare
                     Raw : MBModule with Import, Address => Virtmem.P2Va
@@ -436,7 +489,7 @@ package body Multiboot with SPARK_Mode => On is
                             if Value = 0 then
                                 capturedModules (I).Name_First := Boot_Modules.Address (Base);
                                 capturedModules (I).Name_Limit := Boot_Modules.Address (Base + Integer_Address (J));
-                                bootEnd := Integer_Address'Max (bootEnd, Base + Integer_Address (J));
+                                Note_Metadata (Base, Integer_Address (J));
                                 terminated := True;
                                 exit;
                             elsif J > Boot_Modules.Maximum_Name then
@@ -483,8 +536,6 @@ package body Multiboot with SPARK_Mode => On is
             end;
         end loop;
         Boot_Modules.Seal (bootCatalog);
-        bootEnd := Integer_Address'Max (bootEnd,
-          Integer_Address (Boot_Modules.Reserved_End (bootCatalog)));
         for I in 1 .. moduleCount loop
             declare
                 Item : constant Boot_Modules.Image := Boot_Modules.Get (bootCatalog, I);
@@ -500,10 +551,9 @@ package body Multiboot with SPARK_Mode => On is
                 end if;
             end;
         end loop;
-        bootEnd := (bootEnd + 4095) and not Integer_Address (4095);
-        if mbinfo.flags.hasFramebuffer and then mbinfo.framebuffer_type = 2 then
-            print ("Boot reserved arena ends at "); println (bootEnd);
-        end if;
+        print ("Boot reservations: kernel image to "); print (kernelEnd);
+        print (", "); print (Integer (moduleCount)); print (" modules, ");
+        print (Integer (metadataCount)); println (" loader metadata spans");
 
         -- Consume the decoded snapshot; never rewalk the variable-length input.
         for I in 1 .. Count loop
@@ -511,28 +561,59 @@ package body Multiboot with SPARK_Mode => On is
                 Areas (I) := (kind => Kinds (bootMapSnapshot (I).Kind),
                               startAddr => Integer_Address (bootMapSnapshot (I).First),
                               endAddr => Integer_Address (bootMapSnapshot (I).Last));
+                -- Only the kernel image trims usable RAM (its end is 2 MiB
+                -- aligned, so no huge mapping straddles it).
                 if bootMapSnapshot (I).Kind = Decoder.Usable then
-                    if Areas (I).endAddr < bootEnd then
+                    if Areas (I).endAddr < kernelEnd then
                         Areas (I).kind := MemoryAreas.RESERVED;
-                    elsif Areas (I).startAddr < bootEnd then
-                        Areas (I).startAddr := bootEnd;
+                    elsif Areas (I).startAddr < kernelEnd then
+                        Areas (I).startAddr := kernelEnd;
                     end if;
                 end if;
             end if;
         end loop;
         Areas (Count + 1) :=
-          (kind => MemoryAreas.RESERVED, startAddr => 16#100000#, endAddr => bootEnd - 1);
+          (kind => MemoryAreas.RESERVED, startAddr => Config.MIN_PHYS_ALLOC,
+           endAddr => kernelEnd - 1);
+        -- Exact boot reservations, after the kernel and framebuffer records.
+        -- Each lies in usable RAM above the kernel (Boot_Modules.Append and
+        -- Require_Source_RAM checked), already mapped with its usable area.
+        Next := Count + Boot_Records;
+        for I in 1 .. moduleCount loop
+            declare
+                Item : constant Boot_Modules.Image := Boot_Modules.Get (bootCatalog, I);
+            begin
+                Next := Next + 1;
+                Areas (Next) := (kind => MemoryAreas.BOOT_RESERVED,
+                                 startAddr => Integer_Address (Item.First),
+                                 endAddr => Integer_Address (Item.Page_Limit) - 1);
+            end;
+        end loop;
+        for I in 1 .. metadataCount loop
+            Next := Next + 1;
+            Areas (Next) := (kind => MemoryAreas.BOOT_RESERVED,
+                             startAddr => Integer_Address (metadataSpans (I).First),
+                             endAddr => Integer_Address (metadataSpans (I).Limit) - 1);
+        end loop;
         if bootFramebuffer.State = Boot_Framebuffer.Success then
             declare
                 Item : constant Boot_Framebuffer.Description := bootFramebuffer.Value;
                 use type Boot_Framebuffer.Address;
             begin
                 -- Protect entire mapped pages, including leading/trailing slack.
-                -- The retained prefix includes kernel, stack, all loader metadata
-                -- and payloads; firmware may use RAM elsewhere for scanout.
-                if Item.Map_First < Boot_Framebuffer.Address (bootEnd) then
+                -- The kernel image, every payload and all loader metadata
+                -- are retained; firmware may use RAM elsewhere for scanout.
+                if Item.Map_First < Boot_Framebuffer.Address (kernelEnd) then
                     raise MemoryAreas.InvalidMemoryMap with "Boot framebuffer overlaps retained boot memory";
                 end if;
+                for R in Count + Boot_Records + 1 .. Next loop
+                    if Boot_Framebuffer.Overlaps (Item,
+                        Boot_Framebuffer.Address (Areas (R).startAddr),
+                        Boot_Framebuffer.Address (Areas (R).endAddr) + 1)
+                    then
+                        raise MemoryAreas.InvalidMemoryMap with "Boot framebuffer overlaps retained boot memory";
+                    end if;
+                end loop;
                 for Region of bootMapSnapshot (1 .. Count) loop
                     if not Region.Empty and then
                       Region.Kind in Decoder.ACPI_Reclaim | Decoder.ACPI_NVS | Decoder.Defective and then
@@ -566,6 +647,6 @@ package body Multiboot with SPARK_Mode => On is
             end;
         end loop;
         bootSnapshotReady := True;
-        Last := Count + 2;
+        Last := Next;
     end getMemoryAreas;
 end Multiboot;

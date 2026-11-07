@@ -16,7 +16,12 @@ package MemoryAreas is
     --
     -- VIDEO is one we add ourselves.
     ---------------------------------------------------------------------------
-    type MemoryAreaType is (USABLE, RESERVED, ACPI, HIBERNATE, BAD, VIDEO, IO);
+    -- BOOT_RESERVED: pages of usable RAM the loader filled (a boot module or
+    -- loader metadata). Reserved from both allocators until their reader is
+    -- done; already covered by the USABLE area around them, so they are
+    -- never mapped separately.
+    type MemoryAreaType is (USABLE, RESERVED, ACPI, HIBERNATE, BAD, VIDEO, IO,
+                            BOOT_RESERVED);
 
     ---------------------------------------------------------------------------
     -- MemoryArea describes a range of memory

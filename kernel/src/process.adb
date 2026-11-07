@@ -16,6 +16,7 @@ pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 
 with BuddyAllocator;
+with Modules;
 with Boot_Timeline;
 with Clock_Page;
 with Publication_Pages;
@@ -438,6 +439,7 @@ package body Process is
         -- No CPU has used this address space, and no endpoint has been opened.
         -- This is distinct from reclaimProcess's live-process retirement path.
         if proctab(pid).pgTable /= NO_PROCESS then
+            Modules.Forget_Process (pid);
             Mem_mgr.unmapKernelMemFromProcess (addrtab(pid));
             deleteP4 (addrtab(pid));
             zeroize (addrtab(pid));
@@ -2125,6 +2127,9 @@ package body Process is
                          Natural'Image (ownedRetired));
             end if;
 
+            -- Its boot-image mappings stop counting (Modules): pages whose
+            -- last mapping that was go back to the buddy allocator.
+            Modules.Forget_Process (pid);
             -- Need to unmap Kernel mem here so when we delete page tables we
             -- only delete the process' page tables.
             Mem_mgr.unmapKernelMemFromProcess (addrtab(pid));

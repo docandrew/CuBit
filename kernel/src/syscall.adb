@@ -6,6 +6,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with PerCpuData;
 with Process;
+with Modules;
 with Process_Identities;
 with Process.Futex;
 with Process.Owned_Memory;
@@ -381,11 +382,19 @@ package body Syscall is
                 end;
 
             when SYSCALL_RELEASE_OWNED_MEMORY =>
+                -- The caller's own memory: an owned allocation, or else its
+                -- read-only view of boot-image pages (Modules.Release_View),
+                -- whose pages go back to the buddy allocator with their
+                -- last mapping. One release call, whatever backs the range.
                 declare
                     Released : Boolean;
                 begin
                     Process.Owned_Memory.Release
                       (Process.processOf (percpu.currentThread), arg0, arg1, Released);
+                    if not Released then
+                        Modules.Release_View
+                          (Process.processOf (percpu.currentThread), arg0, arg1, Released);
+                    end if;
                     retval := (if Released then 0 else Unsigned_64'Last);
                 end;
 

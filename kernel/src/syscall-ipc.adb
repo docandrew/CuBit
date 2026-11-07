@@ -954,6 +954,27 @@ package body Syscall.IPC is
                     return;
                 end if;
                 Process.lockAddressSpace (targetPID);
+                -- Boot-image pages: one more mapping each, counted before it
+                -- exists (a released page is refused here).
+                if arg4 = MAP_INTO_BOOT_MODULE then
+                    declare
+                        granted : Boolean;
+                        acquired : Unsigned_64;
+                    begin
+                        Modules.Acquire_Initrd_Pages
+                          (arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE), acquired, granted);
+                        if not granted or else acquired /= physFirst then
+                            if granted then
+                                Modules.Return_Initrd_Pages
+                                  (acquired, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE));
+                            end if;
+                            Process.unlockAddressSpace (targetPID);
+                            Process.Owned_Memory.Unlock;
+                            println ("MAP_INTO: boot image pages released or unavailable");
+                            return;
+                        end if;
+                    end;
+                end if;
                 for i in 0 .. Natural (arg3) - 1 loop
                     mapPage (
                         phys    => Virtmem.PhysAddress (physFirst) +
@@ -965,6 +986,14 @@ package body Syscall.IPC is
                         success => ok);
 
                     if not ok then
+                        -- Pages mapped so far stay mapped and counted; the
+                        -- rest of the acquired span goes back.
+                        if arg4 = MAP_INTO_BOOT_MODULE then
+                            Modules.Note_Mapped (targetPID, Unsigned_64 (i));
+                            Modules.Return_Initrd_Pages
+                              (physFirst + Unsigned_64 (i) * Unsigned_64 (Virtmem.PAGE_SIZE),
+                               (arg3 - Unsigned_64 (i)) * Unsigned_64 (Virtmem.PAGE_SIZE));
+                        end if;
                         Process.unlockAddressSpace (targetPID);
                         Process.Owned_Memory.Unlock;
                         print ("MAP_INTO: map fail page ");
@@ -972,6 +1001,9 @@ package body Syscall.IPC is
                         return;
                     end if;
                 end loop;
+                if arg4 = MAP_INTO_BOOT_MODULE then
+                    Modules.Note_Mapped (targetPID, arg3);
+                end if;
                 Process.unlockAddressSpace (targetPID);
                 Process.Owned_Memory.Unlock;
 

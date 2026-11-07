@@ -150,6 +150,15 @@ prove-lock-ownership:
 		--subdirs=proof-lock-ownership --mode=all --level=1 -j2
 	@cat build/proof-lock-ownership/gnatprove/gnatprove.out
 
+# Boot memory reclaim: the boot module lifetime (mapping counts, no revival
+# of a released page) and the boot allocator's retirement (no use after).
+.PHONY : prove-boot-reclaim
+prove-boot-reclaim:
+	$(ALR) gnatprove -Pcubit.gpr -u boot_module_lifetime.adb bootallocator.adb \
+		--subdirs=proof-boot-reclaim --mode=all --level=2 --prover=cvc5,z3 \
+		--checks-as-errors=on -j2
+	@cat build/proof-boot-reclaim/gnatprove/gnatprove.out
+
 .PHONY : prove-process-lifetime
 prove-process-lifetime:
 	$(ALR) gnatprove -Pcubit.gpr -u process_lifetime.adb \

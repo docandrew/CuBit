@@ -202,13 +202,35 @@ is
       with Pre  => not M.Sealed and then Physical_Ranges.Well_Formed (M),
            Post => not M.Sealed and then Physical_Ranges.Well_Formed (M);
     
-    -- Fixed kernel workspace, independent of untrusted mmap_length. The
-    -- decoder itself accepts caller-sized output; this is a boot resource budget.
-    subtype Boot_Memory_Map is MemoryAreas.MemoryAreaArray
-      (1 .. Config.MAX_BOOT_MEMORY_REGIONS + 2);
+    -- Loader metadata the kernel reads while admitting the boot, as whole
+    -- pages: Multiboot 2's one information block; Multiboot 1's header, map,
+    -- module descriptors and each module's name. Overlapping or adjacent
+    -- records share one span. Nothing reads them once getMemoryAreas has
+    -- taken its snapshot, so the spans are released after the buddy
+    -- allocator takes over (Boot_Reclaim).
+    Maximum_Metadata_Spans : constant := 3 + Boot_Modules.Maximum_Modules;
+    subtype Metadata_Count is Natural range 0 .. Maximum_Metadata_Spans;
+    -- Half-open and page-aligned.
+    type Page_Span is record
+        First, Limit : Boot_Modules.Address := 0;
+    end record;
+    function Loader_Metadata_Count return Metadata_Count;
+    function Loader_Metadata (Index : Positive) return Page_Span;
 
-    -- Last includes the retained-boot and optional framebuffer records. Only
-    -- that initialized prefix is passed to normalization and allocator setup.
+    -- Fixed kernel workspace, independent of untrusted mmap_length. The
+    -- decoder itself accepts caller-sized output; this is a boot resource
+    -- budget: the firmware map, the kernel image and framebuffer records,
+    -- and one exact reservation per boot module and per metadata span.
+    Boot_Records : constant := 2;
+    subtype Boot_Memory_Map is MemoryAreas.MemoryAreaArray
+      (1 .. Config.MAX_BOOT_MEMORY_REGIONS + Boot_Records +
+            Boot_Modules.Maximum_Modules + Maximum_Metadata_Spans);
+
+    -- Last includes the kernel-image, optional framebuffer and boot
+    -- reservation records. Only that initialized prefix is passed to
+    -- normalization and allocator setup. Usable RAM is never trimmed for a
+    -- module or for metadata: each is reserved exactly (BOOT_RESERVED), so
+    -- the gaps between them stay allocatable.
     procedure getMemoryAreas
       (mbinfo : MultibootInfo; Areas : out Boot_Memory_Map; Last : out Natural);
 

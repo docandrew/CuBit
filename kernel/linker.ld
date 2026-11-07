@@ -77,6 +77,15 @@ SECTIONS
     .bss :
     {
         sbss = .;
+        /* Boot-only data (BootAllocator's bitmap): alone in whole pages, so
+         * the buddy allocator takes these pages once the boot allocator is
+         * retired. Inside .bss, so the loader zero-fills it like any bss.
+         * Must precede the generic .bss.* rule, which would claim it. */
+        . = ALIGN(4K);
+        sboot_reclaim = .;
+        *(.bss.boot_reclaim)
+        . = ALIGN(4K);
+        eboot_reclaim = .;
         *(COMMON)
         *(.bss .bss.*)
         ebss = .;

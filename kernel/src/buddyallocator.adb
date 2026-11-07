@@ -689,6 +689,43 @@ is
     end setup;
 
     ---------------------------------------------------------------------------
+    -- adoptFrames
+    ---------------------------------------------------------------------------
+    procedure adoptFrames (first : Virtmem.PhysAddress; frames : Positive) with
+        SPARK_Mode => Off -- lock calls and physical admission
+    is
+        cursor : Unsigned_64;
+        limit  : Unsigned_64;
+        ord    : Order;
+    begin
+        -- Validate before any change, including in the -gnatp kernel.
+        if first mod Virtmem.FRAME_SIZE /= 0 or else
+          first < Config.MIN_PHYS_ALLOC or else
+          Unsigned_64 (first / Virtmem.FRAME_SIZE) + Unsigned_64 (frames) - 1 > maxPinPFN
+        then
+            raise AllocatorException with "Adopted frames outside allocator metadata";
+        end if;
+        cursor := Unsigned_64 (first / Virtmem.FRAME_SIZE);
+        limit := cursor + Unsigned_64 (frames);
+        Spinlocks.enterCriticalSection (lock);
+        while cursor < limit loop
+            -- The largest block aligned at the cursor that fits the span.
+            ord := Order'Last;
+            while ord > 0 and then
+              (cursor mod 2 ** Natural (ord) /= 0 or else
+               2 ** Natural (ord) > limit - cursor)
+            loop
+                ord := ord - 1;
+            end loop;
+            admitBootBlock (ord, Virtmem.P2Va
+              (Virtmem.PFNToAddr (Virtmem.PFN (cursor))));
+            totalManagedBytes := totalManagedBytes + blockSize (ord);
+            cursor := cursor + 2 ** Natural (ord);
+        end loop;
+        Spinlocks.exitCriticalSection (lock);
+    end adoptFrames;
+
+    ---------------------------------------------------------------------------
     -- alloc
     ---------------------------------------------------------------------------
     procedure alloc (ord : in Order; addr : out System.Address) with

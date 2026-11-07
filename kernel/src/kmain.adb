@@ -14,6 +14,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with ACPI;
 with BootAllocator;
 with BuddyAllocator;
+with Boot_Reclaim;
 with Build;
 with Config;
 with Cpuid;
@@ -178,6 +179,11 @@ begin
     Mem_mgr.setup (bootMemoryAreas (1 .. memAreaCount));
     earlyCheckpoint ("buddy allocator");
     BuddyAllocator.setup (bootAllocationMap (1 .. memAreaCount));
+    -- The buddy allocator owns every frame now: nothing may use the boot
+    -- allocator again, and boot-only memory goes back (Boot_Reclaim).
+    earlyCheckpoint ("boot memory reclaim");
+    Boot_Reclaim.Retire_Boot_Allocator;
+    Boot_Reclaim.Release_Loader_Metadata;
     earlyCheckpoint ("storage pools");
     StoragePools.setup;
     earlyCheckpoint ("process tables");
@@ -277,6 +283,9 @@ begin
 
             when MemoryAreas.IO =>
                 null;       -- Not something Multiboot gives us
+
+            when MemoryAreas.BOOT_RESERVED =>
+                println ("Boot data (released after use)", YELLOW, BLACK);
         end case;
     end loop;
     println;

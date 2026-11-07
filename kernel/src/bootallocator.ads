@@ -15,7 +15,7 @@ with Virtmem; use Virtmem;
 
 package BootAllocator with
     Abstract_State => BitmapState,
-    Initializes => (BitmapState, initialized),
+    Initializes => BitmapState,
     SPARK_Mode => On
 is
     -- The boot allocator covers the bootstrap window that boot.asm maps
@@ -37,41 +37,69 @@ is
     MAX_BOOT_PFN : constant := Buddy_Boot_Admission.Last_Frame (BITMAP_WORDS);
     subtype AllocSize is Positive range 1 .. MAX_BOOT_PFN;
 
-    initialized : Boolean := False with Ghost;
+    -- Unset until setup; Active while it hands out frames; Retired once the
+    -- buddy allocator owns every frame it left free. A retired allocator's
+    -- bitmap is no longer the kernel's: it lies in the reclaimable boot
+    -- section (linker.ld), which goes to the buddy allocator, so nothing may
+    -- read or reserve after Retire.
+    type Allocator_Phase is (Unset, Active, Retired);
+    function Phase return Allocator_Phase with
+        Global => (Input => BitmapState);
+
     OutOfMemoryException : exception;
     OutOfBoundsException : exception;
+    RetiredException     : exception;
 
     procedure setup (areas : in MemoryAreas.MemoryAreaArray;
                      Map : Firmware_Frames.Region_Array) with
-        Global => (Output => (BitmapState, initialized,
-                              Virtmem.MAX_PHYS_ADDRESSABLE, Virtmem.MAX_PHYS_USABLE)),
-        Post => initialized;
+        Global => (In_Out => BitmapState,
+                   Output => (Virtmem.MAX_PHYS_ADDRESSABLE, Virtmem.MAX_PHYS_USABLE)),
+        Pre => Phase = Unset,
+        Post => Phase = Active;
 
     function isFree (frame : Virtmem.PFN) return Boolean with
-        Global => (Input => BitmapState, Proof_In => initialized),
-        Pre => initialized and then frame <= MAX_BOOT_PFN;
+        Global => (Input => BitmapState),
+        Pre => Phase = Active and then frame <= MAX_BOOT_PFN;
 
     -- High-water mark is inclusive and owned by the reservation core.
     function highestPFNAllocated return Virtmem.PFN with
         Global => (Input => BitmapState),
+        Pre => Phase = Active,
         Post => highestPFNAllocated'Result <= MAX_BOOT_PFN;
 
     -- Allocation failure raises before any bitmap/high-water mutation.
     procedure allocFrame (addr : out Virtmem.PhysAddress) with
-        Global => (In_Out => BitmapState, Proof_In => initialized),
-        Pre => initialized,
-        Post => addr <= MAX_BOOT_PFN * Virtmem.FRAME_SIZE;
+        Global => (In_Out => BitmapState),
+        Pre => Phase = Active,
+        Post => Phase = Active and then addr <= MAX_BOOT_PFN * Virtmem.FRAME_SIZE;
 
     procedure allocFrames (num : AllocSize; addr : out Virtmem.PhysAddress) with
-        Global => (In_Out => BitmapState, Proof_In => initialized),
-        Pre => initialized,
-        Post => addr <= MAX_BOOT_PFN * Virtmem.FRAME_SIZE;
+        Global => (In_Out => BitmapState),
+        Pre => Phase = Active,
+        Post => Phase = Active and then addr <= MAX_BOOT_PFN * Virtmem.FRAME_SIZE;
 
     -- Diagnostics only; computed from the authoritative bitmap on demand.
     function numFreeFrames return Unsigned_64 with
-        Global => (Input => BitmapState);
+        Global => (Input => BitmapState),
+        Pre => Phase = Active;
+
+    -- The buddy allocator has taken every frame left free here; no further
+    -- query or reservation is possible (each entry also refuses at run time,
+    -- since the kernel is built without assertion checks).
+    procedure Retire with
+        Global => (In_Out => BitmapState),
+        Pre => Phase = Active,
+        Post => Phase = Retired;
+
+    -- The bitmap's own storage: page-aligned and alone in its pages (the
+    -- linker's reclaimable boot section), returned once Retired.
+    BOOT_RECLAIM_SECTION : constant String := ".bss.boot_reclaim";
 
 private
     package Frames is new Boot_Frame_Allocator (MAX_BOOT_PFN);
-    reservations : Frames.State with Part_Of => BitmapState;
+    reservations : Frames.State with Part_Of => BitmapState,
+        Linker_Section => BOOT_RECLAIM_SECTION;
+    -- Outside the reclaimable section: it must outlive the bitmap.
+    currentPhase : Allocator_Phase := Unset with Part_Of => BitmapState;
+    function Phase return Allocator_Phase is (currentPhase);
 end BootAllocator;

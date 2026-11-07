@@ -259,4 +259,18 @@ package body Cpio is
       return toRead;
    end readData;
 
+   ---------------------------------------------------------------------------
+   --  withhold
+   ---------------------------------------------------------------------------
+   procedure withhold (ar : in out Archive; fileIdx : Natural) is
+   begin
+      if fileIdx >= ar.count then
+         return;
+      end if;
+      for i in fileIdx .. ar.count - 2 loop
+         ar.files (i) := ar.files (i + 1);
+      end loop;
+      ar.count := ar.count - 1;
+   end withhold;
+
 end Cpio;

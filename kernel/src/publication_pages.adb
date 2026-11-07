@@ -131,6 +131,17 @@ is
         end if;
     end Set_Process_Kills;
 
+    procedure Set_Memory_Bytes (Bytes : Unsigned_64) is
+        Facts : SP.Facts_Page with
+            Import, Volatile, Address => Virtmem.P2Va (Facts_Frame);
+        Bytes_Word : Unsigned_64 with
+            Import, Atomic, Address => Facts.Memory_Bytes'Address;
+    begin
+        if Facts_Frame /= 0 then
+            Bytes_Word := Bytes;
+        end if;
+    end Set_Memory_Bytes;
+
     procedure Set_Scanout_Overwrites (Count : Unsigned_64) is
         Facts : SP.Facts_Page with
             Import, Volatile, Address => Virtmem.P2Va (Facts_Frame);

@@ -4362,6 +4362,10 @@ procedure main is
 
    initrdSize   : Unsigned_64;
    initrdPages  : Unsigned_64;
+   --  The boot-image pages wholly inside the writable seed (live-rw.ext2)
+   --  once the RAM block driver holds its copy: [Seed_First, Seed_Limit).
+   --  No one maps them again; their memory goes back to the kernel.
+   Seed_First, Seed_Limit : Unsigned_64 := 0;
    ret          : Unsigned_64;
    msg          : Message;
    from         : Process_ID;
@@ -4491,6 +4495,45 @@ begin
             ret := syscall (SYSCALL_EXIT);
             return;
          end if;
+         --  The driver copied the seed and released its own view before
+         --  reporting ready. Release devmgr's view of the seed's interior
+         --  pages (those shared with neighbouring archive entries stay):
+         --  with no mapping left, the kernel takes them back. The
+         --  filesystem is mapped around them (it does not serve the seed).
+         declare
+            Page_Bytes : constant := 4096;
+            Seed : constant Natural := Cpio.findFile (cpioArchive, "live-rw.ext2");
+            Data_First : constant Unsigned_64 := cpioArchive.files (Seed).dataOff;
+            Data_Limit : constant Unsigned_64 := Data_First + cpioArchive.files (Seed).dataSize;
+            Done, Count : Unsigned_64;
+            --  The RAM the kernel manages (system facts), before and after:
+            --  it grows by exactly the pages that came back.
+            Managed_Before : constant Unsigned_64 := CuBit.System_Facts.Memory_Bytes;
+         begin
+            Seed_First := (Data_First + Page_Bytes - 1) / Page_Bytes;
+            Seed_Limit := Data_Limit / Page_Bytes;
+            if Seed_Limit <= Seed_First then
+               Seed_First := 0;
+               Seed_Limit := 0;
+            end if;
+            Done := Seed_First;
+            while Done < Seed_Limit loop
+               Count := Unsigned_64'Min (MAX_MAP_INTO_PAGES_PER_CALL, Seed_Limit - Done);
+               exit when syscall (SYSCALL_RELEASE_OWNED_MEMORY,
+                                  INITRD_BASE + Done * Page_Bytes,
+                                  Count * Page_Bytes) /= 0;
+               Done := Done + Count;
+            end loop;
+            if Done /= Seed_Limit then
+               Warnings.Warn ("devmgr: boot image seed pages not released");
+            else
+               debugPrint ("devmgr: boot image seed released (pages" &
+                           Unsigned_64'Image (Seed_Limit - Seed_First) &
+                           "; managed memory" & Unsigned_64'Image (Managed_Before / 1024) &
+                           " ->" & Unsigned_64'Image (CuBit.System_Facts.Memory_Bytes / 1024) &
+                           " KiB)" & LF);
+            end if;
+         end;
       else
          debugPrint ("devmgr: RAM block driver unavailable" & LF);
          ret := syscall (SYSCALL_EXIT);
@@ -4559,8 +4602,16 @@ begin
       begin
          ret := 0;
          while mappedPages < initrdPages loop
+            --  Never the released seed pages: around them.
+            if mappedPages = Seed_First and then Seed_Limit > Seed_First then
+               mappedPages := Seed_Limit;
+               exit when mappedPages >= initrdPages;
+            end if;
             pageCount := Unsigned_64'Min
               (MAX_MAP_INTO_PAGES_PER_CALL, initrdPages - mappedPages);
+            if mappedPages < Seed_First then
+               pageCount := Unsigned_64'Min (pageCount, Seed_First - mappedPages);
+            end if;
             ret := mapInto
               (filesystemPID,
                mappedPages * 4096,

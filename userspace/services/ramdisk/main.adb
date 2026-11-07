@@ -19,6 +19,28 @@ procedure Main is
    Image_Size, Heap : Unsigned_64;
    Ignore : Unsigned_64;
    Tag : MessageTag;
+   Boot_Image_Bytes : Unsigned_64 := 0;
+
+   --  Release (SYSCALL_RELEASE_OWNED_MEMORY) this process's read-only view
+   --  of the boot image, a bounded number of pages per call.
+   procedure Release_Boot_View is
+      Page_Bytes : constant := 4096;
+      Pages : constant Unsigned_64 := (Boot_Image_Bytes + Page_Bytes - 1) / Page_Bytes;
+      Done, Count : Unsigned_64 := 0;
+   begin
+      while Done < Pages loop
+         Count := Unsigned_64'Min (MAX_MAP_INTO_PAGES_PER_CALL, Pages - Done);
+         if syscall (SYSCALL_RELEASE_OWNED_MEMORY,
+                     Launch_Configuration.Boot_Image_Address + Done * Page_Bytes,
+                     Count * Page_Bytes) /= 0
+         then
+            debugPrint ("ramdisk: boot image view not released" & ASCII.LF);
+            return;
+         end if;
+         Done := Done + Count;
+      end loop;
+      debugPrint ("ramdisk: boot image view released" & ASCII.LF);
+   end Release_Boot_View;
 begin
    --  The boot image devmgr mapped for us, from its launch configuration.
    declare
@@ -28,6 +50,7 @@ begin
       CuBit.Launch_Configurations.Get (Configuration, Configured);
       Valid := Configured and then Configuration.Boot_Image /= 0;
       if Valid then
+         Boot_Image_Bytes := Configuration.Boot_Image;
          Cpio.init
            (Archive, toAddr (Launch_Configuration.Boot_Image_Address),
             Configuration.Boot_Image, Valid);
@@ -55,6 +78,12 @@ begin
             end if;
          end if;
       end if;
+   end if;
+   --  The seed is copied: this driver never reads the boot image again.
+   --  Its whole view goes back, so the seed's pages return to the kernel
+   --  once devmgr releases its own view of them (boot module lifetime).
+   if Ready then
+      Release_Boot_View;
    end if;
    if not Ready then
       debugPrint ("ramdisk: image initialization failed" & ASCII.LF);

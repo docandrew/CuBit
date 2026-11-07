@@ -1118,8 +1118,9 @@ if [ "$BENCH_LOAD" = 1 ]; then
 fi
 # BUG-002: the early boot allocator sizes itself from the memory map. The
 # boot-shell-nvme boot at 8, 16 and 32 GiB (buddy metadata grows with the top of
-# RAM), and with a large boot module that GRUB loads into low memory, which
-# the retained boot arena then covers (as a toolchain-carrying live initrd).
+# RAM), and with a large boot module that GRUB loads into low memory, reserved
+# exactly and, consumed by no one, returned to the buddy allocator at module
+# setup (tests/boot-reclaim/check.py measures it).
 case "$TEST_NAME" in
     boot-memory-8g) QEMU_MEMORY="${QEMU_MEMORY:-8G}" ;;
     boot-memory-16g) QEMU_MEMORY="${QEMU_MEMORY:-16G}" ;;
@@ -7184,6 +7185,16 @@ for line in (payload / "INDEX").read_text().splitlines():
     fi
     rm -rf "$CHECK_PAYLOAD"
 fi
+
+# Boot memory comes back after its last reader (tests/boot-reclaim).
+case "$TEST_NAME" in
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|storage-grants)
+        if ! python3 -I "$ROOT_DIR/tests/boot-reclaim/check.py" "$SERIAL_LOG" "$TEST_NAME"; then
+            echo "headless: serial log: $SERIAL_LOG" >&2
+            exit 1
+        fi
+        ;;
+esac
 
 if [ "$TEST_NAME" = "multi-instance" ]; then
     if ! python3 "$ROOT_DIR/tests/multi-instance/check.py" "$SERIAL_LOG"; then

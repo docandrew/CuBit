@@ -45,6 +45,10 @@ is
     -- User processes killed for a fault so far (Device_Memory_Diagnostics).
     procedure Set_Process_Kills (Count : Unsigned_64);
 
+    -- RAM the buddy allocator manages grew (boot memory came back after its
+    -- last reader, Modules / Boot_Reclaim): publish the new total.
+    procedure Set_Memory_Bytes (Bytes : Unsigned_64);
+
     -- The kernel's screen diagnostics erased part of the handed-over boot
     -- framebuffer (Count times so far). One store; safe in interrupts.
     procedure Set_Scanout_Overwrites (Count : Unsigned_64);

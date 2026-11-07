@@ -5,7 +5,7 @@
 -------------------------------------------------------------------------------
 with Firmware_Frames;
 package body BootAllocator with
-    Refined_State => (BitmapState => reservations),
+    Refined_State => (BitmapState => (reservations, currentPhase)),
     SPARK_Mode => On
 is
     procedure setup (areas : in MemoryAreas.MemoryAreaArray;
@@ -21,6 +21,9 @@ is
         -- Depends on the linear physical -> higher-half mapping.
         stackEnd : constant Virtmem.PFN := Virtmem.vaddrToPFN (Virtmem.STACK_TOP);
     begin
+        if currentPhase /= Unset then
+            raise RetiredException with "Boot allocator set up twice";
+        end if;
         Frames.Initialize (reservations);
         Virtmem.MAX_PHYS_ADDRESSABLE := 0;
         Virtmem.MAX_PHYS_USABLE := 0;
@@ -74,11 +77,28 @@ is
                 end;
             end if;
         end loop;
-        initialized := True;
+        currentPhase := Active;
     end setup;
+
+    -- Every entry checks the phase before touching the bitmap: after Retire
+    -- its pages belong to the buddy allocator. Proved unreachable for SPARK
+    -- callers (each entry's precondition); kept as the run-time refusal for
+    -- the kernel's non-SPARK callers, built without assertion checks.
+    procedure Require_Active with
+        Global => (Input => currentPhase),
+        Pre => currentPhase = Active
+    is
+    begin
+        if currentPhase /= Active then
+            raise RetiredException with "Boot allocator used outside its active phase";
+        end if;
+    end Require_Active;
 
     function isFree (frame : Virtmem.PFN) return Boolean is
     begin
+        if currentPhase /= Active then
+            raise RetiredException with "Boot allocator queried outside its active phase";
+        end if;
         -- Validate before narrowing/indexing, including in the -gnatp kernel.
         if frame > MAX_BOOT_PFN then
             raise OutOfBoundsException with "Checking PFN not owned by Boot Allocator";
@@ -88,6 +108,9 @@ is
 
     function highestPFNAllocated return Virtmem.PFN is
     begin
+        if currentPhase /= Active then
+            raise RetiredException with "Boot allocator queried outside its active phase";
+        end if;
         return Virtmem.PFN (Frames.Highest (reservations));
     end highestPFNAllocated;
 
@@ -99,6 +122,7 @@ is
     procedure allocFrames (num : AllocSize; addr : out Virtmem.PhysAddress) is
         first : Frames.Frame;
     begin
+        Require_Active;
         Frames.Reserve (reservations, Frames.Request_Size (num), first);
         if first = 0 then
             raise OutOfMemoryException with "Out of boot allocation memory";
@@ -110,6 +134,15 @@ is
 
     function numFreeFrames return Unsigned_64 is
     begin
+        if currentPhase /= Active then
+            raise RetiredException with "Boot allocator queried outside its active phase";
+        end if;
         return Unsigned_64 (Frames.Free_Count (reservations));
     end numFreeFrames;
+
+    procedure Retire is
+    begin
+        Require_Active;
+        currentPhase := Retired;
+    end Retire;
 end BootAllocator;

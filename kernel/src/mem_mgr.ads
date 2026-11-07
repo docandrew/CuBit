@@ -177,6 +177,16 @@ package Mem_mgr is
     ---------------------------------------------------------------------------
     procedure removeGuardPage (physAddr : in Virtmem.PhysAddress);
 
+    ---------------------------------------------------------------------------
+    -- retireKernelImagePage - hand one page of the kernel image (a page of
+    -- the reclaimable boot section) to the buddy allocator's view: its
+    -- linear mapping becomes writable data, as for any free frame, and its
+    -- kernel-image alias is removed, so a stale access through the old
+    -- symbol faults instead of reading or writing reused memory. Only during
+    -- single-CPU boot (no shootdown); the caller frees the frame afterwards.
+    ---------------------------------------------------------------------------
+    procedure retireKernelImagePage (physAddr : in Virtmem.PhysAddress);
+
 private
     ---------------------------------------------------------------------------
     -- determineFlagsAndMapFrame

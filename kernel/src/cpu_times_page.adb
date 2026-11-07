@@ -76,6 +76,21 @@ is
         end;
     end Set_Free_Memory;
 
+    procedure Set_Memory (Bytes : Unsigned_64) is
+    begin
+        if Frame = 0 then
+            return;
+        end if;
+        declare
+            Page : CTP.Page with
+                Import, Volatile, Address => Virtmem.P2Va (Frame);
+            Total_Word : Unsigned_64 with
+                Import, Atomic, Address => Page.Head.Memory_Bytes'Address;
+        begin
+            Total_Word := Bytes;
+        end;
+    end Set_Memory;
+
     procedure Map_Into (Root : in out Virtmem.P4; Success : out Boolean) is
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
     begin

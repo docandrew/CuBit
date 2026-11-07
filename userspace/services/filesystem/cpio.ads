@@ -68,4 +68,13 @@ package Cpio is
       buf     : System.Address;
       count   : Unsigned_64) return Unsigned_64;
 
+   ---------------------------------------------------------------------------
+   --  withhold
+   --  Drop entry fileIdx from the index: nothing can find, list or read it
+   --  through this archive again (its bytes may no longer be mapped).
+   --  Later entries move down one index. Valid only before any index has
+   --  been handed out.
+   ---------------------------------------------------------------------------
+   procedure withhold (ar : in out Archive; fileIdx : Natural);
+
 end Cpio;

@@ -44,6 +44,8 @@ is
 
     -- Free physical memory (one store).
     procedure Set_Free_Memory (Bytes : Unsigned_64) with Inline;
+    -- The managed total grew (boot memory returned after its last reader).
+    procedure Set_Memory (Bytes : Unsigned_64) with Inline;
 
     -- Map the page into an address space (the caller holds its lock).
     -- Mapping it again is harmless. Fails before Publish.

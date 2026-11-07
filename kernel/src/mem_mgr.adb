@@ -7,6 +7,7 @@
 
 with Interfaces; use Interfaces;
 with BootAllocator;
+with Config;
 with BuddyAllocator;
 with MemoryAreas; use MemoryAreas;
 with TextIO; use TextIO;
@@ -298,7 +299,8 @@ package body Mem_mgr is
 
         -- Map the rest of our memory areas.
         for area of areas loop
-            if area.kind = MemoryAreas.BAD then
+            -- Boot data lies inside a usable area, mapped with it.
+            if area.kind in MemoryAreas.BAD | MemoryAreas.BOOT_RESERVED then
                 null;
             elsif area.kind = MemoryAreas.VIDEO then
                 mapIOArea (area, Virtmem.PG_IO_WC);
@@ -506,6 +508,27 @@ package body Mem_mgr is
 
         flushTLB;
     end removeGuardPage;
+
+    procedure retireKernelImagePage (physAddr : in Virtmem.PhysAddress)
+    is
+        use Virtmem;
+        aliasMapped : Boolean;
+    begin
+        if physAddr mod FRAME_SIZE /= 0 or else
+          physAddr < Config.MIN_PHYS_ALLOC or else
+          physAddr >= V2P (STACK_TOP)
+        then
+            raise RemapException with "retireKernelImagePage: not a kernel image page";
+        end if;
+        -- The linear entry exists (setup maps the image with small pages)
+        -- and becomes ordinary writable, non-executable data.
+        removeGuardPage (physAddr);
+        unmapPage (physAddr + KERNEL_BASE, kernelP4, aliasMapped);
+        if not aliasMapped then
+            raise RemapException with "retireKernelImagePage: no kernel-image alias";
+        end if;
+        flushTLB;
+    end retireKernelImagePage;
 
     ---------------------------------------------------------------------------
     -- switchAddressSpace - make the kernel's page table the active one.

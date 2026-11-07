@@ -119,6 +119,12 @@ package body Fs_Server.Storage is
       if not cpioOk then
          debugPrint ("FS Server: Invalid CPIO archive on ramdisk." & LF);
       elsif Cpio.findFile (cpioArchive, "live-rw.ext2") < cpioArchive.count then
+         --  With a RAM block driver serving the writable seed (mem:0), the
+         --  archive's copy is not ours to read: devmgr released those pages
+         --  and did not map them here. Withhold the entry before any open.
+         if Startup.Ramdisk.Present then
+            Cpio.withhold (cpioArchive, Cpio.findFile (cpioArchive, "live-rw.ext2"));
+         end if;
          declare
             Result : Registration_Result;
             admission : Admission_Result;

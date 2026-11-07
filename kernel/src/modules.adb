@@ -19,7 +19,6 @@ with Process_Capabilities;
 with Device_Vector_ABI;
 with Cpio;
 with ELF;
-with Process;
 with Process.Loader;
 with Multiboot;
 with Boot_Modules;
@@ -41,6 +40,9 @@ with Device_Memory_Authority;
 with Device_Memory_Admission;
 with Physical_Ranges;
 with Service_Registry;
+with Spinlocks;
+with TLB_Shootdown;
+with Boot_Module_Lifetime;
 with TextIO; use TextIO;
 with Virtmem;
 
@@ -64,15 +66,453 @@ package body Modules with SPARK_Mode => Off is
     -- Package-level to avoid 2KB+ stack usage from FileIndex array
     cpioArchive : Cpio.Archive;
 
-    function residentInitrdRange
-      (Physical : Integer_Address; Length : Storage_Count) return Boolean
+    ---------------------------------------------------------------------------
+    -- Boot module lifetime state (see the spec). The image lock orders every
+    -- change of a page's mapping count against copies out of the image and
+    -- against handing released pages to the buddy allocator. Lock order:
+    -- an address-space lock, then the image lock, then the buddy lock.
+    ---------------------------------------------------------------------------
+    package BML renames Boot_Module_Lifetime;
+    use type BML.Phase;
+    use type BML.Reference_Count;
+
+    INITRD_NAME : constant String := "init.img";
+    PAGE_BYTES : constant Unsigned_64 := Unsigned_64 (Virtmem.PAGE_SIZE);
+    -- User space ends here (the canonical lower half).
+    USER_ADDRESS_LIMIT : constant Unsigned_64 := 16#0000_8000_0000_0000#;
+    -- Page-table geometry for the leaf walk.
+    TABLE_LEVELS  : constant := 4;
+    TABLE_ENTRIES : constant := Virtmem.NUM_PAGE_TABLE_ENTRIES;
+    ENTRY_BYTES   : constant := 8;
+    TOP_SHIFT     : constant := 39;
+    LEVEL_SHIFT   : constant := 9;
+    USER_TOP_ENTRIES : constant := TABLE_ENTRIES / 2;
+
+    phases : array (Boot_Modules.Module_Index) of BML.Phase :=
+      (others => BML.Retained);
+    initrdIndex : Boot_Modules.Module_Count := 0;
+    -- Pages of the shared image and its reference table (buddy memory, one
+    -- Reference_Count per page), present while the image is Shared.
+    initrdPages : BML.Page_Count := 0;
+    livePages   : BML.Page_Count := 0;
+    tableAddr   : System.Address := System.Null_Address;
+    tableOrder  : BuddyAllocator.Order := 0;
+    -- Boot-image mappings each process holds: a holder with none is never
+    -- walked when it exits.
+    held : array (Process.ProcessID) of Unsigned_64 := (others => 0);
+    releasedBytes : Unsigned_64 := 0;
+    imageLockName : aliased constant String := "boot image";
+    imageLock : Spinlocks.Spinlock;
+
+    function Released_Bytes return Unsigned_64 is (releasedBytes);
+
+    function imageShared return Boolean is
+      (initrdIndex /= 0 and then phases (initrdIndex) = BML.Shared);
+
+    -- The page offset of a physical address inside the shared image.
+    -- Callers hold the image lock.
+    procedure imagePage (Physical : Unsigned_64; Page : out BML.Page_Offset;
+                         Inside : out Boolean) is
+    begin
+        Page := 0;
+        Inside := imageShared and then
+          Physical >= Unsigned_64 (initrdAddr) and then
+          Physical - Unsigned_64 (initrdAddr) < Unsigned_64 (initrdPages) * PAGE_BYTES;
+        if Inside then
+            Page := BML.Page_Offset ((Physical - Unsigned_64 (initrdAddr)) / PAGE_BYTES);
+        end if;
+    end imagePage;
+
+    -- A run of released pages (image lock held). Contiguous pages are
+    -- handed over together, so the buddy allocator admits aligned blocks.
+    type Release_Run is record
+        First : Unsigned_64 := 0;
+        Pages : Natural := 0;
+        Total : Natural := 0;
+    end record;
+
+    procedure flushRun (Run : in out Release_Run) is
+    begin
+        if Run.Pages > 0 then
+            BuddyAllocator.adoptFrames (Virtmem.PhysAddress (Run.First), Run.Pages);
+            releasedBytes := releasedBytes + Unsigned_64 (Run.Pages) * PAGE_BYTES;
+            Run.Total := Run.Total + Run.Pages;
+            Run.Pages := 0;
+        end if;
+    end flushRun;
+
+    -- Processes read the managed total (system facts, CPU times): it grew.
+    procedure publishTotal is
+        Total : constant Unsigned_64 := Unsigned_64 (BuddyAllocator.getTotalBytes);
+    begin
+        Publication_Pages.Set_Memory_Bytes (Total);
+        Cpu_Times_Page.Set_Memory (Total);
+    end publishTotal;
+
+    -- One mapping of the image page at Physical is gone (image lock held;
+    -- the page must be the image's with a nonzero count).
+    procedure dropPage (Physical : Unsigned_64; Run : in out Release_Run) is
+        Page : BML.Page_Offset;
+        Inside, Freed : Boolean;
+    begin
+        imagePage (Physical, Page, Inside);
+        if not Inside then
+            raise ModuleException with "Boot image page drop outside the image";
+        end if;
+        declare
+            refs : BML.Reference_Table (0 .. initrdPages - 1)
+              with Import, Address => tableAddr;
+        begin
+            if refs (Page) = 0 then
+                raise ModuleException with "Boot image page dropped after release";
+            end if;
+            BML.Drop (refs, Page, Freed);
+        end;
+        if Freed then
+            if Run.Pages = 0 or else
+              Run.First + Unsigned_64 (Run.Pages) * PAGE_BYTES /= Physical
+            then
+                flushRun (Run);
+                Run.First := Physical;
+            end if;
+            Run.Pages := Run.Pages + 1;
+        end if;
+    end dropPage;
+
+    -- Finish a batch of drops (image lock held): adopt the last run, and
+    -- when the image's last page went, the module is Released.
+    procedure finishDrops (Run : in out Release_Run) is
+    begin
+        flushRun (Run);
+        if Run.Total > 0 then
+            publishTotal;
+            livePages := livePages - Run.Total;
+            if livePages = 0 then
+                BML.Advance (phases (initrdIndex), BML.Released);
+                BuddyAllocator.free (tableOrder, tableAddr);
+                tableAddr := System.Null_Address;
+                println ("Modules: boot image fully released");
+            end if;
+        end if;
+    end finishDrops;
+
+    procedure Acquire_Initrd_Pages (Offset, Bytes : Unsigned_64;
+                                    Physical      : out Unsigned_64;
+                                    Granted       : out Boolean)
     is
     begin
-        return initrdAddr /= 0 and then Physical >= Integer_Address (initrdAddr)
-          and then Physical - Integer_Address (initrdAddr) < Integer_Address (initrdSize)
-          and then Integer_Address (Length) <= Integer_Address (initrdSize) -
-            (Physical - Integer_Address (initrdAddr));
-    end residentInitrdRange;
+        Physical := 0;
+        Granted := False;
+        Spinlocks.enterCriticalSection (imageLock);
+        if imageShared and then
+          Offset mod PAGE_BYTES = 0 and then Bytes /= 0 and then Bytes mod PAGE_BYTES = 0
+          and then Offset < Unsigned_64 (initrdPages) * PAGE_BYTES
+          and then Bytes <= Unsigned_64 (initrdPages) * PAGE_BYTES - Offset
+        then
+            declare
+                refs : BML.Reference_Table (0 .. initrdPages - 1)
+                  with Import, Address => tableAddr;
+            begin
+                BML.Acquire (refs, BML.Page_Offset (Offset / PAGE_BYTES),
+                             BML.Page_Count (Bytes / PAGE_BYTES), Granted);
+            end;
+            if Granted then
+                Physical := Unsigned_64 (initrdAddr) + Offset;
+            end if;
+        end if;
+        Spinlocks.exitCriticalSection (imageLock);
+    end Acquire_Initrd_Pages;
+
+    procedure Initrd_Pages (Offset, Bytes : Unsigned_64;
+                            Physical      : out Unsigned_64;
+                            Valid         : out Boolean)
+    is
+    begin
+        Physical := 0;
+        Valid := initrdAddr /= 0 and then Offset mod PAGE_BYTES = 0 and then
+          Bytes /= 0 and then Offset <= Unsigned_64 (initrdPages) * PAGE_BYTES and then
+          Bytes <= Unsigned_64 (initrdPages) * PAGE_BYTES - Offset;
+        if Valid then
+            Physical := Unsigned_64 (initrdAddr) + Offset;
+        end if;
+    end Initrd_Pages;
+
+    procedure Return_Initrd_Pages (Physical, Bytes : Unsigned_64) is
+        Run : Release_Run;
+        Cursor : Unsigned_64 := Physical;
+    begin
+        Spinlocks.enterCriticalSection (imageLock);
+        while Cursor < Physical + Bytes loop
+            dropPage (Cursor, Run);
+            Cursor := Cursor + PAGE_BYTES;
+        end loop;
+        finishDrops (Run);
+        Spinlocks.exitCriticalSection (imageLock);
+    end Return_Initrd_Pages;
+
+    procedure Note_Mapped (Holder : Process.ProcessID; Pages : Unsigned_64) is
+    begin
+        Spinlocks.enterCriticalSection (imageLock);
+        held (Holder) := held (Holder) + Pages;
+        Spinlocks.exitCriticalSection (imageLock);
+    end Note_Mapped;
+
+    procedure Copy_Resident (Physical    : Integer_Address;
+                             Length      : Storage_Count;
+                             Destination : System.Address;
+                             Copied      : out Boolean)
+    is
+        First, Last : BML.Page_Offset;
+        Inside_First, Inside_Last : Boolean;
+    begin
+        Copied := False;
+        if Length = 0 then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (imageLock);
+        imagePage (Unsigned_64 (Physical), First, Inside_First);
+        imagePage (Unsigned_64 (Physical) + Unsigned_64 (Length) - 1, Last, Inside_Last);
+        if Inside_First and then Inside_Last then
+            declare
+                refs : BML.Reference_Table (0 .. initrdPages - 1)
+                  with Import, Address => tableAddr;
+            begin
+                if BML.Live (refs, First, Last - First + 1) then
+                    Util.memCopy (Destination, Virtmem.P2Va (Physical), Length);
+                    Copied := True;
+                end if;
+            end;
+        end if;
+        Spinlocks.exitCriticalSection (imageLock);
+    end Copy_Resident;
+
+    -- The leaf entry mapping Virtual in Holder's tables (address-space lock
+    -- held): its address, or Null_Address when a table is missing or a
+    -- large page maps it.
+    function leafEntry (Holder : Process.ProcessID; Virtual : Unsigned_64)
+      return System.Address
+    is
+        use Virtmem;
+        Table : PhysAddress := Process.rootPhysical (Holder);
+        Shift : Natural := TOP_SHIFT;
+        Item : System.Address := System.Null_Address;
+    begin
+        for Level in 1 .. TABLE_LEVELS loop
+            Item := P2Va (Table) + Storage_Offset
+              (((Virtual / 2 ** Shift) mod TABLE_ENTRIES) * ENTRY_BYTES);
+            exit when Level = TABLE_LEVELS;
+            declare
+                Upper : PageTableEntry with Import, Address => Item;
+            begin
+                if not Upper.present or else Upper.size then
+                    return System.Null_Address;
+                end if;
+                Table := PFNToAddr (Upper.pgNum);
+            end;
+            Shift := Shift - LEVEL_SHIFT;
+        end loop;
+        return Item;
+    end leafEntry;
+
+    procedure Release_View (Holder   : Process.ProcessID;
+                            Virtual  : Unsigned_64;
+                            Bytes    : Unsigned_64;
+                            Released : out Boolean)
+    is
+        Pages : constant Unsigned_64 := Bytes / PAGE_BYTES;
+        Valid : Boolean := True;
+        Run : Release_Run;
+    begin
+        Released := False;
+        if Holder = Process.NO_PROCESS or else Bytes = 0 or else
+          Virtual mod PAGE_BYTES /= 0 or else Bytes mod PAGE_BYTES /= 0 or else
+          Pages > Maximum_Release_Pages or else
+          Virtual >= USER_ADDRESS_LIMIT or else Bytes > USER_ADDRESS_LIMIT - Virtual
+        then
+            return;
+        end if;
+        -- The address-space lock is held throughout: no other change to
+        -- these entries while they pass through their three steps.
+        Process.lockAddressSpace (Holder);
+        -- 1. Every page a present, user, read-only mapping of a live image
+        --    page, before any is touched.
+        Spinlocks.enterCriticalSection (imageLock);
+        Valid := held (Holder) >= Pages;
+        for I in 0 .. Pages - 1 loop
+            exit when not Valid;
+            declare
+                Item : constant System.Address := leafEntry (Holder, Virtual + I * PAGE_BYTES);
+                Page : BML.Page_Offset;
+                Inside : Boolean;
+            begin
+                Valid := Item /= System.Null_Address;
+                if Valid then
+                    declare
+                        Leaf : Virtmem.PageTableEntry with Import, Address => Item;
+                    begin
+                        imagePage (Unsigned_64 (Virtmem.PFNToAddr (Leaf.pgNum)), Page, Inside);
+                        Valid := Leaf.present and then Leaf.user and then
+                          not Leaf.writable and then Inside;
+                        if Valid then
+                            declare
+                                refs : BML.Reference_Table (0 .. initrdPages - 1)
+                                  with Import, Address => tableAddr;
+                            begin
+                                Valid := refs (Page) > 0;
+                            end;
+                        end if;
+                    end;
+                end if;
+            end;
+        end loop;
+        Spinlocks.exitCriticalSection (imageLock);
+        if not Valid then
+            Process.unlockAddressSpace (Holder);
+            return;
+        end if;
+        -- 2. Not present (the frame number stays in the entry for step 3),
+        --    and every CPU forgets the translations. Each page still holds
+        --    its count, so none can go to the buddy allocator yet.
+        for I in 0 .. Pages - 1 loop
+            declare
+                Leaf : Virtmem.PageTableEntry with Import,
+                  Address => leafEntry (Holder, Virtual + I * PAGE_BYTES);
+            begin
+                Leaf.present := False;
+            end;
+        end loop;
+        TLB_Shootdown.Invalidate_All;
+        -- 3. Drop each mapping's count, adopting pages that had no other,
+        --    and clear the entries.
+        Spinlocks.enterCriticalSection (imageLock);
+        for I in 0 .. Pages - 1 loop
+            declare
+                Leaf : Virtmem.PageTableEntry with Import,
+                  Address => leafEntry (Holder, Virtual + I * PAGE_BYTES);
+            begin
+                dropPage (Unsigned_64 (Virtmem.PFNToAddr (Leaf.pgNum)), Run);
+                Leaf := Virtmem.EMPTY_PTE;
+            end;
+        end loop;
+        finishDrops (Run);
+        held (Holder) := held (Holder) - Pages;
+        Spinlocks.exitCriticalSection (imageLock);
+        Process.unlockAddressSpace (Holder);
+        Released := True;
+    end Release_View;
+
+    procedure Forget_Process (Holder : Process.ProcessID) is
+        use Virtmem;
+        Run : Release_Run;
+        Remaining : Unsigned_64;
+
+        -- Every present 4 KiB user leaf below Table (level 1 = leaves).
+        procedure walk (Table : PhysAddress; Level : Positive; Entries : Natural) is
+        begin
+            for Index in 0 .. Entries - 1 loop
+                exit when Remaining = 0;
+                declare
+                    Item : PageTableEntry with Import, Address =>
+                      P2Va (Table) + Storage_Offset (Index * ENTRY_BYTES);
+                    Page : BML.Page_Offset;
+                    Inside : Boolean;
+                begin
+                    if Item.present and then not Item.size then
+                        if Level > 1 then
+                            walk (PFNToAddr (Item.pgNum), Level - 1, TABLE_ENTRIES);
+                        else
+                            imagePage (Unsigned_64 (PFNToAddr (Item.pgNum)), Page, Inside);
+                            if Inside then
+                                declare
+                                    refs : BML.Reference_Table (0 .. initrdPages - 1)
+                                      with Import, Address => tableAddr;
+                                begin
+                                    -- A released page in a dead process's
+                                    -- tables is an ordinary frame it owned.
+                                    if refs (Page) > 0 then
+                                        dropPage (Unsigned_64 (PFNToAddr (Item.pgNum)), Run);
+                                        Remaining := Remaining - 1;
+                                    end if;
+                                end;
+                            end if;
+                        end if;
+                    end if;
+                end;
+            end loop;
+        end walk;
+    begin
+        if Holder = Process.NO_PROCESS then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (imageLock);
+        Remaining := held (Holder);
+        if Remaining > 0 and then imageShared then
+            -- The holder never runs again and its tables are not yet freed;
+            -- no CPU translates through them (reclaimProcess's contract).
+            walk (Process.rootPhysical (Holder), TABLE_LEVELS, USER_TOP_ENTRIES);
+            finishDrops (Run);
+            if Remaining > 0 then
+                -- Mappings counted but no longer in its tables (replaced or
+                -- removed elsewhere): those pages stay reserved. Never a
+                -- premature release; say so.
+                print ("Modules: boot image pages left held by exited PID ");
+                println (Integer (Holder));
+            end if;
+        end if;
+        held (Holder) := 0;
+        Spinlocks.exitCriticalSection (imageLock);
+    end Forget_Process;
+
+    -- Share the image with its first consumer: a reference table with one
+    -- mapping per page (the root mapping installed next).
+    procedure shareImage (Holder : Process.ProcessID) is
+        Bytes : constant Storage_Count :=
+          Storage_Count (initrdPages) * (BML.Reference_Count'Size / System.Storage_Unit);
+        Block : System.Address;
+    begin
+        tableOrder := BuddyAllocator.getOrder (Bytes);
+        BuddyAllocator.alloc (tableOrder, Block);
+        if Block = BuddyAllocator.NO_BLOCK_AVAILABLE then
+            raise ModuleException with "No memory for the boot image reference table";
+        end if;
+        tableAddr := Block;
+        declare
+            refs : BML.Reference_Table (0 .. initrdPages - 1)
+              with Import, Address => tableAddr;
+        begin
+            BML.Share (refs);
+        end;
+        livePages := initrdPages;
+        BML.Advance (phases (initrdIndex), BML.Shared);
+        held (Holder) := Unsigned_64 (initrdPages);
+    end shareImage;
+
+    -- Every module but the boot image has no consumer: release it now,
+    -- before anything is published or mapped.
+    procedure releaseUnconsumed is
+    begin
+        for I in 1 .. Multiboot.Boot_Module_Count loop
+            declare
+                Item : constant Boot_Modules.Image := Multiboot.Boot_Module (I);
+                Name : constant String := Item.Name.Text (1 .. Item.Name.Length);
+                Frames : constant Natural :=
+                  Natural ((Item.Page_Limit - Item.First) / Boot_Modules.Page_Bytes);
+            begin
+                if Name = INITRD_NAME and then initrdIndex = 0 then
+                    initrdIndex := I;
+                elsif phases (I) = BML.Retained then
+                    BuddyAllocator.adoptFrames (Virtmem.PhysAddress (Item.First), Frames);
+                    BML.Advance (phases (I), BML.Released);
+                    releasedBytes := releasedBytes + Unsigned_64 (Frames) * PAGE_BYTES;
+                    print ("Modules: released unconsumed module "); print (Name);
+                    print (": "); print (Frames * Integer (PAGE_BYTES) / 1024);
+                    print (" KiB (buddy total ");
+                    print (Integer (BuddyAllocator.getTotalBytes / 1024));
+                    println (" KiB)");
+                end if;
+            end;
+        end loop;
+    end releaseUnconsumed;
 
     ---------------------------------------------------------------------------
     -- loadFromCpio
@@ -168,6 +608,7 @@ package body Modules with SPARK_Mode => Off is
             raise ModuleException with "Initrd overlaps owned-memory aperture";
         end if;
         print (" initrd pages into pid "); println (Integer(pid));
+        shareImage (pid);
 
         for i in 0..numPages-1 loop
             mapPage (phys    => addr +
@@ -178,6 +619,8 @@ package body Modules with SPARK_Mode => Off is
                      success => ok);
 
             if not ok then
+                -- Root mappings installed so far stay counted (held); the
+                -- device manager never runs, so they are never released.
                 print ("Modules: Error mapping initrd page ");
                 print (Integer(i));
                 raise ModuleException with "Initrd mapping failed; device manager remains suspended";
@@ -186,26 +629,6 @@ package body Modules with SPARK_Mode => Off is
 
         println ("Modules: Initrd mapping complete.");
     end mapInitrd;
-
-    ---------------------------------------------------------------------------
-    -- Initrd_Pages
-    ---------------------------------------------------------------------------
-    procedure Initrd_Pages (Offset, Bytes : Unsigned_64;
-                            Physical      : out Unsigned_64;
-                            Valid         : out Boolean)
-    is
-        Page : constant Unsigned_64 := Unsigned_64 (Virtmem.PAGE_SIZE);
-        Image_Pages : constant Unsigned_64 :=
-          (Unsigned_64 (initrdSize) + Page - 1) / Page;
-    begin
-        Physical := 0;
-        Valid := initrdAddr /= 0 and then Offset mod Page = 0 and then
-          Bytes /= 0 and then Offset <= Image_Pages * Page and then
-          Bytes <= Image_Pages * Page - Offset;
-        if Valid then
-            Physical := Unsigned_64 (initrdAddr) + Offset;
-        end if;
-    end Initrd_Pages;
 
     ---------------------------------------------------------------------------
     -- The device manager's typed launch configuration (Launch_Configuration):
@@ -292,6 +715,10 @@ package body Modules with SPARK_Mode => Off is
             raise ModuleException with "Boot module startup is one-shot";
         end if;
         setupStarted := True;
+        Spinlocks.Initialize (imageLock, imageLockName'Access);
+        -- Before any figure of memory is published: modules nobody reads
+        -- go back now. This also finds the boot image.
+        releaseUnconsumed;
         -- The physical classification is final before any user process
         -- exists; device-memory authority consults nothing else.
         Physical_Range_Map.Seal_From_Boot;
@@ -324,9 +751,11 @@ package body Modules with SPARK_Mode => Off is
             begin
                 print ("Module: "); print (Name);
                 print (" ("); print (Integer (Size)); println (" bytes)");
-                if Name = "init.img" then
+                if I = initrdIndex then
                     initrdAddr := Virtmem.PhysAddress (Item.First);
                     initrdSize := Size;
+                    initrdPages := BML.Page_Count
+                      ((Item.Page_Limit - Item.First) / Boot_Modules.Page_Bytes);
                 end if;
             end;
         end loop;
