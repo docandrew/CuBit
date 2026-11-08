@@ -31,6 +31,7 @@ package body Bible_App is
    KEY_DOWN      : constant Unsigned_64 := 16#50#;
    KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
    KEY_DELETE    : constant Unsigned_64 := 16#53#;
+   KEY_F4        : constant Unsigned_64 := 16#3E#;
    KEY_F8        : constant Unsigned_64 := 16#42#;
    KEY_F9        : constant Unsigned_64 := 16#43#;
    --  A reading window: the desktop cuts it to fit a smaller work area.
@@ -95,6 +96,7 @@ package body Bible_App is
          elsif Code = KEY_PAGE_DOWN then Views.Page_Down
          elsif Code = KEY_HOME then Views.Home
          elsif Code = KEY_END then Views.End_Key
+         elsif Code = KEY_F4 then Views.Translations_Key
          elsif Code = KEY_F8 then Views.Next_Face_Key
          elsif Code = KEY_F9 then Views.Red_Letters_Key
          else Views.No_Key);

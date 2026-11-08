@@ -39,13 +39,15 @@ package body Bible_Search with SPARK_Mode is
          case Character'Pos (Next (1)) is
             when 16#A6# | 16#86# => return (2, "ae", 2, False);   --  U+00E6, U+00C6
             when 16#A0# => return (2, "a ", 1, False);            --  U+00E0
-            when 16#A9# => return (2, "e ", 1, False);            --  U+00E9
+            when 16#A9# | 16#AB# | 16#8B# => return (2, "e ", 1, False);   --  U+00E9, U+00EB, U+00CB
             when others => return (2, "  ", 0, False);
          end case;
       elsif I < Text'Last and then C = LEAD_C4 and then Character'Pos (Next (1)) = 16#93# then
          return (2, "e ", 1, False);                              --  U+0113
       elsif I < Text'Last and then C = LEAD_C5 and then Character'Pos (Next (1)) = 16#8D# then
          return (2, "o ", 1, False);                              --  U+014D
+      elsif I < Text'Last and then C = LEAD_C5 and then Character'Pos (Next (1)) in 16#92# | 16#93# then
+         return (2, "oe", 2, False);                              --  U+0152, U+0153
       elsif I < Text'Last - 1 and then C = LEAD_E2 and then Next (1) = PUNCTUATION_2 then
          return (3, "  ", 0, Next (2) = RIGHT_QUOTE_3);
       else

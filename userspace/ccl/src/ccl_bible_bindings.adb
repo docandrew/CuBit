@@ -87,7 +87,7 @@ package body CCL_Bible_Bindings is
       if E.Status = Bible_Translations.Not_Loaded then
          CCL_Bible_Source.Load (Which, E.Data, E.Status);
          if E.Status = Bible_Translations.Loaded then
-            Bible_Translations.Open (E);
+            Bible_Translations.Open (E, Which);
          elsif E.Status = Bible_Translations.Not_Loaded then
             E.Status := Bible_Translations.Read_Failed;
          end if;

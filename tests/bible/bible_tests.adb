@@ -1,12 +1,15 @@
 --  Hosted tests of the Bible core (APP-005): the parser against every
---  form, every alias-like name and every verse of three translations
---  (round trips), with fuzzing; the image reader's bounds on damaged and
---  truncated images; search against a brute-force scan; the face mapping.
+--  form, every alias-like name (English and Latin) and every verse of four
+--  translations (round trips), with fuzzing; the image reader's bounds on
+--  damaged and truncated images; search against a brute-force scan; the
+--  face mapping; carrying a place between the English and Vulgate
+--  numberings; no pilcrow in any image.
 --  Run by tests/bible/run.sh with checks and contracts on.
 with Ada.Calendar; use Ada.Calendar;
 with Ada.Command_Line;
 with Ada.Environment_Variables;
 with Ada.Numerics.Discrete_Random;
+with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -17,6 +20,8 @@ with Bible_References; use Bible_References;
 with Bible_Search;
 with Bible_Support; use Bible_Support;
 with Bible_Text;
+with Bible_Translations;
+with Bible_Versification;
 
 procedure Bible_Tests is
    Directory : constant String :=
@@ -25,8 +30,9 @@ procedure Bible_Tests is
    KJV : constant Translation_Access := Load (Directory & "/kjv.bible");
    BSB : constant Translation_Access := Load (Directory & "/bsb.bible");
    WEB : constant Translation_Access := Load (Directory & "/web.bible");
+   VUL : constant Translation_Access := Load (Directory & "/vul.bible");
    type Translation_List is array (Positive range <>) of Translation_Access;
-   ALL_TRANSLATIONS : constant Translation_List := [KJV, BSB, WEB];
+   ALL_TRANSLATIONS : constant Translation_List := [KJV, BSB, WEB, VUL];
    Checks, Failures : Natural := 0;
    Seed : constant Integer :=
      (if Ada.Command_Line.Argument_Count >= 1 then Integer'Value (Ada.Command_Line.Argument (1)) else 20261106);
@@ -67,8 +73,63 @@ procedure Bible_Tests is
              and then Verses_In (KJV.Index.Table, Esther_Greek, 10) > 0,
              "KJV Additions to Esther start at chapter 10");
       Check (Verse_Text (KJV.all, (John, 3, 16)) =
-               "¶ For God so loved the world, that he gave his only begotten Son, that whosoever believeth "
-               & "in him should not perish, but have everlasting life.", "KJV John 3:16");
+               "For God so loved the world, that he gave his only begotten Son, that whosoever believeth "
+               & "in him should not perish, but have everlasting life.", "KJV John 3:16, no pilcrow");
+      --  The King James Version's pilcrows are paragraph breaks, not text:
+      --  John 3:16 starts a paragraph (its source has "\v 16 \wj ¶ For God").
+      declare
+         VR : constant Verse_Record := Read_Verse (KJV.Data.all, KJV.L, Verse_Row (KJV.L, KJV.Index, (John, 3, 16)));
+      begin
+         Check (VR.Segments > 0 and then Read_Segment (KJV.Data.all, KJV.L, VR.First_Segment).Kind = Paragraph,
+                "KJV John 3:16 starts a paragraph");
+      end;
+      --  No image holds a pilcrow anywhere in its text (U+00B6, C2 B6).
+      for T of ALL_TRANSLATIONS loop
+         declare
+            Text : constant Extent := T.L.Sections (Bible_Images.Text);
+            Pilcrows : Natural := 0;
+         begin
+            for I in Text.Offset .. Text.Offset + Text.Count - 2 loop
+               if T.Data (I) = 16#C2# and then T.Data (I + 1) = 16#B6# then
+                  Pilcrows := Pilcrows + 1;
+               end if;
+            end loop;
+            Check (Pilcrows = 0, "no pilcrow in an image's text:" & Pilcrows'Image);
+         end;
+      end loop;
+      --  The Vulgate: its own numbering, its language.
+      declare
+         About : Text_Slice;
+         Valid : Boolean;
+         VUL_Red : Natural := 0;
+      begin
+         Read_About (VUL.Data.all, VUL.L, Bible_Images.Abbreviation, About, Valid);
+         Check (Valid and then Slice (VUL.all, About) = "VUL", "VUL about");
+         Read_About (VUL.Data.all, VUL.L, Bible_Images.Language_Code, About, Valid);
+         Check (Valid and then Slice (VUL.all, About) = "la", "VUL is in Latin (la)");
+         Read_About (VUL.Data.all, VUL.L, Bible_Images.Language_Name, About, Valid);
+         Check (Valid and then Slice (VUL.all, About) = "Latin", "VUL language name");
+         Read_About (KJV.Data.all, KJV.L, Bible_Images.Language_Code, About, Valid);
+         Check (Valid and then Slice (KJV.all, About) = "en", "KJV is in English (en)");
+         Check (VUL.Index.Table.Chapters (Psalms) = 150, "VUL Psalms has 150 chapters");
+         Check (Verses_In (VUL.Index.Table, Psalms, 118) = 176, "VUL Psalm 118 (Hebrew 119) has 176 verses");
+         Check (Verses_In (VUL.Index.Table, Psalms, 9) = 39, "VUL Psalm 9 holds Hebrew 9 and 10: 39 verses");
+         Check (VUL.Index.Table.Chapters (Daniel) = 14, "VUL Daniel has 14 chapters (Susanna, Bel)");
+         Check (Verses_In (VUL.Index.Table, Daniel, 3) = 100, "VUL Daniel 3 holds the Song of the Three");
+         Check (VUL.Index.Table.Chapters (Esther) = 16, "VUL Esther runs to chapter 16");
+         Check (VUL.Index.Table.Chapters (Song_Of_The_Three) = 0 and then VUL.Index.Table.Chapters (Tobit) = 14,
+                "VUL: no separate Song of the Three; Tobit");
+         Check (Verse_Text (VUL.all, (John, 3, 16)) =
+                  "Sic enim Deus dilexit mundum, ut Filium suum unigenitum daret: ut omnis qui credit in eum, "
+                  & "non pereat, sed habeat vitam æternam.", "VUL John 3:16");
+         Check (Verse_Text (VUL.all, (Genesis, 1, 1)) = "In principio creavit Deus cælum et terram.",
+                "VUL Genesis 1:1");
+         Check (Ada.Strings.Fixed.Index (Verse_Text (VUL.all, (Psalms, 22, 1)), "Dominus regit me") > 0, "VUL Psalm 22:1");
+         for S in 0 .. Bible_Images.Count (VUL.L, Segments) - 1 loop
+            if Read_Segment (VUL.Data.all, VUL.L, S).Words_Of_Christ then VUL_Red := VUL_Red + 1; end if;
+         end loop;
+         Check (VUL_Red = 0, "the Vulgate source marks no words of Christ:" & VUL_Red'Image);
+      end;
       Check (Verse_Text (WEB.all, (John, 11, 35)) = "Jesus wept.", "WEB John 11:35");
       Check (Verse_Text (BSB.all, (Genesis, 1, 1)) =
                "In the beginning God created the heavens and the earth.", "BSB Genesis 1:1");
@@ -212,6 +273,33 @@ procedure Bible_Tests is
       Expect (WEB, "Psalm 151 1:3", (Psalm_151, 1, 3), (Psalm_151, 1, 3));
       Expect (WEB, "Ps 151:3", (Psalm_151, 1, 3), (Psalm_151, 1, 3));
       Expect (WEB, "3 Maccabees 1:1", (Third_Maccabees, 1, 1), (Third_Maccabees, 1, 1));
+      --  Latin names and abbreviations, as the Vulgate has them.
+      Expect (VUL, "Ioannes 3:16", (John, 3, 16), (John, 3, 16));
+      Expect (VUL, "Io 3:16", (John, 3, 16), (John, 3, 16));
+      Expect (VUL, "Ioh 3:16", (John, 3, 16), (John, 3, 16));
+      Expect (KJV, "Iohannes 3:16", (John, 3, 16), (John, 3, 16));
+      Expect (VUL, "Ps 22", (Psalms, 22, 1), (Psalms, 22, 6));
+      Expect (VUL, "Psalmi 22:1", (Psalms, 22, 1), (Psalms, 22, 1));
+      Expect (VUL, "Psalmus 118:105", (Psalms, 118, 105), (Psalms, 118, 105));
+      Expect (VUL, "Matthaeus 5:3", (Matthew, 5, 3), (Matthew, 5, 3));
+      Expect (VUL, "Lucas 2:1", (Luke, 2, 1), (Luke, 2, 1));
+      Expect (VUL, "Marcus 1:1", (Mark, 1, 1), (Mark, 1, 1));
+      Expect (VUL, "1 Regum 1:1", (First_Samuel, 1, 1), (First_Samuel, 1, 1));
+      Expect (VUL, "III Regum 1:1", (First_Kings, 1, 1), (First_Kings, 1, 1));
+      Expect (VUL, "4 Reg 1:1", (Second_Kings, 1, 1), (Second_Kings, 1, 1));
+      Expect (VUL, "1 Paralipomenon 1:1", (First_Chronicles, 1, 1), (First_Chronicles, 1, 1));
+      Expect (VUL, "Isaias 53:5", (Isaiah, 53, 5), (Isaiah, 53, 5));
+      Expect (VUL, "Canticum Canticorum 2:1", (Song_Of_Solomon, 2, 1), (Song_Of_Solomon, 2, 1));
+      Expect (VUL, "Sapientia 3:1", (Wisdom, 3, 1), (Wisdom, 3, 1));
+      Expect (VUL, "Ecclesiasticus 1:1", (Sirach, 1, 1), (Sirach, 1, 1));
+      Expect (VUL, "1 Machabaeorum 1:1", (First_Maccabees, 1, 1), (First_Maccabees, 1, 1));
+      Expect (VUL, "Iacobi 1:1", (James, 1, 1), (James, 1, 1));
+      Expect (VUL, "1 Ioannis 1:9", (First_John, 1, 9), (First_John, 1, 9));
+      Expect (VUL, "Apocalypsis 22:21", (Revelation, 22, 21), (Revelation, 22, 21));
+      Expect (VUL, "Daniel 13:1", (Daniel, 13, 1), (Daniel, 13, 1));
+      Expect (VUL, "Esther 16:24", (Esther, 16, 24), (Esther, 16, 24));
+      Expect_Error (VUL, "Susanna 1:1", Book_Not_In_Translation);
+      Expect_Error (KJV, "Daniel 13:1", Chapter_Out_Of_Range, Value => 13, Limit => 12);
 
       Expect_Error (KJV, "", Empty_Text);
       Expect_Error (KJV, "    ", Empty_Text);
@@ -402,7 +490,10 @@ procedure Bible_Tests is
             elsif Two = "à" then
                Append (Current, "a");
                I := I + 2;
-            elsif Two = "é" or else Two = "ē" then
+            elsif Two = "œ" or else Two = "Œ" then
+               Append (Current, "oe");
+               I := I + 2;
+            elsif Two = "é" or else Two = "ē" or else Two = "ë" or else Two = "Ë" then
                Append (Current, "e");
                I := I + 2;
             elsif Two = "ō" then
@@ -515,6 +606,17 @@ procedure Bible_Tests is
       Expect_Search (WEB, "faith hope love", False, 1);
       Expect_Search (BSB, "in the beginning", False, 3);
       Expect_Search (BSB, "grace", True, 100);
+      --  Latin: the ligatures and diaeresis fold (cælum is caelum, Israël
+      --  Israel, cœlum coelum).
+      Bible_Search.Normalize ("cœlum Israël", Q, Normalized);
+      Check (Normalized = Bible_Search.Normalized and then Q.Count = 2
+             and then Q.Terms (1).Text (1 .. Q.Terms (1).Length) = "coelum"
+             and then Q.Terms (2).Text (1 .. Q.Terms (2).Length) = "israel", "normalize cœlum Israël");
+      Expect_Search (VUL, "caelum terram", False, 20);
+      Expect_Search (VUL, "dilexit mundum", False, 1);
+      Expect_Search (VUL, "Israel", False, 1_000);
+      Expect_Search (VUL, "Dominus regit", False, 1);
+      Expect_Search (VUL, "coel", True, 1);
    end Test_Search;
 
    ---------------------------------------------------------------------------
@@ -523,9 +625,13 @@ procedure Bible_Tests is
    procedure Test_Text is
       use Bible_Text;
    begin
-      Check (Face_Text ("God’s “word” — ¶ … æ") =
-               "God" & RIGHT_SINGLE & "s " & LEFT_DOUBLE & "word" & RIGHT_DOUBLE & " " & EM_DASH & " " & PILCROW &
-               " " & ELLIPSIS & " " & Character'Val (16#E6#), "face text of typography");
+      Check (Face_Text ("God’s “word” — … æ") =
+               "God" & RIGHT_SINGLE & "s " & LEFT_DOUBLE & "word" & RIGHT_DOUBLE & " " & EM_DASH & " " &
+               ELLIPSIS & " " & Character'Val (16#E6#), "face text of typography");
+      Check (Face_Text ("cœlum Œ Israël Ë Æ") =
+               "c" & OE_LOWER & "lum " & OE_UPPER & " Isra" & Character'Val (16#EB#) & "l " &
+               Character'Val (16#CB#) & " " & Character'Val (16#C6#), "face text of Latin");
+      Check (To_ASCII ("cœlum Œ Israël Ë Æ æ") = "coelum OE Israel E AE ae", "ASCII of Latin");
       Check (Face_Text ("Mahēr ō") = "Maher o", "macrons fold");
       Check (Face_Text ("א") = "?", "Hebrew is not in the face");
       Check (Face_Text ("") = "", "empty");
@@ -552,6 +658,109 @@ procedure Bible_Tests is
          end;
       end loop;
    end Test_Text;
+
+   ---------------------------------------------------------------------------
+   --  Carrying a place between numberings; the translations' languages.
+   ---------------------------------------------------------------------------
+   procedure Test_Versification is
+      use Bible_Versification;
+      procedure Pair (English_Item, Vulgate_Item : Reference) is
+         To_Latin : constant Reference := Map (English, Vulgate, English_Item);
+         To_English : constant Reference := Map (Vulgate, English, Vulgate_Item);
+      begin
+         Check (To_Latin = Vulgate_Item, Show (English_Item) & " is Vulgate " & Show (Vulgate_Item) & ", not " &
+                Show (To_Latin));
+         Check (To_English = English_Item, "Vulgate " & Show (Vulgate_Item) & " is " & Show (English_Item) &
+                ", not " & Show (To_English));
+      end Pair;
+      Wrong, Missing, Total : Natural := 0;
+   begin
+      Pair ((John, 3, 16), (John, 3, 16));
+      Pair ((Psalms, 1, 1), (Psalms, 1, 1));
+      Pair ((Psalms, 23, 1), (Psalms, 22, 1));
+      Pair ((Psalms, 51, 1), (Psalms, 50, 3));
+      Pair ((Psalms, 3, 1), (Psalms, 3, 2));
+      Pair ((Psalms, 9, 1), (Psalms, 9, 2));
+      Pair ((Psalms, 10, 1), (Psalms, 9, 22));
+      Pair ((Psalms, 10, 18), (Psalms, 9, 39));
+      Pair ((Psalms, 114, 1), (Psalms, 113, 1));
+      Pair ((Psalms, 115, 1), (Psalms, 113, 9));
+      Pair ((Psalms, 116, 1), (Psalms, 114, 1));
+      Pair ((Psalms, 116, 10), (Psalms, 115, 1));
+      Pair ((Psalms, 119, 105), (Psalms, 118, 105));
+      Pair ((Psalms, 147, 1), (Psalms, 146, 1));
+      Pair ((Psalms, 147, 12), (Psalms, 147, 1));
+      Pair ((Psalms, 150, 6), (Psalms, 150, 6));
+      Pair ((Daniel, 3, 23), (Daniel, 3, 23));
+      Pair ((Song_Of_The_Three, 1, 1), (Daniel, 3, 24));
+      Pair ((Song_Of_The_Three, 1, 67), (Daniel, 3, 90));
+      Check (Map (English, Vulgate, (Song_Of_The_Three, 1, 68)) = (Daniel, 3, 90),
+             "the Song of the Three's last verse is the Vulgate's Daniel 3:90");
+      Pair ((Daniel, 3, 24), (Daniel, 3, 91));
+      Pair ((Daniel, 4, 1), (Daniel, 3, 98));
+      Pair ((Daniel, 4, 4), (Daniel, 4, 1));
+      Pair ((Susanna, 1, 1), (Daniel, 13, 1));
+      Pair ((Bel_And_The_Dragon, 1, 1), (Daniel, 14, 1));
+      Pair ((Esther_Greek, 11, 2), (Esther, 11, 2));
+      Pair ((Esther, 10, 3), (Esther, 10, 3));
+      --  A title verse is the psalm's first English verse.
+      Check (Map (Vulgate, English, (Psalms, 50, 1)) = (Psalms, 51, 1), "Vulgate 50:1 (title) is English 51:1");
+      Check (Vulgate_Psalm (23) = 22 and then Vulgate_Psalm (10) = 9 and then Vulgate_Psalm (148) = 148,
+             "Vulgate psalm numbers");
+      --  Every KJV verse: carried to the Vulgate and back, the same verse
+      --  (the Additions to Esther's empty 10:1-3 aside, and the Song of the
+      --  Three's 68th verse, which the Vulgate's 67 hold in its last); and
+      --  nearly every one lands on a verse the Vulgate has.
+      for B in Book loop
+         for C in 1 .. KJV.Index.Table.Chapters (B) loop
+            for V in 1 .. Verses_In (KJV.Index.Table, B, C) loop
+               if not (B = Esther_Greek and then C = 10 and then V <= 3)
+                 and then (B, C, V) /= Reference'(Song_Of_The_Three, 1, 68)
+               then
+                  Total := Total + 1;
+                  declare
+                     Latin : constant Reference := Map (English, Vulgate, (B, C, V));
+                  begin
+                     if Map (Vulgate, English, Latin) /= (B, C, V) then
+                        Wrong := Wrong + 1;
+                        if Wrong <= 5 then
+                           Put_Line ("  round trip: " & Show ((B, C, V)) & " -> " & Show (Latin));
+                        end if;
+                     end if;
+                     if Has_Book (VUL.Index.Table, Latin.Book) and then not Exists (VUL.Index.Table, Latin) then
+                        Missing := Missing + 1;
+                     end if;
+                  end;
+               end if;
+            end loop;
+         end loop;
+      end loop;
+      Check (Wrong = 0, "every KJV verse round-trips through the Vulgate's numbering:" & Wrong'Image & " wrong");
+      Check (Missing * 200 < Total, "nearly every KJV verse is a Vulgate verse:" & Missing'Image & " of" &
+             Total'Image & " are not (the Vulgate divides some verses differently)");
+      Put_Line ("  versification: " & Total'Image & " KJV verses carried," & Missing'Image &
+                " past the Vulgate's verses in their chapter");
+
+      --  Languages and the default translation (the system language seam).
+      declare
+         package BT renames Bible_Translations;
+         use type BT.Translation;
+      begin
+         Check (BT.Display_Name (BT.KJV) = "King James Version (English)", "KJV display name");
+         Check (BT.Display_Name (BT.VUL) = "Biblia Sacra Vulgata Clementina (Latin)", "VUL display name");
+         Check (BT.ISO_639 (BT.Language_Of (BT.VUL)) = "la" and then BT.ISO_639 (BT.Language_Of (BT.WEB)) = "en", "ISO 639 codes");
+         Check (BT.Default_Translation (BT.NO_PREFERENCE, "") = BT.KJV, "default: nothing remembered, the KJV");
+         Check (BT.Default_Translation (BT.NO_PREFERENCE, "WEB") = BT.WEB, "default: the remembered WEB");
+         Check (BT.Default_Translation (BT.NO_PREFERENCE, "XYZ") = BT.KJV, "default: an unknown name, the KJV");
+         Check (BT.Default_Translation ((Known => True, Value => BT.Latin), "") = BT.VUL, "default: Latin preferred, VUL");
+         Check (BT.Default_Translation ((Known => True, Value => BT.Latin), "BSB") = BT.VUL,
+                "default: Latin preferred over a remembered English one");
+         Check (BT.Default_Translation ((Known => True, Value => BT.English), "BSB") = BT.BSB,
+                "default: the remembered one in the preferred language");
+         Check (BT.Default_Translation ((Known => True, Value => BT.English), "VUL") = BT.KJV,
+                "default: English preferred, the first English one");
+      end;
+   end Test_Versification;
 
    ---------------------------------------------------------------------------
    --  Damaged and truncated images: every read is checked, nothing raises.
@@ -684,6 +893,7 @@ begin
    Fuzz_Parser (300_000);
    Test_Search;
    Test_Text;
+   Test_Versification;
    Test_Damage (150);
    Put_Line ("bible tests:" & Checks'Image & " checks," & Failures'Image & " failures");
    if Failures > 0 then

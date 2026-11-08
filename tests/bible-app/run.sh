@@ -14,7 +14,7 @@ root="$(cd "$here/../.." && pwd)"
 images="$root/tests/bible/build/bible"
 shots="${BIBLE_SCREENSHOTS:-/home/doc/cubit-build-tmp/bible-app}"
 mkdir -p "$images" "$here/build/source" "$shots"
-if [ ! -s "$images/web.bible" ] || [ "$root/tools/build_bible.py" -nt "$images/web.bible" ]; then
+if [ ! -s "$images/vul.bible" ] || [ "$root/tools/build_bible.py" -nt "$images/vul.bible" ]; then
   python3 -I "$root/tools/build_bible.py" "$images"
 fi
 for unit in cubit.ads; do

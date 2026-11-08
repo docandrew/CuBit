@@ -9,7 +9,7 @@
 --  Normalize makes a query's words the image's search keys, exactly as
 --  tools/build_bible.py makes them from the verses: ASCII letters and
 --  digits in lower case, apostrophes inside a word dropped ("Lord's" is
---  "lords"), the few accented letters folded (ae, a, e, o), anything else a
+--  "lords"), the few accented letters folded (ae, oe, a, e, o), anything else a
 --  separator. With Prefix_Last the last word matches every key it starts
 --  ("belie" finds believe, believed, belief): search as the user types.
 --

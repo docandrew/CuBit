@@ -22,8 +22,8 @@ package body Bible_Text with SPARK_Mode is
          Width := 2;
          case Lead is
             when 16#C2# =>
-               --  U+0080 .. U+00BF: the same byte (no-break space, pilcrow,
-               --  one half ...); the C1 controls are not text.
+               --  U+0080 .. U+00BF: the same byte (no-break space, one
+               --  half ...); the C1 controls are not text.
                if Next (1) >= 16#A0# then
                   Face := Character'Val (Next (1));
                end if;
@@ -32,7 +32,15 @@ package body Bible_Text with SPARK_Mode is
             when 16#C4# =>
                if Next (1) = 16#93# then Face := 'e'; end if;   --  U+0113
             when others =>
-               if Lead = 16#C5# and then Next (1) = 16#8D# then Face := 'o'; end if;   --  U+014D
+               --  U+0152, U+0153: Windows-1252's OE and oe; U+014D folds.
+               if Lead = 16#C5# then
+                  case Next (1) is
+                     when 16#92# => Face := OE_UPPER;
+                     when 16#93# => Face := OE_LOWER;
+                     when 16#8D# => Face := 'o';
+                     when others => null;
+                  end case;
+               end if;
          end case;
       elsif Lead = 16#E2# and then I < Source'Last - 1 and then Next (1) = 16#80#
         and then Next (2) in 16#80# .. 16#BF#
@@ -117,14 +125,18 @@ package body Bible_Text with SPARK_Mode is
                Put ("...");
             elsif C = NO_BREAK then
                Put (" ");
-            elsif C = PILCROW then
-               null;
+            elsif C = OE_LOWER then
+               Put ("oe");
+            elsif C = OE_UPPER then
+               Put ("OE");
             else
                case Character'Pos (C) is
                   when 16#E6# => Put ("ae");
                   when 16#C6# => Put ("AE");
                   when 16#E0# .. 16#E5# => Put ("a");
+                  when 16#C0# .. 16#C5# => Put ("A");
                   when 16#E8# .. 16#EB# => Put ("e");
+                  when 16#C8# .. 16#CB# => Put ("E");
                   when 16#D7# => Put ("x");
                   when 16#BD# => Put ("1/2");
                   when others => Put ("?");
@@ -132,10 +144,6 @@ package body Bible_Text with SPARK_Mode is
             end if;
          end;
       end loop;
-      --  The pilcrow's space: a leading space is dropped.
-      if Used > 0 and then Result (1) = ' ' then
-         return Result (2 .. Used);
-      end if;
       return Result (1 .. Used);
    end To_ASCII;
 

@@ -1444,7 +1444,7 @@ if [ -n "$INIT_PROFILE" ]; then
         # The Bible's package only where the Bible runs (25 MB).
         BIBLE_ITEMS=""
         if [ "$TEST_NAME" = "bible" ]; then
-            BIBLE_ITEMS="cubit-bible/1/kjv.bible cubit-bible/1/bsb.bible cubit-bible/1/web.bible cubit-bible/1/BIBLE-NOTICE"
+            BIBLE_ITEMS="cubit-bible/1/kjv.bible cubit-bible/1/bsb.bible cubit-bible/1/web.bible cubit-bible/1/vul.bible cubit-bible/1/BIBLE-NOTICE"
         fi
         for ASSET_ITEM in $WALLPAPER_ITEMS \
           cubit-icons/5/applications.qoi cubit-lexicon/1/english.lexicon cubit-lexicon/1/LEXICON-NOTICE \
@@ -4392,7 +4392,8 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
         elif [ "$TEST_NAME" = "bible" ]; then
             # The Bible (APP-005) by keyboard: it opens at John 1; a typed
             # reference opens John 3; words search; Tab is the next
-            # translation; Ctrl+Page Down the next chapter. Each passage shown
+            # translation, F4 the translation list; Ctrl+Page Down the next
+            # chapter. Each passage shown
             # is a serial marker ("bible: showing John 3 (KJV)").
             bible_wait() {
                 local attempt
@@ -4440,6 +4441,16 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             bible_keys p s spc 2 3 ret
             bible_wait "bible: showing Psalm 23 (BSB, Literata)"
             bible_shot bible-psalm-23-bsb
+            # F4: the translation list; Down twice and Enter choose the
+            # Vulgate, which numbers the psalm as the Septuagint does.
+            bible_keys f4
+            bible_shot bible-translations-open
+            bible_keys down down ret
+            bible_wait "bible: showing Psalm 22 (23) (VUL, Literata)"
+            bible_shot bible-psalm-22-vulgate
+            bible_keys j o h n spc 3 ret
+            bible_wait "bible: showing John 3 (VUL, Literata)"
+            bible_shot bible-john-3-vulgate
         elif [ "$TEST_NAME" = "text" ]; then
             # CuBit Text (docs/text-editor.md) by keyboard only: open the
             # granted document, type a line at its end, save (sibling, flush,
@@ -6536,6 +6547,8 @@ bible: showing John 3 (KJV, EB Garamond)
 bible: showing John 3 (BSB, Literata)
 bible: showing John 4 (BSB, Literata)
 bible: showing Psalm 23 (BSB, Literata)
+bible: showing Psalm 22 (23) (VUL, Literata)
+bible: showing John 3 (VUL, Literata)
 "
         ;;
     ccl-workspace)

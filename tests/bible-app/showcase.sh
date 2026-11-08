@@ -5,6 +5,8 @@
 #   1  John 3 in the KJV, Literata, 3:16 chosen (tinted) and in view
 #   2  Psalm 23 in the BSB
 #   3  the Apps menu's Reference group (Dictionary, Bible)
+#   4  the translation list open (F4) over John 3:16
+#   5  John 3 in the Clementine Vulgate, 3:16 chosen
 # Run under the shared build lock (it boots QEMU):
 #   flock coordination/build.lock nix develop -c tests/bible-app/showcase.sh [DEMO_DIR] [OUT_DIR] [WxH]
 set -euo pipefail
@@ -72,8 +74,15 @@ shot 1-john-3-16-kjv-literata
 keys p s spc 2 3 ret tab
 wait_for "bible: showing Psalm 23 (BSB, Literata)"
 shot 2-psalm-23-bsb-literata
-keys tab tab
+keys tab tab tab
+wait_for "bible: showing Psalm 23 (KJV, Literata)"
 # The Apps menu: its last category row (Up wraps), then its submenu.
 keys meta_l up right
 shot 3-reference-menu
 keys esc esc
+keys j o h n spc 3 shift-semicolon 1 6 ret
+keys f4
+shot 4-translations-open
+keys down down down ret
+wait_for "bible: showing John 3 (VUL, Literata)"
+shot 5-john-3-16-vulgate-literata

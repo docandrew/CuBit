@@ -54,7 +54,8 @@ package Bible_Images with SPARK_Mode, Pure is
      [Books => 8, Chapters => 8, Verses => 8, Segments => 8, Words => 16, Postings => 4, Keys => 1,
       Text => 1, About => 8];
 
-   FORMAT_VERSION : constant := 1;
+   --  2: the about table names the translation's language (APP-005 v1.1).
+   FORMAT_VERSION : constant := 2;
    HEADER_BYTES : constant := 8 + 4 + 4 + 8 * 9;
 
    type Extent is record
@@ -208,8 +209,9 @@ package Bible_Images with SPARK_Mode, Pure is
      with Pre  => Usable (Data, L) and then R < Count (L, Postings),
           Post => (if Valid then Verse < Count (L, Verses));
 
-   --  What the about table says of the translation.
-   type About_Kind is (Abbreviation, Title, Licence);
+   --  What the about table says of the translation: its language as an ISO
+   --  639-1 code ("la") and an English name ("Latin").
+   type About_Kind is (Abbreviation, Title, Licence, Language_Code, Language_Name);
 
    procedure Read_About (Data : Byte_Array; L : Layout; Kind : About_Kind; Content : out Text_Slice;
                          Valid : out Boolean)

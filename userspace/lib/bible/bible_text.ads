@@ -4,13 +4,15 @@
 --
 --  @summary
 --  The images' UTF-8 text as the reading face's characters (APP-005).
---  CuBit.Fonts.Serif draws printable ASCII and, at 16#80# .. 16#FF#, the
---  Windows-1252 set: curly quotes, dashes, the ellipsis, the pilcrow the
---  King James Version marks paragraphs with, and the Latin-1 letters. To_Face
---  maps each UTF-8 character to that byte; the two the face lacks (e and o
---  with a macron, in a few Berean Standard Bible names) fold to the plain
---  letter, and anything else becomes "?" (tools/build_bible.py refuses
---  verse text with anything else, so a "?" means a damaged image).
+--  The reading faces draw printable ASCII and, at 16#80# .. 16#FF#, the
+--  Windows-1252 set: curly quotes, dashes, the ellipsis, the Latin-1
+--  letters, and the ligatures oe and OE (the Vulgate's "coelum" is written
+--  with one). To_Face maps each UTF-8 character to that byte; the two the
+--  faces lack (e and o with a macron, in a few Berean Standard Bible names)
+--  fold to the plain letter, and anything else becomes "?"
+--  (tools/build_bible.py refuses verse text with anything else, so a "?"
+--  means a damaged image). No image holds a pilcrow: the converter turns
+--  the King James Version's into paragraph breaks.
 --
 --  Proved (SPARK, level 2): no run-time errors on any input, and the output
 --  is never longer than the input.
@@ -26,7 +28,8 @@ package Bible_Text with SPARK_Mode, Pure is
    EN_DASH      : constant Character := Character'Val (16#96#);
    EM_DASH      : constant Character := Character'Val (16#97#);
    NO_BREAK     : constant Character := Character'Val (16#A0#);
-   PILCROW      : constant Character := Character'Val (16#B6#);
+   OE_LOWER     : constant Character := Character'Val (16#9C#);
+   OE_UPPER     : constant Character := Character'Val (16#8C#);
    UNKNOWN      : constant Character := '?';
 
    procedure To_Face (Source : String; Target : out String; Used : out Natural)
@@ -39,9 +42,9 @@ package Bible_Text with SPARK_Mode, Pure is
 
    --  The text in printable ASCII (CCL's strings are ASCII today): curly
    --  quotes become straight ones, the dashes "-" and "--", the ellipsis
-   --  "...", the Latin letters their plain forms ("ae" for the ligature),
-   --  the pilcrow is left out; anything else is "?". At most three bytes
-   --  per byte of Source.
+   --  "...", the Latin letters their plain forms ("ae" and "oe" for the
+   --  ligatures); anything else is "?". At most three bytes per byte of
+   --  Source.
    function To_ASCII (Source : String) return String
      with Pre  => Source'Length <= Natural'Last / 3,
           Post => To_ASCII'Result'Length <= 3 * Source'Length;

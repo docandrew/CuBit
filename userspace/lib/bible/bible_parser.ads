@@ -17,8 +17,12 @@
 --    sep      ::= ":" | "."                  dash: "-", en dash or em dash (UTF-8)
 --
 --  A book is a full name, a common abbreviation ("Jn", "1 Cor", "Ps",
---  "Ecclus"), or any prefix of either that names exactly one book. Periods
---  and spaces inside the name are ignored ("1 Cor.", "Song of Songs").
+--  "Ecclus"), a Latin name or abbreviation as the Vulgate has them
+--  ("Ioannes", "Io", "Psalmi", "Apocalypsis"), or any prefix of these that
+--  names exactly one book. Periods and spaces inside the name are ignored
+--  ("1 Cor.", "Song of Songs"). The Latin names follow the Clementine
+--  Vulgate: 1-4 Regum are 1-2 Samuel and 1-2 Kings, 1-2 Esdrae Ezra and
+--  Nehemiah, 3-4 Esdrae 1-2 Esdras.
 --
 --  Numbers are checked against a translation's versification:
 --  - a book alone is the whole book, "John 3" the whole chapter;

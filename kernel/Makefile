@@ -2201,13 +2201,13 @@ $(LEXICON_ASSETS) &: ../tools/build_lexicon.py ../flake.lock ../flake.nix
 	$(ALR) python3 -I ../tools/build_lexicon.py build/$(LEXICON_PACKAGE)/english.lexicon \
 		--notice build/$(LEXICON_PACKAGE)/LEXICON-NOTICE
 
-# The Bible (APP-005): the KJV with the Apocrypha, the BSB and the WEB with
-# the deuterocanon, from the public-domain sources pinned by SHA-256 in
-# assets/bible/sources.json (fetched once, https only; a changed source is
-# refused), compiled into one read-only image each; their provenance and
-# licences in BIBLE-NOTICE.
+# The Bible (APP-005): the KJV with the Apocrypha, the BSB, the WEB with
+# the deuterocanon and the Clementine Vulgate (Latin), from the public-domain
+# sources pinned by SHA-256 in assets/bible/sources.json (fetched once, https
+# only; a changed source is refused), compiled into one read-only image each;
+# their provenance and licences in BIBLE-NOTICE.
 BIBLE_PACKAGE := $(ASSET_ROOT)/cubit-bible/1
-BIBLE_ASSETS := $(foreach t,kjv bsb web,build/$(BIBLE_PACKAGE)/$(t).bible) build/$(BIBLE_PACKAGE)/BIBLE-NOTICE
+BIBLE_ASSETS := $(foreach t,kjv bsb web vul,build/$(BIBLE_PACKAGE)/$(t).bible) build/$(BIBLE_PACKAGE)/BIBLE-NOTICE
 BIBLE_DISK_FILES = $(foreach f,$(BIBLE_ASSETS),--file "$(BIBLE_PACKAGE)/$(notdir $(f))=$(f)")
 
 .PHONY : bible-assets

@@ -18,6 +18,7 @@ with Ada.Strings.Unbounded;
 with Ada.Numerics.Elementary_Functions; use Ada.Numerics.Elementary_Functions;
 with CuBit.Reading_Faces;
 with CuBit.UI;
+with CuBit.UI.Combo_Boxes;
 with CuBit.UI.State;
 with Bible_Canon; use Bible_Canon;
 with Bible_References; use Bible_References;
@@ -138,6 +139,17 @@ procedure Bible_App_Tests is
       Click_At (Box.x + Box.w / 2, Box.y + Box.h / 2);
    end Click;
 
+   --  A translation from the drop-down list: a click opens it, a click on
+   --  the translation's row chooses it and closes it.
+   procedure Choose (Which : Bible_Translations.Translation) is
+   begin
+      Click (TRANSLATION_BASE);
+      Check (Translations_Open (State.all), "a click opens the translation list");
+      Click (CuBit.UI.Combo_Boxes.Choice_ID (TRANSLATION_BASE, Bible_Translations.Translation'Pos (Which) + 1));
+      Check (not Translations_Open (State.all) and then Current_Translation (State.all) = Which,
+             "the list chooses " & Bible_Translations.Abbreviation (Which));
+   end Choose;
+
    procedure Save (Name : String) is
       use Ada.Streams.Stream_IO;
       File : File_Type;
@@ -243,11 +255,15 @@ begin
    Check (Red_Letters (State.all) and then Verse_All_Red (State.all, 16), "F9 again: red letters on");
    Key (Next_Face_Key);
    Key (Next_Face_Key);
-   Click (FIRST_TAB_ID + Bible_Translations.Translation'Pos (BSB));
+   Choose (BSB);
    Check (Red_Runs (State.all) = 0, "the BSB marks no words of Christ");
-   Click (FIRST_TAB_ID + Bible_Translations.Translation'Pos (WEB));
+   Choose (WEB);
    Check (Verse_All_Red (State.all, 16), "John 3:16 WEB is all red");
-   Click (FIRST_TAB_ID + Bible_Translations.Translation'Pos (KJV));
+   Choose (VUL);
+   Check (Heading (State.all) = "John 3" and then Red_Runs (State.all) = 0,
+          "John 3 in the Vulgate: its source marks no words of Christ, none red");
+   Save ("john-3-vulgate");
+   Choose (KJV);
    --  The red reads on light and dark pages (WCAG contrast 4.5:1 or more).
    declare
       function L (C : Unsigned_32) return Float is
@@ -353,22 +369,60 @@ begin
    Click (NEXT_ID);
    Check (Heading (State.all) = "Revelation 22", "nothing after Revelation 22");
 
-   --  The translations: tabs and Tab; the passage is kept.
+   --  The translations: the drop-down list and Tab; the place is kept,
+   --  carried across numberings.
+   Check (Translation_Caption (KJV) = "King James Version (English)"
+          and then Translation_Caption (VUL) = "Biblia Sacra Vulgata Clementina (Latin)", "the list's captions");
    Enter_Text (State.all, "Psalm 23");
-   Click (FIRST_TAB_ID + Bible_Translations.Translation'Pos (BSB));
-   Check (Current_Translation (State.all) = BSB and then Heading (State.all) = "Psalm 23", "BSB Psalm 23");
+   Click (TRANSLATION_BASE);
+   Check (Translations_Open (State.all), "the translation list opens");
+   Save ("translations-open");
+   Key (Escape);
+   Check (not Translations_Open (State.all) and then Current_Translation (State.all) = KJV,
+          "Escape closes the list, nothing chosen");
+   Choose (BSB);
+   Check (Heading (State.all) = "Psalm 23", "BSB Psalm 23");
    Save ("psalm-23-bsb");
    Key (Tab);
    Check (Current_Translation (State.all) = WEB, "Tab: WEB");
    Save ("psalm-23-web");
    Key (Tab);
-   Check (Current_Translation (State.all) = KJV, "Tab: back to the KJV");
+   Check (Current_Translation (State.all) = VUL and then Heading (State.all) = "Psalm 22 (23)"
+          and then Shown (State.all) = ((Psalms, 22, 1), (Psalms, 22, 6)),
+          "Tab: the Vulgate, the same psalm by its own number: " & Heading (State.all));
+   Save ("psalm-22-vulgate");
+   Key (Tab);
+   Check (Current_Translation (State.all) = KJV and then Heading (State.all) = "Psalm 23", "Tab: back to the KJV");
    Save ("psalm-23-kjv");
+   --  F4 opens the list; arrows move, Enter chooses.
+   Key (Translations_Key);
+   Check (Translations_Open (State.all), "F4 opens the list");
+   Key (Down);
+   Key (Enter);
+   Check (not Translations_Open (State.all) and then Current_Translation (State.all) = BSB, "F4, Down, Enter: BSB");
+   Key (Translations_Key);
+   Key (Escape);
+   Choose (KJV);
+   --  A verse carried into the Vulgate's numbering: Psalm 51:1 is its 50:3.
+   Enter_Text (State.all, "Psalm 51:1");
+   Choose (VUL);
+   Check (Shown (State.all) = ((Psalms, 50, 3), (Psalms, 50, 3)) and then Heading (State.all) = "Psalm 50 (51)",
+          "Psalm 51:1 is the Vulgate's 50:3");
+   Enter_Text (State.all, "Ps 9");
+   Check (Heading (State.all) = "Psalm 9 (9-10)", "the Vulgate's Psalm 9 holds Hebrew 9 and 10");
+   Choose (KJV);
+   Check (Heading (State.all) = "Psalm 9", "back: Psalm 9");
+   Enter_Text (State.all, "Bel and the Dragon 1:3");
+   Choose (VUL);
+   Check (Shown (State.all) = ((Daniel, 14, 3), (Daniel, 14, 3)), "Bel and the Dragon is the Vulgate's Daniel 14");
+   Choose (BSB);
+   Check (Heading (State.all) = "Daniel 1", "the BSB has no Daniel 14: the book's start");
+   Choose (KJV);
    Enter_Text (State.all, "Sirach 1");
    Save ("sirach-1-kjv");
-   Click (FIRST_TAB_ID + Bible_Translations.Translation'Pos (BSB));
+   Choose (BSB);
    Check (Heading (State.all) = "Genesis 1", "BSB has no Sirach: Genesis 1");
-   Click (FIRST_TAB_ID + Bible_Translations.Translation'Pos (KJV));
+   Choose (KJV);
 
    --  The longest chapter, scrolled.
    Started := Clock;
@@ -450,7 +504,7 @@ begin
 
    --  A new start remembers the reader's face and translation.
    Set_Face (State.all, "EB Garamond");
-   Click (FIRST_TAB_ID + Bible_Translations.Translation'Pos (WEB));
+   Choose (WEB);
    declare
       Again : constant View_Access := new View_State;
    begin
@@ -475,7 +529,7 @@ begin
    Check (Current_Translation (State.all) = WEB and then Mode (State.all) = Unavailable, "WEB missing: unavailable");
    Save ("web-missing");
    Key (Tab);
-   Check (Mode (State.all) = Reading, "back to the KJV");
+   Check (Current_Translation (State.all) = VUL and then Mode (State.all) = Reading, "on to the Vulgate");
 
    Ada.Text_IO.Put_Line ("bible app tests:" & Checks'Image & " checks," & Failures'Image & " failures," &
                          Loads'Image & " translations loaded");

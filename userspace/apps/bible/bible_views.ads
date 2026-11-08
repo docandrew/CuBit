@@ -8,13 +8,16 @@
 --  the reading face (Literata) with headings, paragraphs, poetry and
 --  superscript verse numbers at a comfortable measure, a search field that
 --  takes a reference ("John 3:16", through the proved Bible_Parser) or
---  words (Bible_Search over the image's index), the translations as tabs,
---  and Back and Forward through the passages read.
+--  words (Bible_Search over the image's index), the translations in a
+--  drop-down list by name and language, and Back and Forward through the
+--  passages read. Changing translation keeps the place, carried across
+--  numberings (Bible_Versification: the Vulgate's Psalm 22 is English 23).
 --
 --  Platform-free: events in, frames out. Translations come from Load
 --  (natively the asset package through the filesystem; hosted, files).
 ------------------------------------------------------------------------------
 with CuBit.UI;
+with CuBit.UI.Combo_Boxes;
 with CuBit.UI.Controls;
 with CuBit.UI.Editor;
 with CuBit.UI.State;
@@ -39,6 +42,7 @@ package Bible_Views is
 
    type Key_Name is
      (No_Key, Up, Down, Left, Right, Page_Up, Page_Down, Home, End_Key, Enter, Escape, Backspace, Delete, Tab,
+      Translations_Key, --  F4: open or close the translation list
       Next_Face_Key,    --  F8: the next reading face
       Red_Letters_Key); --  F9: the words of Christ in red, or not
    type Event_Kind is (Key_Event, Text_Event, Pointer_Event, Wheel, Resize);
@@ -62,8 +66,9 @@ package Bible_Views is
    SPLIT_ID      : constant Controls.Control_ID := 8;
    FACE_ID       : constant Controls.Control_ID := 9;
    RED_ID        : constant Controls.Control_ID := 13;
-   --  One tab per translation, from here.
-   FIRST_TAB_ID  : constant Controls.Control_ID := 10;
+   --  The translation list: its field, choices and shield from here
+   --  (CuBit.UI.Combo_Boxes reserves Max_Choices + 2 identifiers).
+   TRANSLATION_BASE : constant CuBit.UI.Combo_Boxes.ID_Base := 20;
    --  The tree's visible rows, from here.
    FIRST_ROW_ID  : constant Controls.Control_ID := 100;
 
@@ -78,6 +83,10 @@ package Bible_Views is
    --  Show a passage of the current translation (recorded for Back).
    procedure Open (State : in out View_State; Item : Bible_References.Passage);
    procedure Set_Translation (State : in out View_State; Which : Translation);
+   --  The translation list is open (F4 or a click opens it).
+   function Translations_Open (State : View_State) return Boolean;
+   --  What the list shows for a translation: "King James Version (English)".
+   function Translation_Caption (Which : Translation) return String;
    --  The reading face: the next one offered (the toolbar's face button),
    --  or one by name. Saved for the next start.
    procedure Next_Face (State : in out View_State);
@@ -183,6 +192,9 @@ private
    type View_State is limited record
       Which : Translation := Bible_Translations.DEFAULT;
       Editions : Edition_Array;
+      --  The translation list, one choice per translation in order.
+      Picker : CuBit.UI.Combo_Boxes.Combo_State;
+      Picker_Model : CuBit.UI.Combo_Boxes.Model;
       Current : Page_Mode := Reading;
       Item : Passage;                          --  the passage shown
       Highlight : Boolean := False;            --  tint Item's verses

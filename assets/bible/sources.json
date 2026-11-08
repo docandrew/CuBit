@@ -5,6 +5,10 @@
       "name": "kjv",
       "abbreviation": "KJV",
       "title": "King James Version (1769) with Apocrypha",
+      "language": {
+        "code": "en",
+        "name": "English"
+      },
       "url": "https://ebible.org/Scriptures/eng-kjv_usfm.zip",
       "sha256": "121790462a6093a4a02c1f829a8dd755d6c7e2b0c012b22c6f728db0a482cada",
       "retrieved": "2026-11-06",
@@ -15,6 +19,10 @@
       "name": "bsb",
       "abbreviation": "BSB",
       "title": "Berean Standard Bible",
+      "language": {
+        "code": "en",
+        "name": "English"
+      },
       "url": "https://ebible.org/Scriptures/engbsb_usfm.zip",
       "sha256": "75ca91d5a5c69ca4cbdeabdb03ea1a458db20cf3966abe15d86df086acf7fbc4",
       "retrieved": "2026-11-06",
@@ -25,11 +33,29 @@
       "name": "web",
       "abbreviation": "WEB",
       "title": "World English Bible with the Deuterocanon",
+      "language": {
+        "code": "en",
+        "name": "English"
+      },
       "url": "https://ebible.org/Scriptures/eng-web_usfm.zip",
       "sha256": "05b0440bd8994dd4da7cc53dd8167a759ed7c09617e4a562c64eb9b3343589c8",
       "retrieved": "2026-11-06",
       "publisher": "eBible.org (Michael Paul Johnson; 2020 stable text, archive dated 2026-10-30)",
       "licence": "Public Domain. \"The World English Bible is in the Public Domain. That means that it is not copyrighted. However, 'World English Bible' is a Trademark of eBible.org. ... All we ask is that if you CHANGE the actual text of the World English Bible in any way, you not call the result the World English Bible any more.\" CuBit does not change the text: footnotes, cross-references and Strong's numbers are left out, and the words are unchanged."
+    },
+    {
+      "name": "vul",
+      "abbreviation": "VUL",
+      "title": "Biblia Sacra Vulgata Clementina",
+      "language": {
+        "code": "la",
+        "name": "Latin"
+      },
+      "url": "https://ebible.org/Scriptures/latVUC_usfm.zip",
+      "sha256": "5d73ce3473e40b70cfcc976b967e0f259cbb031d6c0cd4f9798fbabf9f5b4e6c",
+      "retrieved": "2026-11-07",
+      "publisher": "eBible.org (latVUC, \"Bibbia Vulgata Clementina na 1598\": the Clementine Vulgate, Sixto-Clementine text of 1598, with the Glossa Ordinaria of the Migne edition of 1880 in its footnotes; source files dated 2025-12-12, archive dated 2026-10-30)",
+      "licence": "Public Domain. The Clementine Vulgate, Saint Jerome's Latin Bible in the edition issued under Pope Clement VIII (1592; this text of 1598), is in the public domain. eBible.org (copr.htm): \"Public Domain ... Translation by: Jerome\". It is not the Stuttgart Biblia Sacra Vulgata, which is copyrighted. CuBit leaves out the footnotes (the Glossa Ordinaria) and keeps the words, including the edition's square brackets around quoted speech and psalms. Its appendix (3 and 4 Esdras, the Prayer of Manasseh) is not in this source."
     }
   ],
   "fonts": [

@@ -6,7 +6,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 images="$root/tests/bible/build/bible"
 mkdir -p "$images" "$here/build"
-if [ ! -s "$images/web.bible" ] || [ "$root/tools/build_bible.py" -nt "$images/web.bible" ]; then
+if [ ! -s "$images/vul.bible" ] || [ "$root/tools/build_bible.py" -nt "$images/vul.bible" ]; then
   python3 -I "$root/tools/build_bible.py" "$images"
 fi
 (cd "$root/kernel" && alr exec -- gprbuild -q -p -j8 -P "$here/ccl_bible_tests.gpr")

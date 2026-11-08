@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Hosted Bible core tests (APP-005). Run inside nix develop with TMPDIR
 # outside /tmp:
-#   tests/bible/run.sh            build the images, check versification,
-#                                 run the checked tests
+#   tests/bible/run.sh            build the images, check versification and
+#                                 the reading faces' characters, run the
+#                                 checked tests
 #   tests/bible/run.sh --seed N   the same, fuzz and damage seeded with N
 #   tests/bible/run.sh --bench    -O3 -gnatp timings (quiet host please)
 #   tests/bible/run.sh --prove    SPARK proof of the core, level 2, memory-capped
@@ -11,8 +12,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 images="$here/build/bible"
 mkdir -p "$images"
-if [ ! -s "$images/web.bible" ] || [ "$root/tools/build_bible.py" -nt "$images/web.bible" ] ||
-   [ "$root/assets/bible/sources.json" -nt "$images/web.bible" ]; then
+if [ ! -s "$images/vul.bible" ] || [ "$root/tools/build_bible.py" -nt "$images/vul.bible" ] ||
+   [ "$root/assets/bible/sources.json" -nt "$images/vul.bible" ]; then
   python3 -I "$root/tools/build_bible.py" "$images"
 fi
 build() {  # mode, mains...
@@ -32,6 +33,7 @@ case "${1:-}" in
     ;;
   *)
     python3 -I "$here/test_build_bible.py"
+    python3 -I "$here/test_faces.py"
     python3 -I "$here/check_versification.py" "$images"
     build checked bible_tests.adb
     if [ "${1:-}" = "--seed" ]; then

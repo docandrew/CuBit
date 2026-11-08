@@ -148,6 +148,14 @@ begin
            "verse John 3:16");
    Expect ("(bible.verse-in (Verse_Query (Reference ""Jn"" 11 35) Translation.WEB))",
            "Verse_Result: (Verse_Result.Found (Verse (Reference ""John"" 11 35) ""Jesus wept.""))", "verse-in WEB");
+   --  The Vulgate, in its own numbering and in ASCII ("aeternam"), by a Latin name.
+   Expect ("(bible.verse-in (Verse_Query (Reference ""Ioannes"" 3 16) Translation.VUL))",
+           "Verse_Result: (Verse_Result.Found (Verse (Reference ""John"" 3 16) ""Sic enim Deus dilexit mundum",
+           "verse-in VUL");
+   Check (Contains (Latest_Result (State), "habeat vitam aeternam."), "VUL John 3:16 in ASCII");
+   Expect ("(bible.verse-in (Verse_Query (Reference ""Psalmi"" 22 1) Translation.VUL))",
+           "Verse_Result: (Verse_Result.Found (Verse (Reference ""Psalms"" 22 1) ""Psalmus David. [Dominus regit me",
+           "VUL Psalm 22 is the shepherd psalm");
    Expect ("(bible.verse (Reference ""John"" 3 40))",
            "Verse_Result: (Verse_Result.Refused (Refusal Parse_Error.No_Such_Verse", "verse John 3:40");
    Check (Contains (Latest_Result (State), " 40 36))"), "John 3:40: value 40, limit 36");

@@ -11,102 +11,139 @@ package body Bible_Parser with SPARK_Mode is
    --  A shorter prefix is too ambiguous to be worth trying ("j").
    MINIMUM_PREFIX : constant := 2;
 
-   ALIASES : constant := 325;
+   ALIASES : constant := 455;
    subtype Alias_Index is Positive range 1 .. ALIASES;
    ALIAS_TEXT : constant String :=
-     "genesisgengegnexodusexoexexodleviticuslevlelvnumbersnumnunmnbdeuteronomydeutdeudtdejoshuaj" &
-     "oshjosjshjudgesjudgjdgjgjdgsruthrutrurth1samuel1sam1sa1sm1s2samuel2sam2sa2sm2s1kings1kgs1k" &
-     "i1kg1k2kings2kgs2ki2kg2k1chronicles1chron1chr1ch2chronicles2chron2chr2chezraezrnehemiahneh" &
-     "neestheresthestesjobjbpsalmspsalmpspsapsspsmproverbsprovproprvprecclesiastesecclesecclecce" &
-     "cqohqohelethsongofsolomonsongofsongssongsngsoscanticlescantcanticleofcanticlesisaiahisaisj" &
-     "eremiahjerjejrlamentationslamlaezekielezekezeezkdanieldandadnhoseahoshojoeljlamosamobadiah" &
-     "obadobjonahjnhjonmicahmicmcnahumnahnahabakkukhabhbzephaniahzephzepzphaggaihaghgzechariahze" &
-     "chzeczcmalachimalmltobittobtbjudithjdtjdthesthergreekgreekestheradditionstoestheraddesthes" &
-     "grestofestherwisdomofsolomonwisdomwiswswisdsirachsirecclesiasticusecclusbaruchbarletterofj" &
-     "eremiahljeepjerepistleofjeremiahepistleofjeremysongofthethreesongofthethreeyoungmensongoft" &
-     "hreeprayerofazariahazariahazarsusannasusbelandthedragonbeldanielgreekgreekdanieldag1maccab" &
-     "ees1macc1mac1ma2maccabees2macc2mac2ma3maccabees3macc3mac3ma4maccabees4macc4mac4ma1esdras1e" &
-     "sd1es2esdras2esd2esprayerofmanassehprayerofmanassesmanassehmanassesmanprmanmatthewmattmatm" &
-     "tmarkmrkmarmkmrlukeluklkjohnjhnjohjnactsactacactsoftheapostlesromansromrorm1corinthians1co" &
-     "r1co2corinthians2cor2cogalatiansgalgaephesiansephephesphilippiansphilphpppcolossianscol1th" &
-     "essalonians1thess1thes1th2thessalonians2thess2thes2th1timothy1tim1ti1tm2timothy2tim2ti2tmt" &
-     "itustittiphilemonphilemphmphlmhebrewshebjamesjasjmjam1peter1pet1pe1pt1p2peter2pet2pe2pt2p1" &
-     "john1jhn1jn1jo2john2jhn2jn2jo3john3jhn3jn3jojudejudjdrevelationrevelationsrevrervapocalyps" &
-     "e";
+     "genesisgengegnexodusexoexexodleviticuslevlelvnumbersnumnunmnbnumerideuteronomydeutdeudtded" &
+     "euteronomiumjoshuajoshjosjshiosuejosueiosjudgesjudgjdgjgjdgsiudicumjudicumiudicesidcruthru" &
+     "trurthrt1samuel1sam1sa1sm1s1regum1reg1regnorum1samuelis2samuel2sam2sa2sm2s2regum2reg2regno" &
+     "rum2samuelis1kings1kgs1ki1kg1k3regum3reg3regnorum2kings2kgs2ki2kg2k4regum4reg4regnorum1chr" &
+     "onicles1chron1chr1ch1paralipomenon1par1paralip2chronicles2chron2chr2ch2paralipomenon2par2p" &
+     "aralipezraezr1esdraenehemiahnehne2esdraenehemiasestheresthesteshesterjobjbiobpsalmspsalmps" &
+     "psapsspsmpsalmipsalmusliberpsalmorumproverbsprovproprvprproverbiaecclesiastesecclesecclecc" &
+     "ecqohqohelethsongofsolomonsongofsongssongsngsoscanticlescantcanticleofcanticlescanticumcan" &
+     "ticorumcanticumctisaiahisaisisaiasesaiasjeremiahjerjejrieremiasjeremiasierlamentationslaml" &
+     "alamentationesthreniezekielezekezeezkezechielezdanieldandadnhoseahoshooseeosjoeljlioelamos" &
+     "amobadiahobadobabdiasabdjonahjnhjonionasmicahmicmcmichaeasmichaeanahumnahnahabakkukhabhbha" &
+     "bacuczephaniahzephzepzpsophoniassophhaggaihaghgaggaeusaggzechariahzechzeczczachariaszachma" &
+     "lachimalmlmalachiastobittobtbtobiastobiaejudithjdtjdthiudithidtesthergreekgreekestheraddit" &
+     "ionstoestheraddesthesgrestofestherwisdomofsolomonwisdomwiswswisdsapientiasapsirachsireccle" &
+     "siasticusecclussiracidesecclibaruchbarletterofjeremiahljeepjerepistleofjeremiahepistleofje" &
+     "remysongofthethreesongofthethreeyoungmensongofthreeprayerofazariahazariahazarsusannasusbel" &
+     "andthedragonbeldanielgreekgreekdanieldag1maccabees1macc1mac1ma1machabaeorum1mach2maccabees" &
+     "2macc2mac2ma2machabaeorum2mach3maccabees3macc3mac3ma4maccabees4macc4mac4ma1esdras1esd1es3e" &
+     "sdrae2esdras2esd2es4esdraeprayerofmanassehprayerofmanassesmanassehmanassesmanprmanoratioma" &
+     "nassematthewmattmatmtmatthaeusmatthaeummarkmrkmarmkmrmarcusmarcumlukeluklklucaslucamlcjohn" &
+     "jhnjohjnioannesiohannesioannemiohannemioiohactsactacactsoftheapostlesactusapostolorumactus" &
+     "romansromrormromanos1corinthians1cor1co1corinthios2corinthians2cor2co2corinthiosgalatiansg" &
+     "algagalatasephesiansephephesephesiosphilippiansphilphpppphilippensescolossianscolcolossens" &
+     "es1thessalonians1thess1thes1th1thessalonicenses2thessalonians2thess2thes2th2thessalonicens" &
+     "es1timothy1tim1ti1tm1timotheum2timothy2tim2ti2tm2timotheumtitustittititumphilemonphilemphm" &
+     "phlmphilemonemhebrewshebhebraeosjamesjasjmjamiacobijacobiiac1peter1pet1pe1pt1p1petri2peter" &
+     "2pet2pe2pt2p2petri1john1jhn1jn1jo1ioannis1iohannis1io2john2jhn2jn2jo2ioannis2iohannis2io3j" &
+     "ohn3jhn3jn3jo3ioannis3iohannis3iojudejudjdiudaejudaeiudasrevelationrevelationsrevrervapoca" &
+     "lypseapocalypsisapoc";
    ALIAS_BOOK : constant array (Alias_Index) of Book :=
      [Genesis, Genesis, Genesis, Genesis, Exodus, Exodus, Exodus, Exodus, Leviticus, Leviticus,
-      Leviticus, Leviticus, Numbers, Numbers, Numbers, Numbers, Numbers, Deuteronomy, Deuteronomy,
-      Deuteronomy, Deuteronomy, Deuteronomy, Joshua, Joshua, Joshua, Joshua, Judges, Judges, Judges,
-      Judges, Judges, Ruth, Ruth, Ruth, Ruth, First_Samuel, First_Samuel, First_Samuel, First_Samuel,
-      First_Samuel, Second_Samuel, Second_Samuel, Second_Samuel, Second_Samuel, Second_Samuel,
-      First_Kings, First_Kings, First_Kings, First_Kings, First_Kings, Second_Kings, Second_Kings,
+      Leviticus, Leviticus, Numbers, Numbers, Numbers, Numbers, Numbers, Numbers, Deuteronomy,
+      Deuteronomy, Deuteronomy, Deuteronomy, Deuteronomy, Deuteronomy, Joshua, Joshua, Joshua, Joshua,
+      Joshua, Joshua, Joshua, Judges, Judges, Judges, Judges, Judges, Judges, Judges, Judges, Judges,
+      Ruth, Ruth, Ruth, Ruth, Ruth, First_Samuel, First_Samuel, First_Samuel, First_Samuel, First_Samuel,
+      First_Samuel, First_Samuel, First_Samuel, First_Samuel, Second_Samuel, Second_Samuel,
+      Second_Samuel, Second_Samuel, Second_Samuel, Second_Samuel, Second_Samuel, Second_Samuel,
+      Second_Samuel, First_Kings, First_Kings, First_Kings, First_Kings, First_Kings, First_Kings,
+      First_Kings, First_Kings, Second_Kings, Second_Kings, Second_Kings, Second_Kings, Second_Kings,
       Second_Kings, Second_Kings, Second_Kings, First_Chronicles, First_Chronicles, First_Chronicles,
-      First_Chronicles, Second_Chronicles, Second_Chronicles, Second_Chronicles, Second_Chronicles, Ezra,
-      Ezra, Nehemiah, Nehemiah, Nehemiah, Esther, Esther, Esther, Esther, Job, Job, Psalms, Psalms,
-      Psalms, Psalms, Psalms, Psalms, Proverbs, Proverbs, Proverbs, Proverbs, Proverbs, Ecclesiastes,
+      First_Chronicles, First_Chronicles, First_Chronicles, First_Chronicles, Second_Chronicles,
+      Second_Chronicles, Second_Chronicles, Second_Chronicles, Second_Chronicles, Second_Chronicles,
+      Second_Chronicles, Ezra, Ezra, Ezra, Nehemiah, Nehemiah, Nehemiah, Nehemiah, Nehemiah, Esther,
+      Esther, Esther, Esther, Esther, Job, Job, Job, Psalms, Psalms, Psalms, Psalms, Psalms, Psalms,
+      Psalms, Psalms, Psalms, Proverbs, Proverbs, Proverbs, Proverbs, Proverbs, Proverbs, Ecclesiastes,
       Ecclesiastes, Ecclesiastes, Ecclesiastes, Ecclesiastes, Ecclesiastes, Ecclesiastes,
       Song_Of_Solomon, Song_Of_Solomon, Song_Of_Solomon, Song_Of_Solomon, Song_Of_Solomon,
-      Song_Of_Solomon, Song_Of_Solomon, Song_Of_Solomon, Isaiah, Isaiah, Isaiah, Jeremiah, Jeremiah,
-      Jeremiah, Jeremiah, Lamentations, Lamentations, Lamentations, Ezekiel, Ezekiel, Ezekiel, Ezekiel,
-      Daniel, Daniel, Daniel, Daniel, Hosea, Hosea, Hosea, Joel, Joel, Amos, Amos, Obadiah, Obadiah,
-      Obadiah, Jonah, Jonah, Jonah, Micah, Micah, Micah, Nahum, Nahum, Nahum, Habakkuk, Habakkuk,
-      Habakkuk, Zephaniah, Zephaniah, Zephaniah, Zephaniah, Haggai, Haggai, Haggai, Zechariah, Zechariah,
-      Zechariah, Zechariah, Malachi, Malachi, Malachi, Tobit, Tobit, Tobit, Judith, Judith, Judith,
-      Esther_Greek, Esther_Greek, Esther_Greek, Esther_Greek, Esther_Greek, Esther_Greek, Wisdom, Wisdom,
-      Wisdom, Wisdom, Wisdom, Sirach, Sirach, Sirach, Sirach, Baruch, Baruch, Letter_Of_Jeremiah,
-      Letter_Of_Jeremiah, Letter_Of_Jeremiah, Letter_Of_Jeremiah, Letter_Of_Jeremiah, Song_Of_The_Three,
-      Song_Of_The_Three, Song_Of_The_Three, Song_Of_The_Three, Song_Of_The_Three, Song_Of_The_Three,
-      Susanna, Susanna, Bel_And_The_Dragon, Bel_And_The_Dragon, Daniel_Greek, Daniel_Greek, Daniel_Greek,
+      Song_Of_Solomon, Song_Of_Solomon, Song_Of_Solomon, Song_Of_Solomon, Song_Of_Solomon,
+      Song_Of_Solomon, Isaiah, Isaiah, Isaiah, Isaiah, Isaiah, Jeremiah, Jeremiah, Jeremiah, Jeremiah,
+      Jeremiah, Jeremiah, Jeremiah, Lamentations, Lamentations, Lamentations, Lamentations, Lamentations,
+      Ezekiel, Ezekiel, Ezekiel, Ezekiel, Ezekiel, Ezekiel, Daniel, Daniel, Daniel, Daniel, Hosea, Hosea,
+      Hosea, Hosea, Hosea, Joel, Joel, Joel, Amos, Amos, Obadiah, Obadiah, Obadiah, Obadiah, Obadiah,
+      Jonah, Jonah, Jonah, Jonah, Micah, Micah, Micah, Micah, Micah, Nahum, Nahum, Nahum, Habakkuk,
+      Habakkuk, Habakkuk, Habakkuk, Zephaniah, Zephaniah, Zephaniah, Zephaniah, Zephaniah, Zephaniah,
+      Haggai, Haggai, Haggai, Haggai, Haggai, Zechariah, Zechariah, Zechariah, Zechariah, Zechariah,
+      Zechariah, Malachi, Malachi, Malachi, Malachi, Tobit, Tobit, Tobit, Tobit, Tobit, Judith, Judith,
+      Judith, Judith, Judith, Esther_Greek, Esther_Greek, Esther_Greek, Esther_Greek, Esther_Greek,
+      Esther_Greek, Wisdom, Wisdom, Wisdom, Wisdom, Wisdom, Wisdom, Wisdom, Sirach, Sirach, Sirach,
+      Sirach, Sirach, Sirach, Baruch, Baruch, Letter_Of_Jeremiah, Letter_Of_Jeremiah, Letter_Of_Jeremiah,
+      Letter_Of_Jeremiah, Letter_Of_Jeremiah, Song_Of_The_Three, Song_Of_The_Three, Song_Of_The_Three,
+      Song_Of_The_Three, Song_Of_The_Three, Song_Of_The_Three, Susanna, Susanna, Bel_And_The_Dragon,
+      Bel_And_The_Dragon, Daniel_Greek, Daniel_Greek, Daniel_Greek, First_Maccabees, First_Maccabees,
       First_Maccabees, First_Maccabees, First_Maccabees, First_Maccabees, Second_Maccabees,
-      Second_Maccabees, Second_Maccabees, Second_Maccabees, Third_Maccabees, Third_Maccabees,
-      Third_Maccabees, Third_Maccabees, Fourth_Maccabees, Fourth_Maccabees, Fourth_Maccabees,
-      Fourth_Maccabees, First_Esdras, First_Esdras, First_Esdras, Second_Esdras, Second_Esdras,
-      Second_Esdras, Prayer_Of_Manasseh, Prayer_Of_Manasseh, Prayer_Of_Manasseh, Prayer_Of_Manasseh,
-      Prayer_Of_Manasseh, Prayer_Of_Manasseh, Matthew, Matthew, Matthew, Matthew, Mark, Mark, Mark, Mark,
-      Mark, Luke, Luke, Luke, John, John, John, John, Acts, Acts, Acts, Acts, Romans, Romans, Romans,
-      Romans, First_Corinthians, First_Corinthians, First_Corinthians, Second_Corinthians,
-      Second_Corinthians, Second_Corinthians, Galatians, Galatians, Galatians, Ephesians, Ephesians,
-      Ephesians, Philippians, Philippians, Philippians, Philippians, Colossians, Colossians,
+      Second_Maccabees, Second_Maccabees, Second_Maccabees, Second_Maccabees, Second_Maccabees,
+      Third_Maccabees, Third_Maccabees, Third_Maccabees, Third_Maccabees, Fourth_Maccabees,
+      Fourth_Maccabees, Fourth_Maccabees, Fourth_Maccabees, First_Esdras, First_Esdras, First_Esdras,
+      First_Esdras, Second_Esdras, Second_Esdras, Second_Esdras, Second_Esdras, Prayer_Of_Manasseh,
+      Prayer_Of_Manasseh, Prayer_Of_Manasseh, Prayer_Of_Manasseh, Prayer_Of_Manasseh, Prayer_Of_Manasseh,
+      Prayer_Of_Manasseh, Matthew, Matthew, Matthew, Matthew, Matthew, Matthew, Mark, Mark, Mark, Mark,
+      Mark, Mark, Mark, Luke, Luke, Luke, Luke, Luke, Luke, John, John, John, John, John, John, John,
+      John, John, John, Acts, Acts, Acts, Acts, Acts, Acts, Romans, Romans, Romans, Romans, Romans,
+      First_Corinthians, First_Corinthians, First_Corinthians, First_Corinthians, Second_Corinthians,
+      Second_Corinthians, Second_Corinthians, Second_Corinthians, Galatians, Galatians, Galatians,
+      Galatians, Ephesians, Ephesians, Ephesians, Ephesians, Philippians, Philippians, Philippians,
+      Philippians, Philippians, Colossians, Colossians, Colossians, First_Thessalonians,
       First_Thessalonians, First_Thessalonians, First_Thessalonians, First_Thessalonians,
       Second_Thessalonians, Second_Thessalonians, Second_Thessalonians, Second_Thessalonians,
-      First_Timothy, First_Timothy, First_Timothy, First_Timothy, Second_Timothy, Second_Timothy,
-      Second_Timothy, Second_Timothy, Titus, Titus, Titus, Philemon, Philemon, Philemon, Philemon,
-      Hebrews, Hebrews, James, James, James, James, First_Peter, First_Peter, First_Peter, First_Peter,
-      First_Peter, Second_Peter, Second_Peter, Second_Peter, Second_Peter, Second_Peter, First_John,
-      First_John, First_John, First_John, Second_John, Second_John, Second_John, Second_John, Third_John,
-      Third_John, Third_John, Third_John, Jude, Jude, Jude, Revelation, Revelation, Revelation,
-      Revelation, Revelation, Revelation];
+      Second_Thessalonians, First_Timothy, First_Timothy, First_Timothy, First_Timothy, First_Timothy,
+      Second_Timothy, Second_Timothy, Second_Timothy, Second_Timothy, Second_Timothy, Titus, Titus,
+      Titus, Titus, Philemon, Philemon, Philemon, Philemon, Philemon, Hebrews, Hebrews, Hebrews, James,
+      James, James, James, James, James, James, First_Peter, First_Peter, First_Peter, First_Peter,
+      First_Peter, First_Peter, Second_Peter, Second_Peter, Second_Peter, Second_Peter, Second_Peter,
+      Second_Peter, First_John, First_John, First_John, First_John, First_John, First_John, First_John,
+      Second_John, Second_John, Second_John, Second_John, Second_John, Second_John, Second_John,
+      Third_John, Third_John, Third_John, Third_John, Third_John, Third_John, Third_John, Jude, Jude,
+      Jude, Jude, Jude, Jude, Revelation, Revelation, Revelation, Revelation, Revelation, Revelation,
+      Revelation, Revelation];
    ALIAS_START : constant array (Alias_Index) of Positive :=
-     [1, 8, 11, 13, 15, 21, 24, 26, 30, 39, 42, 44, 46, 53, 56, 58, 60, 62, 73, 77, 80, 82, 84, 90, 94,
-      97, 100, 106, 110, 113, 115, 119, 123, 126, 128, 131, 138, 142, 145, 148, 150, 157, 161, 164, 167,
-      169, 175, 179, 182, 185, 187, 193, 197, 200, 203, 205, 216, 222, 226, 229, 240, 246, 250, 253, 257,
-      260, 268, 271, 273, 279, 283, 286, 288, 291, 293, 299, 304, 306, 309, 312, 315, 323, 327, 330, 333,
-      335, 347, 353, 357, 360, 362, 365, 373, 386, 397, 401, 404, 407, 416, 420, 439, 445, 448, 450, 458,
-      461, 463, 465, 477, 480, 482, 489, 493, 496, 499, 505, 508, 510, 512, 517, 520, 522, 526, 528, 532,
-      534, 541, 545, 547, 552, 555, 558, 563, 566, 568, 573, 576, 578, 586, 589, 591, 600, 604, 607, 609,
-      615, 618, 620, 629, 633, 636, 638, 645, 648, 650, 655, 658, 660, 666, 669, 673, 684, 695, 712, 719,
-      722, 734, 749, 755, 758, 760, 764, 770, 773, 787, 793, 799, 802, 818, 821, 826, 843, 858, 872, 894,
-      905, 920, 927, 931, 938, 941, 956, 959, 970, 981, 984, 994, 999, 1003, 1006, 1016, 1021, 1025,
-      1028, 1038, 1043, 1047, 1050, 1060, 1065, 1069, 1072, 1079, 1083, 1086, 1093, 1097, 1100, 1116,
-      1132, 1140, 1148, 1151, 1156, 1163, 1167, 1170, 1172, 1176, 1179, 1182, 1184, 1186, 1190, 1193,
-      1195, 1199, 1202, 1205, 1207, 1211, 1214, 1216, 1233, 1239, 1242, 1244, 1246, 1258, 1262, 1265,
-      1277, 1281, 1284, 1293, 1296, 1298, 1307, 1310, 1315, 1326, 1330, 1333, 1335, 1345, 1348, 1362,
-      1368, 1373, 1376, 1390, 1396, 1401, 1404, 1412, 1416, 1419, 1422, 1430, 1434, 1437, 1440, 1445,
-      1448, 1450, 1458, 1464, 1467, 1471, 1478, 1481, 1486, 1489, 1491, 1494, 1500, 1504, 1507, 1510,
-      1512, 1518, 1522, 1525, 1528, 1530, 1535, 1539, 1542, 1545, 1550, 1554, 1557, 1560, 1565, 1569,
-      1572, 1575, 1579, 1582, 1584, 1594, 1605, 1608, 1610, 1612];
+     [1, 8, 11, 13, 15, 21, 24, 26, 30, 39, 42, 44, 46, 53, 56, 58, 60, 62, 68, 79, 83, 86, 88, 90, 103,
+      109, 113, 116, 119, 124, 129, 132, 138, 142, 145, 147, 151, 158, 165, 172, 175, 179, 182, 184, 187,
+      189, 196, 200, 203, 206, 208, 214, 218, 227, 236, 243, 247, 250, 253, 255, 261, 265, 274, 283, 289,
+      293, 296, 299, 301, 307, 311, 320, 326, 330, 333, 336, 338, 344, 348, 357, 368, 374, 378, 381, 395,
+      399, 407, 418, 424, 428, 431, 445, 449, 457, 461, 464, 471, 479, 482, 484, 491, 499, 505, 509, 512,
+      514, 520, 523, 525, 528, 534, 539, 541, 544, 547, 550, 556, 563, 577, 585, 589, 592, 595, 597, 606,
+      618, 624, 628, 631, 633, 636, 644, 657, 668, 672, 675, 678, 687, 691, 710, 728, 736, 738, 744, 747,
+      749, 755, 761, 769, 772, 774, 776, 784, 792, 795, 807, 810, 812, 825, 831, 838, 842, 845, 848, 856,
+      858, 864, 867, 869, 871, 876, 879, 881, 885, 887, 891, 893, 897, 901, 903, 910, 914, 916, 922, 925,
+      930, 933, 936, 941, 946, 949, 951, 959, 966, 971, 974, 976, 984, 987, 989, 996, 1005, 1009, 1012,
+      1014, 1023, 1027, 1033, 1036, 1038, 1045, 1048, 1057, 1061, 1064, 1066, 1075, 1079, 1086, 1089,
+      1091, 1100, 1105, 1108, 1110, 1116, 1122, 1128, 1131, 1135, 1141, 1144, 1155, 1166, 1183, 1190,
+      1193, 1205, 1220, 1226, 1229, 1231, 1235, 1244, 1247, 1253, 1256, 1270, 1276, 1285, 1290, 1296,
+      1299, 1315, 1318, 1323, 1340, 1355, 1369, 1391, 1402, 1417, 1424, 1428, 1435, 1438, 1453, 1456,
+      1467, 1478, 1481, 1491, 1496, 1500, 1503, 1516, 1521, 1531, 1536, 1540, 1543, 1556, 1561, 1571,
+      1576, 1580, 1583, 1593, 1598, 1602, 1605, 1612, 1616, 1619, 1626, 1633, 1637, 1640, 1647, 1663,
+      1679, 1687, 1695, 1698, 1703, 1716, 1723, 1727, 1730, 1732, 1741, 1750, 1754, 1757, 1760, 1762,
+      1764, 1770, 1776, 1780, 1783, 1785, 1790, 1795, 1797, 1801, 1804, 1807, 1809, 1816, 1824, 1831,
+      1839, 1841, 1844, 1848, 1851, 1853, 1870, 1886, 1891, 1897, 1900, 1902, 1904, 1911, 1923, 1927,
+      1930, 1941, 1953, 1957, 1960, 1971, 1980, 1983, 1985, 1992, 2001, 2004, 2009, 2017, 2028, 2032,
+      2035, 2037, 2049, 2059, 2062, 2073, 2087, 2093, 2098, 2101, 2118, 2132, 2138, 2143, 2146, 2163,
+      2171, 2175, 2178, 2181, 2191, 2199, 2203, 2206, 2209, 2219, 2224, 2227, 2229, 2234, 2242, 2248,
+      2251, 2255, 2265, 2272, 2275, 2283, 2288, 2291, 2293, 2296, 2302, 2308, 2311, 2317, 2321, 2324,
+      2327, 2329, 2335, 2341, 2345, 2348, 2351, 2353, 2359, 2364, 2368, 2371, 2374, 2382, 2391, 2394,
+      2399, 2403, 2406, 2409, 2417, 2426, 2429, 2434, 2438, 2441, 2444, 2452, 2461, 2464, 2468, 2471,
+      2473, 2478, 2483, 2488, 2498, 2509, 2512, 2514, 2516, 2526, 2537];
    ALIAS_LENGTH : constant array (Alias_Index) of Key_Length :=
-     [7, 3, 2, 2, 6, 3, 2, 4, 9, 3, 2, 2, 7, 3, 2, 2, 2, 11, 4, 3, 2, 2, 6, 4, 3, 3, 6, 4, 3, 2, 4, 4, 3,
-      2, 3, 7, 4, 3, 3, 2, 7, 4, 3, 3, 2, 6, 4, 3, 3, 2, 6, 4, 3, 3, 2, 11, 6, 4, 3, 11, 6, 4, 3, 4, 3,
-      8, 3, 2, 6, 4, 3, 2, 3, 2, 6, 5, 2, 3, 3, 3, 8, 4, 3, 3, 2, 12, 6, 4, 3, 2, 3, 8, 13, 11, 4, 3, 3,
-      9, 4, 19, 6, 3, 2, 8, 3, 2, 2, 12, 3, 2, 7, 4, 3, 3, 6, 3, 2, 2, 5, 3, 2, 4, 2, 4, 2, 7, 4, 2, 5,
-      3, 3, 5, 3, 2, 5, 3, 2, 8, 3, 2, 9, 4, 3, 2, 6, 3, 2, 9, 4, 3, 2, 7, 3, 2, 5, 3, 2, 6, 3, 4, 11,
-      11, 17, 7, 3, 12, 15, 6, 3, 2, 4, 6, 3, 14, 6, 6, 3, 16, 3, 5, 17, 15, 14, 22, 11, 15, 7, 4, 7, 3,
-      15, 3, 11, 11, 3, 10, 5, 4, 3, 10, 5, 4, 3, 10, 5, 4, 3, 10, 5, 4, 3, 7, 4, 3, 7, 4, 3, 16, 16, 8,
-      8, 3, 5, 7, 4, 3, 2, 4, 3, 3, 2, 2, 4, 3, 2, 4, 3, 3, 2, 4, 3, 2, 17, 6, 3, 2, 2, 12, 4, 3, 12, 4,
-      3, 9, 3, 2, 9, 3, 5, 11, 4, 3, 2, 10, 3, 14, 6, 5, 3, 14, 6, 5, 3, 8, 4, 3, 3, 8, 4, 3, 3, 5, 3, 2,
-      8, 6, 3, 4, 7, 3, 5, 3, 2, 3, 6, 4, 3, 3, 2, 6, 4, 3, 3, 2, 5, 4, 3, 3, 5, 4, 3, 3, 5, 4, 3, 3, 4,
-      3, 2, 10, 11, 3, 2, 2, 10];
+     [7, 3, 2, 2, 6, 3, 2, 4, 9, 3, 2, 2, 7, 3, 2, 2, 2, 6, 11, 4, 3, 2, 2, 13, 6, 4, 3, 3, 5, 5, 3, 6,
+      4, 3, 2, 4, 7, 7, 7, 3, 4, 3, 2, 3, 2, 7, 4, 3, 3, 2, 6, 4, 9, 9, 7, 4, 3, 3, 2, 6, 4, 9, 9, 6, 4,
+      3, 3, 2, 6, 4, 9, 6, 4, 3, 3, 2, 6, 4, 9, 11, 6, 4, 3, 14, 4, 8, 11, 6, 4, 3, 14, 4, 8, 4, 3, 7, 8,
+      3, 2, 7, 8, 6, 4, 3, 2, 6, 3, 2, 3, 6, 5, 2, 3, 3, 3, 6, 7, 14, 8, 4, 3, 3, 2, 9, 12, 6, 4, 3, 2,
+      3, 8, 13, 11, 4, 3, 3, 9, 4, 19, 18, 8, 2, 6, 3, 2, 6, 6, 8, 3, 2, 2, 8, 8, 3, 12, 3, 2, 13, 6, 7,
+      4, 3, 3, 8, 2, 6, 3, 2, 2, 5, 3, 2, 4, 2, 4, 2, 4, 4, 2, 7, 4, 2, 6, 3, 5, 3, 3, 5, 5, 3, 2, 8, 7,
+      5, 3, 2, 8, 3, 2, 7, 9, 4, 3, 2, 9, 4, 6, 3, 2, 7, 3, 9, 4, 3, 2, 9, 4, 7, 3, 2, 9, 5, 3, 2, 6, 6,
+      6, 3, 4, 6, 3, 11, 11, 17, 7, 3, 12, 15, 6, 3, 2, 4, 9, 3, 6, 3, 14, 6, 9, 5, 6, 3, 16, 3, 5, 17,
+      15, 14, 22, 11, 15, 7, 4, 7, 3, 15, 3, 11, 11, 3, 10, 5, 4, 3, 13, 5, 10, 5, 4, 3, 13, 5, 10, 5, 4,
+      3, 10, 5, 4, 3, 7, 4, 3, 7, 7, 4, 3, 7, 16, 16, 8, 8, 3, 5, 13, 7, 4, 3, 2, 9, 9, 4, 3, 3, 2, 2, 6,
+      6, 4, 3, 2, 5, 5, 2, 4, 3, 3, 2, 7, 8, 7, 8, 2, 3, 4, 3, 2, 17, 16, 5, 6, 3, 2, 2, 7, 12, 4, 3, 11,
+      12, 4, 3, 11, 9, 3, 2, 7, 9, 3, 5, 8, 11, 4, 3, 2, 12, 10, 3, 11, 14, 6, 5, 3, 17, 14, 6, 5, 3, 17,
+      8, 4, 3, 3, 10, 8, 4, 3, 3, 10, 5, 3, 2, 5, 8, 6, 3, 4, 10, 7, 3, 8, 5, 3, 2, 3, 6, 6, 3, 6, 4, 3,
+      3, 2, 6, 6, 4, 3, 3, 2, 6, 5, 4, 3, 3, 8, 9, 3, 5, 4, 3, 3, 8, 9, 3, 5, 4, 3, 3, 8, 9, 3, 4, 3, 2,
+      5, 5, 5, 10, 11, 3, 2, 2, 10, 11, 4];
 
    type Key is record
       Length : Key_Length := 0;

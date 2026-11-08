@@ -29,13 +29,17 @@ Image layout (all little-endian):
   keys     1 byte:   search keys, ASCII lower case
   text     1 byte:   UTF-8
   about    8 bytes:  text offset u32, length u16, kind u8, reserved u8
+                     (kinds: abbreviation, title, licence, language code
+                     (ISO 639-1), language name)
 
 Books are in Bible_Canon.Book order; chapters and verses are numbered from 1
 with no gaps (a missing verse has no segments). A verse's segments are its
 section headings, then its text runs; a run starting a paragraph or a poetry
-line says so in its kind. Search keys are the verses' words normalized as
+line says so in its kind. The King James Version's pilcrows (its 1769 paragraph
+marks) are not text: one that starts a verse starts a paragraph there, any
+other is left out. Search keys are the verses' words normalized as
 Bible_Search.Normalize does: ASCII letters and digits in lower case, inner
-apostrophes dropped, the few accented letters folded (ae, a, e, o).
+apostrophes dropped, the few accented letters folded (ae, oe, a, e, o).
 
 Usage:
   build_bible.py OUT_DIR [--only NAME] [--summary FILE]
@@ -60,7 +64,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ROOT / 'assets' / 'bible' / 'sources.json'
 
 MAGIC = b'CUBITBIB'
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 TABLES = ('books', 'chapters', 'verses', 'segments', 'words', 'postings',
           'keys', 'text', 'about')
 HEADER_BYTES = 8 + 4 + 4 + 8 * len(TABLES)
@@ -104,7 +108,10 @@ WORDS_OF_CHRIST = 2
 JOINED = 4
 STYLE_FLAGS = WORDS_OF_CHRIST
 # Bible_Images.About_Kind'Pos.
-ABOUT_ABBREVIATION, ABOUT_TITLE, ABOUT_LICENCE = range(3)
+ABOUT_ABBREVIATION, ABOUT_TITLE, ABOUT_LICENCE, ABOUT_LANGUAGE_CODE, ABOUT_LANGUAGE_NAME = range(5)
+# A language: an ISO 639-1 code and its English name (Bible_Translations.Language).
+LANGUAGE_CODE = re.compile('[a-z]{2}')
+LANGUAGE_NAME = re.compile('[A-Z][a-z]+( [A-Z][a-z]+)*')
 
 # USFM paragraph markers -> the kind of the run they start.
 PARAGRAPHS = {
@@ -136,11 +143,14 @@ NOTES = {'f', 'fe', 'x', 'ef', 'ex'}
 NO_BREAK = {'nb'}
 BLANK = {'b'}
 
-# The characters the reading face draws (CuBit.Fonts.Serif: printable ASCII
-# and the Windows-1252 typographic set), and those Bible_Text folds to one
-# of them. Anything else in verse text is refused, so nothing renders "?".
+# The characters the reading faces draw (CuBit.Fonts reading slots: printable
+# ASCII and Windows-1252 above it; tests/bible/test_faces.py checks each
+# pinned face maps every one), and those Bible_Text folds to one of them.
+# Anything else in verse text is refused, so nothing renders "?". The pilcrow
+# is not among them: it is a paragraph mark, never text (PILCROW below).
 DRAWN = set(chr(c) for c in range(0x20, 0x7F)) | set('\u2018\u2019\u201c\u201d\u2013\u2014\u2026'
-                                                      '\u00b6\u00e6\u00c6\u00e0\u00e9\u00d7\u00bd\u00a0')
+                                                      '\u00e6\u00c6\u00e0\u00e9\u00d7\u00bd\u00a0'
+                                                      '\u00eb\u00cb\u0153\u0152')
 FOLDED = {'\u0113': 'e', '\u014d': 'o'}
 # Hebrew letters name the stanzas of Psalm 119 in the KJV's headings
 # ("\u05d0 ALEPH."); v1 draws no Hebrew (APP-005, out of scope), so they are
@@ -148,7 +158,11 @@ FOLDED = {'\u0113': 'e', '\u014d': 'o'}
 HEBREW = re.compile('[\u0590-\u05ff]+')
 
 # Search keys: Bible_Search.Normalize (keep the two in step).
-KEY_FOLDS = {'\u00e6': 'ae', '\u00c6': 'ae', '\u00e0': 'a', '\u00e9': 'e', '\u0113': 'e', '\u014d': 'o'}
+KEY_FOLDS = {'\u00e6': 'ae', '\u00c6': 'ae', '\u00e0': 'a', '\u00e9': 'e', '\u0113': 'e', '\u014d': 'o',
+             '\u00eb': 'e', '\u00cb': 'e', '\u0153': 'oe', '\u0152': 'oe'}
+# The King James Version's paragraph mark: a paragraph where it starts a
+# verse, left out anywhere else.
+PILCROW = '\u00b6'
 APOSTROPHES = "'\u2019"
 
 
@@ -239,6 +253,7 @@ class Book:
         self.code = code
         self.chapters = {}   # number -> {verse number -> Verse}
         self.wj = (0, 0, 0)  # words-of-Christ spans, across verses, across paragraphs
+        self.pilcrows = (0, 0)  # pilcrows made paragraphs, pilcrows left out
 
 
 def read_archive(path):
@@ -293,6 +308,9 @@ class BookReader:
         # text ("\\+w Most"); it is not text ("“\\+w Most" is "“Most").
         self.separator = False
         self.wj = False
+        self.verse_has_text = False   # the verse's first words are read
+        self.pilcrow_paragraphs = 0
+        self.pilcrows_dropped = 0
         self.wj_spans = 0
         self.wj_across_verses = 0
         self.wj_across_paragraphs = 0
@@ -348,6 +366,23 @@ class BookReader:
             else:
                 self.headings[-1] = (PROLOGUE, self.headings[-1][1] + text)
             return
+        if not self.verse_has_text and text.strip():
+            self.verse_has_text = True
+            if text.lstrip().startswith(PILCROW):
+                # A pilcrow starting a verse: a paragraph starts there.
+                text = text.lstrip()[1:]
+                if text.startswith(' '):
+                    text = text[1:]
+                if self.pending_kind is None:
+                    self.pending_kind = PARAGRAPH
+                self.pilcrow_paragraphs += 1
+                if not text.strip():
+                    return
+        if PILCROW in text:
+            self.pilcrows_dropped += text.count(PILCROW)
+            text = re.sub(PILCROW + ' ?', '', text)
+            if not text:
+                return
         style = WORDS_OF_CHRIST if self.wj else 0
         text = clean(text)
         segments = verse.segments
@@ -392,6 +427,7 @@ class BookReader:
                 fail('%s:%d twice' % (self.where(), number))
             verses[number] = Verse()
         self.verse = verses[first]
+        self.verse_has_text = False
         for kind, text in self.headings:
             self.verse.segments.append([kind, 0, clean(text).strip()])
         self.headings = []
@@ -449,6 +485,7 @@ class BookReader:
         if self.wj:
             fail('%s: \\wj is not closed by the end of the book' % self.where())
         self.book.wj = (self.wj_spans, self.wj_across_verses, self.wj_across_paragraphs)
+        self.book.pilcrows = (self.pilcrow_paragraphs, self.pilcrows_dropped)
         for verses in self.book.chapters.values():
             for verse in verses.values():
                 for segment in verse.segments:
@@ -542,6 +579,7 @@ def build_image(source, books):
     summary = {}
     red = [0, 0, 0]
     red_runs = 0
+    pilcrows = [0, 0]
     for code in BOOKS:
         book = books.get(code)
         if book is None or not book.chapters:
@@ -588,6 +626,8 @@ def build_image(source, books):
         summary[code] = counts
         for i in range(3):
             red[i] += book.wj[i]
+        for i in range(2):
+            pilcrows[i] += book.pilcrows[i]
     if len(chapter_rows) > MAXIMUM_CHAPTERS:
         fail('%s: %d chapters, more than Bible_References.MAXIMUM_CHAPTERS' % (name, len(chapter_rows)))
     word_rows, posting_rows = [], []
@@ -597,8 +637,12 @@ def build_image(source, books):
         word_rows.append(struct.pack('<IHHII', offset, length, 0, len(posting_rows), len(postings)))
         posting_rows.extend(struct.pack('<I', v) for v in postings)
     about_rows = []
+    language = source.get('language') or {}
+    if not LANGUAGE_CODE.fullmatch(language.get('code', '')) or not LANGUAGE_NAME.fullmatch(language.get('name', '')):
+        fail('%s: a language needs an ISO 639-1 code and an English name: %r' % (name, language))
     for kind, value in ((ABOUT_ABBREVIATION, source['abbreviation']), (ABOUT_TITLE, source['title']),
-                        (ABOUT_LICENCE, source['licence'])):
+                        (ABOUT_LICENCE, source['licence']), (ABOUT_LANGUAGE_CODE, language['code']),
+                        (ABOUT_LANGUAGE_NAME, language['name'])):
         offset, length = text.add(value, 0xFFFF)
         about_rows.append(struct.pack('<IHBB', offset, length, kind, 0))
     tables = {
@@ -623,27 +667,29 @@ def build_image(source, books):
     if len(image) >= 2 ** 31 - 2:
         fail('%s: image too large' % name)
     counts['red'] = (red[0], red[1], red[2], red_runs)
+    counts['pilcrows'] = tuple(pilcrows)
     return image, summary, counts
 
 
 def notice(sources):
     lines = ['CuBit Bible texts (APP-005): sources, digests and licences.', '']
     for source in sources:
-        lines += ['%s: %s' % (source['abbreviation'], source['title']),
+        lines += ['%s: %s (%s)' % (source['abbreviation'], source['title'], source['language']['name']),
                   '  Source:    %s' % source['url'],
                   '  SHA-256:   %s' % source['sha256'],
                   '  Retrieved: %s' % source['retrieved'],
                   '  Publisher: %s' % source['publisher'],
                   '  Licence:   %s' % source['licence'],
                   '  Converted by tools/build_bible.py: footnotes, cross-references, Strong\'s',
-                  '  numbers and introductions are left out; the words are unchanged.', '']
+                  '  numbers and introductions are left out, and the King James Version\'s',
+                  '  pilcrows become paragraph breaks; the words are unchanged.', '']
     return '\n'.join(lines)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('out', nargs='?', help='output directory (Assets/cubit-bible/1)')
-    parser.add_argument('--only', help='one translation (kjv, bsb, web)')
+    parser.add_argument('--only', help='one translation (kjv, bsb, web, vul)')
     parser.add_argument('--summary', help='write chapters and verse counts as JSON')
     parser.add_argument('--pin', help='fetch a translation\'s or font\'s URL and print its SHA-256')
     parser.add_argument('--font', help='print the local path of the pinned font NAME')
@@ -688,6 +734,8 @@ def main():
                  counts['words']))
         print('build_bible: %s words of Christ: %d spans (%d continue into a later verse, %d into a later '
               'paragraph), %d red runs' % ((source['abbreviation'],) + counts['red']))
+        print('build_bible: %s pilcrows: %d start a paragraph, %d left out'
+              % ((source['abbreviation'],) + counts['pilcrows']))
     if not args.only:
         (out / 'BIBLE-NOTICE').write_text(notice(sources))
     if args.summary:

@@ -6,10 +6,10 @@ with CuBit.UI.Widgets;
 with CuBit.Reading_Faces;
 with Bible_Parser;
 with Bible_Text;
+with Bible_Versification;
 
 package body Bible_Views is
    use CuBit.UI;
-   use type Controls.Control_ID;
    use type Controls.Pointer_Action;
    use type Bible_Translations.Load_Status;
    use type Bible_Translations.Image_Access;
@@ -19,6 +19,7 @@ package body Bible_Views is
    use type Bible_Search.Search_Status;
    use type Bible_Translations.Translation;
    package Ed renames CuBit.UI.Editor;
+   package CB renames CuBit.UI.Combo_Boxes;
    package Images renames Bible_Images;
    package M renames CuBit.UI_Metrics;
 
@@ -30,7 +31,11 @@ package body Bible_Views is
    STATUS_HEIGHT   : constant := M.Compact_Row_Height;
    NAV_WIDTH       : constant := CONTROL_HEIGHT + M.Space_S;
    GAP             : constant := 6;
-   TAB_WIDTH       : constant := 3 * M.Base_Em + M.Space_M;
+   --  The translation list: wide enough for the longest caption, at most.
+   PICKER_MAXIMUM  : constant := 24 * M.Base_Em;
+   PICKER_ARROW    : constant := CONTROL_HEIGHT + M.Space_M;
+   --  The search field's narrowest before the chapter buttons give way.
+   FIELD_MINIMUM   : constant := 16 * M.Base_Em;
    CHAPTER_BUTTON_WIDTH : constant := 5 * M.Base_Em;
    FACE_BUTTON_WIDTH : constant := 9 * M.Base_Em;
    RED_WIDTH : constant := 7 * M.Base_Em;          --  its checkbox and label
@@ -106,7 +111,7 @@ package body Bible_Views is
       if E.Status = Bible_Translations.Not_Loaded then
          Load (Which, E.Data, E.Status);
          if E.Status = Bible_Translations.Loaded then
-            Bible_Translations.Open (E);
+            Bible_Translations.Open (E, Which);
          elsif E.Status = Bible_Translations.Not_Loaded then
             E.Status := Bible_Translations.Read_Failed;
          end if;
@@ -163,10 +168,35 @@ package body Bible_Views is
       return (if V.Valid then From (V.First_Segment) else "");
    end Verse_Face_Text;
 
-   function Chapter_Title (Item : Book; Chapter : Chapter_Number; One_Chapter : Boolean) return String is
+   --  "Psalm 23"; in the Vulgate the Hebrew number follows where it differs:
+   --  "Psalm 22 (23)", "Psalm 9 (9-10)".
+   function Psalm_Title (Which : Translation; Chapter : Chapter_Number) return String is
+      use type Bible_Versification.Numbering;
+      First, Last : Chapter_Number;
+   begin
+      if Bible_Translations.Numbering_Of (Which) /= Bible_Versification.Vulgate then
+         return "Psalm " & Trimmed (Chapter);
+      end if;
+      Bible_Versification.Hebrew_Psalms (Chapter, First, Last);
+      if First = Chapter and then Last = Chapter then
+         return "Psalm " & Trimmed (Chapter);
+      elsif First = Last then
+         return "Psalm " & Trimmed (Chapter) & " (" & Trimmed (First) & ")";
+      else
+         return "Psalm " & Trimmed (Chapter) & " (" & Trimmed (First) & "-" & Trimmed (Last) & ")";
+      end if;
+   end Psalm_Title;
+
+   function Chapter_Title (Which : Translation; Item : Book; Chapter : Chapter_Number; One_Chapter : Boolean)
+     return String is
      (if One_Chapter then Name (Item)
-      elsif Item = Psalms then "Psalm " & Trimmed (Chapter)
+      elsif Item = Psalms then Psalm_Title (Which, Chapter)
       else Name (Item) & " " & Trimmed (Chapter));
+
+   --  The list's captions, made once (at elaboration, below).
+   CAPTIONS : array (Translation) of CB.Text;
+   function Translation_Caption (Which : Translation) return String is (CAPTIONS (Which).all);
+   function Choice_Of (Which : Translation) return Positive is (Translation'Pos (Which) + 1);
 
    ---------------------------------------------------------------------------
    --  The page's buffers.
@@ -413,7 +443,7 @@ package body Bible_Views is
       F.Left := Column_Left (Width);
       F.Right := Column_Right (Width);
       F.Y := TOP_PAD;
-      Caption_And_Heading (State, F, Upper, Chapter_Title (B, C, T.Chapters (B) = 1));
+      Caption_And_Heading (State, F, Upper, Chapter_Title (State.Which, B, C, T.Chapters (B) = 1));
       New_Line (State, F, 0, 0);
       for V in 1 .. Count loop
          declare
@@ -844,7 +874,17 @@ package body Bible_Views is
 
    procedure Set_Translation (State : in out View_State; Which : Translation) is
       Keep_Item : constant Passage := State.Item;
+      Was_Ready : constant Boolean := Ready (State);
+      Whole : constant Boolean := Was_Ready and then Is_Whole_Chapter (State, Keep_Item);
+      From_Numbering : constant Bible_Versification.Numbering := Bible_Translations.Numbering_Of (State.Which);
+      To_Numbering : constant Bible_Versification.Numbering := Bible_Translations.Numbering_Of (Which);
+      Mapped : Passage :=
+        (Bible_Versification.Map (From_Numbering, To_Numbering, Keep_Item.From),
+         Bible_Versification.Map (From_Numbering, To_Numbering, Keep_Item.To));
+      function Has_Chapter (B : Book; C : Chapter_Number) return Boolean is
+        (C <= Table (State).Chapters (B) and then Verses_In (Table (State), B, C) > 0);
    begin
+      CB.Set_Selection (State.Picker, State.Picker_Model, Choice_Of (Which));
       if Which = State.Which and then Ready (State) then
          return;
       end if;
@@ -856,14 +896,24 @@ package body Bible_Views is
          State.Current := Unavailable;
          return;
       end if;
-      --  The same passage where this translation has it, else its chapter,
-      --  else the start of the Bible.
-      if Exists (Table (State), Keep_Item) then
-         Show (State, Keep_Item, State.Highlight);
-      elsif Keep_Item.From.Chapter <= Table (State).Chapters (Keep_Item.From.Book)
-        and then Verses_In (Table (State), Keep_Item.From.Book, Keep_Item.From.Chapter) > 0
-      then
+      if not Ordered (Mapped) then
+         Mapped.To := Mapped.From;
+      end if;
+      --  The same place in this translation's numbering: the passage, or
+      --  (a whole chapter, or a passage it lacks) the chapter holding it;
+      --  else the chapter as numbered before, the book's start (in either
+      --  numbering: the Vulgate's Daniel 14 is Bel and the Dragon), the
+      --  Bible's start.
+      if not Whole and then Exists (Table (State), Mapped) then
+         Show (State, Mapped, State.Highlight);
+      elsif Has_Chapter (Mapped.From.Book, Mapped.From.Chapter) then
+         Show (State, Whole_Chapter (State, Mapped.From.Book, Mapped.From.Chapter), False);
+      elsif Has_Chapter (Keep_Item.From.Book, Keep_Item.From.Chapter) then
          Show (State, Whole_Chapter (State, Keep_Item.From.Book, Keep_Item.From.Chapter), False);
+      elsif Has_Chapter (Mapped.From.Book, 1) then
+         Show (State, Whole_Chapter (State, Mapped.From.Book, 1), False);
+      elsif Has_Chapter (Keep_Item.From.Book, 1) then
+         Show (State, Whole_Chapter (State, Keep_Item.From.Book, 1), False);
       else
          Show (State, Whole_Chapter (State, Genesis, 1), False);
       end if;
@@ -897,6 +947,7 @@ package body Bible_Views is
             (if On then Bible_Translations.RED_LETTERS_ON else Bible_Translations.RED_LETTERS_OFF));
    end Set_Red_Letters;
    function Red_Letters (State : View_State) return Boolean is (State.Red);
+   function Translations_Open (State : View_State) return Boolean is (CB.Is_Open (State.Picker));
    function Red_Runs (State : View_State) return Natural is (State.Red_Count);
 
    --  How light a background is: its luma (ITU-R BT.601), 0 .. 255.
@@ -1018,16 +1069,19 @@ package body Bible_Views is
       Saved_Red : constant String := Saved (Bible_Translations.Red_Letters_Preference);
    begin
       State.Red := Saved_Red /= Bible_Translations.RED_LETTERS_OFF;
-      State.Which := Bible_Translations.DEFAULT;
-      --  The reader's remembered face and translation, where still offered.
+      --  The reader's remembered face, where still offered.
       if CuBit.Reading_Faces.Find (Saved_Face) > 0 then
          CuBit.Reading_Faces.Choose (CuBit.Reading_Faces.Find (Saved_Face));
       end if;
+      --  The translation: the system's language would decide first, once
+      --  there is a system-wide setting (none yet); the remembered one, else
+      --  the King James Version.
+      State.Which := Bible_Translations.Default_Translation (Bible_Translations.NO_PREFERENCE, Saved_Translation);
+      State.Picker_Model.Count := Translation'Pos (Translation'Last) + 1;
       for T in Translation loop
-         if Bible_Translations.Abbreviation (T) = Saved_Translation then
-            State.Which := T;
-         end if;
+         State.Picker_Model.Choices (Choice_Of (T)) := (Caption => CAPTIONS (T), Enabled => True);
       end loop;
+      CB.Set_Selection (State.Picker, State.Picker_Model, Choice_Of (State.Which));
       Ed.Initialize (State.Search, "", Accepted);
       Ensure (State, State.Which);
       if Ready (State) then
@@ -1078,15 +1132,28 @@ package body Bible_Views is
       Colors : constant Theme := Current_Theme;
       Toolbar : constant Rect := (Bounds.x, Bounds.y, Bounds.w, TOOLBAR_HEIGHT);
       Control_Y : constant Natural := Toolbar.y + (TOOLBAR_HEIGHT - CONTROL_HEIGHT) / 2;
-      Tabs_Width : constant Natural := 3 * TAB_WIDTH + 2 * GAP;
+      function Widest_Caption return Natural is
+         Widest : Natural := 0;
+      begin
+         for T in Translation loop
+            Widest := Natural'Max (Widest, UI_Text_Width (CAPTIONS (T).all));
+         end loop;
+         return Widest;
+      end Widest_Caption;
+      Tabs_Width : constant Natural :=
+        Natural'Min (PICKER_MAXIMUM, Widest_Caption + 2 * PLACEHOLDER_INSET + PICKER_ARROW);
       Tabs_X : constant Natural := (if Bounds.w > Tabs_Width + GAP then Bounds.x + Bounds.w - Tabs_Width - GAP else 0);
       Face_X : constant Natural := (if Tabs_X > FACE_BUTTON_WIDTH + GAP then Tabs_X - FACE_BUTTON_WIDTH - GAP else 0);
       Red_X : constant Natural := (if Face_X > RED_WIDTH + GAP then Face_X - RED_WIDTH - GAP else 0);
-      Buttons_X : constant Natural :=
-        (if Red_X > 2 * CHAPTER_BUTTON_WIDTH + 3 * GAP then Red_X - 2 * CHAPTER_BUTTON_WIDTH - 3 * GAP else 0);
       Field_X : constant Natural := Bounds.x + GAP + 2 * (NAV_WIDTH + GAP) + GAP;
+      --  Previous and Next where the field keeps FIELD_MINIMUM beside them
+      --  (else Ctrl+Page Up and Down alone step chapters).
+      Buttons_X : constant Natural :=
+        (if Red_X > 2 * CHAPTER_BUTTON_WIDTH + 3 * GAP + Field_X + FIELD_MINIMUM + 2 * GAP
+         then Red_X - 2 * CHAPTER_BUTTON_WIDTH - 3 * GAP else 0);
+      Field_Right : constant Natural := (if Buttons_X > 0 then Buttons_X else Red_X);
       Field : constant Rect :=
-        (Field_X, Control_Y, (if Buttons_X > Field_X + 2 * GAP then Buttons_X - Field_X - 2 * GAP else 1),
+        (Field_X, Control_Y, (if Field_Right > Field_X + 2 * GAP then Field_Right - Field_X - 2 * GAP else 1),
          CONTROL_HEIGHT);
       Status_Bar : constant Rect :=
         (Bounds.x, Bounds.y + (if Bounds.h > STATUS_HEIGHT then Bounds.h - STATUS_HEIGHT else 0), Bounds.w,
@@ -1098,8 +1165,6 @@ package body Bible_Views is
       Result : Widget_Result;
       Hovered : constant Natural := Over_Link (State, State.Hover_X, State.Hover_Y);
       Text : constant String := Ed.Content (State.Search);
-      Tab_Content : Canvas;
-      Tab_Colors : Theme;
    begin
       CuBit.UI.State.Begin_Frame (UI);
       Controls.Clear (Map);
@@ -1317,26 +1382,15 @@ package body Bible_Views is
             Fit_UI_Text (Face_Name, FACE_BUTTON_WIDTH - 2 * PLACEHOLDER_INSET), Result,
             retainedInput => True, quiet => True);
       end if;
-      if Tabs_X > 0 then
-         for T in Translation loop
-            declare
-               Tab_Box : constant Rect :=
-                 (Tabs_X + Translation'Pos (T) * (TAB_WIDTH + GAP), Control_Y, TAB_WIDTH, CONTROL_HEIGHT);
-               Label : constant String := Bible_Translations.Abbreviation (T);
-            begin
-               CuBit.UI.Widgets.Tab
-                 (C, UI, Map, FIRST_TAB_ID + Translation'Pos (T), Tab_Box, Toolbar, Colors, State.Which = T,
-                  Tab_Content, Tab_Colors, Result);
-               Draw_UI_Text_Transparent
-                 (Tab_Content, Tab_Box.x + (TAB_WIDTH - UI_Text_Width (Label)) / 2,
-                  Tab_Box.y + (CONTROL_HEIGHT - UI_Text_Height) / 2, Label, Tab_Colors.text);
-            end;
-         end loop;
-      end if;
-
       Draw_Status_Bar (C, Status_Bar, Colors, Status_Text (State),
                        (if Ready (State) then Bible_Translations.Title (State.Which) & "  |  Public Domain"
                         else ""));
+      --  The translation list last: its open list lies over the page.
+      if Tabs_X > 0 then
+         CB.Draw (C, Map, State.Picker, State.Picker_Model, TRANSLATION_BASE,
+                  (Tabs_X, Control_Y, Tabs_Width, CONTROL_HEIGHT), Colors,
+                  Visible_Rows => State.Picker_Model.Count);
+      end if;
       CuBit.UI.State.Finish_Frame (UI);
    end Render;
 
@@ -1410,8 +1464,36 @@ package body Bible_Views is
          if State.History_At < State.History_Used then Go (State, State.History_At + 1); end if;
       end Forward;
       Page : constant Natural := Natural'Max (READING_LINE, State.Content.h - READING_LINE);
+      --  A key to the open translation list; a choice made changes the
+      --  translation.
+      procedure Picker_Key (Key : CB.Key; Letter : Character := ' ') is
+         Picked, Handled : Boolean;
+      begin
+         CB.Handle_Key (State.Picker, State.Picker_Model, Key, Picked, Handled, Letter);
+         if Picked then
+            Set_Translation (State, Translation'Val (CB.Selection (State.Picker) - 1));
+         end if;
+      end Picker_Key;
    begin
       Redraw := True;
+      --  The open translation list takes the keyboard.
+      if CB.Is_Open (State.Picker) and then Item.Kind in Key_Event | Text_Event then
+         if Item.Kind = Text_Event then
+            Picker_Key (CB.Type_Character, Item.Character_Value);
+         else
+            case Item.Key is
+               when Up => Picker_Key (CB.Up);
+               when Down => Picker_Key (CB.Down);
+               when Home => Picker_Key (CB.Home);
+               when End_Key => Picker_Key (CB.End_Key);
+               when Enter => Picker_Key (CB.Commit);
+               when Escape | Translations_Key => Picker_Key (CB.Cancel);
+               when Tab => Picker_Key (CB.Tab_Key);
+               when others => Redraw := False;
+            end case;
+         end if;
+         return;
+      end if;
       case Item.Kind is
          when Resize =>
             State.Width := Item.X;
@@ -1469,12 +1551,19 @@ package body Bible_Views is
                                                  else Translation'Pred (State.Which))
                              else (if State.Which = Translation'Last then Translation'First
                                    else Translation'Succ (State.Which))));
+               when Translations_Key => Picker_Key (CB.Toggle);
                when Next_Face_Key => Next_Face (State);
                when Red_Letters_Key => Set_Red_Letters (State, not State.Red);
                when No_Key => Redraw := False;
             end case;
          when Wheel =>
-            if Point_In_Rect (State.Hover_X, State.Hover_Y, State.Tree_Box) then
+            if CB.Is_Open (State.Picker) then
+               declare
+                  Handled : Boolean;
+               begin
+                  CB.Handle_Wheel (State.Picker, State.Picker_Model, Item.Steps, Handled);
+               end;
+            elsif Point_In_Rect (State.Hover_X, State.Hover_Y, State.Tree_Box) then
                State.Tree_Scroll := Natural (Integer'Max (0, Integer (State.Tree_Scroll) - Item.Steps * WHEEL_LINES));
             else
                Scroll_By (-Item.Steps * WHEEL_LINES * READING_LINE);
@@ -1484,9 +1573,22 @@ package body Bible_Views is
                Target : constant Controls.Control_ID := Controls.Hit (Map, Item.X, Item.Y);
                Link : constant Natural := Over_Link (State, Item.X, Item.Y);
                Was : constant Natural := Over_Link (State, State.Hover_X, State.Hover_Y);
+               Picked, Handled : Boolean;
             begin
                State.Hover_X := Item.X;
                State.Hover_Y := Item.Y;
+               --  The translation list: its own controls, and while open
+               --  every press (one outside closes it).
+               if CB.Is_Combo_Control (TRANSLATION_BASE, Target)
+                 or else (CB.Is_Open (State.Picker) and then Item.Action = Controls.Pointer_Press)
+               then
+                  CB.Handle_Pointer (State.Picker, State.Picker_Model, Map, TRANSLATION_BASE, Target, Item.Action,
+                                     Picked, Handled);
+                  if Picked then
+                     Set_Translation (State, Translation'Val (CB.Selection (State.Picker) - 1));
+                  end if;
+                  return;
+               end if;
                case Item.Action is
                   when Controls.Pointer_Press =>
                      State.Pressed_Link := Link;
@@ -1501,10 +1603,6 @@ package body Bible_Views is
                         Next_Face (State);
                      elsif Target = NEXT_ID and then Controls.Take_Activated (Map, Target) then
                         Step_Chapter (State, Forward => True);
-                     elsif Target in FIRST_TAB_ID .. FIRST_TAB_ID + Translation'Pos (Translation'Last)
-                       and then Controls.Take_Activated (Map, Target)
-                     then
-                        Set_Translation (State, Translation'Val (Target - FIRST_TAB_ID));
                      elsif Target >= FIRST_ROW_ID and then Controls.Take_Activated (Map, Target) then
                         Activate_Node (State, State.Tree_Scroll + Natural (Target - FIRST_ROW_ID) + 1);
                      elsif Link > 0 and then Link = State.Pressed_Link then
@@ -1552,7 +1650,7 @@ package body Bible_Views is
    function Heading (State : View_State) return String is
      (if State.Current = Reading and then Ready (State)
         and then State.Item.From.Chapter <= Table (State).Chapters (State.Item.From.Book)
-      then Chapter_Title (State.Item.From.Book, State.Item.From.Chapter,
+      then Chapter_Title (State.Which, State.Item.From.Book, State.Item.From.Chapter,
                           Table (State).Chapters (State.Item.From.Book) = 1)
       else "");
    function Status_Text (State : View_State) return String is
@@ -1623,4 +1721,8 @@ package body Bible_Views is
                   (if State.Ops (I).Kind = Text_Op and then State.Ops (I).Verse = Verse
                      and then State.Ops (I).Style in Body_Style | Red_Style
                    then State.Ops (I).Style = Red_Style)));
+begin
+   for T in Translation loop
+      CAPTIONS (T) := new String'(Bible_Translations.Display_Name (T));
+   end loop;
 end Bible_Views;

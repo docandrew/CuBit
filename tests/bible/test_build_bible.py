@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """tools/build_bible.py's USFM reader on hand-made books (APP-005): the
 words of Christ (\\wj) as a run attribute, across verses and paragraphs and
-around nested \\+w; joined runs; the marker's separating space; refusals."""
+around nested \\+w; joined runs; the marker's separating space; refusals;
+the King James Version's pilcrows as paragraph breaks; the Latin letters."""
 import sys
 from pathlib import Path
 
@@ -50,6 +51,22 @@ for bad in ('\\p\n\\v 1 \\wj open', '\\p\n\\v 1 shut\\wj*'):
         check(False, 'refused: %r' % bad)
     except SystemExit:
         pass
+
+# The King James Version's pilcrows: one starting a verse starts a
+# paragraph there (also after \wj, and when a paragraph already starts);
+# one anywhere else is left out; none is ever text.
+s, book = segments('\\p\n\\v 1 In the beginning.\n\\v 2 ¶ And God said.\n\\v 3 \\wj ¶ \\+w Ye|strong="G1"\\+w* are '
+                   'the salt.\\wj*\n\\p\n\\v 4 ¶ Again.\n\\v 5 Then ¶ he went.')
+check(s[1] == [[bb.PARAGRAPH, 0, 'In the beginning.']], 'verse 1 as it was: %r' % s[1])
+check(s[2] == [[bb.PARAGRAPH, 0, 'And God said.']], 'a pilcrow starting a verse is a paragraph: %r' % s[2])
+check(s[3] == [[bb.PARAGRAPH, bb.WORDS_OF_CHRIST, 'Ye are the salt.']],
+      'a pilcrow after \\wj is a paragraph, red kept: %r' % s[3])
+check(s[4] == [[bb.PARAGRAPH, 0, 'Again.']], 'a paragraph already started stays one: %r' % s[4])
+check(s[5] == [[bb.PROSE, 0, 'Then he went.']], 'a pilcrow inside a verse is left out: %r' % s[5])
+check(book.pilcrows == (3, 1), 'three pilcrows made paragraphs, one left out: %r' % (book.pilcrows,))
+check(bb.PILCROW not in bb.DRAWN, 'the pilcrow is not a drawn character')
+for code, ch in (('ae', '\u00e6'), ('oe', '\u0153'), ('e', '\u00eb')):
+    check(ch in bb.DRAWN and bb.words_of('x' + ch + 'y') == ['x' + code + 'y'], 'Latin %r is drawn and folds' % ch)
 
 print('build_bible reader tests: %d failures' % failures)
 sys.exit(1 if failures else 0)

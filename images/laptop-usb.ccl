@@ -80,7 +80,7 @@
   # The lexicon image and its WordNet/SCOWL notices, side by side.
   (file optical "lexicon-english" "apps/Assets/cubit-lexicon/1/english.lexicon")
   (file optical "lexicon-notice" "apps/Assets/cubit-lexicon/1/LEXICON-NOTICE")
-  # The Bible's translations (KJV, BSB, WEB) and their BIBLE-NOTICE.
+  # The Bible's translations (KJV, BSB, WEB, VUL) and their BIBLE-NOTICE.
   (file optical "bible-texts" "apps/Assets/cubit-bible/1")
   # Read-only originals; editable copies also seed live-rw.ext2's /work.
   (file optical "ccl-button-clock" "samples/ccl/button-clock.ccl")
