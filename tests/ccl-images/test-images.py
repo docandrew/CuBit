@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -145,6 +146,26 @@ class Images(unittest.TestCase):
             with self.subTest(profile=profile.name):
                 _, rows, _ = realizer.compile_plan(catalog, profile)
                 self.assertTrue(rows)
+
+    def test_icon_atlas_placed_where_desktop_reads_it(self):
+        # Desktop reads its icon atlas from the exact package version it was
+        # built against (Desktop_Icon_Assets); a profile that places another
+        # version leaves every icon as the fallback glyph (laptop image 5).
+        spec = (ROOT / "userspace/services/desktop/desktop_icon_assets.ads").read_text()
+        constant = lambda name: re.search(rf'{name}\s*: constant String := "([^"]*)"', spec)[1]
+        expected = f"apps/Assets/{constant('Package_Path')}{constant('File_Name')}"
+        catalog = ROOT / "images/artifacts.ccl"
+        placed = 0
+        for profile in sorted((ROOT / "images").glob("*.ccl")):
+            if profile.name == "artifacts.ccl":
+                continue
+            _, rows, _ = realizer.compile_plan(catalog, profile)
+            for row in rows:
+                if row[2] == "icons-applications":
+                    placed += 1
+                    with self.subTest(profile=profile.name):
+                        self.assertEqual(row[5], expected)
+        self.assertTrue(placed)
 
     def test_mesa_device_profile_is_opt_in(self):
         catalog = ROOT / "images/artifacts.ccl"
