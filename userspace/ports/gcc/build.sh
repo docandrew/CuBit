@@ -47,9 +47,16 @@ gcc_src=$(source_of gcc15.cc.src)
 gmp_src=$(source_of gmp.src)
 mpfr_src=$(source_of mpfr.src)
 mpc_src=$(source_of libmpc.src)
+# zlib, which cc1 and gnat1 link: GCC 15.3 bundles 1.2.11, which predates
+# the fixes for CVE-2018-25032 and CVE-2022-37434. Its C sources and
+# headers are replaced by binutils 2.46's zlib 1.3.1 (the tarball
+# userspace/ports/binutils builds, so one zlib for the whole toolchain);
+# GCC's build glue in zlib/ (Makefile.am, configure) stays, and lists the
+# same files.
+zlib_src=$(source_of binutils-unwrapped.src)
 # Fixes for GNAT's run-time library on musl.
 patches=("$here/gnat-musl.patch" "$here/reproducible.patch")
-stamp="$gcc_src $gmp_src $mpfr_src $mpc_src $(cat "${patches[@]}" | sha256sum)"
+stamp="$gcc_src $gmp_src $mpfr_src $mpc_src $zlib_src $(cat "${patches[@]}" | sha256sum)"
 mkdir -p "$build"
 if [ ! -f "$build/source.stamp" ] || [ "$(cat "$build/source.stamp")" != "$stamp" ]; then
     rm -rf "$build/src" "$build/obj"
@@ -59,6 +66,11 @@ if [ ! -f "$build/source.stamp" ] || [ "$(cat "$build/source.stamp")" != "$stamp
         mkdir -p "$build/src/${pair%%:*}"
         tar -xf "${pair#*:}" -C "$build/src/${pair%%:*}" --strip-components=1
     done
+    rm -rf "$build/zlib"
+    mkdir -p "$build/zlib"
+    tar -xf "$zlib_src" -C "$build/zlib" --strip-components=1 --wildcards '*/zlib/*'
+    find "$build/zlib/zlib" -maxdepth 1 -type f -name '*.[ch]' -exec cp {} "$build/src/zlib/" \;
+    rm -rf "$build/zlib"
     for patch in "${patches[@]}"; do
         patch -d "$build/src" -p1 < "$patch" > /dev/null
     done
