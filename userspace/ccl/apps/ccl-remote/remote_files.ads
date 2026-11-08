@@ -79,4 +79,26 @@ package Remote_Files is
    procedure Read_Work_Text
      (Name : String; Text : out String; Length : out Natural; Result : out W.Status)
      with Pre => Text'Length < W.Maximum_Chunk_Bytes;
+
+   ---------------------------------------------------------------------------
+   --  The system volume's storehouse (Remote_Generations): Name relative to
+   --  Storehouse_Root, where ccl-build keeps its entries too. Content
+   --  entries (executables/<sha256>) are written once, by copy then
+   --  rename; generation records and the current pointer likewise.
+   ---------------------------------------------------------------------------
+   Storehouse_Root : constant String := "@system/storehouse";
+   function Store_Path (Name : String) return String;
+   --  Name "": the storehouse itself (made when the volume has none yet).
+   procedure Make_Store_Directory (Name : String; Result : out W.Status);
+   procedure Hash_Store
+     (Name : String; Size : out Interfaces.Unsigned_64; Hash : out W.Digest; Result : out W.Status);
+   procedure Copy_To_Store
+     (Where : W.Place; Name : String; Target : String;
+      Size : out Interfaces.Unsigned_64; Hash : out W.Digest; Result : out W.Status);
+   procedure Rename_Store (From, To : String; Result : out W.Status);
+   procedure Write_Store_Text (Name : String; Text : String; Result : out W.Status)
+     with Pre => Text'Length < W.Maximum_Chunk_Bytes;
+   procedure Read_Store_Text
+     (Name : String; Text : out String; Length : out Natural; Result : out W.Status)
+     with Pre => Text'Length < W.Maximum_Chunk_Bytes;
 end Remote_Files;

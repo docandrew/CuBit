@@ -430,6 +430,40 @@ package body Remote_Wire with SPARK_Mode is
                end if;
             end if;
 
+         when System_Activate =>
+            Take_Name (Empty_Allowed => False, Taken => Taken);
+            if Taken and then Length - (After - 1) > Grace_Bytes + Health_Bytes
+              and then Length - (After - 1) - Grace_Bytes - Health_Bytes <= Maximum_Service_Name_Bytes
+            then
+               declare
+                  First : constant Positive := After + Grace_Bytes + Health_Bytes;
+                  Service : String (1 .. Length - First + 1);
+               begin
+                  for I in Service'Range loop
+                     Service (I) := Character'Val (Data (First + I - 1));
+                  end loop;
+                  if Valid_Service_Name (Service) then
+                     Item.Grace := Get_U32 (Data, After);
+                     Item.Health := Get_U32 (Data, After + Grace_Bytes);
+                     Item.Data_First := First;
+                     Item.Data_Length := Service'Length;
+                     Result := OK;
+                  end if;
+               end;
+            end if;
+
+         when System_Rollback =>
+            if Length = Grace_Bytes + Health_Bytes then
+               Item.Grace := Get_U32 (Data, 1);
+               Item.Health := Get_U32 (Data, 1 + Grace_Bytes);
+               Result := OK;
+            end if;
+
+         when System_Generations =>
+            if Length = 0 then
+               Result := OK;
+            end if;
+
          when Capture =>
             if Length = Capture_Request_Bytes then
                Item.Output := Output_Number (Data (1));

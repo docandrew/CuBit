@@ -17,6 +17,22 @@ package CCL.Configurations with SPARK_Mode => On is
    --  it ends with a failure (a nonzero code, killed or faulted), after a
    --  delay that grows while it keeps failing. Never: it stays ended.
    type Restart_Policy is (Never, On_Failure);
+   --  (replace <contract>): the entry's restart contract, how a running
+   --  instance may be switched to another program (CuBit.Service_Replacement:
+   --  a system generation's pin for it changed), always with the same
+   --  approvals and only with the same manifest, while the device owner
+   --  allows it. A per-service policy exception written in the trusted
+   --  plan (REMOTE-001):
+   --    reboot       (the default) never live: a new program takes effect
+   --                 at the next boot (services holding hardware, firmware
+   --                 or lock state: the ACPI pair until its stop, rebind
+   --                 and health handshake is validated)
+   --    transparent  it may be stopped and ended at any time; clients
+   --                 reconnect
+   --    graceful     it must quiesce: Stop, and it exits cleanly within
+   --                 the caller's grace or the switch is refused (never
+   --                 ended to make way; never two instances at once)
+   type Restart_Contract is (Reboot_To_Replace, Transparent, Graceful);
    MAX_DEPENDENCIES : constant := 4;
    subtype Launch_Number is Natural range 0 .. MAX_LAUNCHES;
    subtype Dependency_Count is Natural range 0 .. MAX_DEPENDENCIES;
@@ -58,6 +74,7 @@ package CCL.Configurations with SPARK_Mode => On is
       Role : Startup_Role := Application;
       Mode : Launch_Mode := At_Startup;
       Restart : Restart_Policy := Never;
+      Replacement : Restart_Contract := Reboot_To_Replace;
       --  Per_Device drivers only: the manifest's device resources may be
       --  granted for the matched device.
       Approve_Device : Boolean := False;

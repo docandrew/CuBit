@@ -123,14 +123,30 @@ package Remote_Wire with SPARK_Mode is
    --                generation is started again in place of the current
    --                one. Response: App_Response.
    --  App_Status    body: an app's name. Response: App_Response.
+   --  System_Activate  body: a product's name in the workspace (a service's
+   --                program), stop grace (4, ms), health window (4, ms),
+   --                then the service's startup-plan name ("acpi.svc", the
+   --                rest). The product enters the storehouse by its SHA-256;
+   --                a new system generation pins the service to it and is
+   --                activated: procmgr switches the running service, and
+   --                rolls it back when it fails its health window
+   --                (Remote_Generations). Response: Generation_Response.
+   --  System_Rollback  body: stop grace (4), health window (4). The
+   --                generation before the current one is activated.
+   --                Response: Generation_Response.
+   --  System_Generations  body: empty. Response: the generation records
+   --                (typed CCL values, one per line), oldest first, then
+   --                the current generation's number line.
    type Operation is
      (Hello, Evaluate, List, Stat, Get, Put, Commit, Remove,
       Build_Start, Build_Poll, Build_Cancel, Capture,
-      App_Replace, App_Rollback, App_Status);
+      App_Replace, App_Rollback, App_Status,
+      System_Activate, System_Rollback, System_Generations);
    for Operation use
      (Hello => 1, Evaluate => 2, List => 3, Stat => 4, Get => 5, Put => 6,
       Commit => 7, Remove => 8, Build_Start => 9, Build_Poll => 10, Build_Cancel => 11,
-      Capture => 12, App_Replace => 13, App_Rollback => 14, App_Status => 15);
+      Capture => 12, App_Replace => 13, App_Rollback => 14, App_Status => 15,
+      System_Activate => 16, System_Rollback => 17, System_Generations => 18);
 
    --  Where a file operation acts. None for the others. Captures holds the
    --  device's screenshots (read-only to the host).
@@ -249,6 +265,45 @@ package Remote_Wire with SPARK_Mode is
                   (App_Of_Product'Result'Length <= Maximum_App_Name_Bytes
                    and then Valid_App_Name (App_Of_Product'Result));
 
+   ---------------------------------------------------------------------------
+   --  System generations (Remote_Generations)
+   ---------------------------------------------------------------------------
+   --  How an activation ended (Generation_Response's first byte):
+   --    Activated       the target generation is current: its changed
+   --                    service runs its new program and passed its health
+   --                    window
+   --    Rolled_Back     the new program failed its health window (the
+   --                    detail byte: CuBit.Service_Replacement.Health_Failure);
+   --                    the program before runs again; the current
+   --                    generation did not change
+   --    Refused         procmgr refused the switch (the detail byte:
+   --                    CuBit.Service_Replacement.Refusal); nothing changed
+   --    Stop_Failed     the running instance did not end; nothing changed
+   --    Rollback_Failed the program failed and the one before did not
+   --                    start again: the service is not running
+   --    Unchanged       the target pins what runs already; nothing to do
+   --    No_Previous     a rollback from the image's generation (0)
+   --    Too_Many_Changes  the generations differ in more pins than one
+   --                    activation switches (Remote_Generations)
+   type Generation_Result is
+     (Activated, Rolled_Back_Generation, Refused, Stop_Failed_Generation,
+      Rollback_Failed, Unchanged, No_Previous_Generation, Too_Many_Changes);
+   for Generation_Result use
+     (Activated => 0, Rolled_Back_Generation => 1, Refused => 2, Stop_Failed_Generation => 3,
+      Rollback_Failed => 4, Unchanged => 5, No_Previous_Generation => 6, Too_Many_Changes => 7);
+   Grace_Bytes : constant := 4;
+   Health_Bytes : constant := 4;
+   Process_Bytes : constant := 8;
+   --  Generation_Response: result (1), detail (1), the current generation
+   --  after it (4), the target generation (4), the switched service's pin
+   --  in the target (32; zero: its image's program), the process the
+   --  service runs now (8; zero: none).
+   Generation_Response_Bytes : constant :=
+     1 + 1 + 2 * Generation_Bytes + Digest_Bytes + Process_Bytes;
+   --  A startup-plan entry's name ("acpi.svc"): name characters, no '/',
+   --  at most Maximum_Service_Name_Bytes (CCL.Configurations).
+   Maximum_Service_Name_Bytes : constant := 64;
+
    --  Whether Grants admit Op on Where. Diagnose reads (the workspace,
    --  evaluation); Files writes the workspace; Mail reads and writes the
    --  mailbox (to-device: the host writes; to-host: the host reads and
@@ -274,14 +329,16 @@ package Remote_Wire with SPARK_Mode is
                when Workspace => Grants (Files),
                when Mail_To_Device | Mail_To_Host => Grants (Mail),
                when Captures | None => False),
-         when Build_Start | App_Replace => Grants (Builds) and then Where = Workspace,
-         when Build_Poll | Build_Cancel | App_Rollback | App_Status =>
+         when Build_Start | App_Replace | System_Activate => Grants (Builds) and then Where = Workspace,
+         when Build_Poll | Build_Cancel | App_Rollback | App_Status | System_Rollback =>
            Grants (Builds) and then Where = None,
+         when System_Generations => Grants (Diagnose) and then Where = None,
          when Capture => Grants (Capture) and then Where = None);
 
    --  Whether Op writes (a write needs a grant beyond Diagnose).
    function Writes (Op : Operation) return Boolean is
-     (Op in Put | Commit | Remove | Build_Start | Build_Cancel | App_Replace | App_Rollback);
+     (Op in Put | Commit | Remove | Build_Start | Build_Cancel | App_Replace | App_Rollback
+         | System_Activate | System_Rollback);
 
    ---------------------------------------------------------------------------
    --  The token
@@ -313,6 +370,10 @@ package Remote_Wire with SPARK_Mode is
      (C in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '.' | '_' | '-' | '+');
    function Valid_Name (Name : String) return Boolean
      with Pre => Name'Length <= Maximum_Name_Bytes and then Name'Last < Positive'Last;
+   --  A startup-plan entry's name (System_Activate): name characters only.
+   function Valid_Service_Name (Name : String) return Boolean is
+     (Name'Length in 1 .. Maximum_Service_Name_Bytes
+      and then (for all C of Name => Name_Character (C)));
 
    ---------------------------------------------------------------------------
    --  Decoding requests
@@ -344,6 +405,8 @@ package Remote_Wire with SPARK_Mode is
       --  Capture: the output and the area (all zero: the whole output).
       Output : Output_Number := 0;
       Area_X, Area_Y, Area_Width, Area_Height : Area_Field := 0;
+      --  System_Activate, System_Rollback: the caller's deadlines (ms).
+      Grace, Health : Unsigned_32 := 0;
       --  Evaluate's source, Put's data: Body (Data_First .. Data_First +
       --  Data_Length - 1) of the body Decode_Body was given.
       Data_First  : Positive := 1;
@@ -370,7 +433,9 @@ package Remote_Wire with SPARK_Mode is
                      (if Item.Op in Build_Poll | Build_Cancel then Item.Job /= 0) and then
                      (if Item.Op in App_Rollback | App_Status then
                         Item.Name_Last in 1 .. Maximum_App_Name_Bytes) and then
-                     (if Item.Op = App_Replace then Item.Name_Last > 0));
+                     (if Item.Op = App_Replace then Item.Name_Last > 0) and then
+                     (if Item.Op = System_Activate then
+                        Item.Name_Last > 0 and then Item.Data_Length in 1 .. Maximum_Service_Name_Bytes));
 
    ---------------------------------------------------------------------------
    --  Encoding responses

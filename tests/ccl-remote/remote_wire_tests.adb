@@ -178,8 +178,13 @@ begin
    end;
    Decode_Header (Header (0, 0, 0, Counting), H, Result);
    Check (Result = Malformed, "operation 0");
-   Decode_Header (Header (16, 0, 0, Counting), H, Result);
-   Check (Result = Malformed, "operation 16");
+   Decode_Header (Header (19, 0, 0, Counting), H, Result);
+   Check (Result = Malformed, "operation 19");
+   Decode_Header (Header (16, 1, 0, Counting), H, Result);
+   Check (Result = OK and then H.Op = System_Activate and then H.Where = Workspace,
+          "operation 16: system activate");
+   Decode_Header (Header (18, 0, 0, Counting), H, Result);
+   Check (Result = OK and then H.Op = System_Generations, "operation 18: system generations");
    Decode_Header (Header (13, 1, 0, Counting), H, Result);
    Check (Result = OK and then H.Op = App_Replace and then H.Where = Workspace, "operation 13: app replace");
    Decode_Header (Header (15, 0, 0, Counting), H, Result);
@@ -345,6 +350,37 @@ begin
    Check (Result = Malformed, "an app's name is one component");
    Decode (App_Status, None, Name_Field (""), Item, Result);
    Check (Result = Malformed, "app status needs a name");
+   --  System generations: the product, both deadlines, the service.
+   Decode (System_Activate, Workspace,
+           Name_Field ("switch/acpi-good.svc") & [0, 0, 0, 0, 0, 0, 16#0B#, 16#B8#] &
+           [Character'Pos ('a'), Character'Pos ('c'), Character'Pos ('p'), Character'Pos ('i')],
+           Item, Result);
+   Check (Result = OK and then Item.Name (1 .. Item.Name_Last) = "switch/acpi-good.svc"
+          and then Item.Grace = 0 and then Item.Health = 3_000 and then Item.Data_Length = 4,
+          "system activate");
+   Decode (System_Activate, Workspace, Name_Field ("p.svc") & [0, 0, 0, 0, 0, 0, 16#0B#, 16#B8#],
+           Item, Result);
+   Check (Result = Malformed, "system activate needs a service");
+   Decode (System_Activate, Workspace,
+           Name_Field ("p.svc") & [0, 0, 0, 0, 0, 0, 16#0B#, 16#B8#] & [Character'Pos ('/')], Item, Result);
+   Check (Result = Malformed, "a service's name has no '/'");
+   Decode (System_Activate, Workspace,
+           Name_Field ("p.svc") & [0, 0, 0, 0, 0, 0, 16#0B#, 16#B8#] &
+           [1 .. Maximum_Service_Name_Bytes + 1 => Character'Pos ('a')], Item, Result);
+   Check (Result = Malformed, "a service's name over the ceiling");
+   Decode (System_Rollback, None, [0, 0, 0, 0, 0, 0, 16#0B#, 16#B8#], Item, Result);
+   Check (Result = OK and then Item.Health = 3_000, "system rollback");
+   Decode (System_Rollback, None, [0, 0, 0, 0], Item, Result);
+   Check (Result = Malformed, "system rollback needs both deadlines");
+   Decode (System_Generations, None, [1 .. 0 => 0], Item, Result);
+   Check (Result = OK, "system generations");
+   Check (Admits ([Diagnose | Builds => True, others => False], System_Activate, Workspace)
+          and then not Admits ([Diagnose | Files => True, others => False], System_Activate, Workspace)
+          and then Admits ([Diagnose => True, others => False], System_Generations, None)
+          and then not Admits ([Diagnose => True, others => False], System_Rollback, None)
+          and then Writes (System_Activate) and then Writes (System_Rollback)
+          and then not Writes (System_Generations),
+          "system generations: builds activate and roll back, diagnose lists");
    --  The App_Response vector (tools/cubit-remote/test_cubit_remote.py
    --  decodes the same bytes).
    declare

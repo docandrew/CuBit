@@ -25,6 +25,11 @@ with Interfaces; use Interfaces;
 with CCL.Configurations;
 with GPU_Rendering_Settings;
 with Plan_Restarts;
+with Service_Switches;
+with Manifest_Fingerprints;
+with CuBit.Service_Replacement;
+with CuBit.Kernel_ABI;
+with CuBit.Kernel_Calls;
 with CCL.Declarations;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -5136,13 +5141,38 @@ procedure main is
    Plan_Runs : array (Plan_Entry) of Plan_Restarts.Run;
    use type Plan_Restarts.Phase;
 
-   --  Start plan entry Number; Waits: it waits, parked, instead.
+   --  Service switches (CuBit.Service_Replacement, Service_Switches): the
+   --  program each plan entry runs when it is not its image's (a system
+   --  generation's pin, switched to while running; empty: the image's),
+   --  and the one switch in progress.
+   Maximum_Program_Bytes : constant := CuBit.Service_Replacement.Maximum_Program_Bytes;
+   type Program_Text is record
+      Length : Natural range 0 .. Maximum_Program_Bytes := 0;
+      Data   : String (1 .. Maximum_Program_Bytes) := [others => ' '];
+   end record;
+   Plan_Programs : array (Plan_Entry) of Program_Text;
+   Switch : Service_Switches.Switch;
+   --  Its plan entry (0: none), the program it switches to, the program
+   --  the entry ran before (for a rollback), and the requester's saved reply.
+   Switch_Entry : CCL.Configurations.Launch_Number := 0;
+   Switch_Program, Switch_Previous : Program_Text;
+   Switch_Reply : H.Reply := H.No_Reply;
+
+   function Text_Of (Item : Program_Text) return String is (Item.Data (1 .. Item.Length));
+
+   --  Start plan entry Number; Waits: it waits, parked, instead. Program:
+   --  the program to start for it (empty: the entry's current one, its
+   --  switched program or else its image's).
    procedure launchPlanEntry
-     (Number : Positive; mayWait : Boolean; Waits : out Awaited_Access)
+     (Number : Positive; mayWait : Boolean; Waits : out Awaited_Access; Program : String := "")
    is
       use CCL.Configurations;
       Item : Launch_Entry renames Startup_Plan.Plan.Launches (Number);
-      Name : String renames Item.Executable.Data (1 .. Item.Executable.Length);
+      Image : String renames Item.Executable.Data (1 .. Item.Executable.Length);
+      Name : constant String :=
+        (if Program'Length > 0 then Program
+         elsif Plan_Programs (Number).Length > 0 then Text_Of (Plan_Programs (Number))
+         else Image);
       PID : Process_ID;
       Failure : CuBit.Launch_Arguments.Launch_Failure;
    begin
@@ -5260,7 +5290,19 @@ procedure main is
       Scheduled : Boolean;
    begin
       for Number in 1 .. Startup_Plan.Plan.Launch_Count loop
-         if Plan_PIDs (Number) = Exited and then Exited /= No_Process then
+         if Plan_PIDs (Number) = Exited and then Exited /= No_Process
+           and then Service_Switches.Active (Switch) and then Switch_Entry = Number
+         then
+            --  The switch in progress decides what runs next.
+            Plan_PIDs (Number) := No_Process;
+            if Plan_Runs (Number).State = Plan_Restarts.Running then
+               declare
+                  Ignore : Boolean;
+               begin
+                  Plan_Restarts.Ended (Plan_Runs (Number), syscall (SYSCALL_GETTIME), False, False, Ignore);
+               end;
+            end if;
+         elsif Plan_PIDs (Number) = Exited and then Exited /= No_Process then
             Plan_PIDs (Number) := No_Process;
             declare
                use type CCL.Configurations.Restart_Policy;
@@ -5327,6 +5369,397 @@ procedure main is
          end if;
       end loop;
    end restartDue;
+
+   ---------------------------------------------------------------------------
+   --  Service switches (CuBit.Service_Replacement): a startup-plan service
+   --  switched to another program while it runs, the first piece of system
+   --  generations (a generation's pin changed). Admitted by
+   --  CuBit.Service_Replacement.Authorize and Content_Admits; driven by
+   --  Service_Switches (stop, start as the same entry, health window,
+   --  rollback to the program the entry ran before). procmgr never waits
+   --  for an instance: each step is one action, and the requester's reply
+   --  is saved until the switch ends (within Answer_Bound_Ms).
+   ---------------------------------------------------------------------------
+   package SR renames CuBit.Service_Replacement;
+   package SS renames Service_Switches;
+   use type SR.Refusal;
+   use type SR.Outcome;
+   use type SS.Action;
+   use type SS.Phase;
+
+   --  The role Process provides (registers), if any: its Registrants entry.
+   function providedRole (Process : Process_ID; Role : out Service_Role) return Boolean is
+   begin
+      Role := 0;
+      for R in Service_Role loop
+         if Registrants (R) = Process and then Process /= No_Process then
+            Role := R;
+            return True;
+         end if;
+      end loop;
+      return False;
+   end providedRole;
+
+   --  The manifest fingerprint of the program procmgr reads by Name, into
+   --  Into (heap, Maximum_Fingerprint_Bytes): Readable False when it could
+   --  not be read or its sections do not decode.
+   procedure fingerprintOf
+     (Name : String; Into : in out Manifest_Fingerprints.Bytes;
+      Length : out Manifest_Fingerprints.Fingerprint_Length; Readable : out Boolean)
+   is
+      use type Manifest_Fingerprints.Reading;
+      Size : constant Unsigned_64 := readFileFromFS (Name);
+      Result : Manifest_Fingerprints.Reading := Manifest_Fingerprints.Not_ELF64;
+   begin
+      Length := 0;
+      Readable := False;
+      if Size < 64 or else Size > Unsigned_64 (Natural'Last / 4) then
+         Warnings.Warn ("procmgr: switch: " & Name & " could not be read");
+         return;
+      end if;
+      declare
+         Elf : Manifest_Fingerprints.Bytes (1 .. Natural (Size))
+           with Import, Address => elfBuf;
+      begin
+         Manifest_Fingerprints.Fingerprint (Elf, Into, Length, Result);
+      end;
+      Readable := Result = Manifest_Fingerprints.Read;
+      if not Readable then
+         Warnings.Warn ("procmgr: switch: the manifest sections of " & Name &
+                        " do not read (" & Manifest_Fingerprints.Reading'Image (Result) & ")");
+      end if;
+   end fingerprintOf;
+
+   function Failure_Text (Why : SR.Health_Failure) return String is
+     (case Why is
+        when SR.Healthy => "healthy",
+        when SR.Start_Refused => "the program did not start",
+        when SR.Exited_Early => "the program ended inside its health window",
+        when SR.Not_Registered => "the program did not register its service in time");
+
+   function Outcome_Text (Item : SS.Switch) return String is
+     (case Item.Result is
+        when SR.Switched => "switched",
+        when SR.Rolled_Back => "rolled back (" & Failure_Text (Item.Failure) & ")",
+        when SR.Stop_Failed =>
+          (if Item.Old_Unclean then "not switched: the running instance did not quiesce cleanly; " &
+                                    "the program before was started again"
+           else "not switched: the running instance did not end"),
+        when SR.Rollback_Failed => "FAILED (" & Failure_Text (Item.Failure) &
+                                   ") and the program before did not start again");
+
+   --  Take the action First asks for, and every action that follows at once.
+   procedure driveSwitch (First : SS.Action) is
+      Next : SS.Action := First;
+      Number : constant Positive := Positive'Max (1, Switch_Entry);
+      Item : CCL.Configurations.Launch_Entry renames Startup_Plan.Plan.Launches (Number);
+      Entry_Name : String renames Item.Executable.Data (1 .. Item.Executable.Length);
+      Now : SS.Time;
+
+      function Program_Or_Image (P : Program_Text) return String is
+        (if P.Length = 0 then Entry_Name else Text_Of (P));
+
+      procedure End_Process (Process : SS.Process_Word) is
+         Known : constant Records.Index := Records.Find (From_Word (Process));
+      begin
+         if Known /= 0 and then Records.Values (Known).Valid then
+            if killProcess (From_Word (Process), Records.Values (Known).Control) /= 0 then
+               Warnings.Warn ("procmgr: switch: ending pid" & Image (From_Word (Process)) & " was refused");
+            end if;
+         end if;
+      end End_Process;
+
+      procedure Start (Program : String) is
+         Waits : Awaited_Access;
+         Role : Service_Role;
+         pragma Warnings (Off, Role);   --  only whether it has one matters here
+         Must : Boolean;
+      begin
+         launchPlanEntry (Number, False, Waits, Program);
+         if Waits /= null then
+            Free (Waits);
+         end if;
+         Must := providedRole (Plan_PIDs (Number), Role);
+         Now := Unsigned_64'Min (syscall (SYSCALL_GETTIME), SS.Latest_Time);
+         SS.Started (Switch, To_Word (Plan_PIDs (Number)), Must, Now, Next);
+      end Start;
+   begin
+      if Switch_Entry = 0 then
+         return;
+      end if;
+      while Next /= SS.Nothing loop
+         case Next is
+            when SS.Nothing => null;
+            when SS.Ask_Stop =>
+               declare
+                  Answer : constant Unsigned_64 := CuBit.Kernel_Calls.Call
+                    (CuBit.Kernel_ABI.Send_Control, Switch.Old_Process,
+                     CuBit.Control_Events.Control_Kind'Enum_Rep (CuBit.Control_Events.Stop));
+               begin
+                  Warnings.Inform ("procmgr: switch " & Entry_Name & ": Stop sent to pid" &
+                                   Image (From_Word (Switch.Old_Process)) &
+                                   (if Answer = 0 then "" else " (not taken; ended at the grace deadline)"));
+               end;
+               Next := SS.Nothing;
+            when SS.End_Old =>
+               Warnings.Inform ("procmgr: switch " & Entry_Name & ": ending pid" &
+                                Image (From_Word (Switch.Old_Process)));
+               End_Process (Switch.Old_Process);
+               Next := SS.Nothing;
+            when SS.Ask_Stop_New =>
+               declare
+                  Answer : constant Unsigned_64 := CuBit.Kernel_Calls.Call
+                    (CuBit.Kernel_ABI.Send_Control, Switch.New_Process,
+                     CuBit.Control_Events.Control_Kind'Enum_Rep (CuBit.Control_Events.Stop));
+               begin
+                  Warnings.Warn ("procmgr: switch " & Entry_Name & ": " & Failure_Text (Switch.Failure) &
+                                 "; Stop sent to pid" & Image (From_Word (Switch.New_Process)) &
+                                 (if Answer = 0 then "" else " (not taken; ended at the grace deadline)"));
+               end;
+               Next := SS.Nothing;
+            when SS.End_New =>
+               Warnings.Warn ("procmgr: switch " & Entry_Name & ": ending pid" &
+                              Image (From_Word (Switch.New_Process)) & ", which failed its health window");
+               End_Process (Switch.New_Process);
+               Next := SS.Nothing;
+            when SS.Start_Program =>
+               Warnings.Inform ("procmgr: switch " & Entry_Name & ": starting " &
+                                Program_Or_Image (Switch_Program) & " as the entry; health window" &
+                                Unsigned_64'Image (Switch.Health) & " ms");
+               Start (Program_Or_Image (Switch_Program));
+            when SS.Start_Previous =>
+               Warnings.Warn ("procmgr: switch " & Entry_Name & ": " & Failure_Text (Switch.Failure) &
+                              "; starting the program before again: " & Program_Or_Image (Switch_Previous));
+               Start (Program_Or_Image (Switch_Previous));
+            when SS.Answer =>
+               declare
+                  Reply : Message := NULL_MESSAGE;
+                  Ignore : Boolean;
+               begin
+                  if Switch.Result = SR.Switched then
+                     Plan_Programs (Number) := Switch_Program;
+                  elsif Switch.Result = SR.Rolled_Back then
+                     Plan_Programs (Number) := Switch_Previous;
+                  end if;
+                  declare
+                     Line : constant String :=
+                       "procmgr: switch " & Entry_Name & " " & Outcome_Text (Switch) & "; it runs " &
+                       (if Plan_PIDs (Number) = No_Process then "nothing"
+                        else Program_Or_Image (Plan_Programs (Number)) & " pid" & Image (Plan_PIDs (Number)));
+                  begin
+                     if Switch.Result = SR.Switched then
+                        Warnings.Inform (Line);
+                     else
+                        Warnings.Warn (Line);
+                     end if;
+                  end;
+                  Reply.tag := (label => REPLY_OK, length => 3, protocol => 0, ipc => <>, reserved => 0);
+                  Reply.words (0) := SR.Outcome'Enum_Rep (Switch.Result);
+                  Reply.words (1) := SR.Health_Failure'Enum_Rep (Switch.Failure);
+                  Reply.words (2) := To_Word (Plan_PIDs (Number));
+                  if H.Valid (Switch_Reply) then
+                     Ignore := HIPC.Answer (Switch_Reply, Reply);
+                  end if;
+                  Switch_Reply := H.No_Reply;
+                  SS.Answered (Switch);
+                  Switch_Entry := 0;
+               end;
+               Next := SS.Nothing;
+         end case;
+      end loop;
+   end driveSwitch;
+
+   --  A process ended: the switch's instances move it on.
+   procedure switchExited (Exited : Process_ID; Clean : Boolean) is
+      Next : SS.Action;
+   begin
+      if SS.Active (Switch) and then Exited /= No_Process then
+         SS.Exited (Switch, To_Word (Exited), Clean, Next);
+         driveSwitch (Next);
+      end if;
+   end switchExited;
+
+   --  Time passed: deadlines and the new instance's registration.
+   procedure switchTick is
+      Next : SS.Action;
+      Role : Service_Role;
+      Registered : Boolean := False;
+   begin
+      if SS.Active (Switch) and then Switch.State = SS.Checking then
+         Registered := providedRole (From_Word (Switch.New_Process), Role)
+           and then Registered_Driver (Role) = From_Word (Switch.New_Process);
+      end if;
+      if SS.Active (Switch) then
+         SS.Tick (Switch, Unsigned_64'Min (syscall (SYSCALL_GETTIME), SS.Latest_Time), Registered, Next);
+         driveSwitch (Next);
+      end if;
+   end switchTick;
+
+   --  Who may switch a service: a launcher that stages programs (its
+   --  launch table has the staging directory, as for staged app launches)
+   --  and reads the program it names (a read scope covering it, as the
+   --  storehouse's programs, @system/storehouse/executables/<sha256>, are
+   --  for ccl-remote).
+   Staging_Probe : constant String := "@system/work/generations/probe";
+
+   function launcherReads (Launcher : Launch_State; Name : String) return Boolean is
+   begin
+      for h in 1 .. Launcher.Scope_Count loop
+         if LAuth.Scope_Covered
+              (Launcher.Scopes (h).Service, Launcher.Scopes (h).Rights,
+               Launcher.Scopes (h).Prefix (1 .. Launcher.Scopes (h).Length),
+               SERVICE_FS, CuBit.Launch_Authority.Read_Right, Name)
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end launcherReads;
+
+   --  SR.Switch_Operation: switch a plan entry to a program (or back to its
+   --  image's). Refused at once, typed; admitted, the reply is saved and
+   --  given when the switch ends.
+   procedure handleServiceSwitch (sender : Process_ID; msg : Message) is
+      Service_Bytes : constant Unsigned_64 := msg.words (1);
+      Program_Bytes : constant Unsigned_64 := msg.words (2);
+      Grace : constant Unsigned_64 := SR.Grace_Of (msg.words (3));
+      Health : constant Unsigned_64 := SR.Health_Window_Of (msg.words (3));
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped : System.Address;
+      Ok, Returned : Boolean;
+
+      procedure Refuse (Why : SR.Refusal; Detail : String := "") is
+      begin
+         Warnings.Warn ("procmgr: switch refused: " & SR.Refusal_Name (Why) &
+                        (if Detail'Length > 0 then ": " & Detail else ""));
+         sendReply (sender, REPLY_ERR, SR.Refusal'Enum_Rep (Why));
+      end Refuse;
+   begin
+      if msg.tag.length /= SR.Request_Words
+        or else not SR.Request_Valid (Service_Bytes, Program_Bytes, Grace, Health)
+        or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
+        or else launchIndex (sender) = 0
+      then
+         Refuse (SR.Malformed);
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (msg.words (0));
+      CuBit.Memory_Grants.Acquire
+        (Reference, sender, 0, Service_Bytes + Program_Bytes,
+         CuBit.Memory_Grants.Read_Access, Mapped, Ok);
+      if not Ok then
+         Refuse (SR.Grant_Unavailable);
+         return;
+      end if;
+      declare
+         Service_Source : constant String (1 .. Natural (Service_Bytes)) with Import, Address => Mapped;
+         Program_Source : constant String (1 .. Natural (Program_Bytes))
+           with Import, Address => Mapped + Storage_Offset (Service_Bytes);
+         Service : constant String (1 .. Natural (Service_Bytes)) := Service_Source;
+         Program : constant String (1 .. Natural (Program_Bytes)) := Program_Source;
+         Number : CCL.Configurations.Launch_Number := 0;
+         Facts : SR.Authority_Facts;
+         Verdict : SR.Decision;
+         Launcher : Launch_State renames Launches.Values (launchIndex (sender));
+      begin
+         CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+         for N in 1 .. Startup_Plan.Plan.Launch_Count loop
+            declare
+               E : CCL.Configurations.Executable_Text renames Startup_Plan.Plan.Launches (N).Executable;
+            begin
+               if E.Data (1 .. E.Length) = Service then
+                  Number := N;
+               end if;
+            end;
+         end loop;
+         Facts.Entry_Known := Number /= 0;
+         --  Its restart contract: reboot means never live.
+         Facts.Entry_Replaceable := Number /= 0 and then CCL.Configurations."/="
+           (Startup_Plan.Plan.Launches (Positive'Max (1, Number)).Replacement,
+            CCL.Configurations.Reboot_To_Replace);
+         --  The requester stages the program (as for a staged app); a switch
+         --  back to the image needs a staging directory of its own.
+         Facts.Requester_Stages :=
+           admitLaunch (Launcher, Staging_Probe) in Staged | Staged_Switch_Off
+           and then (Program'Length = 0 or else launcherReads (Launcher, Program));
+         Facts.Switch_On := Staged_Launches_Allowed;
+         --  Nothing is signed yet (AUTH-001): every program is Unsigned.
+         Facts.Signature := SR.Unsigned;
+         Facts.In_Progress := SS.Active (Switch) or else Plan_Running;
+         Verdict := SR.Authorize (Facts);
+         if Verdict.Admitted and then Grace = 0 and then CCL.Configurations."="
+           (Startup_Plan.Plan.Launches (Number).Replacement, CCL.Configurations.Graceful)
+         then
+            --  A graceful stop needs time to quiesce: the caller must give it.
+            Refuse (SR.Malformed, Service & " is (replace graceful): give a stop grace");
+            return;
+         end if;
+         if not Verdict.Admitted then
+            Refuse (Verdict.Why, Service & " -> " & (if Program'Length = 0 then "its image" else Program) &
+                    (if Verdict.Why = SR.Switch_Off
+                     then " (turn on Allow app replacement in the Desktop's status panel)" else ""));
+            return;
+         end if;
+         --  The content: the program's manifest must be the image's.
+         if Program'Length > 0 then
+            declare
+               type Fingerprint_Access is access Manifest_Fingerprints.Bytes;
+               procedure Release is new Ada.Unchecked_Deallocation
+                 (Manifest_Fingerprints.Bytes, Fingerprint_Access);
+               Image_Print : Fingerprint_Access :=
+                 new Manifest_Fingerprints.Bytes (1 .. Manifest_Fingerprints.Maximum_Fingerprint_Bytes);
+               Program_Print : Fingerprint_Access :=
+                 new Manifest_Fingerprints.Bytes (1 .. Manifest_Fingerprints.Maximum_Fingerprint_Bytes);
+               Image_Length, Program_Length : Manifest_Fingerprints.Fingerprint_Length := 0;
+               Image_Readable : Boolean;
+               Program_Readable : Boolean := False;
+            begin
+               fingerprintOf (Service, Image_Print.all, Image_Length, Image_Readable);
+               if Image_Readable then
+                  fingerprintOf (Program, Program_Print.all, Program_Length, Program_Readable);
+               end if;
+               Verdict := SR.Content_Admits
+                 (Image_Readable, Program_Readable,
+                  Image_Readable and then Program_Readable and then Manifest_Fingerprints.Same
+                    (Image_Print (1 .. Image_Length), Program_Print (1 .. Program_Length)));
+               Release (Image_Print);
+               Release (Program_Print);
+            end;
+            if not Verdict.Admitted then
+               Refuse (Verdict.Why, Service & " -> " & Program);
+               return;
+            end if;
+         end if;
+         --  Admitted: keep the reply, and go.
+         declare
+            Saved : constant HIPC.Saved_Reply := HIPC.Save_Reply;
+            Next : SS.Action;
+         begin
+            if not Saved.Saved then
+               Refuse (SR.Busy, "its reply could not be kept");
+               return;
+            end if;
+            Switch_Reply := Saved.Handle;
+            Switch_Entry := Number;
+            Switch_Program := (others => <>);
+            Switch_Program.Length := Program'Length;
+            Switch_Program.Data (1 .. Program'Length) := Program;
+            Switch_Previous := Plan_Programs (Number);
+            Warnings.Inform ("procmgr: switch " & Service & " to " &
+                             (if Program'Length = 0 then "its image's program" else Program) &
+                             " for pid" & Image (sender) & " (stop grace" & Unsigned_64'Image (Grace) &
+                             " ms, health window" & Unsigned_64'Image (Health) &
+                             " ms); not signature-checked (AUTH-001)");
+            SS.Begin_Switch
+              (Switch, To_Word (Plan_PIDs (Number)),
+               CCL.Configurations."=" (Startup_Plan.Plan.Launches (Number).Replacement,
+                                       CCL.Configurations.Graceful),
+               Grace, Health,
+               Unsigned_64'Min (syscall (SYSCALL_GETTIME), SS.Latest_Time), Next);
+            driveSwitch (Next);
+         end;
+      end;
+   end handleServiceSwitch;
 
    ---------------------------------------------------------------------------
    --  resumeParked
@@ -5543,7 +5976,7 @@ begin
    --  Main service loop. While launches are parked it also wakes every
    --  Registration_Poll_Ms to look at their providers (resumeParked).
    loop
-      if Parked_First = null and then nextRestart = 0 then
+      if Parked_First = null and then nextRestart = 0 and then not Service_Switches.Active (Switch) then
          receive (sender, msg);
          received := True;
       else
@@ -5556,6 +5989,12 @@ begin
             end if;
             if Restart_At /= 0 then
                Deadline := Unsigned_64'Min (Deadline, Restart_At);
+            end if;
+            --  A switch looks at its deadline and its instance's
+            --  registration every Registration_Poll_Ms.
+            if Service_Switches.Active (Switch) then
+               Deadline := Unsigned_64'Min
+                 (Deadline, syscall (SYSCALL_GETTIME) + Registration_Poll_Ms);
             end if;
             receiveUntil (Deadline, sender, msg, received);
          end;
@@ -5575,6 +6014,8 @@ begin
                handleStagedSwitch (sender, msg);
             when End_Child_Operation =>
                handleEndChild (sender, msg);
+            when CuBit.Service_Replacement.Switch_Operation =>
+               handleServiceSwitch (sender, msg);
             when CuBit.Launch_Grants.Places_Operation =>
                handleDelegatedPlaces (sender, msg);
             when CuBit.Program_Descriptions.Description_Operation =>
@@ -5647,6 +6088,8 @@ begin
                      releaseFilesystemOwner (Exited);
                      superviseExit
                        (Exited, Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0);
+                     switchExited
+                       (Exited, Report.Kind /= CuBit.Child_Exits.Stopped and then Report.Code = 0);
                   end;
                end if;
             when CuBit.Control_Events.Grant_Revoked_Label
@@ -5663,5 +6106,6 @@ begin
          resumeParked;
       end if;
       restartDue;
+      switchTick;
    end loop;
 end main;

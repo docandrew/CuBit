@@ -26,6 +26,7 @@ with CuBit.Launch_Arguments;
 with CuBit.Launch_Authority;
 with CuBit.Launch_Grants;
 with CuBit.Program_Descriptions;
+with CuBit.Service_Replacement;
 with CuBit.Outlet_Rings;
 with CuBit.Streams;
 with CuBit.Memory_Grants;
@@ -162,6 +163,31 @@ package CuBit.Launching is
    with Pre => Program'Length in 1 .. CuBit.Launch_Arguments.Maximum_Name_Bytes
                and then Descriptor'First = 1
                and then Descriptor'Length = CuBit.Program_Descriptions.Maximum_Descriptor_Bytes;
+
+   --  Switch the startup-plan service Service ("acpi.svc") to Program, a
+   --  staged program (a system generation's pin:
+   --  "@system/storehouse/executables/<sha256>"), or back to its image's
+   --  program when Program is empty (CuBit.Service_Replacement). procmgr
+   --  answers when the switch has ended; this waits at most
+   --  CuBit.Service_Replacement.Answer_Bound_Ms (Grace, Health) plus
+   --  Answer_Margin_Ms, never forever (Timed_Out past that: the switch's
+   --  outcome is then unknown here; procmgr's log says it).
+   Answer_Margin_Ms : constant := 2_000;
+   type Switch_Answer is (Answered, Refused_Switch, Timed_Out, No_Process_Manager_Switch);
+   type Switch_Result is record
+      Answer   : Switch_Answer := No_Process_Manager_Switch;
+      Why      : CuBit.Service_Replacement.Refusal := CuBit.Service_Replacement.Malformed;
+      Outcome  : CuBit.Service_Replacement.Outcome := CuBit.Service_Replacement.Rollback_Failed;
+      Failure  : CuBit.Service_Replacement.Health_Failure := CuBit.Service_Replacement.Healthy;
+      Running  : CuBit.Process_IDs.Process_ID := CuBit.Process_IDs.No_Process;
+   end record;
+   procedure Switch_Service
+     (Through : Launcher; Service : String; Program : String;
+      Grace : CuBit.Service_Replacement.Stop_Grace_Ms;
+      Health : CuBit.Service_Replacement.Health_Window_Ms;
+      Result : out Switch_Result)
+   with Pre => Service'Length in 1 .. CuBit.Service_Replacement.Maximum_Service_Name_Bytes
+               and then Program'Length <= CuBit.Service_Replacement.Maximum_Program_Bytes;
 
 private
    type Launcher is record

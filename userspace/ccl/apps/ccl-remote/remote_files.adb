@@ -389,15 +389,19 @@ package body Remote_Files is
       Make_Directory (Work_Path (Name), Result);
    end Make_Work_Directory;
 
-   --  Rename the work root's From over To.
-   procedure Rename_Work (From, To : String; Result : out W.Status) is
-      Old_Path : constant String := Work_Path (From);
-      New_Path : constant String := Work_Path (To);
+   --  Rename From over To (whole paths).
+   procedure Rename_Path (Old_Path, New_Path : String; Result : out W.Status) is
       Request : Message;
    begin
       Place_Text (Old_Path & New_Path);
       Request := Rename_Request (Loan, Old_Path'Length, New_Path'Length);
       Result := Call (Request);
+   end Rename_Path;
+
+   --  Rename the work root's From over To.
+   procedure Rename_Work (From, To : String; Result : out W.Status) is
+   begin
+      Rename_Path (Work_Path (From), Work_Path (To), Result);
    end Rename_Work;
 
    --  Write the buffer's first Count bytes to File at Offset.
@@ -410,7 +414,7 @@ package body Remote_Files is
       end if;
    end Write_At;
 
-   procedure Copy_To_Work
+   procedure Copy_To_Path
      (Where : W.Place; Name : String; Target : String;
       Size : out Unsigned_64; Hash : out W.Digest; Result : out W.Status)
    is
@@ -426,7 +430,7 @@ package body Remote_Files is
       if Result /= W.OK then
          return;
       end if;
-      Open (Work_Path (Staging (Target)), OPEN_READ_WRITE or OPEN_CREATE or OPEN_TRUNCATE, Copy, Result);
+      Open (Staging (Target), OPEN_READ_WRITE or OPEN_CREATE or OPEN_TRUNCATE, Copy, Result);
       if Result /= W.OK then
          Close (Source, Closed);
          return;
@@ -453,7 +457,7 @@ package body Remote_Files is
       Close (Source, Result);
       Close (Copy, Result);
       if Result = W.OK then
-         Rename_Work (Staging (Target), Target, Result);
+         Rename_Path (Staging (Target), Target, Result);
       end if;
       if Result /= W.OK then
          Size := 0;
@@ -463,12 +467,19 @@ package body Remote_Files is
       for I in W.Digest_Index loop
          Hash (I) := Output (SPARKNaCl.N32 (I) - 1);
       end loop;
+   end Copy_To_Path;
+
+   procedure Copy_To_Work
+     (Where : W.Place; Name : String; Target : String;
+      Size : out Unsigned_64; Hash : out W.Digest; Result : out W.Status) is
+   begin
+      Copy_To_Path (Where, Name, Work_Path (Target), Size, Hash, Result);
    end Copy_To_Work;
 
-   procedure Write_Work_Text (Name : String; Text : String; Result : out W.Status) is
+   procedure Write_Text_Path (Name : String; Text : String; Result : out W.Status) is
       File : File_Handle;
    begin
-      Open (Work_Path (Staging (Name)), OPEN_READ_WRITE or OPEN_CREATE or OPEN_TRUNCATE, File, Result);
+      Open (Staging (Name), OPEN_READ_WRITE or OPEN_CREATE or OPEN_TRUNCATE, File, Result);
       if Result /= W.OK then
          return;
       end if;
@@ -478,11 +489,16 @@ package body Remote_Files is
       end if;
       Close (File, Result);
       if Result = W.OK then
-         Rename_Work (Staging (Name), Name, Result);
+         Rename_Path (Staging (Name), Name, Result);
       end if;
+   end Write_Text_Path;
+
+   procedure Write_Work_Text (Name : String; Text : String; Result : out W.Status) is
+   begin
+      Write_Text_Path (Work_Path (Name), Text, Result);
    end Write_Work_Text;
 
-   procedure Read_Work_Text
+   procedure Read_Text_Path
      (Name : String; Text : out String; Length : out Natural; Result : out W.Status)
    is
       File : File_Handle;
@@ -490,7 +506,7 @@ package body Remote_Files is
    begin
       Text := [others => ' '];
       Length := 0;
-      Open (Work_Path (Name), OPEN_READ_ONLY, File, Result);
+      Open (Name, OPEN_READ_ONLY, File, Result);
       if Result /= W.OK then
          return;
       end if;
@@ -511,5 +527,50 @@ package body Remote_Files is
       if Result /= W.OK then
          Length := 0;
       end if;
+   end Read_Text_Path;
+
+   procedure Read_Work_Text
+     (Name : String; Text : out String; Length : out Natural; Result : out W.Status) is
+   begin
+      Read_Text_Path (Work_Path (Name), Text, Length, Result);
    end Read_Work_Text;
+
+   ---------------------------------------------------------------------------
+   --  The storehouse's own files
+   ---------------------------------------------------------------------------
+   function Store_Path (Name : String) return String is (Storehouse_Root & "/" & Name);
+
+   procedure Make_Store_Directory (Name : String; Result : out W.Status) is
+   begin
+      Make_Directory ((if Name'Length = 0 then Storehouse_Root else Store_Path (Name)), Result);
+   end Make_Store_Directory;
+
+   procedure Hash_Store
+     (Name : String; Size : out Unsigned_64; Hash : out W.Digest; Result : out W.Status) is
+   begin
+      Hash_Path (Store_Path (Name), Size, Hash, Result);
+   end Hash_Store;
+
+   procedure Copy_To_Store
+     (Where : W.Place; Name : String; Target : String;
+      Size : out Unsigned_64; Hash : out W.Digest; Result : out W.Status) is
+   begin
+      Copy_To_Path (Where, Name, Store_Path (Target), Size, Hash, Result);
+   end Copy_To_Store;
+
+   procedure Rename_Store (From, To : String; Result : out W.Status) is
+   begin
+      Rename_Path (Store_Path (From), Store_Path (To), Result);
+   end Rename_Store;
+
+   procedure Write_Store_Text (Name : String; Text : String; Result : out W.Status) is
+   begin
+      Write_Text_Path (Store_Path (Name), Text, Result);
+   end Write_Store_Text;
+
+   procedure Read_Store_Text
+     (Name : String; Text : out String; Length : out Natural; Result : out W.Status) is
+   begin
+      Read_Text_Path (Store_Path (Name), Text, Length, Result);
+   end Read_Store_Text;
 end Remote_Files;

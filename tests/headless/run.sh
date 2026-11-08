@@ -81,7 +81,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -330,7 +330,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -678,6 +678,13 @@ with open(sys.argv[1], "wb") as f:
     remote-screenshot)
         # Remote screenshots (REMOTE-001; tests/ccl-remote/remote_screenshot.py).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-remote-screenshot.ccl"
+        ;;
+    service-switch)
+        # System generations (CuBit.Service_Replacement): lexicon.svc
+        # (transparent) pinned to programs in the storehouse, switched and
+        # rolled back through ccl-remote, and clock.svc (graceful) refused
+        # (tests/service-switch/service_switch.py).
+        INIT_PROFILE="$ROOT_DIR/tests/service-switch/init.ccl"
         ;;
     device-build)
         # SELF-002: an app built ON CuBit through ccl-remote, with the
@@ -2133,6 +2140,23 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $ACPI_SOURCE $ACPI_TARGET" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $ACPI_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "service-switch" ]; then
+        # The services switched and the remote session, as built now.
+        for SWITCH_PAIR in logstore.svc:logstore.svc clock.svc:clock.svc ccl-remote.app:ccl-remote.app \
+            lexicon.svc:lexicon.svc; do
+            SWITCH_SOURCE="$KERNEL_DIR/isodir/boot/${SWITCH_PAIR%%:*}"
+            SWITCH_TARGET="${SWITCH_PAIR##*:}"
+            if [ ! -f "$SWITCH_SOURCE" ]; then
+                echo "headless: build ${SWITCH_PAIR%%:*} first (make -C kernel world)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $SWITCH_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $SWITCH_SOURCE $SWITCH_TARGET" "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $SWITCH_TARGET" >&2
                 exit 1
             fi
         done
@@ -4806,6 +4830,19 @@ if [ "$TEST_NAME" = "remote-screenshot" ]; then
         ${REMOTE_SCREENSHOT_OUT:+"$REMOTE_SCREENSHOT_OUT"} &
     INPUT_INJECTOR_PID=$!
 fi
+if [ "$TEST_NAME" = "service-switch" ]; then
+    # As device-build: the guest's port 8445 from the host's loopback; the
+    # driver pairs, turns the Desktop's switch on by a click over QMP, and
+    # switches lexicon.svc and clock.svc through system generations.
+    SERVICE_SWITCH_PORT="${SERVICE_SWITCH_PORT:-18449}"
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:$SERVICE_SWITCH_PORT-10.0.2.15:8445"
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/service-switch/service_switch.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$SERVICE_SWITCH_PORT" \
+        "$KERNEL_DIR/isodir/boot/lexicon.svc" "$KERNEL_DIR/isodir/boot/clock.svc" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "device-build" ]; then
     # As ccl-remote-session: the guest's port 8445 from the host's loopback;
     # the driver pairs, builds on CuBit, swaps the running app for its new
@@ -5107,6 +5144,21 @@ swap-probe: build 2 running
 ccl-remote: host app rollback swap-probe
 ccl-remote: host build userspace/apps/hello/component.ccl
 hello: hello from an app built on CuBit
+"
+        ;;
+    service-switch)
+        required_markers="
+lexicon: registered
+ccl-remote: ready
+ccl-remote: a host paired
+procmgr: switch refused: SWITCH_OFF
+procmgr: staged app launches allowed by the Desktop switch
+procmgr: switch refused: NOT_REPLACEABLE
+procmgr: switch refused: MANIFEST_CHANGED
+procmgr: switch lexicon.svc switched; it runs @system/storehouse/executables/
+procmgr: switch lexicon.svc rolled back (the program ended inside its health window)
+procmgr: switch clock.svc not switched: the running instance did not end
+procmgr: switch lexicon.svc switched; it runs lexicon.svc pid
 "
         ;;
     ccl-remote-session)
@@ -7179,7 +7231,7 @@ case "$QEMU_CPU_MODEL" in
 CPU Vendor: ${expected_vendor%%,*}"
         ;;
 esac
-if [ "$TEST_NAME" = "device-build" ] && [ -n "$INPUT_INJECTOR_PID" ]; then
+if { [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "service-switch" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
     # The host driver's own checks (its PASS/FAIL lines above) gate too.
     if ! wait "$INPUT_INJECTOR_PID"; then
         INPUT_INJECTOR_PID=""

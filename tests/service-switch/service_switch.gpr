@@ -1,0 +1,17 @@
+--  Hosted tests and proofs of service switches (run.sh): the decisions
+--  (CuBit.Service_Replacement), procmgr's machine (Service_Switches) and
+--  manifest fingerprints (Manifest_Fingerprints).
+project Service_Switch is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat", "../../userspace/services/procmgr");
+   for Source_Files use ("cubit.ads", "cubit-service_replacement.ads", "cubit-service_replacement.adb",
+                         "service_switches.ads", "service_switches.adb",
+                         "manifest_fingerprints.ads", "manifest_fingerprints.adb",
+                         "switch_tests.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("switch_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+end Service_Switch;

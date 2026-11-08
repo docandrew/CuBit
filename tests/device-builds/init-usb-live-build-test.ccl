@@ -21,8 +21,12 @@
     (acpi-pci-config approve-declared))
   (start "acpi.svc" (priority 4)
     (firmware-snapshot approve-declared) (acpi-registers approve-declared))
-  # Dictionary, thesaurus and spelling (docs/lexicon.md).
-  (start "lexicon.svc" (priority 4))
+  # Dictionary, thesaurus and spelling (docs/lexicon.md). A system
+  # generation may switch it live (replace transparent: no hardware or
+  # firmware state; clients reconnect). The other entries keep the default
+  # restart contract, reboot: the ACPI pair until its stop, rebind and
+  # health handshake is validated.
+  (start "lexicon.svc" (priority 4) (replace transparent))
   # GPU rendering is a settings grant (desktop.render.gpu, default on);
   # without a supported GPU devmgr refuses the session and Desktop renders
   # in software. One image for every machine (HW-002).

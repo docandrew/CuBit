@@ -23,6 +23,11 @@ connection: a 28-byte header carrying the pairing token, then a body.
   cubit-remote app replace PRODUCT              a workspace build's product becomes the
                                                 app's next generation and replaces it
   cubit-remote app rollback APP | app status APP
+  cubit-remote system activate SERVICE PRODUCT --health-ms N --stop-grace-ms N
+                                                a workspace product becomes SERVICE's pin in a
+                                                new system generation, which is activated
+  cubit-remote system rollback --health-ms N --stop-grace-ms N
+  cubit-remote system generations               the generation records and the current one
 
 Screenshots need the device's display-capture grant (its startup entry says
 (display-capture approve-declared)) and the person at the device turning on
@@ -34,6 +39,20 @@ App replacement needs the builds grant, a work root on the device's
 system volume, and the person at the device turning on "Allow app
 replacement" (Deskbar, Remote access); the device keeps each generation
 (and its SHA-256) under its work root, outside the workspace.
+
+System generations (like Nix): a product enters the device's storehouse
+by its SHA-256, a new generation pins the service (its startup-plan name,
+"acpi.svc") to it, and activating it makes procmgr stop the service and
+start the pinned program as the same startup entry; a program that ends
+or has not registered its service by the end of the health window is
+rolled back to the one before, and the current generation stays. The
+service's startup entry must declare a live restart contract, (replace
+transparent) or (replace graceful), and the person at
+the device must turn on "Allow app replacement". Both deadlines are
+explicit (milliseconds): --health-ms and --stop-grace-ms (0: the service
+reads no Stop, so procmgr ends it at once). The generations live in the
+device's storehouse; on the live USB that is RAM, so a reboot returns to
+the image's programs.
 
 Pairing tokens are stored in ~/.config/cubit-remote/hosts.json (0600, the
 directory 0700) and never printed. Python 3 standard library only.
@@ -76,6 +95,7 @@ OPERATIONS = {
     "hello": 1, "evaluate": 2, "list": 3, "stat": 4, "get": 5, "put": 6,
     "commit": 7, "remove": 8, "build_start": 9, "build_poll": 10, "build_cancel": 11,
     "capture": 12, "app_replace": 13, "app_rollback": 14, "app_status": 15,
+    "system_activate": 16, "system_rollback": 17, "system_generations": 18,
 }
 PLACES = {"none": 0, "workspace": 1, "to-device": 2, "to-host": 3, "captures": 4}
 STATUSES = [
@@ -118,6 +138,36 @@ STOP_KINDS = {0: "", 1: "stopped", 2: "ended after the stop deadline"}
 APP_RESPONSE_BYTES = 1 + 4 + 4 + 1 + 1 + 32 + 32
 MAXIMUM_APP_NAME_BYTES = 64
 PRODUCT_SUFFIX = ".app"
+# Remote_Wire.Generation_Result, and CuBit.Service_Replacement's Refusal
+# and Health_Failure (the detail byte).
+GENERATION_RESULTS = ["Activated", "Rolled_Back", "Refused", "Stop_Failed", "Rollback_Failed",
+                      "Unchanged", "No_Previous", "Too_Many_Changes"]
+GENERATION_DONE = (0, 5)
+SWITCH_REFUSALS = {
+    1: ("Malformed", "procmgr found the request malformed"),
+    2: ("Grant_Unavailable", "procmgr could not read the request"),
+    3: ("Unknown_Service", "no startup-plan entry runs that service"),
+    4: ("Not_Replaceable", "the service's restart contract is reboot (its startup entry says "
+                           "(replace reboot) or nothing): it is not switched live"),
+    5: ("Not_Granted", "ccl-remote may not stage that program"),
+    6: ("Switch_Off", "app replacement is off on the device: the person there turns on "
+                      "Allow app replacement (Deskbar, Remote access)"),
+    7: ("Unsigned_Refused", "signature policy refused the program"),
+    8: ("Busy", "another switch, or startup, is in progress"),
+    9: ("Image_Unreadable", "procmgr could not read the image's program"),
+    10: ("Program_Unreadable", "procmgr could not read the program's manifest sections"),
+    11: ("Manifest_Changed", "the program's manifest differs from the image's: a switch never "
+                             "widens what the service holds (build a new image instead)"),
+}
+HEALTH_FAILURES = {0: "healthy", 1: "the program did not start", 2: "it ended inside its health window",
+                   3: "it did not register its service by the end of the health window"}
+GENERATION_RESPONSE_BYTES = 1 + 1 + 4 + 4 + 32 + 8
+MAXIMUM_SERVICE_NAME_BYTES = 64
+# CuBit.Service_Replacement's ceilings (milliseconds) and the time procmgr
+# may take beyond the two deadlines (two ends and two starts).
+MAXIMUM_STOP_GRACE_MS = 10_000
+MINIMUM_HEALTH_MS, MAXIMUM_HEALTH_MS = 100, 30_000
+SWITCH_OVERHEAD_MS = 2 * 5_000 + 10_000 + 2_000
 
 # Whole lists: elements per slice at first (halved while a slice is still
 # too large), and the device's own words for a result it could not carry.
@@ -209,11 +259,11 @@ def request_bytes(operation, place, token, body=b""):
             + struct.pack(">I", len(body)) + token + body)
 
 
-def exchange(address, port, token, operation, place="none", body=b""):
+def exchange(address, port, token, operation, place="none", body=b"", timeout=EXCHANGE_TIMEOUT_S):
     """One request on its own connection; the response body, or RemoteError."""
     frame = request_bytes(operation, place, token, body)
     with socket.create_connection((address, port), timeout=CONNECT_TIMEOUT_S) as s:
-        s.settimeout(EXCHANGE_TIMEOUT_S)
+        s.settimeout(timeout)
         s.sendall(frame)
         header = _read_exact(s, RESPONSE_HEADER_BYTES)
         if header[:4] != MAGIC or header[4] != PROTOCOL_VERSION:
@@ -270,8 +320,8 @@ class Host:
     def __init__(self, name, address, port, token):
         self.name, self.address, self.port, self.token = name, address, port, token
 
-    def call(self, operation, place="none", body=b""):
-        return exchange(self.address, self.port, self.token, operation, place, body)
+    def call(self, operation, place="none", body=b"", timeout=EXCHANGE_TIMEOUT_S):
+        return exchange(self.address, self.port, self.token, operation, place, body, timeout)
 
 
 def selected_host(args):
@@ -554,6 +604,102 @@ def app_image(app, report):
     return text
 
 
+class GenerationRefused(Exception):
+    """An activation that did not make the target current (Generation_Result)."""
+
+    def __init__(self, report):
+        self.report = report
+        self.name = report["result_name"]
+        super().__init__(generation_image(report))
+
+
+def valid_service_name(name):
+    """Remote_Wire.Valid_Service_Name: a startup-plan entry's name."""
+    return (1 <= len(name) <= MAXIMUM_SERVICE_NAME_BYTES
+            and all(c.isascii() and (c.isalnum() or c in "._-+") for c in name))
+
+
+def parse_generation(body):
+    """Generation_Response as a dict."""
+    if len(body) != GENERATION_RESPONSE_BYTES:
+        raise RemoteError(1, "a generation response of %d bytes" % len(body))
+    result, detail, current, target = struct.unpack(">BBII", body[:10])
+    running = struct.unpack(">Q", body[42:50])[0]
+    return {"result": result,
+            "result_name": GENERATION_RESULTS[result] if result < len(GENERATION_RESULTS) else str(result),
+            "detail": detail, "current": current, "target": target,
+            "pin_sha256": body[10:42].hex(), "running": running}
+
+
+def deadlines(health_ms, stop_grace_ms):
+    if not MINIMUM_HEALTH_MS <= health_ms <= MAXIMUM_HEALTH_MS:
+        raise SystemExit("cubit-remote: --health-ms is %d .. %d" % (MINIMUM_HEALTH_MS, MAXIMUM_HEALTH_MS))
+    if not 0 <= stop_grace_ms <= MAXIMUM_STOP_GRACE_MS:
+        raise SystemExit("cubit-remote: --stop-grace-ms is 0 .. %d" % MAXIMUM_STOP_GRACE_MS)
+    # The device answers within both deadlines plus procmgr's own bound.
+    timeout = (health_ms + stop_grace_ms + SWITCH_OVERHEAD_MS) / 1000 + CONNECT_TIMEOUT_S
+    return struct.pack(">II", stop_grace_ms, health_ms), timeout
+
+
+def system_activate(host, service, product, health_ms, stop_grace_ms):
+    """Pin SERVICE to PRODUCT in a new generation and activate it; the report, or GenerationRefused."""
+    if not valid_service_name(service):
+        raise SystemExit("cubit-remote: %r is not a startup-plan service name" % service)
+    if not valid_name(product):
+        raise SystemExit("cubit-remote: %r is not a name in the workspace" % product)
+    fields, timeout = deadlines(health_ms, stop_grace_ms)
+    report = parse_generation(host.call("system_activate", "workspace",
+                                        name_field(product) + fields + service.encode("ascii"), timeout))
+    if report["result"] not in GENERATION_DONE:
+        raise GenerationRefused(report)
+    return report
+
+
+def system_rollback(host, health_ms, stop_grace_ms):
+    fields, timeout = deadlines(health_ms, stop_grace_ms)
+    report = parse_generation(host.call("system_rollback", "none", fields, timeout))
+    if report["result"] not in GENERATION_DONE:
+        raise GenerationRefused(report)
+    return report
+
+
+def system_generations(host):
+    """The records (typed CCL values) and the current number."""
+    text = host.call("system_generations").decode("utf-8", "replace")
+    lines = text.splitlines()
+    current = None
+    if lines and lines[-1].startswith("current "):
+        current = int(lines.pop().split()[1])
+    return lines, current
+
+
+def generation_image(report):
+    name = report["result_name"]
+    if name == "Activated":
+        text = "generation %d active" % report["current"]
+    elif name == "Unchanged":
+        text = "generation %d current; nothing to switch" % report["current"]
+    elif name == "Rolled_Back":
+        text = ("generation %d failed: %s; rolled back, generation %d stays"
+                % (report["target"], HEALTH_FAILURES.get(report["detail"], "?"), report["current"]))
+    elif name == "Refused":
+        refusal = SWITCH_REFUSALS.get(report["detail"], ("?", "refusal %d" % report["detail"]))
+        text = "refused (%s): %s" % refusal
+    elif name == "Stop_Failed":
+        text = "the running instance did not end; nothing changed"
+    elif name == "Rollback_Failed":
+        text = "FAILED: the new program failed and the one before did not start again"
+    elif name == "No_Previous":
+        text = "the image's generation (0) has none before it"
+    else:
+        text = "the generations differ in more pins than one activation switches"
+    if report["pin_sha256"].strip("0") and name in ("Activated", "Rolled_Back"):
+        text += "; pin sha256 %s" % report["pin_sha256"]
+    if report["running"]:
+        text += "; pid %d" % report["running"]
+    return text
+
+
 def build_poll(host, job, offset):
     body = host.call("build_poll", "none", struct.pack(">IQ", job, offset))
     state, code, total, first_kept = struct.unpack(">BIQQ", body[:21])
@@ -774,6 +920,26 @@ def command_app(args):
     return 0
 
 
+def command_system(args):
+    host = selected_host(args)
+    if args.system_command == "generations":
+        lines, current = system_generations(host)
+        for line in lines:
+            print(line)
+        print("current %s" % current)
+        return 0
+    try:
+        if args.system_command == "activate":
+            report = system_activate(host, args.service, args.product, args.health_ms, args.stop_grace_ms)
+        else:
+            report = system_rollback(host, args.health_ms, args.stop_grace_ms)
+    except GenerationRefused as e:
+        sys.stderr.write("cubit-remote: %s\n" % e)
+        return 2
+    print(generation_image(report))
+    return 0
+
+
 def parser():
     p = argparse.ArgumentParser(prog="cubit-remote", description=__doc__.split("\n")[0])
     p.add_argument("--host", help="a paired host's name (default: the last paired)")
@@ -856,6 +1022,23 @@ def parser():
     a = app.add_parser("status", help="APP's generations and whether it runs")
     a.add_argument("name", metavar="APP")
     s.set_defaults(run=command_app)
+
+    s = sub.add_parser("system", help="system generations: pin a service to a build, activate, roll back")
+    system = s.add_subparsers(dest="system_command", required=True)
+    for name, helptext in (("activate", "PRODUCT becomes SERVICE's pin in a new generation, activated"),
+                           ("rollback", "activate the current generation's previous one")):
+        a = system.add_parser(name, help=helptext)
+        if name == "activate":
+            a.add_argument("service", metavar="SERVICE", help='its startup-plan name, "acpi.svc"')
+            a.add_argument("product", metavar="PRODUCT", help="the program in the workspace")
+        # Explicit, never defaulted: they are part of what the caller asks.
+        a.add_argument("--health-ms", type=int, required=True,
+                       help="the health window, %d .. %d" % (MINIMUM_HEALTH_MS, MAXIMUM_HEALTH_MS))
+        a.add_argument("--stop-grace-ms", type=int, required=True,
+                       help="how long the running instance has to obey Stop, 0 .. %d "
+                            "(0: a service that reads no Stop is ended at once)" % MAXIMUM_STOP_GRACE_MS)
+    system.add_parser("generations", help="the generation records and the current one")
+    s.set_defaults(run=command_system)
     return p
 
 

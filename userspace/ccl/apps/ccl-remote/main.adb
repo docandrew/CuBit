@@ -34,6 +34,7 @@ with Remote_Host;
 with Remote_Files;
 with Remote_Jobs;
 with Remote_Apps;
+with Remote_Generations;
 with Remote_Activity;
 with Remote_Capture;
 with System;
@@ -110,7 +111,8 @@ procedure Main is
          when W.Remove => "rm", when W.Build_Start => "build", when W.Build_Poll => "build poll",
          when W.Build_Cancel => "build cancel", when W.Capture => "capture",
          when W.App_Replace => "replace", when W.App_Rollback => "rollback",
-         when W.App_Status => "status");
+         when W.App_Status => "status", when W.System_Activate => "system activate",
+         when W.System_Rollback => "system rollback", when W.System_Generations => "system generations");
    function Place_Name (Where : W.Place) return String is
      (case Where is
          when W.None => "", when W.Workspace => "workspace",
@@ -127,7 +129,8 @@ procedure Main is
                when W.Remove => Remote_Activity.Remove,
                when W.Build_Start | W.Build_Poll | W.Build_Cancel => Remote_Activity.Build,
                when W.Capture => Remote_Activity.Capture,
-               when W.App_Replace | W.App_Rollback | W.App_Status => Remote_Activity.App));
+               when W.App_Replace | W.App_Rollback | W.App_Status
+                  | W.System_Activate | W.System_Rollback | W.System_Generations => Remote_Activity.App));
    function Outcome_Of (Result : W.Status) return Remote_Activity.Outcome is
      (case Result is
          when W.OK => Remote_Activity.OK,
@@ -444,6 +447,44 @@ procedure Main is
                                      when W.Switch_Off | W.No_Previous => Remote_Activity.Refused,
                                      when W.Start_Failed | W.Stop_Failed => Remote_Activity.Failed)));
                   end;
+
+               when W.System_Activate | W.System_Rollback =>
+                  --  A new system generation (a service's pin changed)
+                  --  activated, or the one before (Remote_Generations);
+                  --  procmgr switches the service and asks the Desktop's
+                  --  switch.
+                  declare
+                     Done : Remote_Generations.Report;
+                     Service : String (1 .. (if Item.Op = W.System_Activate then Item.Data_Length else 0));
+                  begin
+                     for I in Service'Range loop
+                        Service (I) := Character'Val (Data (Item.Data_First + I - 1));
+                     end loop;
+                     if Item.Op = W.System_Activate then
+                        Remote_Generations.Activate (Name, Service, Item.Grace, Item.Health, Done, Result);
+                     else
+                        Remote_Generations.Rollback (Item.Grace, Item.Health, Done, Result);
+                     end if;
+                     if Result = W.OK then
+                        Remote_Generations.Encode (Done, Reply);
+                        Length := W.Generation_Response_Bytes;
+                     end if;
+                     Note (Item.Op, Item.Where,
+                           (if Result = W.OK then Remote_Generations.Image (Done)
+                            else (if Service'Length > 0 then Service & " " else "") &
+                                 "(" & Status_Name (Result) & ")"),
+                           (if Result /= W.OK then Outcome_Of (Result)
+                            else (case Done.Result is
+                                     when W.Activated | W.Unchanged => Remote_Activity.OK,
+                                     when W.Refused | W.No_Previous_Generation | W.Too_Many_Changes =>
+                                       Remote_Activity.Refused,
+                                     when W.Rolled_Back_Generation | W.Stop_Failed_Generation
+                                        | W.Rollback_Failed => Remote_Activity.Failed)));
+                  end;
+
+               when W.System_Generations =>
+                  Remote_Generations.List (Reply, Length, Result);
+                  Note (Item.Op, Item.Where, "", Outcome_Of (Result));
             end case;
          end;
       end;

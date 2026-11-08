@@ -424,6 +424,28 @@ class Configurations(unittest.TestCase):
         self.reject(policy.replace('(launch per-device) (approve-device))',
                                    '(launch per-device) (approve-device) (restart on-failure))'),
                     'INVALID_LAUNCH_MODE')
+        # (replace CONTRACT): the restart contract, a per-service exception
+        # in the trusted plan; procmgr's own entries only; once
+        # (CuBit.Service_Replacement).
+        for contract in ("transparent", "graceful"):
+            replace = policy.replace('(start "logstore.svc" (priority 5))',
+                                     '(start "logstore.svc" (priority 5) (replace %s))' % contract)
+            result = self.compile(replace)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(result.stdout.startswith('logstore.svc pri=5 replace=%s\n' % contract), result.stdout)
+            self.assertEqual(self.compile(policy.replace(
+                '(start "logstore.svc" (priority 5))',
+                '(start "logstore.svc" (priority 5) (replace reboot))')).stdout, result.stdout.replace(
+                    ' replace=%s' % contract, ''))
+        for bad, diagnostic in [
+                ('(replace staged)', 'INVALID_LAUNCH_MODE'),
+                ('(replace graceful) (replace reboot)', 'DUPLICATE_FIELD')]:
+            with self.subTest(bad=bad):
+                self.reject(policy.replace('(start "logstore.svc" (priority 5))',
+                                           '(start "logstore.svc" (priority 5) ' + bad + ')'), diagnostic)
+        self.reject(policy.replace('(launch per-device) (approve-device))',
+                                   '(launch per-device) (approve-device) (replace transparent))'),
+                    'INVALID_LAUNCH_MODE')
         twice = policy.replace('(start "logstore.svc" (priority 5))',
                                '(start "logstore.svc" (priority 5)) (start "logstore.svc" (priority 5))')
         self.reject(twice, 'INVALID_DEPENDENCY')

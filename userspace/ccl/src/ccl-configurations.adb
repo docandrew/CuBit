@@ -178,7 +178,7 @@ package body CCL.Configurations with SPARK_Mode => On is
 
       procedure Launch is
          Executable : Key_Text;
-         Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device, Have_Restart,
+         Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device, Have_Restart, Have_Replace,
            Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments : Boolean := False;
          Have_ACPI_Hardware, Have_ACPI_Registers, Have_ACPI_PCI_Config,
            Have_ACPI_Firmware_Data, Have_Display_Capture : Boolean := False;
@@ -314,6 +314,16 @@ package body CCL.Configurations with SPARK_Mode => On is
                else Fail (Invalid_Launch_Mode);
                end if;
                Have_Restart := True;
+            elsif Matches (Name, "replace") then
+               --  (replace reboot | transparent | graceful), once.
+               if Have_Replace then Fail (Duplicate_Field); end if;
+               Read_Symbol (Reader, Name);
+               if Matches (Name, "reboot") then Item.Replacement := Reboot_To_Replace;
+               elsif Matches (Name, "transparent") then Item.Replacement := Transparent;
+               elsif Matches (Name, "graceful") then Item.Replacement := Graceful;
+               else Fail (Invalid_Launch_Mode);
+               end if;
+               Have_Replace := True;
             elsif Matches (Name, "approve-device") then
                if Have_Device then Fail (Duplicate_Field); end if;
                Item.Approve_Device := True;
@@ -392,6 +402,10 @@ package body CCL.Configurations with SPARK_Mode => On is
          if Item.Mode = Per_Device and then Role /= Application then Fail (Invalid_Role); end if;
          --  devmgr starts per-device drivers; only procmgr's own entries restart.
          if Item.Mode = Per_Device and then Item.Restart /= Never then Fail (Invalid_Launch_Mode); end if;
+         --  devmgr starts per-device drivers; only procmgr's own entries are switched.
+         if Item.Mode = Per_Device and then Item.Replacement /= Reboot_To_Replace then
+            Fail (Invalid_Launch_Mode);
+         end if;
          if Stopped then return; end if;
          Count := Count + 1;
          Result.Plan.Launch_Count := Count;

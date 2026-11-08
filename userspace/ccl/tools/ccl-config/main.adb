@@ -97,6 +97,8 @@ begin
                   if Item.Mode = Per_Device then Put (" launch=per-device"); end if;
                   if Item.Approve_Device then Put (" device=approved"); end if;
                   if Item.Restart = On_Failure then Put (" restart=on-failure"); end if;
+                  if Item.Replacement = Transparent then Put (" replace=transparent"); end if;
+                  if Item.Replacement = Graceful then Put (" replace=graceful"); end if;
                   if Item.Approve_Firmware_Snapshot then Put (" firmware-snapshot=approved"); end if;
                   if Item.Approve_ACPI_Hardware then Put (" acpi-hardware=approved"); end if;
                   if Item.Approve_ACPI_Registers then Put (" acpi-registers=approved"); end if;

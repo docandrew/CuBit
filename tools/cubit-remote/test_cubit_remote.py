@@ -125,6 +125,14 @@ class StandIn:
         # generations the stand-in keeps: app -> [current, previous].
         self.app_result = 0
         self.apps = {}
+        # System generations: what the next activation answers
+        # (Generation_Result, detail), the records (service -> sha256 hex
+        # per generation, with its previous) and the current number; the
+        # requests seen (service, product, grace, health).
+        self.generation_result = (0, 0)
+        self.generations = {0: ({}, 0)}
+        self.current = 0
+        self.activations = []
         self.server = socket.socket()
         self.server.bind(("127.0.0.1", 0))
         self.server.listen(8)
@@ -219,6 +227,33 @@ class StandIn:
                 result = 2
             return 0, (struct.pack(">BIIBB", result, gens[0], gens[1], 1 if gens[0] else 0, 1 if op != 15 else 0)
                        + b"\x11" * 32 + b"\x22" * 32)
+        if op in (16, 17):
+            if op == 16:
+                (p, product), rest = name()
+                grace, health = struct.unpack(">II", rest[:8])
+                service = rest[8:].decode()
+                digest = hashlib.sha256(self.files.get((p, product), b"")).hexdigest()
+                pins = dict(self.generations[self.current][0])
+                pins[service] = digest
+                target = max(self.generations) + 1
+                self.generations[target] = (pins, self.current)
+            else:
+                grace, health = struct.unpack(">II", body)
+                service, product, digest = "acpi.svc", "", "00" * 32
+                if self.current == 0:
+                    return 0, struct.pack(">BBII", 6, 0, 0, 0) + bytes(32) + struct.pack(">Q", 0)
+                target = self.generations[self.current][1]
+            self.activations.append((service, product, grace, health))
+            result, detail = self.generation_result
+            if result == 0:
+                self.current = target
+            return 0, (struct.pack(">BBII", result, detail, self.current, target) + bytes.fromhex(digest)
+                       + struct.pack(">Q", 0x1000005 if result in (0, 1) else 0))
+        if op == 18:
+            text = "".join('(System_Generation number => %d previous => %d pins => [%s])\n' % (
+                n, prev, " ".join('(Service_Pin service => "%s" executable => "%s")' % kv for kv in pins.items()))
+                for n, (pins, prev) in sorted(self.generations.items()) if n)
+            return 0, (text + "current %d\n" % self.current).encode()
         return 1, b""
 
 
@@ -418,6 +453,75 @@ class AppCommands(Commands):
         code, _, err = self.err("app", "rollback", "swap-probe")
         self.assertEqual(code, 2)
         self.assertIn("No_Previous", err)
+
+
+class Generations(unittest.TestCase):
+    def test_request_frame(self):
+        fields, timeout = cr.deadlines(3000, 0)
+        body = cr.name_field("switch/acpi-good.svc") + fields + b"acpi.svc"
+        frame = cr.request_bytes("system_activate", "workspace", COUNTING, body)
+        self.assertEqual(frame[4:8], bytes([1, 16, 1, 0]))
+        self.assertEqual(frame[28:], b"\x00\x14switch/acpi-good.svc" + struct.pack(">II", 0, 3000) + b"acpi.svc")
+        self.assertEqual(cr.OPERATIONS["system_rollback"], 17)
+        self.assertEqual(cr.OPERATIONS["system_generations"], 18)
+        # The exchange outlasts everything the device may take.
+        self.assertGreater(timeout, (3000 + cr.SWITCH_OVERHEAD_MS) / 1000)
+
+    def test_response_vector(self):
+        body = struct.pack(">BBII", 1, 2, 3, 4) + b"\xab" * 32 + struct.pack(">Q", 0x1000005)
+        report = cr.parse_generation(body)
+        self.assertEqual((report["result_name"], report["detail"], report["current"], report["target"],
+                          report["running"]), ("Rolled_Back", 2, 3, 4, 0x1000005))
+        self.assertEqual(report["pin_sha256"], "ab" * 32)
+        self.assertIn("ended inside its health window", cr.generation_image(report))
+        with self.assertRaises(cr.RemoteError):
+            cr.parse_generation(body[:-1])
+
+    def test_deadlines_are_bounded(self):
+        for health, grace in ((99, 0), (30_001, 0), (3000, -1), (3000, 10_001)):
+            with self.assertRaises(SystemExit):
+                cr.deadlines(health, grace)
+        self.assertTrue(cr.valid_service_name("acpi.svc"))
+        for bad in ("", "a/b", "a b", "x" * 65):
+            self.assertFalse(cr.valid_service_name(bad), bad)
+
+
+class SystemCommands(AppCommands):
+    def test_activate_rollback_generations(self):
+        self.device.files[(1, "switch/acpi-good.svc")] = b"good program"
+        code, out = self.run_cli("system", "activate", "acpi.svc", "switch/acpi-good.svc",
+                                 "--health-ms", "5000", "--stop-grace-ms", "0")
+        self.assertEqual(code, 0, out)
+        self.assertIn("generation 1 active", out)
+        self.assertEqual(self.device.activations[-1], ("acpi.svc", "switch/acpi-good.svc", 0, 5000))
+        code, out = self.run_cli("system", "generations")
+        self.assertEqual(code, 0)
+        self.assertIn(hashlib.sha256(b"good program").hexdigest(), out)
+        self.assertIn("current 1", out)
+        code, out = self.run_cli("system", "rollback", "--health-ms", "5000", "--stop-grace-ms", "0")
+        self.assertEqual(code, 0, out)
+        self.assertIn("generation 0 active", out)
+        code, _, err = self.err("system", "rollback", "--health-ms", "5000", "--stop-grace-ms", "0")
+        self.assertEqual(code, 2)
+        self.assertIn("has none before it", err)
+
+    def test_refusals_say_why(self):
+        self.device.files[(1, "p.svc")] = b"x"
+        for detail, words in ((6, "Allow app replacement"), (4, "restart contract is reboot"), (11, "manifest differs")):
+            self.device.generation_result = (2, detail)
+            code, _, err = self.err("system", "activate", "acpi.svc", "p.svc", "--health-ms", "5000",
+                                    "--stop-grace-ms", "0")
+            self.assertEqual(code, 2)
+            self.assertIn(words, err)
+        self.device.generation_result = (1, 2)
+        code, _, err = self.err("system", "activate", "acpi.svc", "p.svc", "--health-ms", "5000",
+                                "--stop-grace-ms", "0")
+        self.assertEqual(code, 2)
+        self.assertIn("rolled back", err)
+
+    def test_deadlines_required(self):
+        with self.assertRaises(SystemExit):
+            cr.parser().parse_args(["system", "activate", "acpi.svc", "p.svc"])
 
 
 class Screenshots(Commands):
