@@ -85,6 +85,7 @@ procedure Bible_App_Tests is
    Map : constant Map_Access := new Controls.Control_Map;
    Checks, Failures : Natural := 0;
    Redraw : Boolean;
+   Red_Box : CuBit.UI.Rect := (others => 0);
 
    procedure Check (Condition : Boolean; Label : String) is
    begin
@@ -259,11 +260,45 @@ begin
    Check (Red_Runs (State.all) = 0, "the BSB marks no words of Christ");
    Choose (WEB);
    Check (Verse_All_Red (State.all, 16), "John 3:16 WEB is all red");
+   --  The box's place, while the KJV has it enabled.
+   Frame;
+   Red_Box := Controls.Bounds (Map.all, RED_ID);
+   Check (Red_Box.w > 0 and then Red_Letters_Available (State.all), "the KJV: the red-letters box is enabled");
    Choose (VUL);
    Check (Heading (State.all) = "John 3" and then Red_Runs (State.all) = 0,
           "John 3 in the Vulgate: its source marks no words of Christ, none red");
+   --  The Vulgate marks none: the box is greyed, still shows the reader's
+   --  choice (on), and neither F9 nor a click on it changes anything.
+   Check (not Red_Letters_Available (State.all) and then Red_Letters (State.all),
+          "VUL: the box is disabled and still checked");
+   Check (Controls.Bounds (Map.all, RED_ID).w = 0, "VUL: the disabled box is not a control");
+   declare
+      Saves_Before : constant Natural := Saves;
+   begin
+      Key (Red_Letters_Key);
+      Check (Red_Letters (State.all) and then Saves = Saves_Before and then Saved (Red_Letters_Preference) /= "off",
+             "VUL: F9 does nothing");
+      Click_At (Red_Box.x + Red_Box.w / 2, Red_Box.y + Red_Box.h / 2);
+      Check (Red_Letters (State.all) and then Saves = Saves_Before, "VUL: a click on the greyed box does nothing");
+   end;
    Save ("john-3-vulgate");
    Choose (KJV);
+   Check (Red_Letters_Available (State.all) and then Red_Letters (State.all) and then Verse_All_Red (State.all, 16),
+          "KJV, VUL, KJV: red letters on again");
+   --  The same with the choice off.
+   Key (Red_Letters_Key);
+   Check (not Red_Letters (State.all) and then Saved (Red_Letters_Preference) = "off", "KJV: F9 turns red off");
+   Choose (VUL);
+   Check (not Red_Letters (State.all) and then not Red_Letters_Available (State.all),
+          "VUL: the greyed box shows off");
+   Save ("john-3-vulgate-red-off");
+   Key (Red_Letters_Key);
+   Check (not Red_Letters (State.all), "VUL: F9 still does nothing");
+   Choose (KJV);
+   Check (not Red_Letters (State.all) and then Red_Runs (State.all) = 0 and then Saved (Red_Letters_Preference) = "off",
+          "KJV, VUL, KJV: red letters still off");
+   Key (Red_Letters_Key);
+   Check (Red_Letters (State.all) and then Verse_All_Red (State.all, 16), "KJV: F9 turns red on again");
    --  The red reads on light and dark pages (WCAG contrast 4.5:1 or more).
    declare
       function L (C : Unsigned_32) return Float is

@@ -174,7 +174,10 @@ package CuBit.UI.Widgets is
        damage : CuBit.UI.Rect;
        colors : CuBit.UI.Theme;
        checked : in out Boolean;
-       result : out CuBit.UI.Widget_Result);
+       result : out CuBit.UI.Widget_Result;
+       enabled : Boolean := True);
+   --  A disabled checkbox is drawn greyed with its state, and is not a
+   --  control: it takes no pointer, focus or toggle (checked is unchanged).
 
    procedure Radio_Button
       (c : CuBit.UI.Canvas;

@@ -118,4 +118,12 @@ package Bible_Translations is
    --  another abbreviation or language; Data is then released).
    procedure Open (Item : in out Edition; Which : Translation);
 
+   --  The open translation marks the words of Christ: red letters can be
+   --  shown (the BSB and the Vulgate's sources mark none). Its image's
+   --  header says so (Bible_Images.Layout), with the span count.
+   function Has_Words_Of_Christ (Item : Edition) return Boolean is
+     (Item.Status = Loaded and then Item.Layout.Words_Of_Christ);
+   function Words_Of_Christ_Spans (Item : Edition) return Bible_Images.Span_Count is
+     (if Item.Status = Loaded then Item.Layout.Words_Of_Christ_Spans else 0);
+
 end Bible_Translations;

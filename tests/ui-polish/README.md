@@ -9,6 +9,7 @@ Run from the repository root inside the Nix environment:
 nix develop -c gprbuild -p -P tests/ui-polish/polish.gpr -j2
 nix develop -c tests/ui-polish/build/polish_tests
 nix develop -c tests/ui-polish/build/combo_tests
+nix develop -c tests/ui-polish/build/checkbox_tests
 nix develop -c tests/ui-polish/build/tree_preview
 nix develop -c tests/ui-polish/build/polish_preview /tmp/cubit-ui-polish.ppm
 nix develop -c tests/ui-polish/build/menu_options_preview /tmp/cubit-menu-options.ppm

@@ -687,10 +687,16 @@ package body CuBit.UI.Widgets is
        damage : CuBit.UI.Rect;
        colors : CuBit.UI.Theme;
        checked : in out Boolean;
-       result : out CuBit.UI.Widget_Result)
+       result : out CuBit.UI.Widget_Result;
+       enabled : Boolean := True)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
    begin
+      if not enabled then
+         result := (others => False);
+         CuBit.UI.Draw_Checkbox (pc, bounds, colors, checked, False, False, enabled => False);
+         return;
+      end if;
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
       result := CuBit.UI.State.Checkbox
         (st, CuBit.UI.Controls.Bounds (controls, id), checked,

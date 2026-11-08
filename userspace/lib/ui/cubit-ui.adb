@@ -2061,27 +2061,34 @@ package body CuBit.UI is
 
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
-       checked : Boolean; hot : Boolean; active : Boolean)
+       checked : Boolean; hot : Boolean; active : Boolean;
+       enabled : Boolean := True)
    is
       pc : constant Canvas := With_Clip (c, r);
-      edge : constant Color := (if hot or active then colors.accent else Control_Edge (colors));
+      --  Disabled: no hover or press, the disabled button's edge and face,
+      --  the mark muted.
+      edge : constant Color :=
+        (if not enabled then Blend (colors.text, colors.face, 35)
+         elsif hot or active then colors.accent else Control_Edge (colors));
+      fill : constant Color :=
+        (if not enabled then colors.face elsif checked then colors.selection else colors.field);
+      mark : constant Color := (if enabled then colors.selectionText else colors.muted);
       cx : constant Natural := r.x + r.w / 2;
       cy : constant Natural := r.y + r.h / 2;
    begin
       if Is_Empty (r) then return; end if;
-      Fill_Rect (pc, r, (if checked then colors.selection else colors.field));
-      Stroke_Rect (pc, r, edge, colors.highlight);
+      Fill_Rect (pc, r, fill);
+      Stroke_Rect (pc, r, edge, (if enabled then colors.highlight else edge));
       if r.w > 2 and then r.h > 2 then
          Stroke_Rect (pc, Content_Rect (r, 1, 1),
-           Blend (colors.darkShadow, edge, 100),
-           (if checked then colors.selection else colors.field));
+           (if enabled then Blend (colors.darkShadow, edge, 100) else fill), fill);
       end if;
       if checked and then r.w >= 12 and then r.h >= 12 then
          for I in 0 .. 2 loop
-            Fill_Rect (pc, (cx - 4 + I, cy + I, 2, 2), colors.selectionText);
+            Fill_Rect (pc, (cx - 4 + I, cy + I, 2, 2), mark);
          end loop;
          for I in 0 .. 4 loop
-            Fill_Rect (pc, (cx - 1 + I, cy + 2 - I, 2, 2), colors.selectionText);
+            Fill_Rect (pc, (cx - 1 + I, cy + 2 - I, 2, 2), mark);
          end loop;
       end if;
    end Draw_Checkbox;

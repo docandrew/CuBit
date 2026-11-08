@@ -54,9 +54,14 @@ package Bible_Images with SPARK_Mode, Pure is
      [Books => 8, Chapters => 8, Verses => 8, Segments => 8, Words => 16, Postings => 4, Keys => 1,
       Text => 1, About => 8];
 
-   --  2: the about table names the translation's language (APP-005 v1.1).
-   FORMAT_VERSION : constant := 2;
-   HEADER_BYTES : constant := 8 + 4 + 4 + 8 * 9;
+   --  2: the about table names the translation's language; 3: the header
+   --  says whether the source marks the words of Christ (APP-005 v1.1).
+   FORMAT_VERSION : constant := 3;
+   HEADER_BYTES : constant := 8 + 4 + 4 + 4 + 4 + 8 * 9;
+
+   --  Spans of the words of Christ one translation marks (the KJV 2,038).
+   MAXIMUM_SPANS : constant := 1_000_000;
+   subtype Span_Count is Natural range 0 .. MAXIMUM_SPANS;
 
    type Extent is record
       Offset : Image_Size := 0;
@@ -64,10 +69,19 @@ package Bible_Images with SPARK_Mode, Pure is
    end record;
    type Extent_Array is array (Section) of Extent;
 
+   --  The header's tables and properties. Words_Of_Christ: the source
+   --  marks the words of Christ (USFM \wj), so red letters can be shown;
+   --  exactly when Words_Of_Christ_Spans > 0 (Open refuses an image saying
+   --  otherwise).
    type Layout is record
       Length   : Image_Size := 0;
       Sections : Extent_Array := [others => (0, 0)];
+      Words_Of_Christ : Boolean := False;
+      Words_Of_Christ_Spans : Span_Count := 0;
    end record;
+
+   function Consistent (L : Layout) return Boolean is
+     (L.Words_Of_Christ = (L.Words_Of_Christ_Spans > 0));
 
    --  Every table lies inside the image.
    function Fits (L : Layout) return Boolean is
@@ -76,12 +90,14 @@ package Bible_Images with SPARK_Mode, Pure is
         and then Long_Long_Integer (L.Sections (S).Count) * Long_Long_Integer (WIDTH (S))
                  <= Long_Long_Integer (L.Length - L.Sections (S).Offset));
 
-   type Open_Status is (Opened, Too_Short, Too_Large, Bad_Magic, Wrong_Version, Wrong_Canon, Bad_Table);
+   type Open_Status is
+     (Opened, Too_Short, Too_Large, Bad_Magic, Wrong_Version, Wrong_Canon, Bad_Table,
+      Bad_Properties);   --  unknown property bits, or the flag and the span count disagree
 
    procedure Open (Data : Byte_Array; Result : out Layout; Status : out Open_Status)
      with Pre  => Data'First = 0,
           Post => (if Status = Opened then Fits (Result) and then Result.Length = Data'Length
-                   and then Result.Sections (Books).Count = BOOK_COUNT);
+                   and then Result.Sections (Books).Count = BOOK_COUNT and then Consistent (Result));
 
    --  The image size a header declares (the about table is last), from the
    --  first HEADER_BYTES of a file: a reader allocates once, then fills.

@@ -111,6 +111,33 @@ procedure Bible_Tests is
          Check (Valid and then Slice (VUL.all, About) = "Latin", "VUL language name");
          Read_About (KJV.Data.all, KJV.L, Bible_Images.Language_Code, About, Valid);
          Check (Valid and then Slice (KJV.all, About) = "en", "KJV is in English (en)");
+         --  The header: whether each source marks the words of Christ, and
+         --  how many spans.
+         Check (KJV.L.Words_Of_Christ and then KJV.L.Words_Of_Christ_Spans = 2_038, "KJV: 2,038 red spans");
+         Check (WEB.L.Words_Of_Christ and then WEB.L.Words_Of_Christ_Spans = 2_290, "WEB: 2,290 red spans");
+         Check (not BSB.L.Words_Of_Christ and then BSB.L.Words_Of_Christ_Spans = 0, "BSB: no red spans");
+         Check (not VUL.L.Words_Of_Christ and then VUL.L.Words_Of_Christ_Spans = 0, "VUL: no red spans");
+         --  A header whose flag and count disagree, or with an unknown
+         --  property bit, is refused.
+         declare
+            procedure Expect_Refused (Properties, Spans : Unsigned_32; Label : String) is
+               Copy : constant Image_Access := new Byte_Array'(KJV.Data.all);
+               L : Layout;
+               O : Open_Status;
+            begin
+               for I in 0 .. 3 loop
+                  Copy (16 + Image_Offset (I)) := Unsigned_8 (Shift_Right (Properties, 8 * I) and 16#FF#);
+                  Copy (20 + Image_Offset (I)) := Unsigned_8 (Shift_Right (Spans, 8 * I) and 16#FF#);
+               end loop;
+               Open (Copy.all, L, O);
+               Check (O = Bad_Properties, Label & ": " & O'Image);
+            end Expect_Refused;
+         begin
+            Expect_Refused (1, 0, "red flag, no spans");
+            Expect_Refused (0, 5, "spans, no red flag");
+            Expect_Refused (3, 5, "an unknown property bit");
+            Expect_Refused (1, 2_000_000, "spans past the ceiling");
+         end;
          Check (VUL.Index.Table.Chapters (Psalms) = 150, "VUL Psalms has 150 chapters");
          Check (Verses_In (VUL.Index.Table, Psalms, 118) = 176, "VUL Psalm 118 (Hebrew 119) has 176 verses");
          Check (Verses_In (VUL.Index.Table, Psalms, 9) = 39, "VUL Psalm 9 holds Hebrew 9 and 10: 39 verses");

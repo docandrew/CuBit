@@ -15,10 +15,10 @@ class Image:
         if data[:8] != b'CUBITBIB':
             raise ValueError('bad magic')
         self.data = data
-        self.version, self.book_slots = struct.unpack_from('<II', data, 8)
+        self.version, self.book_slots, self.properties, self.red_spans = struct.unpack_from('<IIII', data, 8)
         self.tables = {}
         for i, name in enumerate(TABLES):
-            offset, count = struct.unpack_from('<II', data, 16 + 8 * i)
+            offset, count = struct.unpack_from('<II', data, 24 + 8 * i)
             if offset + count * WIDTH[name] > len(data):
                 raise ValueError(name + ' outside the image')
             self.tables[name] = (offset, count)

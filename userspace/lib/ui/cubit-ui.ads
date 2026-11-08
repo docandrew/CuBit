@@ -435,9 +435,12 @@ package CuBit.UI is
        firstLine, visibleLines : Positive; cursors : Text_Cursor_States;
        styles : Text_Style_Spans;
        focused : Boolean; hot : Boolean; firstColumn : Positive := 1);
+   --  Disabled (enabled False): greyed, the face colour with a muted edge
+   --  and mark; it still shows whether it is checked.
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
-       checked : Boolean; hot : Boolean; active : Boolean);
+       checked : Boolean; hot : Boolean; active : Boolean;
+       enabled : Boolean := True);
    procedure Draw_Radio_Button
       (c : Canvas; r : Rect; colors : Theme;
        selected : Boolean; hot : Boolean; active : Boolean;

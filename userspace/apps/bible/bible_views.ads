@@ -93,8 +93,14 @@ package Bible_Views is
    procedure Set_Face (State : in out View_State; Name : String);
    function Face_Name return String;
    --  The words of Christ in red (on unless the reader turned it off).
+   --  The reader's choice, remembered across translations: changing
+   --  translation never changes it. Where the translation marks no words of
+   --  Christ (Red_Letters_Available False: the BSB, the Vulgate) the
+   --  toolbar's box is greyed but still shows the choice, and setting it (a
+   --  click, F9, this) does nothing.
    procedure Set_Red_Letters (State : in out View_State; On : Boolean);
    function Red_Letters (State : View_State) return Boolean;
+   function Red_Letters_Available (State : View_State) return Boolean;
    --  The red for a page of this background: deep on light pages, light on
    --  dark ones, at least 4.5:1 against it (tests/bible-app checks).
    function Red_Letter_Color (Page : CuBit.UI.Color) return CuBit.UI.Color;

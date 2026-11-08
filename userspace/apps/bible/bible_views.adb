@@ -937,8 +937,14 @@ package body Bible_Views is
       end if;
    end Set_Face;
 
+   function Red_Letters_Available (State : View_State) return Boolean is
+     (Bible_Translations.Has_Words_Of_Christ (State.Editions (State.Which)));
+
    procedure Set_Red_Letters (State : in out View_State; On : Boolean) is
    begin
+      if not Red_Letters_Available (State) then
+         return;
+      end if;
       if On /= State.Red then
          State.Red := On;
          State.Laid_Out_Width := 0;
@@ -1362,13 +1368,17 @@ package body Bible_Views is
       if Red_X > 0 then
          declare
             Checked : Boolean := State.Red;
+            Available : constant Boolean := Red_Letters_Available (State);
             Box : constant Rect := (Red_X, Control_Y + (CONTROL_HEIGHT - CHECKBOX_EDGE) / 2, CHECKBOX_EDGE,
                                     CHECKBOX_EDGE);
          begin
-            CuBit.UI.Widgets.Checkbox (C, UI, Map, RED_ID, Box, Toolbar, Colors, Checked, Result);
+            --  Greyed where the translation marks no words of Christ.
+            CuBit.UI.Widgets.Checkbox (C, UI, Map, RED_ID, Box, Toolbar, Colors, Checked, Result,
+                                       enabled => Available);
             Draw_UI_Text_Transparent
               (C, Red_X + CHECKBOX_EDGE + M.Space_S, Control_Y + (CONTROL_HEIGHT - UI_Text_Height) / 2,
-               Fit_UI_Text ("Red letters", RED_WIDTH - CHECKBOX_EDGE - M.Space_S), Colors.text);
+               Fit_UI_Text ("Red letters", RED_WIDTH - CHECKBOX_EDGE - M.Space_S),
+               (if Available then Colors.text else Colors.muted));
             if Checked /= State.Red then
                Set_Red_Letters (State, Checked);
                CuBit.UI.State.Request_Followup_Render (UI);

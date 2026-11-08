@@ -14,7 +14,10 @@ source's URL, digest and licence statement.
 Image layout (all little-endian):
 
   header   magic "CUBITBIB", version u32, books u32 (Bible_Canon.BOOKS),
-           then (offset u32, count u32) for each table, in this order:
+           properties u32 (bit 0: the source marks the words of Christ;
+           the other bits 0), words-of-Christ spans u32 (0 exactly when
+           bit 0 is clear), then (offset u32, count u32) for each table, in
+           this order:
   books    8 bytes:  first chapter u32, chapter count u16, reserved u16
   chapters 8 bytes:  first verse u32, verse count u16 (the last verse's
                      number), reserved u16
@@ -64,10 +67,14 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ROOT / 'assets' / 'bible' / 'sources.json'
 
 MAGIC = b'CUBITBIB'
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 TABLES = ('books', 'chapters', 'verses', 'segments', 'words', 'postings',
           'keys', 'text', 'about')
-HEADER_BYTES = 8 + 4 + 4 + 8 * len(TABLES)
+HEADER_BYTES = 8 + 4 + 4 + 4 + 4 + 8 * len(TABLES)
+# Header properties (Bible_Images.Layout): the source marks the words of
+# Christ (USFM \wj), so red letters can be shown.
+PROPERTY_WORDS_OF_CHRIST = 1
+MAXIMUM_SPANS = 1_000_000
 
 # Bible_Canon.Book, in order, by USFM code.
 BOOKS = (
@@ -663,7 +670,11 @@ def build_image(source, books):
         directory += struct.pack('<II', offset, counts[table])
         body += tables[table]
         offset += len(tables[table])
-    image = MAGIC + struct.pack('<II', FORMAT_VERSION, len(BOOKS)) + directory + body
+    spans = red[0]
+    if spans > MAXIMUM_SPANS:
+        fail('%s: %d spans of the words of Christ, more than %d' % (name, spans, MAXIMUM_SPANS))
+    properties = PROPERTY_WORDS_OF_CHRIST if spans > 0 else 0
+    image = MAGIC + struct.pack('<IIII', FORMAT_VERSION, len(BOOKS), properties, spans) + directory + body
     if len(image) >= 2 ** 31 - 2:
         fail('%s: image too large' % name)
     counts['red'] = (red[0], red[1], red[2], red_runs)

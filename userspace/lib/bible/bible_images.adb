@@ -4,7 +4,11 @@ package body Bible_Images with SPARK_Mode is
    MAGIC_BYTES : constant := 8;
    VERSION_AT : constant := 8;
    BOOKS_AT : constant := 12;
-   SECTIONS_AT : constant := 16;
+   PROPERTIES_AT : constant := 16;
+   SPANS_AT : constant := 20;
+   SECTIONS_AT : constant := 24;
+   --  Header property bits (tools/build_bible.py).
+   WORDS_OF_CHRIST_PROPERTY : constant Unsigned_32 := 1;
    SECTION_ENTRY_BYTES : constant := 8;
    --  A segment's flags (tools/build_bible.py).
    STANZA_BREAK_FLAG    : constant Unsigned_8 := 1;
@@ -49,7 +53,7 @@ package body Bible_Images with SPARK_Mode is
       Ok_Offset, Ok_Count : Boolean;
       Entry_At : Image_Offset;
    begin
-      Result := (Length => 0, Sections => [others => (0, 0)]);
+      Result := (Length => 0, Sections => [others => (0, 0)], others => <>);
       if Data'Length < HEADER_BYTES then
          Status := Too_Short;
          return;
@@ -63,9 +67,25 @@ package body Bible_Images with SPARK_Mode is
          Status := Wrong_Canon;
          return;
       end if;
+      --  Whether red letters can be shown: the flag, and the span count it
+      --  must agree with.
+      declare
+         Properties : constant Unsigned_32 := U32 (Data, PROPERTIES_AT);
+         Spans : constant Unsigned_32 := U32 (Data, SPANS_AT);
+      begin
+         if (Properties and not WORDS_OF_CHRIST_PROPERTY) /= 0
+           or else Spans > MAXIMUM_SPANS
+           or else ((Properties and WORDS_OF_CHRIST_PROPERTY) /= 0) /= (Spans > 0)
+         then
+            Status := Bad_Properties;
+            return;
+         end if;
+         Result.Words_Of_Christ := Spans > 0;
+         Result.Words_Of_Christ_Spans := Span_Count (Spans);
+      end;
       Result.Length := Data'Length;
       for S in Section loop
-         pragma Loop_Invariant (Result.Length = Data'Length);
+         pragma Loop_Invariant (Result.Length = Data'Length and then Consistent (Result));
          pragma Loop_Invariant
            (for all Earlier in Section =>
               (if Earlier < S then
@@ -84,7 +104,7 @@ package body Bible_Images with SPARK_Mode is
                    > Long_Long_Integer (Data'Length - Offset)
            or else (S = Books and then Count /= BOOK_COUNT)
          then
-            Result := (Length => 0, Sections => [others => (0, 0)]);
+            Result := (Length => 0, Sections => [others => (0, 0)], others => <>);
             Status := Bad_Table;
             return;
          end if;
