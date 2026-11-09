@@ -46,8 +46,13 @@ fn allocation_boundary() {
         for i in 0..31 {
             assert_eq!(t.add(i).read(), i as u8);
         }
+        // A huge block shrunk to a small size moves into an arena (so the
+        // sized dealloc below, which trusts the layout, finds it there).
         let u = heap.realloc(t, Layout::from_size_align(5 << 20, 16).unwrap(), 16);
-        assert_eq!(u, t);
+        assert!(!u.is_null() && u != t);
+        for i in 0..16 {
+            assert_eq!(u.add(i).read(), i as u8);
+        }
         heap.dealloc(u, Layout::from_size_align(16, 16).unwrap());
 
         // No arena bound: far more than one arena of each kind.

@@ -20,8 +20,8 @@
     # ccl-manifest.app (make -C kernel ccl-manifest-app), from the same
     # sources, installed at @system/tools (ccl-build's launch table).
     (Host_Toolchains Build_Host.CuBit
-      (Toolchain "gnat-15.3.0-cubit" "a649e7b699f11eb4926a07c12a663496a828856f953c36a2de0cbcf3c70584ae" prefix => "")
-      (Toolchain "gnat-15.3.0-cubit" "a649e7b699f11eb4926a07c12a663496a828856f953c36a2de0cbcf3c70584ae" prefix => "")
+      (Toolchain "gnat-15.3.0-cubit" "4a42357267425f0959d499a924e1a57682df6c83dad6ea74a4760d1eba65f8d4" prefix => "")
+      (Toolchain "gnat-15.3.0-cubit" "4a42357267425f0959d499a924e1a57682df6c83dad6ea74a4760d1eba65f8d4" prefix => "")
       (Manifest_Tool.Installed "/tools/ccl-manifest.app"))]
   runtime => "userspace/runtime"
   manifest_schema => "userspace/ccl/interfaces/executable-manifest.ccl"

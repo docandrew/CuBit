@@ -1,5 +1,9 @@
+--  The release benchmark library (tests/userspace-allocator/benchmark.sh):
+--  the slab prototype bridge (ca_*), CuAlloc (a heap per thread) over Linux
+--  memory (cualloc_*).
 library project Allocator_Host is
-   for Source_Dirs use ("src", "host");
+   for Source_Dirs use ("src", "host", "process");
+   for Excluded_Source_Files use ("cualloc_native.ads", "cualloc_native.adb");
    for Object_Dir use "build/objects";
    for Library_Dir use "build/lib";
    for Library_Name use "cubit_heap";

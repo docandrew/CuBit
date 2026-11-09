@@ -140,9 +140,20 @@ package body CuBit.Thread_Areas is
       end if;
    end Discard;
 
+   --  CuAlloc's thread exit (CuAlloc_Native), where the program has
+   --  CuAlloc: the thread's heap is left for the next thread to adopt.
+   procedure Release_Thread_Heap
+   with Import, Convention => C, External_Name => "cualloc_thread_exit";
+   pragma Weak_External (Release_Thread_Heap);
+
    procedure Exit_Thread is
       Ignore : Unsigned_64;
    begin
+      --  The heap first: it reads its slot in the thread area, which
+      --  Release_Current may give back.
+      if Release_Thread_Heap'Address /= System.Null_Address then
+         Release_Thread_Heap;
+      end if;
       Release_Current;
       loop
          Ignore := CuBit.Kernel_Calls.Call (ABI.Thread_Exit);

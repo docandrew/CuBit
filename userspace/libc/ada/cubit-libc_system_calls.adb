@@ -246,6 +246,11 @@ package body CuBit.Libc_System_Calls is
    with Import, Convention => C, External_Name => "__cubit_secondary_stack_release";
    pragma Weak_External (Release_Secondary_Stack);
 
+   --  CuAlloc's thread exit (CuAlloc_Native, in libc.a with malloc): the
+   --  thread's heap is drained and left for the next thread to adopt.
+   procedure Release_Thread_Heap
+   with Import, Convention => C, External_Name => "cualloc_thread_exit";
+
    procedure Exit_Process (Code : int) with No_Return;
    procedure Exit_Process (Code : int) is
       Ignore : Unsigned_64;
@@ -1002,6 +1007,8 @@ package body CuBit.Libc_System_Calls is
             --  musl's pthread_exit, joinable threads (detached ones end in
             --  __unmapself). The thread-local block is still this thread's:
             --  a joiner waits for the kernel to clear the thread-list lock.
+            --  The heap first: it reads its thread-local slot.
+            Release_Thread_Heap;
             if Release_Secondary_Stack'Address /= System.Null_Address then
                Release_Secondary_Stack;
             end if;

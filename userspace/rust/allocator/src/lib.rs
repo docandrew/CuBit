@@ -16,7 +16,7 @@ pub const MAX_ALIGNMENT: usize = 1 << 30;
 unsafe extern "C" {
     fn cualloc_allocate(bytes: u64, alignment: u64) -> u64;
     fn cualloc_allocate_zeroed(bytes: u64, alignment: u64) -> u64;
-    fn cualloc_free(item: u64);
+    fn cualloc_free_sized(item: u64, bytes: u64, alignment: u64);
     fn cualloc_reallocate(item: u64, bytes: u64) -> u64;
 }
 
@@ -41,9 +41,12 @@ unsafe impl GlobalAlloc for BoundedAllocator {
         // SAFETY: as alloc; CuAlloc zeroes the block.
         unsafe { cualloc_allocate_zeroed(layout.size() as u64, layout.align() as u64) as *mut u8 }
     }
-    unsafe fn dealloc(&self, pointer: *mut u8, _: Layout) {
-        // SAFETY: the caller hands back a live block from this heap.
-        unsafe { cualloc_free(pointer as u64) }
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        // SAFETY: the caller hands back a live block from this heap with
+        // the layout it was allocated (or last reallocated) with, which is
+        // what lets CuAlloc find a small or medium block from its arena's
+        // header instead of its radix map.
+        unsafe { cualloc_free_sized(pointer as u64, layout.size() as u64, layout.align() as u64) }
     }
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         if layout.align() <= 16 {

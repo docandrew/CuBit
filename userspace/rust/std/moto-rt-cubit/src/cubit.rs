@@ -34,6 +34,10 @@ unsafe extern "C" {
     // Ada that uses the secondary stack: gives back the thread's stack.
     #[linkage = "extern_weak"]
     static __cubit_secondary_stack_release: Option<unsafe extern "C" fn()>;
+    // CuAlloc's thread exit (CuAlloc_Native), in programs that link it:
+    // the thread's heap is drained and left for the next thread to adopt.
+    #[linkage = "extern_weak"]
+    static cualloc_thread_exit: Option<unsafe extern "C" fn()>;
 }
 
 fn hooked_allocator() -> Option<(unsafe extern "C" fn(usize, usize) -> *mut u8,
@@ -404,6 +408,13 @@ fn free_tls_block(block: *mut TlsBlock) {
               tls.block_bytes + size_of::<TlsBlock>(), tls.align);
 }
 
+/// Leave this thread's CuAlloc heap for adoption, if the program has CuAlloc.
+fn release_thread_heap() {
+    if let Some(release) = unsafe { cualloc_thread_exit } {
+        unsafe { release() };
+    }
+}
+
 /// Give back the Ada runtime's secondary stack of this thread, if any.
 fn release_secondary_stack() {
     if let Some(release) = unsafe { __cubit_secondary_stack_release } {
@@ -474,6 +485,7 @@ extern "C" fn thread_entry(record: *mut ThreadRecord) -> ! {
     let (f, arg) = unsafe { ((*record).thread_fn, (*record).arg) };
     f(arg);
     run_tls_dtors();
+    release_thread_heap();
     release_secondary_stack();
     loop {
         unsafe { syscall(SYS_THREAD_EXIT, 0, 0, 0, 0, 0) };

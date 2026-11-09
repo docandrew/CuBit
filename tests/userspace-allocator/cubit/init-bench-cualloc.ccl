@@ -1,0 +1,7 @@
+# CuAlloc benchmark (tests/userspace-allocator/cubit): cualloc-bench.app,
+# single-threaded and with POSIX threads, through the libc malloc family.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "cualloc-bench.app" (priority 3))
+)

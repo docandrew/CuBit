@@ -14,6 +14,10 @@ unsafe extern "C" {
     fn ca_usable_size(pointer: *mut u8) -> usize;
     fn ca_reserved_bytes() -> usize;
     fn ca_metadata_bytes() -> usize;
+    fn cualloc_allocate(bytes: u64, alignment: u64) -> u64;
+    fn cualloc_free(item: u64);
+    fn cualloc_usable_size(item: u64) -> u64;
+    fn cualloc_test_statistics(arenas: *mut u64, reserved: *mut u64, committed: *mut u64);
     fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
     fn dladdr(address: *const c_void, info: *mut DlInfo) -> i32;
 }
@@ -27,6 +31,40 @@ struct DlInfo {
 type Allocate = unsafe extern "C" fn(usize) -> *mut u8;
 type Release = unsafe extern "C" fn(*mut u8);
 type Usable = unsafe extern "C" fn(*mut u8) -> usize;
+
+// CuAlloc's C entry points take and return addresses as u64 and an explicit
+// alignment; malloc's is 16. The unlocked heap measures the lock's cost.
+unsafe extern "C" fn cualloc_malloc(size: usize) -> *mut u8 {
+    unsafe { cualloc_allocate(size as u64, 16) as *mut u8 }
+}
+unsafe extern "C" fn cualloc_release(pointer: *mut u8) {
+    unsafe { cualloc_free(pointer as u64) }
+}
+unsafe extern "C" fn cualloc_usable(pointer: *mut u8) -> usize {
+    unsafe { cualloc_usable_size(pointer as u64) as usize }
+}
+fn cualloc_statistics(engine: &str) -> (u64, u64, u64) {
+    let (mut arenas, mut reserved, mut committed) = (0u64, 0u64, 0u64);
+    unsafe {
+        match engine {
+            "cualloc" => cualloc_test_statistics(&mut arenas, &mut reserved, &mut committed),
+            _ => {}
+        }
+    }
+    (arenas, reserved, committed)
+}
+fn rss_kib(field: &str) -> usize {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap();
+    status
+        .lines()
+        .find(|l| l.starts_with(field))
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap()
+}
 
 fn pattern(slot: usize, byte: usize) -> u8 {
     slot.to_le_bytes()[byte % std::mem::size_of::<usize>()] ^ (byte / 8) as u8
@@ -65,17 +103,22 @@ fn main() {
     let workload = &args[2];
     let iterations: usize = args[3].parse().unwrap();
     assert!(iterations >= 1000);
-    let (allocate, release): (Allocate, Release) = if engine == "cubit-slabs" {
-        unsafe {
-            ca_init();
+    let ours = matches!(engine.as_str(), "cubit-slabs" | "cualloc");
+    let (allocate, release): (Allocate, Release) = match engine.as_str() {
+        "cubit-slabs" => {
+            unsafe {
+                ca_init();
+            }
+            (ca_malloc, ca_free)
         }
-        (ca_malloc, ca_free)
-    } else {
-        (malloc, free)
+        "cualloc" => (cualloc_malloc, cualloc_release),
+        _ => (malloc, free),
     };
 
     let backend = if engine == "cubit-slabs" {
         "SPARK-slab-prototype".to_string()
+    } else if ours {
+        format!("CuAlloc-{engine}")
     } else {
         let mut info = DlInfo {
             filename: std::ptr::null(),
@@ -95,11 +138,14 @@ fn main() {
         "jemalloc" => "jemalloc",
         "tcmalloc-gperftools" => "tcmalloc",
         "cubit-slabs" => "SPARK",
+        "cualloc" => "CuAlloc",
         _ => panic!("engine"),
     };
     assert!(backend.contains(expected), "wrong backend: {backend}");
     let usable: Usable = if engine == "cubit-slabs" {
         ca_usable_size
+    } else if engine == "cualloc" {
+        cualloc_usable
     } else {
         unsafe {
             let symbol = dlsym(std::ptr::null_mut(), c"malloc_usable_size".as_ptr());
@@ -136,6 +182,8 @@ fn main() {
                     ];
                     SIZES[next(&mut seed) as usize % SIZES.len()]
                 }
+                // Page runs: CuAlloc's medium path (4 KiB .. 256 KiB).
+                "medium" => 4097 + next(&mut seed) as usize % (262144 - 4096),
                 "bimodal" => {
                     let n = next(&mut seed) as usize;
                     if n % 8 == 0 {
@@ -175,7 +223,7 @@ fn main() {
             assert!(!pointer.is_null(), "unexpected OOM");
             // malloc references may use weak alignment for tiny allocations;
             // this is not yet a Rust Layout/aligned-allocation comparison.
-            let alignment = if engine == "cubit-slabs" {
+            let alignment = if ours {
                 16
             } else {
                 1usize << size.ilog2().min(4)
@@ -261,24 +309,23 @@ fn main() {
     } else {
         (0, 0)
     }; // Zero means not measured, not absence of overhead.
+    let (_, live_reserved, live_committed) = cualloc_statistics(engine);
     for pointer in pointers {
         unsafe {
             release(pointer);
         }
     }
+    // Retained memory: what stays with the process once every block is free
+    // (resident pages, and CuAlloc's own reserved/backed accounts).
+    let rss_after_free = rss_kib("VmRSS:");
+    let (arenas_after_free, reserved_after_free, committed_after_free) = cualloc_statistics(engine);
     samples.sort_unstable();
     let p50 = samples[samples.len() / 2];
     let p99 = samples[samples.len() * 99 / 100];
-    let status = std::fs::read_to_string("/proc/self/status").unwrap();
-    let peak_kib = status
-        .lines()
-        .find(|l| l.starts_with("VmHWM:"))
-        .unwrap()
-        .split_whitespace()
-        .nth(1)
-        .unwrap();
+    let p999 = samples[samples.len() * 999 / 1000];
+    let peak_kib = rss_kib("VmHWM:");
     println!(
-        "{{\"engine\":\"{engine}\",\"workload\":\"{workload}\",\"iterations\":{iterations},\"elapsed_ns\":{elapsed},\"ns_per_pair\":{},\"sampled_p50_ns\":{p50},\"sampled_p99_ns\":{p99},\"timer_only_p50_ns\":{timer_p50},\"process_peak_rss_kib\":{peak_kib},\"live_requested_bytes\":{live_requested},\"live_usable_bytes\":{live_usable},\"prototype_reserved_bytes\":{reserved},\"prototype_metadata_bytes\":{metadata},\"backend\":\"{backend}\"}}",
+        "{{\"engine\":\"{engine}\",\"workload\":\"{workload}\",\"iterations\":{iterations},\"elapsed_ns\":{elapsed},\"ns_per_pair\":{},\"sampled_p50_ns\":{p50},\"sampled_p99_ns\":{p99},\"sampled_p999_ns\":{p999},\"rss_after_free_kib\":{rss_after_free},\"cualloc_live_reserved_bytes\":{live_reserved},\"cualloc_live_committed_bytes\":{live_committed},\"cualloc_arenas_after_free\":{arenas_after_free},\"cualloc_reserved_after_free_bytes\":{reserved_after_free},\"cualloc_committed_after_free_bytes\":{committed_after_free},\"timer_only_p50_ns\":{timer_p50},\"process_peak_rss_kib\":{peak_kib},\"live_requested_bytes\":{live_requested},\"live_usable_bytes\":{live_usable},\"prototype_reserved_bytes\":{reserved},\"prototype_metadata_bytes\":{metadata},\"backend\":\"{backend}\"}}",
         elapsed as f64 / iterations as f64
     );
 }

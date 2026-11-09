@@ -1,0 +1,5 @@
+# CuAlloc benchmark on CuBit (tests/userspace-allocator/cubit): no
+# authority. It reports through the debug log.
+(Executable_Manifest
+  identity => "com.cubit.cualloc-bench"
+  version => "0.1.0")

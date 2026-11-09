@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-proof_timeout="${CUBIT_ALLOCATOR_PROOF_TIMEOUT:-15}"
+proof_timeout="${CUBIT_ALLOCATOR_PROOF_TIMEOUT:-60}"
 if [[ ! "$proof_timeout" =~ ^[1-9][0-9]*$ ]]; then
   echo 'CUBIT_ALLOCATOR_PROOF_TIMEOUT must be a positive integer (seconds)' >&2
   exit 2

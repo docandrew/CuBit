@@ -138,21 +138,25 @@ package body Process.Owned_Memory is
       end if;
    end Retire;
 
-   function Find_Base (PID : ProcessID; Bytes : Unsigned_64) return Unsigned_64 is
-      Candidate : Unsigned_64 := Owned_Memory_Layout.First;
+   -- The lowest free range of Bytes in the aperture whose base is a
+   -- multiple of Alignment (a page multiple), or 0.
+   function Find_Base (PID : ProcessID; Bytes, Alignment : Unsigned_64) return Unsigned_64 is
+      use Owned_Reservation_Policy;
+      Candidate : Unsigned_64 := Align_Up (Owned_Memory_Layout.First, Alignment);
    begin
       for I of Records.Iterate (Tables(PID)'Access) loop
          declare
             Item : Entry_Record renames Entries(PID, I).Value.all;
          begin
-            if Candidate > Owned_Memory_Layout.Limit - Bytes then return 0; end if;
+            if Candidate = 0 or else Candidate > Owned_Memory_Layout.Limit - Bytes then return 0; end if;
             if Candidate <= Item.Base and then Bytes <= Item.Base - Candidate then
                return Candidate;
             end if;
-            Candidate := Unsigned_64'Max (Candidate, Item.Base + Item.Bytes);
+            Candidate := Align_Up (Unsigned_64'Max (Candidate, Item.Base + Item.Bytes), Alignment);
          end;
       end loop;
-      return (if Candidate <= Owned_Memory_Layout.Limit - Bytes then Candidate else 0);
+      return (if Candidate /= 0 and then Candidate <= Owned_Memory_Layout.Limit - Bytes then Candidate
+              else 0);
    end Find_Base;
 
    procedure Allocate (PID : ProcessID; Bytes : Unsigned_64; Base : out Unsigned_64) is
@@ -171,7 +175,7 @@ package body Process.Owned_Memory is
       if not proctab(PID).admitted then
          unlockAddressSpace (PID); Unlock; return;
       end if;
-      Candidate := Find_Base (PID, Size);
+      Candidate := Find_Base (PID, Size, Owned_Reservation_Policy.Page_Bytes);
       Capacity := Heap_Admission.Expanded_Capacity
         (Positive'Max (1, proctab(PID).frames.length),
          Natural (Size / 4096) + Natural (proctab(PID).stackSize / 4096) +
@@ -202,17 +206,19 @@ package body Process.Owned_Memory is
       Unlock;
    end Allocate;
 
-   procedure Reserve (PID : ProcessID; Bytes : Unsigned_64; Base : out Unsigned_64) is
+   procedure Reserve (PID : ProcessID; Bytes, Alignment : Unsigned_64; Base : out Unsigned_64) is
       Candidate : Unsigned_64;
       Index : Records.Id;
    begin
       Base := 0;
       if PID = NO_PROCESS or else not Owned_Reservation_Policy.Valid_Capacity (Bytes)
+        or else not Owned_Reservation_Policy.Valid_Alignment (Alignment)
       then return; end if;
       Lock;
       lockAddressSpace (PID);
       if proctab(PID).admitted then
-         Candidate := Find_Base (PID, Bytes);
+         Candidate := Find_Base
+           (PID, Bytes, Owned_Reservation_Policy.Effective_Alignment (Alignment));
          if Candidate /= 0 then
             Records.Insert (Tables(PID), Candidate,
               (Status => Live, Kind => Reservation, Owner => PID,

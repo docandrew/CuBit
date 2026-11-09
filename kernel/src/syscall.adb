@@ -359,10 +359,11 @@ package body Syscall is
                 Process.Owned_Memory.Allocate
                   (Process.processOf (percpu.currentThread), arg0, retval);
 
-            -- Page-aligned virtual capacity only; zero means rejected.
+            -- Page-aligned virtual capacity only, arg1 the base's alignment
+            -- (0: a page); zero means rejected.
             when SYSCALL_RESERVE_OWNED_MEMORY =>
                 Process.Owned_Memory.Reserve
-                  (Process.processOf (percpu.currentThread), arg0, retval);
+                  (Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             -- Exact reservation base, expected prefix offset, bounded bytes.
             when SYSCALL_COMMIT_OWNED_MEMORY_PREFIX =>

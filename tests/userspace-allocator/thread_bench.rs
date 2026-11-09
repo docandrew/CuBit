@@ -1,4 +1,5 @@
-//! Reference-only concurrency experiments. The SPARK pilot is single-owner.
+//! Concurrency experiments: the reference allocators, and CuAlloc (the
+//! process heap: one spin lock today) through its C entry points.
 use std::{
     ffi::{CStr, c_char, c_void},
     sync::{Arc, Barrier, mpsc},
@@ -9,6 +10,28 @@ unsafe extern "C" {
     fn free(p: *mut u8);
     fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
     fn dladdr(address: *const c_void, info: *mut DlInfo) -> i32;
+    fn cualloc_allocate(bytes: u64, alignment: u64) -> u64;
+    fn cualloc_free(item: u64);
+}
+type Allocate = unsafe extern "C" fn(usize) -> *mut u8;
+type Release = unsafe extern "C" fn(*mut u8);
+unsafe extern "C" fn cualloc_malloc(size: usize) -> *mut u8 {
+    unsafe { cualloc_allocate(size as u64, 16) as *mut u8 }
+}
+unsafe extern "C" fn cualloc_release(pointer: *mut u8) {
+    unsafe { cualloc_free(pointer as u64) }
+}
+fn rss_kib(field: &str) -> usize {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap();
+    status
+        .lines()
+        .find(|l| l.starts_with(field))
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap()
 }
 #[repr(C)]
 struct DlInfo {
@@ -31,8 +54,13 @@ fn main() {
     let rounds: usize = args[4].parse().unwrap();
     assert!(matches!(
         engine.as_str(),
-        "glibc" | "mimalloc" | "jemalloc" | "tcmalloc-gperftools"
+        "glibc" | "mimalloc" | "jemalloc" | "tcmalloc-gperftools" | "cualloc"
     ));
+    let (allocate, release): (Allocate, Release) = if engine == "cualloc" {
+        (cualloc_malloc, cualloc_release)
+    } else {
+        (malloc, free)
+    };
     assert!(matches!(work.as_str(), "local" | "remote") && threads > 0 && rounds > 0);
     let backend = unsafe {
         let mut info = DlInfo {
@@ -45,8 +73,10 @@ fn main() {
         assert!(!sym.is_null() && dladdr(sym, &mut info) != 0);
         CStr::from_ptr(info.filename).to_str().unwrap().to_owned()
     };
+    // cualloc runs without LD_PRELOAD: malloc stays glibc's (Rust's own
+    // channels and vectors use it), the measured calls go to CuAlloc.
     let expected = match engine.as_str() {
-        "glibc" => "libc.so",
+        "glibc" | "cualloc" => "libc.so",
         "tcmalloc-gperftools" => "tcmalloc",
         other => other,
     };
@@ -63,6 +93,7 @@ fn main() {
         receivers.push(Some(r));
     }
     let mut workers = Vec::new();
+    let samples_out = Arc::new(std::sync::Mutex::new(Vec::<u32>::new()));
     for id in 0..threads {
         let sender = senders[(id + 1) % threads].clone();
         let receiver = receivers[id].take().unwrap();
@@ -70,7 +101,12 @@ fn main() {
         let start = start.clone();
         let done = done.clone();
         let remote = work == "remote";
+        let samples_out = samples_out.clone();
         workers.push(std::thread::spawn(move || {
+            // Every 64th allocation also times one extra allocate+free pair
+            // alone (the latency tail, lock waits included).
+            let mut samples: Vec<u32> = Vec::with_capacity(rounds * BATCH / 64 + 1);
+            let mut counter = 0usize;
             let mut seed = 0x123456789abcdefu64 + id as u64;
             let sizes: Vec<usize> = (0..rounds * BATCH)
                 .map(|_| 1 + next(&mut seed) % 4096)
@@ -79,14 +115,14 @@ fn main() {
             // Warm this thread's allocator before synchronization/timing.
             for size in sizes.iter().take(BATCH) {
                 unsafe {
-                    let p = malloc(*size);
+                    let p = allocate(*size);
                     assert!(!p.is_null());
                     batch.push((p as usize, *size));
                 }
             }
             for (p, _) in batch.drain(..) {
                 unsafe {
-                    free(p as *mut u8);
+                    release(p as *mut u8);
                 }
             }
             ready.wait();
@@ -94,7 +130,14 @@ fn main() {
             for sizes in sizes.chunks_exact(BATCH) {
                 for &size in sizes {
                     unsafe {
-                        let p = malloc(size);
+                        counter += 1;
+                        if counter % 64 == 0 {
+                            let t = Instant::now();
+                            let q = allocate(size);
+                            release(q);
+                            samples.push(t.elapsed().as_nanos().min(u32::MAX as u128) as u32);
+                        }
+                        let p = allocate(size);
                         assert!(!p.is_null());
                         p.write_volatile(0x5a);
                         p.add(size - 1).write_volatile(0x5a);
@@ -112,11 +155,12 @@ fn main() {
                         let p = p as *mut u8;
                         assert_eq!(p.read_volatile(), 0x5a);
                         assert_eq!(p.add(size - 1).read_volatile(), 0x5a);
-                        free(p);
+                        release(p);
                     }
                 }
             }
             done.wait();
+            samples_out.lock().unwrap().extend_from_slice(&samples);
         }));
     }
     ready.wait();
@@ -128,8 +172,15 @@ fn main() {
         worker.join().unwrap();
     }
     let pairs = threads * rounds * BATCH;
+    let mut samples = samples_out.lock().unwrap().clone();
+    samples.sort_unstable();
+    let quantile = |q: usize| samples[(samples.len() * q / 1000).min(samples.len() - 1)];
+    let (p50, p99, p999) = (quantile(500), quantile(990), quantile(999));
+    let max = *samples.last().unwrap();
+    let peak = rss_kib("VmHWM:");
+    let after = rss_kib("VmRSS:");
     println!(
-        "{{\"engine\":\"{engine}\",\"workload\":\"{work}\",\"threads\":{threads},\"pairs\":{pairs},\"elapsed_ns\":{elapsed},\"ns_per_pair\":{},\"backend\":\"{backend}\"}}",
+        "{{\"engine\":\"{engine}\",\"workload\":\"{work}\",\"threads\":{threads},\"pairs\":{pairs},\"elapsed_ns\":{elapsed},\"ns_per_pair\":{},\"pair_p50_ns\":{p50},\"pair_p99_ns\":{p99},\"pair_p999_ns\":{p999},\"pair_max_ns\":{max},\"peak_rss_kib\":{peak},\"rss_after_kib\":{after},\"backend\":\"{backend}\"}}",
         elapsed as f64 / pairs as f64
     );
 }

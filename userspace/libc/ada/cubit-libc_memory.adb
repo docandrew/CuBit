@@ -2,6 +2,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuAlloc_Native;
+with CuAlloc_Requests;
 with CuBit.Libc_ABI;
 with CuBit.Libc_Imports;
 
@@ -9,8 +10,9 @@ package body CuBit.Libc_Memory is
    use type Interfaces.C.size_t;
    use type System.Address;
 
-   --  malloc's alignment: max_align_t.
-   FUNDAMENTAL_ALIGNMENT : constant := 16;
+   package Requests renames CuAlloc_Requests;
+   FUNDAMENTAL_ALIGNMENT : constant := Requests.Fundamental_Alignment;
+   pragma Compile_Time_Error (size_t'Size /= Unsigned_64'Size, "size_t converts to Unsigned_64 exactly");
 
    function To_Address (Value : Unsigned_64) return System.Address is
      (System.Storage_Elements.To_Address (Integer_Address (Value)));
@@ -27,9 +29,6 @@ package body CuBit.Libc_Memory is
       return To_Address (Item);
    end Result;
 
-   function Power_Of_Two (Value : size_t) return Boolean is
-     (Value /= 0 and then (Value and (Value - 1)) = 0);
-
    function malloc (Bytes : size_t) return System.Address is
      (Result (CuAlloc_Native.Allocate (Unsigned_64 (Bytes), FUNDAMENTAL_ALIGNMENT)));
 
@@ -40,12 +39,15 @@ package body CuBit.Libc_Memory is
       end if;
    end free;
 
+   --  The arithmetic is CuAlloc_Requests' (proved): the product only when
+   --  it fits, else ENOMEM.
    function calloc (Count, Bytes : size_t) return System.Address is
    begin
-      if Bytes /= 0 and then Count > size_t'Last / Bytes then
+      if not Requests.Product_Fits (Unsigned_64 (Count), Unsigned_64 (Bytes)) then
          return Result (0);
       end if;
-      return Result (CuAlloc_Native.Allocate_Zeroed (Unsigned_64 (Count * Bytes), FUNDAMENTAL_ALIGNMENT));
+      return Result (CuAlloc_Native.Allocate_Zeroed
+        (Requests.Product (Unsigned_64 (Count), Unsigned_64 (Bytes)), FUNDAMENTAL_ALIGNMENT));
    end calloc;
 
    function realloc (Item : System.Address; Bytes : size_t) return System.Address is
@@ -53,20 +55,20 @@ package body CuBit.Libc_Memory is
 
    function reallocarray (Item : System.Address; Count, Bytes : size_t) return System.Address is
    begin
-      if Bytes /= 0 and then Count > size_t'Last / Bytes then
+      if not Requests.Product_Fits (Unsigned_64 (Count), Unsigned_64 (Bytes)) then
          return Result (0);
       end if;
-      return realloc (Item, Count * Bytes);
+      return realloc (Item, size_t (Requests.Product (Unsigned_64 (Count), Unsigned_64 (Bytes))));
    end reallocarray;
 
    function aligned_alloc (Alignment, Bytes : size_t) return System.Address is
    begin
-      if not Power_Of_Two (Alignment) then
+      if not Requests.Power_Of_Two (Unsigned_64 (Alignment)) then
          CuBit.Libc_Imports.Errno_Location.all := CuBit.Libc_ABI.EINVAL;
          return System.Null_Address;
       end if;
       return Result (CuAlloc_Native.Allocate
-        (Unsigned_64 (Bytes), Unsigned_64'Max (Unsigned_64 (Alignment), FUNDAMENTAL_ALIGNMENT)));
+        (Unsigned_64 (Bytes), Requests.Request_Alignment (Unsigned_64 (Alignment))));
    end aligned_alloc;
 
    function memalign (Alignment, Bytes : size_t) return System.Address is
@@ -76,11 +78,10 @@ package body CuBit.Libc_Memory is
       Target : System.Address with Import, Address => Result;
       Item : Unsigned_64;
    begin
-      if not Power_Of_Two (Alignment) or else Alignment mod (System.Address'Size / 8) /= 0 then
+      if not Requests.Posix_Alignment (Unsigned_64 (Alignment)) then
          return CuBit.Libc_ABI.EINVAL;
       end if;
-      Item := CuAlloc_Native.Allocate
-        (Unsigned_64 (Bytes), Unsigned_64'Max (Unsigned_64 (Alignment), FUNDAMENTAL_ALIGNMENT));
+      Item := CuAlloc_Native.Allocate (Unsigned_64 (Bytes), Requests.Request_Alignment (Unsigned_64 (Alignment)));
       if Item = 0 then
          return CuBit.Libc_ABI.ENOMEM;
       end if;

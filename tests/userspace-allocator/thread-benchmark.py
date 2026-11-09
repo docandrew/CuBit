@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Baselines only: never race the explicitly single-owner SPARK prototype."""
+"""References and CuAlloc (a heap per thread) under threads. The old
+single-owner slab prototype (cubit-slabs) is never raced."""
 import argparse
 import datetime
 import hashlib
@@ -25,11 +26,11 @@ for cpu in allowed:
     topology = pathlib.Path(f'/sys/devices/system/cpu/cpu{cpu}/topology')
     identity = tuple((topology / name).read_text().strip() for name in ['physical_package_id', 'core_id'])
     cores.setdefault(identity, cpu)
-cpus = list(cores.values())[:4]
-counts = [n for n in [1, 2, 4] if n <= len(cpus)]
+cpus = list(cores.values())[:8]
+counts = [n for n in [1, 2, 4, 8] if n <= len(cpus)]
 libraries = {'glibc': None, 'mimalloc': os.environ['CUBIT_BENCH_MIMALLOC'],
              'jemalloc': os.environ['CUBIT_BENCH_JEMALLOC'],
-             'tcmalloc-gperftools': os.environ['CUBIT_BENCH_TCMALLOC']}
+             'tcmalloc-gperftools': os.environ['CUBIT_BENCH_TCMALLOC'], 'cualloc': None}
 jobs = [(e, w, n, rep) for e in libraries for w in ['local', 'remote']
         for n in counts if w != 'remote' or n > 1 for rep in range(args.repetitions)]
 random.Random(43).shuffle(jobs)
@@ -52,18 +53,20 @@ args.output.mkdir(parents=True, exist_ok=True)
     'load_average': os.getloadavg(),
     'binary_sha256': hashlib.sha256((ROOT / 'tests/userspace-allocator/build/thread_bench').read_bytes()).hexdigest(),
     'source_sha256': hashlib.sha256((ROOT / 'tests/userspace-allocator/thread_bench.rs').read_bytes()).hexdigest(),
-    'note': 'Reference-only; whole group restricted to physical cores, individual workers not pinned. Remote includes channel transfer and synchronization.',
+    'note': 'Whole group restricted to physical cores, individual workers not pinned. Remote includes channel transfer and synchronization. cualloc: CuAlloc, each thread its own heap (hosted, Linux provider), called directly; Rust channels keep glibc malloc.',
     'results': results}, indent=2) + '\n')
-lines = ['# Allocator concurrency references', '',
-         'Throughput experiment, NOT individual operation latency. Remote includes channel costs.',
-         'The SPARK pilot does not yet support shared heaps or remote free and is deliberately excluded.', '',
-         '| Workload | Threads | Allocator | median ns / pair (aggregate throughput) |',
-         '|---|---:|---|---:|']
+lines = ['# Allocator concurrency', '',
+         'ns / pair: elapsed wall time / all pairs (aggregate throughput cost). Remote includes channel costs.',
+         'Pair p50/p99/p99.9: one extra allocate+free timed alone every 64th allocation, all threads pooled (medians across repetitions).', '',
+         '| Workload | Threads | Allocator | ns / pair | pair p50 ns | pair p99 ns | pair p99.9 ns | peak RSS KiB |',
+         '|---|---:|---|---:|---:|---:|---:|---:|']
 for work in ['local', 'remote']:
     for count in counts:
         if work == 'remote' and count == 1: continue
         for engine in libraries:
-            rows = [r['ns_per_pair'] for r in results if r['engine'] == engine and r['workload'] == work and r['threads'] == count]
-            lines.append(f'| {work} | {count} | {engine} | {statistics.median(rows):.1f} |')
+            rows = [r for r in results if r['engine'] == engine and r['workload'] == work and r['threads'] == count]
+            vals = [statistics.median(r[k] for r in rows)
+                    for k in ['ns_per_pair', 'pair_p50_ns', 'pair_p99_ns', 'pair_p999_ns', 'peak_rss_kib']]
+            lines.append(f'| {work} | {count} | {engine} | ' + ' | '.join(f'{v:.1f}' for v in vals) + ' |')
 (args.output / 'summary.md').write_text('\n'.join(lines) + '\n')
 print('\n'.join(lines))

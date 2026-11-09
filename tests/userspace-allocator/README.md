@@ -153,7 +153,9 @@ nix develop -c bash tests/userspace-allocator/benchmark.sh \
   --output tests/performance/results/allocator-final
 ```
 
-References are glibc malloc, mimalloc, jemalloc and **gperftools TCMalloc**.
+Engines: `cubit-slabs` (the old single-arena slab prototype, up to 4 KiB only),
+`cualloc` (the process heap: each thread its own heap, no lock on the
+small/medium paths). References are glibc malloc, mimalloc, jemalloc and **gperftools TCMalloc**.
 The latter is not Google's newer per-CPU TCMalloc implementation. Nix pins their
 versions; references are loaded only in disposable Linux-hosted processes.
 `dladdr` verifies both `malloc` and `malloc_usable_size` resolve to the intended
@@ -195,23 +197,43 @@ excludes free pages, allocator metadata and retained caches. Process peak RSS
 includes the trace, harness, libraries and allocator; it is not heap-only RSS.
 The fixed backing arena reservation and metadata size are reported separately.
 
-## Reference concurrency baseline
+## Concurrency baseline
 
 ```sh
 nix develop -c bash tests/userspace-allocator/thread-benchmark.sh \
   --rounds 256 --repetitions 5
 ```
 
-Uses 1/2/4 threads where available, restricted as a group to different physical
+Uses 1/2/4/8 threads where available, restricted as a group to different physical
 cores (not individually pinned). Each round handles batches of 512 allocations
 with sizes 1–4096. Local mode allocates and frees on the same worker; remote mode
 passes ownership around a channel ring while the allocating workers remain
-alive. Remote results include channel transfer and synchronization. The metric
-is elapsed wall time divided by total pairs across workers: **aggregate
-throughput cost**, not individual operation latency.
+alive. Remote results include channel transfer and synchronization. ns / pair is
+elapsed wall time divided by total pairs across workers (**aggregate throughput
+cost**); every 64th allocation also times one extra allocate+free pair alone,
+pooled across threads for p50/p99/p99.9 (lock waits included).
 
-The prototype is intentionally excluded: its single-owner state is not safe to
-race. No misleading global mutex wrapper is compared to production thread heaps.
+`cualloc` is CuAlloc behind its one spin lock (the hosted heap, called through
+its C entry points; Rust's own channels keep glibc's malloc). The old
+single-owner slab prototype (`cubit-slabs`) is never raced.
+
+## CuAlloc scaling costs
+
+```sh
+nix develop -c bash tests/userspace-allocator/scaling-benchmark.sh --cpu 6
+```
+
+`routing N`: 64-byte churn with N huge blocks live (N directory records; CuAlloc
+routes each free by binary search). `miss K`: 4096-byte churn over K full
+arenas (CuAlloc scans arenas from the first on each miss). Synthetic worst
+cases for the costs ALLOC-001 step 3 removes, not general claims.
+
+## CuAlloc on CuBit
+
+`cubit/build-cubit.sh`, then `tests/headless/run.sh --test bench-cualloc --accel
+kvm`: the same traces through the libc malloc family, single-threaded and with
+POSIX threads (local and remote). Throughput, sampled latency and rounding waste;
+no retained-memory figure yet.
 
 ## Remaining coverage
 

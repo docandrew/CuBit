@@ -29,7 +29,7 @@ if cpu not in allowed_cpus:
 os.sched_setaffinity(0, {cpu})
 args.output.mkdir(parents=True, exist_ok=True)
 libraries = {
-    'glibc': None, 'cubit-slabs': None,
+    'glibc': None, 'cubit-slabs': None, 'cualloc': None,
     'mimalloc': os.environ['CUBIT_BENCH_MIMALLOC'],
     'jemalloc': os.environ['CUBIT_BENCH_JEMALLOC'],
     'tcmalloc-gperftools': os.environ['CUBIT_BENCH_TCMALLOC'],
@@ -40,9 +40,12 @@ if args.baseline:
 for library in libraries.values():
     if library and not pathlib.Path(library).is_file():
         raise SystemExit(f'Missing reference library: {library}')
-workloads = ['fixed64', 'fixed256', 'small', 'mixed', 'boundary', 'bimodal']
+workloads = ['fixed64', 'fixed256', 'small', 'mixed', 'boundary', 'bimodal', 'medium']
+# The old slab prototype serves only up to 4 KiB.
+def runs(engine, work):
+    return not (engine in ('cubit-slabs', 'cubit-baseline') and work == 'medium')
 jobs = [(engine, work, rep) for engine in libraries
-        for work in workloads
+        for work in workloads if runs(engine, work)
         for rep in range(args.repetitions)]
 random.Random(42).shuffle(jobs)
 results = []
@@ -72,7 +75,8 @@ metadata = {'timestamp_utc': datetime.datetime.now(datetime.timezone.utc).isofor
             'load_average': os.getloadavg(), 'libraries': libraries,
             'git_revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
             'source_sha256': {str(f.relative_to(ROOT)): hashlib.sha256(f.read_bytes()).hexdigest()
-                              for directory in ['userspace/allocator/src', 'userspace/allocator/host', 'tests/userspace-allocator']
+                              for directory in ['userspace/allocator/src', 'userspace/allocator/host',
+                                                'userspace/allocator/process', 'tests/userspace-allocator']
                               for f in sorted((ROOT / directory).iterdir()) if f.is_file()},
             'binary_sha256': hashlib.sha256((ROOT / 'tests/userspace-allocator/build/bench').read_bytes()).hexdigest(),
             'baseline': ({'path': str(args.baseline),
@@ -83,25 +87,31 @@ metadata = {'timestamp_utc': datetime.datetime.now(datetime.timezone.utc).isofor
             'glibc': subprocess.check_output(['getconf', 'GNU_LIBC_VERSION'], text=True).strip(),
             'rustc': subprocess.check_output(['rustc', '--version'], text=True).strip(),
             'gnat': subprocess.check_output(['alr', 'exec', '--', 'gnatls', '--version'], cwd=ROOT / 'kernel', text=True).splitlines()[0],
-            'note': 'Working-tree prototype; single owner; pair=free+allocate+two byte touches. Shared 16MiB arena with empty-slab reassignment, not a production heap.'}
+            'note': 'pair=free+allocate+two byte touches. cubit-slabs: the old single-arena slab prototype. cualloc: the process heap (CuAlloc, each thread its own heap, Linux provider). References via LD_PRELOAD.'}
 (args.output / 'results.json').write_text(json.dumps({'metadata': metadata, 'results': results}, indent=2) + '\n')
-lines = ['# Hosted allocator pilot', '',
-         'Medians across isolated runs. Latency samples include timer overhead. RSS is whole-process peak, not fragmentation.', '',
-         '| Workload | Allocator | ns / pair | sampled p50 ns | sampled p99 ns | peak RSS KiB | live rounding overhead % |',
-         '|---|---|---:|---:|---:|---:|---:|']
+lines = ['# Hosted allocator comparison', '',
+         'Medians across isolated runs. Latency samples include timer overhead. RSS is whole-process, not fragmentation.',
+         'RSS after free: resident KiB once every block is freed (retained memory, whole process).',
+         'CuAlloc backed after free: bytes the heap keeps committed once everything is freed (its own account).', '',
+         '| Workload | Allocator | ns / pair | sampled p50 ns | sampled p99 ns | sampled p99.9 ns | peak RSS KiB | RSS after free KiB | CuAlloc backed after free KiB | live rounding overhead % |',
+         '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|']
 for work in workloads:
     for engine in libraries:
+        if not runs(engine, work):
+            continue
         rows = [r for r in results if r['engine'] == engine and r['workload'] == work]
         vals = [statistics.median(r[key] for r in rows) for key in
-                ['ns_per_pair', 'sampled_p50_ns', 'sampled_p99_ns', 'process_peak_rss_kib']]
+                ['ns_per_pair', 'sampled_p50_ns', 'sampled_p99_ns', 'sampled_p999_ns', 'process_peak_rss_kib',
+                 'rss_after_free_kib']]
+        vals.append(statistics.median(r['cualloc_committed_after_free_bytes'] / 1024 for r in rows))
         vals.append(statistics.median(100 * (r['live_usable_bytes'] / r['live_requested_bytes'] - 1) for r in rows))
         lines.append(f'| {work} | {engine} | ' + ' | '.join(f'{v:.1f}' for v in vals) + ' |')
 lines += ['', '## Jemalloc target', '',
-          'Current CuBit median / jemalloc median on each trace; target <= 1.10. Not an overall allocator ranking.', '',
+          'CuAlloc median / jemalloc median on each trace; target <= 1.10. Not an overall allocator ranking.', '',
           '| Workload | Ratio | Within 10% |', '|---|---:|---|']
 for work in workloads:
     ours = statistics.median(r['ns_per_pair'] for r in results
-                             if r['engine'] == 'cubit-slabs' and r['workload'] == work)
+                             if r['engine'] == 'cualloc' and r['workload'] == work)
     reference = statistics.median(r['ns_per_pair'] for r in results
                                   if r['engine'] == 'jemalloc' and r['workload'] == work)
     ratio = ours / reference

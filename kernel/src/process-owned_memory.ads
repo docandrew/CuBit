@@ -17,7 +17,9 @@ package Process.Owned_Memory is
    -- CPU-only growable storage: reserve page-aligned virtual capacity without
    -- RAM, then commit bounded prefixes at an exact expected offset. Committed
    -- addresses never move. No GPU mapping or DMA authority is created.
-   procedure Reserve (PID : ProcessID; Bytes : Unsigned_64; Base : out Unsigned_64);
+   -- Alignment: the base's (Owned_Reservation_Policy.Valid_Alignment; 0 is
+   -- a page); an invalid one is refused.
+   procedure Reserve (PID : ProcessID; Bytes, Alignment : Unsigned_64; Base : out Unsigned_64);
    procedure Commit_Prefix (PID : ProcessID; Base, Offset, Bytes : Unsigned_64;
                             Success : out Boolean);
    -- Retire all committed chunks before releasing the address reservation.

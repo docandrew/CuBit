@@ -1,62 +1,40 @@
 pragma Ada_2022;
-with System;
 with CuAlloc;
 with Linux_Provider;
+with Thread_Exit_Key;
 
 package body CuAlloc_Host is
+   --  The heap, as on CuBit (CuAlloc_Native); a thread that takes a heap
+   --  arms the thread-exit destructor.
    package Heap is new CuAlloc
      (Linux_Provider.Reserve, Linux_Provider.Commit, Linux_Provider.Release,
-      Linux_Provider.Maximum_Commit);
-
-   Locked : aliased Unsigned_8 := 0;
-   function Exchange (Ptr : System.Address; Value : Unsigned_8; Model : Integer) return Unsigned_8
-     with Import, Convention => Intrinsic, External_Name => "__atomic_exchange_1";
-   procedure Store (Ptr : System.Address; Value : Unsigned_8; Model : Integer)
-     with Import, Convention => Intrinsic, External_Name => "__atomic_store_1";
-   ACQUIRE : constant := 2;
-   RELEASE_ORDER : constant := 3;
-   procedure Lock is
-   begin
-      while Exchange (Locked'Address, 1, ACQUIRE) /= 0 loop
-         null;
-      end loop;
-   end Lock;
-   procedure Unlock is
-   begin
-      Store (Locked'Address, 0, RELEASE_ORDER);
-   end Unlock;
+      Linux_Provider.Maximum_Commit, Thread_Exit_Key.Arm);
 
    function Allocate (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
-      Item : Unsigned_64;
-   begin
-      Lock; Item := Heap.Allocate (Bytes, Alignment); Unlock;
-      return Item;
-   end Allocate;
+     (Heap.Allocate (Bytes, Alignment));
    function Allocate_Zeroed (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
-      Item : Unsigned_64;
-   begin
-      Lock; Item := Heap.Allocate_Zeroed (Bytes, Alignment); Unlock;
-      return Item;
-   end Allocate_Zeroed;
+     (Heap.Allocate_Zeroed (Bytes, Alignment));
    procedure Free (Item : Unsigned_64) is
    begin
-      Lock; Heap.Free (Item); Unlock;
+      Heap.Free (Item);
    end Free;
-   function Usable_Size (Item : Unsigned_64) return Unsigned_64 is
-      Bytes : Unsigned_64;
+   procedure Free_Sized (Item, Bytes, Alignment : Unsigned_64) is
    begin
-      Lock; Bytes := Heap.Usable_Size (Item); Unlock;
-      return Bytes;
-   end Usable_Size;
-   function Reallocate (Item, Bytes : Unsigned_64) return Unsigned_64 is
-      Moved : Unsigned_64;
+      Heap.Free_Sized (Item, Bytes, Alignment);
+   end Free_Sized;
+   function Usable_Size (Item : Unsigned_64) return Unsigned_64 is (Heap.Usable_Size (Item));
+   function Reallocate (Item, Bytes : Unsigned_64) return Unsigned_64 is (Heap.Reallocate (Item, Bytes));
+   procedure Thread_Exit is
    begin
-      Lock; Moved := Heap.Reallocate (Item, Bytes); Unlock;
-      return Moved;
-   end Reallocate;
+      Heap.Thread_Exit;
+   end Thread_Exit;
    procedure Set_Quota (Bytes : Unsigned_64) is
    begin
-      Lock; Linux_Provider.Quota := Bytes; Unlock;
+      Linux_Provider.Set_Quota (Bytes);
    end Set_Quota;
    function Committed return Unsigned_64 is (Linux_Provider.Committed);
+   procedure Statistics (Arenas, Reserved, Committed : out Unsigned_64) is
+   begin
+      Heap.Statistics (Arenas, Reserved, Committed);
+   end Statistics;
 end CuAlloc_Host;

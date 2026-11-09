@@ -57,7 +57,9 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Sleep_Until_Monotonic_Microsecond : constant System_Call := 119;
    --  Growable owned memory (kernel Process.Owned_Memory): reserve address
    --  space with no backing, back an exact prefix, give it all back. CuAlloc
-   --  grows the process heap with these.
+   --  grows the process heap with these. Reserve takes (bytes, alignment):
+   --  the base is a multiple of the alignment (0: a page; else a power of
+   --  two up to 1 GiB).
    Reserve_Owned_Memory         : constant System_Call := 123;
    Commit_Owned_Memory_Prefix   : constant System_Call := 124;
    Release_Owned_Reservation    : constant System_Call := 125;

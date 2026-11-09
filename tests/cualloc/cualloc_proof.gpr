@@ -1,0 +1,10 @@
+--  SPARK proof of CuAlloc's layer (tests/cualloc/run.sh): the heap, its
+--  lock, and the adapters' request arithmetic.
+project CuAlloc_Proof is
+   for Source_Dirs use ("proof", "../../userspace/allocator/src", "../../userspace/allocator/process");
+   for Excluded_Source_Files use ("cualloc_native.ads", "cualloc_native.adb");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end CuAlloc_Proof;

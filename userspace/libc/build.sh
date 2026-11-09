@@ -84,6 +84,7 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/ada/cubit-libc_streams.adb" \
     "$here/../allocator/src/heap_classes.adb" "$here/../allocator/src/heap_bitmap.adb" \
     "$here/../allocator/src/heap_extents.adb" "$here/../allocator/src/heap_slab_instance.ads" \
+    "$here/../allocator/process/cualloc_requests.ads" \
     "$here/../allocator/process/cualloc_native.adb" "$here/ada/cubit-libc_memory.adb" \
     "$here/ada/cubit-libc_child_outlets.adb" \
     "$here/../runtime/gnat/cubit-startup_tables.adb" "$here/../runtime/gnat/cubit-launch_envelopes.adb" \

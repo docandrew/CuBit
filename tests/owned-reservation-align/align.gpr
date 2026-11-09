@@ -1,0 +1,13 @@
+--  Owned_Reservation_Policy's alignment rules (RESERVE_OWNED_MEMORY's
+--  alignment argument): hosted checks and the SPARK proof (run.sh).
+project Align is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("align_tests.adb", "owned_reservation_policy.ads", "owned_reservation_policy.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("align_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Align;
