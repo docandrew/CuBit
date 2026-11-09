@@ -535,3 +535,23 @@ bash tests/headless/run.sh --test agent-app --accel kvm --timeout 150
 bash tests/headless/run.sh --test agent-mock --accel kvm --timeout 150
 bash tests/headless/run.sh --test llm-mock --accel kvm --timeout 150
 ```
+
+## async-ipc: displaced reply ended (BUG-004, IPC-000 rule 3)
+
+A server that receives a call and, without answering it, receives or
+polls again ends that call: the caller wakes at once with the kernel's
+`REPLY_ENDED` label instead of waiting for its deadline (with
+Wait_Forever, a hang), and an unanswered async request displaced the same
+way completes `COMPLETION_CANCELLED`. The same holds for a reply closed
+unanswered, a thread that exits owing one, and a server that exits. A
+server's own label-0 reply still arrives as that reply, never as an end. Failed before: `installReceivedWork`
+overwrote the thread's reply authority and dropped it, so the call timed
+out after 2 s (REPLY_TIMEOUT) and the async request never completed. The
+kernel names such a server on serial (`REPLY-ENDED:`). The hosted proof
+of the reply slot is `tests/reply-slots/run.sh --prove`.
+
+```sh
+make -C kernel world
+bash tests/headless/run.sh --test async-ipc --accel kvm
+bash tests/reply-slots/run.sh --prove
+```

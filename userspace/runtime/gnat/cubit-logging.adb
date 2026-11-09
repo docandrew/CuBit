@@ -8,6 +8,7 @@ with CuBit.Grant_References;
 with CuBit.Memory_Grants;
 with CuBit.Last_Words;
 package body CuBit.Logging is
+   use type CuBit.Messages.Call_Ending;
    use CuBit.Messages;
    use CuBit.Log_Protocol;
    package Logs renames CuBit.Log_Records;
@@ -202,7 +203,8 @@ package body CuBit.Logging is
    begin
       Msg.words (0) := Logs.Severity'Pos (Level);
       Tag := capCall (Target, Msg, CuBit.Messages.Wait_Forever);
-      Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
+      Result := (if CuBit.Messages.Ending_Of (Tag) /= CuBit.Messages.Call_Answered
+                 then Unavailable else Reply_Status (Msg));
       Previous := Level;
       if Result = OK then
          if Valid_Minimum (Msg) then
@@ -221,7 +223,8 @@ package body CuBit.Logging is
       Tag : MessageTag;
    begin
       Tag := capCall (Target, Msg, CuBit.Messages.Wait_Forever);
-      Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
+      Result := (if CuBit.Messages.Ending_Of (Tag) /= CuBit.Messages.Call_Answered
+                 then Unavailable else Reply_Status (Msg));
       Level := Logs.Trace;
       if Result = OK then
          if Valid_Minimum (Msg) then
@@ -312,7 +315,8 @@ package body CuBit.Logging is
       Msg.words := [CuBit.Grant_References.Encode (Loan), Unsigned_64 (Skip), 0, 0];
       Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
       CuBit.Memory_Grants.Revoke (Loan, Revoked);
-      Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
+      Result := (if CuBit.Messages.Ending_Of (Tag) /= CuBit.Messages.Call_Answered
+                 then Unavailable else Reply_Status (Msg));
       if Result /= OK then
          return;
       end if;
@@ -401,7 +405,7 @@ package body CuBit.Logging is
       end if;
       Msg.words := [Logs.Severity'Pos (Minimum), Source, Item.Link.Peer_Number, 0];
       Tag := capCall (Item.Slot, Msg, Deadline);
-      Result := (if Tag.label = 0 or else Tag.label = CuBit.Messages.REPLY_TIMEOUT
+      Result := (if CuBit.Messages.Ending_Of (Tag) /= CuBit.Messages.Call_Answered
                  then Unavailable else Reply_Status (Msg));
       --  The reply confirms the handle and the source filter applied.
       if Result = OK and then Msg.words (0) /= 0 and then
@@ -462,7 +466,8 @@ package body CuBit.Logging is
    begin
       Msg.words (0) := Item.Subscription;
       Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
-      Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
+      Result := (if CuBit.Messages.Ending_Of (Tag) /= CuBit.Messages.Call_Answered
+                 then Unavailable else Reply_Status (Msg));
       if Result = OK or Result = Denied then
          --  The channel goes too; a later Subscribe opens a fresh one.
          Item.Subscription := 0;

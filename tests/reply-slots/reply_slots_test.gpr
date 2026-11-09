@@ -1,0 +1,17 @@
+--  Hosted tests and proof for the per-thread reply slot (BUG-004).
+project Reply_Slots_Test is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use
+     ("capabilities.ads",
+      "capabilities-operations.ads", "capabilities-operations.adb",
+      "call_sequences.ads", "call_sequences.adb",
+      "ipc_labels.ads",
+      "main.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwJ");
+   end Compiler;
+end Reply_Slots_Test;

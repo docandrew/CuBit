@@ -51,8 +51,10 @@ package CuBit.Handles.IPC is
    function Answer (Item : Reply; Msg : Message) return Boolean;
 
    ---------------------------------------------------------------------------
-   --  Giving a handle up. Closing a saved reply unanswered wakes its caller
-   --  with an empty reply.
+   --  Giving a handle up. Closing a saved reply unanswered ends its
+   --  request: a synchronous caller wakes with CuBit.Messages.REPLY_ENDED
+   --  (Ending_Of gives Call_Ended), an asynchronous one completes
+   --  COMPLETION_CANCELLED.
    ---------------------------------------------------------------------------
    type Close_Result (Closed : Boolean := False) is record
       case Closed is

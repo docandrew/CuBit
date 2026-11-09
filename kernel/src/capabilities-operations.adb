@@ -34,6 +34,34 @@ is
         takeReplyCapFrom (source, second, secondTaken);
     end proveThreadReplySingleUse;
 
+    procedure replaceReplyCap (slot      : in out Capability;
+                               incoming  : in     Capability;
+                               displaced :    out Capability)
+    is
+    begin
+        if slot.capType = CAP_REPLY then
+            displaced := slot;
+        else
+            displaced := NULL_CAPABILITY;
+        end if;
+        slot := incoming;
+    end replaceReplyCap;
+
+    procedure proveSecondReceiveDisplacesFirst
+      (slot          : in out Capability;
+       first, second : in     Capability;
+       displaced     :    out Capability;
+       answered      :    out Capability)
+    is
+        ignored : Capability;
+        taken   : Boolean;
+    begin
+        replaceReplyCap (slot, first, ignored);
+        replaceReplyCap (slot, second, displaced);
+        takeReplyCapFrom (slot, answered, taken);
+        pragma Assert (taken);
+    end proveSecondReceiveDisplacesFirst;
+
     procedure resolveCurrentEndpoint
       (cap               : in     Capability;
        rights            : in     CapabilityRights;

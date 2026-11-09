@@ -104,6 +104,7 @@ outlet-rings            | ipc      | . | bash tests/outlet-rings/run.sh --prove
 path-names              | fs       | . | bash tests/path-names/run.sh --prove
 process-identities      | process  | . | bash tests/process-identities/run.sh --prove
 program-descriptions    | process  | . | bash tests/program-descriptions/run.sh --prove
+reply-slots             | ipc      | . | bash tests/reply-slots/run.sh --prove
 sameboy-port            | ports    | . | bash tests/sameboy-port/run.sh --prove
 volume-names            | fs       | . | bash tests/volume-names/run.sh --prove
 

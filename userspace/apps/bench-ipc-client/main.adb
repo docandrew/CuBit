@@ -276,7 +276,8 @@ procedure main is
       msg := NULL_MESSAGE;
       msg.tag.label := OP_BENCH_DIE;
       tag := capCall (Bench, msg, CuBit.Messages.Wait_Forever);
-      if tag.label /= 0 then fail ("sync-target-exit"); return; end if;
+      --  The kernel ends the held call: REPLY_ENDED, not a server label.
+      if Ending_Of (tag) /= Call_Ended then fail ("sync-target-exit"); return; end if;
       deadline := nowMs + 2_000;
       for i in 1 .. 64 loop
          loop

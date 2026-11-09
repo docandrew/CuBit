@@ -282,6 +282,13 @@ The `async-ipc` test follows that pattern. It covers:
 - target-death lifecycle behavior: a completion-bearing request to a dying
   server returns a `COMPLETION_TARGET_DIED` status instead of hanging or
   leaking a pending request slot.
+- displaced reply authority (BUG-004, IPC-000 rule 3): a server receives a
+  call, leaves it unanswered and receives again; the call ends at once with
+  `REPLY_ENDED` instead of waiting for its deadline (a server's own
+  label-0 reply still arrives as a normal reply), and an
+  unanswered async request displaced the same way completes
+  `COMPLETION_CANCELLED`. The kernel names such a server on serial
+  (`REPLY-ENDED:`).
 
 The departing fixture shares the client's manifest and test-only endpoint scope.
 Its two submissions use the same async lane; the barrier acknowledgement means

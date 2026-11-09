@@ -197,7 +197,7 @@ package body CuBit.Metrics is
       Msg.words := [Cursor, Item.Grant.slot, Item.Grant.generation,
                     Records.Page_Bytes];
       Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
-      Result := (if Tag.label = 0 then Protocol.Unavailable
+      Result := (if Ending_Of (Tag) /= Call_Answered then Protocol.Unavailable
                  else Reply_Status (Msg));
       if Result /= Protocol.OK then
          return;

@@ -62,6 +62,25 @@ package body Process.IPC is
     procedure lockMailboxes (A, B : ProcessID);
     procedure unlockMailboxes (A, B : ProcessID);
 
+    -- How an unanswered reply authority left its holder without an answer.
+    type Reply_End is (Reply_Displaced, Reply_Closed, Reply_Holder_Exited);
+
+    -- What a caller whose request will never be answered wakes with.
+    ENDED_REPLY : constant Message :=
+      (tag => (label => IPC_Labels.REPLY_ENDED, length => 0, protocol => 0,
+               ipc => Capability_ABI.No_IPC_Flags, reserved => 0),
+       authorityTag => 0, words => (others => 0));
+
+    -- endReply: complete the request an unanswered reply authority (cap,
+    -- held by replier) answers, since nobody will answer it now (IPC-000
+    -- rule 3, BUG-004). A synchronous caller still waiting on that call
+    -- wakes with REPLY_ENDED, as when its server exits; an asynchronous
+    -- request completes COMPLETION_CANCELLED. Anything else (no authority,
+    -- a caller that timed out or moved on) is left alone. Caller holds no
+    -- mailbox lock and not Process.lock.
+    procedure endReply (cap : Capabilities.Capability; replier : ProcessID;
+                        reason : Reply_End);
+
     ---------------------------------------------------------------------------
     -- getReceiver
     -- Determine which mailbox to use for receive operations. If the caller
@@ -684,10 +703,17 @@ package body Process.IPC is
           msg.tag.ipc.Accepts_Capability,
         others => False));
 
+    -- The authority installed replaces the thread's previous one, which
+    -- comes back as displaced (an unanswered request, or NULL_CAPABILITY).
+    -- The caller ends it with endReply once it has released the mailbox
+    -- lock (BUG-004: a receive or poll before answering used to strand that
+    -- caller forever).
     procedure installReceivedWork
       (me : ThreadID; item : RingEntry; found : Boolean;
-       from : out ProcessID; msg : out Message)
+       from : out ProcessID; msg : out Message;
+       displaced : out Capabilities.Capability)
     is
+        incoming : Capabilities.Capability := Capabilities.NULL_CAPABILITY;
     begin
         from := (if found then item.sender else NO_PROCESS);
         msg := (if found then item.msg else NULL_MESSAGE);
@@ -696,7 +722,7 @@ package body Process.IPC is
         then
             -- A synchronous reply capability names the call it answers in
             -- authorityTag (unused for replies): its sender's call sequence.
-            threadtab (me).replyCap :=
+            incoming :=
                 (capType => Capabilities.CAP_REPLY,
                  rights => replyRights (item.msg),
                  authorityTag => item.callSequence,
@@ -706,15 +732,16 @@ package body Process.IPC is
         elsif found and then from /= NO_PROCESS and then
            item.kind = RING_ASYNC_REQUEST
         then
-            threadtab (me).replyCap :=
+            incoming :=
                 (capType => Capabilities.CAP_REPLY,
                  rights => replyRights (item.msg),
                  authorityTag => Capabilities.NO_AUTHORITY_TAG,
                  object => (ref => Unsigned_64 (from), param => item.requestId),
                  gen => generationOf (from));
-        else
-            threadtab (me).replyCap := Capabilities.NULL_CAPABILITY;
         end if;
+        Capabilities.Operations.replaceReplyCap
+          (slot => threadtab (me).replyCap, incoming => incoming,
+           displaced => displaced);
     end installReceivedWork;
 
     -- Caller holds mailtab(owner).lock AND Process.lock. Queue membership is
@@ -903,6 +930,7 @@ package body Process.IPC is
         receiver : constant ProcessID := getReceiver (mypid);
         ignore   : ThreadID;
         re       : RingEntry;
+        displaced : Capabilities.Capability;
     begin
         if mypid = NO_PROCESS then
             from := NO_PROCESS;
@@ -914,14 +942,16 @@ package body Process.IPC is
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
         takeMailboxWork (receiver, False, re, received);
         if received then
-            installReceivedWork (me, re, True, from, msg);
+            installReceivedWork (me, re, True, from, msg, displaced);
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            endReply (displaced, mypid, Reply_Displaced);
             return;
         end if;
 
         if hasDeadline and then Time.msTicks >= deadlineMs then
-            installReceivedWork (me, re, False, from, msg);
+            installReceivedWork (me, re, False, from, msg, displaced);
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            endReply (displaced, mypid, Reply_Displaced);
             return;
         end if;
 
@@ -940,8 +970,9 @@ package body Process.IPC is
         threadtab (me).receiveDeadlineMs := 0;
         threadtab (me).receiveDeadlineReceiver := NO_PROCESS;
         takeHandoffOrWork (me, receiver, re, received);
-        installReceivedWork (me, re, received, from, msg);
+        installReceivedWork (me, re, received, from, msg, displaced);
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+        endReply (displaced, mypid, Reply_Displaced);
     end receiveInternal;
 
     ---------------------------------------------------------------------------
@@ -1424,6 +1455,7 @@ package body Process.IPC is
         ignoreT : ThreadID;
         re : RingEntry;
         received : Boolean;
+        displaced : Capabilities.Capability;
     begin
         -- Labels only the kernel gives are refused before anything is
         -- consumed: the server keeps its authority and can reply properly.
@@ -1488,8 +1520,9 @@ package body Process.IPC is
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
             threadtab (me).receiveDeadlineReceiver := NO_PROCESS;
             takeHandoffOrWork (me, receiver, re, received);
-            installReceivedWork (me, re, received, from, msg);
+            installReceivedWork (me, re, received, from, msg, displaced);
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            endReply (displaced, mypid, Reply_Displaced);
             return;
         end if;
 
@@ -1507,11 +1540,13 @@ package body Process.IPC is
         me    : constant ThreadID := PerCPUData.getCurrentThread;
         receiver : constant ProcessID := getReceiver (mypid);
         re : RingEntry;
+        displaced : Capabilities.Capability;
     begin
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
         takeMailboxWork (receiver, True, re, found);
-        installReceivedWork (me, re, found, from, msg);
+        installReceivedWork (me, re, found, from, msg, displaced);
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+        endReply (displaced, mypid, Reply_Displaced);
     end receiveServiceRequestNB;
 
     ---------------------------------------------------------------------------
@@ -1528,11 +1563,13 @@ package body Process.IPC is
         me    : constant ThreadID := PerCPUData.getCurrentThread;
         receiver : constant ProcessID := getReceiver (mypid);
         re : RingEntry;
+        displaced : Capabilities.Capability;
     begin
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
         takeMailboxWork (receiver, False, re, found);
-        installReceivedWork (me, re, found, from, msg);
+        installReceivedWork (me, re, found, from, msg, displaced);
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+        endReply (displaced, mypid, Reply_Displaced);
     end receiveAnyIpcNB;
 
     ---------------------------------------------------------------------------
@@ -4494,7 +4531,7 @@ package body Process.IPC is
                            threadtab (s).callSequence,
                            threadtab (tid).handoffItem.callSequence)
             then
-                threadtab (s).replyMsg := NULL_MESSAGE;
+                threadtab (s).replyMsg := ENDED_REPLY;
                 ready (s);
             end if;
             threadtab (tid).handoffValid := False;
@@ -4503,11 +4540,14 @@ package body Process.IPC is
     end failHandoff;
 
     -- Caller holds Process.lock. Wake the thread a synchronous reply
-    -- capability answers, if it is still waiting: its server is dying.
-    procedure failReplyWaiter (cap : Capabilities.Capability) is
+    -- capability answers, if it is still waiting: nobody will answer it
+    -- (its server is dying, or dropped or displaced the reply). ended: a
+    -- waiting caller was woken.
+    procedure failReplyWaiter (cap : Capabilities.Capability; ended : out Boolean) is
         waiterPID : ProcessID;
         waiter    : ThreadID;
     begin
+        ended := False;
         if cap.capType = Capabilities.CAP_REPLY and then
            cap.object.param = NO_REQUEST_ID
         then
@@ -4519,26 +4559,109 @@ package body Process.IPC is
                  (threadtab (waiter).state = WAITINGFORREPLY,
                   threadtab (waiter).callSequence, cap.authorityTag)
             then
-                threadtab (waiter).replyMsg := NULL_MESSAGE;
+                threadtab (waiter).replyMsg := ENDED_REPLY;
                 ready (waiter);
+                ended := True;
             end if;
         end if;
     end failReplyWaiter;
 
+    procedure failReplyWaiter (cap : Capabilities.Capability) is
+        ignored : Boolean;
+    begin
+        failReplyWaiter (cap, ignored);
+    end failReplyWaiter;
+
+    -- Name and PID, for the REPLY-ENDED serial line.
+    function describe (pid : ProcessID) return String is
+        name : constant ProcessName := proctab (pid).name;
+        stop : Natural := name'First - 1;
+    begin
+        for i in name'Range loop
+            exit when name (i) = ASCII.NUL;
+            if name (i) /= ' ' then stop := i; end if;
+        end loop;
+        return name (name'First .. stop) & " pid" & Integer'Image (Integer (pid));
+    end describe;
+
+    procedure endReply (cap : Capabilities.Capability; replier : ProcessID;
+                        reason : Reply_End)
+    is
+        waiterPID : ProcessID;
+        waiter    : ThreadID;
+        lockedPID : ProcessID;
+        token     : Unsigned_64;
+        submitter : ThreadID;
+        ended     : Boolean := False;
+    begin
+        if cap.capType /= Capabilities.CAP_REPLY then
+            return;
+        end if;
+        if cap.object.param = NO_REQUEST_ID then
+            Spinlocks.enterCriticalSection (lock);
+            failReplyWaiter (cap, ended);
+            Spinlocks.exitCriticalSection (lock);
+        else
+            -- An asynchronous request: its submitter's pending entry and
+            -- reserved completion slot, under the submitter's mailbox lock
+            -- (rechecked there, as replyCap does: teardown closes it before
+            -- the generation can advance).
+            replyTargetOf (cap, lockedPID, waiter);
+            if lockedPID = NO_PROCESS then
+                return;
+            end if;
+            Spinlocks.enterCriticalSection (mailtab(lockedPID).lock);
+            replyTargetOf (cap, waiterPID, waiter);
+            if waiterPID = lockedPID and then not mailtab(lockedPID).closed then
+                findAndRemovePending
+                  (waiterPID, replier, cap.object.param, token, submitter, ended);
+                if ended then
+                    enqueueCompletion
+                      (owner => waiterPID,
+                       item => (requestId => cap.object.param, token => token,
+                                msg => NULL_MESSAGE,
+                                from => Process_Identities.To_Word (identityOf (replier)),
+                                status => COMPLETION_CANCELLED, valid => True,
+                                reserved => (others => 0)),
+                       thread => submitter,
+                       success => ended);
+                    if not ended then
+                        raise ProcessException with "Missing reserved completion slot";
+                    end if;
+                    wakeNotifyWaiters (waiterPID);
+                    wakeActivityWaiters (waiterPID);
+                end if;
+            end if;
+            Spinlocks.exitCriticalSection (mailtab(lockedPID).lock);
+        end if;
+        -- Visible (IPC-000 rule 11): a server that receives again before
+        -- answering, or whose thread exits owing a reply, is named.
+        if ended and then reason /= Reply_Closed then
+            replyTargetOf (cap, waiterPID, waiter);
+            TextIO.println
+              ("REPLY-ENDED: " & describe (replier) & " -> " &
+               (if waiterPID = NO_PROCESS then "?" else describe (waiterPID)) &
+               (if reason = Reply_Displaced then " displaced by a receive"
+                else " holder thread exited") &
+               (if cap.object.param = NO_REQUEST_ID then " (call)" else " (async)"));
+        end if;
+    end endReply;
+
     procedure failReply (cap : Capabilities.Capability) is
     begin
-        Spinlocks.enterCriticalSection (lock);
-        failReplyWaiter (cap);
-        Spinlocks.exitCriticalSection (lock);
+        endReply (cap, PerCPUData.getCurrentPID, Reply_Closed);
     end failReply;
 
     procedure retireThread (tid : ThreadID) is
         pid : constant ProcessID := processOf (tid);
+        owed : Capabilities.Capability;
     begin
         Spinlocks.enterCriticalSection (mailtab(pid).lock);
+        Capabilities.Operations.replaceReplyCap
+          (slot => threadtab (tid).replyCap,
+           incoming => Capabilities.NULL_CAPABILITY,
+           displaced => owed);
         Spinlocks.enterCriticalSection (lock);
-        failReplyWaiter (threadtab (tid).replyCap);
-        threadtab (tid).replyCap := Capabilities.NULL_CAPABILITY;
         failHandoff (tid);
         Spinlocks.exitCriticalSection (lock);
         -- Its outstanding requests are cancelled, never handed to a
@@ -4564,6 +4687,12 @@ package body Process.IPC is
             end loop;
         end;
         Spinlocks.exitCriticalSection (mailtab(pid).lock);
+        -- The reply this thread owed: its caller learns now. The main
+        -- thread's exit ends the process, whose teardown answers every
+        -- request it owed (TARGET_DIED for asynchronous ones).
+        if tid /= mainThreadOf (pid) or else owed.object.param = NO_REQUEST_ID then
+            endReply (owed, pid, Reply_Holder_Exited);
+        end if;
     end retireThread;
 
     procedure retireMailboxes (pid : ProcessID) is
@@ -4595,7 +4724,7 @@ package body Process.IPC is
                     loop
                         exit when Queues.isEmpty (mailtab(pid).sendQueue);
                         Queues.dequeue (mailtab(pid).sendQueue, stuck);
-                        threadtab (stuck).replyMsg := NULL_MESSAGE;
+                        threadtab (stuck).replyMsg := ENDED_REPLY;
                         ready (stuck);
                     end loop;
 
@@ -4631,7 +4760,7 @@ package body Process.IPC is
                                                   (threadtab (s).state = WAITINGFORREPLY,
                                                    threadtab (s).callSequence, e.callSequence)
                                     then
-                                        threadtab (s).replyMsg := NULL_MESSAGE;
+                                        threadtab (s).replyMsg := ENDED_REPLY;
                                         ready (s);
                                     end if;
                                 end loop;

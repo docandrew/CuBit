@@ -42,6 +42,18 @@ procedure main is
    OP_DEADLINE_QUEUED : constant Unsigned_32 := 16#0915#;
    OP_DEADLINE_STATUS : constant Unsigned_32 := 16#0916#;
    OP_RESTORE_ECHO    : constant Unsigned_32 := 16#0917#;
+   --  BUG-004 (IPC-000 rule 3): a request the server receives and then
+   --  leaves unanswered while it receives again ends; it is never stranded.
+   --  (16#0918# .. 16#091D# are the channel session's, IPCtest_Channel.)
+   OP_DISPLACE_FIRST  : constant Unsigned_32 := 16#0920#;
+   OP_DISPLACE_SECOND : constant Unsigned_32 := 16#0921#;
+   OP_DISPLACE_ASYNC  : constant Unsigned_32 := 16#0922#;
+   OP_DISPLACE_STATUS : constant Unsigned_32 := 16#0923#;
+   --  Answered with label 0 and ZERO_LABEL_WORD: a normal reply.
+   OP_ZERO_LABEL_REPLY : constant Unsigned_32 := 16#0924#;
+   ZERO_LABEL_WORD : constant Unsigned_64 := 16#2E40_0000#;
+   secondWhileHeld : Boolean := False;
+   secondSeenEarly : Boolean := False;
    SILENT_SLOT : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
    --  Long enough for the caller's 50 ms deadline to pass while queued.
    BUSY_MS : constant Unsigned_64 := 300;
@@ -465,6 +477,36 @@ begin
          -- Its caller timed out while queued: this must never be seen.
          queuedSeen := True;
          sendReply (from, REPLY_OK);
+      elsif msg.tag.label = OP_DISPLACE_FIRST then
+         -- Hold the call unanswered and receive again: the queued one-way
+         -- OP_DISPLACE_SECOND (or nothing, if it was taken first). Either
+         -- receive replaces this call's reply authority, and the kernel
+         -- must end the call (the caller gets REPLY_ENDED), not strand
+         -- it until its deadline.
+         declare
+            second : Message;
+            secondFrom : Process_ID;
+            secondFound : Boolean;
+         begin
+            Poll_Service_Request (secondFrom, second, secondFound);
+            if secondFound and then second.tag.label = OP_DISPLACE_SECOND then
+               secondWhileHeld := True;
+            elsif secondFound then
+               debugPrint ("TEST: FAIL async-ipc displace-unexpected-request" & LF);
+            end if;
+         end;
+      elsif msg.tag.label = OP_DISPLACE_SECOND then
+         -- One way, taken before the held call: nothing to answer.
+         secondSeenEarly := True;
+      elsif msg.tag.label = OP_DISPLACE_ASYNC then
+         -- An asynchronous request left unanswered: the next receive ends
+         -- it (its submitter's completion says COMPLETION_CANCELLED).
+         null;
+      elsif msg.tag.label = OP_ZERO_LABEL_REPLY then
+         sendReply (from, 0, ZERO_LABEL_WORD);
+      elsif msg.tag.label = OP_DISPLACE_STATUS then
+         sendReply (from, REPLY_OK, boolWord (secondWhileHeld),
+                    boolWord (secondSeenEarly));
       elsif msg.tag.label = OP_DEADLINE_STATUS then
          sendReply (from, REPLY_OK, boolWord (queuedSeen));
       elsif msg.tag.label = IPCtest_Channel.OP_CHANNEL_SESSION then

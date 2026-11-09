@@ -368,6 +368,26 @@ package CuBit.Messages is
    --  reply with one is refused), so they never mean a protocol's status.
    Kernel_Reply_First : constant Unsigned_32 := 16#FFFF_0000#;
    REPLY_TIMEOUT      : constant Unsigned_32 := 16#FFFF_0001#;
+   --  The request reached its server (or its queue) and will never be
+   --  answered: the server received again or closed the reply without
+   --  answering, the thread holding it exited, or the server ended
+   --  (IPC-000 rule 3). A server's own reply never carries it.
+   REPLY_ENDED        : constant Unsigned_32 := 16#FFFF_0002#;
+
+   --  How a synchronous call came back, typed: test this, not labels.
+   --  Call_Answered: the server's reply (any label but 0). Call_Ended:
+   --  REPLY_ENDED, never a server's own label. Call_Timed_Out:
+   --  REPLY_TIMEOUT (the server may still act). Call_Not_Delivered: label
+   --  0, what a call refused before delivery returns (no or stale
+   --  capability, a server already gone). A protocol whose server itself
+   --  answers label 0 reads Call_Not_Delivered as that answer by its own
+   --  rule.
+   type Call_Ending is (Call_Answered, Call_Ended, Call_Timed_Out, Call_Not_Delivered);
+   function Ending_Of (Tag : MessageTag) return Call_Ending is
+     (if Tag.label = REPLY_ENDED then Call_Ended
+      elsif Tag.label = REPLY_TIMEOUT then Call_Timed_Out
+      elsif Tag.label = 0 then Call_Not_Delivered
+      else Call_Answered);
    function Deadline_After (Milliseconds : Unsigned_64) return Unsigned_64;
 
    --  Synchronous send: resolve endpoint cap, stamp authority tag, send.

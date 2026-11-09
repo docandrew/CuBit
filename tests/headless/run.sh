@@ -6501,6 +6501,7 @@ ipctest-departing: exiting with saved reply
 ipctest-server: dead caller reply retired and slot reused
 ipctest-client: call deadlines PASS
 ipctest-client: restored reply capability PASS
+ipctest-client: displaced reply ended PASS
 ipctest-client: four receive fairness paths PASS
 ipctest-client: activity request wake PASS
 ipctest-client: activity wait PASS

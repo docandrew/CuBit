@@ -148,6 +148,13 @@ is
     --  The call's deadline passed before a reply (docs/ipc-fastpath.md,
     --  "Call deadlines"). The outcome is unknown: the server may still act.
     REPLY_TIMEOUT      : constant Unsigned_32 := 16#FFFF_0001#;
+    --  The request was delivered (or queued) and will never be answered:
+    --  its server received again or closed the reply without answering,
+    --  the thread holding it exited, or the server ended (IPC-000 rule 3,
+    --  BUG-004). Distinct from a server's own reply with label 0. A call
+    --  refused before delivery (no or stale capability) still gets the
+    --  empty tag.
+    REPLY_ENDED        : constant Unsigned_32 := 16#FFFF_0002#;
     function Is_Kernel_Reply (Label : Unsigned_32) return Boolean is
       (Label >= KERNEL_REPLY_FIRST);
 

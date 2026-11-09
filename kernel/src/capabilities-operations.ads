@@ -52,6 +52,35 @@ is
         Ghost,
         Post => not (firstTaken and secondTaken);
 
+    -- Replace a thread's reply authority: the slot takes incoming (the
+    -- authority a receive just minted, or none). The authority it held, if
+    -- any, is never dropped: it comes back as displaced, and the kernel ends
+    -- that request (IPC-000 rule 3, BUG-004). Every way out of the slot is
+    -- therefore an answer (takeReplyCapFrom), a move to the process's table
+    -- (MOVE_REPLY_CAPABILITY, which takes the same way), or displaced.
+    procedure replaceReplyCap (slot      : in out Capability;
+                               incoming  : in     Capability;
+                               displaced :    out Capability) with
+        Pre  => incoming.capType in CAP_NULL | CAP_REPLY,
+        Post =>
+          slot = incoming
+          and then
+          (if slot'Old.capType = CAP_REPLY then displaced = slot'Old
+           else displaced = NULL_CAPABILITY);
+
+    -- Ghost: a server that receives twice without answering. The first
+    -- request's authority comes back from the second receive, to be ended;
+    -- only the second can still be answered, and only once.
+    procedure proveSecondReceiveDisplacesFirst
+      (slot          : in out Capability;
+       first, second : in     Capability;
+       displaced     :    out Capability;
+       answered      :    out Capability) with
+        Ghost,
+        Pre  => first.capType = CAP_REPLY and then second.capType = CAP_REPLY,
+        Post => displaced = first and then answered = second
+                and then slot = NULL_CAPABILITY;
+
     ---------------------------------------------------------------------------
     -- isCurrentEndpointResolution
     -- Proof-only model of endpoint resolution: kind, rights and the target

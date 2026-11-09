@@ -40,6 +40,18 @@ procedure main is
    OP_DEADLINE_QUEUED : constant Unsigned_32 := 16#0915#;
    OP_DEADLINE_STATUS : constant Unsigned_32 := 16#0916#;
    OP_RESTORE_ECHO    : constant Unsigned_32 := 16#0917#;
+   OP_DISPLACE_FIRST  : constant Unsigned_32 := 16#0920#;
+   OP_DISPLACE_SECOND : constant Unsigned_32 := 16#0921#;
+   OP_DISPLACE_ASYNC  : constant Unsigned_32 := 16#0922#;
+   OP_DISPLACE_STATUS : constant Unsigned_32 := 16#0923#;
+   --  Long enough that a stranded call is told apart from an ended one:
+   --  ended, it returns at once; stranded (BUG-004), only at this deadline.
+   DISPLACE_DEADLINE_MS : constant Unsigned_64 := 2_000;
+   DISPLACE_TOKEN : constant Unsigned_64 := 16#D15C_A5D0#;
+   --  A server's own reply with label 0 (and this word): a normal answer,
+   --  never read as the kernel's REPLY_ENDED.
+   OP_ZERO_LABEL_REPLY : constant Unsigned_32 := 16#0924#;
+   ZERO_LABEL_WORD : constant Unsigned_64 := 16#2E40_0000#;
    RESTORE_WORD       : constant Unsigned_64 := 5;
    RESTORE_DEADLINE_MS : constant Unsigned_64 := 1_000;
    DEADLINE_MS : constant Unsigned_64 := 50;
@@ -636,6 +648,104 @@ begin
             fail ("restore-reply-answer");
          else
             debugPrint ("ipctest-client: restored reply capability PASS" & LF);
+         end if;
+      end;
+   end if;
+
+   --  BUG-004 (IPC-000 rule 3, "every request ends"): a server that
+   --  receives again before answering ends the request it held. The call
+   --  gets REPLY_ENDED at once (not REPLY_TIMEOUT at its deadline); an
+   --  asynchronous request completes COMPLETION_CANCELLED.
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+         tag : MessageTag;
+         started, elapsed : Unsigned_64;
+         cancelled : Boolean := False;
+      begin
+         -- Keep the server busy (300 ms) so that both requests below are
+         -- queued when it next receives: the call first (blocked senders
+         -- follow queued messages in the receive rotation), then the
+         -- one-way request its second receive takes.
+         msg.tag := (label => OP_DEADLINE_BUSY, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
+            fail ("displace-busy-submit");
+         end if;
+         ret := syscall (SYSCALL_SLEEP, 10);
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DISPLACE_SECOND, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
+            fail ("displace-second-submit");
+         end if;
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DISPLACE_FIRST, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         started := syscall (SYSCALL_GETTIME);
+         tag := capCall (IPC_Test, msg, Deadline_After (DISPLACE_DEADLINE_MS));
+         elapsed := syscall (SYSCALL_GETTIME) - started;
+         if tag.label = REPLY_TIMEOUT then
+            fail ("displaced-call-stranded-until-deadline");
+         elsif tag.label /= REPLY_ENDED or else Ending_Of (tag) /= Call_Ended then
+            fail ("displaced-call-not-reply-ended");
+         elsif elapsed >= DISPLACE_DEADLINE_MS then
+            fail ("displaced-call-ended-late");
+         end if;
+
+         -- A server's own label-0 answer is that answer, not an end.
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_ZERO_LABEL_REPLY, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         tag := capCall (IPC_Test, msg, Deadline_After (DISPLACE_DEADLINE_MS));
+         if tag.label /= 0 or else Ending_Of (tag) = Call_Ended
+           or else msg.words (0) /= ZERO_LABEL_WORD
+         then
+            fail ("zero-label-reply-not-an-answer");
+         end if;
+
+         -- An asynchronous request left unanswered, then two calls: in
+         -- either receive order, a later receive displaces it.
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DISPLACE_ASYNC, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         if not capSubmit (IPC_Test, msg, DISPLACE_TOKEN) then
+            fail ("displace-async-submit");
+         end if;
+         for round in 1 .. 2 loop
+            msg := NULL_MESSAGE;
+            msg.tag := (label => OP_DISPLACE_STATUS, length => 0,
+                        protocol => 0, ipc => <>, reserved => 0);
+            tag := capCall (IPC_Test, msg, Deadline_After (DISPLACE_DEADLINE_MS));
+            if tag.label /= REPLY_OK then
+               fail ("displace-status");
+            end if;
+         end loop;
+         if msg.words (0) = 1 then
+            debugPrint ("ipctest-client: displaced call: second request received while held" & LF);
+         elsif msg.words (1) = 1 then
+            debugPrint ("ipctest-client: displaced call: second request taken first, empty poll displaced" & LF);
+         else
+            fail ("displace-second-never-received");
+         end if;
+         for attempt in 1 .. 10 loop
+            completion := NULL_COMPLETION;
+            ret := Poll_Completion (completion'Address);
+            exit when ret /= 1;
+            if completion.token = DISPLACE_TOKEN then
+               cancelled := completion.status = COMPLETION_CANCELLED and then
+                            completion.msg = NULL_MESSAGE;
+               if not cancelled then
+                  fail ("displaced-async-status");
+               end if;
+               exit;
+            end if;
+         end loop;
+         if ok and then not cancelled then
+            fail ("displaced-async-stranded");
+         end if;
+         if ok then
+            debugPrint ("ipctest-client: displaced reply ended PASS" & LF);
          end if;
       end;
    end if;

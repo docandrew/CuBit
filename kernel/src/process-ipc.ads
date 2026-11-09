@@ -42,8 +42,10 @@ package Process.IPC is
     -- Acquires each mailbox before Process.lock, never the reverse.
     procedure retireMailboxes (pid : ProcessID);
 
-    -- An exiting thread (its process lives on): a client blocked on the
-    -- reply this thread owed is woken with an empty reply.
+    -- An exiting thread: a client blocked on the reply this thread owed is
+    -- woken with REPLY_ENDED; an asynchronous request it owed completes
+    -- COMPLETION_CANCELLED (when the main thread exits, the process's
+    -- teardown completes those TARGET_DIED instead).
     procedure retireThread (tid : ThreadID);
 
     -- The process and (for a synchronous reply) the thread a reply
@@ -121,6 +123,13 @@ package Process.IPC is
     -- receive
     -- Receive a message from one's mailbox. Block if no message available.
     -- On return, from contains the sender PID and msg contains the message.
+    --
+    -- Every receive and poll variant replaces the thread's reply authority
+    -- (even when it finds nothing). A request still unanswered then ends
+    -- (IPC-000 rule 3, BUG-004): its synchronous caller wakes with
+    -- REPLY_ENDED, an asynchronous one completes COMPLETION_CANCELLED, and
+    -- the kernel prints a REPLY-ENDED line naming the server. A server that
+    -- answers later sets the request aside first (MOVE_REPLY_CAPABILITY).
     ---------------------------------------------------------------------------
     procedure receive (from : out ProcessID; msg : out Message);
 
@@ -227,9 +236,11 @@ package Process.IPC is
 
     ---------------------------------------------------------------------------
     -- failReply
-    -- A saved reply was closed unanswered (CLOSE_HANDLE): wake the
-    -- synchronous caller it answers with an empty reply, as when its server
-    -- exits. Caller holds no Process lock.
+    -- A saved reply was closed unanswered (CLOSE_HANDLE): its request ends.
+    -- A synchronous caller wakes with REPLY_ENDED, as when its server
+    -- exits; an asynchronous request completes COMPLETION_CANCELLED. The
+    -- calling process is the one that held it. Caller holds no mailbox lock
+    -- and not Process.lock.
     ---------------------------------------------------------------------------
     procedure failReply (cap : Capabilities.Capability);
 
