@@ -554,4 +554,29 @@ of the reply slot is `tests/reply-slots/run.sh --prove`.
 make -C kernel world
 bash tests/headless/run.sh --test async-ipc --accel kvm
 bash tests/reply-slots/run.sh --prove
+
+## nvme-timeout and nvme-stuck (BUG-003)
+
+One slow NVMe read must not kill storage. Once nvme.drv serves, QMP
+throttles the drive's reads (tests/nvme-timeout/fixture.py) so a read
+outlives the driver's named 30 s I/O deadline. nvme-timeout lifts the
+throttle once recovery starts: the driver aborts, resets the controller,
+re-creates the queues and re-issues the read, and the boot completes.
+nvme-stuck keeps the throttle until the request fails with the typed
+outcome "timed-out" after its bounded passes (about a minute), then the
+next reads succeed and the boot continues (tests/nvme-timeout/check.py).
+Failed before: the driver waited 1.02 s, printed "NVMe: I/O completion
+lost or foreign", latched, and failed every later read until reboot
+("program file was not found"). The backlog's own repro
+(`NVME_DRIVE_OPTIONS=,throttling.bps-read=50000` on boot-shell-nvme)
+also failed before and passes. The hosted model tests and the SPARK proof
+cover the identifier tracker, queue cursors and recovery state machine.
+
+```sh
+bash tests/nvme-recovery/run.sh
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 bash tests/nvme-recovery/prove.sh
+make -C kernel world
+bash tests/headless/run.sh --test nvme-timeout --accel kvm --timeout 180
+bash tests/headless/run.sh --test nvme-stuck --accel kvm --timeout 180
+NVME_DRIVE_OPTIONS=,throttling.bps-read=50000 bash tests/headless/run.sh --test boot-shell-nvme --accel kvm --timeout 150
 ```

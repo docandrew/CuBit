@@ -10,6 +10,8 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Handles;
+with NVMe_Layout;
+with NVMe_Queue_Cursors;
 
 package NVMe is
 
@@ -69,9 +71,9 @@ package NVMe is
    CNS_CONTROLLER : constant Unsigned_32 := 1;
 
    ---------------------------------------------------------------------------
-   --  Queue Depth
+   --  Queue Depth (NVMe_Queue_Cursors)
    ---------------------------------------------------------------------------
-   QUEUE_DEPTH : constant := 16;
+   QUEUE_DEPTH : constant := NVMe_Queue_Cursors.Queue_Depth;
 
    ---------------------------------------------------------------------------
    --  Submission Queue Entry (64 bytes)
@@ -145,27 +147,17 @@ package NVMe is
      with Convention => C, Volatile_Components;
 
    ---------------------------------------------------------------------------
-   --  DMA Layout offsets (within 1 MiB at DMA_VIRT_BASE = 0x7000_0000_0000)
-   --  Page 0:      Admin SQ (16 x 64B = 1024B)
-   --  Page 1:      Admin CQ (16 x 16B = 256B)
-   --  Page 2:      I/O SQ (16 x 64B = 1024B)
-   --  Page 3:      I/O CQ (16 x 16B = 256B)
-   --  Page 4:      Identify/scratch buffer (4KB)
-   --  Page 5:      PRP lists, one per in-flight command
-   --  Pages 6-255: Data buffers (250 x 4KB = 1000KB)
+   --  DMA layout (NVMe_Layout)
    ---------------------------------------------------------------------------
-   DMA_VIRT_BASE     : constant := 16#0000_7000_0000_0000#;
-   PAGE_SIZE         : constant := 4096;
+   DMA_VIRT_BASE     : constant := NVMe_Layout.DMA_Virtual_Base;
+   PAGE_SIZE         : constant := NVMe_Layout.Page_Bytes;
 
-   ADMIN_SQ_OFFSET   : constant := 0 * PAGE_SIZE;
-   ADMIN_CQ_OFFSET   : constant := 1 * PAGE_SIZE;
-   IO_SQ_OFFSET      : constant := 2 * PAGE_SIZE;
-   IO_CQ_OFFSET      : constant := 3 * PAGE_SIZE;
-   IDENTIFY_OFFSET   : constant := 4 * PAGE_SIZE;
-   PRP_LIST_OFFSET   : constant := 5 * PAGE_SIZE;
-   DATA_BUF_OFFSET   : constant := 6 * PAGE_SIZE;
-   DATA_BUF_PAGES    : constant := 250;
-
+   ADMIN_SQ_OFFSET   : constant := NVMe_Layout.Admin_SQ_Offset;
+   ADMIN_CQ_OFFSET   : constant := NVMe_Layout.Admin_CQ_Offset;
+   IO_SQ_OFFSET      : constant := NVMe_Layout.IO_SQ_Offset;
+   IO_CQ_OFFSET      : constant := NVMe_Layout.IO_CQ_Offset;
+   IDENTIFY_OFFSET   : constant := NVMe_Layout.Identify_Offset;
+   DATA_BUF_PAGES    : constant := NVMe_Layout.Data_Pages;
 
    ---------------------------------------------------------------------------
    --  BAR0 mapping virtual address
@@ -224,10 +216,14 @@ package NVMe is
       buf   : System.Address;
       fua   : Boolean := False) return Unsigned_64;
 
-   --  Commit namespace 1's completed writes to nonvolatile media. A timeout
-   --  retires the queue until controller reinitialization; never reuse a late
-   --  completion as acknowledgement of a different command.
+   --  Commit namespace 1's completed writes to nonvolatile media.
    function flush return Boolean;
+
+   --  Every command ends: completed, failed by the controller, or (after
+   --  NVMe_Recovery's abort / reset / re-issue) failed as timed out or
+   --  offline. A late or foreign completion is consumed and discarded by
+   --  identifier (NVMe_Command_Ids), never taken for another command, and
+   --  no recovery latches: a reset that succeeds restores service.
 
    --  Namespace info (populated after identifyNamespace)
    nsBlockCount : Unsigned_64 := 0;
