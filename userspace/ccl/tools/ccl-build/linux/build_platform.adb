@@ -427,4 +427,14 @@ package body Build_Platform is
       end if;
    end Run;
 
+   --  No per-process places on a Linux host (Build_Platform's spec).
+   procedure Run_Confined
+     (Program : String; Arguments : Argument_List; Directory : String;
+      Standard_Output : String; Places : Place_List; Exit_Status : out Integer)
+   is
+      pragma Unreferenced (Places);
+   begin
+      Run (Program, Arguments, Directory, Standard_Output, Exit_Status);
+   end Run_Confined;
+
 end Build_Platform;

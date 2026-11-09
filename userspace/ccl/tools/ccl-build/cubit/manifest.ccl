@@ -7,11 +7,14 @@
 # as and ld itself, from its own launch table), and the manifest tool
 # installed at @system/tools (build-params.ccl; this program reads it to
 # name it in the step by its SHA-256), through the libc's
-# posix_spawn, which passes on whole the places this program's launcher
-# delegated to it (decision D2): a launcher must delegate the Storehouse,
-# the toolchain and the source checkout for the steps to see them. Each
-# step then holds all of them; per-step places (only the step's directory
-# writable, only its inputs readable) are CCL-004.
+# cubit_posix_spawn_places with each step's own places (CCL-004,
+# Build_Steps.Places): its directory in the Storehouse writable, and
+# read-only the toolchain and the trees it reads in place (the runtime's
+# composite tree, PERF-010); nothing else of the Storehouse, the source
+# checkout or the work place. A launcher delegates to this program the
+# Storehouse and the toolchain (and the source checkout and work place it
+# builds from and exports to); procmgr checks each step's places against
+# what this program holds.
 #
 # Paths, on the system volume (@system: the installed root, the live
 # medium's RAM root, or the development disk): @system/storehouse is the

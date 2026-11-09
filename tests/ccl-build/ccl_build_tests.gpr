@@ -8,7 +8,9 @@ project CCL_Build_Tests is
    Platform : Platforms := external ("CCL_BUILD_PLATFORM", "linux");
    for Languages use ("Ada");
    for Source_Dirs use (".", "../../userspace/lib/storehouse", "../../userspace/ccl/tools/ccl-build",
-                        "../../userspace/ccl/tools/ccl-build/" & Platform);
+                        "../../userspace/ccl/tools/ccl-build/" & Platform,
+                        --  CuBit.Launch_Grants, which the CuBit body encodes places with.
+                        "../../userspace/ccl/runtime-shared");
    case Platform is
       when "linux" =>
          for Object_Dir use "build";

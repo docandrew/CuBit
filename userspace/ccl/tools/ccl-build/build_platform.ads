@@ -1,3 +1,4 @@
+with Ada.Strings.Unbounded;
 with Interfaces.C;
 with Interfaces.C.Strings;
 
@@ -13,7 +14,8 @@ with Interfaces.C.Strings;
 --      symbolic links are refused), no mode bits or file times
 --      (Change_Mode and Set_Times change nothing), a rename that must not
 --      replace as an O_EXCL claim of the name and a rename over it, and
---      steps started through procmgr (posix_spawn) with delegated places.
+--      steps started through procmgr (posix_spawn) with delegated places:
+--      the launcher's whole (Run), or exactly a step's own (Run_Confined).
 package Build_Platform is
 
    Platform_Error : exception;
@@ -100,10 +102,32 @@ package Build_Platform is
    --  and an empty environment. With a nonempty Standard_Output, the
    --  child's descriptor 1 is that file, created; otherwise it is inherited.
    --  Exit_Status is the exit code, or Signalled when a signal ended it.
+   --  On CuBit the child gets the places this program's launcher delegated
+   --  to it, whole (decision D2).
    Signalled : constant := -1;
    procedure Run
      (Program : String; Arguments : Argument_List; Directory : String;
       Standard_Output : String; Exit_Status : out Integer);
+
+   --  A place a step's process is given (CCL-004, per-step places): a
+   --  directory named by its absolute host name, everything under it,
+   --  read-only unless Writable (then read, write and create).
+   type Place is record
+      Name : Ada.Strings.Unbounded.Unbounded_String;
+      Writable : Boolean := False;
+   end record;
+   type Place_List is array (Positive range <>) of Place;
+
+   --  Run, with exactly Places instead of this program's delegated places.
+   --  On CuBit the child holds those (procmgr refuses the launch unless
+   --  this program holds each, at least with those rights) and its own
+   --  manifest's: it sees nothing else and writes nothing else. A Linux
+   --  host has no per-process places: the child runs as this program does
+   --  (Storehouse entries are read-only by their modes there, and steps see
+   --  only the paths their arguments name).
+   procedure Run_Confined
+     (Program : String; Arguments : Argument_List; Directory : String;
+      Standard_Output : String; Places : Place_List; Exit_Status : out Integer);
 
 private
    use type Interfaces.C.int;

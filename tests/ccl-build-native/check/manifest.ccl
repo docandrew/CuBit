@@ -19,4 +19,7 @@
     (filesystem [File_Right.Read] "@nvme:0/work")]
   may_launch => [
     (Launch "ccl-build.app")
-    (Launch "binutils-compare.app")])
+    (Launch "binutils-compare.app")
+    # The runtime place probe (main.adb, 4): the gcc driver started with
+    # the places a ccl-build step gets.
+    (Launch "toolchain/bin/gcc")])

@@ -5,7 +5,9 @@ with Ada.Text_IO;
 with GNAT.OS_Lib;
 with Interfaces.C;
 with Interfaces.C.Strings;
+with Ada.Strings.Unbounded;
 with Build_Platform;
+with Spawn_Places_Shim;
 
 --  Build_Platform's contract, the same checks for each body (tests/ccl-
 --  build/run.sh builds this test with the Linux body and, hosted on Linux,
@@ -19,7 +21,11 @@ with Build_Platform;
 --      exits or is killed;
 --    - Process_Alive: a process that marked itself alive is alive until it
 --      exits or is killed;
---    - Run starts a program in a directory and reports its exit status.
+--    - Run starts a program in a directory and reports its exit status;
+--      Run_Confined does the same and, on CuBit, delegates exactly the
+--      places it is given (checked here through Spawn_Places_Shim, the
+--      libc call hosted): a writable place with all rights, others
+--      read-only, absolute names on the system volume, nothing else.
 --
 --    platform_tests SCRATCH          the checks (prints a summary)
 --    platform_tests child MODE ...   a helper process (below)
@@ -276,6 +282,63 @@ begin
          Build_Platform.Run (Self, Arguments, Directory, "", Status);
          Check (Status = 7, "run: the exit status");
          Check (Ada.Directories.Exists (Directory / "marker"), "run: in its directory");
+         for A of Arguments loop
+            Free (A);
+         end loop;
+      end;
+
+      --  Run_Confined: the same, with exactly the places given.
+      declare
+         use Interfaces.C.Strings;
+         use Ada.Strings.Unbounded;
+         use type Build_Platform.Build_Host;
+         package LG renames Spawn_Places_Shim.LG;
+         Directory : constant String := Scratch / "run-confined";
+         Status : Integer;
+         Arguments : Build_Platform.Argument_List :=
+           [New_String (Self), New_String ("child"), New_String ("exit"), New_String ("5"),
+            New_String ("marker")];
+         Places : constant Build_Platform.Place_List :=
+           [(To_Unbounded_String (Directory), Writable => True),
+            (To_Unbounded_String ("/toolchain"), Writable => False)];
+         Refused : Boolean := False;
+      begin
+         Ada.Directories.Create_Path (Directory);
+         Build_Platform.Run_Confined (Self, Arguments, Directory, "", Places, Status);
+         Check (Status = 5, "run confined: the exit status");
+         Check (Ada.Directories.Exists (Directory / "marker"), "run confined: in its directory");
+         if Build_Platform.This_Host = Build_Platform.CuBit then
+            declare
+               Region : LG.Bytes renames Spawn_Places_Shim.Last (1 .. Spawn_Places_Shim.Last_Length);
+               Position : Positive := LG.Header_Bytes + 1;
+               Rights : Interfaces.Unsigned_8;
+               First, Last : Positive;
+               Names_Right : Boolean := False;
+               use type Interfaces.Unsigned_8;
+            begin
+               Check (Spawn_Places_Shim.Calls = 1 and then LG.Valid (Region) and then LG.Count_Of (Region) = 2,
+                      "run confined: a valid region of the two places");
+               if LG.Valid (Region) and then LG.Count_Of (Region) = 2 then
+                  LG.Next (Region, Position, Rights, First, Last);
+                  Names_Right := Rights = LG.All_Rights
+                    and then String'([for K in First .. Last => Character'Val (Region (K))]) = "@system" & Directory;
+                  LG.Next (Region, Position, Rights, First, Last);
+                  Names_Right := Names_Right and then Rights = LG.Read_Right
+                    and then String'([for K in First .. Last => Character'Val (Region (K))]) = "@system/toolchain";
+               end if;
+               Check (Names_Right,
+                      "run confined: the writable place with all rights, the other read-only, on @system");
+            end;
+            begin
+               Build_Platform.Run_Confined
+                 (Self, Arguments, Directory, "", [(To_Unbounded_String ("relative"), Writable => False)], Status);
+            exception
+               when Build_Platform.Platform_Error => Refused := True;
+            end;
+            Check (Refused, "run confined: a place that is not an absolute name is refused");
+         else
+            Check (Spawn_Places_Shim.Calls = 0, "run confined: a Linux host has no places to give");
+         end if;
          for A of Arguments loop
             Free (A);
          end loop;

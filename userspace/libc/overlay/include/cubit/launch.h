@@ -48,6 +48,18 @@ enum cubit_launch_failure {
 	CUBIT_LAUNCH_NOT_GRANTED = 5,
 };
 
+/* posix_spawn, but the child gets exactly the places in the region at
+ * places (places_length bytes; a CuBit.Launch_Grants region,
+ * userspace/runtime/gnat/cubit-launch_grants.ads; none when 0) instead of
+ * the places this program's launcher delegated to it: a launcher gives each
+ * child only what it needs (ccl-build's steps). procmgr refuses the launch
+ * (EACCES) unless this program holds every entry with at least its rights;
+ * a malformed region is EINVAL. */
+int cubit_posix_spawn_places(int *pid, const char *path,
+	const void *file_actions, const void *attributes,
+	char *const argv[], char *const envp[],
+	const unsigned char *places, unsigned long places_length);
+
 /* EVENT_CHILD_EXIT (CuBit.Child_Exits): words PID, kind, code and the
  * process's generation; OP_LAUNCH replies with PID and generation. PIDs
  * are reused, so (PID, generation) names one process. */

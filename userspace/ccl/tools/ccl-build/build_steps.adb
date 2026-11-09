@@ -5,7 +5,6 @@ with Interfaces;
 with Interfaces.C.Strings;
 with GNAT.OS_Lib;
 with Build_Encoding;
-with Build_Platform;
 with Build_Timing;
 with Storehouse.Paths;
 
@@ -86,7 +85,11 @@ package body Build_Steps is
          end if;
          case A.Kind is
             when Literal | Step_Root => null;
-            when Step_Path | Toolchain_Path => Relative (To_String (A.Path), "directory argument");
+            when Step_Path => Relative (To_String (A.Path), "directory argument");
+            when Tree_Path =>
+               if Length (A.Path) > 0 then
+                  Relative (To_String (A.Path), "directory argument");
+               end if;
             when Input_Path | Local_Input =>
                if A.Index not in 1 .. S.Inputs.Last_Index then Fail ("no such input"); end if;
                if A.Kind = Local_Input and then not Inside (To_String (S.Inputs (A.Index).Path), Directory) then
@@ -338,7 +341,9 @@ package body Build_Steps is
            when Local_Input => Local (To_String (S.Inputs (A.Index).Path)),
            when Local_Output => Local (To_String (S.Outputs (A.Index).Path)),
            when Step_Path => Root / To_String (A.Path),
-           when Toolchain_Path => Store.Path_Of (Tree, A.Tree) / To_String (A.Path),
+           when Tree_Path =>
+             (if Length (A.Path) = 0 then Store.Path_Of (Tree, A.Tree)
+              else Store.Path_Of (Tree, A.Tree) / To_String (A.Path)),
            when Step_Root => Root);
    begin
       return To_String (A.Prefix) & Middle & To_String (A.Suffix);
@@ -361,6 +366,33 @@ package body Build_Steps is
       end if;
       return To_String (Result);
    end Command_Image;
+
+   function Places (Store : Build_Store.Store; S : Step; Root : String) return Build_Platform.Place_List is
+      use Build_Platform;
+      Result : Place_List (1 .. Natural (S.Arguments.Length) + 2);
+      Count : Natural := 0;
+      procedure Add (Name : String; Writable : Boolean) is
+      begin
+         for P of Result (1 .. Count) loop
+            if To_String (P.Name) = Name then
+               return;
+            end if;
+         end loop;
+         Count := Count + 1;
+         Result (Count) := (To_Unbounded_String (Name), Writable);
+      end Add;
+   begin
+      Add (Root, Writable => True);
+      if S.Tool.Kind = Toolchain_Program then
+         Add (Store.Path_Of (Tree, S.Tool.Toolchain), Writable => False);
+      end if;
+      for A of S.Arguments loop
+         if A.Kind = Tree_Path then
+            Add (Store.Path_Of (Tree, A.Tree), Writable => False);
+         end if;
+      end loop;
+      return Result (1 .. Count);
+   end Places;
 
    --  Runs S in its claimed directory Root and stores its outputs. On a
    --  failure the directory is kept for inspection (the claim is released
@@ -394,15 +426,22 @@ package body Build_Steps is
          for O of S.Outputs loop
             Make_Parent (Root / To_String (O.Path));
          end loop;
+         --  The trees it reads in place: present and intact before it runs.
+         for A of S.Arguments loop
+            if A.Kind = Tree_Path then
+               Store.Ensure_Tree (A.Tree);
+            end if;
+         end loop;
       end;
       Arguments (1) := New_String (Program_Path (Store, S, Root));
       for N in S.Arguments.First_Index .. S.Arguments.Last_Index loop
          Arguments (N + 1) := New_String (Render (Store, S, Root, S.Arguments (N)));
       end loop;
-      Build_Platform.Run
+      Build_Platform.Run_Confined
         (Program => Program_Path (Store, S, Root), Arguments => Arguments,
          Directory => Root / To_String (S.Directory),
          Standard_Output => (if S.Capture = 0 then "" else Root / To_String (S.Outputs (S.Capture).Path)),
+         Places => Places (Store, S, Root),
          Exit_Status => Status);
       for A of Arguments loop
          Free (A);

@@ -218,6 +218,114 @@ begin
       Check (Result.Ran and then Output_Text (Result) = "secret" & LF, "the declared input is present");
    end;
 
+   --  Composite trees read in place (PERF-010): host files and trees at
+   --  their paths in a layout, stored once as one entry, never copied into
+   --  step directories; the step is given the tree read-only, and a step
+   --  that names none is given only its own directory.
+   Write (Sources / "layout/lib/rt/search", "../../shared/x" & LF);
+   Write (Sources / "layout/lib/rt/inc/a.ads", "package A is end A;" & LF);
+   Write (Sources / "layout/shared/x/x.ads", "package X is end X;" & LF);
+   Write (Sources / "elsewhere/x/x.ads", "package X is end X;" & LF);
+   Write (Sources / "in-place.sh",
+          "#!/bin/sh" & LF & "[ -e ../shared ] && exit 3" & LF & "exec /bin/cat ""$1""" & LF,
+          Executable => True);
+   declare
+      use Build_Store;
+      Parts : Part_Vectors.Vector;
+      function Part (Path : String; Kind : Entry_Kind; Source : String) return Composite_Part is
+        ((To_Unbounded_String (Path), Kind, To_Unbounded_String (Source)));
+      function Reader (Layout : Digest) return Step is
+         S : Step := (Label => To_Unbounded_String ("read in place"), Directory => To_Unbounded_String ("work"),
+                      others => <>);
+         Tool : constant Input_Number :=
+           Add_Input (S, "tools/run", Executable_File, Put (Sources / "in-place.sh", Executable_File));
+      begin
+         S.Tool := (Kind => Input_Program, Index => Tool, others => <>);
+         S.Arguments.Append (Piece'(Kind => Tree_Path, Tree => Layout, Path => To_Unbounded_String ("shared/x/x.ads"),
+                                    others => <>));
+         S.Capture := Add_Output (S, "work/out.txt");
+         return S;
+      end Reader;
+      Layout, Again : Digest;
+      Result : Outcome;
+      Refused : Boolean := False;
+   begin
+      Parts.Append (Part ("lib/rt/search", Regular_File, Sources / "layout/lib/rt/search"));
+      Parts.Append (Part ("lib/rt/inc", Tree, Sources / "layout/lib/rt/inc"));
+      --  From another directory: only the layout's paths matter.
+      Parts.Append (Part ("shared/x", Tree, Sources / "elsewhere/x"));
+      Parts.Append (Part ("shared/x", Tree, Sources / "elsewhere/x"));   --  the same part twice: once
+      Store.Put_Composite (Parts, Layout);
+      Check (Layout = Hash_Tree (Sources / "layout"),
+             "a composite's identity is the identity of the tree it lays out");
+      Check (Store.Contains (Tree, Layout) and then Hash_Tree (Store.Path_Of (Tree, Layout)) = Layout
+             and then not GNAT.OS_Lib.Is_Writable_File (Store.Path_Of (Tree, Layout) / "shared/x/x.ads"),
+             "a composite is stored as a read-only tree entry");
+      Store.Put_Composite (Parts, Again);
+      Check (Again = Layout, "storing a composite again gives the same entry");
+      Run (Store, Reader (Layout), Result);
+      Check (Result.Ran and then Output_Text (Result) = "package X is end X;" & LF,
+             "a step reads a composite in place, and none of it is copied into its directory");
+      declare
+         P : constant Build_Platform.Place_List := Places (Store, Reader (Layout), "/step");
+         Without : constant Build_Platform.Place_List :=
+           Places (Store, Script_Step ("copy", Copy_Script, Sources / "a.txt"), "/step");
+      begin
+         Check (P'Length = 2
+                and then To_String (P (P'First).Name) = "/step" and then P (P'First).Writable
+                and then To_String (P (P'Last).Name) = Store.Path_Of (Tree, Layout)
+                and then not P (P'Last).Writable,
+                "a step is given its directory writable and the tree it reads in place read-only, nothing else");
+         Check (Without'Length = 1 and then To_String (Without (Without'First).Name) = "/step",
+                "a step that names no tree is given only its directory");
+      end;
+      --  On Linux the entry's modes refuse a write (on CuBit, the place
+      --  is delegated read-only: tests/ccl-build-native).
+      declare
+         S : Step := Reader (Layout);
+         Writer_Script : constant String := Sources / "write-in-place.sh";
+      begin
+         Write (Writer_Script, "#!/bin/sh" & LF & "echo x > ""$1""/written" & LF, Executable => True);
+         S.Label := To_Unbounded_String ("write in place");
+         S.Inputs (1).Identity := Put (Writer_Script, Executable_File);
+         S.Arguments (1).Path := To_Unbounded_String ("shared/x");
+         begin
+            Run (Store, S, Result);
+         exception
+            when Step_Error => Refused := True;
+         end;
+         Check (Refused and then not Ada.Directories.Exists (Store.Path_Of (Tree, Layout) / "shared/x/written")
+                and then Hash_Tree (Store.Path_Of (Tree, Layout)) = Layout,
+                "a step writing into a tree it reads in place fails, and the tree is unchanged");
+         Refused := False;
+      end;
+      Write (Sources / "elsewhere/x/x.ads", "package X is pragma Pure; end X;" & LF);
+      declare
+         Edited : Digest;
+      begin
+         Store.Put_Composite (Parts, Edited);
+         Check (Edited /= Layout and then Identity (Reader (Edited)) /= Identity (Reader (Layout)),
+                "a changed part changes the composite, and the identity of a step that reads it");
+         Run (Store, Reader (Edited), Result);
+         Check (Result.Ran and then Output_Text (Result) = "package X is pragma Pure; end X;" & LF,
+                "the step runs again on the changed composite");
+      end;
+      Parts.Append (Part ("shared", Tree, Sources / "layout/shared"));
+      begin
+         Store.Put_Composite (Parts, Again);
+      exception
+         when Store_Error => Refused := True;
+      end;
+      Check (Refused, "composite parts lying one inside the other are refused");
+      Refused := False;
+      begin
+         Store.Ensure_Tree (Hash_Tree (Sources / "layout/lib"));
+      exception
+         when Store_Error => Refused := True;
+      end;
+      Check (Refused, "a tree not in the store cannot be read in place");
+   end;
+
    --  Literal arguments cannot name files.
    declare
       S : Step := Script_Step ("absolute", Copy_Script, Sources / "a.txt");

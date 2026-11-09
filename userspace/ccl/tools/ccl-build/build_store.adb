@@ -1,6 +1,5 @@
 with Ada.Containers.Indefinite_Hashed_Maps;
 with Ada.Containers.Indefinite_Hashed_Sets;
-with Ada.Containers.Vectors;
 with Ada.Directories;
 with Ada.Exceptions;
 with Ada.Strings.Fixed;
@@ -655,6 +654,210 @@ package body Build_Store is
       end loop;
       return Data;
    end Text_Bytes;
+
+   --  A composite's part with the identity of its source, for the listing.
+   type Listed_Part is record
+      Path : Unbounded_String;
+      Kind : Entry_Kind;
+      Source : Unbounded_String;
+      Identity : Digest;
+   end record;
+   package Listed_Vectors is new Ada.Containers.Vectors (Positive, Listed_Part);
+
+   --  The names directly under Prefix ("" for the top) that parts lie at
+   --  or under, sorted by bytes as Members sorts a directory.
+   function Names_Under (Parts : Listed_Vectors.Vector; Prefix : String) return Name_Vectors.Vector is
+      Result : Name_Vectors.Vector;
+   begin
+      for P of Parts loop
+         declare
+            Path : constant String := To_String (P.Path);
+            First : Natural := 0;
+         begin
+            if Prefix = "" then
+               First := Path'First;
+            elsif Starts_With (Path, Prefix & "/") then
+               First := Path'First + Prefix'Length + 1;
+            end if;
+            if First /= 0 then
+               declare
+                  Last : Natural := Path'Last;
+               begin
+                  for I in First .. Path'Last loop
+                     if Path (I) = '/' then
+                        Last := I - 1;
+                        exit;
+                     end if;
+                  end loop;
+                  if not Result.Contains (Path (First .. Last)) then
+                     Result.Append (Path (First .. Last));
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+      Name_Sorting.Sort (Result);
+      return Result;
+   end Names_Under;
+
+   --  The part at exactly Path, if any (Found).
+   procedure Part_At
+     (Parts : Listed_Vectors.Vector; Path : String; Part : out Listed_Part; Found : out Boolean) is
+   begin
+      Found := False;
+      for P of Parts loop
+         if To_String (P.Path) = Path then
+            Part := P;
+            Found := True;
+            return;
+         end if;
+      end loop;
+   end Part_At;
+
+   function Join (Prefix, Name : String) return String is
+     (if Prefix = "" then Name else Prefix / Name);
+
+   --  The identity of the directory Prefix of a composite: Hash_Tree's
+   --  canonical listing, with each part's identity standing for its
+   --  content.
+   function Composite_Listing (Parts : Listed_Vectors.Vector; Prefix : String) return Digest is
+      Listed : constant Name_Vectors.Vector := Names_Under (Parts, Prefix);
+      W : Build_Encoding.Writer;
+   begin
+      W.Add_Array (3);
+      W.Add_Text (Tree_Tag);
+      W.Add_Unsigned (Tree_Version);
+      W.Add_Array (Natural (Listed.Length));
+      for Name of Listed loop
+         declare
+            Path : constant String := Join (Prefix, Name);
+            Part : Listed_Part;
+            Found : Boolean;
+         begin
+            Part_At (Parts, Path, Part, Found);
+            W.Add_Array (3);
+            W.Add_Text (Name);
+            if not Found then
+               W.Add_Unsigned (Member_Kind'Pos (Member_Directory));
+               W.Add_Digest (Composite_Listing (Parts, Path));
+            else
+               W.Add_Unsigned (Member_Kind'Pos
+                 (case Part.Kind is
+                    when Regular_File => Member_File,
+                    when Executable_File => Member_Executable,
+                    when Tree => Member_Directory));
+               W.Add_Digest (Part.Identity);
+            end if;
+         end;
+      end loop;
+      return W.Identity;
+   end Composite_Listing;
+
+   --  Copies the directory Prefix of a composite to Target from its parts'
+   --  sources, sealing it bottom up as Copy_Tree does; Target stays
+   --  writable when Top.
+   procedure Copy_Composite (Parts : Listed_Vectors.Vector; Prefix, Target : String; Top : Boolean) is
+   begin
+      Ada.Directories.Create_Directory (Target);
+      for Name of Names_Under (Parts, Prefix) loop
+         declare
+            Path : constant String := Join (Prefix, Name);
+            Part : Listed_Part;
+            Found : Boolean;
+         begin
+            Part_At (Parts, Path, Part, Found);
+            if not Found then
+               Copy_Composite (Parts, Path, Target / Name, Top => False);
+            elsif Part.Kind = Tree then
+               Copy_Tree (To_String (Part.Source), Target / Name);
+            else
+               declare
+                  Ignored : constant Digest := Copy_File (To_String (Part.Source), Target / Name);
+               begin
+                  Seal_File (Target / Name, Part.Kind = Executable_File);
+               end;
+            end if;
+         end;
+      end loop;
+      Build_Platform.Sync (Target);
+      if not Top then
+         Build_Platform.Change_Mode (Target, Build_Platform.Read_Only_Directory);
+      end if;
+   end Copy_Composite;
+
+   procedure Put_Composite (S : Store; Parts : Part_Vectors.Vector; Identity : out Digest) is
+      Listed : Listed_Vectors.Vector;
+   begin
+      for P of Parts loop
+         declare
+            Path : constant String := To_String (P.Path);
+            Source : constant String := To_String (P.Source);
+            Same : Listed_Part;
+            Found : Boolean;
+         begin
+            if not Storehouse.Paths.Is_Relative (Path) then
+               raise Store_Error with "composite tree part """ & Path & """ is not a relative path";
+            end if;
+            Part_At (Listed, Path, Same, Found);
+            if Found then
+               if Same.Kind /= P.Kind or else To_String (Same.Source) /= Source then
+                  raise Store_Error with "composite tree part " & Path & " is given twice, differently";
+               end if;
+            else
+               for Q of Listed loop
+                  if Starts_With (Path, To_String (Q.Path) & "/")
+                    or else Starts_With (To_String (Q.Path), Path & "/")
+                  then
+                     raise Store_Error with "composite tree parts " & To_String (Q.Path) & " and " & Path
+                       & " lie one inside the other";
+                  end if;
+               end loop;
+               if P.Kind = Tree and then not Is_Directory (Source) then
+                  raise Store_Error with Source & " is not a directory";
+               end if;
+               Listed.Append (Listed_Part'(P.Path, P.Kind, P.Source,
+                               (if P.Kind = Tree then Hash_Tree (Source) else Hash_File (Source))));
+            end if;
+         end;
+      end loop;
+      if Listed.Is_Empty then
+         raise Store_Error with "a composite tree needs a part";
+      end if;
+      Identity := Composite_Listing (Listed, "");
+      if Contains (S, Tree, Identity) then
+         return;
+      end if;
+      declare
+         Timed : Build_Timing.Scope (Build_Timing.Store_Write);
+         pragma Unreferenced (Timed);
+         Work : constant String := New_Work (S);
+         Staged : constant String := Work / "entry";
+         Placed : Boolean;
+      begin
+         Copy_Composite (Listed, "", Staged, Top => True);
+         if Hash_Tree (Staged) /= Identity then
+            Remove (Work);
+            raise Store_Error with "a part of composite tree " & Storehouse.Hex.Image (Identity)
+              & " changed while it was stored";
+         end if;
+         Publish (S, Staged, Tree, Identity, Placed);
+         if Placed then
+            Build_Platform.Change_Mode (Entry_Path (S, Tree, Identity), Build_Platform.Read_Only_Directory);
+            Build_Platform.Sync (Entry_Path (S, Tree, Identity));
+            Verified.Include (Verified_Key (Tree, Identity));
+         end if;
+         Remove (Work);
+      end;
+      --  Once per composite and store (tests/ccl-build-native probes its place).
+      Ada.Text_IO.Put_Line ("made  " & Storehouse.Hex.Image (Identity) & "  tree read in place");
+   end Put_Composite;
+
+   procedure Ensure_Tree (S : Store; Identity : Digest) is
+   begin
+      if not Contains (S, Tree, Identity) then
+         raise Store_Error with "tree " & Storehouse.Hex.Image (Identity) & " is not in the store";
+      end if;
+   end Ensure_Tree;
 
    procedure Record_In_Place (S : Store; Source : String; Identity : out Digest) is
       Work : constant String := New_Work (S);

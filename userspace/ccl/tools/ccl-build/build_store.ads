@@ -1,4 +1,5 @@
 with Ada.Containers.Indefinite_Vectors;
+with Ada.Containers.Vectors;
 with Ada.Strings.Unbounded;
 with Interfaces;
 with Build_Platform;
@@ -91,6 +92,31 @@ package Build_Store is
    procedure Record_In_Place (S : Store; Source : String; Identity : out Digest);
    --  Whether a tree entry is a toolchain tree recorded in place.
    function Is_Imported (S : Store; Identity : Digest) return Boolean;
+
+   --  Composite trees (PERF-010: input trees read in place): one tree
+   --  entry made of host files and trees, each at a relative path, with
+   --  the directories between them. Steps read one in place, at its entry
+   --  (Build_Steps' Tree_Path pieces), where the parts must keep their
+   --  layout relative to each other (a GNAT runtime directory and the
+   --  directories its search path files name with ".."), instead of a copy
+   --  in every step directory. Put_Composite snapshots it like Put_Tree:
+   --  the sources are hashed, and copied only if the entry is absent (once
+   --  per content, reported on standard output as "made  <identity>  tree
+   --  read in place"); the identity is the canonical listing Hash_Tree
+   --  gives the tree, computed from the parts' identities. Paths must be
+   --  Storehouse.Paths.Is_Relative; no part may lie inside another, and a
+   --  path given twice must name the same source.
+   type Composite_Part is record
+      Path : Ada.Strings.Unbounded.Unbounded_String;     --  in the tree
+      Kind : Entry_Kind;
+      Source : Ada.Strings.Unbounded.Unbounded_String;   --  the host file or tree
+   end record;
+   package Part_Vectors is new Ada.Containers.Vectors (Positive, Composite_Part);
+   procedure Put_Composite (S : Store; Parts : Part_Vectors.Vector; Identity : out Digest);
+   --  A tree entry a step is about to read in place: present (and intact,
+   --  see "Integrity"), or a toolchain recorded in place. Raises
+   --  Store_Error otherwise.
+   procedure Ensure_Tree (S : Store; Identity : Digest);
 
    --  Action records: the canonical encoding of a step's outputs, stored
    --  under the step's identity once its outputs are entries. A second,

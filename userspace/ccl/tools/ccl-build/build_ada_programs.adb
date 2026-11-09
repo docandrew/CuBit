@@ -3,6 +3,7 @@ with Ada.Containers.Indefinite_Ordered_Sets;
 with Ada.Characters.Handling;
 with Ada.Directories;
 with Ada.Environment_Variables;
+with Ada.Exceptions;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
 with Interfaces.C.Strings;
@@ -346,14 +347,16 @@ package body Build_Ada_Programs is
          return Snapshots (Key);
       end Snapshot;
 
-      --  The runtime's files and directories, as GNAT finds them.
-      Runtime_Inputs : Input_Vectors.Vector;
+      --  The runtime's files and directories, as GNAT finds them, each at
+      --  its path in the steps' layout and where it is on this host.
+      Runtime_Inputs : Build_Store.Part_Vectors.Vector;
       Library_Directory : Unbounded_String;
       procedure Add_Search_Path (File : String; Library : Boolean) is
          Input_File : Ada.Text_IO.File_Type;
       begin
-         Runtime_Inputs.Append
-           (Input'(To_Unbounded_String (Runtime / File), Regular_File, Snapshot (Runtime / File, Regular_File)));
+         Need_Relative (Runtime / File, "source");
+         Runtime_Inputs.Append (Build_Store.Composite_Part'
+           (To_Unbounded_String (Runtime / File), Regular_File, To_Unbounded_String (Host_Path (Runtime / File))));
          Ada.Text_IO.Open (Input_File, Ada.Text_IO.In_File, Source_Root / Runtime / File);
          while not Ada.Text_IO.End_Of_File (Input_File) loop
             declare
@@ -365,7 +368,9 @@ package body Build_Ada_Programs is
                   declare
                      Path : constant String := Resolve (Runtime, Line);
                   begin
-                     Runtime_Inputs.Append (Input'(To_Unbounded_String (Path), Tree, Snapshot (Path, Tree)));
+                     Need_Relative (Path, "source");
+                     Runtime_Inputs.Append (Build_Store.Composite_Part'
+                       (To_Unbounded_String (Path), Tree, To_Unbounded_String (Host_Path (Path))));
                      if Library and then Length (Library_Directory) = 0 then
                         Library_Directory := To_Unbounded_String (Path);
                      end if;
@@ -434,7 +439,7 @@ package body Build_Ada_Programs is
       --  -B: the linker and other binutils programs the driver runs.
       procedure Tools (S : in out Step) is
       begin
-         S.Arguments.Append (Piece'(Kind => Toolchain_Path, Tree => Binutils, Prefix => To_Unbounded_String ("-B"),
+         S.Arguments.Append (Piece'(Kind => Tree_Path, Tree => Binutils, Prefix => To_Unbounded_String ("-B"),
                                     Path => To_Unbounded_String (Program_Directory), others => <>));
       end Tools;
 
@@ -455,23 +460,7 @@ package body Build_Ada_Programs is
          S.Arguments.Append (Piece'(Kind => Kind, Index => Index, Prefix => To_Unbounded_String (Prefix), others => <>));
       end Piece_Of;
 
-      procedure Path_Of (S : in out Step; Path : String; Prefix : String) is
-      begin
-         S.Arguments.Append (Piece'(Kind => Step_Path, Path => To_Unbounded_String (Path),
-                              Prefix => To_Unbounded_String (Prefix), others => <>));
-      end Path_Of;
-
-      --  Reproducible objects: no command line and no step directory in
-      --  the debug information (the make side maps the checkout the same
-      --  way: kernel/Makefile REPRODUCIBLE_ADA).
-      procedure Reproducible (S : in out Step) is
-      begin
-         Literal (S, "-gno-record-gcc-switches");
-         S.Arguments.Append (Piece'(Kind => Step_Root, Prefix => To_Unbounded_String ("-ffile-prefix-map="),
-                              Suffix => To_Unbounded_String ("=."), others => <>));
-      end Reproducible;
-
-      --  A directory the runtime's trees already place in every step.
+      --  A directory inside one of the runtime's trees (or one of them).
       function In_Runtime (Path : String) return Boolean is
       begin
          for I of Runtime_Inputs loop
@@ -484,12 +473,41 @@ package body Build_Ada_Programs is
          return False;
       end In_Runtime;
 
-      procedure Add_Runtime (S : in out Step) is
+      --  Where the runtime is: its files and trees, at their paths in the
+      --  steps' layout, as one composite tree entry that steps read in
+      --  place (PERF-010), never copied into their directories.
+      Runtime_Layout : Digest := [others => 0];
+      function In_Layout (Path : String) return Boolean is
+        (Path = Runtime or else In_Runtime (Path)
+         or else (for some I of Runtime_Inputs => To_String (I.Path) = Path));
+
+      --  Path in the steps' layout: in the runtime's tree when it is the
+      --  runtime's, otherwise in the step directory.
+      procedure Path_Of (S : in out Step; Path : String; Prefix : String) is
       begin
-         for I of Runtime_Inputs loop
-            S.Inputs.Append (I);
-         end loop;
-      end Add_Runtime;
+         if In_Layout (Path) then
+            S.Arguments.Append (Piece'(Kind => Tree_Path, Tree => Runtime_Layout, Path => To_Unbounded_String (Path),
+                                 Prefix => To_Unbounded_String (Prefix), others => <>));
+         else
+            S.Arguments.Append (Piece'(Kind => Step_Path, Path => To_Unbounded_String (Path),
+                                 Prefix => To_Unbounded_String (Prefix), others => <>));
+         end if;
+      end Path_Of;
+
+      --  Reproducible objects: no command line, and neither the step
+      --  directory nor the runtime's entry in the debug information, each
+      --  mapped to "." so a runtime file is named as if in the step
+      --  directory (the make side maps the checkout the same way:
+      --  kernel/Makefile REPRODUCIBLE_ADA).
+      procedure Reproducible (S : in out Step) is
+      begin
+         Literal (S, "-gno-record-gcc-switches");
+         S.Arguments.Append (Piece'(Kind => Step_Root, Prefix => To_Unbounded_String ("-ffile-prefix-map="),
+                              Suffix => To_Unbounded_String ("=."), others => <>));
+         S.Arguments.Append (Piece'(Kind => Tree_Path, Tree => Runtime_Layout,
+                              Prefix => To_Unbounded_String ("-ffile-prefix-map="),
+                              Suffix => To_Unbounded_String ("=."), others => <>));
+      end Reproducible;
 
       --  Outputs of earlier steps, by path.
       Produced : Identity_Maps.Map;
@@ -620,6 +638,16 @@ package body Build_Ada_Programs is
       if Length (Library_Directory) = 0 then
          raise Step_Error with Runtime / Object_Path_File & " names no library directory";
       end if;
+      --  The runtime, snapshot as one tree that steps read in place.
+      declare
+         Timed : Build_Timing.Scope (Build_Timing.Source_Hash);
+         pragma Unreferenced (Timed);
+      begin
+         Store.Put_Composite (Runtime_Inputs, Runtime_Layout);
+      exception
+         when E : Build_Store.Store_Error =>
+            raise Step_Error with "the runtime " & Runtime & ": " & Ada.Exceptions.Exception_Message (E);
+      end;
       for A of Program.Archives loop
          Need_Relative (A, "archive");
          Archives.Append (A);
@@ -831,7 +859,6 @@ package body Build_Ada_Programs is
                   end if;
                end;
             end loop;
-            Add_Runtime (S);
             Declare_Output (S, Objects / (Base (File) & Object_Suffix));
             Declare_Output (S, Objects / (Base (File) & ALI_Suffix));
             Declare_Output (S, Objects / (Base (File) & Stack_Usage_Suffix));
@@ -935,7 +962,6 @@ package body Build_Ada_Programs is
          for O of Objects_In_Order loop
             Declare_Input (S, O, Regular_File, Produced (O));
          end loop;
-         Add_Runtime (S);
          S.Tool := Tool (Program_Directory / (Prefix & Binder_Name));
          Literal (S, "-o");
          Piece_Of (S, Local_Output, Binder_Body);
@@ -966,7 +992,6 @@ package body Build_Ada_Programs is
       begin
          Declare_Input (S, Objects / (Binder_Base & Spec_Suffix), Regular_File,
                         Produced (Objects / (Binder_Base & Spec_Suffix)));
-         Add_Runtime (S);
          S.Tool := Toolchain_Tool;
          Literal (S, "-c");
          Literal (S, "-x");
@@ -1046,7 +1071,6 @@ package body Build_Ada_Programs is
          for A of Archives loop
             Piece_Of (S, Input_Path, Add_Input (S, A, Regular_File, Snapshot (A, Regular_File)));
          end loop;
-         Add_Runtime (S);
          for A of Program.Linker loop
             case A.Kind is
                when Text => Literal (S, To_String (A.Value));

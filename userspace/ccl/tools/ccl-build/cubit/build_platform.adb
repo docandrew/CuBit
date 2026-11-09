@@ -1,6 +1,7 @@
 with Ada.Containers.Indefinite_Vectors;
 with GNAT.OS_Lib;
 with System;
+with CuBit.Launch_Grants;
 with Build_Timing;
 
 --  Build_Platform on CuBit (SELF-002; docs/ccl-build.md, "On CuBit"): the
@@ -28,7 +29,10 @@ with Build_Timing;
 --    - no fork: Run starts the program through procmgr (posix_spawn,
 --      which passes this program's delegated places on to it, decision
 --      D2) in Directory, given as a file action (addchdir), so this
---      program's own working directory never changes. A
+--      program's own working directory never changes. Run_Confined
+--      passes exactly the places it is given instead (the libc's
+--      cubit_posix_spawn_places; a step's own, CCL-004), each named on
+--      the system volume as the libc names absolute paths. A
 --      program's standard output cannot be a file (no descriptors cross
 --      processes): such a step is refused; the tools take an output name.
 package body Build_Platform is
@@ -114,6 +118,18 @@ package body Build_Platform is
      with Import, Convention => C, External_Name => "posix_spawn";
    function c_waitpid (Process : int; Status : access int; Options : int) return int
      with Import, Convention => C, External_Name => "waitpid";
+   --  posix_spawn with exactly the delegated places in Places (a
+   --  CuBit.Launch_Grants region, Length bytes; none when 0) instead of
+   --  this program's (<cubit/launch.h>).
+   function c_posix_spawn_places
+     (Process : access int; Program : chars_ptr; File_Actions, Attributes : System.Address;
+      Arguments, Environment : System.Address; Places : System.Address; Length : size_t) return int
+     with Import, Convention => C, External_Name => "cubit_posix_spawn_places";
+
+   package LG renames Standard.CuBit.Launch_Grants;
+   --  Absolute POSIX names are the system volume's (the libc's
+   --  CuBit.Path_Names), as places are named to procmgr.
+   System_Volume : constant String := "@system";
 
    procedure Check (Result : int; What, Name : String) is
    begin
@@ -435,9 +451,12 @@ package body Build_Platform is
 
    function Process_Id return int is (c_getpid);
 
-   procedure Run
+   --  Starts Program and waits for it: with this program's delegated
+   --  places (not Confined), or exactly Region (1 .. Region_Length).
+   procedure Spawn_And_Wait
      (Program : String; Arguments : Argument_List; Directory : String;
-      Standard_Output : String; Exit_Status : out Integer)
+      Standard_Output : String; Confined : Boolean; Region : LG.Bytes;
+      Region_Length : LG.Byte_Count; Exit_Status : out Integer)
    is
       C_Program : chars_ptr;
       C_Directory : chars_ptr;
@@ -465,8 +484,14 @@ package body Build_Platform is
          --  and procmgr answered (Build_Timing).
          Build_Timing.Count (Build_Timing.Spawns);
          Build_Timing.Enter (Build_Timing.Spawn);
-         Spawned := c_posix_spawn (Child'Access, C_Program, Actions'Address, System.Null_Address,
-                                   Vector'Address, Environment'Address);
+         if Confined then
+            Spawned := c_posix_spawn_places
+              (Child'Access, C_Program, Actions'Address, System.Null_Address,
+               Vector'Address, Environment'Address, Region'Address, size_t (Region_Length));
+         else
+            Spawned := c_posix_spawn (Child'Access, C_Program, Actions'Address, System.Null_Address,
+                                      Vector'Address, Environment'Address);
+         end if;
          Build_Timing.Leave;
       end if;
       Ignored := c_file_actions_destroy (Actions'Address);
@@ -488,6 +513,46 @@ package body Build_Platform is
       else
          Exit_Status := Signalled;
       end if;
+   end Spawn_And_Wait;
+
+   procedure Run
+     (Program : String; Arguments : Argument_List; Directory : String;
+      Standard_Output : String; Exit_Status : out Integer)
+   is
+      None : constant LG.Bytes (1 .. LG.Maximum_Bytes) := [others => 0];
+   begin
+      Spawn_And_Wait (Program, Arguments, Directory, Standard_Output, Confined => False,
+                      Region => None, Region_Length => 0, Exit_Status => Exit_Status);
    end Run;
+
+   procedure Run_Confined
+     (Program : String; Arguments : Argument_List; Directory : String;
+      Standard_Output : String; Places : Place_List; Exit_Status : out Integer)
+   is
+      use Ada.Strings.Unbounded;
+      Builder : LG.Builder;
+      Region : LG.Bytes (1 .. LG.Maximum_Bytes);
+      Length : LG.Byte_Count;
+      Added : Boolean;
+   begin
+      LG.Start (Builder);
+      for P of Places loop
+         declare
+            Name : constant String := To_String (P.Name);
+            Qualified : constant String :=
+              (if Name'Length > 0 and then Name (Name'First) = '/' then System_Volume & Name else Name);
+         begin
+            LG.Add (Builder, (if P.Writable then LG.All_Rights else LG.Read_Right), Qualified, Added);
+            if not Added then
+               raise Platform_Error with Program & ": cannot delegate the place " & Name
+                 & " (not an absolute name, too long, or more than"
+                 & Integer'Image (LG.Maximum_Grants) & " places)";
+            end if;
+         end;
+      end loop;
+      LG.Finish (Builder, Region, Length);
+      Spawn_And_Wait (Program, Arguments, Directory, Standard_Output, Confined => True,
+                      Region => Region, Region_Length => Length, Exit_Status => Exit_Status);
+   end Run_Confined;
 
 end Build_Platform;

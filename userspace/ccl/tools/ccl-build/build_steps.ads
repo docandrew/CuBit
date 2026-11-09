@@ -1,5 +1,6 @@
 with Ada.Containers.Vectors;
 with Ada.Strings.Unbounded;
+with Build_Platform;
 with Build_Store;
 with Storehouse;
 
@@ -34,17 +35,23 @@ package Build_Steps is
    --  directory (the file must be inside it). Step_Path: Path inside the
    --  step directory (a directory holding inputs, such as a runtime).
    --  Step_Root: the step directory itself, for -ffile-prefix-map.
-   --  Toolchain_Path: Path inside a toolchain tree (binutils for -B).
+   --  Tree_Path: Path inside a tree entry the step reads in place, or the
+   --  entry itself when Path is empty: a toolchain recorded in place
+   --  (binutils for -B), or a composite of input trees (a runtime and the
+   --  directories it searches; Build_Store.Put_Composite), which is
+   --  then never copied into the step directory. Tree names the entry, so
+   --  the step's identity covers its content. On CuBit the step is given
+   --  the entry read-only and nothing else of the Storehouse (Run).
    --  Literal: Prefix alone.
    type Piece_Kind is
      (Literal, Input_Path, Output_Path, Local_Input, Local_Output, Step_Path, Step_Root,
-      Toolchain_Path);
+      Tree_Path);
    type Piece is record
       Kind : Piece_Kind := Literal;
       Prefix, Suffix : Unbounded_String;
       Index : Natural := 0;              --  Input_Path .. Local_Output
-      Path : Unbounded_String;           --  Step_Path, Toolchain_Path
-      Tree : Digest := [others => 0];    --  Toolchain_Path
+      Path : Unbounded_String;           --  Step_Path, Tree_Path
+      Tree : Digest := [others => 0];    --  Tree_Path
    end record;
 
    --  What a step runs: a program inside a toolchain tree, one of the
@@ -120,8 +127,14 @@ package Build_Steps is
 
    --  Answers from the action cache when its record and every output entry
    --  are present; otherwise runs the step in a fresh directory holding only
-   --  its inputs, stores the outputs and records the action.
+   --  its inputs, stores the outputs and records the action. The step's
+   --  process is given only its places (Build_Platform.Run_Confined): its
+   --  directory, writable, and read-only the trees it reads in place (its
+   --  Tree_Path pieces' and its toolchain's).
    procedure Run (Store : Build_Store.Store; S : Step; Result : out Outcome);
+
+   --  The places S's process is given when it runs in Root (see Run).
+   function Places (Store : Build_Store.Store; S : Step; Root : String) return Build_Platform.Place_List;
 
    --  The command a run would execute, for explanations and errors.
    function Command_Image (Store : Build_Store.Store; S : Step; Root : String) return String;

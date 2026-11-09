@@ -13,8 +13,9 @@
 --  process-manager read-write process-manager)). Arguments, environment and
 --  working directory are data. The child holds its own manifest's
 --  authority and the places this program's launcher delegated to it, passed
---  on whole (docs/self-hosting.md, decision D2): never this program's own
---  manifest scopes, never more than it was given. procmgr checks both.
+--  on whole (docs/self-hosting.md, decision D2), or, through
+--  cubit_posix_spawn_places, exactly the places the caller names: never
+--  more than this program holds. procmgr checks both.
 --
 --  Names: one without '/' is procmgr's name as it stands. One with '/' is a
 --  path, resolved like open's (CuBit.Path_Names, from the working
@@ -45,6 +46,20 @@ package CuBit.Libc_Process is
       File_Actions : System.Address; Attributes : System.Address;
       Arguments, Environment : System.Address) return int
    with Export, Convention => C, External_Name => "posix_spawn";
+
+   --  posix_spawn, but the child gets exactly the places in the region at
+   --  Places_Region (Places_Bytes long; a CuBit.Launch_Grants region, none
+   --  when 0) instead of this program's delegated places: a launcher gives
+   --  each child only what it needs (ccl-build's steps, CCL-004). procmgr
+   --  refuses the launch (EACCES) unless this program holds every entry
+   --  with at least its rights; a malformed region is EINVAL.
+   --  <cubit/launch.h>.
+   function Spawn_With_Places
+     (Result : System.Address; Path : System.Address;
+      File_Actions : System.Address; Attributes : System.Address;
+      Arguments, Environment : System.Address;
+      Places_Region : System.Address; Places_Bytes : Interfaces.C.size_t) return int
+   with Export, Convention => C, External_Name => "cubit_posix_spawn_places";
 
    --  The same: names are procmgr's, there is no PATH search.
    function Spawn_By_Search

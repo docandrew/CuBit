@@ -275,13 +275,18 @@ package body CuBit.Libc_Process is
    --  value. Child_Lock is held.
    --  Directory: the child's working directory from its file actions, or
    --  empty for this program's own (when it chose one).
+   --  Delegated: the places the child gets, when Explicit (a region the
+   --  caller chose, cubit_posix_spawn_places); otherwise this program's
+   --  delegated places, passed on whole (decision D2).
    function Spawn_Locked
      (Result : System.Address; Name : String;
-      Arguments, Environment : System.Address; Directory : String) return int;
+      Arguments, Environment : System.Address; Directory : String;
+      Explicit : Boolean; Delegated : LG.Bytes) return int;
 
    function Spawn_Locked
      (Result : System.Address; Name : String;
-      Arguments, Environment : System.Address; Directory : String) return int
+      Arguments, Environment : System.Address; Directory : String;
+      Explicit : Boolean; Delegated : LG.Bytes) return int
    is
       Accepted : Boolean;
       Length : LA.Present_Length;
@@ -291,7 +296,7 @@ package body CuBit.Libc_Process is
       Ring_Length : OR_T.Table_Length;
       Error : int := Lend_Request;
    begin
-      if Error = 0 then
+      if Error = 0 and then not Explicit then
          Error := Fetch_Places;
       end if;
       if Error /= 0 then
@@ -328,13 +333,15 @@ package body CuBit.Libc_Process is
       CO.Prepare (Name, Rings, Slot);
       OR_T.Encode (Rings, Ring_Table, Ring_Length);
       declare
-         Buffer : String (1 .. Name'Length + Length + Places_Length + Ring_Length)
+         Given : constant LG.Bytes :=
+           (if Explicit then Delegated else Places (1 .. Places_Length));
+         Buffer : String (1 .. Name'Length + Length + Given'Length + Ring_Length)
          with Import, Address => Request;
          Block : constant LA.Block (1 .. Length) := Encoder.Data (1 .. Length);
          M : aliased Message :=
            (Label => LA.Launch_Operation, Length => LA.Launch_Request_Words,
             Words => [Request_Grant, Unsigned_64 (Name'Length),
-                      Unsigned_64 (Length), LG.Request_Word (0, Places_Length, Ring_Length)],
+                      Unsigned_64 (Length), LG.Request_Word (0, Given'Length, Ring_Length)],
             others => <>);
          Label : Unsigned_32;
       begin
@@ -342,11 +349,11 @@ package body CuBit.Libc_Process is
          for K in Block'Range loop
             Buffer (Name'Length + K) := Character'Val (Block (K));
          end loop;
-         for K in 1 .. Places_Length loop
-            Buffer (Name'Length + Length + K) := Character'Val (Places (K));
+         for K in Given'Range loop
+            Buffer (Name'Length + Length + (K - Given'First + 1)) := Character'Val (Given (K));
          end loop;
          for K in 1 .. Ring_Length loop
-            Buffer (Name'Length + Length + Places_Length + K) :=
+            Buffer (Name'Length + Length + Given'Length + K) :=
               Character'Val (Ring_Table (K));
          end loop;
          --  Registered under the lock waiting drains exit events under, so
@@ -383,12 +390,19 @@ package body CuBit.Libc_Process is
       end;
    end Spawn_Locked;
 
-   function Spawn
+   --  posix_spawn, with the places Spawn_Locked describes.
+   function Spawn_Common
      (Result : System.Address; Path : System.Address;
-      File_Actions : System.Address; Attributes : System.Address;
-      Arguments, Environment : System.Address) return int
+      File_Actions : System.Address;
+      Arguments, Environment : System.Address;
+      Explicit : Boolean; Delegated : LG.Bytes) return int;
+
+   function Spawn_Common
+     (Result : System.Address; Path : System.Address;
+      File_Actions : System.Address;
+      Arguments, Environment : System.Address;
+      Explicit : Boolean; Delegated : LG.Bytes) return int
    is
-      pragma Unreferenced (Attributes);  --  no signals, groups or classes
       Start : constant System.Address := Path;
       Length : Natural;
       Error : int;
@@ -524,11 +538,51 @@ package body CuBit.Libc_Process is
          Lock (Child_Lock'Access);
          Error := Spawn_Locked
            (Result, Resolved (First .. Resolved_Length), Arguments, Environment,
-            Directory (1 .. Directory_Length));
+            Directory (1 .. Directory_Length), Explicit, Delegated);
          Unlock (Child_Lock'Access);
       end;
       return Error;
+   end Spawn_Common;
+
+   function Spawn
+     (Result : System.Address; Path : System.Address;
+      File_Actions : System.Address; Attributes : System.Address;
+      Arguments, Environment : System.Address) return int
+   is
+      pragma Unreferenced (Attributes);  --  no signals, groups or classes
+      None : constant LG.Bytes (1 .. 0) := [others => 0];
+   begin
+      return Spawn_Common (Result, Path, File_Actions, Arguments, Environment,
+                           Explicit => False, Delegated => None);
    end Spawn;
+
+   function Spawn_With_Places
+     (Result : System.Address; Path : System.Address;
+      File_Actions : System.Address; Attributes : System.Address;
+      Arguments, Environment : System.Address;
+      Places_Region : System.Address; Places_Bytes : size_t) return int
+   is
+      pragma Unreferenced (Attributes);  --  no signals, groups or classes
+   begin
+      if Places_Bytes > size_t (LG.Maximum_Bytes)
+        or else (Places_Bytes > 0 and then Places_Region = System.Null_Address)
+      then
+         return EINVAL;
+      end if;
+      declare
+         Region : constant LG.Bytes (1 .. Natural (Places_Bytes))
+         with Import, Address => Places_Region;
+         Copy : constant LG.Bytes (1 .. Natural (Places_Bytes)) := Region;
+      begin
+         --  procmgr validates the region as well, and refuses an entry
+         --  this program does not hold.
+         if Copy'Length > 0 and then not LG.Valid (Copy) then
+            return EINVAL;
+         end if;
+         return Spawn_Common (Result, Path, File_Actions, Arguments, Environment,
+                              Explicit => True, Delegated => Copy);
+      end;
+   end Spawn_With_Places;
 
    function Spawn_By_Search
      (Result : System.Address; Path : System.Address;

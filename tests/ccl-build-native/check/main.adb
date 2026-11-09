@@ -7,7 +7,12 @@
 --    2. the next build recovers: it completes, its ps2.drv is byte for byte
 --       the program ccl-build built on Linux from the same sources, and
 --       the store verifies;
---    3. a build after it runs no step: every step is answered by the cache.
+--    3. a build after it runs no step: every step is answered by the cache;
+--    4. the runtime place (PERF-010): steps read the runtime in place, in
+--       its composite tree in the Storehouse, delegated read-only to each
+--       step that names it. The gcc driver, started with a step's places,
+--       compiles against it; writing into it is refused; and without it
+--       delegated, the same compile cannot see the runtime.
 --  ccl-build gets the places it needs delegated (decision D2), so the
 --  toolchain's programs it starts get them too: the Storehouse
 --  (read/write/create), the toolchain and the source checkout (read), and
@@ -116,6 +121,12 @@ procedure Main is
    end Number;
 
    Ran_Prefix : constant String := "ran  ";
+   --  "made  <identity>  ...": a tree ccl-build made for steps to read in
+   --  place (the runtime's composite tree, Build_Store.Ensure_Tree).
+   Made_Prefix : constant String := "made  ";
+   Identity_Digits : constant := 64;
+   Runtime_Tree : String (1 .. Identity_Digits) := [others => ' '];
+   Runtime_Tree_Seen : Boolean := False;
    Summary_Prefix : constant String := "ccl-build: ";
    Ran_Word : constant String := " ran, ";
    Clean_Suffix : constant String := " 0 damaged";
@@ -125,6 +136,15 @@ procedure Main is
    begin
       if Starts (Line, Ran_Prefix) then
          Steps_Run := Steps_Run + 1;
+      elsif Starts (Line, Made_Prefix)
+        and then Line'Length >= Made_Prefix'Length + Identity_Digits
+        and then (for all C of Line (Line'First + Made_Prefix'Length ..
+                                     Line'First + Made_Prefix'Length + Identity_Digits - 1) =>
+                    C in '0' .. '9' | 'a' .. 'f')
+      then
+         Runtime_Tree := Line (Line'First + Made_Prefix'Length ..
+                               Line'First + Made_Prefix'Length + Identity_Digits - 1);
+         Runtime_Tree_Seen := True;
       elsif Starts (Line, Summary_Prefix) then
          if Ends (Line, Clean_Suffix) then
             Verified_Clean := True;
@@ -338,6 +358,74 @@ procedure Main is
       return Ended.Kind = CuBit.Child_Exits.Exited and then Ended.Code = 0;
    end Same;
 
+   --  4. The gcc driver as a ccl-build step runs (Build_Steps.Places):
+   --  a writable directory (here the work place, also its working
+   --  directory), the toolchain and the runtime's composite tree read-only,
+   --  plus the directory of the unit it compiles; the runtime only when
+   --  With_Runtime. It compiles a unit of the input library that withs only
+   --  the runtime into Output (named after the unit, as gnat1 requires):
+   --  its exit code, or Not_Exited.
+   function Runtime_Place return String is (Storehouse & "/trees/" & Runtime_Tree);
+   function Runtime_Name return String is ("/storehouse/trees/" & Runtime_Tree);
+   Unit_Place : constant String := Sources & "/userspace/lib/input";
+   function Probe (Output : String; With_Runtime : Boolean) return Integer is
+      Block : LA.Builder;
+      Length : LA.Present_Length;
+      Added, Accepted : Boolean := True;
+      Started : CuBit.Launching.Child;
+      Result : CuBit.Launching.Launch_Result;
+      Failure : LA.Launch_Failure;
+      Places : LG.Builder;
+      Region : LG.Bytes (1 .. LG.Maximum_Bytes);
+      Region_Length : LG.Byte_Count;
+      Ended : CuBit.Child_Exits.Report;
+      Driver : constant String := "toolchain/bin/gcc";
+      procedure Argument (Text : String) is
+      begin
+         LA.Add_Argument (Block, Text, Added);
+         Accepted := Accepted and Added;
+      end Argument;
+      procedure Place (Rights : Unsigned_8; Name : String) is
+      begin
+         LG.Add (Places, Rights, Name, Added);
+         Accepted := Accepted and Added;
+      end Place;
+   begin
+      LA.Start (Block);
+      Argument ("/" & Driver);
+      Argument ("-c");
+      Argument ("-x");
+      Argument ("ada");
+      Argument ("-gnatA");
+      Argument ("--RTS=" & Runtime_Name & "/userspace/runtime");
+      Argument ("/cubit-src/userspace/lib/input/input_pending.adb");
+      Argument ("-o");
+      Argument (Output);
+      LA.Add_Directory (Block, Work, Added);
+      Accepted := Accepted and Added;
+      LA.Finish (Block, Length, Added);
+      Accepted := Accepted and Added;
+      LG.Start (Places);
+      Place (LG.All_Rights, Work);
+      Place (LG.Read_Right, Toolchain);
+      Place (LG.Read_Right, Unit_Place);
+      if With_Runtime then
+         Place (LG.Read_Right, Runtime_Place);
+      end if;
+      LG.Finish (Places, Region, Region_Length);
+      if not Accepted then
+         return Not_Exited;
+      end if;
+      CuBit.Launching.Launch
+        (Launcher, Driver, Block.Data (1 .. Length), Region (1 .. Region_Length), Started, Result, Failure);
+      if Result /= CuBit.Launching.Launched then
+         Note ("the probe compile could not be started");
+         return Not_Exited;
+      end if;
+      CuBit.Launching.Wait (Started, Ended);
+      return (if Ended.Kind = CuBit.Child_Exits.Exited then Integer (Ended.Code) else Not_Exited);
+   end Probe;
+
    --  The interrupted build: ended once it has run this many steps (of
    --  ps2's eleven), so some steps are answered on recovery and some run.
    Steps_Before_Interrupt : constant := 4;
@@ -403,5 +491,16 @@ begin
    Say ("it runs no step: every step is answered by the cache",
         Summary_Seen and then Summary_Ran = 0 and then Steps_Run = 0 and then Summary_Answered > 0);
    Say ("its ps2.drv is still the Linux build's", Same (Built_Program, Expected_Program));
+
+   --  4. The runtime place.
+   Say ("ccl-build made the runtime's tree, for its steps to read in place", Runtime_Tree_Seen);
+   Note ("runtime place " & Runtime_Place);
+   Say ("a step given the runtime place compiles against it (control)",
+        Probe ("/work/input_pending.o", With_Runtime => True) = 0);
+   Say ("a step writing into the runtime place is refused",
+        Probe (Runtime_Name & "/userspace/runtime/input_pending.o", With_Runtime => True)
+          not in 0 | Not_Exited);
+   Say ("a step not given the runtime place cannot see it",
+        Probe ("/work/input_pending.o", With_Runtime => False) not in 0 | Not_Exited);
    debugPrint ((if Failed then "CCL-BUILD-NATIVE: FAIL" else "CCL-BUILD-NATIVE: PASS") & LF);
 end Main;
