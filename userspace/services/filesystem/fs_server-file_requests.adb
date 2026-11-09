@@ -350,7 +350,7 @@ package body Fs_Server.File_Requests is
             when Ext2_Support.Not_A_Regular_File =>
                sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
                return;
-            when Ext2_Support.Not_A_Single_Link | Ext2_Support.Unsupported_Metadata =>
+            when Ext2_Support.Link_Count_Unsupported | Ext2_Support.Unsupported_Metadata =>
                sendReply (sender, REPLY_UNSUPPORTED_OBJECT, 0);
                return;
          end case;

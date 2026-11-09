@@ -2012,6 +2012,28 @@ if [ -n "$INIT_PROFILE" ]; then
                 echo "headless: failed to make fs-coherence" >&2
                 exit 1
             fi
+            if [ "$TEST_NAME" = "fs-coherence-hard-links" ]; then
+                # One file, two names (FS-031): CuBit has no link operation
+                # (Linux's run of the case makes them with link()). The
+                # disk must be clean before, so that the check after means
+                # something.
+                HARD_LINKS="$TEMP_DISK.hard-links"
+                head -c 3000 /dev/zero | tr '\0' H > "$HARD_LINKS"
+                printf '%s\n' "write $HARD_LINKS fs-coherence/hard-links-a" \
+                    "ln fs-coherence/hard-links-a fs-coherence/hard-links-b" \
+                    "sif fs-coherence/hard-links-a links_count 2" > "$HARD_LINKS.commands"
+                debugfs -w -f "$HARD_LINKS.commands" "$TEMP_DISK" >/dev/null 2>&1
+                rm -f "$HARD_LINKS" "$HARD_LINKS.commands"
+                if ! debugfs -R "stat fs-coherence/hard-links-b" "$TEMP_DISK" 2>/dev/null |
+                       grep -q 'Links: 2'; then
+                    echo "headless: failed to make the two names of fs-coherence/hard-links-a" >&2
+                    exit 1
+                fi
+                if ! e2fsck -fn "$TEMP_DISK"; then
+                    echo "headless: the fs-coherence-hard-links disk is inconsistent before boot" >&2
+                    exit 1
+                fi
+            fi
             ;;
     esac
     if [ "$TEST_NAME" = "bench-latency" ]; then
@@ -7860,6 +7882,22 @@ if [ "$CHECK_EXT2" -eq 1 ]; then
         echo "headless: Ext2 interoperability postcheck failed" >&2
         exit 1
     fi
+fi
+if [ "$TEST_NAME" = "fs-coherence-hard-links" ]; then
+    # The disk as Linux would mount it (journal replayed, orphans
+    # completed) must be clean: every link count right, no leaked or
+    # doubly freed inode or block, and both names gone (FS-031).
+    e2fsck -fy -E journal_only "$TEMP_DISK" >/dev/null 2>&1
+    if ! e2fsck -fn "$TEMP_DISK"; then
+        echo "headless: $TEST_NAME left an inconsistent disk" >&2
+        exit 1
+    fi
+    for HARD_LINK_NAME in hard-links-a hard-links-b; do
+        if debugfs -R "stat fs-coherence/$HARD_LINK_NAME" "$TEMP_DISK" 2>/dev/null | grep -q '^Inode:'; then
+            echo "headless: $TEST_NAME left fs-coherence/$HARD_LINK_NAME" >&2
+            exit 1
+        fi
+    done
 fi
 HEADLESS_TEST_FAILED=0
 if [ "$CONFIG_STORAGE_TEST" = 1 ]; then

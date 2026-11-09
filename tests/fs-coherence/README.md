@@ -27,6 +27,15 @@ of a directory and of a read-only descriptor succeed (on CuBit both commit
 the volume's journal). The program checks conflicts while the other
 process lives (`during`), then that nothing is left locked.
 
+`hard-links` (FS-031) holds one name of a two-name file open while the
+other process unlinks the other name: the file keeps its bytes and one
+link (fstat and stat), a write through the open name does not bring the
+old count back, and the last name unlinked while open stays readable until
+closed. CuBit has no link operation, so the headless runner makes both
+names on its disk copy (debugfs) and, after the run, replays the journal
+and requires `e2fsck -fn` clean with both names gone; Linux's run makes
+them with link().
+
 Markers: `fs-coherence: start CASE`, `fs-coherence: CASE PASS` (or `FAIL`
 and what was wrong), `fs-coherence: end` (QEMU stops there). Files live
 under `@nvme:0/fs-coherence` (made by the headless runner on its disk copy).

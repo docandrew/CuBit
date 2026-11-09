@@ -29,6 +29,8 @@ procedure Object_Admission is
    pageStatus : Directory_Read_Status;
    found : Unsigned_32;
    lookup : Directory_Lookup_Status;
+   type Count_List is array (Positive range <>) of Unsigned_16;
+   Linked_Counts : constant Count_List := [2, 3, Ext2_Support.Maximum_Links];
 
    procedure Setup is
    begin
@@ -96,16 +98,23 @@ begin
          Rejected;
       end if;
    end loop;
-   for Links in Unsigned_16 range 2 .. 3 loop
+   --  Hard links (FS-031): any count up to ext2's limit is a named file.
+   for Links of Linked_Counts loop
       Setup;
       target.numHardLinks := Links;
-      Rejected;
+      pragma Assert (Check_File (target) = File_Allowed);
+      readData (fs, target, 0, output'Address, 4, completed, readStatus);
+      pragma Assert (readStatus = Read_Complete and completed = 4 and output = "DATA");
    end loop;
+   Setup;
+   target.numHardLinks := Ext2_Support.Maximum_Links + 1;
+   pragma Assert (Check_File (target) = Link_Count_Unsupported);
+   Rejected;
    --  No links: never opened by name, but a file unlinked while open stays
    --  usable through its handles until the last close reclaims it.
    Setup;
    target.numHardLinks := 0;
-   pragma Assert (Check_File (target) = Not_A_Single_Link);
+   pragma Assert (Check_File (target) = Link_Count_Unsupported);
    pragma Assert (Check_File (target, Unlinked_Allowed => True) = File_Allowed);
    readData (fs, target, 0, output'Address, 4, completed, readStatus);
    pragma Assert (readStatus = Read_Complete and completed = 4 and output = "DATA");
@@ -138,5 +147,5 @@ begin
    pragma Assert (Check_File (target) = File_Allowed);
    readData (fs, target, 0, output'Address, 4, completed, readStatus);
    pragma Assert (readStatus = Read_Complete and completed = 4 and output = "DATA");
-   Ada.Text_IO.Put_Line ("OBJECT-ADMISSION-CHECK: PASS (52 rejected inode cases, unlinked-open admitted)");
+   Ada.Text_IO.Put_Line ("OBJECT-ADMISSION-CHECK: PASS (51 rejected inode cases, hard-linked and unlinked-open admitted)");
 end Object_Admission;

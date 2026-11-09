@@ -1,0 +1,5 @@
+# tests/fs-coherence case hard-links (headless: fs-coherence-hard-links).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "fs-coherence-hard-links.app" (priority 3))
+)

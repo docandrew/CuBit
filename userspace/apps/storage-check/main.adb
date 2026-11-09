@@ -157,12 +157,29 @@ procedure main is
          end loop;
          return True;
       end Rejected;
+
+      --  A file with two names (hard links, FS-031) is an ordinary file
+      --  under either name.
+      function Admitted (Name : String) return Boolean is
+         M : Message;
+      begin
+         Buffer (1 .. Name'Length) := Name;
+         M := Open_Request (grantRef, Name'Length, OPEN_READ_ONLY);
+         M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
+         if M.tag.label /= REPLY_OK then
+            debugPrint ("LINK-POLICY-CHECK: hard-linked file refused " & Name & LF);
+            return False;
+         end if;
+         M := Close_Request (File_Handle (M.words (0)));
+         M.tag := capCall (FS_Service, M, CuBit.Messages.Wait_Forever);
+         return M.tag.label = REPLY_OK;
+      end Admitted;
    begin
       return Rejected ("@nvme:0/nav-link", REPLY_WRONG_OBJECT_TYPE) and then
         Rejected ("@nvme:0/file-link", REPLY_WRONG_OBJECT_TYPE) and then
         Rejected ("@nvme:0/long-file-link", REPLY_WRONG_OBJECT_TYPE) and then
-        Rejected ("@nvme:0/linked-file", REPLY_UNSUPPORTED_OBJECT) and then
-        Rejected ("@nvme:0/linked-alias", REPLY_UNSUPPORTED_OBJECT);
+        Admitted ("@nvme:0/linked-file") and then
+        Admitted ("@nvme:0/linked-alias");
    end exerciseRejectedObjects;
 
    function exerciseRAMVolume return Boolean is

@@ -440,7 +440,11 @@ package body Ext2.Removal is
       end if;
       if writeStatus = Write_Complete then
          freeInode (fs, inodeNum, False, writeStatus);
-      else
+      end if;
+      --  The inode is marked deleted in this transaction: a failure after
+      --  that (freeInode's reads included) must not let it commit without
+      --  the bitmap, a leaked inode.
+      if writeStatus /= Write_Complete then
          fs.writeQuarantined := True;
       end if;
       stopHandle (fs);
@@ -455,20 +459,49 @@ package body Ext2.Removal is
    is
       writeStatus : Write_Status;
       readStatus : Read_Status;
+      removal : Ext2_Support.Name_Removal;
+      use type Ext2_Support.Name_Removal;
    begin
       inodeNum := 0;
       unlinked := NULL_INODE;
       status := Remove_Complete;
-      --  The name is gone; a crash here leaves a linked, unnamed inode
-      --  (e2fsck moves it to lost+found). Journaled, both are one operation.
-      ino.numHardLinks := 0;
+      --  Callers admit the file (Check_File: it has a name) before its name
+      --  goes; anything else here is a broken invariant, not a format case.
+      if ino.numHardLinks not in Ext2_Support.Named_Links then
+         stopHandle (fs);
+         fs.writeQuarantined := True;
+         status := Remove_Recovery_Required;
+         return;
+      end if;
+      --  One name is gone: one link less (FS-031). Without a journal a crash
+      --  before this write over-counts, which e2fsck repairs; journaled,
+      --  both are one operation.
+      removal := Ext2_Support.Removal_Of (ino.numHardLinks, keepOrphan);
+      ino.numHardLinks := Ext2_Support.Links_After_Removal (ino.numHardLinks);
       Stamp (ino, Inode_Changed);
+      if removal = Ext2_Support.Other_Names_Remain then
+         --  Its other names keep the file: nothing is freed or orphaned.
+         writeInode (fs, target, ino, writeStatus);
+         stopHandle (fs);
+         if writeStatus /= Write_Complete then
+            fs.writeQuarantined := True;
+            status := Remove_Recovery_Required;
+            return;
+         end if;
+         unlinked := ino;
+         return;
+      end if;
+      --  The last name: a crash before the inode is freed leaves a linked,
+      --  unnamed inode (e2fsck moves it to lost+found), or journaled, an
+      --  orphan that recovery frees.
       --  An unheld inode with no blocks, on a journaled volume: it is freed
       --  under the same handle as its name, so the transaction holds both
       --  or neither and it never needs the orphan list (Linux's unlink and
       --  eviction in one transaction). Blocks would need a truncate, which
       --  takes its own handle: those go the general way below.
-      if fs.journal.Active and then not keepOrphan and then emptyFile (ino) then
+      if fs.journal.Active and then removal = Ext2_Support.Freed_Now and then
+        emptyFile (ino)
+      then
          ino.deletedTime := deletionTime (fs);
          writeInode (fs, target, ino, writeStatus, Exact_Inode);
          if writeStatus = Write_Complete then
@@ -503,7 +536,7 @@ package body Ext2.Removal is
       end if;
       inodeNum := target;
       unlinked := ino;
-      if not keepOrphan then
+      if removal = Ext2_Support.Freed_Now then
          reclaimInode (fs, target, status);
       end if;
    end releaseUnlinked;
@@ -568,9 +601,14 @@ package body Ext2.Removal is
             status := Remove_Unsupported;
             return;
          end if;
-         --  Check the block tree before the name goes, so that reclaim
-         --  cannot then refuse it and strand an orphan.
-         validateBlockTree (fs, ino, treeStatus);
+         --  Check the block tree before the last name goes, so that
+         --  reclaim cannot then refuse it and strand an orphan. A file
+         --  with other names keeps its blocks.
+         if ino.numHardLinks = 1 then
+            validateBlockTree (fs, ino, treeStatus);
+         else
+            treeStatus := Truncate_Complete;
+         end if;
          if treeStatus /= Truncate_Complete then
             status := (if treeStatus = Truncate_IO_Error then Remove_IO_Error
                        else Remove_Unsupported);

@@ -39,6 +39,11 @@ private package Fs_Server.Handles is
    --  the last close (reclaimOrphan).
    procedure keepOrphan (volume : Volume_Index; target : Unsigned_32; holder : Natural);
 
+   --  One name of a file is gone and others remain (FS-031): handles that
+   --  hold it keep written's link count and change time (their writes
+   --  must not restore the old count). Nothing if none holds it.
+   procedure keepLinks (key : Inode_Identity; written : Ext2.Inode);
+
    --  A handle on (volume, target) other than a dropped parked one, or -1.
    function holderOf (volume : Volume_Index; target : Unsigned_32) return Integer;
 

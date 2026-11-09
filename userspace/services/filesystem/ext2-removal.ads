@@ -70,10 +70,13 @@ private package Ext2.Removal is
      (fs : in out Filesystem; inodeNum : Unsigned_32;
       status : out Remove_Status);
 
-   --  Drop a regular file's last link once its name is gone, under the
-   --  handle that removed the name (stopped here): freed now when that is
-   --  safe, otherwise put on the orphan list and reclaimed unless still
-   --  held (keepOrphan). inodeNum and unlinked are set once that is done.
+   --  Drop the link of a regular file's name once the name is gone, under
+   --  the handle that removed it (stopped here), as Ext2_Support.Removal_Of
+   --  decides: with other names left only the count goes down (unlinked is
+   --  the inode as written, inodeNum 0); the last link freed now when that
+   --  is safe, otherwise put on the orphan list and reclaimed unless still
+   --  held (keepOrphan). inodeNum and unlinked are then set once that is
+   --  done.
    procedure releaseUnlinked
      (fs : in out Filesystem; target : Unsigned_32; ino : in out Inode;
       keepOrphan : Boolean; inodeNum : out Unsigned_32; unlinked : out Inode;

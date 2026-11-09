@@ -11,3 +11,4 @@ lock-shared-exclusive
 lock-deadline
 lock-close
 fsync-directory
+hard-links

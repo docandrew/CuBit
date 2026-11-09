@@ -10,7 +10,8 @@ with Fs_Server.Watches; use Fs_Server.Watches;
 
 package body Fs_Server.Namespace_Requests is
 
-   use type Ext2.Read_Status, Ext2.Directory_Lookup_Status, Ext2.Rename_Status;
+   use type Ext2.Read_Status, Ext2.Directory_Lookup_Status, Ext2.Rename_Status,
+     Ext2.Remove_Status;
    use ASCII;
    package Labels renames Fs_Reply_Labels;
 
@@ -159,8 +160,13 @@ package body Fs_Server.Namespace_Requests is
                keepOrphan (volume, target, holder);
             end if;
             if target /= 0 and then Ext2."=" (status, Ext2.Rename_Complete) then
-               --  The replaced file's number may name another file next.
-               bumpVersion ((volume, target));
+               if replaced.numHardLinks /= 0 then
+                  --  The replaced name's file keeps its other names (FS-031).
+                  keepLinks ((volume, target), replaced);
+               else
+                  --  The replaced file's number may name another file next.
+                  bumpVersion ((volume, target));
+               end if;
             end if;
 
             declare
@@ -370,6 +376,9 @@ package body Fs_Server.Namespace_Requests is
       end;
       if holder >= 0 and then unlinkedNumber = target then
          keepOrphan (volume, target, holder);
+      elsif status = Ext2.Remove_Complete and then unlinked.numHardLinks /= 0 then
+         --  Its other names keep the file (FS-031).
+         keepLinks ((volume, target), unlinked);
       end if;
       if unlinkedNumber = target and then target /= 0 then
          --  A later file with this inode number is another file: pages a

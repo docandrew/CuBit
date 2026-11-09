@@ -33,6 +33,14 @@
  *                         descriptor keeps the old file, the name the new one
  *   readdir-after-other-create  a directory we listed, then the other
  *                         process created files in it
+ *   hard-links            one file with two names (FS-031), held open by
+ *                         one: the other process unlinks the other name.
+ *                         The file, its bytes and one link stay; a write
+ *                         through the open name keeps that count; then the
+ *                         last name, unlinked while open, stays readable
+ *                         until closed. (CuBit has no link operation: the
+ *                         headless runner makes both names on its disk
+ *                         copy, and checks it with e2fsck afterwards.)
  *
  * Advisory locks (flock), released by the filesystem service when their
  * handle closes or their process exits, however it ends:
@@ -253,13 +261,64 @@ static int wait_for(const char *name)
 
 /* --- the cases: prepare (this process), act (the other), check ----------- */
 
-static int held_fd = -1;                /* rename-over-open */
+static int held_fd = -1;                /* rename-over-open, hard-links */
+
+/* hard-links: a and b name one file of FILE_BYTES 'H'; b held open. */
+static int prepare_links(const char *a, const char *b)
+{
+	struct stat sa, sb;
+#ifndef CUBIT
+	unlink(a);
+	unlink(b);
+	if (put_file(a, 'H', FILE_BYTES) < 0 || link(a, b) != 0) return -1;
+#endif
+	if (stat(a, &sa) != 0 || stat(b, &sb) != 0 || sa.st_ino != sb.st_ino ||
+	    sa.st_nlink != 2 || sb.st_nlink != 2)
+		return -1;
+	held_fd = open(b, O_RDWR);
+	return held_fd >= 0 && holds(held_fd, 'H', FILE_BYTES) ? 0 : -1;
+}
+
+/* hard-links, once the other process unlinked a. */
+static const char *check_links(const char *a, const char *b)
+{
+	struct stat st;
+	unsigned char data[FILE_BYTES];
+	const char *wrong = 0;
+	memset(data, 'W', sizeof data);
+	if (!holds(held_fd, 'H', FILE_BYTES)) wrong = "open name lost its file";
+	else if (fstat(held_fd, &st) != 0 || st.st_nlink != 1) wrong = "link count not 1";
+	else if (stat(a, &st) == 0 || errno != ENOENT) wrong = "unlinked name still there";
+	else if (!file_is(b, 'H', FILE_BYTES)) wrong = "other name lost its bytes";
+	else if (pwrite(held_fd, data, FILE_BYTES, 0) != FILE_BYTES || fsync(held_fd) != 0)
+		wrong = "write through the other name";
+	if (close(held_fd) != 0 && !wrong) wrong = "close";
+	held_fd = -1;
+	if (wrong) return wrong;
+	/* A write must not bring the old count back. */
+	if (stat(b, &st) != 0 || st.st_nlink != 1) return "link count changed by a write";
+	if (!file_is(b, 'W', FILE_BYTES)) return "written bytes lost";
+	/* The last name, unlinked while open: readable until closed. */
+	int fd = open(b, O_RDONLY);
+	if (fd < 0) return "other name not reopened";
+	if (unlink(b) != 0) wrong = "last name not unlinked";
+	else if (!holds(fd, 'W', FILE_BYTES)) wrong = "unlinked open file unreadable";
+	else if (open(b, O_RDONLY) >= 0 || errno != ENOENT) wrong = "last name still there";
+	close(fd);
+	/* Commit the volume (CuBit: its journal) for the host's e2fsck. */
+	int dir = open(directory, O_RDONLY | O_DIRECTORY);
+	if ((dir < 0 || fsync(dir) != 0) && !wrong) wrong = "directory fsync";
+	if (dir >= 0) close(dir);
+	return wrong;
+}
 
 static int prepare(void)
 {
 	char a[PATH_BYTES], b[PATH_BYTES];
 	name_of(a, "a");
 	name_of(b, "b");
+	if (!strcmp(case_name, "hard-links"))
+		return prepare_links(a, b);
 	unlink(a);
 	unlink(b);
 	if (!strcmp(case_name, "exit-left-open") || !strcmp(case_name, "exit-closed"))
@@ -345,6 +404,8 @@ static int act(void)
 	}
 	if (!strcmp(case_name, "rename-over-open"))
 		return rename(b, a);
+	if (!strcmp(case_name, "hard-links"))
+		return unlink(a);                   /* our open name keeps the file */
 	if (!strcmp(case_name, "readdir-after-other-create")) {
 		char sub[PATH_BYTES], n[NAME_BYTES];
 		name_of(sub, "dir");
@@ -438,6 +499,8 @@ static const char *check(void)
 		close(held_fd);
 	} else if (!strcmp(case_name, "fsync-directory")) {
 		if (!file_is(b, 'F', FILE_BYTES)) wrong = "renamed file's bytes lost";
+	} else if (!strcmp(case_name, "hard-links")) {
+		wrong = check_links(a, b);
 	} else if (!strncmp(case_name, "lock-", 5)) {
 		/* Nobody holds it now. */
 		int fd = open(a, O_RDWR);

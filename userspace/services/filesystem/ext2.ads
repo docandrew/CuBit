@@ -15,6 +15,7 @@ with Volume_Admission;
 with Ext2_Inodes;
 with Jbd2_Format;
 with Ext2_Format;
+with Ext2_Support;
 
 with CuBit.Handles;
 package Ext2 is
@@ -443,10 +444,12 @@ package Ext2 is
    --  journal the order never leaves the inode without a name: its link
    --  count is raised, the new name written, the old one removed, the
    --  count lowered (a crash at worst over-counts, as e2fsck repairs).
-   --  A replaced file loses its last link. With keepReplaced (handles still
-   --  hold it) it keeps its blocks for reclaimInode at last close, as
-   --  unlinkPath's keepOrphan; replacedNumber and replaced (links 0) then
-   --  name it. replacedNumber is 0 when nothing was replaced.
+   --  A replaced file loses that name's link, as unlinkPath: with other
+   --  names it stays (replacedNumber 0, replaced its inode one link less).
+   --  Losing its last, with keepReplaced (handles still hold it) it keeps
+   --  its blocks for reclaimInode at last close, as unlinkPath's
+   --  keepOrphan; replacedNumber and replaced (links 0) then name it.
+   --  replacedNumber is 0 when nothing was released.
    procedure renamePath
      (fs : in out Filesystem; oldPath, newPath : String;
       keepReplaced : Boolean; replacedNumber : out Unsigned_32;
@@ -469,13 +472,15 @@ package Ext2 is
       Remove_Durability_Unsupported, Remove_Recovery_Required);
 
    --  ext2's link limit (EXT2_LINK_MAX): mkdir refuses a parent at it.
-   Maximum_Links : constant := 32_000;   --  EXT2_LINK_MAX
+   Maximum_Links : constant := Ext2_Support.Maximum_Links;
 
-   --  Remove a regular file's name and its (single) link. With keepOrphan
-   --  (handles still hold it) the unlinked inode keeps its blocks for
-   --  reclaimInode at last close (POSIX); otherwise it is freed now.
-   --  inodeNum and unlinked (links 0) are set once the name is gone, even
-   --  if the later reclaim fails.
+   --  Remove one name of a regular file and its link (Ext2_Support.
+   --  Removal_Of). A file with other names (hard links) keeps its inode
+   --  and blocks: inodeNum stays 0 and unlinked is the inode as written,
+   --  one link less. Its last name gone: with keepOrphan (handles still
+   --  hold it) the inode keeps its blocks for reclaimInode at last close
+   --  (POSIX); otherwise it is freed now. inodeNum and unlinked (links 0)
+   --  are then set once the name is gone, even if the later reclaim fails.
    procedure unlinkPath
      (fs : in out Filesystem; path : String; keepOrphan : Boolean;
       inodeNum : out Unsigned_32; unlinked : out Inode;

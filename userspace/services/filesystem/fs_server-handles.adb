@@ -209,6 +209,21 @@ package body Fs_Server.Handles is
       end loop;
    end keepOrphan;
 
+   procedure keepLinks (key : Inode_Identity; written : Ext2.Inode) is
+      object : constant Open_Inodes.Link := Open_Inodes.Object_Of (inodeObjects, key);
+      holder : Open_Inodes.Owner_Index;
+      current : Ext2.Inode;
+   begin
+      if object = 0 or else Open_Inodes.Holding (inodeObjects, object) = 0 then
+         return;
+      end if;
+      holder := Open_Inodes.Holder (inodeObjects, object, 0);
+      current := Open_Inodes.Value (inodeObjects, holder);
+      current.numHardLinks := written.numHardLinks;
+      current.creationTime := written.creationTime;   --  i_ctime
+      Open_Inodes.Replace (inodeObjects, holder, current);
+   end keepLinks;
+
    --  A handle on (volume, target) other than a dropped parked one, or -1.
    function holderOf (volume : Volume_Index; target : Unsigned_32) return Integer is
       object : constant Open_Inodes.Link :=

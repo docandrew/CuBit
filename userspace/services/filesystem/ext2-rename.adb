@@ -309,15 +309,20 @@ package body Ext2.Rename is
                return;
             end if;
          else
-            --  As unlink: an ordinary single-link file whose block tree
-            --  checks out, so its release cannot then be refused.
+            --  As unlink: an ordinary file, which keeps its other names
+            --  (FS-031); losing its last one, its block tree must check
+            --  out, so its release cannot then be refused.
             if Ext2_Support.Check_File (target) /= Ext2_Support.File_Allowed or else
               target.fileACL /= 0
             then
                status := Rename_Range_Unsupported;
                return;
             end if;
-            validateBlockTree (fs, target, treeStatus);
+            if target.numHardLinks = 1 then
+               validateBlockTree (fs, target, treeStatus);
+            else
+               treeStatus := Truncate_Complete;
+            end if;
             if treeStatus /= Truncate_Complete then
                status := (if treeStatus = Truncate_IO_Error then Rename_IO_Error
                           else Rename_Range_Unsupported);
@@ -480,7 +485,8 @@ package body Ext2.Rename is
       end if;
       status := Rename_Complete;
 
-      --  5. A replaced target loses its last link.
+      --  5. A replaced target loses a link: a directory its last, a file
+      --  this name's (its other names keep it).
       if targetNum /= 0 and then targetDirectory then
          declare
             blocks : constant Natural := Natural (target.sizeLo / fs.blkSize);

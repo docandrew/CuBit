@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Every Linux-hosted filesystem suite, in one run (inside nix develop, with
 # TMPDIR outside /tmp): JBD2 replay against e2fsprogs, power cuts, the
-# namespace and pressure workloads, I/O counts, Linux round-trip images,
-# the service's pure core, its advisory locks (tests/filesystem-locks), and
+# namespace, hard-link (FS-031) and pressure workloads, I/O counts, Linux
+# round-trip images, the service's pure core, its advisory locks (tests/filesystem-locks), and
 # the cross-process coherence cases (locks among them) against
 # Linux's own semantics (tests/fs-coherence/host.sh). Prints one line per
 # suite and FILESYSTEM-HOSTED: PASS or FAIL; full output in LOG_DIR.
@@ -26,6 +26,7 @@ suite build-crash filesystem-journal gprbuild -q -p -P crash.gpr
 suite jbd2-replay filesystem-journal python3 run.py
 suite power-cuts filesystem-journal python3 crash.py
 suite namespace filesystem-journal python3 namespace.py
+suite hardlinks filesystem-journal python3 hardlinks.py
 suite pressure filesystem-journal python3 pressure.py
 suite io-counts filesystem-journal python3 io_counts.py
 suite build-interop filesystem-interop gprbuild -q -p -P interop.gpr

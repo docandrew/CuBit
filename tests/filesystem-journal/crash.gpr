@@ -6,7 +6,7 @@ project Crash is
    for Source_Dirs use
      (".", "crash-fixture", Fs_Src, "../../userspace/runtime/gnat", "../../shared/capabilities");
    for Source_Files use
-     ("cubit-handles.ads", "capability_abi.ads", "capability_abi.adb", "cubit-handles-fixture.ads", "cubit-handles-fixture.adb", "workload.adb", "namespace.adb", "pressure.adb", "io_counts.adb", "cubit-messages.ads", "cubit-messages.adb", "cubit-system_facts.ads", "cubit-system_facts.adb", "cubit.ads",
+     ("cubit-handles.ads", "capability_abi.ads", "capability_abi.adb", "cubit-handles-fixture.ads", "cubit-handles-fixture.adb", "workload.adb", "namespace.adb", "hardlinks.adb", "pressure.adb", "io_counts.adb", "cubit-messages.ads", "cubit-messages.adb", "cubit-system_facts.ads", "cubit-system_facts.adb", "cubit.ads",
       "ext2.ads", "ext2.adb", "ext2_format.ads", "ext2_format.adb", "ext2_geometry.ads", "ext2_geometry.adb", "ext2_bitmaps.ads", "ext2_bitmaps.adb", "ext2-admission.adb","ext2-admission.ads","ext2-allocation.adb","ext2-allocation.ads","ext2-block_cache.adb","ext2-block_cache.ads","ext2-device_io.adb","ext2-device_io.ads","ext2-directories.adb","ext2-directories.ads","ext2-files.adb","ext2-files.ads","ext2-journal.adb","ext2-journal.ads","ext2-lookup.adb","ext2-lookup.ads","ext2-mapping.adb","ext2-mapping.ads","ext2-metadata.adb","ext2-metadata.ads","ext2-removal.adb","ext2-removal.ads","ext2-rename.adb","ext2-rename.ads","ext2-resize.adb","ext2-resize.ads", "ext2_inodes.ads", "ext2_support.ads", "ext2_support.adb",
       "sector_accounting.ads", "sector_accounting.adb", "inode_mappings.ads",
       "inode_mappings.adb", "volume_admission.ads", "block_paths.ads", "block_paths.adb",
@@ -23,7 +23,7 @@ project Crash is
       "cubit-file_access.adb", "cubit-directory_paths.ads", "cubit-directory_paths.adb");
    for Object_Dir use Fs_Obj;
    for Exec_Dir use Fs_Obj;
-   for Main use ("workload.adb", "namespace.adb", "pressure.adb", "io_counts.adb");
+   for Main use ("workload.adb", "namespace.adb", "hardlinks.adb", "pressure.adb", "io_counts.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-I-");
    end Compiler;

@@ -212,6 +212,7 @@ filesystem-locks        | fs       | kernel | alr exec -- gnatprove -P ../tests/
 filesystem-events       | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-events/events.gpr -u cubit-filesystem_events.adb watch_reserve.adb --level=2 --report=all -j2
 filesystem-queue-wakes  | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-queue-wakes/wakes.gpr -u queue_wakes.adb --level=2 --report=all -j2
 filesystem-truncate     | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-truncate/accounting_proof.gpr --level=1 --timeout=5 --checks-as-errors=on -j2
+filesystem-links        | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-truncate/accounting_proof.gpr -u ext2_support.adb --level=2 --report=all --checks-as-errors=on -j2
 filesystem-format       | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-format/format.gpr -u ext2_format.adb ext2_geometry.adb ext2_bitmaps.adb --level=2 --report=all -j2
 filesystem-server-core  | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-server-core/server_core.gpr -u fs_handle_codes.adb fs_path_checks.adb --level=2 --report=all -j2
 filesystem-reply-labels | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-server-core/labels_proof.gpr -u fs_reply_labels.ads --level=2 --report=all -j2
