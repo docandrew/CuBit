@@ -366,6 +366,26 @@ class Images(unittest.TestCase):
                 realizer.realize(files, report, output)
         self.assertEqual(output.read_bytes(), original)
 
+    def test_staging_removed_after_success_kept_after_failure(self):
+        # Each retained staging directory was a full image copy (2+ GB); 826
+        # of them filled the build host's disk (2026-11-09).
+        files, report = self.prepare()
+        output = self.root / "initrd.img"
+        staging = self.root / "staging"
+        staging.mkdir()
+        with patch.object(realizer.tempfile, "tempdir", str(staging)):
+            realizer.realize(files, report, output)
+            self.assertEqual(list(staging.iterdir()), [])
+            realizer.realize(files, report, output, keep_staging=True)
+            kept = list(staging.iterdir())
+            self.assertEqual(len(kept), 1)
+            self.assertTrue((kept[0] / "plan.json").is_file())
+            with patch.object(realizer.subprocess, "run",
+                              side_effect=subprocess.CalledProcessError(1, "cpio")):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    realizer.realize(files, report, output)
+            self.assertEqual(len(list(staging.iterdir())), 2)
+
     def optical_fixture(self):
         self.catalog.write_text(CATALOG[:-1] + '''
           (artifact "start" repository "start.ccl")

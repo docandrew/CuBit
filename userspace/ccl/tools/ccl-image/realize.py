@@ -516,7 +516,8 @@ def add_install_payload(files, efi, initrd, startup, live_root=False):
 
 
 def realize(files, report, output, audit_usb=False, grub_directory=None, debug_dir=None,
-            install_efi=None, install_initrd=None, install_startup=None, install_live_root=False):
+            install_efi=None, install_initrd=None, install_startup=None, install_live_root=False,
+            keep_staging=False):
     optical_layout = report["layout"] == "OPTICAL_IMAGE"
     # Layout comes from the checked CCL plan, not the burner's preferred
     # filename. Optical images may use .img without changing their contents.
@@ -534,8 +535,24 @@ def realize(files, report, output, audit_usb=False, grub_directory=None, debug_d
         report["install_live_root"] = install_live_root
     elif install_live_root:
         raise ValueError("--install-live-root needs --install-efi")
-    # Retain staging and its input hashes for inspection/reproduction.
+    # Staging is a full copy of the image (2+ GB): remove it once the image
+    # is checked and published (plan.json beside the output keeps the input
+    # hashes). A failed build keeps it for inspection; so does --keep-staging.
     directory = Path(tempfile.mkdtemp(prefix="cubit-ccl-image."))
+    try:
+        realize_staged(directory, files, report, output, optical_layout, audit_usb,
+                       grub_directory, splitter)
+    except BaseException:
+        print(f"ccl-image: build failed; staging kept at {directory}", file=sys.stderr)
+        raise
+    if keep_staging:
+        print(f"Staging kept: {directory}")
+    else:
+        shutil.rmtree(directory)
+
+
+def realize_staged(directory, files, report, output, optical_layout, audit_usb, grub_directory,
+                   splitter):
     bootstrap, optical = stage(files, directory)
     archive = directory / "initrd.img"
     names = sorted(p.relative_to(bootstrap).as_posix() for p in bootstrap.rglob("*"))
@@ -571,7 +588,7 @@ def realize(files, report, output, audit_usb=False, grub_directory=None, debug_d
     publish(report_path, output.with_name(output.name + ".plan.json"))
     manifest = splitter.write_manifest(report["output_sha256"])
     summary = report["debug"]
-    print(f"CCL image: {output}\nChecked plan and staging: {directory}\n"
+    print(f"CCL image: {output}\nChecked plan and staging\n"
           f"Debug files: {splitter.debug_dir} ({summary['binaries']} executables, "
           f"{summary['input_bytes']} -> {summary['staged_bytes']} bytes staged); "
           f"build-ids: {manifest}")
@@ -597,6 +614,8 @@ def main():
                         help="the installed system's bootstrap archive for the install payload")
     parser.add_argument("--install-startup", type=Path,
                         help="the installed system's startup plan (init.ccl on its root)")
+    parser.add_argument("--keep-staging", action="store_true",
+                        help="keep the staging directory after a successful build (for inspection)")
     parser.add_argument("--install-live-root", action="store_true",
                         help="the installed root also gets the live RAM root's files (live-rw.ext2, "
                              "read from @mem:0 at install time)")
@@ -617,7 +636,7 @@ def main():
         else:
             realize(files, report, args.output, args.audit_usb, args.grub_directory, args.debug_dir,
                     args.install_efi, args.install_initrd, args.install_startup,
-                    args.install_live_root)
+                    args.install_live_root, args.keep_staging)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f"ccl-image: {error}\n")
 
