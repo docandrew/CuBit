@@ -248,7 +248,7 @@ procedure main is
       entryResult : aliased CompletionEntry;
       ignored : Unsigned_64;
       tag : MessageTag;
-      died : Natural := 0;
+      held : Natural := 0;
       seen : array (1 .. 64) of Boolean := (others => False);
       deadline : Unsigned_64;
    begin
@@ -271,8 +271,9 @@ procedure main is
       if capSubmit (Bench, msg, 65) then
          fail ("completion-overcommit"); return;
       end if;
-      -- Exit with both a blocked synchronous caller and an outstanding async
-      -- request. Both must complete; the death result occupies the last slot.
+      -- Exit with both a blocked synchronous caller and an abandoned async
+      -- request. Both must complete; the held request's result occupies the
+      -- last slot.
       msg := NULL_MESSAGE;
       msg.tag.label := OP_BENCH_DIE;
       tag := capCall (Bench, msg, CuBit.Messages.Wait_Forever);
@@ -293,15 +294,22 @@ procedure main is
          end if;
          seen(Natural(entryResult.token)) := True;
          if entryResult.token = 64 then
-            if entryResult.status /= COMPLETION_TARGET_DIED then
-               fail ("missing-target-died"); return;
+            --  Which ending depends on what the server receives first. If it
+            --  took the held request, its next receive displaced the reply
+            --  authority and the kernel cancelled it then (BUG-004); if the
+            --  synchronous DIE overtook it, the request was still queued at
+            --  exit and the target died. Either way it ended, never lost.
+            if entryResult.status /= COMPLETION_CANCELLED
+              and then entryResult.status /= COMPLETION_TARGET_DIED
+            then
+               fail ("held-request-not-ended"); return;
             end if;
-            died := died + 1;
+            held := held + 1;
          elsif entryResult.status /= COMPLETION_OK then
             fail ("lost-completed-reply"); return;
          end if;
       end loop;
-      if died /= 1 or else capSubmit (Bench, msg, 65) then
+      if held /= 1 or else capSubmit (Bench, msg, 65) then
          fail ("retired-endpoint-admission"); return;
       end if;
       debugPrint ("IPC-RETIREMENT-CHECK: PASS" & LF);

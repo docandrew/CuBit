@@ -59,8 +59,10 @@ begin
       elsif msg.tag.label = OP_BENCH_DIE then
          ret := syscall (SYSCALL_EXIT);
       elsif msg.tag.label = OP_BENCH_HOLD then
-         -- Deliberately abandon this async reply authority. The kernel must
-         -- still deliver TARGET_DIED for the pending request when we exit.
+         -- Deliberately abandon this async reply authority. This receive
+         -- displaces it, so the kernel completes the held request
+         -- COMPLETION_CANCELLED (BUG-004), or TARGET_DIED if the client's
+         -- DIE arrives before the hold was received.
          receive (from, msg);
       else
          declare
