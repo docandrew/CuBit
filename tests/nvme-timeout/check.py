@@ -41,6 +41,10 @@ if "done status=0" not in fixture:
 if "NVMe: I/O completion lost or foreign" in text:
     problems.append("the driver latched (old 'completion lost or foreign')")
 
+# Lines that only appear after a successful read from the NVMe volume.
+PROGRESS = ("shell: cwd=@nvme:0/", "procmgr: ready", "ps2: consumer registered",
+            "tls: loaded", "lexicon: image loaded")
+
 timed_out = first("NVMe: command timed out:")
 if timed_out is None:
     problems.append("no command timed out")
@@ -65,12 +69,13 @@ else:
         else:
             if not re.search(r"attempts= 2\b", lines[failure]):
                 problems.append(f"unexpected attempt count: {lines[failure].strip()}")
+            # Progress: any later read from the volume succeeded. Which read
+            # the throttle catches varies; when it is shell.app the shell
+            # never starts, yet the next services still read their files.
             later = [i for i, line in enumerate(lines)
-                     if i > failure and ("shell: cwd=@nvme:0/" in line
-                                         or "procmgr: ready" in line
-                                         or "ps2: consumer registered" in line)]
+                     if i > failure and any(marker in line for marker in PROGRESS)]
             if not later:
-                problems.append("no boot progress after the failed request")
+                problems.append("no successful read after the failed request")
 
 if problems:
     for problem in problems:
