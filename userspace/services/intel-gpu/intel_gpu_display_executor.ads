@@ -3,6 +3,7 @@ with CuBit.Messages;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Firmware_Output;
 with Intel_GPU_GGTT_Reservations;
+with Intel_GPU_Port_Detection;
 --  intel-gpu's display executor role (docs/display-modesetting.md 5): it
 --  answers only display.svc, on the GPU plane protocol (0x0A10..0x0A15)
 --  and the scanout protocol (0x0A03..0x0A09), for the one pipe that scans
@@ -34,6 +35,8 @@ generic
    with procedure Log (Text : String);
    --  Read-only display MMIO (register BAR offset), all ones on failure.
    with function Read_MMIO (Offset : Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
+   --  The reset pages (GT interrupt page 0x190000 among them) are mapped.
+   with function Reset_Pages_Ready return Boolean;
 package Intel_GPU_Display_Executor is
    use Interfaces;
 
@@ -82,4 +85,17 @@ package Intel_GPU_Display_Executor is
    --  the owed flip is polled just after the predicted vblank;
    --  Unsigned_64'Last when nothing is owed.
    function Wake_Ms (Now_Ms : Unsigned_64) return Unsigned_64;
+
+   --  DISP-009: a hot-plug pulse on Port (from the interrupt handler, once
+   --  MSI is enabled). Masked: the pin storms; the handler masks it.
+   procedure Note_Hotplug (Port : Intel_GPU_Port_Detection.Port; Now_Ms : Unsigned_64; Masked : out Boolean);
+
+   --  Boot, before devmgr enables the MSI: map the PCH hot-plug page and
+   --  mask every GT and display interrupt (Intel_GPU_Hotplug_IRQ.Quiesce).
+   procedure Quiesce_Interrupts (Quiet : out Boolean);
+   --  After the MSI is enabled: arm the hot-plug pins only.
+   procedure Arm_Hotplug;
+   --  The device interrupt (doorbell): handled in i915 order; each pulse
+   --  goes to Note_Hotplug.
+   procedure Hotplug_Interrupt (Now_Ms : Unsigned_64);
 end Intel_GPU_Display_Executor;

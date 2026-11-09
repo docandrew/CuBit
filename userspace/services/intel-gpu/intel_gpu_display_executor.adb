@@ -47,6 +47,11 @@ with Intel_GPU_Transcoder_Timing;
 with Intel_GPU_Port_Detection;
 with Intel_GPU_Port_Scan;
 with Intel_GPU_GMBUS_Outcome;
+with Intel_GPU_Hotplug_Debounce;
+with Intel_GPU_Hotplug_IRQ;
+with Intel_GPU_Reset_Pages;
+with Intel_GPU_Display_Pages;
+with Ada.Unchecked_Deallocation;
 package body Intel_GPU_Display_Executor is
    package FO renames Intel_GPU_Firmware_Output;
    package PP renames Intel_GPU_Pipe_Pages;
@@ -1329,6 +1334,198 @@ package body Intel_GPU_Display_Executor is
       end if;
    end Answer_Unlit;
 
+   --  display.svc's kept catalog watch (DISP-009).
+   Watch_Reply : Intel_GPU_Replies.Owed;
+   procedure Answer_Watch is
+      Delivered : Unsigned_64;
+      pragma Unreferenced (Delivered);
+   begin
+      if Intel_GPU_Replies.Held (Watch_Reply) then
+         Delivered := Intel_GPU_Replies.Answer
+           (Watch_Reply, CuBit.Desktop_Messages.From_Wire (OM.Encode_Watch (OD.GPU_Backend, Output_Revision)));
+      end if;
+   end Answer_Watch;
+
+   ---------------------------------------------------------------------------
+   --  DISP-009: hot-plug events. The interrupt handler (not wired: MSI
+   --  stays disabled until devmgr's Enable request and the HPD register
+   --  pages exist, docs/msi-interrupts.md) reports each pulse with
+   --  Note_Hotplug; Service runs the debounced re-detection and, when the
+   --  catalog changed, bumps its revision and answers display.svc's watch:
+   --  an asynchronous event up the layering, never a call into display.svc.
+   ---------------------------------------------------------------------------
+   package Debounce renames Intel_GPU_Hotplug_Debounce;
+   Hotplug_State : Debounce.State := Debounce.Initial;
+   procedure Free_Modes is new Ada.Unchecked_Deallocation (C.Mode_List, Mode_List_Access);
+   procedure Free_Verdicts is new Ada.Unchecked_Deallocation (MA.Verdict_Array, Verdict_Array_Access);
+
+   --  The hot-plug interrupt registers, written through the three pages
+   --  intel-gpu holds (Intel_GPU_Hotplug_IRQ), read through the read-only
+   --  BAR mapping. Zero: not mapped (the write is refused and counted).
+   GT_Interrupt_Page : constant := 16#19_0000#;
+   DE_Interrupt_Page : constant := 16#4_4000#;
+   function Interrupt_Address (Offset : R.Register_Offset) return Unsigned_64 is
+      Page : constant Unsigned_64 := Unsigned_64 (Offset) - Unsigned_64 (Offset) mod Page_Bytes;
+      Within : constant Unsigned_64 := Unsigned_64 (Offset) mod Page_Bytes;
+   begin
+      if Offset mod 4 /= 0 or else not Display_Owner then
+         return 0;
+      elsif Page = GT_Interrupt_Page and then Reset_Pages_Ready then
+         for Index in Intel_GPU_Reset_Pages.Page_Index loop
+            if Intel_GPU_Reset_Pages.Offset (Index) = GT_Interrupt_Page then
+               return Intel_GPU_Reset_Pages.Virtual_Base + Page_Bytes * Unsigned_64 (Index) + Within;
+            end if;
+         end loop;
+      elsif Page = DE_Interrupt_Page and then Intel_GPU_Display_Mapping.Ready then
+         for Index in Intel_GPU_Display_Pages.Page_Index loop
+            if Intel_GPU_Display_Pages.Offset (Index) = DE_Interrupt_Page then
+               return Intel_GPU_Display_Mapping.Virtual_Base + Page_Bytes * Unsigned_64 (Index) + Within;
+            end if;
+         end loop;
+      elsif Page = MPages.South_Hotplug_Offset then
+         return Modeset_Address (MPages.South_Hotplug, Offset);
+      end if;
+      return 0;
+   end Interrupt_Address;
+   IRQ_Write_Refusals : Natural := 0;
+   procedure IRQ_Read (Offset : R.Register_Offset; Value : out Unsigned_32) is
+   begin
+      Value := Read_MMIO (Offset);
+   end IRQ_Read;
+   procedure IRQ_Write (Offset : R.Register_Offset; Value : Unsigned_32) is
+      Written : Boolean;
+   begin
+      Store (Interrupt_Address (Offset), Value, Written);
+      if not Written then
+         IRQ_Write_Refusals := IRQ_Write_Refusals + 1;
+      end if;
+   end IRQ_Write;
+   package IRQ is new Intel_GPU_Hotplug_IRQ (IRQ_Read, IRQ_Write);
+   use type IRQ.Pulse;
+   Hotplug_Armed : Boolean := False;
+   Interrupts_Taken, Hotplug_Pulses, Unexpected_Interrupts : Natural := 0;
+
+   procedure Note_Hotplug (Port : Intel_GPU_Port_Detection.Port; Now_Ms : Unsigned_64; Masked : out Boolean) is
+   begin
+      Masked := False;
+      if Now_Ms < Debounce.Never - Debounce.Storm_Reenable_Ms then
+         Debounce.Pulse (Hotplug_State, Port, Now_Ms, Masked);
+      end if;
+      if Masked then
+         if Hotplug_Armed then
+            IRQ.Mask (Port);
+         end if;
+         Log ("intel-gpu: hotplug storm on port " & PD.Port_Name (Port) & "; masked for" &
+              Unsigned_64'Image (Debounce.Storm_Reenable_Ms / 1_000) & " s");
+      end if;
+   end Note_Hotplug;
+
+   procedure Quiesce_Interrupts (Quiet : out Boolean) is
+   begin
+      Quiet := False;
+      if Scan_Register_Base = 0 or else not Display_Owner then
+         Log ("intel-gpu: interrupts: no display ownership; MSI stays off");
+         return;
+      end if;
+      if not Intel_GPU_Modeset_Mapping.Ready (MPages.South_Hotplug) then
+         Log ("intel-gpu: modeset page south hot-plug (0xC4000) " &
+              Intel_GPU_Modeset_Mapping.Prepare (Display_Owner, Scan_Register_Base, MPages.South_Hotplug));
+      end if;
+      IRQ_Write_Refusals := 0;
+      IRQ.Quiesce ([R.A => Pipe_A_Held, R.B => Pipe_B_Held, R.C => Pipe_C_Held, R.D => Pipe_D_Held], Quiet);
+      Quiet := Quiet and then IRQ_Write_Refusals = 0 and then
+        Intel_GPU_Modeset_Mapping.Ready (MPages.South_Hotplug);
+      Log ("intel-gpu: interrupts quiesced=" & Boolean'Image (Quiet) &
+           " (GFX_MSTR_IRQ off; GT, pipe, DE port/misc/HPD and SDE enables zero) refused-writes=" &
+           Image (IRQ_Write_Refusals));
+   end Quiesce_Interrupts;
+
+   procedure Arm_Hotplug is
+   begin
+      IRQ_Write_Refusals := 0;
+      IRQ.Arm ([PD.Port => True]);
+      Hotplug_Armed := IRQ_Write_Refusals = 0;
+      Log ("intel-gpu: hotplug interrupts " & (if Hotplug_Armed then "armed" else "NOT armed") &
+           " (SDE DDI-A/B and TC1-4 legacy pins, DE HPD TC1-4 DP-alt/TBT; every other source masked)" &
+           " refused-writes=" & Image (IRQ_Write_Refusals));
+   end Arm_Hotplug;
+
+   procedure Hotplug_Interrupt (Now_Ms : Unsigned_64) is
+      Fired : IRQ.Pulses;
+      Unexpected : Boolean;
+      Masked : Boolean;
+   begin
+      if not Hotplug_Armed then
+         return;
+      end if;
+      IRQ.Handle (Fired, Unexpected);
+      Interrupts_Taken := Interrupts_Taken + 1;
+      if Unexpected then
+         Unexpected_Interrupts := Unexpected_Interrupts + 1;
+         Log ("intel-gpu: interrupt with a non-hot-plug source pending (unexpected" &
+              Natural'Image (Unexpected_Interrupts) & " of" & Natural'Image (Interrupts_Taken) & ")");
+      end if;
+      for P in PD.Port loop
+         if Fired (P) /= IRQ.No_Pulse then
+            Hotplug_Pulses := Hotplug_Pulses + 1;
+            Log ("intel-gpu: hotplug pulse port " & PD.Port_Name (P) & " " &
+                 (if Fired (P) = IRQ.Long_Pulse then "long" else "short"));
+            Note_Hotplug (P, Now_Ms, Masked);
+         end if;
+      end loop;
+   end Hotplug_Interrupt;
+
+   --  Detection again (every port: the words are read at once), the old
+   --  monitors' lists freed; True when the catalog display.svc reads changed.
+   procedure Redetect (Changed : out Boolean) is
+      Before : constant OD.Catalog := Catalog_Now;
+      After : OD.Catalog;
+      use type OD.Description;
+   begin
+      for P in PD.Port loop
+         Free_Modes (Ports (P).Modes);
+         Free_Verdicts (Ports (P).Verdicts);
+      end loop;
+      Detect_Ports (Scan_Register_Base);
+      After := Catalog_Now;
+      Changed := After.Count /= Before.Count or else
+        (for some I in 1 .. After.Count => After.Items (I) /= Before.Items (I));
+      if Changed and then Output_Revision < OD.Catalog_Revision'Last then
+         Output_Revision := Output_Revision + 1;
+         Log ("intel-gpu: hotplug catalog revision" & Unsigned_64'Image (Output_Revision));
+         Answer_Watch;
+      end if;
+   end Redetect;
+
+   procedure Service_Hotplug (Now_Ms : Unsigned_64) is
+      Due, Ready : Debounce.Port_Set;
+      Changed : Boolean;
+      use type Debounce.Port_Set;
+   begin
+      Debounce.Take_Due (Hotplug_State, Now_Ms, Due);
+      Debounce.Take_Reenabled (Hotplug_State, Now_Ms, Ready);
+      for P in PD.Port loop
+         if Ready (P) and then Hotplug_Armed then
+            IRQ.Unmask (P);
+            Log ("intel-gpu: hotplug storm over on port " & PD.Port_Name (P) & "; unmasked");
+         end if;
+      end loop;
+      if Due = [PD.Port => False] and then Ready = [PD.Port => False] then
+         return;
+      end if;
+      Redetect (Changed);
+      if Now_Ms < Debounce.Never - Debounce.Retry_Ms then
+         for P in PD.Port loop
+            if Due (P) then
+               Debounce.Detected
+                 (Hotplug_State, P, Now_Ms,
+                  Sink_Without_EDID => Ports (P).State = PD.Connected_Not_Lit and then
+                                       Ports (P).Outcome /= PD.Read_Valid);
+            end if;
+         end loop;
+      end if;
+   end Service_Hotplug;
+
    procedure Handle_Modes (Sender : Process_ID; Request : Message) is
       package DP renames CuBit.Display_Protocol.DP;
       Routed_Wire : constant CuBit.Display_Protocol.Wire_Message := CuBit.Desktop_Messages.To_Wire (Request);
@@ -1389,10 +1586,29 @@ package body Intel_GPU_Display_Executor is
             Result := OM.Encode_Result
               (OD.GPU_Backend, (Status, (OD.Extent (Flip.Width), OD.Extent (Flip.Height))));
          end;
-      else
-         --  No watch: this output's mode changes only when display.svc asks.
-         Result := (Label => Request.tag.label, Length => 1,
-                    Words => [DP.Status_Code'Enum_Rep (DP.Unsupported), 0, 0, 0], others => <>);
+      elsif Request.tag.label = OP_Watch then
+         --  DISP-009: the back-flow of display.svc's catalog reads. Answered
+         --  at once when the catalog moved past Known, else kept until a
+         --  re-detection changes it (a newer watch replaces an older one).
+         declare
+            Known : constant OM.Revision_Decoding := OM.Decode_Watch (OD.GPU_Backend, Wire);
+            Kept : Boolean;
+         begin
+            if not Known.Valid then
+               Result := (Label => Request.tag.label, Length => 1,
+                          Words => [DP.Status_Code'Enum_Rep (DP.Bad_Object), 0, 0, 0], others => <>);
+            elsif Known.Value /= Output_Revision then
+               Result := OM.Encode_Watch (OD.GPU_Backend, Output_Revision);
+            else
+               Answer_Watch;
+               Intel_GPU_Replies.Keep (Watch_Reply, Kept);
+               if Kept then
+                  return;
+               end if;
+               Result := (Label => Request.tag.label, Length => 1,
+                          Words => [DP.Status_Code'Enum_Rep (DP.Bad_State), 0, 0, 0], others => <>);
+            end if;
+         end;
       end if;
       Delivered := Intel_GPU_Replies.Respond (Sender, CuBit.Desktop_Messages.From_Wire (Result));
    end Handle_Modes;
@@ -1599,6 +1815,7 @@ package body Intel_GPU_Display_Executor is
       Latched : Boolean;
       Now : constant Unsigned_64 := Monotonic_Us;
    begin
+      Service_Hotplug (Clock_Ms);
       Flip.Service (Latched);
       if Latched and then Present_Reply_Owed then
          Answer_Present (GPU_Status_OK);
@@ -1628,13 +1845,15 @@ package body Intel_GPU_Display_Executor is
    function Wake_Ms (Now_Ms : Unsigned_64) return Unsigned_64 is
       Poll : constant Unsigned_64 := Flip.Next_Poll_Us;
       Now : constant Unsigned_64 := Monotonic_Us;
+      --  A debounced hot-plug detection or a storm re-enable due.
+      Hotplug : constant Unsigned_64 := Debounce.Next_Wake (Hotplug_State);
    begin
       if Poll = Unsigned_64'Last or else Now = Unsigned_64'Last or else
         Now_Ms > Unsigned_64'Last - 1_000
       then
-         return Unsigned_64'Last;
+         return Hotplug;
       end if;
-      return Now_Ms + (if Poll <= Now then 0 else (Poll - Now + 999) / 1_000);
+      return Unsigned_64'Min (Hotplug, Now_Ms + (if Poll <= Now then 0 else (Poll - Now + 999) / 1_000));
    end Wake_Ms;
 
    function Owns_Label (Label : Unsigned_32) return Boolean is

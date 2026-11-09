@@ -55,6 +55,7 @@ project Devmgr is
        "intel_gpu_reset_pages.ads",
        "intel_gpu_display_pages.ads",
        "intel_gpu_pipe_pages.ads", "intel_gpu_modeset_pages.ads",
+       "intel_gpu_msi_enable.ads", "intel_gpu_msi_enable.adb",
        "intel_gpu_phy_pages.ads", "intel_gpu_phy_pages.adb",
        "intel_gpu_phy_registers.ads",
        "intel_gpu_combo_phy.ads", "intel_gpu_combo_phy.adb",

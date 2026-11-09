@@ -5,7 +5,7 @@ project Display_Modeset is
    for Source_Dirs use (".", "build/source");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
-   for Main use ("edid_tests.adb", "intel_tests.adb", "modeset_tests.adb", "aux_tests.adb", "detection_tests.adb");
+   for Main use ("edid_tests.adb", "intel_tests.adb", "modeset_tests.adb", "aux_tests.adb", "detection_tests.adb", "hotplug_tests.adb", "msi_enable_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");

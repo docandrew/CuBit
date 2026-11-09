@@ -525,6 +525,9 @@ procedure main is
    trialSecondsShown : Natural := 0;
    --  The Monitor page needs re-reading once the outputs reopen.
    monitorRefreshPending : Boolean := False;
+   --  DISP-009: Display's catalog changed (a monitor attached or removed):
+   --  an open Monitor page re-reads its attached-monitor lines.
+   catalogRefreshPending : Boolean := False;
    actedPreference : array (Output_Index) of OM.Mode;
    modeChangePending : Boolean := False;
    --  False once Display (or its GPU) answered that it has no mode watch.
@@ -13135,6 +13138,7 @@ procedure main is
          end;
       end loop;
       firstOutputPass := False;
+      catalogRefreshPending := True;
       if modeChangePending then
          releaseDisplayBuffer;
       end if;
@@ -13428,6 +13432,18 @@ procedure main is
    procedure pumpModeTrial is
       Now : constant Desktop_Mode_Trial.Time := Desktop_Mode_Trial.Time_Of (nowMs);
    begin
+      if catalogRefreshPending and then modeSwitch.Kind = No_Switch then
+         catalogRefreshPending := False;
+         if settingsOpen and then modeTrial.Current /= Desktop_Mode_Trial.Asking then
+            declare
+               Status : constant Desktop_Settings.Mode_Status := settingsView.Monitor_Status;
+            begin
+               Desktop_Settings.Set_Monitor (settingsView, monitorInfo);
+               settingsView.Monitor_Status := Status;
+            end;
+            damageSettings;
+         end if;
+      end if;
       if modeSwitch.Kind /= No_Switch and then monitorRefreshPending and then backBufferReady and then
         not outputDrainRequested and then not outputReopenPending
       then

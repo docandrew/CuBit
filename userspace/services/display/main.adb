@@ -552,6 +552,7 @@ procedure main is
                   catalogRevision := 2;
                end if;
                --  DISP-009/010: monitors attached to ports no pipe drives.
+               gpuRevision := Summary.Value.Revision;
                declare
                   Changed : Boolean;
                begin
@@ -2362,9 +2363,7 @@ procedure main is
    procedure armGpuWatch is
       Token : Unsigned_64;
    begin
-      if not gpuDetected or else intelTakeover or else not catalogReady or else
-        gpuWatchToken /= 0
-      then
+      if not gpuDetected or else not catalogReady or else gpuWatchToken /= 0 then
          return;
       end if;
       Compositor_Requests.Allocate (backendSequence, Token);
@@ -2432,7 +2431,30 @@ procedure main is
          return;
       end if;
       gpuRevision := Answer.Value;
-      refreshAdvertised;
+      if intelTakeover then
+         --  DISP-009: a hot-plug re-detection changed intel-gpu's catalog:
+         --  its attached-but-not-lit outputs come and go (one revision bump
+         --  per change; the lit output is unchanged by detection).
+         declare
+            Saved : constant Output_Index := selectedOutput;
+            Summary : OD.Summary_Decoding;
+            Changed : Boolean := False;
+         begin
+            selectedOutput := 0;
+            Summary := OD.Decode_Summary (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire
+              (callGpu (OD.Code (OD.GPU_Backend, OD.Get_Catalog))));
+            if Summary.Valid and then Summary.Value.Count >= 1 then
+               readDetected (Summary.Value, outputCatalog, Changed);
+            end if;
+            selectedOutput := Saved;
+            if Changed then
+               debugPrint ("display: intel outputs changed (hot plug)" & LF);
+               catalogChanged;
+            end if;
+         end;
+      else
+         refreshAdvertised;
+      end if;
       armGpuWatch;
    end collectGpuWatch;
 

@@ -96,6 +96,7 @@ with Intel_GPU_Physical_Extents;
 with Intel_GPU_Extent_Directory;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_PCI_Interrupts;
+with Intel_GPU_MSI_Enable;
 with Intel_GPU_PCI_IRQ_Disable;
 with Intel_GPU_GGTT_Access;
 with Intel_GPU_Broker_Request;
@@ -591,6 +592,8 @@ procedure main is
       Shift_Left (Unsigned_64 (dev.slot), ROUTING_DEVICE_SHIFT) or Unsigned_64 (dev.func));
 
    Intel_IRQ_Active, Intel_IRQ_Plan_Ready : Boolean := False;
+   --  intel-gpu's MSI enable (Intel_GPU_MSI_Enable): admitted at most once.
+   Intel_MSI_Enable_Attempted : Boolean := False;
    Intel_IRQ_Plan : Intel_GPU_PCI_Interrupts.Disable_Plan;
    function Intel_Config_Address (Offset : Natural) return Unsigned_32 is
      (16#8000_0000# or Shift_Left (Unsigned_32 (intelDev.bus), 16) or
@@ -5841,6 +5844,59 @@ begin
                 length => 0, protocol => 0, ipc => <>, reserved => 0), authorityTag => 0,
                 words => [others => 0])));
          end;
+      elsif msg.tag = (label => Intel_GPU_MSI_Enable.Request_Label, length => 1, protocol => 0, ipc => <>, reserved => 0) and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
+        msg.authorityTag = Intel_Ready_Tag and then msg.words (1 .. 3) = [0, 0, 0]
+      then
+         --  DISP-000-irq / DISP-009: intel-gpu's MSI on, one allowlisted
+         --  word write (Intel_GPU_MSI_Enable), once, after the PCI
+         --  interrupt-disable executor and the driver's masked report.
+         declare
+            Data : Intel_GPU_PCI_Power.Configuration;
+            Read_OK, Written : Boolean := False;
+            Fresh : Intel_GPU_MSI_Enable.Plan := (Valid => False);
+            Verdict : Intel_GPU_MSI_Enable.Decision;
+            Owner : constant Boolean :=
+              Intel_Config_Frozen and then intelDev.found and then Intel_Reset_Authorized and then
+              Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from);
+            Attempted : constant Boolean := Intel_MSI_Enable_Attempted;
+            use type Intel_IRQ_Disable.Phase;
+            use type Intel_GPU_MSI_Enable.Decision;
+         begin
+            if Owner and then not Attempted then
+               --  Consumed before any write: a lost reply cannot replay it.
+               Intel_MSI_Enable_Attempted := True;
+               Intel_IRQ_Active := True;
+               Read_Intel_IRQ_Config (Data, Read_OK);
+               Intel_IRQ_Active := False;
+               Intel_IRQ_Plan_Ready := False;
+               if Read_OK then
+                  Fresh := Intel_GPU_MSI_Enable.Plan_Enable (Data);
+               end if;
+            end if;
+            Verdict := Intel_GPU_MSI_Enable.Decide
+              (Owner, Attempted, Intel_IRQ_Disable.State = Intel_IRQ_Disable.PCI_Disabled,
+               msg.words (0), Fresh);
+            if Verdict = Intel_GPU_MSI_Enable.Enable and then Fresh.Valid then
+               if portOutp32 (Root.PCI_Ports, PCI_CONFIG_ADDR, Intel_Config_Address (Fresh.Offset)) = 0 and then
+                 portOutp16 (Root.PCI_Ports, PCI_CONFIG_DATA + Unsigned_16 (Fresh.Offset mod 4), Fresh.After) = 0 and then
+                 portOutp32 (Root.PCI_Ports, PCI_CONFIG_ADDR, Intel_Config_Address (Fresh.Offset)) = 0
+               then
+                  --  Read back: the control word holds exactly the plan.
+                  Written := Unsigned_16 (Shift_Right
+                    (portInp32 (Root.PCI_Ports, PCI_CONFIG_DATA), 8 * (Fresh.Offset mod 4)) and 16#FFFF#) =
+                    Fresh.After;
+               end if;
+            end if;
+            debugPrint ("devmgr: intel-gpu MSI enable " & Intel_GPU_MSI_Enable.Name (Verdict) &
+              (if Verdict = Intel_GPU_MSI_Enable.Enable
+               then (if Written then " (MSI control written and read back)" else " (write failed)")
+               else "") & LF);
+            ret := Unsigned_64 (reply (from,
+              (tag => (label => (if Written then 16#F000# else 16#F001#),
+                length => 0, protocol => 0, ipc => <>, reserved => 0), authorityTag => 0,
+                words => [others => 0])));
+         end;
       elsif msg.tag = (label => 16#022E#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
         Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = Intel_Ready_Tag and then msg.words = [0, 0, 0, 0]
@@ -5932,8 +5988,11 @@ begin
                  Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
                  not Intel_Pipe_Granted (Index)
                elsif Modeset_Page then
-                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
-                 not Intel_Modeset_Granted (Modeset_Item)
+                 --  Includes South_Hotplug (0xC4000, DISP-009): the
+                 --  display-claim owner, once per page.
+                 Intel_GPU_MSI_Enable.Page_Allowed
+                   (Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from),
+                    Intel_Modeset_Granted (Modeset_Item))
                else not Intel_Reset_Granted (Index))
             then
                for Byte in Config'Range loop

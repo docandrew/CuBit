@@ -32,6 +32,7 @@ with Intel_GPU_Display_Presence;
 with Intel_GPU_ADS_Buffer;
 with Intel_GPU_ADS_System_Info;
 with Intel_GPU_PCI_Interrupts;
+with Intel_GPU_MSI_Enable;
 with Intel_GPU_Resources; use Intel_GPU_Resources;
 with Intel_GPU_Observation;
 with Intel_GPU_ADLN_Devices;
@@ -562,10 +563,11 @@ procedure Main is
      (Intel_GPU_Scanout_Inventory.No_Scanout_Overlap (Scanout, (True, First, Bytes)));
    procedure Display_Log (Text : String);
    function Display_Read_MMIO (Offset : Unsigned_32) return Unsigned_32;
+   function Reset_Pages_Ready return Boolean is (Reset_Pages_Mapped);
    package Display_Executor is new Intel_GPU_Display_Executor
      (Display_Owner, Pipe_A.Held, Pipe_B.Held, Pipe_C.Held, Pipe_D.Held,
       Display_Publication_Ready, Display_Runtime_First, Display_Runtime_Limit,
-      Display_Scanout_Clear, Invalidate_Upload, Display_Log, Display_Read_MMIO);
+      Display_Scanout_Clear, Invalidate_Upload, Display_Log, Display_Read_MMIO, Reset_Pages_Ready);
    type Metadata_Table is (Tickets, Handles, Backing, Replacements, Retirement, Updates, Table_Backing);
    function Metadata_Capacity (Table : Metadata_Table) return Natural is
      (case Table is
@@ -1815,7 +1817,7 @@ procedure Main is
         and then Context_Pool.State (Contexts, Render_Context_ID) = Context_Life.Disabled
         and then Context_Owner;
    end Render_Backend_Ready;
-   function Request_Authorization (Label : Unsigned_32) return Boolean is
+   function Request_Authorization (Label : Unsigned_32; Word : Unsigned_64 := 0) return Boolean is
       Msg : Message := NULL_MESSAGE;
       Receipt : aliased CompletionEntry;
       Token : constant Unsigned_64 := 16#4947_1000# + Unsigned_64 (Label);
@@ -1826,8 +1828,9 @@ procedure Main is
       pragma Unreferenced (Activity);
    begin
       if Label not in 16#022E# | 16#022F# |
-        Intel_GPU_PCI_Interrupts.Disable_Request_Label
+        Intel_GPU_PCI_Interrupts.Disable_Request_Label | Intel_GPU_MSI_Enable.Request_Label
       then return False; end if;
+      if (Label = Intel_GPU_MSI_Enable.Request_Label) /= (Word /= 0) then return False; end if;
       if Label = Intel_GPU_PCI_Interrupts.Disable_Request_Label then
          if PCI_IRQ_Attempted then return False; end if;
          PCI_IRQ_Attempted := True;
@@ -1837,7 +1840,8 @@ procedure Main is
       end if;
       if Label = 16#022E# and then not Reset_Pages_Mapped then return False; end if;
       if Started = Unsigned_64'Last then return False; end if;
-      Msg.tag := (label => Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
+      Msg.tag := (label => Label, length => (if Word /= 0 then 1 else 0), protocol => 0, ipc => <>, reserved => 0);
+      Msg.words (0) := Word;
       if not Supervisor.Submit (Msg, Token) then return False; end if;
       for Poll in 1 .. 30_000 loop
          Now := syscall (SYSCALL_GETTIME);
@@ -7450,11 +7454,44 @@ procedure Main is
    --  the i915 order (MSTR_IRQ off, GT banks, display IIRs, MSTR_IRQ on).
    ---------------------------------------------------------------------------
    Device_Interrupt : CuBit.Device_Interrupts.Interrupt_Block;
+   --  Set once devmgr enabled the MSI (Setup_Hotplug_Interrupts).
    Device_Interrupts_Enabled : Boolean := False;
    Device_Doorbells : Unsigned_64 := 0;
 
-   --  The hook: the device's registers say what happened.
-   procedure Handle_Device_Interrupt is null;
+   --  The device's registers say what happened: today only hot-plug
+   --  sources are armed (DISP-009); GT and flip interrupts stay masked
+   --  (GPU-001 step 6).
+   procedure Handle_Device_Interrupt is
+   begin
+      Display_Executor.Hotplug_Interrupt (syscall (SYSCALL_GETTIME));
+   end Handle_Device_Interrupt;
+
+   --  Boot, after the display executor took its output: every GT and
+   --  display interrupt enable zero and the master off, then devmgr turns
+   --  the MSI on (one allowlisted word, Intel_GPU_MSI_Enable), then the
+   --  hot-plug pins only are armed. Any refusal leaves the MSI off.
+   procedure Setup_Hotplug_Interrupts is
+      Quiet : Boolean;
+   begin
+      if not Device_Interrupt.Valid then
+         Publish_Snapshot ("intel-gpu: hotplug interrupts inert (no MSI vector)");
+         return;
+      end if;
+      Display_Executor.Quiesce_Interrupts (Quiet);
+      if not Quiet then
+         Publish_Snapshot ("intel-gpu: hotplug interrupts inert (sources not quiesced; MSI stays off)",
+           CuBit.Log_Records.Warning);
+         return;
+      end if;
+      if not Request_Authorization (Intel_GPU_MSI_Enable.Request_Label, Intel_GPU_MSI_Enable.Sources_Masked) then
+         Publish_Snapshot ("intel-gpu: hotplug interrupts inert (devmgr refused the MSI enable; see devmgr's line)",
+           CuBit.Log_Records.Warning);
+         return;
+      end if;
+      Device_Interrupts_Enabled := True;
+      Publish_Snapshot ("intel-gpu: MSI enabled (vector" & Natural'Image (Device_Interrupt.Head) & ")");
+      Display_Executor.Arm_Hotplug;
+   end Setup_Hotplug_Interrupts;
 
    --  The kernel's events: the IRQ doorbell (one bit however many
    --  interrupts arrived) and grant-end notices, which end a render
@@ -9771,6 +9808,7 @@ begin
          Display_Executor.Setup_Scanout (Runtime_Ledger, [others => (Ready => False)]);
       end if;
    end if;
+   Setup_Hotplug_Interrupts;
    Submit_Budget_Query;
    --  Render last: Desktop (and every GPU app) gets a render session only
    --  once the backend is ready; otherwise devmgr's admission is refused
