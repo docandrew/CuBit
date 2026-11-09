@@ -14,6 +14,7 @@ library project kernel_runtime is
             "-gnatwa",
             "-gnatw.X",     -- disable warnings for No_Exception_Propagation rule
             "-nostdlib",
+            "-s",           -- recompile on compiler switch changes
             "-v",
             "-x"
         );

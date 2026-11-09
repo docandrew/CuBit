@@ -5,6 +5,9 @@ version = "0.1.0-dev"
 authors = ["Jon Andrew"]
 licenses = "BSD-3-Clause"
 
+# Exact versions (KERN-012): no checkout-specific drift. The kernel itself is
+# compiled by the nix GNAT 15.3 (CUBIT_GNAT, kernel/Makefile); this GNAT runs
+# gnatprove's builds and the hosted test programs, and is the same GCC 15.3.
 [[depends-on]]
-gnat_native = ">=14"
-gprbuild = "^26.0"
+gnat_native = "=15.3.1"
+gprbuild = "=26.0.1"

@@ -8,7 +8,7 @@ crate = "gnat_native"
 fulfilment = "solved"
 pinned = false
 transitivity = "direct"
-versions = ">=14"
+versions = "=15.3.1"
 [solution.state.release]
 auto-gpr-with = false
 description = "The GNAT Ada compiler - Native"
@@ -23,9 +23,9 @@ maintainers-logins = [
 ]
 name = "gnat_native"
 provides = [
-"gnat=16.1.0",
+"gnat=15.3.1",
 ]
-version = "16.1.0"
+version = "15.3.1"
 website = "https://github.com/alire-project/GNAT-FSF-builds"
 [solution.state.release.configuration]
 auto_gpr_with = true
@@ -46,15 +46,15 @@ prepend = "${CRATE_ROOT}/bin"
 [solution.state.release.origin]
 binary = true
 hashes = [
-"sha256:9f74f58a827a2ad40dd84c72a413e75ea52888e0d8f7e252fba4d26762402703",
+"sha256:a6af58cbe96b8ed92b9d9929f89547c1be2ce96b86bb86422026074094429001",
 ]
-url = "https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-16.1.0-1/gnat-x86_64-linux-16.1.0-1.tar.gz"
+url = "https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-15.3.0-1/gnat-x86_64-linux-15.3.0-1.tar.gz"
 [[solution.state]]
 crate = "gprbuild"
 fulfilment = "solved"
 pinned = false
 transitivity = "direct"
-versions = "^26.0"
+versions = "=26.0.1"
 [solution.state.release]
 auto-gpr-with = false
 description = "The GPRBuild Ada/multilanguage build tool"

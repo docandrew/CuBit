@@ -1,6 +1,8 @@
 # CuBitOS Makefile
 GIT_HASH := $(shell git rev-parse HEAD)
-BUILD_DATE := $(shell date)
+# The source date (BUILD_EPOCH, the commit time), not the wall clock, so the
+# same sources build the same kernel (KERN-012).
+BUILD_DATE = $(shell date -u -d @$(BUILD_EPOCH))
 SHADOW_SCHEDULING ?= 0
 DEADLINE_TIMER_TEST ?= 0
 LATENCY_TRACE ?= 0
@@ -36,8 +38,45 @@ ifneq ($(filter $(SHADOW_SCHEDULING),0 1),$(SHADOW_SCHEDULING))
 $(error SHADOW_SCHEDULING must be 0 or 1)
 endif
 
-# Use Alire to get toolchain on PATH
+# Use Alire to get toolchain on PATH: gprbuild, gnatprove's GNAT and hosted
+# test programs (alire.toml pins gnat_native to exactly 15.3.1).
 ALR := alr exec --
+
+# The kernel compiler (KERN-012): exactly the GCC/GNAT 15.3 that native CuBit
+# Ada uses, nixpkgs' musl cross GNAT (flake.nix exports CUBIT_GNAT and
+# CUBIT_BINUTILS), through the same gprbuild configuration,
+# userspace/toolchain/gnat-15.cgpr, with the kernel's own runtime. Never the
+# GNAT that Alire happens to have installed. KERNEL_GNAT_IDENT is the .comment
+# string this compiler writes into every object it compiles; the linked kernel
+# must carry no other.
+KERNEL_GNAT_VERSION := 15.3.0
+KERNEL_GNAT_TRIPLET := x86_64-unknown-linux-musl
+KERNEL_GNAT_IDENT := GCC: (GNU) $(KERNEL_GNAT_VERSION)
+KERNEL_GCC = $(CUBIT_GNAT)/bin/$(KERNEL_GNAT_TRIPLET)-gcc
+KERNEL_LD = $(CUBIT_BINUTILS)/bin/ld
+KERNEL_GPRBUILD = $(ALR) gprbuild --config=$(abspath ../userspace/toolchain/gnat-15.cgpr) \
+	-XCUBIT_GNAT=$(CUBIT_GNAT) -XCUBIT_BINUTILS=$(CUBIT_BINUTILS) \
+	-XCUBIT_GPRBIND=$(GPRBUILD_LIBEXEC)/gprbind -XCUBIT_GPRLIB=$(GPRBUILD_LIBEXEC)/gprlib \
+	-XCUBIT_RUNTIME=$(abspath runtime) -XCUBIT_SOURCE_ROOT=$(abspath ..)
+
+# Stop before compiling anything unless the kernel compiler is that GNAT.
+define check_kernel_gnat
+@test -n "$(CUBIT_GNAT)" -a -n "$(CUBIT_BINUTILS)" || \
+  { echo "KERN-012: CUBIT_GNAT/CUBIT_BINUTILS are not set; build inside nix develop" >&2; exit 1; }
+@version=$$($(KERNEL_GCC) -dumpfullversion) || \
+  { echo "KERN-012: no kernel compiler at $(KERNEL_GCC)" >&2; exit 1; }; \
+if [ "$$version" != "$(KERNEL_GNAT_VERSION)" ]; then \
+  echo "KERN-012: kernel compiler $(KERNEL_GCC) is GCC $$version, not the pinned $(KERNEL_GNAT_VERSION)" >&2; exit 1; fi
+endef
+
+# After linking: every object in the image was compiled by that GNAT (a stale
+# object from another compiler, or a different build of 15.3, fails here).
+define check_kernel_image_gnat
+@idents=$$(readelf -p .comment $(1) | sed -n 's/^ *\[ *[0-9a-f]*\] *//p' | sort -u); \
+if [ "$$idents" != "$(KERNEL_GNAT_IDENT)" ]; then \
+  echo "KERN-012: $(1) contains code from compilers other than '$(KERNEL_GNAT_IDENT)':" >&2; \
+  echo "$$idents" >&2; echo "(objects from an earlier compiler: make clean)" >&2; rm -f $(1); exit 1; fi
+endef
 
 # Interactive runs should exercise CuBit at native CPU speed.  Override with
 # QEMU_ACCEL=tcg when instruction emulation is specifically desired; headless
@@ -50,6 +89,7 @@ all: cubit_kernel iso
 # Runtime library used by the CuBit Kernel itself (not the runtime used by
 # software running on it!)
 build/libcubit.a:
+	$(check_kernel_gnat)
 	mkdir -p runtime/adalib
 	mkdir -p build
 
@@ -57,7 +97,9 @@ build/libcubit.a:
 	-rm src/build.ads
 
 # Generate a hash list of all the source files and then a root hash from that
-	$(eval SRC_HASH = $(shell find src/ -type f -print0 | xargs -0 sha256sum | sha256sum))
+# (in name order: find's directory order differs between checkouts; without
+# the generated build.ads, which make expands this before the rm above runs)
+	$(eval SRC_HASH = $(shell find src/ -type f ! -path src/build.ads -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum))
 
 	sed -e 's/SED_GIT_HASH/$(GIT_HASH)/' \
 		-e 's/SED_BUILD_DATE/$(BUILD_DATE)/' \
@@ -70,7 +112,7 @@ build/libcubit.a:
 		-e 's/SED_KERNEL_LOG_RECORDS/$(KERNEL_LOG_RECORDS)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 
-	$(ALR) gprbuild -Pkernel_runtime.gpr
+	$(KERNEL_GPRBUILD) -Pkernel_runtime.gpr
 
 # init usermode binary embedded in the kernel ELF object
 build/init.bin: src/init.asm
@@ -78,18 +120,24 @@ build/init.bin: src/init.asm
 #	ld --omagic -e start -Ttext 0 -o build/init.out build/init.o
 #	objcopy -I binary -O elf64-x86-64 -B i386
 
-# GPR's custom assembler does not track include dependencies. Keep this entry
-# gate current when its shared, hosted-tested macro changes.
-build/boot.o: src/boot.asm src/cubit.inc src/multiboot_entry.inc
+# Kernel assembly, assembled here rather than by gprbuild so that the objects
+# record no checkout path (KERN-012): yasm writes the source name it is given
+# into the ELF FILE symbol, so it gets names relative to src/. No DWARF: yasm
+# always records its absolute working directory as DW_AT_comp_dir and has no
+# prefix map. The include files are prerequisites (boot.asm's entry gate macro
+# is shared with the hosted tests/multiboot-entry).
+KERNEL_ASM_OBJECTS := build/boot.o build/boot_ap.o build/context_switch.o \
+	build/interrupt_handlers.o build/syscall_entry.o
+$(KERNEL_ASM_OBJECTS): build/%.o: src/%.asm src/cubit.inc src/multiboot_entry.inc
 	mkdir -p build
-	cd src && yasm --arch=x86 -felf64 --dformat=dwarf2 boot.asm -o ../build/boot.o
+	cd src && yasm --arch=x86 -felf64 $*.asm -o ../build/$*.o
 
 # Maximum allowed stack usage for any single kernel function (bytes).
 # Kernel stacks are 4KB (usable ~3.3KB). Leave headroom for interrupt frames.
 MAX_STACK_USAGE := 2048
 
 # kernel ELF object
-cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr gnat.adc linker.ld Makefile \
+cubit_kernel: build/libcubit.a build/init.bin $(KERNEL_ASM_OBJECTS) cubit.gpr gnat.adc linker.ld Makefile \
               $(wildcard ../shared/firmware/*.ads ../shared/firmware/*.adb) \
               $(wildcard ../shared/time/*.ads ../shared/time/*.adb) \
               $(wildcard ../shared/interrupts/*.ads ../shared/interrupts/*.adb) \
@@ -100,7 +148,8 @@ cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr gnat.adc li
               $(wildcard src/*.ads src/*.adb src/*.asm src/*.adc \
                          src/services/*.ads src/services/*.adb src/*.inc)
 # Compile and bind only
-	$(ALR) gprbuild -b -c -Pcubit.gpr
+	$(check_kernel_gnat)
+	$(KERNEL_GPRBUILD) -b -c -Pcubit.gpr
 # Check kernel stack usage - fail if any function exceeds threshold.
 # Excluded: boot-context functions that run on the 8MB boot stack, not
 # on 4KB process kernel stacks.
@@ -114,10 +163,11 @@ cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr gnat.adc li
 		fail=1 } \
 		END { if (fail) exit 1 }' build/*.su
 # Link - GRUB fails to identify this as a multiboot object without the -n
-	ld -n --build-id=sha1 -o cubit_kernel -T linker.ld \
+	$(KERNEL_LD) -n --build-id=sha1 -o cubit_kernel -T linker.ld \
 		build/*.o \
 		-b binary build/init.bin \
 		-Map cubit_kernel.map
+	$(call check_kernel_image_gnat,cubit_kernel)
 
 # TODO: make sure kernel is multiboot-compliant with grub-file --is-x86-multiboot cubit_kernel
 

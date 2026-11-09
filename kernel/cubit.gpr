@@ -1,6 +1,7 @@
 project CuBit is
     
-    for Languages use ("Ada", "yasm");
+    -- The kernel's assembly is assembled by kernel/Makefile (KERN-012).
+    for Languages use ("Ada");
     
     for Object_Dir use "build";
     
@@ -18,13 +19,8 @@ project CuBit is
     -- Services.Keyboard (the 2019 PS/2 lower half) is unreferenced since
     -- input moved to userspace drivers and no longer compiles against
     -- Process.IPC; it is excluded so `-U` legality checks cover live code.
-    for Excluded_Source_Files use ("init.asm", "vectors.ads",
+    for Excluded_Source_Files use ("vectors.ads",
                                    "services-keyboard.ads", "services-keyboard.adb");
-
-    -- So gprbuild finds our .asm files
-    package Naming is
-        for Body_Suffix ("yasm") use ".asm";
-    end Naming;
 
     -- For gprbuild
     package Builder is
@@ -64,20 +60,6 @@ project CuBit is
             "-mno-sse",             -- not supported
             "-mno-sse2",
             "-I-"                   -- don't look for source files in the same folder
-        );
-
-        -- Assembler info
-        for Driver ("yasm") use "yasm";
-        for Object_File_Suffix ("yasm") use ".o";
-        for Object_File_Switches ("yasm") use ("-o", "");
-        for Required_Switches ("yasm") use ("");
-        --for Dependency_Switches ("yasm") use ("");
-
-        for Default_Switches ("yasm") use 
-        (
-            "--arch=x86",
-            "-felf64",
-            "--dformat=dwarf2"
         );
 
     end Compiler;
