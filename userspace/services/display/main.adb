@@ -34,6 +34,7 @@ with CuBit.Display_Pool_Registry;
 with CuBit.Display_Outputs;
 with CuBit.Output_Discovery;
 with CuBit.Output_Modes;
+with CuBit.Detected_Outputs;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
 with Presentation_Test_Policy;
@@ -59,6 +60,7 @@ procedure main is
    package Outputs renames CuBit.Display_Outputs.Registry;
    package OD renames CuBit.Output_Discovery;
    package OM renames CuBit.Output_Modes;
+   package Detected renames CuBit.Detected_Outputs;
    use type OM.Mode, OM.DP.Status_Code, OM.Rate_Choice, OM.DP.Wire_Message;
    package GM renames CuBit.Graphics_Metrics;
    package Repair renames Compositor_Repaint;
@@ -456,6 +458,48 @@ procedure main is
       State.fbPitch := Natural (Pitch);
    end setupBackend;
 
+   function connectorName (Item : OD.Connector_Kind) return String is
+     (case Item is
+        when OD.Unknown_Connector => "output", when OD.HDMI => "HDMI", when OD.DVI => "DVI",
+        when OD.DisplayPort => "DisplayPort", when OD.Embedded_DisplayPort => "eDP");
+
+   --  DISP-009/010: the GPU catalog's attached-but-not-lit outputs (entries
+   --  after the first) replace Into's; Changed when Into differs. A walk
+   --  that goes stale or invalid leaves Into as it was.
+   procedure readDetected (From : OD.Summary; Into : in out OD.Catalog; Changed : out Boolean) is
+      Fresh : OD.Catalog;
+      Response : Message;
+      Item : OD.Description_Decoding;
+   begin
+      Changed := False;
+      for Index in 2 .. From.Count loop
+         Response := callGpu (OD.Code (OD.GPU_Backend, OD.Get_Description), From.Revision,
+                              Unsigned_64 (Index));
+         Item := OD.Decode_Description (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Response));
+         if not Item.Valid or else Item.Value.Requested /= (From.Revision, Index) then
+            debugPrint ("display: intel detected-output walk failed at" & Index'Image & LF);
+            return;
+         end if;
+         if Detected.Not_Lit (Item.Value.Item) and then Item.Value.Item.Source = OD.Intel_Display then
+            Fresh.Count := Fresh.Count + 1;
+            Fresh.Items (Fresh.Count) := Item.Value.Item;
+         end if;
+      end loop;
+      Detected.Replace (Into, OD.Intel_Display, Fresh, Changed);
+      for Index in 1 .. Into.Count loop
+         if Detected.Not_Lit (Into.Items (Index)) then
+            declare
+               D : OD.Description renames Into.Items (Index);
+            begin
+               debugPrint ("display: intel output" & D.Native_Number'Image & " " &
+                 connectorName (D.Connector) & " connected (not in use)" &
+                 D.Width_MM'Image & " x" & D.Height_MM'Image & " mm, best mode" &
+                 D.Advertised_Width'Image & " x" & D.Advertised_Height'Image & LF);
+            end;
+         end if;
+      end loop;
+   end readDetected;
+
    procedure discoverOutputs is
       Candidate : OD.Catalog;
       Seen : array (OD.Native_Output_Number) of Boolean := [others => False];
@@ -472,6 +516,7 @@ procedure main is
          Candidate.Items (1) :=
            (OD.Selected_For_Desktop, OD.Boot_Framebuffer, 0,
             outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight, 0, 0,
+            OD.Lit, OD.Unknown_Connector,
             outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
          Selected := True;
       end if;
@@ -494,6 +539,7 @@ procedure main is
                  (OD.Selected_For_Desktop, OD.Intel_Display, 0,
                   Item.Value.Item.Advertised_Width, Item.Value.Item.Advertised_Height,
                   Item.Value.Item.Width_MM, Item.Value.Item.Height_MM,
+                  OD.Lit, Item.Value.Item.Connector,
                   outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
                debugPrint ("display: intel output monitor" &
                  Item.Value.Item.Width_MM'Image & " x" & Item.Value.Item.Height_MM'Image & " mm, best mode" &
@@ -505,6 +551,15 @@ procedure main is
                then
                   catalogRevision := 2;
                end if;
+               --  DISP-009/010: monitors attached to ports no pipe drives.
+               declare
+                  Changed : Boolean;
+               begin
+                  readDetected (Summary.Value, Candidate, Changed);
+                  if not Changed then
+                     debugPrint ("display: intel output catalog: no monitor attached beyond the lit one" & LF);
+                  end if;
+               end;
             end if;
          end if;
       end if;
@@ -544,6 +599,7 @@ procedure main is
                  (OD.Selected_For_Desktop, OD.Virtio_GPU, 0,
                   Item.Value.Item.Advertised_Width,
                   Item.Value.Item.Advertised_Height, Item.Value.Item.Width_MM, Item.Value.Item.Height_MM,
+                  OD.Lit, Item.Value.Item.Connector,
                   outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
                Selected := True;
             end if;
@@ -2436,11 +2492,11 @@ procedure main is
                if K.Role = OD.Selected_For_Desktop then
                   K := (OD.Selected_For_Desktop, K.Source, K.Native_Number,
                         K.Advertised_Width, K.Advertised_Height, K.Width_MM, K.Height_MM,
-                        Mode.Width, Mode.Height);
+                        OD.Lit, K.Connector, Mode.Width, Mode.Height);
                else
                   K := (OD.Backend_Ready, K.Source, K.Native_Number,
                         K.Advertised_Width, K.Advertised_Height, K.Width_MM, K.Height_MM,
-                        Mode.Width, Mode.Height);
+                        OD.Lit, K.Connector, Mode.Width, Mode.Height);
                end if;
             end if;
          end;
@@ -2565,8 +2621,12 @@ procedure main is
                              protocol => 0, ipc => <>, reserved => 0);
             replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
             if (Wanted.Valid or else (not Listing and then Wire = OM.Identify_Request (OD.Display_Broker)))
-              and then Output in Output_Index and then readyOutputs (Output) and then
-              outputStates (Output).backend.Kind = Native_GPU
+              and then ((Output in Output_Index and then readyOutputs (Output) and then
+                         outputStates (Output).backend.Kind = Native_GPU) or else
+                        --  DISP-009/010: a monitor attached but not lit
+                        --  (read-only: its name and modes for Settings).
+                        (catalogReady and then
+                         Detected.Find (outputCatalog, OD.Intel_Display, OD.Native_Output_Number (Output)) /= 0))
             then
                Call := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
                  ((if Listing then OM.Encode_List_Request (OD.GPU_Backend, Wanted.Value)

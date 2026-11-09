@@ -44,14 +44,26 @@ package body CuBit.Output_Discovery with SPARK_Mode is
      (Dimensions (D.Advertised_Width, D.Advertised_Height) or
       Shift_Left (Unsigned_64 (D.Width_MM) or Shift_Left (Unsigned_64 (D.Height_MM), 16), Size_Shift));
 
+   --  Word 1 fields (Encode_Description in the spec).
+   Source_Shift : constant := 8;
+   Native_Shift : constant := 16;
+   Role_Shift : constant := 32;
+   Connection_Shift : constant := 40;
+   Connector_Shift : constant := 48;
+   Reserved_Shift : constant := 56;
+   Byte_Mask : constant Unsigned_64 := 16#FF#;
+   Native_Mask : constant Unsigned_64 := 16#FFFF#;
+
    function Encode_Description (Service : Provider; Item : Description_Result)
       return DP.Wire_Message
    is
       D : Description renames Item.Item;
       Metadata : constant Unsigned_64 := Unsigned_64 (Item.Requested.Index) or
-        Shift_Left (Output_Source'Enum_Rep (D.Source), 8) or
-        Shift_Left (Unsigned_64 (D.Native_Number), 16) or
-        Shift_Left (Output_Role'Enum_Rep (D.Role), 32);
+        Shift_Left (Output_Source'Enum_Rep (D.Source), Source_Shift) or
+        Shift_Left (Unsigned_64 (D.Native_Number), Native_Shift) or
+        Shift_Left (Output_Role'Enum_Rep (D.Role), Role_Shift) or
+        Shift_Left (Connection_State'Enum_Rep (D.Connection), Connection_Shift) or
+        Shift_Left (Connector_Kind'Enum_Rep (D.Connector), Connector_Shift);
       Active : constant Unsigned_64 :=
         (if D.Role = Detected_Only then 0
          else Dimensions (D.Current_Width, D.Current_Height));
@@ -64,15 +76,22 @@ package body CuBit.Output_Discovery with SPARK_Mode is
       return Description_Decoding
    is
       M : constant Unsigned_64 := Wire.Words (1);
-      Index : constant Unsigned_64 := M and 16#FF#;
-      Source : constant Unsigned_64 := Shift_Right (M, 8) and 16#FF#;
-      Native : constant Unsigned_64 := Shift_Right (M, 16) and 16#FFFF#;
-      Role : constant Unsigned_64 := Shift_Right (M, 32);
+      Index : constant Unsigned_64 := M and Byte_Mask;
+      Source : constant Unsigned_64 := Shift_Right (M, Source_Shift) and Byte_Mask;
+      Native : constant Unsigned_64 := Shift_Right (M, Native_Shift) and Native_Mask;
+      Role : constant Unsigned_64 := Shift_Right (M, Role_Shift) and Byte_Mask;
+      Connection : constant Unsigned_64 := Shift_Right (M, Connection_Shift) and Byte_Mask;
+      Connector : constant Unsigned_64 := Shift_Right (M, Connector_Shift) and Byte_Mask;
       D : Description;
    begin
       if not Header (Service, Get_Description, Wire) or else
         Wire.Words (0) = 0 or else Index not in 1 .. 17 or else
         Source not in 1 .. 3 or else Native > 15 or else Role > 2 or else
+        Connection > Connection_State'Enum_Rep (Connection_State'Last) or else
+        Connector > Connector_Kind'Enum_Rep (Connector_Kind'Last) or else
+        Shift_Right (M, Reserved_Shift) /= 0 or else
+        (Role /= Output_Role'Enum_Rep (Detected_Only) and then
+         Connection /= Connection_State'Enum_Rep (Lit)) or else
         not Valid_Dimensions (Wire.Words (2) and Half_Mask)
       then
          return (Valid => False);
@@ -97,6 +116,9 @@ package body CuBit.Output_Discovery with SPARK_Mode is
       D.Width_MM := Millimetres (Shift_Right (Wire.Words (2), Size_Shift) and 16#FFFF#);
       D.Height_MM := Millimetres (Shift_Right (Wire.Words (2), Size_Shift + 16));
       D.Native_Number := Native_Output_Number (Native);
+      --  Both enumerations are contiguous from zero: position = code.
+      D.Connection := Connection_State'Val (Connection);
+      D.Connector := Connector_Kind'Val (Connector);
       D.Advertised_Width := Extent (Wire.Words (2) and 16#FFFF#);
       D.Advertised_Height := Extent (Shift_Right (Wire.Words (2), 16) and 16#FFFF#);
       return (True, ((Wire.Words (0), Output_Index (Index)), D));

@@ -1060,15 +1060,17 @@ prepare-output-discovery: prepare-desktop-protocol
 	mkdir -p ../tests/output-discovery/build/source
 	cp ../tests/desktop-protocol/build/source/*.ad? \
 		../userspace/lib/display/cubit-output_discovery.ad? \
+		../userspace/lib/display/cubit-detected_outputs.ad? \
 		../tests/output-discovery/build/source/
 
 test-output-discovery: prepare-output-discovery
 	$(ALR) gprbuild -p -P ../tests/output-discovery/discovery.gpr
 	../tests/output-discovery/build/main
+	../tests/output-discovery/build/detected_tests
 
 prove-output-discovery: prepare-output-discovery
 	$(ALR) gnatprove -P ../tests/output-discovery/discovery.gpr \
-		-u cubit-output_discovery.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u cubit-output_discovery.adb cubit-detected_outputs.adb --level=2 --report=all --checks-as-errors=on -j2
 	python3 ../tests/output-discovery/check-proof.py
 
 test-ui-fonts: ui-fonts-host

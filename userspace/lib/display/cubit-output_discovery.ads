@@ -36,17 +36,36 @@ package CuBit.Output_Discovery with SPARK_Mode, Pure is
      (Detected_Only => 0, Backend_Ready => 1, Selected_For_Desktop => 2);
    subtype Active_Role is Output_Role range
      Backend_Ready .. Selected_For_Desktop;
+   --  DISP-009/010: whether a monitor is attached and scanned out. Lit: the
+   --  output scans out (every Backend_Ready / Selected_For_Desktop output,
+   --  and a Detected_Only one its driver has not taken over yet).
+   --  Connected_Not_Lit: a monitor is attached (hot-plug live state or its
+   --  EDID) but no pipe drives it; it is listed so Settings can name it and
+   --  is never presented to. Disconnected: a known port with nothing
+   --  attached (a provider may list it; intel-gpu does not).
+   type Connection_State is (Lit, Connected_Not_Lit, Disconnected);
+   for Connection_State use (Lit => 0, Connected_Not_Lit => 1, Disconnected => 2);
+   --  The connector as far as the driver knows it (Unknown_Connector for a
+   --  virtual output, or a port without a VBT and without an EDID).
+   type Connector_Kind is (Unknown_Connector, HDMI, DVI, DisplayPort, Embedded_DisplayPort);
+   for Connector_Kind use
+     (Unknown_Connector => 0, HDMI => 1, DVI => 2, DisplayPort => 3, Embedded_DisplayPort => 4);
    type Description (Role : Output_Role := Detected_Only) is record
       Source : Output_Source := Boot_Framebuffer;
       Native_Number : Native_Output_Number := 0;
       Advertised_Width, Advertised_Height : Extent := 1;
       Width_MM, Height_MM : Millimetres := 0;
+      Connection : Connection_State := Lit;
+      Connector : Connector_Kind := Unknown_Connector;
       case Role is
          when Detected_Only => null;
          when Backend_Ready | Selected_For_Desktop =>
             Current_Width, Current_Height : Extent := 1;
       end case;
    end record;
+   --  An output with resources scans out.
+   function Consistent (Item : Description) return Boolean is
+     (Item.Role = Detected_Only or else Item.Connection = Lit);
    type Description_Array is array (Output_Index) of Description;
    type Catalog is record
       Count : Output_Count := 0;
@@ -97,15 +116,21 @@ package CuBit.Output_Discovery with SPARK_Mode, Pure is
    function Encode_Summary (Service : Provider; Item : Summary)
       return DP.Wire_Message with
       Post => Decode_Summary (Service, Encode_Summary'Result) = (True, Item);
+   --  Word 1: index 7:0, source 15:8, native number 31:16, role 39:32,
+   --  connection 47:40, connector 55:48, bits 63:56 zero.
    function Encode_Description (Service : Provider; Item : Description_Result)
-      return DP.Wire_Message;
+      return DP.Wire_Message
+     with Pre => Consistent (Item.Item);
    function Decode_Description (Service : Provider; Wire : DP.Wire_Message)
-      return Description_Decoding;
+      return Description_Decoding
+     with Post => (if Decode_Description'Result.Valid then
+                     Consistent (Decode_Description'Result.Value.Item));
    --  Invalid input/stale revision is a one-word typed DP status, never a
    --  partially successful descriptor. Revision changes require a new walk.
    function Respond
      (Service : Provider; Data : Catalog; Revision : Catalog_Revision;
       Request : DP.Wire_Message) return DP.Wire_Message with
+      Pre => (for all I in 1 .. Data.Count => Consistent (Data.Items (I))),
       Post =>
         (if Decode_Query (Service, Request).Valid and then
             Decode_Query (Service, Request).Value.Revision /= Revision

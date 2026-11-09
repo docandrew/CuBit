@@ -41,15 +41,18 @@ begin
          end loop;
       end loop;
       for Role in Output_Role loop
+       for Connection in Connection_State loop
+        for Connector in Connector_Kind loop
          for Source in Output_Source loop
             for Native in Native_Output_Number loop
                for Size of Sizes loop
                   D := (case Role is
                     when Detected_Only =>
-                      (Detected_Only, Source, Native, Size, Size, 597, 336),
+                      (Detected_Only, Source, Native, Size, Size, 597, 336,
+                       Connection, Connector),
                     when Backend_Ready | Selected_For_Desktop =>
                       (Active_Role'(Role), Source, Native,
-                       Size, Size, 0, Millimetres'Last, 1024, 768));
+                       Size, Size, 0, Millimetres'Last, Lit, Connector, 1024, 768));
                   for Revision of Revisions loop
                      for Index in Output_Index loop
                         W := Encode_Description
@@ -59,9 +62,24 @@ begin
                         Bad := W;
                         Bad.Flags := 1;
                         Check (not Decode_Description (Service, Bad).Valid);
+                        --  Bits 63:56 are reserved; a connection or
+                        --  connector code past the last is noncanonical,
+                        --  and an output with resources is always Lit.
                         Bad := W;
-                        Bad.Words (1) := W.Words (1) or 16#100_0000_0000#;
+                        Bad.Words (1) := W.Words (1) or 16#100_0000_0000_0000#;
                         Check (not Decode_Description (Service, Bad).Valid);
+                        Bad := W;
+                        Bad.Words (1) := W.Words (1) or 16#FF00_0000_0000#;
+                        Check (not Decode_Description (Service, Bad).Valid);
+                        Bad := W;
+                        Bad.Words (1) := W.Words (1) or 16#FF_0000_0000_0000#;
+                        Check (not Decode_Description (Service, Bad).Valid);
+                        if Role /= Detected_Only then
+                           Bad := W;
+                           Bad.Words (1) := W.Words (1) or
+                             Shift_Left (Connection_State'Enum_Rep (Connected_Not_Lit), 40);
+                           Check (not Decode_Description (Service, Bad).Valid);
+                        end if;
                         Bad := W;
                         Bad.Words (2) := 0;
                         Check (not Decode_Description (Service, Bad).Valid);
@@ -74,14 +92,17 @@ begin
                end loop;
             end loop;
          end loop;
+        end loop;
+       end loop;
       end loop;
       -- Every wire bit is checked: noncanonical replies must be rejected,
       -- otherwise decoding/re-encoding must preserve the message exactly.
       for Role in Output_Role loop
          D := (case Role is
-           when Detected_Only => (Detected_Only, Intel_Display, 15, 3840, 2160, 597, 336),
+           when Detected_Only =>
+             (Detected_Only, Intel_Display, 15, 3840, 2160, 597, 336, Connected_Not_Lit, HDMI),
            when Backend_Ready | Selected_For_Desktop =>
-             (Active_Role'(Role), Virtio_GPU, 15, 1920, 1080, 0, 0, 1024, 768));
+             (Active_Role'(Role), Virtio_GPU, 15, 1920, 1080, 0, 0, Lit, Unknown_Connector, 1024, 768));
          W := Encode_Description (Service, ((7, 17), D));
          for Word in W.Words'Range loop
             for Bit in 0 .. 63 loop

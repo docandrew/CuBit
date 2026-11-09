@@ -143,6 +143,9 @@ package body Desktop_Settings is
    Rate_Column : constant := 100;
    Clock_Column : constant := 190;
    Notes_Column : constant := 280;
+   --  The attached-monitor lines, under the status lines.
+   Attached_First_Y : constant := 362;
+   Attached_Step : constant := 22;
    function Mode_List_Box (C : Rect) return Rect is
      (C.x + 20, C.y + 76, Mode_List_Width, Mode_Rows * Mode_Row_Height);
    function Mode_Count (View : State) return Natural is
@@ -332,6 +335,29 @@ package body Desktop_Settings is
       return Result;
    end Line_Of;
 
+   function Attached_Line (Item : CuBit.Output_Discovery.Description; Name : String) return Monitor_Line is
+      package OD renames CuBit.Output_Discovery;
+      function Img (Value : Natural) return String is
+         T : constant String := Value'Image;
+      begin
+         return T (T'First + 1 .. T'Last);
+      end Img;
+      Kind : constant String :=
+        (case Item.Connector is
+           when OD.Unknown_Connector => "Display", when OD.HDMI => "HDMI", when OD.DVI => "DVI",
+           when OD.DisplayPort => "DisplayPort", when OD.Embedded_DisplayPort => "eDP");
+      Size : constant String :=
+        (if Item.Width_MM /= 0 and then Item.Height_MM /= 0
+         then " - " & Img (Item.Width_MM) & " x " & Img (Item.Height_MM) & " mm" else "");
+      --  An output without an EDID advertises the smallest extent.
+      Best : constant String :=
+        (if Item.Advertised_Width > OD.Extent'First and then Item.Advertised_Height > OD.Extent'First
+         then ", best " & Img (Item.Advertised_Width) & " x " & Img (Item.Advertised_Height) else "");
+   begin
+      return Line_Of ("Also connected: " & Kind & (if Name'Length = 0 then "" else " - " & Name) &
+                      Size & Best & " - not in use");
+   end Attached_Line;
+
    procedure Release is new Ada.Unchecked_Deallocation (Monitor_Modes, Monitor_Mode_List);
    procedure Free (Modes : in out Monitor_Mode_List) is
    begin
@@ -497,6 +523,10 @@ package body Desktop_Settings is
                Text (20, 340, (if M.Identified then "Kept per monitor until reboot (EDID identity)"
                                else "No EDID identity: choices last this session"));
             end if;
+            for Line in 1 .. M.Attached_Used loop
+               Text (20, Attached_First_Y + (Line - 1) * Attached_Step,
+                     M.Attached (Line).Text (1 .. M.Attached (Line).Length));
+            end loop;
          end;
          return;
       end if;

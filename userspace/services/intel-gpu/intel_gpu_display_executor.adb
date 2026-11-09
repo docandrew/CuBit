@@ -44,6 +44,9 @@ with Intel_GPU_Modeset_Plan;
 with Intel_GPU_PHY_Mapping;
 with Intel_GPU_PHY_Pages;
 with Intel_GPU_Transcoder_Timing;
+with Intel_GPU_Port_Detection;
+with Intel_GPU_Port_Scan;
+with Intel_GPU_GMBUS_Outcome;
 package body Intel_GPU_Display_Executor is
    package FO renames Intel_GPU_Firmware_Output;
    package PP renames Intel_GPU_Pipe_Pages;
@@ -463,20 +466,35 @@ package body Intel_GPU_Display_Executor is
       end loop;
    end Log_Block;
 
-   --  One EDID block over GMBUS (HDMI/DVI) or AUX (DP/eDP), with retries.
-   procedure Read_Block (Over_AUX : Boolean; Index : DDC.EDID_Block_Index; Data : out C.Block;
-                         Good : out Boolean) is
+   package PD renames Intel_GPU_Port_Detection;
+   use type PD.Port_State, PD.Sense, PD.EDID_Outcome, PD.EDID_Channel, PD.Connector;
+
+   --  The typed outcome of one GMBUS or AUX block read.
+   function Outcome_Of is new Intel_GPU_GMBUS_Outcome (DDC);
+   function Outcome_Of (Status : AUX.Status; Good : Boolean) return PD.EDID_Outcome is
+     (case Status is
+        when AUX.OK => (if Good then PD.Read_Valid else PD.Bad_Checksum),
+        when AUX.NAK | AUX.Short_Reply | AUX.Receive_Error => PD.No_Answer,
+        when AUX.Not_Writable => PD.Not_Permitted,
+        when AUX.Busy | AUX.Timeout | AUX.Defer_Exhausted => PD.Timed_Out);
+
+   --  One EDID block of Port over GMBUS (HDMI/DVI, the port's default DDC
+   --  pin) or AUX (DP/eDP, the lit port only), with retries.
+   procedure Read_Block (Port : R.DDI_Port; Over_AUX : Boolean; Index : DDC.EDID_Block_Index;
+                         Data : out C.Block; Outcome : out PD.EDID_Outcome) is
       Buffer : DDC.Bytes (1 .. DDC.EDID_Block_Bytes);
       Wire : AUX.Bytes (1 .. AUX.EDID_Block_Bytes);
       Status : DDC.Status := DDC.NAK;
       AUX_Status : AUX.Status := AUX.NAK;
       Fatal : Boolean;
+      Good : Boolean := False;
    begin
       Data := [others => 0];
-      Good := False;
+      Outcome := PD.Not_Read;
       for Attempt in 1 .. EDID_Attempts loop
+         Good := False;
          if Over_AUX then
-            AUX.Read_EDID_Block (Channel_Of (Lit.Port), Index, Wire, AUX_Status);
+            AUX.Read_EDID_Block (Channel_Of (Port), Index, Wire, AUX_Status);
             if AUX_Status = AUX.OK then
                for I in Data'Range loop
                   Data (I) := Wire (I + 1);
@@ -484,11 +502,12 @@ package body Intel_GPU_Display_Executor is
                Good := C.Valid_Checksum (Data);
             end if;
             Fatal := AUX_Status = AUX.Not_Writable;
+            Outcome := Outcome_Of (AUX_Status, Good);
             Log ("intel-gpu: EDID block " & Image (Index) & " attempt " & Image (Attempt) & " aux " &
                  AUX.Name (AUX_Status) & (if AUX_Status = AUX.OK then " checksum " &
                    (if Good then "ok" else "BAD") else ""));
          else
-            DDC.Read_EDID_Block (Pin_Of (Lit.Port), Index, Buffer, Status);
+            DDC.Read_EDID_Block (Pin_Of (Port), Index, Buffer, Status);
             if Status = DDC.OK then
                for I in Data'Range loop
                   Data (I) := Buffer (I + 1);
@@ -496,6 +515,7 @@ package body Intel_GPU_Display_Executor is
                Good := C.Valid_Checksum (Data);
             end if;
             Fatal := Status = DDC.Not_Writable;
+            Outcome := Outcome_Of (Status, Good);
             Log ("intel-gpu: EDID block " & Image (Index) & " attempt " & Image (Attempt) & " gmbus " &
                  DDC.Name (Status) & (if Status = DDC.OK then " checksum " &
                    (if Good then "ok" else "BAD") else ""));
@@ -551,7 +571,7 @@ package body Intel_GPU_Display_Executor is
               Intel_GPU_Modeset_Mapping.Prepare (Display_Owner, Register_Base, MPages.PLL_Configuration));
       end if;
       declare
-         Good : Boolean;
+         Outcome : PD.EDID_Outcome;
          Over_AUX : constant Boolean := Lit.Mode in DD.DP_SST | DD.DP_MST;
       begin
          if Over_AUX then
@@ -570,15 +590,15 @@ package body Intel_GPU_Display_Executor is
             Log ("intel-gpu: EDID port " & Readout.Port_Name (Lit.Port) & " GMBUS pin " &
                  Image (Natural (DDC.Pin_Code (Pin_Of (Lit.Port)))) & " (i915 default DDC pin; no VBT)");
          end if;
-         Read_Block (Over_AUX, 0, EDID_Base, Good);
-         if not Good then
+         Read_Block (Lit.Port, Over_AUX, 0, EDID_Base, Outcome);
+         if Outcome /= PD.Read_Valid then
             Log ("intel-gpu: EDID unavailable; the firmware mode stays");
             return;
          end if;
          Log_Block (0, EDID_Base);
          for E in 1 .. C.Extensions_Declared (EDID_Base) loop
-            Read_Block (Over_AUX, E, EDID_Extensions (E), Good);
-            exit when not Good;
+            Read_Block (Lit.Port, Over_AUX, E, EDID_Extensions (E), Outcome);
+            exit when Outcome /= PD.Read_Valid;
             Log_Block (E, EDID_Extensions (E));
             Extensions_Read := E;
          end loop;
@@ -639,6 +659,166 @@ package body Intel_GPU_Display_Executor is
       end if;
    end Identify;
 
+   ---------------------------------------------------------------------------
+   --  DISP-009/010 step 1: every port the platform has, whether a monitor
+   --  is attached (hot-plug live state, read only) and, for one that is
+   --  attached but not lit, its EDID over the port's default DDC pin. No
+   --  port is lit here: lighting one is DISP-010.
+   ---------------------------------------------------------------------------
+   type Port_Record is record
+      Sense : PD.Port_Sense;
+      Channel : PD.EDID_Channel := PD.No_Channel;
+      Outcome : PD.EDID_Outcome := PD.Not_Read;
+      State : PD.Port_State := PD.Disconnected;
+      Kind : PD.Connector := PD.Unknown_Connector;
+      Identity : C.Identity;
+      Size : C.Physical_Size;
+      Modes : Mode_List_Access;
+      Verdicts : Verdict_Array_Access;
+      --  The mode to advertise: the best admitted one, else the monitor's
+      --  first listed (its preferred); zero when it lists none.
+      Advertised : Natural := 0;
+   end record;
+   Ports : array (PD.Port) of Port_Record;
+   Hotplug_Words : PD.Hotplug_Words;
+
+   --  The port the firmware lit, when it is one of the platform's.
+   function Lit_Port (Item : PD.Port) return Boolean is
+     (Lit.Found and then Lit.Port = PD.DDI_Of (Item));
+   --  The lit port's connector from its DDI function. Port A carries the
+   --  panel (eDP) on mobile ADL-P/N boards; the VBT would say so for sure.
+   function Lit_Connector return PD.Connector is
+     (if not Lit.Found then PD.Unknown_Connector
+      else (case Lit.Mode is
+              when DD.HDMI => PD.HDMI, when DD.DVI => PD.DVI,
+              when DD.DP_SST | DD.DP_MST =>
+                (if Lit.Port = R.Port_A then PD.Embedded_DisplayPort else PD.DisplayPort),
+              when DD.Unknown => PD.Unknown_Connector));
+   --  An unlit port's output number on the GPU endpoint (the lit output is
+   --  zero): fixed per port, so it survives a re-detection.
+   function Native_Of (Item : PD.Port) return OD.Native_Output_Number is
+     (OD.Native_Output_Number (PD.Port'Pos (Item) + 1));
+   function To_Connector (Item : PD.Connector) return OD.Connector_Kind is
+     (case Item is
+        when PD.Unknown_Connector => OD.Unknown_Connector, when PD.HDMI => OD.HDMI,
+        when PD.DVI => OD.DVI, when PD.DisplayPort => OD.DisplayPort,
+        when PD.Embedded_DisplayPort => OD.Embedded_DisplayPort);
+
+   function Identity_Text (Item : C.Identity; Size : C.Physical_Size) return String is
+     (Item.Vendor & "-" & Readout.Hex (Unsigned_32 (Item.Product)) & " '" &
+      Item.Name.Text (1 .. Item.Name.Length) & "' " &
+      Image (Size.Width_MM) & "x" & Image (Size.Height_MM) & "mm");
+
+   --  The base block over Item's default DDC pin (Intel_GPU_Port_Scan).
+   Scan_Register_Base : Unsigned_64 := 0;
+   procedure Read_DDC_Base (Item : PD.Port; Base : out C.Block; Outcome : out PD.EDID_Outcome) is
+   begin
+      if not Intel_GPU_Modeset_Mapping.Ready (MPages.GMBUS) then
+         Log ("intel-gpu: modeset page GMBUS " &
+              Intel_GPU_Modeset_Mapping.Prepare (Display_Owner, Scan_Register_Base, MPages.GMBUS));
+      end if;
+      Log ("intel-gpu: EDID port " & PD.Port_Name (Item) & " GMBUS pin " &
+           Image (Natural (DDC.Pin_Code (Pin_Of (PD.DDI_Of (Item))))) & " (i915 default DDC pin; no VBT)");
+      Read_Block (PD.DDI_Of (Item), False, 0, Base, Outcome);
+   end Read_DDC_Base;
+   package Scan is new Intel_GPU_Port_Scan (Read_MMIO, Lit_Port, Read_DDC_Base);
+
+   --  An attached unlit port's monitor (its base block read): the
+   --  extensions, then its modes with this engine's verdicts (shown in
+   --  Settings, never applied).
+   procedure Read_Port_Monitor (Item : PD.Port; Base : C.Block) is
+      Entry_Of : Port_Record renames Ports (Item);
+      Extensions : C.Block_Array (1 .. C.Extension_Count'Last);
+      Read_Count : C.Extension_Count := 0;
+      Sink_Of : C.Sink_Limits;
+      Outcome : PD.EDID_Outcome;
+   begin
+      Log_Block (0, Base);
+      for E in 1 .. C.Extensions_Declared (Base) loop
+         Read_Block (PD.DDI_Of (Item), False, E, Extensions (E), Outcome);
+         exit when Outcome /= PD.Read_Valid;
+         Log_Block (E, Extensions (E));
+         Read_Count := E;
+      end loop;
+      Entry_Of.Identity := C.Identify (Base);
+      Entry_Of.Size := C.Size_Of (Base);
+      Sink_Of := C.Limits (Base, Extensions (1 .. Read_Count));
+      Entry_Of.Kind := PD.Connector_Of
+        (Entry_Of.Sense, Entry_Of.Outcome,
+         PD.Interface_Of (Base (PD.EDID_Revision_Byte), Base (PD.EDID_Video_Input_Byte)), Sink_Of.HDMI);
+      Entry_Of.Modes := new C.Mode_List (C.Capacity (Read_Count));
+      C.Collect (Base, Extensions (1 .. Read_Count), Entry_Of.Modes.all);
+      Entry_Of.Verdicts := new MA.Verdict_Array'(MA.Judge_All
+        (Entry_Of.Modes.all,
+         (Port => PD.DDI_Of (Item), Link => MA.TMDS_Link (Sink_Of), Sink => Sink_Of,
+          CDCLK => Natural'Min (Display_State.CDCLK_kHz, MA.CD_Clock_kHz'Last))));
+      Entry_Of.Advertised := MA.Best (Entry_Of.Modes.all, Entry_Of.Verdicts.all);
+      if Entry_Of.Advertised = 0 and then Entry_Of.Modes.Count > 0 then
+         Entry_Of.Advertised := 1;
+      end if;
+      for I in 1 .. Entry_Of.Modes.Count loop
+         Log ("intel-gpu: port " & PD.Port_Name (Item) & " mode " & Image (I) & " " &
+              Mode_Text (Entry_Of.Modes.Items (I).Timing) &
+              (if Entry_Of.Modes.Items (I).Preferred then " preferred" else "") &
+              " -> " & MA.Name (Entry_Of.Verdicts (I)) & " (not lit)");
+      end loop;
+   end Read_Port_Monitor;
+
+   procedure Detect_Ports (Register_Base : Unsigned_64) is
+      Counts : array (PD.Port_State) of Natural := [others => 0];
+      Found : Scan.Results;
+      Blocks : Scan.Bases;
+   begin
+      Scan_Register_Base := Register_Base;
+      Scan.Capture (Hotplug_Words);
+      Log ("intel-gpu: hotplug SDEISR=" & Readout.Hex (Hotplug_Words.South_Live) &
+           " SHOTPLUG_CTL_DDI=" & Readout.Hex (Hotplug_Words.South_DDI_Control) &
+           " SHOTPLUG_CTL_TC=" & Readout.Hex (Hotplug_Words.South_TC_Control) &
+           " DE_HPD_ISR=" & Readout.Hex (Hotplug_Words.North_Live) &
+           " TC_HOTPLUG_CTL=" & Readout.Hex (Hotplug_Words.North_TC_Control) &
+           " TBT_HOTPLUG_CTL=" & Readout.Hex (Hotplug_Words.North_TBT_Control));
+      Scan.Scan (Hotplug_Words, Found, Blocks);
+      for P in PD.Port loop
+         declare
+            Entry_Of : Port_Record renames Ports (P);
+         begin
+            Entry_Of := (Sense => Found (P).Sense, Channel => Found (P).Channel,
+                         Outcome => Found (P).Outcome, State => Found (P).State, others => <>);
+            if Entry_Of.Outcome = PD.Read_Valid then
+               Read_Port_Monitor (P, Blocks (P));
+            end if;
+            if Entry_Of.State = PD.Lit then
+               Entry_Of.Kind := Lit_Connector;
+            elsif Entry_Of.Kind = PD.Unknown_Connector then
+               Entry_Of.Kind := PD.Connector_Of
+                 (Entry_Of.Sense, Entry_Of.Outcome, PD.Undefined_Interface, False);
+            end if;
+            Counts (Entry_Of.State) := Counts (Entry_Of.State) + 1;
+            Log ("intel-gpu: port " & PD.Port_Name (P) & " (" & PD.PHY_Name (P) & ") " &
+                 (if Entry_Of.State = PD.Disconnected then ""
+                  else PD.Connector_Name (Entry_Of.Kind) & " ") &
+                 (case Entry_Of.State is
+                    when PD.Lit => "lit (firmware)",
+                    when PD.Connected_Not_Lit => "connected (not lit)",
+                    when PD.Disconnected => "disconnected") &
+                 (if Entry_Of.State = PD.Lit and then Monitor_Known
+                  then " edid=" & Identity_Text (Monitor, Monitor_Size)
+                  elsif Entry_Of.Outcome = PD.Read_Valid
+                  then " edid=" & Identity_Text (Entry_Of.Identity, Entry_Of.Size)
+                  elsif Entry_Of.Outcome /= PD.Not_Read
+                  then " edid=" & PD.Outcome_Name (Entry_Of.Outcome)
+                  else "") &
+                 " live=" & PD.Sense_Name (Entry_Of.Sense.Live) &
+                 (if Entry_Of.Sense.Live = PD.Sink then "/" & PD.Path_Name (Entry_Of.Sense.Path) else ""));
+         end;
+      end loop;
+      Log ("intel-gpu: ports" & Natural'Image (PD.Port'Pos (PD.Port'Last) + 1) &
+           ": lit" & Natural'Image (Counts (PD.Lit)) &
+           ", connected-not-lit" & Natural'Image (Counts (PD.Connected_Not_Lit)) &
+           ", disconnected" & Natural'Image (Counts (PD.Disconnected)) &
+           " (detection only: no port is lit; default DDC pins, no VBT)");
+   end Detect_Ports;
+
    procedure Select_Output
      (Planes : FO.Primaries; Table_Bytes, Register_Base : Unsigned_64)
    is
@@ -663,6 +843,7 @@ package body Intel_GPU_Display_Executor is
       if Selection.State /= FO.Selected then
          Log ("intel-gpu: firmware output " & FO.Name (Selection.State) &
               "; display keeps the firmware framebuffer without planes");
+         Detect_Ports (Register_Base);
          return;
       end if;
       Page := Topology.Pipe'Pos (Selection.Pipe);
@@ -675,6 +856,7 @@ package body Intel_GPU_Display_Executor is
       Log ("intel-gpu: pipe " & FO.Pipe_Name (Selection.Pipe) & " register page " &
            Intel_GPU_Pipe_Mapping.Prepare (Display_Owner, Register_Base, Page));
       Identify (Register_Base);
+      Detect_Ports (Register_Base);
    end Select_Output;
 
    function Output_Selected return Boolean is (Selection.State = FO.Selected);
@@ -845,9 +1027,32 @@ package body Intel_GPU_Display_Executor is
         (if Flip.Ready
          then (OD.Backend_Ready, OD.Intel_Display, 0, Advertised_W, Advertised_H,
                OD.Millimetres (Monitor_Size.Width_MM), OD.Millimetres (Monitor_Size.Height_MM),
+               OD.Lit, To_Connector (Lit_Connector),
                OD.Extent (Flip.Width), OD.Extent (Flip.Height))
          else (OD.Detected_Only, OD.Intel_Display, 0, Advertised_W, Advertised_H,
-               OD.Millimetres (Monitor_Size.Width_MM), OD.Millimetres (Monitor_Size.Height_MM)));
+               OD.Millimetres (Monitor_Size.Width_MM), OD.Millimetres (Monitor_Size.Height_MM),
+               OD.Lit, To_Connector (Lit_Connector)));
+      --  DISP-009/010: the attached monitors no pipe drives, after it.
+      for P in PD.Port loop
+         if Ports (P).State = PD.Connected_Not_Lit and then Result.Count < OD.Output_Count'Last then
+            declare
+               Item : Port_Record renames Ports (P);
+               Width, Height : OD.Extent := OD.Extent'First;
+            begin
+               if Item.Advertised /= 0 then
+                  Width := OD.Extent (Natural'Min (Item.Modes.Items (Item.Advertised).Timing.Width,
+                                                   OD.Extent'Last));
+                  Height := OD.Extent (Natural'Min (Item.Modes.Items (Item.Advertised).Timing.Height,
+                                                    OD.Extent'Last));
+               end if;
+               Result.Count := Result.Count + 1;
+               Result.Items (Result.Count) :=
+                 (OD.Detected_Only, OD.Intel_Display, Native_Of (P), Width, Height,
+                  OD.Millimetres (Item.Size.Width_MM), OD.Millimetres (Item.Size.Height_MM),
+                  OD.Connected_Not_Lit, To_Connector (Item.Kind));
+            end;
+         end if;
+      end loop;
       return Result;
    end Catalog_Now;
 
@@ -1056,14 +1261,90 @@ package body Intel_GPU_Display_Executor is
       end;
    end Change_Mode;
 
+   --  The unlit port routed to Output (CuBit.Display_Protocol.With_Output:
+   --  its catalog native number), if it has a monitor attached.
+   type Routed_Port (Found : Boolean := False) is record
+      case Found is
+         when True => Port : PD.Port;
+         when False => null;
+      end case;
+   end record;
+   function Route (Output : CuBit.Display_Protocol.Output_Number) return Routed_Port is
+   begin
+      for P in PD.Port loop
+         if Natural (Output) = Native_Of (P) and then Ports (P).State = PD.Connected_Not_Lit then
+            return (True, P);
+         end if;
+      end loop;
+      return (Found => False);
+   end Route;
+
+   --  DISP-009/010: an attached monitor no pipe drives answers Identify and
+   --  List_Mode (its EDID modes with this engine's verdicts, none current);
+   --  Set_Mode is refused until lighting a port exists (DISP-010).
+   procedure Answer_Unlit
+     (Item : PD.Port; Label : Unsigned_32; Wire : CuBit.Display_Protocol.Wire_Message;
+      Result : out CuBit.Display_Protocol.Wire_Message)
+   is
+      package DP renames CuBit.Display_Protocol.DP;
+      Port_Of : Port_Record renames Ports (Item);
+      Refused : constant CuBit.Display_Protocol.Wire_Message :=
+        (Label => Label, Length => 1,
+         Words => [DP.Status_Code'Enum_Rep (DP.Unsupported), 0, 0, 0], others => <>);
+   begin
+      Result := Refused;
+      if Label = OP_Identify then
+         if Port_Of.Outcome = PD.Read_Valid and then Wire = OM.Identify_Request (OD.GPU_Backend) then
+            Result := OM.Encode_Identity (OD.GPU_Backend, Identity_Of (Port_Of.Identity));
+         end if;
+      elsif Label = OP_List_Mode then
+         declare
+            Wanted : constant OM.Index_Decoding := OM.Decode_List_Request (OD.GPU_Backend, Wire);
+         begin
+            if Wanted.Valid and then Port_Of.Modes /= null and then Port_Of.Verdicts /= null and then
+              Natural (Wanted.Value) <= Port_Of.Modes.Count and then
+              Port_Of.Modes.Count <= Natural (OM.Mode_Count'Last)
+            then
+               declare
+                  M : CuBit.Monitor_EDID.Timing renames Port_Of.Modes.Items (Natural (Wanted.Value)).Timing;
+               begin
+                  Result := OM.Encode_Listing
+                    (OD.GPU_Backend,
+                     (Index => Wanted.Value, Count => OM.Mode_Count (Port_Of.Modes.Count),
+                      Item => ((OD.Extent (M.Width), OD.Extent (M.Height)),
+                               Listed_Refresh (M),
+                               Unsigned_32 (M.Clock) * 10,
+                               To_Admission (Port_Of.Verdicts (Natural (Wanted.Value))),
+                               Port_Of.Modes.Items (Natural (Wanted.Value)).Preferred,
+                               False)));
+               end;
+            else
+               Result := (Label => Label, Length => 1,
+                          Words => [DP.Status_Code'Enum_Rep (DP.Bad_Object), 0, 0, 0], others => <>);
+            end if;
+         end;
+      elsif Label = OP_Set_Mode then
+         Log ("intel-gpu: mode change refused on port " & PD.Port_Name (Item) &
+              ": connected but not lit (lighting an output is DISP-010)");
+      end if;
+   end Answer_Unlit;
+
    procedure Handle_Modes (Sender : Process_ID; Request : Message) is
       package DP renames CuBit.Display_Protocol.DP;
-      Wire : constant CuBit.Display_Protocol.Wire_Message := CuBit.Desktop_Messages.To_Wire (Request);
+      Routed_Wire : constant CuBit.Display_Protocol.Wire_Message := CuBit.Desktop_Messages.To_Wire (Request);
+      Output : constant CuBit.Display_Protocol.Output_Number :=
+        (if CuBit.Display_Protocol.Valid_Output (Routed_Wire)
+         then CuBit.Display_Protocol.Output_Of (Routed_Wire) else 0);
+      Unlit : constant Routed_Port := Route (Output);
+      Wire : constant CuBit.Display_Protocol.Wire_Message :=
+        (if Unlit.Found then CuBit.Display_Protocol.Without_Output (Routed_Wire) else Routed_Wire);
       Result : CuBit.Display_Protocol.Wire_Message;
       Delivered : Unsigned_64;
       pragma Unreferenced (Delivered);
    begin
-      if Request.tag.label in OP_Catalog | OP_Description then
+      if Unlit.Found and then Request.tag.label in OP_Identify | OP_List_Mode | OP_Set_Mode then
+         Answer_Unlit (Unlit.Port, Request.tag.label, Wire, Result);
+      elsif Request.tag.label in OP_Catalog | OP_Description then
          Result := OD.Respond (OD.GPU_Backend, Catalog_Now, Output_Revision, Wire);
       elsif Request.tag.label = OP_List_Mode then
          declare
@@ -1374,9 +1655,14 @@ package body Intel_GPU_Display_Executor is
       function Plane_Status (Kind : GP.Operation) return CuBit.Display_Protocol.Wire_Message is
         (Status (Kind, (if Outcome = Cursor.Accepted then GP.Accepted else GP.Bad_State)));
    begin
-      --  The display executor serves display.svc alone, for output zero.
+      --  The display executor serves display.svc alone, for output zero;
+      --  Identify, List_Mode and Set_Mode may also name an attached unlit
+      --  port (DISP-009/010, Route).
       if Display_Process = No_Process or else Sender /= Display_Process or else
-        Request.tag.reserved /= 0
+        (Request.tag.reserved /= 0 and then
+         not (Request.tag.label in OP_Identify | OP_List_Mode | OP_Set_Mode and then
+              CuBit.Display_Protocol.Valid_Output (Wire) and then
+              Route (CuBit.Display_Protocol.Output_Of (Wire)).Found))
       then
          if Request.tag.label in Scanout_First .. Scanout_Last then
             Result := (Label => Request.tag.label, Length => 1,

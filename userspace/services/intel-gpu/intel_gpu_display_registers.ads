@@ -142,4 +142,38 @@ package Intel_GPU_Display_Registers with SPARK_Mode, Pure is
    GMBUS4 : constant := 16#C_5110#;
    GMBUS5 : constant := 16#C_5120#;
    GMBUS_Page : constant := 16#C_5000#;
+
+   ---------------------------------------------------------------------------
+   --  Hot-plug detection (DISP-009). The PCH (south display engine, ICP+ /
+   --  ADP) senses the combo ports' HPD pins and the Type-C ports in legacy
+   --  (static) mode; the north display engine senses Type-C ports in DP-alt
+   --  and Thunderbolt mode. i915 v6.16 i915_reg.h / intel_hotplug_irq.c
+   --  (hpd_icp, hpd_gen11) and intel_tc.c (adlp_tc_phy_hpd_live_status).
+   --  An ISR bit is the live state of its pin; it means something only
+   --  while the pin's detection enable bit is set in its HOTPLUG_CTL word.
+   ---------------------------------------------------------------------------
+   SDEISR : constant := 16#C_4000#;
+   SDEIMR : constant := 16#C_4004#;
+   SDEIIR : constant := 16#C_4008#;
+   SDEIER : constant := 16#C_400C#;
+   --  SDE_DDI_HOTPLUG_ICP (pin) = bit 16 + (pin - HPD_PORT_A);
+   --  SDE_TC_HOTPLUG_ICP (pin) = bit 24 + (pin - HPD_PORT_TC1).
+   SDE_DDI_Hotplug_First_Bit : constant := 16;
+   SDE_TC_Hotplug_First_Bit : constant := 24;
+   SHOTPLUG_CTL_DDI : constant := 16#C_4030#;
+   SHOTPLUG_CTL_TC : constant := 16#C_4034#;
+   GEN11_DE_HPD_ISR : constant := 16#4_4470#;
+   GEN11_DE_HPD_IMR : constant := 16#4_4474#;
+   GEN11_DE_HPD_IIR : constant := 16#4_4478#;
+   GEN11_DE_HPD_IER : constant := 16#4_447C#;
+   --  GEN11_TC_HOTPLUG (pin) = bit 16 + tc; GEN11_TBT_HOTPLUG (pin) = bit tc.
+   GEN11_TC_Hotplug_First_Bit : constant := 16;
+   GEN11_TBT_Hotplug_First_Bit : constant := 0;
+   GEN11_TBT_HOTPLUG_CTL : constant := 16#4_4030#;
+   GEN11_TC_HOTPLUG_CTL : constant := 16#4_4038#;
+   --  Every HOTPLUG_CTL word gives each pin a 4-bit field: bit 3 enables
+   --  detection (SHOTPLUG_CTL_DDI_HPD_ENABLE, GEN11_HOTPLUG_CTL_ENABLE),
+   --  bits 1:0 latch the last pulse (no detect, short, long).
+   Hotplug_Field_Bits : constant := 4;
+   Hotplug_Enable_In_Field : constant := 3;
 end Intel_GPU_Display_Registers;

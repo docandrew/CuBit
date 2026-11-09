@@ -4,6 +4,7 @@ with Desktop_Backdrop_Style;
 with Desktop_Wallpaper_Catalog;
 with CuBit.Display_Layouts;
 with CuBit.Output_Modes;
+with CuBit.Output_Discovery;
 with Time_Zones;
 
 --  Desktop-owned appearance, display, date & time and monitor pages. No IPC
@@ -47,8 +48,21 @@ package Desktop_Settings is
    --  A row of the mode list: Auto_Row, then the modes from 1.
    subtype Mode_Row is Natural;
    Auto_Row : constant Mode_Row := 0;
+   --  DISP-009/010: monitors attached to outputs no pipe drives
+   --  (CuBit.Output_Discovery.Connected_Not_Lit), one line each under the
+   --  mode list, e.g. "Also connected: HDMI - DELL U2720Q - 600 x 340 mm,
+   --  best 3840 x 2160 - not in use". They are named only: lighting one
+   --  is DISP-010, so nothing on the page selects them.
+   Attached_Lines : constant := 2;
+   subtype Attached_Count is Natural range 0 .. Attached_Lines;
+   type Attached_Array is array (1 .. Attached_Lines) of Monitor_Line;
+   --  The line for Item (Connected_Not_Lit), Name its EDID monitor name
+   --  ("" when it has none).
+   function Attached_Line (Item : CuBit.Output_Discovery.Description; Name : String) return Monitor_Line;
    type Monitor_Info is record
       Summary, Detail : Monitor_Line;
+      Attached : Attached_Array;
+      Attached_Used : Attached_Count := 0;
       --  Sorted; null when the output lists no modes.
       Modes : Monitor_Mode_List;
       --  The monitor has an EDID identity, so a choice can be saved for it.

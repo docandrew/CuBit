@@ -13191,7 +13191,28 @@ procedure main is
             exit when not Item.Valid;
             declare
                D : constant OD.Description := Item.Value.Item;
+               use type OD.Connection_State;
             begin
+               --  DISP-009/010: a monitor attached where no pipe drives it.
+               if D.Role = OD.Detected_Only and then D.Connection = OD.Connected_Not_Lit and then
+                 Info.Attached_Used < Desktop_Settings.Attached_Lines
+               then
+                  declare
+                     Attached : constant OM.Identity_Decoding :=
+                       OM.Decode_Identity (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire
+                         (callDisplay (OM.Code (OD.Display_Broker, OM.Identify),
+                                       Output => DSP.Output_Number (D.Native_Number))));
+                     Text : String (1 .. (if Attached.Valid then Attached.Value.Name_Last else 0));
+                  begin
+                     for I in Text'Range loop
+                        Text (I) := Attached.Value.Name (I);
+                     end loop;
+                     Info.Attached_Used := Info.Attached_Used + 1;
+                     Info.Attached (Info.Attached_Used) := Desktop_Settings.Attached_Line (D, Text);
+                     debugPrint ("desktop: Settings " & Info.Attached (Info.Attached_Used).Text
+                       (1 .. Info.Attached (Info.Attached_Used).Length) & LF);
+                  end;
+               end if;
                if D.Native_Number = Natural (primaryOutput) and then D.Role /= OD.Detected_Only then
                   if D.Width_MM /= 0 and then D.Height_MM /= 0 then
                      declare

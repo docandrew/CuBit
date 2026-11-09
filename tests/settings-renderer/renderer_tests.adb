@@ -7,6 +7,8 @@ with Desktop_Settings;
 with Desktop_Wallpaper_Catalog;
 with Time_Zones;
 with CuBit.Output_Modes;
+with CuBit.Output_Discovery;
+with Ada.Strings.Fixed;
 procedure Renderer_Tests is
    use type System.Address;
    package A renames CuBit.Appearance;
@@ -26,8 +28,15 @@ procedure Renderer_Tests is
    begin Record_Op (C, Stroke); end;
    procedure Gradient_Rect (C : Canvas; R : Rect; TopColor, BottomColor : Color) is
    begin Record_Op (C, Gradient); end;
+   --  The last text drawn that names an attached, unlit monitor.
+   Attached_Drawn : Natural := 0;
    procedure Draw_Text (C : Canvas; X, Y : Natural; Value : String; FG, BG : Color) is
-   begin Record_Op (C, Text); end;
+   begin
+      Record_Op (C, Text);
+      if Ada.Strings.Fixed.Index (Value, "not in use") /= 0 then
+         Attached_Drawn := Attached_Drawn + 1;
+      end if;
+   end Draw_Text;
    procedure Draw_Button (C : Canvas; R : Rect; Colors : Theme; Style : Button_Style; Label : String) is
    begin Record_Op (C, Button); end;
    procedure Draw_Tab (C : Canvas; R : Rect; Colors : Theme; Selected, Hot, Active : Boolean;
@@ -202,12 +211,31 @@ begin
       Info.Identified := True;
       Info.Saved_Auto := False;
       Info.Saved_Row := 7;
+      --  DISP-009/010: a monitor attached to an unlit output is named under
+      --  the list, and nothing on the page selects it.
+      declare
+         package OD renames CuBit.Output_Discovery;
+         Line : constant S.Monitor_Line := S.Attached_Line
+           ((OD.Detected_Only, OD.Intel_Display, 2, 3840, 2160, 600, 340, OD.Connected_Not_Lit, OD.HDMI),
+            "DELL U2720Q");
+         Expected : constant String :=
+           "Also connected: HDMI - DELL U2720Q - 600 x 340 mm, best 3840 x 2160 - not in use";
+         Bare : constant S.Monitor_Line := S.Attached_Line
+           ((OD.Detected_Only, OD.Intel_Display, 3, 1, 1, 0, 0, OD.Connected_Not_Lit, OD.Unknown_Connector), "");
+      begin
+         pragma Assert (Line.Text (1 .. Line.Length) = Expected, Line.Text (1 .. Line.Length));
+         pragma Assert (Bare.Text (1 .. Bare.Length) = "Also connected: Display - not in use");
+         Info.Attached_Used := 1;
+         Info.Attached (1) := Line;
+      end;
       S.Open (View, A.Default, Layout, 1, Auto_Scale => True, Zone => Time_Zones.Zone_UTC);
       View.Current_Page := S.Monitor;
       S.Set_Monitor (View, Info);
       pragma Assert (View.Mode_Choice = 7, "the saved mode is chosen");
       pragma Assert (View.Mode_Top <= 7 and then 7 < View.Mode_Top + 11, "and visible");
+      Attached_Drawn := 0;
       Render (View, C, Window);
+      pragma Assert (Attached_Drawn = 1, "the attached monitor line is drawn");
       Render_Controls (View, C, Window);
       View.Focused := S.Mode_List;
       S.Key (View, Scan_Up, False, Apply);

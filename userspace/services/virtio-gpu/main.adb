@@ -1153,6 +1153,7 @@ procedure main is
                   OD.Native_Output_Number (Head),
                   Detected.Advertised_Width, Detected.Advertised_Height,
                   OD.Millimetres (headSize (Head).Width_MM), OD.Millimetres (headSize (Head).Height_MM),
+                  OD.Lit, OD.Unknown_Connector,
                   OD.Extent (Frame_Width (Head)), OD.Extent (Frame_Height (Head)));
             end;
          end if;
@@ -1199,7 +1200,7 @@ procedure main is
                scanouts.Items (scanouts.Count) :=
                  (OD.Detected_Only, OD.Virtio_GPU,
                   OD.Native_Output_Number (Index),
-                  OD.Extent (Width), OD.Extent (Height), 0, 0);
+                  OD.Extent (Width), OD.Extent (Height), 0, 0, OD.Lit, OD.Unknown_Connector);
             end if;
          end;
       end loop;
