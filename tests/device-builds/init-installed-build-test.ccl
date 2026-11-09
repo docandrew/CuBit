@@ -12,6 +12,17 @@
   (start "timesync.svc" (priority 5) (network approve-declared))
   (start "config-storage.svc" (priority 5) (role config-storage))
   (start "display.svc" (priority 5))
+  # ACPI, as on the live medium (tests/hardware/init-usb-live-build.ccl):
+  # the backend holds the FADT I/O windows and serves named registers;
+  # acpi.svc (AML, no hardware authority) connects to it. Both keep the
+  # default restart contract, reboot: a new program for either is
+  # activated for the next boot (procmgr applies the current generation's
+  # pins before this plan runs; SYS-003).
+  (start "acpi-backend.svc" (priority 5)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (acpi-firmware-data approve-declared)
+    (acpi-pci-config approve-declared))
+  (start "acpi.svc" (priority 4)
+    (firmware-snapshot approve-declared) (acpi-registers approve-declared))
   # Dictionary, thesaurus and spelling (docs/lexicon.md).
   (start "lexicon.svc" (priority 4))
   # GPU rendering is a settings grant (desktop.render.gpu, default on);

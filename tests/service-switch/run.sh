@@ -14,5 +14,6 @@ if [[ ${1:-} == --prove ]]; then
     systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 \
         alr exec -- gnatprove -P "$here/service_switch.gpr" \
         -u cubit-service_replacement.adb -u service_switches.adb -u manifest_fingerprints.adb \
+        -u boot_generations.adb \
         --level=2 -j2 --checks-as-errors=on
 fi

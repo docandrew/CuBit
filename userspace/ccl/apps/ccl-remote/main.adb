@@ -475,7 +475,7 @@ procedure Main is
                                  "(" & Status_Name (Result) & ")"),
                            (if Result /= W.OK then Outcome_Of (Result)
                             else (case Done.Result is
-                                     when W.Activated | W.Unchanged => Remote_Activity.OK,
+                                     when W.Activated | W.Unchanged | W.Pending_Boot => Remote_Activity.OK,
                                      when W.Refused | W.No_Previous_Generation | W.Too_Many_Changes =>
                                        Remote_Activity.Refused,
                                      when W.Rolled_Back_Generation | W.Stop_Failed_Generation

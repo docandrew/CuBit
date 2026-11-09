@@ -415,6 +415,14 @@ prove-block-requests:
 test-disk-layout:
 	bash ../tests/disk-layout/run.sh
 
+# SYS-003: service switches, generation records, and the boot-time and
+# next-boot generation decisions (hosted); prove-service-switch proves them.
+.PHONY: test-service-switch prove-service-switch
+test-service-switch:
+	bash ../tests/service-switch/run.sh
+prove-service-switch:
+	bash ../tests/service-switch/run.sh --prove
+
 # SYS-001: system.disks and system.install as CCL over a stand-in installer.
 .PHONY: test-ccl-install
 test-ccl-install:

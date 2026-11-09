@@ -1,4 +1,10 @@
+# procmgr reads the current system generation at boot (Boot_Generations):
+# its record through the shared reader (userspace/ccl/remote) and each
+# pinned program's SHA-256 through the Storehouse's verified hashing (the
+# pinned SPARKNaCl and SPARKTLSCrypto crates).
 (Component name => "procmgr" kind => (Kind.Service Launcher.Kernel)
   source => (Source.Ada (Ada_Source
-    sources => ["userspace/ccl/src" "userspace/lib/config" "userspace/lib/display" "userspace/services/intel-gpu" "userspace/lib/logging" "shared/acpi"]
-    language => Ada_Language.Ada_2022)))
+    sources => ["userspace/ccl/src" "userspace/lib/config" "userspace/lib/display" "userspace/services/intel-gpu" "userspace/lib/logging" "shared/acpi"
+                "userspace/ccl/remote" "userspace/lib/storehouse"]
+    language => Ada_Language.Ada_2022
+    libraries => ["sparknacl" "sparktlscrypto"])))

@@ -8,7 +8,7 @@ with CuBit.Handles.IPC;
 
 package body CuBit.Disk_Install.Client is
    function Open
-     (Service : CuBit.Handles.Endpoint; Item : Open_Request) return Opened_Disk
+     (Service : CuBit.Handles.Endpoint; Item : Open_Request; Within_Ms : Unsigned_64) return Opened_Disk
    is
       package IPC renames CuBit.Handles.IPC;
       Encoded : constant Request_Words := Encode (Item);
@@ -20,7 +20,7 @@ package body CuBit.Disk_Install.Client is
                   ipc => <>, reserved => 0);
       Msg.words (Ordinal_Word) := Encoded (Ordinal_Word);
       Msg.words (Access_Word) := Encoded (Access_Word);
-      Reply := IPC.Call_Accepting (Service, Msg, Wait_Forever, Received);
+      Reply := IPC.Call_Accepting (Service, Msg, Deadline_After (Within_Ms), Received);
       if Reply.label /= Reply_OK then
          return (Opened => False);
       end if;

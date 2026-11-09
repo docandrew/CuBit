@@ -189,6 +189,17 @@ package CuBit.Launching is
    with Pre => Service'Length in 1 .. CuBit.Service_Replacement.Maximum_Service_Name_Bytes
                and then Program'Length <= CuBit.Service_Replacement.Maximum_Program_Bytes;
 
+   --  Ask procmgr to admit Program for Service at the next boot
+   --  (CuBit.Service_Replacement.Boot_Stage_Operation: a (replace reboot)
+   --  entry's pin). Answered: admitted (nothing was stopped or started);
+   --  Refused_Switch: Why says why; Timed_Out: no answer within
+   --  Stage_Deadline_Ms.
+   Stage_Deadline_Ms : constant := 10_000;
+   procedure Stage_Service_For_Boot
+     (Through : Launcher; Service : String; Program : String; Result : out Switch_Result)
+   with Pre => Service'Length in 1 .. CuBit.Service_Replacement.Maximum_Service_Name_Bytes
+               and then Program'Length in 1 .. CuBit.Service_Replacement.Maximum_Program_Bytes;
+
 private
    type Launcher is record
       Service : CuBit.Handles.Endpoint;

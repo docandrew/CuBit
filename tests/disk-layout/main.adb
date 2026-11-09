@@ -22,11 +22,14 @@ with Disk_Layout; use Disk_Layout;
 with GPT_Image;
 with Ext2_Image;
 with Layout_Writer;
+with Install_Steps;
 with Partition_Tables;
 
 procedure Main is
    use type Partition_Tables.MBR_Kind, Partition_Tables.Header_Result, Partition_Tables.GUID;
-   Image : File_Type;
+   use type Partition_Tables.Bytes;
+   use type Install_Steps.Step;
+   use type Install_Tree.Entry_Kind;
    Failures : Natural := 0;
 
    procedure Check (Condition : Boolean; Name : String) is
@@ -37,44 +40,48 @@ procedure Main is
       Ada.Text_IO.Put_Line ("disk-layout: " & Name & (if Condition then " PASS" else " FAIL"));
    end Check;
 
-   procedure Put (Offset : Byte_Offset; Data : Bytes; OK : out Boolean) is
-      Chunk : Stream_Element_Array (1 .. Stream_Element_Offset (Data'Length));
+   --  The image through one read-write descriptor (writes and read-backs
+   --  interleave).
+   Disk : GNAT.OS_Lib.File_Descriptor := GNAT.OS_Lib.Invalid_FD;
+
+   procedure Seek (Offset : Unsigned_64) is
    begin
-      for I in Chunk'Range loop
-         Chunk (I) := Stream_Element (Data (Data'First + Integer (I) - 1));
-      end loop;
-      Set_Index (Image, Positive_Count (Offset + 1));
-      Write (Image, Chunk);
-      OK := True;
+      GNAT.OS_Lib.Lseek (Disk, Long_Integer (Offset), GNAT.OS_Lib.Seek_Set);
+   end Seek;
+
+   procedure Put (Offset : Byte_Offset; Data : Bytes; OK : out Boolean) is
+      Copy : constant Bytes (1 .. Data'Length) := Data;
+   begin
+      Seek (Offset);
+      OK := GNAT.OS_Lib.Write (Disk, Copy'Address, Copy'Length) = Copy'Length;
    end Put;
 
-   Zero_Chunk : constant Stream_Element_Array (1 .. 1024 * 1024) := [others => 0];
+   Zero_Chunk : constant Bytes (1 .. 1024 * 1024) := [others => 0];
 
    procedure Zero (Offset : Byte_Offset; Length : Unsigned_64; OK : out Boolean) is
       Done : Unsigned_64 := 0;
    begin
-      Set_Index (Image, Positive_Count (Offset + 1));
-      while Done < Length loop
+      Seek (Offset);
+      OK := True;
+      while OK and then Done < Length loop
          declare
-            Step : constant Unsigned_64 := Unsigned_64'Min (Length - Done, Zero_Chunk'Length);
+            Step : constant Natural := Natural (Unsigned_64'Min (Length - Done, Zero_Chunk'Length));
          begin
-            Write (Image, Zero_Chunk (1 .. Stream_Element_Offset (Step)));
-            Done := Done + Step;
+            OK := GNAT.OS_Lib.Write (Disk, Zero_Chunk'Address, Step) = Step;
+            Done := Done + Unsigned_64 (Step);
          end;
       end loop;
-      OK := True;
    end Zero;
 
    function Read_At (Offset : Unsigned_64; Count : Positive) return Bytes is
-      Chunk : Stream_Element_Array (1 .. Stream_Element_Offset (Count));
-      Last : Stream_Element_Offset;
-      Result : Bytes (1 .. Count);
+      Result : Bytes (1 .. Count) := [others => 0];
+      Got : Integer;
    begin
-      Set_Index (Image, Positive_Count (Offset + 1));
-      Read (Image, Chunk, Last);
-      for I in Result'Range loop
-         Result (I) := Unsigned_8 (Chunk (Stream_Element_Offset (I)));
-      end loop;
+      Seek (Offset);
+      Got := GNAT.OS_Lib.Read (Disk, Result'Address, Count);
+      if Got /= Count then
+         raise Program_Error with "short read of the image";
+      end if;
       return Result;
    end Read_At;
 
@@ -157,7 +164,70 @@ procedure Main is
       end loop;
    end Walk;
 
-   package Writer is new Layout_Writer (Put, Zero, Read);
+   procedure Get (Offset : Byte_Offset; Data : out Bytes; OK : out Boolean) is
+   begin
+      Data := Read_At (Offset, Data'Length);
+      OK := True;
+   end Get;
+
+   --  Read-back bytes against the source file's (the device reads back
+   --  what the source gave: compared directly here; the installer compares
+   --  SHA-256 digests instead).
+   Mismatches : Natural := 0;
+   procedure Check
+     (Volume : Install_Volume; File : Install_Tree.Entry_Index; Offset : Unsigned_64;
+      Data : Bytes; Final : Boolean; Matches : out Boolean)
+   is
+      pragma Unreferenced (Final);
+      Source : Bytes (1 .. Data'Length);
+      OK : Boolean := True;
+   begin
+      if Data'Length > 0 then
+         Read (Volume, File, Offset, Source, OK);
+      end if;
+      Matches := OK and then Source = Data;
+      if not Matches then
+         Mismatches := Mismatches + 1;
+      end if;
+   end Check;
+
+   procedure Flush (OK : out Boolean) is
+   begin
+      OK := True;
+   end Flush;
+
+   --  Interrupting an install (power lost): once the writer has entered
+   --  Stop_At, one more write lands and every later one fails (Done: never).
+   Stop_At : Install_Steps.Step := Install_Steps.Done;
+   Armed, Stopped : Boolean := False;
+   procedure Enter (Step : Install_Steps.Step) is
+   begin
+      if Step = Stop_At and then Stop_At /= Install_Steps.Done then
+         Armed := True;
+      end if;
+   end Enter;
+
+   procedure Guarded_Put (Offset : Byte_Offset; Data : Bytes; OK : out Boolean) is
+   begin
+      if Stopped then
+         OK := False;
+      else
+         Put (Offset, Data, OK);
+         Stopped := Armed;
+      end if;
+   end Guarded_Put;
+
+   procedure Guarded_Zero (Offset : Byte_Offset; Length : Unsigned_64; OK : out Boolean) is
+   begin
+      if Stopped then
+         OK := False;
+      else
+         Zero (Offset, Length, OK);
+         Stopped := Armed;
+      end if;
+   end Guarded_Zero;
+
+   package Writer is new Layout_Writer (Guarded_Put, Guarded_Zero, Get, Read, Check, Flush, Enter);
 
    Path : constant String := Argument (1);
    Block : constant Device_Block_Bytes := Device_Block_Bytes'Value (Argument (2));
@@ -165,13 +235,15 @@ procedure Main is
    Shape : constant Disk_Shape :=
      (Block_Size => Block, Blocks => Disk_MiB * Mebibyte / Unsigned_64 (Block));
    function Id (Seed : Unsigned_8) return GUID is ([for I in GUID'Range => Seed + Unsigned_8 (I)]);
-   Layout : constant Writer.Install_Layout :=
+   Layout : Writer.Install_Layout :=
      (Disk => (ESP_Size => Minimum_ESP_MiB, Disk_Id => Id (16#10#),
                ESP_Id => Id (16#20#), Root_Id => Id (16#30#)),
       ESP_Serial => 16#CB17_0001#, ESP_Label => "CUBIT ESP  ",
       Root => (Inode_Ratio => 65_536, Id => Id (16#40#),
-               Name => "cubit-root" & [1 .. 6 => ASCII.NUL], Created => 1_793_000_000));
+               Name => "cubit-root" & [1 .. 6 => ASCII.NUL], Created => 1_793_000_000),
+      Generation_First => Install_Tree.Entry_Index'Last);
    Result : Writer.Write_Result;
+   Reached : Install_Steps.Step;
    use type Writer.Write_Result;
 begin
    --  CRC-32/ISO-HDLC check value.
@@ -191,15 +263,59 @@ begin
              "laptop layout plans (root groups" & Root.Groups'Image &
              ", inode table blocks per group" & Root.Inode_Table_Blocks'Image & ")");
    end;
-   Create (Image, Out_File, Path);
+   Disk := GNAT.OS_Lib.Create_File (Path, GNAT.OS_Lib.Binary);
+   GNAT.OS_Lib.Close (Disk);
+   Disk := GNAT.OS_Lib.Open_Read_Write (Path, GNAT.OS_Lib.Binary);
    --  The disk's size: its last byte.
-   Set_Index (Image, Positive_Count (Shape.Blocks * Unsigned_64 (Block)));
-   Write (Image, Stream_Element_Array'(1 => 0));
+   declare
+      Last_Byte : constant Bytes (1 .. 1) := [1 => 0];
+      OK : Boolean;
+   begin
+      Put (Shape.Blocks * Unsigned_64 (Block) - 1, Last_Byte, OK);
+   end;
    Walk (ESP_Files, ESP_Paths, Argument (4), Install_Tree.Volume_Root);
    Walk (Root_Files, Root_Paths, Argument (5), Install_Tree.Volume_Root);
-   Writer.Write_Disk (Shape, Layout, ESP_Files, Root_Files, Result);
-   Check (Result = Writer.Written, "layout written");
-   Reset (Image, In_File);
+   --  The tree's last file stands for the generation records (Writing_Generation).
+   for E in reverse 1 .. Root_Files.Count loop
+      if Root_Files.Entries (E).Kind = Install_Tree.Regular_File then
+         Layout.Generation_First := E;
+         exit;
+      end if;
+   end loop;
+   --  SYS-002: an install interrupted at any step before Making_Bootable
+   --  leaves a disk that cannot boot, even over an earlier complete install
+   --  (the first run below): its ESP has no FAT boot sector (signature
+   --  55 AA at bytes 510-511) and, before Writing_ESP, its root no ext2
+   --  superblock (magic EF53 at byte 1080).
+   Writer.Write_Disk (Shape, Layout, ESP_Files, Root_Files, Result, Reached);
+   Check (Result = Writer.Written and then Reached = Install_Steps.Done, "complete install written");
+   for Interrupted in Install_Steps.Partitioning .. Install_Steps.Making_Bootable loop
+      Stop_At := Interrupted;
+      Armed := False;
+      Stopped := False;
+      Writer.Write_Disk (Shape, Layout, ESP_Files, Root_Files, Result, Reached);
+      declare
+         B : constant Unsigned_64 := Unsigned_64 (Block);
+         ESP_Head : constant Bytes := Read_At (ESP_First (Shape) * B, 512);
+         Root_Head : constant Bytes := Read_At (Root_First (Shape, Layout.Disk) * B, 2048);
+         ESP_Boots : constant Boolean := ESP_Head (511) = 16#55# and then ESP_Head (512) = 16#AA#;
+         Root_Mounts : constant Boolean := Root_Head (1081) = 16#53# and then Root_Head (1082) = 16#EF#;
+      begin
+         Check (Result /= Writer.Written and then not ESP_Boots
+                and then (if Interrupted in Install_Steps.Formatting_Root .. Install_Steps.Writing_Generation
+                          then not Root_Mounts),
+                "interrupted at " & Install_Steps.Name (Interrupted) & ": not bootable" &
+                (if Interrupted in Install_Steps.Formatting_Root .. Install_Steps.Writing_Generation
+                 then ", root not mountable" else ""));
+      end;
+   end loop;
+   Stop_At := Install_Steps.Done;
+   Armed := False;
+   Stopped := False;
+   Mismatches := 0;
+   Writer.Write_Disk (Shape, Layout, ESP_Files, Root_Files, Result, Reached);
+   Check (Result = Writer.Written and then Reached = Install_Steps.Done and then Mismatches = 0,
+          "layout written and read back");
 
    Check (Partition_Tables.Classify_MBR (Read_At (0, Partition_Tables.Sector_Bytes)) = Partition_Tables.Protective_GPT, "protective MBR");
    for Copy in GPT_Image.Header_Copy loop
@@ -233,7 +349,7 @@ begin
          end;
       end;
    end loop;
-   Close (Image);
+   GNAT.OS_Lib.Close (Disk);
    declare
       Root_Volume : constant Ext2_Image.Volume :=
         Ext2_Image.Plan ((Last_Usable (Shape) - Root_First (Shape, Layout.Disk) + 1)

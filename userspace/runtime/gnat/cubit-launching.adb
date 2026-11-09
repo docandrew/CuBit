@@ -352,19 +352,24 @@ package body CuBit.Launching is
       end loop;
    end Describe;
 
-   procedure Switch_Service
-     (Through : Launcher; Service : String; Program : String;
-      Grace : CuBit.Service_Replacement.Stop_Grace_Ms;
-      Health : CuBit.Service_Replacement.Health_Window_Ms;
-      Result : out Switch_Result)
+   --  The service's and the program's names into the lent request page,
+   --  then the request: Label with the names' lengths and Last_Word.
+   procedure Ask_Switch
+     (Through : Launcher; Label : Unsigned_32; Service, Program : String;
+      Last_Word, Within_Ms : Unsigned_64; Msg : out Message; Reply : out MessageTag;
+      Sent : out Boolean);
+
+   procedure Ask_Switch
+     (Through : Launcher; Label : Unsigned_32; Service, Program : String;
+      Last_Word, Within_Ms : Unsigned_64; Msg : out Message; Reply : out MessageTag;
+      Sent : out Boolean)
    is
-      package SR renames CuBit.Service_Replacement;
-      Msg : Message := NULL_MESSAGE;
-      Reply : MessageTag;
       Success : Boolean;
       Next : Natural := 0;
    begin
-      Result := (others => <>);
+      Msg := NULL_MESSAGE;
+      Reply := (label => 0, length => 0, protocol => 0, ipc => <>, reserved => 0);
+      Sent := False;
       if not CuBit.Handles.Valid (Through.Service) then
          return;
       end if;
@@ -384,14 +389,33 @@ package body CuBit.Launching is
          Next := Next + 1;
          Request (Next) := Character'Pos (C);
       end loop;
-      Msg.tag := (label => SR.Switch_Operation, length => SR.Request_Words,
+      Msg.tag := (label => Label, length => CuBit.Service_Replacement.Request_Words,
                   protocol => 0, ipc => <>, reserved => 0);
       Msg.words (0) := CuBit.Grant_References.Encode (Lent_Reference);
       Msg.words (1) := Unsigned_64 (Service'Length);
       Msg.words (2) := Unsigned_64 (Program'Length);
-      Msg.words (3) := SR.Deadlines_Word (Grace, Health);
-      Reply := capCall (Through.Service, Msg,
-                        Deadline_After (SR.Answer_Bound_Ms (Grace, Health) + Answer_Margin_Ms));
+      Msg.words (3) := Last_Word;
+      Reply := capCall (Through.Service, Msg, Deadline_After (Within_Ms));
+      Sent := True;
+   end Ask_Switch;
+
+   procedure Switch_Service
+     (Through : Launcher; Service : String; Program : String;
+      Grace : CuBit.Service_Replacement.Stop_Grace_Ms;
+      Health : CuBit.Service_Replacement.Health_Window_Ms;
+      Result : out Switch_Result)
+   is
+      package SR renames CuBit.Service_Replacement;
+      Msg : Message;
+      Reply : MessageTag;
+      Sent : Boolean;
+   begin
+      Result := (others => <>);
+      Ask_Switch (Through, SR.Switch_Operation, Service, Program, SR.Deadlines_Word (Grace, Health),
+                  SR.Answer_Bound_Ms (Grace, Health) + Answer_Margin_Ms, Msg, Reply, Sent);
+      if not Sent then
+         return;
+      end if;
       if Reply.label = REPLY_TIMEOUT then
          Result.Answer := Timed_Out;
       elsif Reply.label = CuBit.Kernel_ABI.Reply_OK and then SR.Is_Outcome (Msg.words (0)) then
@@ -406,5 +430,31 @@ package body CuBit.Launching is
          end if;
       end if;
    end Switch_Service;
+
+   procedure Stage_Service_For_Boot
+     (Through : Launcher; Service : String; Program : String; Result : out Switch_Result)
+   is
+      package SR renames CuBit.Service_Replacement;
+      Msg : Message;
+      Reply : MessageTag;
+      Sent : Boolean;
+   begin
+      Result := (others => <>);
+      Ask_Switch (Through, SR.Boot_Stage_Operation, Service, Program, 0, Stage_Deadline_Ms,
+                  Msg, Reply, Sent);
+      if not Sent then
+         return;
+      end if;
+      if Reply.label = REPLY_TIMEOUT then
+         Result.Answer := Timed_Out;
+      elsif Reply.label = CuBit.Kernel_ABI.Reply_OK then
+         Result.Answer := Answered;
+      else
+         Result.Answer := Refused_Switch;
+         if SR.Is_Refusal (Msg.words (0)) then
+            Result.Why := SR.Refusal_Of (Msg.words (0));
+         end if;
+      end if;
+   end Stage_Service_For_Boot;
 
 end CuBit.Launching;

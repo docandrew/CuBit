@@ -285,12 +285,16 @@ package Remote_Wire with SPARK_Mode is
    --    No_Previous     a rollback from the image's generation (0)
    --    Too_Many_Changes  the generations differ in more pins than one
    --                    activation switches (Remote_Generations)
+   --  Pending_Boot: the changed pin's entry is (replace reboot); procmgr
+   --  admitted the program for the next boot and the generation is current:
+   --  the entry runs it from the next boot (procmgr's Boot_Generations).
    type Generation_Result is
      (Activated, Rolled_Back_Generation, Refused, Stop_Failed_Generation,
-      Rollback_Failed, Unchanged, No_Previous_Generation, Too_Many_Changes);
+      Rollback_Failed, Unchanged, No_Previous_Generation, Too_Many_Changes, Pending_Boot);
    for Generation_Result use
      (Activated => 0, Rolled_Back_Generation => 1, Refused => 2, Stop_Failed_Generation => 3,
-      Rollback_Failed => 4, Unchanged => 5, No_Previous_Generation => 6, Too_Many_Changes => 7);
+      Rollback_Failed => 4, Unchanged => 5, No_Previous_Generation => 6, Too_Many_Changes => 7,
+      Pending_Boot => 8);
    Grace_Bytes : constant := 4;
    Health_Bytes : constant := 4;
    Process_Bytes : constant := 8;

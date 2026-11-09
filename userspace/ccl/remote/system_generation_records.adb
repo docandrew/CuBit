@@ -43,8 +43,11 @@ package body System_Generation_Records is
               G.Pins (I).Service (1 .. G.Pins (I).Length) & Quote & " executable => " & Quote &
               Hex (G.Pins (I).Program) & Quote & ")" & Pins_From (I + 1));
    begin
+      --  No pins (the installed image's generation 1): CCL spells the
+      --  empty list with its element type.
       return "(System_Generation number => " & Decimal (Unsigned_64 (G.Number)) &
-        " previous => " & Decimal (Unsigned_64 (G.Previous)) & " pins => [" & Pins_From (1) & "])";
+        " previous => " & Decimal (Unsigned_64 (G.Previous)) & " pins => " &
+        (if G.Count = 0 then "(list-of Service_Pin)" else "[" & Pins_From (1) & "]") & ")";
    end Record_Text;
 
    function Pin_Of (G : Generation_Value; Service : String) return Natural is

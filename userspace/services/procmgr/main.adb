@@ -27,6 +27,9 @@ with GPU_Rendering_Settings;
 with Plan_Restarts;
 with Service_Switches;
 with Manifest_Fingerprints;
+with Boot_Generations;
+with System_Generation_Records.Reading;
+with Storehouse.Hashing;
 with CuBit.Service_Replacement;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -780,7 +783,19 @@ procedure main is
    --  Reads directly into elfBuf through page-aligned, bounded loans.
    --  Returns number of bytes read, or 0 on failure.
    ---------------------------------------------------------------------------
-   function readFileFromFS (name : String) return Unsigned_64
+   --  Every filesystem request procmgr makes has a deadline (IPC-000 rule
+   --  6: never Wait_Forever in the startup path). One request is an open,
+   --  a 1 MiB window or a close: Linux's SCSI command timeout bounds each.
+   File_Request_Deadline_Ms : constant := 30_000;
+   --  A file read at boot before the plan runs (the startup profile, the
+   --  generation pointer and record): a missing or unreadable root must
+   --  stop startup with a named error, never a silent wait (SYS-002).
+   Boot_Read_Deadline_Ms : constant := 10_000;
+
+   --  The whole file Name into elfBuf; its size, or 0 when it could not be
+   --  read (absent, unreadable, or a request past Within_Ms: Timed_Out).
+   Last_Read_Timed_Out : Boolean := False;
+   function readFileFromFS (name : String; Within_Ms : Unsigned_64) return Unsigned_64
    is
       msg       : Message;
       tag       : MessageTag;
@@ -807,7 +822,8 @@ procedure main is
             return;
          end if;
          msg := CuBit.Filesystems.Read_Request (handle, Loan, Unsigned_64 (Count));
-         tag := capCall (PH.Filesystem, msg, CuBit.Messages.Wait_Forever);
+         tag := capCall (PH.Filesystem, msg, Deadline_After (Within_Ms));
+         Last_Read_Timed_Out := Last_Read_Timed_Out or else tag.label = REPLY_TIMEOUT;
          CuBit.Memory_Grants.Revoke (Loan, Ok);
          if not Ok or else not CuBit.Memory_Grants.Retirement_Confirmed (Loan) then
             fileBufferUsable := False;
@@ -823,6 +839,7 @@ procedure main is
       end Transfer;
       package Reader is new Windowed_Reads (1024 * 1024, Transfer);
    begin
+      Last_Read_Timed_Out := False;
       if not fileBufferUsable then
          return 0;
       end if;
@@ -846,7 +863,8 @@ procedure main is
 
       msg := CuBit.Filesystems.Open_Request
         (fsGrant, CuBit.Filesystems.Nonempty_Path_Byte_Count (name'Length));
-      tag := capCall (PH.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (PH.Filesystem, msg, Deadline_After (Within_Ms));
+      Last_Read_Timed_Out := tag.label = REPLY_TIMEOUT;
 
       if tag.label /= REPLY_OK then
          debugPrint ("procmgr: OP_OPEN failed" & LF);
@@ -864,7 +882,8 @@ procedure main is
 
       --  Close file handle
       msg := CuBit.Filesystems.Close_Request (handle);
-      tag := capCall (PH.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (PH.Filesystem, msg, Deadline_After (Within_Ms));
+      Last_Read_Timed_Out := Last_Read_Timed_Out or else tag.label = REPLY_TIMEOUT;
 
       return (if Complete and then tag.label = REPLY_OK then fileSize else 0);
    end readFileFromFS;
@@ -3634,7 +3653,7 @@ procedure main is
       debugPrint ("" & LF);
 
       t0 := syscall (SYSCALL_GETTIME);
-      elfSize := readFileFromFS (name);
+      elfSize := readFileFromFS (name, File_Request_Deadline_Ms);
       t1 := syscall (SYSCALL_GETTIME);
 
       if elfSize = 0 then
@@ -4911,7 +4930,7 @@ procedure main is
          if admitLaunch (Launcher, Name) not in Named | Staged then
             Reason := LA.Not_Granted;
          else
-            elfSize := readFileFromFS (Name);
+            elfSize := readFileFromFS (Name, File_Request_Deadline_Ms);
             if elfSize < 64 then
                Reason := LA.Spawn_Failed;
             else
@@ -5240,25 +5259,58 @@ procedure main is
       end if;
    end continuePlan;
 
-   procedure processInitCCL is
+   --  SYS-002: the startup profile is read within an explicit deadline.
+   --  Absent (an install that never finished, or the wrong disk booted)
+   --  or unreadable, startup stops with a named error on the boot panel
+   --  (the "procmgr: bootstrap" line is its CURRENT STEP) and in the log;
+   --  never a silent wait. The read is retried every Profile_Retry_Ms
+   --  until Startup_Profile_Deadline_Ms (the filesystem may still be
+   --  attaching the system volume).
+   Startup_Profile_Name : constant String := "init.ccl";
+   Startup_Profile_Deadline_Ms : constant := 10_000;
+   Profile_Retry_Ms : constant := 100;
+
+   procedure processInitCCL (Compiled : out Boolean) is
       use CCL.Configurations;
-      Source_Size : Unsigned_64;
+      Source_Size : Unsigned_64 := 0;
+      Started_At : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Deadline : constant Unsigned_64 := Started_At + Startup_Profile_Deadline_Ms;
+      Now : Unsigned_64 := Started_At;
+      Timed_Out : Boolean := False;
+
+      procedure Stop (Why : String) is
+         Line : constant String :=
+           "procmgr: bootstrap STOPPED: startup profile " & Startup_Profile_Name & " on the system volume " &
+           Why & " (deadline" & Unsigned_64'Image (Startup_Profile_Deadline_Ms) & " ms)";
+      begin
+         debugPrint (Line & LF);
+         Warnings.Warn (Line);
+      end Stop;
    begin
+      Compiled := False;
       CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Startup_Profile_Started, PH.Registration);
       debugPrint ("procmgr: reading init.ccl..." & LF);
-      for Attempt in 1 .. 10 loop
-         Source_Size := readFileFromFS ("init.ccl");
-         exit when Source_Size > 0;
-         if Attempt < 10 then
-            declare
-               Ignore : Unsigned_64;
-            begin
-               Ignore := syscall (SYSCALL_SLEEP, 100);
-            end;
-         end if;
+      loop
+         Source_Size := readFileFromFS
+           (Startup_Profile_Name,
+            Unsigned_64'Max (1, Unsigned_64'Min (Boot_Read_Deadline_Ms, Deadline - Unsigned_64'Min (Now, Deadline))));
+         Timed_Out := Last_Read_Timed_Out;
+         exit when Source_Size > 0 or else Timed_Out;
+         Now := syscall (SYSCALL_GETTIME);
+         exit when Now + Profile_Retry_Ms >= Deadline;
+         declare
+            Ignore : Unsigned_64;
+         begin
+            Ignore := syscall (SYSCALL_SLEEP, Profile_Retry_Ms);
+         end;
+         Now := syscall (SYSCALL_GETTIME);
       end loop;
-      if Source_Size not in 1 .. CCL.Declarations.MAX_SOURCE then
-         debugPrint ("procmgr: init.ccl missing or oversized; startup denied" & LF);
+      if Source_Size = 0 then
+         Stop (if Timed_Out then "did not answer in time: the system volume's storage is not responding"
+               else "is missing: the install looks incomplete, or this is not a CuBit system disk");
+         return;
+      elsif Source_Size > CCL.Declarations.MAX_SOURCE then
+         Stop ("is larger than" & Natural'Image (CCL.Declarations.MAX_SOURCE) & " bytes");
          return;
       end if;
       declare
@@ -5271,15 +5323,22 @@ procedure main is
          debugPrint ("procmgr: init.ccl rejected at" & Startup_Plan.Position'Image &
                      ": " & Diagnostic_Name (Startup_Plan.Diagnostic) &
                      " (expected startup profile)" & LF);
+         Stop ("does not check: " & Diagnostic_Name (Startup_Plan.Diagnostic));
          return;
       end if;
       debugPrint ("procmgr: init.ccl: ");
       printDec (Unsigned_32 (Startup_Plan.Plan.Launch_Count));
       debugPrint (" entries" & LF);
+      Compiled := True;
+   end processInitCCL;
+
+   --  Run the plan from its first entry.
+   procedure startPlan is
+   begin
       Plan_Done := 0;
       Plan_Running := True;
       continuePlan;
-   end processInitCCL;
+   end startPlan;
 
    ---------------------------------------------------------------------------
    --  Supervision: a plan entry's process ended. Failed: a nonzero code, or
@@ -5408,7 +5467,7 @@ procedure main is
       Length : out Manifest_Fingerprints.Fingerprint_Length; Readable : out Boolean)
    is
       use type Manifest_Fingerprints.Reading;
-      Size : constant Unsigned_64 := readFileFromFS (Name);
+      Size : constant Unsigned_64 := readFileFromFS (Name, File_Request_Deadline_Ms);
       Result : Manifest_Fingerprints.Reading := Manifest_Fingerprints.Not_ELF64;
    begin
       Length := 0;
@@ -5619,7 +5678,9 @@ procedure main is
    --  SR.Switch_Operation: switch a plan entry to a program (or back to its
    --  image's). Refused at once, typed; admitted, the reply is saved and
    --  given when the switch ends.
-   procedure handleServiceSwitch (sender : Process_ID; msg : Message) is
+   --  SR.Boot_Stage_Operation (Stage): the same admission, without the
+   --  restart contract, for the next boot; nothing is stopped or started.
+   procedure handleServiceSwitch (sender : Process_ID; msg : Message; Stage : Boolean := False) is
       Service_Bytes : constant Unsigned_64 := msg.words (1);
       Program_Bytes : constant Unsigned_64 := msg.words (2);
       Grace : constant Unsigned_64 := SR.Grace_Of (msg.words (3));
@@ -5636,7 +5697,8 @@ procedure main is
       end Refuse;
    begin
       if msg.tag.length /= SR.Request_Words
-        or else not SR.Request_Valid (Service_Bytes, Program_Bytes, Grace, Health)
+        or else (if Stage then not SR.Stage_Request_Valid (Service_Bytes, Program_Bytes, msg.words (3))
+                 else not SR.Request_Valid (Service_Bytes, Program_Bytes, Grace, Health))
         or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
         or else launchIndex (sender) = 0
       then
@@ -5686,8 +5748,8 @@ procedure main is
          --  Nothing is signed yet (AUTH-001): every program is Unsigned.
          Facts.Signature := SR.Unsigned;
          Facts.In_Progress := SS.Active (Switch) or else Plan_Running;
-         Verdict := SR.Authorize (Facts);
-         if Verdict.Admitted and then Grace = 0 and then CCL.Configurations."="
+         Verdict := (if Stage then SR.Authorize_For_Boot (Facts) else SR.Authorize (Facts));
+         if not Stage and then Verdict.Admitted and then Grace = 0 and then CCL.Configurations."="
            (Startup_Plan.Plan.Launches (Number).Replacement, CCL.Configurations.Graceful)
          then
             --  A graceful stop needs time to quiesce: the caller must give it.
@@ -5730,6 +5792,15 @@ procedure main is
                return;
             end if;
          end if;
+         if Stage then
+            --  Admitted for the next boot: Boot_Generations takes the pin
+            --  when the plan next starts (and checks it again then).
+            Warnings.Inform ("procmgr: " & Service & " -> " & Program &
+                             " admitted for the next boot (pid" & Image (sender) &
+                             "); not signature-checked (AUTH-001)");
+            sendReply (sender, REPLY_OK, 0);
+            return;
+         end if;
          --  Admitted: keep the reply, and go.
          declare
             Saved : constant HIPC.Saved_Reply := HIPC.Save_Reply;
@@ -5760,6 +5831,158 @@ procedure main is
          end;
       end;
    end handleServiceSwitch;
+
+   ---------------------------------------------------------------------------
+   --  The current system generation at boot (SYS-003, Boot_Generations):
+   --  its pins choose the programs plan entries start from, before the plan
+   --  runs. Every pin is checked as a live switch's program is (its manifest
+   --  is the image program's) and against its content address; a pin that
+   --  does not check is not taken: the entry runs its image's program and
+   --  the drift is logged (logstore keeps an installed system's log on its
+   --  disk). Reads here have Boot_Read_Deadline_Ms each.
+   ---------------------------------------------------------------------------
+   Storehouse_Root : constant String := "@system/storehouse";
+   Current_Generation_Name : constant String := Storehouse_Root & "/profiles/system/current";
+   Generation_Directory : constant String := Storehouse_Root & "/profiles/system/";
+   Executables_Directory : constant String := Storehouse_Root & "/executables/";
+   --  Named ceilings on what is read: the pointer and one record.
+   Maximum_Pointer_Bytes : constant := 16;
+   Maximum_Record_Bytes : constant := 4_096;
+   --  Pins not taken at this boot (drift), for the log's summary line.
+   Generation_Drift : Natural := 0;
+
+   procedure applyCurrentGeneration is
+      package BG renames Boot_Generations;
+      package Records renames System_Generation_Records;
+      package Reading renames System_Generation_Records.Reading;
+      use type BG.Pin_Verdict;
+      Size : Unsigned_64;
+      Reading_State : BG.Generation_Reading := BG.No_Generation;
+      Number : Reading.Kept_Generation := Records.Image_Generation;
+      G : Records.Generation_Value;
+      Valid : Boolean;
+
+      function Decimal (Value : Unsigned_64) return String is
+         Text : constant String := Value'Image;
+      begin
+         return Text (Text'First + 1 .. Text'Last);
+      end Decimal;
+
+      function Generation_Text return String is ("generation " & Decimal (Unsigned_64 (Number)));
+
+      --  Text of the file just read (in elfBuf).
+      function Read_Text return String is
+         Text : constant String (1 .. Natural (Size)) with Import, Address => elfBuf;
+      begin
+         return Text;
+      end Read_Text;
+   begin
+      Size := readFileFromFS (Current_Generation_Name, Boot_Read_Deadline_Ms);
+      if Size = 0 and then not Last_Read_Timed_Out then
+         Warnings.Inform ("procmgr: no current system generation (" & Current_Generation_Name &
+                          "): every entry runs its image's program");
+         return;
+      elsif Size = 0 or else Size > Maximum_Pointer_Bytes then
+         Reading_State := (if Size = 0 then BG.Record_Missing else BG.Pointer_Invalid);
+      else
+         Reading.Parse_Current (Read_Text, Number, Valid);
+         if not Valid then
+            Reading_State := BG.Pointer_Invalid;
+         elsif Number = Records.Image_Generation then
+            Warnings.Inform ("procmgr: generation 0 (the image's) is current");
+            return;
+         else
+            Size := readFileFromFS (Generation_Directory & Decimal (Unsigned_64 (Number)), Boot_Read_Deadline_Ms);
+            if Size = 0 or else Size > Maximum_Record_Bytes then
+               Reading_State := BG.Record_Missing;
+            else
+               Reading.Parse (Read_Text, Number, G, Valid);
+               Reading_State := (if Valid then BG.Read else BG.Record_Invalid);
+            end if;
+         end if;
+      end if;
+      if not BG.Applies (Reading_State) then
+         Generation_Drift := Generation_Drift + 1;
+         Warnings.Warn ("procmgr: DRIFT: system generation not applied at boot (" &
+                        BG.Reading_Name (Reading_State) & "; " & Current_Generation_Name &
+                        "): every entry runs its image's program");
+         debugPrint ("procmgr: generation drift: " & BG.Reading_Name (Reading_State) & LF);
+         return;
+      end if;
+      for P in 1 .. G.Count loop
+         declare
+            Service : constant String := G.Pins (P).Service (1 .. G.Pins (P).Length);
+            Program : constant String := Executables_Directory & Records.Hex (G.Pins (P).Program);
+            Facts : BG.Pin_Facts;
+            Verdict : BG.Pin_Verdict;
+            Number_Of_Entry : CCL.Configurations.Launch_Number := 0;
+            type Fingerprint_Access is access Manifest_Fingerprints.Bytes;
+            procedure Release is new Ada.Unchecked_Deallocation
+              (Manifest_Fingerprints.Bytes, Fingerprint_Access);
+            Image_Print : Fingerprint_Access;
+            Program_Print : Fingerprint_Access;
+            Image_Length, Program_Length : Manifest_Fingerprints.Fingerprint_Length := 0;
+         begin
+            for N in 1 .. Startup_Plan.Plan.Launch_Count loop
+               declare
+                  E : CCL.Configurations.Executable_Text renames Startup_Plan.Plan.Launches (N).Executable;
+               begin
+                  if E.Data (1 .. E.Length) = Service then
+                     Number_Of_Entry := N;
+                  end if;
+               end;
+            end loop;
+            Facts.Entry_Known := Number_Of_Entry /= 0;
+            --  Reading.Parse admits each service once.
+            Facts.First_For_Entry := Facts.Entry_Known;
+            if Facts.First_For_Entry then
+               Program_Print := new Manifest_Fingerprints.Bytes (1 .. Manifest_Fingerprints.Maximum_Fingerprint_Bytes);
+               Image_Print := new Manifest_Fingerprints.Bytes (1 .. Manifest_Fingerprints.Maximum_Fingerprint_Bytes);
+               --  The pinned program: whole, its SHA-256, then its manifest.
+               Size := readFileFromFS (Program, Boot_Read_Deadline_Ms);
+               Facts.Program_Readable := Size >= 64 and then Size <= Unsigned_64 (Natural'Last / 4);
+               if Facts.Program_Readable then
+                  declare
+                     Bytes : constant Storehouse.Byte_Array (1 .. Natural (Size)) with Import, Address => elfBuf;
+                     Elf : constant Manifest_Fingerprints.Bytes (1 .. Natural (Size)) with Import, Address => elfBuf;
+                     Result : Manifest_Fingerprints.Reading;
+                     use type Storehouse.Digest;
+                     use type Manifest_Fingerprints.Reading;
+                  begin
+                     Facts.Content_Matches :=
+                       Storehouse.Hashing.Of_Bytes (Bytes) = Storehouse.Digest (G.Pins (P).Program);
+                     Manifest_Fingerprints.Fingerprint (Elf, Program_Print.all, Program_Length, Result);
+                     Facts.Program_Readable := Result = Manifest_Fingerprints.Read;
+                  end;
+               end if;
+               if Facts.Program_Readable and then Facts.Content_Matches then
+                  fingerprintOf (Service, Image_Print.all, Image_Length, Facts.Image_Readable);
+                  Facts.Same_Manifest := Facts.Image_Readable and then Manifest_Fingerprints.Same
+                    (Image_Print (1 .. Image_Length), Program_Print (1 .. Program_Length));
+               end if;
+               Release (Program_Print);
+               Release (Image_Print);
+            end if;
+            Verdict := BG.Judge (Facts);
+            if Verdict = BG.Applied then
+               Plan_Programs (Number_Of_Entry) := (others => <>);
+               Plan_Programs (Number_Of_Entry).Length := Program'Length;
+               Plan_Programs (Number_Of_Entry).Data (1 .. Program'Length) := Program;
+               Warnings.Inform ("procmgr: " & Generation_Text & ": " & Service & " runs " & Program &
+                                " (pinned; manifest checked; not signature-checked, AUTH-001)");
+               debugPrint ("procmgr: generation pin applied: " & Service & LF);
+            else
+               Generation_Drift := Generation_Drift + 1;
+               Warnings.Warn ("procmgr: DRIFT: " & Generation_Text & " pins " & Service & " to " &
+                              Program & ", not applied: " & BG.Verdict_Name (Verdict) &
+                              "; it runs its image's program");
+               debugPrint ("procmgr: generation drift: " & Service & ": " & BG.Verdict_Name (Verdict) & LF);
+            end if;
+         end;
+      end loop;
+      Warnings.Inform ("procmgr: " & Generation_Text & " is current:" & Natural'Image (G.Count) & " pin(s)," &
+                       Natural'Image (Generation_Drift) & " not applied");
+   end applyCurrentGeneration;
 
    ---------------------------------------------------------------------------
    --  resumeParked
@@ -5969,7 +6192,16 @@ begin
 
    --  Process init.ccl to spawn Stage 2 programs
    debugPrint ("procmgr: bootstrap 4/4 reading startup profile" & LF);
-   processInitCCL;
+   declare
+      Compiled : Boolean;
+   begin
+      processInitCCL (Compiled);
+      if Compiled then
+         --  The current system generation's pins, before anything starts.
+         applyCurrentGeneration;
+         startPlan;
+      end if;
+   end;
 
    debugPrint ("procmgr: ready, entering receive loop" & LF);
 
@@ -6016,6 +6248,8 @@ begin
                handleEndChild (sender, msg);
             when CuBit.Service_Replacement.Switch_Operation =>
                handleServiceSwitch (sender, msg);
+            when CuBit.Service_Replacement.Boot_Stage_Operation =>
+               handleServiceSwitch (sender, msg, Stage => True);
             when CuBit.Launch_Grants.Places_Operation =>
                handleDelegatedPlaces (sender, msg);
             when CuBit.Program_Descriptions.Description_Operation =>

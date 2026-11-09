@@ -118,7 +118,7 @@ begin
    declare
       Refused : constant String := Waited (Request ("QEMU UFS", "another-disk"));
    begin
-      Check (Refused = "Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number 0 0)",
+      Check (Refused = "Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number Install_Step.Checking 0 0)",
              "a confirmation naming another disk is refused: " & Refused);
    end;
    declare
@@ -133,14 +133,14 @@ begin
              "a followed install gives the front end a deadline to wake for");
       Check (Again'Length > 0 and then Again (Again'First .. Again'First + 4) /= "Task<",
              "a second install while one runs is refused: " & Again);
-      Check (Running = "Install_Progress: (Install_Progress Install_State.Running 3 7 6172 12345)",
+      Check (Running = "Install_Progress: (Install_Progress Install_State.Running Install_Step.Filling_Storehouse 3 7 6172 12345)",
              "system.progress reports the running install: " & Running);
    end;
    declare
       Waiting : constant String := Run ("(wait job)");
       Done : constant String := (if Outcome.Status = CCL.Language.Waiting_On_Task then Finish else Waiting);
    begin
-      Check (Done = "Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Serial_Number 7 12345)",
+      Check (Done = "Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Serial_Number Install_Step.Done 7 12345)",
              "the confirmed install is answered: " & Done);
       Check (Install_Record.Seen and then Install_Record.Last.Disk = 0
              and then Install_Record.Last.Ratio = 262_144 and then Install_Record.Last.ESP_Size = 260
@@ -150,13 +150,13 @@ begin
    declare
       Geometry : constant String := Waited (Request ("QEMU UFS", "cubitufs", Blocks => "262143"));
    begin
-      Check (Geometry = "Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number 0 0)",
+      Check (Geometry = "Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number Install_Step.Checking 0 0)",
              "a confirmation with the wrong block count is refused: " & Geometry);
    end;
    declare
       Unserial : constant String := Waited (Request ("NO SERIAL", "", Disk => "1", Blocks => "31246336"));
    begin
-      Check (Unserial = "Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Model_Geometry 7 12345)",
+      Check (Unserial = "Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Model_Geometry Install_Step.Done 7 12345)",
              "a disk without a serial installs by model and geometry, and says so: " & Unserial);
    end;
    declare
@@ -197,14 +197,14 @@ begin
          Done := (if Resumed and then Outcome.Status = CCL.Language.Succeeded then 1 else 0);
       end Run_Again;
       Check (Done = 1 and then CCL.Sessions.Result_Image (Outcome) =
-               "Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Serial_Number 7 12345)",
+               "Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Serial_Number Install_Step.Done 7 12345)",
              "an install's waiting entry resumes after later entries: " & Waiting & " / " & Between &
              " / " & CCL.Sessions.Result_Image (Outcome));
    end;
    declare
       Last : constant String := Run ("(system.progress)");
    begin
-      Check (Last = "Install_Progress: (Install_Progress Install_State.Finished 7 7 12345 12345)",
+      Check (Last = "Install_Progress: (Install_Progress Install_State.Finished Install_Step.Done 7 7 12345 12345)",
              "system.progress reports the last install once finished: " & Last);
    end;
    --  Install_Status's words round-trip, and malformed ones are refused.
@@ -212,7 +212,8 @@ begin
       package IP renames CuBit.Installer_Protocol;
       use type IP.Install_Progress;
       Item : constant IP.Install_Progress :=
-        (State => IP.Finished, Outcome => IP.Files_Do_Not_Fit, Proof => IP.Model_And_Geometry,
+        (State => IP.Finished, Step => IP.Verifying_Root, Outcome => IP.Verify_Failed,
+         Proof => IP.Model_And_Geometry,
          Files_Done => 3, Files => 4_000, Bytes_Done => 2 ** 33, Bytes => 2 ** 34);
       Back : IP.Install_Progress;
       Valid : Boolean;
@@ -224,7 +225,7 @@ begin
       IP.Decode_Status (Words, Back, Valid);
       Check (not Valid, "a status with more files done than files is refused");
       Words := IP.Encode_Status (Item);
-      Words (0) := Words (0) or Interfaces.Shift_Left (1, 24);
+      Words (0) := Words (0) or Interfaces.Shift_Left (1, 32);
       IP.Decode_Status (Words, Back, Valid);
       Check (not Valid, "a status with stray bits is refused");
    end;

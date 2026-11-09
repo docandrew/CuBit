@@ -22,10 +22,11 @@ package body CuBit.Block_Client is
        authorityTag => 0, words => Words));
 
    procedure Open
-     (Endpoint : CuBit.Handles.Endpoint;
-      Pages    : Page_Count;
-      Item     : out Session;
-      Result   : out Open_Result)
+     (Endpoint  : CuBit.Handles.Endpoint;
+      Pages     : Page_Count;
+      Within_Ms : Request_Ms;
+      Item      : out Session;
+      Result    : out Open_Result)
    is
       Msg : Message := Request (OP_DESCRIBE_DEVICE, 0, 0, [others => 0]);
       Ignore : MessageTag;
@@ -33,8 +34,11 @@ package body CuBit.Block_Client is
       Granted : Boolean;
    begin
       Item := (others => <>);
-      Ignore := capCall (Endpoint, Msg, Wait_Forever);
-      if Msg.tag.label /= REPLY_OK or else Msg.tag.length /= Describe_Words
+      Ignore := capCall (Endpoint, Msg, Deadline_After (Within_Ms));
+      if Ignore.label = REPLY_TIMEOUT then
+         Result := Describe_Timed_Out;
+         return;
+      elsif Msg.tag.label /= REPLY_OK or else Msg.tag.length /= Describe_Words
         or else not Decode_Description
           (Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3),
            Item.Device.description)
@@ -59,6 +63,7 @@ package body CuBit.Block_Client is
       Item.Device.endpoint := Endpoint;
       Item.Device.grantBytes := Unsigned_32 (Pages * Page_Bytes);
       Item.Pages := Pages;
+      Item.Within := Within_Ms;
       Item.Open := True;
       Result := Opened;
    end Open;
@@ -90,9 +95,12 @@ package body CuBit.Block_Client is
          [First, Item.Device.grant.slot, Count, Item.Device.grant.generation]);
       Ignore : MessageTag;
    begin
-      Ignore := capCall (Item.Device.endpoint, Msg, Wait_Forever);
+      Ignore := capCall (Item.Device.endpoint, Msg, Deadline_After (Item.Within));
       Moved := (if Msg.tag.length = Status_Words then Msg.words (0) else 0);
-      if Msg.tag.length /= Status_Words then
+      if Ignore.label = REPLY_TIMEOUT then
+         Moved := 0;
+         Result := Timed_Out;
+      elsif Msg.tag.length /= Status_Words then
          Result := Refused;
       elsif Msg.tag.label = REPLY_OK and then Moved = Expected then
          Result := Transferred;
@@ -132,7 +140,7 @@ package body CuBit.Block_Client is
       Image : DId.Record_Image with Import, Address => Item.Device.grantBuffer;
    begin
       Identity := (others => <>);
-      Ignore := capCall (Item.Device.endpoint, Msg, Wait_Forever);
+      Ignore := capCall (Item.Device.endpoint, Msg, Deadline_After (Item.Within));
       Known := Msg.tag.label = REPLY_OK and then Msg.tag.length = Status_Words;
       if Known then
          DId.Decode (Image, Identity, Known);
@@ -150,12 +158,19 @@ package body CuBit.Block_Client is
       Item.Open := False;
    end Close;
 
-   procedure Flush (Item : Session; Durable : out Boolean) is
+   procedure Flush (Item : Session; Durable : out Boolean; Timed_Out : out Boolean) is
       Msg : Message := Request (OP_FLUSH_DEVICE, 0, 0, [others => 0]);
-      Ignore : MessageTag;
+      Reply : MessageTag;
    begin
-      Ignore := capCall (Item.Device.endpoint, Msg, Wait_Forever);
-      Durable := Msg.tag.label = REPLY_OK and then Msg.tag.length = Status_Words;
+      Reply := capCall (Item.Device.endpoint, Msg, Deadline_After (Item.Within));
+      Timed_Out := Reply.label = REPLY_TIMEOUT;
+      Durable := not Timed_Out and then Msg.tag.label = REPLY_OK and then Msg.tag.length = Status_Words;
+   end Flush;
+
+   procedure Flush (Item : Session; Durable : out Boolean) is
+      Ignore : Boolean;
+   begin
+      Flush (Item, Durable, Ignore);
    end Flush;
 
 end CuBit.Block_Client;

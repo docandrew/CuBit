@@ -94,6 +94,9 @@ procedure Main is
       View := [others => 0];
    end Clear;
 
+   --  Each device request's deadline: above the drivers' own 30 s command
+   --  timeout, so a late answer is heard and a lost one ends the test.
+   Request_Deadline_Ms : constant := 40_000;
    Disk : DIC.Opened_Disk;
    Item : Session;
    Opening : Open_Result;
@@ -102,7 +105,7 @@ procedure Main is
    Durable : Boolean;
 begin
    --  1. No capability without the badge, or for a disk devmgr lacks.
-   Disk := DIC.Open (Startup.Device_Manager, (Disk => 0, Mode => Read_Write));
+   Disk := DIC.Open (Startup.Device_Manager, (Disk => 0, Mode => Read_Write), Request_Deadline_Ms);
    Check (not Disk.Opened, "device-manager endpoint cannot open a disk");
 
    --  2. Read only: describe, read, refused write. The UFS driver starts
@@ -113,7 +116,7 @@ begin
       Ignore : Unsigned_64;
    begin
       loop
-         Disk := DIC.Open (Startup.Disk_Install, (Disk => 0, Mode => Read_Only));
+         Disk := DIC.Open (Startup.Disk_Install, (Disk => 0, Mode => Read_Only), Request_Deadline_Ms);
          exit when Disk.Opened
            or else syscall (SYSCALL_GETTIME) - Started > Disk_Wait_Milliseconds;
          Ignore := syscall (SYSCALL_SLEEP, Disk_Poll_Milliseconds);
@@ -121,7 +124,7 @@ begin
    end;
    Check (Disk.Opened, "disk 0 opened read-only");
    if Disk.Opened then
-      Open (Disk.Device, Session_Pages, Item, Opening);
+      Open (Disk.Device, Session_Pages, Request_Deadline_Ms, Item, Opening);
       Check (Opening = Opened, "read-only session");
       if Item.Open then
          Check (Is_Read_Only (Description (Item)), "read-only describe");
@@ -143,14 +146,14 @@ begin
       end if;
    end if;
 
-   Disk := DIC.Open (Startup.Disk_Install, (Disk => 1, Mode => Read_Only));
+   Disk := DIC.Open (Startup.Disk_Install, (Disk => 1, Mode => Read_Only), Request_Deadline_Ms);
    Check (not Disk.Opened, "no disk 1");
 
    --  3. Read-write: write, FUA write, flush, read back.
-   Disk := DIC.Open (Startup.Disk_Install, (Disk => 0, Mode => Read_Write));
+   Disk := DIC.Open (Startup.Disk_Install, (Disk => 0, Mode => Read_Write), Request_Deadline_Ms);
    Check (Disk.Opened, "disk 0 opened read-write");
    if Disk.Opened then
-      Open (Disk.Device, Session_Pages, Item, Opening);
+      Open (Disk.Device, Session_Pages, Request_Deadline_Ms, Item, Opening);
       Check (Opening = Opened, "read-write session");
       if Item.Open then
          Check (not Is_Read_Only (Description (Item))

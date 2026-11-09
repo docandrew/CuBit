@@ -6,6 +6,7 @@ project Service_Switch is
    for Source_Files use ("cubit.ads", "cubit-service_replacement.ads", "cubit-service_replacement.adb",
                          "service_switches.ads", "service_switches.adb",
                          "manifest_fingerprints.ads", "manifest_fingerprints.adb",
+                         "boot_generations.ads", "boot_generations.adb",
                          "switch_tests.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";

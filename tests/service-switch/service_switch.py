@@ -2,7 +2,8 @@
 """The service-switch test's host side (tests/headless/run.sh --test
 service-switch): system generations switch running services and roll back.
 
-Usage: service_switch.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT LEXICON_SVC CLOCK_SVC
+Usage: service_switch.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT LEXICON_SVC CLOCK_SVC LOGSTORE_SVC
+       service_switch.py --after-reboot SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS LOGSTORE_SVC
 
 The guest runs lexicon.svc with (replace transparent), clock.svc with
 (replace graceful), and ccl-remote with builds granted. Like a LAN host
@@ -19,7 +20,9 @@ system operations:
   - with "Allow app replacement" off (as at boot): refused (Switch_Off);
     lexicon keeps running;
   - the person turns the switch on (Super+N, a click on it);
-  - an entry whose restart contract is reboot (logstore.svc): Not_Replaceable;
+  - an entry whose restart contract is reboot (logstore.svc) pinned to a
+    program with another manifest (lexicon-good): refused at staging for the
+    next boot (Manifest_Changed);
   - lexicon pinned to clock.svc: Manifest_Changed;
   - lexicon pinned to lexicon-good: Activated; procmgr runs it from the
     storehouse (@system/storehouse/executables/<sha256>), it registered
@@ -31,8 +34,16 @@ system operations:
     the switch fails with clock still running (never ended to make way);
   - system rollback: the current generation's previous (the image, 0) is
     activated: lexicon's image program runs again;
-  - system generations lists the records (typed CCL values) and current 0.
-Then quits QEMU. Prints PASS/FAIL lines; exits 1 on any failure.
+  - system generations lists the records (typed CCL values) and current 0;
+  - at next boot: logstore.svc (restart contract reboot, never switched
+    live) pinned to logstore-good.svc (logstore with 16 bytes appended: the
+    same manifest): procmgr admits it for the next boot, the generation
+    becomes current (Pending_Boot) and logstore keeps running its image
+    program now.
+Then quits QEMU. --after-reboot checks the next boot of the same disk:
+procmgr applied the current generation's pin before the plan ran, so
+logstore runs from the storehouse (its SHA-256 the pinned one), and it
+registered. Prints PASS/FAIL lines; exits 1 on any failure.
 """
 import hashlib
 import json
@@ -48,8 +59,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "cubit-remote"))
 import cubit_remote as cr  # noqa: E402
 
-serial, qmp_socket, timeout, port, lexicon_svc, clock_svc = (
-    sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), Path(sys.argv[5]), Path(sys.argv[6]))
+AFTER_REBOOT = len(sys.argv) > 1 and sys.argv[1] == "--after-reboot"
+if AFTER_REBOOT:
+    serial, qmp_socket, timeout, logstore_svc = (
+        sys.argv[2], sys.argv[3], float(sys.argv[4]), Path(sys.argv[5]))
+    port = 0
+else:
+    serial, qmp_socket, timeout, port, lexicon_svc, clock_svc, logstore_svc = (
+        sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), Path(sys.argv[5]), Path(sys.argv[6]),
+        Path(sys.argv[7]))
 deadline = time.monotonic() + timeout
 CODE = re.compile(rb"ccl-remote: pairing code ([0-9A-Z-]{31})")
 LISTENING = b"ccl-remote: listening on "
@@ -216,11 +234,17 @@ def fixtures(work):
     crash[at:at + 2] = b"\x0f\x0b"   # ud2: an invalid-opcode fault at once
     paths = {}
     for name, data in (("lexicon-good.svc", lexicon + b"service-switch-1"), ("lexicon-crash.svc", bytes(crash)),
-                       ("clock-good.svc", clock + b"service-switch-1"), ("clock.svc", clock)):
+                       ("clock-good.svc", clock + b"service-switch-1"), ("clock.svc", clock),
+                       ("logstore-good.svc", logstore_good())):
         path = os.path.join(work, name)
         Path(path).write_bytes(data)
         paths[name] = (path, hashlib.sha256(data).hexdigest())
     return paths
+
+
+def logstore_good():
+    """logstore.svc with 16 bytes appended: another SHA-256, the same manifest."""
+    return logstore_svc.read_bytes() + b"service-switch-1"
 
 
 def activate(host, service, product, grace=STOP_GRACE_MS):
@@ -261,8 +285,9 @@ def main():
     allow_app_replacement()
 
     report = activate(host, "logstore.svc", "switch/lexicon-good.svc")
-    check(report["refused"] == "Refused" and report["detail"] == 4,
-          "an entry whose restart contract is reboot is refused (Not_Replaceable)")
+    check(report["refused"] == "Refused" and report["detail"] == 11 and report["current"] == 0,
+          "a (replace reboot) entry pinned to another program's manifest is refused for the next boot too"
+          " (Manifest_Changed); generation 0 stays")
     report = activate(host, SERVICE, "switch/clock.svc")
     check(report["refused"] == "Refused" and report["detail"] == 11,
           "a program with another manifest is refused (Manifest_Changed)")
@@ -323,13 +348,68 @@ def main():
     for marker in (b"ccl-remote: host app system activate lexicon.svc: generation",
                    b"ccl-remote: host app system rollback"):
         check(wait_for_serial(marker), "the device shows the activity line %r" % marker.decode())
+
+    # At next boot: logstore's restart contract is reboot (no (replace ..)).
+    logstore_hash = paths["logstore-good.svc"][1]
+    report = activate(host, "logstore.svc", "switch/logstore-good.svc")
+    next_boot = report["current"]
+    check(report["refused"] is None and report["result_name"] == "Pending_Boot" and next_boot > 0
+          and report["pin_sha256"] == logstore_hash,
+          "logstore pinned to logstore-good: admitted for the next boot, generation %d current (Pending_Boot)"
+          % next_boot)
+    check(wait_for_serial(b"procmgr: logstore.svc -> " + (STOREHOUSE + logstore_hash).encode()
+                          + b" admitted for the next boot"),
+          "procmgr admitted the pinned program for the next boot (manifest checked)")
+    check(b"procmgr: switch logstore.svc" not in serial_bytes(), "logstore was not switched live")
+    lines, current = cr.system_generations(host)
+    check(current == next_boot and any(logstore_hash in line for line in lines),
+          "system generations: generation %d (logstore's pin) is current" % next_boot)
+    # The next boot's check (--after-reboot) reads what this boot made current.
+    state = os.environ.get("SERVICE_SWITCH_STATE")
+    if state:
+        Path(state).write_text("%d %s\n" % (next_boot, logstore_hash))
     for name, (path, _) in paths.items():
         os.remove(path)
     os.rmdir(work)
 
 
+def after_reboot():
+    """The next boot of the same disk: procmgr took the pin at boot."""
+    expected = Path(os.environ.get("SERVICE_SWITCH_STATE", "service-switch-state-unset"))
+    try:
+        number, logstore_hash = expected.read_text().split()
+    except (OSError, ValueError):
+        check(False, "the first boot recorded the generation it made current (%s)" % expected)
+        return
+    pinned = (STOREHOUSE + logstore_hash).encode()
+    check(logstore_hash == hashlib.sha256(logstore_good()).hexdigest(),
+          "the pin is logstore-good's SHA-256")
+    if os.environ.get("SERVICE_SWITCH_EXPECT") == "drift":
+        # The pinned storehouse object was damaged on the disk: procmgr must
+        # not run it; logstore runs its image program and the drift is logged.
+        check(wait_for_serial(b"procmgr: DRIFT: generation " + number.encode() + b" pins logstore.svc to "
+                              + pinned + b", not applied:", 90),
+              "a damaged pin is not applied at boot: procmgr logs the drift")
+        check(wait_for_serial(b"procmgr: generation " + number.encode() + b" is current: 1 pin(s), 1 not applied", 30),
+              "the boot reports the pin not applied")
+        check(b"logstore.svc runs " + pinned not in serial_bytes(), "the damaged program never ran")
+        check(wait_for_serial(b"logstore: authorized typed diagnostics ready", 60),
+              "logstore runs (its image's program)")
+        return
+    check(wait_for_serial(b"procmgr: generation " + number.encode() + b": logstore.svc runs " + pinned, 90),
+          "procmgr applied generation %s's pin at boot: logstore.svc runs its pinned program" % number)
+    check(wait_for_serial(b"procmgr: generation " + number.encode() + b" is current: 1 pin(s), 0 not applied", 30),
+          "the boot reports generation %s current, no drift" % number)
+    check(b"procmgr: DRIFT" not in serial_bytes(), "no drift was logged")
+    check(wait_for_serial(b"lexicon: registered", 60),
+          "the plan ran on (lexicon, after logstore, registered)")
+
+
 try:
-    main()
+    if AFTER_REBOOT:
+        after_reboot()
+    else:
+        main()
 finally:
     if os.environ.get("SERVICE_SWITCH_KEEP_RUNNING") != "1":
         quit_qemu()

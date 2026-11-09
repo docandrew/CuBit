@@ -81,7 +81,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -330,7 +330,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -583,18 +583,26 @@ case "$TEST_NAME" in
             # @nvme:0/install. The host then checks the disk image.
             # CUBIT_INSTALL_PAYLOAD names another payload directory (esp/,
             # root/, INDEX) and CUBIT_INSTALL_DISK keeps the disk at that
-            # path (tests/install-reboot boots it afterwards).
+            # path (tests/install-reboot and tests/install-generations boot
+            # it afterwards); CUBIT_INSTALL_DISK_MIB sizes it (1024).
+            # CUBIT_INSTALL_REINSTALL=1 installs over what that disk holds
+            # (not refilled), and CUBIT_INSTALL_INTERRUPT_AT=<serial line>
+            # cuts the power (QEMU quits) when the install logs that line
+            # (SYS-002: an interrupted install must leave no bootable disk).
             INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console-install.ccl"
+            INSTALL_DISK_MIB="${CUBIT_INSTALL_DISK_MIB:-1024}"
             if [ -n "${CUBIT_INSTALL_DISK:-}" ]; then
                 TEMP_UFS_DISK="$CUBIT_INSTALL_DISK"
             else
                 TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-ufs-disk.XXXXXX.img")"
             fi
-            python3 -I -c 'import sys
+            if [ "${CUBIT_INSTALL_REINSTALL:-0}" != 1 ]; then
+                python3 -I -c 'import sys
 chunk = bytes([0xA5]) * (1 << 20)
 with open(sys.argv[1], "wb") as f:
-    for _ in range(1024):
-        f.write(chunk)' "$TEMP_UFS_DISK"
+    for _ in range(int(sys.argv[2])):
+        f.write(chunk)' "$TEMP_UFS_DISK" "$INSTALL_DISK_MIB"
+            fi
             UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw"
                       -device ufs,serial=cubitufs,id=ufs
                       -device ufs-lu,drive=ufs0,bus=ufs,lun=0)
@@ -679,7 +687,10 @@ with open(sys.argv[1], "wb") as f:
         # Remote screenshots (REMOTE-001; tests/ccl-remote/remote_screenshot.py).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-remote-screenshot.ccl"
         ;;
-    service-switch)
+    service-switch|service-switch-reboot)
+        # service-switch-reboot (--disk: the disk a service-switch run kept,
+        # --keep-logs): its next boot, where procmgr applies the generation
+        # made current for the next boot (tests/service-switch).
         # System generations (CuBit.Service_Replacement): lexicon.svc
         # (transparent) pinned to programs in the storehouse, switched and
         # rolled back through ccl-remote, and clock.svc (graceful) refused
@@ -4003,9 +4014,10 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 sleep 0.2
             done
             sleep 0.5
+            INSTALL_BLOCKS=$((INSTALL_DISK_MIB * 256))
             for entry in '(system.disks)' \
-                '(wait (system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "not-this-disk" 262144 4096) inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install")))' \
-                '(wait (system.install (Install_Request disk => 0 confirm => (Disk_Identity "QEMU UFS" "" 262144 4096) inode_ratio => 262144 esp_mib => 260 source => "@nvme:0/install")))' \
+                "(wait (system.install (Install_Request disk => 0 confirm => (Disk_Identity \"QEMU UFS\" \"not-this-disk\" $INSTALL_BLOCKS 4096) inode_ratio => 262144 esp_mib => 260 source => \"@nvme:0/install\")))" \
+                "(wait (system.install (Install_Request disk => 0 confirm => (Disk_Identity \"QEMU UFS\" \"\" $INSTALL_BLOCKS 4096) inode_ratio => 262144 esp_mib => 260 source => \"@nvme:0/install\")))" \
                 '(system.progress)'; do
                 # (system.progress) follows the install at once, typed fast.
                 case "$entry" in
@@ -4018,10 +4030,16 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                         sleep 2 ;;
                 esac
             done
-            for ((attempt = 0; attempt < 600; attempt++)); do
+            for ((attempt = 0; attempt < 3000; attempt++)); do
                 # Both installs' tasks completed at the console: the
                 # refusal, then the install.
                 [ "$(grep -ac 'REPL completed: Install_Report:' "$SERIAL_LOG")" -ge 2 ] && break
+                if [ -n "${CUBIT_INSTALL_INTERRUPT_AT:-}" ] &&
+                   grep -qaF "$CUBIT_INSTALL_INTERRUPT_AT" "$SERIAL_LOG"; then
+                    echo "headless: install interrupted at: $CUBIT_INSTALL_INTERRUPT_AT (power cut)"
+                    printf 'quit\n' | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                    break
+                fi
                 sleep 0.2
             done
             sleep 1
@@ -4840,7 +4858,19 @@ if [ "$TEST_NAME" = "service-switch" ]; then
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/service-switch/service_switch.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$SERVICE_SWITCH_PORT" \
-        "$KERNEL_DIR/isodir/boot/lexicon.svc" "$KERNEL_DIR/isodir/boot/clock.svc" &
+        "$KERNEL_DIR/isodir/boot/lexicon.svc" "$KERNEL_DIR/isodir/boot/clock.svc" \
+        "$KERNEL_DIR/isodir/boot/logstore.svc" &
+    INPUT_INJECTOR_PID=$!
+fi
+if [ "$TEST_NAME" = "service-switch-reboot" ]; then
+    # The next boot of the kept disk: checked from the serial log only
+    # (SERVICE_SWITCH_STATE names what the first boot made current).
+    SERVICE_SWITCH_PORT="${SERVICE_SWITCH_PORT:-18449}"
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:$SERVICE_SWITCH_PORT-10.0.2.15:8445"
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/service-switch/service_switch.py" --after-reboot \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$KERNEL_DIR/isodir/boot/logstore.svc" &
     INPUT_INJECTOR_PID=$!
 fi
 if [ "$TEST_NAME" = "device-build" ]; then
@@ -5153,13 +5183,28 @@ ccl-remote: ready
 ccl-remote: a host paired
 procmgr: switch refused: SWITCH_OFF
 procmgr: staged app launches allowed by the Desktop switch
-procmgr: switch refused: NOT_REPLACEABLE
 procmgr: switch refused: MANIFEST_CHANGED
 procmgr: switch lexicon.svc switched; it runs @system/storehouse/executables/
 procmgr: switch lexicon.svc rolled back (the program ended inside its health window)
 procmgr: switch clock.svc not switched: the running instance did not end
 procmgr: switch lexicon.svc switched; it runs lexicon.svc pid
+procmgr: logstore.svc -> @system/storehouse/executables/
+ admitted for the next boot
 "
+        ;;
+    service-switch-reboot)
+        # SERVICE_SWITCH_EXPECT=drift: the pinned object was damaged.
+        if [ "${SERVICE_SWITCH_EXPECT:-}" = drift ]; then
+            required_markers="
+procmgr: generation drift: logstore.svc
+lexicon: registered
+"
+        else
+            required_markers="
+procmgr: generation pin applied: logstore.svc
+lexicon: registered
+"
+        fi
         ;;
     ccl-remote-session)
         required_markers="
@@ -6500,16 +6545,33 @@ ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix
             required_markers="$required_markers
 ufs: bring-up complete (13/13), serving lun 0, writes by grant
 installer: registered
-ccl-console: REPL completed: List<Disk>: [(Disk 0 (Disk_Identity \"QEMU UFS\" \"\" 262144 4096))]
+ccl-console: REPL completed: List<Disk>: [(Disk 0 (Disk_Identity \"QEMU UFS\" \"\" $((${CUBIT_INSTALL_DISK_MIB:-1024} * 256)) 4096))]
 installer: install refused: confirmation names
-ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number 0 0)
+ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Wrong_Disk Identity_Proof.Serial_Number Install_Step.Checking 0 0)
 installer: installing to disk 0
 installer: status answered during the install:
 ccl-console: REPL completed: Install_Progress: (Install_Progress Install_State.
+installer: step: partitioning
+installer: step: formatting the root
+installer: step: filling the storehouse
+installer: step: writing generation 1
+installer: step: verifying the root
+installer: step: writing the ESP
+installer: step: verifying the ESP
+installer: step: making the disk bootable
+installer: step: flushing
+installer: step: done
 installer: install done: installed
-ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Model_Geometry
+ccl-console: REPL completed: Install_Report: (Install_Report Install_Outcome.Installed Identity_Proof.Model_Geometry Install_Step.Done
 installer: disk 0 reports no serial: identified by model and geometry
 "
+            if [ -n "${CUBIT_INSTALL_INTERRUPT_AT:-}" ]; then
+                # The power was cut mid-install: only how far it got.
+                required_markers="
+installer: installing to disk 0
+$CUBIT_INSTALL_INTERRUPT_AT
+"
+            fi
         elif [ "${CCL_CONSOLE_DEMO:-}" = calc ]; then
             required_markers="$required_markers
 ccl-console: REPL completed: Calc_Number: (Calc_Number true \"5\" \"6\" \"0.8(3)\" Calc_Form.Repeating \"\" \"\" \"\" \"\" false)
@@ -7231,7 +7293,8 @@ case "$QEMU_CPU_MODEL" in
 CPU Vendor: ${expected_vendor%%,*}"
         ;;
 esac
-if { [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "service-switch" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
+if { [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "service-switch" ] \
+       || [ "$TEST_NAME" = "service-switch-reboot" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
     # The host driver's own checks (its PASS/FAIL lines above) gate too.
     if ! wait "$INPUT_INJECTOR_PID"; then
         INPUT_INJECTOR_PID=""
@@ -7302,7 +7365,8 @@ if [ "$TEST_NAME" = "usb-slots" ]; then
     fi
 fi
 
-if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = install ]; then
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = install ] \
+   && [ -z "${CUBIT_INSTALL_INTERRUPT_AT:-}" ]; then
     # Independent tools read the installed disk: GPT, FAT32 and ext2, and
     # every payload file byte for byte (the payload is deterministic). The
     # offsets are Disk_Layout's for a 260 MiB ESP: 1 MiB, 260 MiB, 261 MiB.
@@ -7322,6 +7386,30 @@ for line in (payload / "INDEX").read_text().splitlines():
     else
         python3 -I "$ROOT_DIR/tests/disk-layout/make-payload.py" "$CHECK_PAYLOAD/esp" "$CHECK_PAYLOAD/root"
     fi
+    # What the installer adds to the root (SYS-003): every component INDEX
+    # names with its SHA-256 once more by content in the storehouse (root
+    # programs under executables/, mode 0755; boot files under files/), and
+    # generation 1, current.
+    python3 -I -c 'import os, shutil, sys, pathlib
+payload = pathlib.Path(sys.argv[1])
+store = payload / "root" / "storehouse"
+for kind in ("executables", "files"):
+    (store / kind).mkdir(parents=True, exist_ok=True)
+index = payload / "INDEX"
+for line in (index.read_text().splitlines() if index.exists() else []):
+    fields = line.split("\t")
+    digest = [f[len("sha256="):] for f in fields[1:] if f.startswith("sha256=")]
+    if not digest:
+        continue
+    root_file = fields[0].startswith("root/")
+    target = store / ("executables" if root_file else "files") / digest[0]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(payload / fields[0], target)
+    os.chmod(target, 0o755 if root_file else 0o644)
+system = store / "profiles" / "system"
+system.mkdir(parents=True, exist_ok=True)
+(system / "1").write_text("(System_Generation number => 1 previous => 0 pins => (list-of Service_Pin))\n")
+(system / "current").write_text("1\n")' "$CHECK_PAYLOAD"
     if ! bash "$ROOT_DIR/tests/disk-layout/check-image.sh" "$TEMP_UFS_DISK" 4096 \
          1048576 272629760 273678336 "$CHECK_PAYLOAD/esp" "$CHECK_PAYLOAD/root"; then
         rm -rf "$CHECK_PAYLOAD"

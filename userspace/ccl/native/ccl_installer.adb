@@ -36,12 +36,18 @@ package body CCL_Installer is
       Result := (if Ready then Answered else Unavailable);
    end Prepare;
 
+   --  installer.svc answers between its device requests, each of which
+   --  has its own deadline (System_Install.Device_Request_Deadline_Ms, 40 s):
+   --  this one is above it, so a busy installer is heard and a silent one
+   --  ends the call (IPC-000 rule 6; the 2026-11-06 hang waited forever).
+   Answer_Deadline_Ms : constant := 45_000;
+
    function Call (Label : Unsigned_32; Words : MessageWords) return Message is
       Msg : Message := (tag => (label => Label, length => IP.Request_Words, protocol => 0,
                                 ipc => <>, reserved => 0),
                         authorityTag => 0, words => Words);
    begin
-      Msg.tag := capCall (CCL_Native_Bindings.Installer, Msg, Wait_Forever);
+      Msg.tag := capCall (CCL_Native_Bindings.Installer, Msg, Deadline_After (Answer_Deadline_Ms));
       return Msg;
    end Call;
 

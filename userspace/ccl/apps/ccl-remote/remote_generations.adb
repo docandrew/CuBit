@@ -2,10 +2,7 @@ pragma Ada_2022;
 with CuBit.Launching;
 with CuBit.Process_IDs;
 with CuBit.Service_Replacement;
-with CCL.Objects.Views;
-with CCL.Typed_Values;
 with Remote_Files;
-with System_Generation_Records;
 with Startup;
 
 package body Remote_Generations is
@@ -13,10 +10,11 @@ package body Remote_Generations is
    use type W.Status;
    use type W.Digest;
    use type CuBit.Launching.Switch_Answer;
+   use type CuBit.Service_Replacement.Refusal;
    use type CuBit.Service_Replacement.Outcome;
    package SR renames CuBit.Service_Replacement;
-   package Views renames CCL.Objects.Views;
    package Records renames System_Generation_Records;
+   package Reading renames System_Generation_Records.Reading;
    use type Records.Digest;
 
    function Launcher return CuBit.Launching.Launcher is
@@ -41,9 +39,6 @@ package body Remote_Generations is
    function From_Wire (Item : W.Digest) return Records.Digest is
      ([for I in Records.Digest_Index => Item (I)]);
 
-   --  The checker's value (large: kept here, not on the stack).
-   Object : Views.Snapshot;
-
    function Decimal (Value : Unsigned_64) return String is
       Image : constant String := Value'Image;
    begin
@@ -54,11 +49,12 @@ package body Remote_Generations is
      (Profile & "/" & Decimal (Unsigned_64 (N)));
    function Program_Name (Item : Records.Digest) return String is (Executables & "/" & Hex (Item));
 
-   --  Generation N's value, checked by the CCL type checker.
+   --  Generation N's value, checked by the CCL type checker
+   --  (System_Generation_Records.Reading, the reader procmgr uses at boot).
    procedure Read_Generation (N : W.Generation; G : out Generation_Value; Status : out W.Status) is
       Text : String (1 .. Record_Bytes);
       Length : Natural;
-      Checked : CCL.Typed_Values.Check_Result;
+      Valid : Boolean;
    begin
       G := (others => <>);
       if N = W.No_Generation then
@@ -69,58 +65,18 @@ package body Remote_Generations is
       if Status /= W.OK then
          return;
       end if;
-      while Length > 0 and then Text (Length) = LF loop
-         Length := Length - 1;
-      end loop;
-      CCL.Typed_Values.Capture_Value (Records.Schema, Records.Root_Name, Text (1 .. Length), Object, Checked);
-      if not Checked.Success then
+      Reading.Parse (Text (1 .. Length), N, G, Valid);
+      if not Valid then
          Status := W.Failed;
-         return;
       end if;
-      declare
-         Root : constant Views.Cursor := Views.Root (Object);
-         Number : constant Unsigned_64 := Views.Scalar (Object, Views.Field (Object, Root, Records.Number_Field)).First;
-         Previous : constant Unsigned_64 :=
-           Views.Scalar (Object, Views.Field (Object, Root, Records.Previous_Field)).First;
-         Pins : constant Views.Cursor := Views.Field (Object, Root, Records.Pins_Field);
-         Total : constant Natural := Natural (Views.Length (Object, Pins));
-         Valid : Boolean;
-      begin
-         if Number /= Unsigned_64 (N) or else Previous >= Number or else Total > Records.Maximum_Pins then
-            Status := W.Failed;
-            return;
-         end if;
-         G.Number := N;
-         G.Previous := W.Generation (Previous);
-         for I in 1 .. Total loop
-            declare
-               Element : constant Views.Cursor := Views.Element (Object, Pins, I);
-               Service : constant String := Views.Text (Object, Views.Field (Object, Element, Records.Pin_Service_Field));
-               Program : constant String := Views.Text (Object, Views.Field (Object, Element, Records.Pin_Executable_Field));
-            begin
-               if not W.Valid_Service_Name (Service) or else Pin_Of (G, Service) /= 0 then
-                  Status := W.Failed;
-                  return;
-               end if;
-               G.Count := G.Count + 1;
-               G.Pins (G.Count).Length := Service'Length;
-               G.Pins (G.Count).Service (1 .. Service'Length) := Service;
-               Records.From_Hex (Program, G.Pins (G.Count).Program, Valid);
-               if not Valid then
-                  Status := W.Failed;
-                  return;
-               end if;
-            end;
-         end loop;
-      end;
-      Status := W.OK;
    end Read_Generation;
 
    --  The current generation's number (0: none recorded) and the newest.
    procedure Numbers (Current, Latest : out W.Generation; Status : out W.Status) is
       Text : String (1 .. 16);
       Length : Natural;
-      Value : Unsigned_64 := 0;
+      Value : Reading.Kept_Generation;
+      Valid : Boolean;
       Size : Unsigned_64;
       Hash : W.Digest;
       Probe : W.Status;
@@ -131,17 +87,8 @@ package body Remote_Generations is
       if Status = W.Not_Found then
          Status := W.OK;
       elsif Status = W.OK then
-         while Length > 0 and then Text (Length) = LF loop
-            Length := Length - 1;
-         end loop;
-         if Length not in 1 .. 9 or else (for some C of Text (1 .. Length) => C not in '0' .. '9') then
-            Status := W.Failed;
-            return;
-         end if;
-         for C of Text (1 .. Length) loop
-            Value := Value * 10 + Unsigned_64 (Character'Pos (C) - Character'Pos ('0'));
-         end loop;
-         if Value > Maximum_Generations then
+         Reading.Parse_Current (Text (1 .. Length), Value, Valid);
+         if not Valid then
             Status := W.Failed;
             return;
          end if;
@@ -217,7 +164,7 @@ package body Remote_Generations is
       end if;
       if Changed = 0 then
          --  Nothing runs differently: only the pointer moves.
-         Remote_Files.Write_Store_Text (Current_Name, Decimal (Unsigned_64 (To.Number)) & LF, Status);
+         Remote_Files.Write_Store_Text (Current_Name, Reading.Current_Text (To.Number), Status);
          Item.Result := W.Unchanged;
          Item.Current := (if Status = W.OK then To.Number else From.Number);
          return;
@@ -230,6 +177,34 @@ package body Remote_Generations is
         (Launcher, Service.Service (1 .. Service.Length),
          (if In_To = 0 then "" else Remote_Files.Store_Path (Program_Name (To.Pins (In_To).Program))),
          SR.Stop_Grace_Ms (Grace), SR.Health_Window_Ms (Health), Answer);
+      if Answer.Answer = CuBit.Launching.Refused_Switch and then Answer.Why = SR.Not_Replaceable then
+         --  (replace reboot): never switched live. The generation becomes
+         --  current for the next boot instead, once procmgr admits the
+         --  program for it (every check but the restart contract; a pin
+         --  removed goes back to the image's program, always admitted).
+         --  procmgr takes it when it next starts the plan (Boot_Generations).
+         if In_To /= 0 then
+            CuBit.Launching.Stage_Service_For_Boot
+              (Launcher, Service.Service (1 .. Service.Length),
+               Remote_Files.Store_Path (Program_Name (To.Pins (In_To).Program)), Answer);
+         else
+            Answer.Answer := CuBit.Launching.Answered;
+         end if;
+         case Answer.Answer is
+            when CuBit.Launching.Answered =>
+               Remote_Files.Write_Store_Text (Current_Name, Reading.Current_Text (To.Number), Status);
+               Item.Result := W.Pending_Boot;
+               if Status = W.OK then
+                  Item.Current := To.Number;
+               end if;
+            when CuBit.Launching.Refused_Switch =>
+               Item.Result := W.Refused;
+               Item.Detail := Unsigned_8 (SR.Refusal'Enum_Rep (Answer.Why));
+            when CuBit.Launching.Timed_Out | CuBit.Launching.No_Process_Manager_Switch =>
+               Status := W.Unavailable;
+         end case;
+         return;
+      end if;
       case Answer.Answer is
          when CuBit.Launching.Refused_Switch =>
             Item.Result := W.Refused;
@@ -241,7 +216,7 @@ package body Remote_Generations is
             Item.Detail := Unsigned_8 (SR.Health_Failure'Enum_Rep (Answer.Failure));
             case Answer.Outcome is
                when SR.Switched =>
-                  Remote_Files.Write_Store_Text (Current_Name, Decimal (Unsigned_64 (To.Number)) & LF, Status);
+                  Remote_Files.Write_Store_Text (Current_Name, Reading.Current_Text (To.Number), Status);
                   Item.Result := W.Activated;
                   if Status = W.OK then
                      Item.Current := To.Number;
@@ -401,6 +376,8 @@ package body Remote_Generations is
       return (if Service'Length > 0 then Service & ": " else "") &
         (case Item.Result is
             when W.Activated => Gen (Item.Current) & " active",
+            when W.Pending_Boot => Gen (Item.Current) &
+              " current; its restart contract is reboot, so it runs from the next boot",
             when W.Rolled_Back_Generation => Gen (Item.Target) &
               " failed its health window and was rolled back; " & Gen (Item.Current) & " stays",
             when W.Refused => "procmgr refused the switch (" &

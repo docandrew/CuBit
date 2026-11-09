@@ -1,0 +1,10 @@
+# The installed system tests/install-generations boots (SYS-001 installer
+# v2): its root (@ufs:0, @system) holds the development disk's files, the
+# storehouse and generation 1; procmgr applies the current generation
+# before this plan runs. A desktop: the installed disk must reach it.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+)

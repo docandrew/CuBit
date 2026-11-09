@@ -58,14 +58,26 @@
 --  Reply OK: words (0) Outcome'Enum_Rep, words (1) Health_Failure'Enum_Rep,
 --  words (2) the identity of the process the entry runs now (0: none).
 --  Reply ERR: words (0) Refusal'Enum_Rep; nothing was stopped or started.
+--
+--  At next boot (Boot_Stage_Operation, the same request words; the
+--  deadlines word is not used and must be 0): a generation whose changed
+--  pin names an entry with (replace reboot), acpi.svc's, is not switched
+--  live. Its activator asks procmgr to admit the program for the next boot
+--  instead: every check above except the restart contract and the switch
+--  in progress (Authorize_For_Boot), and the same manifest check. Reply OK
+--  (words (0) = 0): admitted; the activator then makes the generation
+--  current and procmgr takes the pin when it next starts the plan
+--  (procmgr's Boot_Generations re-checks it then). Nothing is stopped or
+--  started now. Reply ERR: words (0) Refusal'Enum_Rep.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 
 package CuBit.Service_Replacement with SPARK_Mode, Pure is
 
-   Switch_Operation : constant := 16#0112#;
-   Request_Words    : constant := 4;
+   Switch_Operation     : constant := 16#0112#;
+   Boot_Stage_Operation : constant := 16#0113#;
+   Request_Words        : constant := 4;
 
    --  The startup plan's executable names (CCL.Configurations.Executable_Text).
    Maximum_Service_Name_Bytes : constant := 64;
@@ -227,6 +239,28 @@ package CuBit.Service_Replacement with SPARK_Mode, Pure is
                           then not Authorize'Result.Admitted
                                and then Authorize'Result.Why = Not_Replaceable)
                 and then (if not Facts.Switch_On then not Authorize'Result.Admitted);
+
+   --  Boot_Stage_Operation's numbers: the names as for a switch, no deadlines.
+   function Stage_Request_Valid (Service_Bytes, Program_Bytes, Deadlines : Unsigned_64) return Boolean is
+     (Service_Bytes in 1 .. Maximum_Service_Name_Bytes
+      and then Program_Bytes in 1 .. Maximum_Program_Bytes
+      and then Deadlines = 0);
+
+   --  Admitted for the next boot exactly when Authorize would admit it but
+   --  for the restart contract and a switch in progress: those decide only
+   --  how a program is taken live, never whether it may run.
+   function Authorize_For_Boot (Facts : Authority_Facts) return Decision
+   with Post => Authorize_For_Boot'Result.Admitted =
+                  (Facts.Entry_Known and then Facts.Requester_Stages
+                   and then Facts.Switch_On
+                   and then Signature_Admits (Facts.Signature, Facts.Switch_On))
+                and then (if not Facts.Entry_Known
+                          then not Authorize_For_Boot'Result.Admitted
+                               and then Authorize_For_Boot'Result.Why = Unknown_Service)
+                and then (if Facts.Entry_Known and then Facts.Requester_Stages
+                            and then not Facts.Switch_On
+                          then not Authorize_For_Boot'Result.Admitted
+                               and then Authorize_For_Boot'Result.Why = Switch_Off);
 
    --  After Authorize: the program's content. Same_Manifest: every .cubit.*
    --  section of the program equals the image program's, byte for byte.

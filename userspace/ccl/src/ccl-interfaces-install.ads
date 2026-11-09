@@ -16,7 +16,12 @@ with CCL.Objects;
 --                      completes with the report. (wait t) is the
 --                      blocking form.
 --    (system.progress) Install_Progress: the current or last install's
---                      state, files and bytes done of the totals.
+--                      state, its step (Install_Step: partitioning,
+--                      formatting, filling the storehouse, generation 1,
+--                      verifying, the ESP, making it bootable), files and
+--                      bytes done of the totals. A report's step is the
+--                      last one reached: a disk is bootable only once an
+--                      install got past Making_Bootable.
 --  Nothing is defaulted: the disk, its identity, the inode ratio, the ESP
 --  size and the payload are all spelled out. The types are CCL source,
 --  checked by the CCL type checker when the interface is published; the
@@ -31,54 +36,57 @@ package CCL.Interfaces.Install with SPARK_Mode is
    PUBLISHED_SCHEMAS : constant := 5;
    --  Declared types Publish adds to the catalog's registry (its named
    --  types and the list types it specializes).
-   PUBLISHED_TYPES : constant := 12;
+   PUBLISHED_TYPES : constant := 13;
    use Standard.Interfaces;
 
    TYPE_SOURCE : constant String :=
-     "(type Disk_Number (range 0 15)) (type Inode_Ratio (range 8192 16777216)) " &
-     "(type ESP_Size (range 260 65536)) (type Disk_Identity (record (model String) " &
-     "(serial String) (blocks Integer) (block_bytes Integer))) (type Disk (record " &
-     "(number Disk_Number) (identity Disk_Identity))) (type Install_Request (record (disk " &
+     "(type Disk_Number (range 0 15)) (type Inode_Ratio (range 8192 16777216)) (type " &
+     "ESP_Size (range 260 65536)) (type Disk_Identity (record (model String) (serial " &
+     "String) (blocks Integer) (block_bytes Integer))) (type Disk (record (number " &
+     "Disk_Number) (identity Disk_Identity))) (type Install_Request (record (disk " &
      "Disk_Number) (confirm Disk_Identity) (inode_ratio Inode_Ratio) (esp_mib ESP_Size) " &
-     "(source String))) (type Install_Outcome (enum Installed No_Such_Disk " &
-     "Unidentified Wrong_Disk Too_Small Bad_Block_Size Unreadable Too_Large " &
-     "Does_Not_Fit Device_Failed No_Randomness Bad_Request)) (type Identity_Proof (enum " &
-     "Serial_Number Model_Geometry)) (type Install_Report (record (outcome " &
-     "Install_Outcome) (proof Identity_Proof) (files Integer) (bytes Integer))) (type " &
+     "(source String))) (type Install_Outcome (enum Installed No_Such_Disk Unidentified " &
+     "Wrong_Disk Too_Small Bad_Block_Size Unreadable Too_Large Does_Not_Fit Device_Failed " &
+     "No_Randomness Bad_Request Verify_Failed Device_Timed_Out Source_Timed_Out " &
+     "Source_Changed)) (type Identity_Proof (enum Serial_Number Model_Geometry)) (type " &
+     "Install_Step (enum Checking Partitioning Formatting_Root Filling_Storehouse " &
+     "Writing_Generation Verifying_Root Writing_ESP Verifying_ESP Making_Bootable " &
+     "Flushing Done)) (type Install_Report (record (outcome Install_Outcome) (proof " &
+     "Identity_Proof) (step Install_Step) (files Integer) (bytes Integer))) (type " &
      "Install_State (enum Idle Running Finished)) (type Install_Progress (record (state " &
-     "Install_State) (files_done Integer) (files Integer) (bytes_done Integer) (bytes " &
-     "Integer)))";
+     "Install_State) (step Install_Step) (files_done Integer) (files Integer) (bytes_done " &
+     "Integer) (bytes Integer)))";
    DIGEST : constant CCL.Catalog.Descriptor_Digest :=
-     [16#B6E2_D5AC_A1A6_83D9#,
-      16#27F5_F8CE_ED65_531A#,
-      16#26F3_1994_9A46_DA2E#,
-      16#6A3C_9F44_7E3B_9DE0#];
+     [16#2984_A6CA_9CE4_035E#,
+      16#7F7D_3C97_7A63_C53F#,
+      16#902C_5CF1_FE93_62D2#,
+      16#67CB_5688_6D9B_A13C#];
    DISK_KEY : constant CCL.Objects.Schema_Key :=
-     [16#1E2F_000F_2AC2_AF7C#,
-      16#8AEA_3FD5_C576_2367#,
-      16#59B7_C18D_ED20_920F#,
-      16#398B_F189_B387_F3C6#];
+     [16#73DD_CB5A_AD2F_9348#,
+      16#3934_50DB_44A3_082C#,
+      16#6D33_CEF2_DA87_A323#,
+      16#E282_C872_6A18_049C#];
    DISKS_KEY : constant CCL.Objects.Schema_Key :=
-     [16#5F24_A660_6ACC_0E37#,
-      16#AF64_6817_057A_2BD5#,
-      16#5272_52B9_1E3C_A31F#,
-      16#9002_B3EA_9C46_2FC6#];
+     [16#08C9_E32E_7837_8295#,
+      16#8E4B_8431_70A3_FA56#,
+      16#DD89_38EF_E9C1_DFD2#,
+      16#7E00_9D94_5832_E359#];
    REQUEST_KEY : constant CCL.Objects.Schema_Key :=
-     [16#57BD_81E3_9EBC_82CB#,
-      16#199E_7894_AB80_1C51#,
-      16#5763_5CB3_3E10_F796#,
-      16#2D90_58DB_E3FD_A50B#];
+     [16#FC99_4E5E_44AE_4F3F#,
+      16#6D68_376A_E16B_56A3#,
+      16#AF8B_CAC6_33EE_648E#,
+      16#6D1E_E1EF_1164_5195#];
    REPORT_KEY : constant CCL.Objects.Schema_Key :=
-     [16#BA39_1C0E_6012_0BA7#,
-      16#6C1A_F232_F4F2_B46B#,
-      16#30A2_9013_3AD2_E0BC#,
-      16#8E99_691D_8E2A_E335#];
+     [16#18F5_7DA7_8835_8E97#,
+      16#B0A9_7479_C6B2_E2EA#,
+      16#7F18_37CA_62C8_99F2#,
+      16#091F_FE18_3405_55B5#];
 
    PROGRESS_KEY : constant CCL.Objects.Schema_Key :=
-     [16#AA4E_EC32_138E_0F2D#,
-      16#5B38_2515_A57B_CB1F#,
-      16#8742_9188_1F0B_2BB1#,
-      16#669F_031E_4F1E_5536#];
+     [16#0EDA_9593_E989_7C2A#,
+      16#8953_EBC2_2939_3035#,
+      16#4A7D_582F_90C6_65BE#,
+      16#434E_6DA3_309E_DB45#];
 
    --  Install_Outcome's members are CuBit.Installer_Protocol.Install_Outcome's,
    --  in the same order, spelled short: a qualified name is one token of at
@@ -87,8 +95,8 @@ package CCL.Interfaces.Install with SPARK_Mode is
    --  Fields, in declaration order (1-based, as CCL.Objects.Views numbers them).
    DISK_FIELDS : constant := 2;
    IDENTITY_FIELDS : constant := 4;
-   REPORT_FIELDS : constant := 4;
-   PROGRESS_FIELDS : constant := 5;
+   REPORT_FIELDS : constant := 5;
+   PROGRESS_FIELDS : constant := 6;
    REQUEST_DISK : constant := 1;
    REQUEST_CONFIRM : constant := 2;
    REQUEST_RATIO : constant := 3;

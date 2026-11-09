@@ -141,8 +141,10 @@ PRODUCT_SUFFIX = ".app"
 # Remote_Wire.Generation_Result, and CuBit.Service_Replacement's Refusal
 # and Health_Failure (the detail byte).
 GENERATION_RESULTS = ["Activated", "Rolled_Back", "Refused", "Stop_Failed", "Rollback_Failed",
-                      "Unchanged", "No_Previous", "Too_Many_Changes"]
-GENERATION_DONE = (0, 5)
+                      "Unchanged", "No_Previous", "Too_Many_Changes", "Pending_Boot"]
+# Pending_Boot: a (replace reboot) service's pin, admitted by procmgr and
+# made current; it runs from the next boot.
+GENERATION_DONE = (0, 5, 8)
 SWITCH_REFUSALS = {
     1: ("Malformed", "procmgr found the request malformed"),
     2: ("Grant_Unavailable", "procmgr could not read the request"),
@@ -679,6 +681,9 @@ def generation_image(report):
         text = "generation %d active" % report["current"]
     elif name == "Unchanged":
         text = "generation %d current; nothing to switch" % report["current"]
+    elif name == "Pending_Boot":
+        text = ("generation %d current; its restart contract is reboot, so it runs from the next boot"
+                % report["current"])
     elif name == "Rolled_Back":
         text = ("generation %d failed: %s; rolled back, generation %d stays"
                 % (report["target"], HEALTH_FAILURES.get(report["detail"], "?"), report["current"]))

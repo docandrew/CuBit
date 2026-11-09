@@ -51,6 +51,7 @@
 pragma Ada_2022;
 with Interfaces;
 with Remote_Wire;
+with System_Generation_Records.Reading;
 
 package Remote_Generations is
    package W renames Remote_Wire;
@@ -58,7 +59,7 @@ package Remote_Generations is
    --  Named ceilings: generations kept, and the pins one activation
    --  switches (CAPACITY / Too_Many_Changes beyond). The record's type and
    --  pins: System_Generation_Records.
-   Maximum_Generations : constant := 256;
+   Maximum_Generations : constant := System_Generation_Records.Reading.Maximum_Generations;
    Maximum_Changed_Pins : constant := 1;
 
    type Report is record

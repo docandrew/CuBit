@@ -10,7 +10,7 @@ with Install_Record;
 
 package body CCL_Installer is
    package DId renames CuBit.Device_Identities;
-   use type IP.Disk_Ordinal, IP.Install_State;
+   use type IP.Disk_Ordinal, IP.Install_State, IP.Install_Outcome;
 
    type Disk_Table is array (IP.Disk_Ordinal range 0 .. 1) of IP.Disk_Record;
    Disks : constant Disk_Table :=
@@ -66,7 +66,8 @@ package body CCL_Installer is
             end if;
          end;
       end if;
-      Final := (State => IP.Running, Outcome => Outcome, Proof => Proof,
+      Final := (State => IP.Running, Step => (if Outcome = IP.Installed then IP.Done else IP.Checking),
+                Outcome => Outcome, Proof => Proof,
                 Files_Done => Files, Files => Files, Bytes_Done => Bytes, Bytes => Bytes);
       Seen_Running := False;
       Started := IP.Started;
@@ -77,7 +78,8 @@ package body CCL_Installer is
       Result := Answered;
       if Final.State = IP.Running and then not Seen_Running then
          Seen_Running := True;
-         Progress := (State => IP.Running, Files_Done => Final.Files / 2, Files => Final.Files,
+         Progress := (State => IP.Running, Step => IP.Filling_Storehouse,
+                      Files_Done => Final.Files / 2, Files => Final.Files,
                       Bytes_Done => Final.Bytes / 2, Bytes => Final.Bytes, others => <>);
       else
          if Final.State = IP.Running then

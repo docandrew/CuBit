@@ -486,6 +486,7 @@ def add_install_payload(files, efi, initrd, startup, live_root=False):
     if len(kernels) != 1:
         raise ValueError("the install payload needs exactly one kernel in the plan")
     on_medium = {}
+    digests = {}
     for item in files:
         if item.region != "OPTICAL" or item.private or item.role != "CONTENT":
             continue
@@ -493,6 +494,10 @@ def add_install_payload(files, efi, initrd, startup, live_root=False):
             continue   # outside the optical filesystem's root: not readable there
         name = item.destination[len(APPLICATIONS):]
         on_medium[name] = name
+        # Programs are components: the installer also stores them by
+        # content in the installed storehouse, checked against this digest.
+        if install_payload.is_component(item.data):
+            digests[name] = hashlib.sha256(item.data).hexdigest()
     executable, directories = set(), frozenset()
     if live_root:
         names, directories = live_root_files(files)
@@ -505,7 +510,7 @@ def add_install_payload(files, efi, initrd, startup, live_root=False):
                 executable.add(name)
     added = []
     for name, data in install_payload.entries(efi, kernels[0], initrd, {INSTALLED_STARTUP: startup}, on_medium,
-                                              frozenset(executable), directories).items():
+                                              frozenset(executable), directories, digests).items():
         added.append(File("OPTICAL", "CONTENT", "install-payload", INSTALL_PAYLOAD + name, data))
     return files + added
 

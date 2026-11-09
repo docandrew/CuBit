@@ -36,4 +36,9 @@ package CuBit.Clocks is
    end record;
    --  Service: the clock service's endpoint (the startup "clock" handle).
    procedure Read (Service : CuBit.Handles.Endpoint; Value : out Snapshot; Success : out Boolean);
+   --  As Read, with the caller's explicit deadline (IPC-000 rule 6): no
+   --  answer within Within_Ms is not Success.
+   procedure Read
+     (Service : CuBit.Handles.Endpoint; Within_Ms : Unsigned_64; Value : out Snapshot; Success : out Boolean)
+     with Pre => Within_Ms > 0;
 end CuBit.Clocks;

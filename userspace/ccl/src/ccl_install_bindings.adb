@@ -241,6 +241,8 @@ package body CCL_Install_Bindings is
       Put (CCL.Objects.Unit_Cell);
       Put (CCL.Objects.Variant_Cell (IP.Identity_Proof'Pos (Progress.Proof) + 1));
       Put (CCL.Objects.Unit_Cell);
+      Put (CCL.Objects.Variant_Cell (IP.Install_Step'Pos (Progress.Step) + 1));
+      Put (CCL.Objects.Unit_Cell);
       Put (Count (Progress.Files_Done));
       Put (Count (Progress.Bytes_Done));
       Built := Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contracts.Report);
@@ -266,6 +268,8 @@ package body CCL_Install_Bindings is
       end if;
       Put (CCL.Objects.Product_Cell (Install_Interface.PROGRESS_FIELDS));
       Put (CCL.Objects.Variant_Cell (IP.Install_State'Pos (Progress.State) + 1));
+      Put (CCL.Objects.Unit_Cell);
+      Put (CCL.Objects.Variant_Cell (IP.Install_Step'Pos (Progress.Step) + 1));
       Put (CCL.Objects.Unit_Cell);
       Put (Count (Progress.Files_Done));
       Put (Count (Progress.Files));

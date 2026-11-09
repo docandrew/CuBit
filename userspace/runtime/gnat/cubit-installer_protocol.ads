@@ -81,15 +81,35 @@ package CuBit.Installer_Protocol with Pure, SPARK_Mode is
       Source       : String (1 .. Maximum_Source) := [others => ' '];
    end record;
 
+   --  Verify_Failed: what was read back is not what was written (the disk
+   --  was not made bootable). Device_Timed_Out: the disk's driver did not
+   --  answer a request within its deadline; Source_Timed_Out: the
+   --  filesystem did not answer a payload read within its deadline (the
+   --  install log names the request). Source_Changed: a component's bytes
+   --  are not the SHA-256 the image build recorded.
    type Install_Outcome is
      (Installed, No_Such_Disk, Disk_Unidentified, Confirmation_Mismatch,
       Disk_Too_Small, Unsupported_Block_Size, Source_Unreadable, Payload_Too_Large,
-      Files_Do_Not_Fit, Device_Failed, Random_Unavailable, Bad_Request);
+      Files_Do_Not_Fit, Device_Failed, Random_Unavailable, Bad_Request,
+      Verify_Failed, Device_Timed_Out, Source_Timed_Out, Source_Changed);
    for Install_Outcome use
      (Installed => 0, No_Such_Disk => 1, Disk_Unidentified => 2,
       Confirmation_Mismatch => 3, Disk_Too_Small => 4, Unsupported_Block_Size => 5,
       Source_Unreadable => 6, Payload_Too_Large => 7, Files_Do_Not_Fit => 8,
-      Device_Failed => 9, Random_Unavailable => 10, Bad_Request => 11);
+      Device_Failed => 9, Random_Unavailable => 10, Bad_Request => 11,
+      Verify_Failed => 12, Device_Timed_Out => 13, Source_Timed_Out => 14, Source_Changed => 15);
+
+   --  The install's steps, in order (the installer library's Install_Steps:
+   --  installer.svc maps one onto the other by name, checked by the
+   --  compiler's case coverage). A disk is bootable only after
+   --  Making_Bootable completed.
+   type Install_Step is
+     (Checking, Partitioning, Formatting_Root, Filling_Storehouse, Writing_Generation,
+      Verifying_Root, Writing_ESP, Verifying_ESP, Making_Bootable, Flushing, Done);
+   for Install_Step use
+     (Checking => 0, Partitioning => 1, Formatting_Root => 2, Filling_Storehouse => 3,
+      Writing_Generation => 4, Verifying_Root => 5, Writing_ESP => 6, Verifying_ESP => 7,
+      Making_Bootable => 8, Flushing => 9, Done => 10);
 
    --  What identified the disk: its serial number (with model and
    --  geometry), or, for a disk without one, model and geometry alone.
@@ -109,6 +129,8 @@ package CuBit.Installer_Protocol with Pure, SPARK_Mode is
 
    type Install_Progress is record
       State      : Install_State := Idle;
+      --  Running: the step under way; Finished: the last step reached.
+      Step       : Install_Step := Checking;
       --  Meaningful once Finished.
       Outcome    : Install_Outcome := Bad_Request;
       Proof      : Identity_Proof := Serial_Number;

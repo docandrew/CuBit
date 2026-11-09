@@ -34,6 +34,20 @@ package body CuBit.Service_Replacement with SPARK_Mode is
       return (Admitted => True);
    end Authorize;
 
+   function Authorize_For_Boot (Facts : Authority_Facts) return Decision is
+   begin
+      if not Facts.Entry_Known then
+         return (Admitted => False, Why => Unknown_Service);
+      elsif not Facts.Requester_Stages then
+         return (Admitted => False, Why => Not_Granted);
+      elsif not Facts.Switch_On then
+         return (Admitted => False, Why => Switch_Off);
+      elsif not Signature_Admits (Facts.Signature, Facts.Switch_On) then
+         return (Admitted => False, Why => Unsigned_Refused);
+      end if;
+      return (Admitted => True);
+   end Authorize_For_Boot;
+
    function Content_Admits
      (Image_Readable, Program_Readable, Same_Manifest : Boolean) return Decision is
    begin

@@ -18,7 +18,9 @@ package CuBit.Disk_Install.Client is
    end record;
 
    --  Service: the disk-install handle (devmgr refuses any other endpoint
-   --  to it, which lacks the badge).
+   --  to it, which lacks the badge). devmgr answers at once; Within_Ms is
+   --  the caller's explicit deadline (IPC-000 rule 6). Past it: not opened.
    function Open
-     (Service : CuBit.Handles.Endpoint; Item : Open_Request) return Opened_Disk;
+     (Service : CuBit.Handles.Endpoint; Item : Open_Request; Within_Ms : Unsigned_64) return Opened_Disk
+     with Pre => Within_Ms > 0;
 end CuBit.Disk_Install.Client;

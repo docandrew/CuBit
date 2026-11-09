@@ -1,8 +1,13 @@
 (Component name => "installer" kind => (Kind.Service Launcher.Process_Manager)
   source => (Source.Ada (Ada_Source
-    sources => ["userspace/lib/disk-layout" "userspace/lib/partitions"
-                "userspace/services/filesystem"]
+    # The install is the System_Install library (userspace/lib/disk-install);
+    # components are hashed through the Storehouse's verified SHA-256 (the
+    # pinned SPARKNaCl and SPARKTLSCrypto crates); generation 1's record is
+    # System_Generation_Records' (userspace/ccl/remote).
+    sources => ["userspace/lib/disk-layout" "userspace/lib/partitions" "userspace/lib/disk-install"
+                "userspace/lib/storehouse" "userspace/ccl/remote" "userspace/services/filesystem"]
     language => Ada_Language.Ada_2022
+    libraries => ["sparknacl" "sparktlscrypto"]
     # SPARK-proved layout encoders (tests/disk-layout): built without checks.
     units => [(Unit_Code ["disk_layout.adb" "gpt_image.adb" "fat32_image.adb"
                           "ext2_image.adb" "layout_writer.adb" "install_tree.adb"

@@ -7,6 +7,7 @@ with Interfaces; use Interfaces;
 with CuBit.Service_Replacement;
 with Service_Switches;
 with Manifest_Fingerprints;
+with Boot_Generations;
 
 procedure Switch_Tests is
    package SR renames CuBit.Service_Replacement;
@@ -282,6 +283,50 @@ begin
       MF.Fingerprint (Image, Into, Length, Result);
       Check (Result = MF.Not_ELF64, "fingerprint: a wrong section header size");
       Check (MF.Same (First (1 .. 0), Second (1 .. 0)), "fingerprint: two empty manifests are the same");
+   end;
+
+   ---------------------------------------------------------------------------
+   --  At next boot (Boot_Stage_Operation) and at boot (Boot_Generations)
+   ---------------------------------------------------------------------------
+   declare
+      function Staged (F : SR.Authority_Facts) return Boolean is (SR.Authorize_For_Boot (F).Admitted);
+   begin
+      Check (Staged ((Good with delta Entry_Replaceable => False)),
+             "boot staging: a (replace reboot) entry's program is admitted for the next boot");
+      Check (Staged ((Good with delta In_Progress => True)),
+             "boot staging: a switch in progress does not stop staging for the next boot");
+      Check (not Staged ((Good with delta Switch_On => False))
+             and then SR.Authorize_For_Boot ((Good with delta Switch_On => False)).Why = SR.Switch_Off,
+             "boot staging: Allow app replacement off refuses it (Switch_Off)");
+      Check (not Staged ((Good with delta Requester_Stages => False)),
+             "boot staging: a requester that does not stage the program is refused");
+      Check (not Staged ((Good with delta Signature => SR.Signature_Invalid)),
+             "boot staging: an invalid signature is refused");
+      Check (SR.Stage_Request_Valid (8, 80, 0) and then not SR.Stage_Request_Valid (8, 0, 0)
+             and then not SR.Stage_Request_Valid (8, 80, 1),
+             "boot staging: names a program, no deadlines");
+   end;
+   declare
+      package BG renames Boot_Generations;
+      use type BG.Pin_Verdict;
+      All_Hold : constant BG.Pin_Facts := (others => True);
+   begin
+      Check (BG.Judge (All_Hold) = BG.Applied, "boot pins: every check holds: applied");
+      Check (BG.Judge ((All_Hold with delta Entry_Known => False)) = BG.Unknown_Service,
+             "boot pins: no plan entry: not applied (Unknown_Service)");
+      Check (BG.Judge ((All_Hold with delta Program_Readable => False, Content_Matches => False,
+                                            Image_Readable => False, Same_Manifest => False))
+             = BG.Program_Unreadable, "boot pins: a missing storehouse object: Program_Unreadable");
+      Check (BG.Judge ((All_Hold with delta Content_Matches => False)) = BG.Content_Mismatch,
+             "boot pins: damaged bytes (not their SHA-256 name): Content_Mismatch");
+      Check (BG.Judge ((All_Hold with delta Same_Manifest => False)) = BG.Manifest_Changed,
+             "boot pins: another manifest: Manifest_Changed");
+      Check (BG.Judge ((All_Hold with delta Image_Readable => False)) = BG.Image_Unreadable,
+             "boot pins: the image's program unreadable: not applied");
+      Check (BG.Applies (BG.Read) and then not BG.Applies (BG.No_Generation)
+             and then not BG.Applies (BG.Record_Invalid)
+             and then BG.Is_Drift (BG.Record_Missing) and then not BG.Is_Drift (BG.No_Generation),
+             "boot generation: only a record that read applies; a named but unusable one is drift");
    end;
 
    if Failures = 0 then

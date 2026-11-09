@@ -1,12 +1,29 @@
 with CuBit.Messages; use CuBit.Messages;
 package body CuBit.Clocks is
+   --  The snapshot by a call ending at Deadline (an absolute time).
+   procedure Read_By
+     (Service : CuBit.Handles.Endpoint; Deadline : Unsigned_64; Value : out Snapshot; Success : out Boolean);
+
    procedure Read (Service : CuBit.Handles.Endpoint; Value : out Snapshot; Success : out Boolean) is
+   begin
+      Read_By (Service, CuBit.Messages.Wait_Forever, Value, Success);
+   end Read;
+
+   procedure Read
+     (Service : CuBit.Handles.Endpoint; Within_Ms : Unsigned_64; Value : out Snapshot; Success : out Boolean) is
+   begin
+      Read_By (Service, Deadline_After (Within_Ms), Value, Success);
+   end Read;
+
+   procedure Read_By
+     (Service : CuBit.Handles.Endpoint; Deadline : Unsigned_64; Value : out Snapshot; Success : out Boolean)
+   is
       Msg : Message := NULL_MESSAGE;
       Y, M, D, H, N, S : Unsigned_64;
    begin
       Value := (others => <>);
       Msg.tag.label := Snapshot_Operation;
-      Msg.tag := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
+      Msg.tag := capCall (Service, Msg, Deadline);
       Y := Shift_Right (Msg.words (1), 40);
       M := Shift_Right (Msg.words (1), 32) and 255;
       D := Shift_Right (Msg.words (1), 24) and 255;
@@ -27,5 +44,5 @@ package body CuBit.Clocks is
             Integer (Msg.words (2)) - 86_400,
             Time_Quality'Enum_Val (Msg.words (3)));
       end if;
-   end Read;
+   end Read_By;
 end CuBit.Clocks;
