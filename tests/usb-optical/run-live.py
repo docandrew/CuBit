@@ -85,6 +85,10 @@ parser.add_argument('--device-build-port', type=int, default=18449,
                     help='host loopback port forwarded to the guest\'s ccl-remote (8445)')
 parser.add_argument('--device-build-options', default='',
                     help='further device_build.py options, e.g. "--build-only"')
+parser.add_argument('--bench-build', type=pathlib.Path, metavar='RESULTS',
+                    help='with --device-build: PERF-010\'s build benchmark (tests/device-builds/'
+                         'bench_build.py) on the live RAM root instead of device_build.py; its '
+                         'results JSON at RESULTS')
 parser.add_argument('--install-to', type=pathlib.Path, metavar='DISK',
                     help='SYS-001 from the device-build live image: a blank writable UFS disk at DISK '
                          '(--install-disk-mib) and, typed at the CCL console, an install onto it '
@@ -390,11 +394,20 @@ with (run / 'qemu.log').open('w') as log:
             sys.exit(0)
         if args.device_build:
             wait_for('ccl-remote: listening on ')
-            driver = [sys.executable, str(root / 'tests/device-builds/device_build.py'),
-                      str(serial), str(device_build_monitor),
-                      str(max(1, int(deadline - time.monotonic()))), str(args.device_build_port),
-                      str(args.device_build.resolve()), '--memory-report', str(run / 'memory.json'),
-                      '--qemu-pid', str(process.pid)] + args.device_build_options.split()
+            if args.bench_build:
+                driver = [sys.executable, str(root / 'tests/device-builds/bench_build.py'),
+                          '--serial', str(serial), '--qmp', str(device_build_monitor),
+                          '--timeout', str(max(1, int(deadline - time.monotonic()))),
+                          '--port', str(args.device_build_port), '--out', str(args.bench_build.resolve()),
+                          '--linux', str(args.device_build.resolve() / 'bench-linux.json'),
+                          str(args.device_build.resolve())] + args.device_build_options.split()
+                os.environ['BENCH_BUILD_KEEP_RUNNING'] = '1'
+            else:
+                driver = [sys.executable, str(root / 'tests/device-builds/device_build.py'),
+                          str(serial), str(device_build_monitor),
+                          str(max(1, int(deadline - time.monotonic()))), str(args.device_build_port),
+                          str(args.device_build.resolve()), '--memory-report', str(run / 'memory.json'),
+                          '--qemu-pid', str(process.pid)] + args.device_build_options.split()
             os.environ['DEVICE_BUILD_KEEP_RUNNING'] = '1'
             result = subprocess.run(driver)
             text = serial.read_text(errors='replace')

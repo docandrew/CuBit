@@ -11,6 +11,7 @@ with GNAT.Directory_Operations;
 with GNAT.OS_Lib;
 with Interfaces.C;
 with Build_Encoding;
+with Build_Timing;
 with Storehouse.Hashing;
 with Storehouse.Hex;
 with Storehouse.Paths;
@@ -176,12 +177,14 @@ package body Build_Store is
       procedure Add (Data : Byte_Array) is
       begin
          Storehouse.Hashing.Add (Hash, Data);
+         Build_Timing.Count (Build_Timing.Bytes_Hashed, Data'Length);
       end Add;
       procedure Read_All is new Read_Pieces (Add);
    begin
       if not Is_Regular (Name) then
          raise Store_Error with Name & " is not a regular file";
       end if;
+      Build_Timing.Count (Build_Timing.Files_Hashed);
       Storehouse.Hashing.Start (Hash);
       Read_All (Name);
       Storehouse.Hashing.Finish (Hash, Result);
@@ -479,10 +482,16 @@ package body Build_Store is
          return False;
       elsif Verified.Contains (Key) then
          return True;
-      elsif (if Kind = Tree then Hash_Tree (Path) else Hash_File (Path)) = Identity then
-         Verified.Include (Key);
-         return True;
       end if;
+      declare
+         Timed : Build_Timing.Scope (Build_Timing.Verify_Hash);
+         pragma Unreferenced (Timed);
+      begin
+         if (if Kind = Tree then Hash_Tree (Path) else Hash_File (Path)) = Identity then
+            Verified.Include (Key);
+            return True;
+         end if;
+      end;
       Quarantine (S, Path, Kind_Directory (Kind) & "-" & Storehouse.Hex.Image (Identity),
                   "does not match its identity");
       return False;
@@ -499,10 +508,14 @@ package body Build_Store is
            with Import, Address => Data'Address;
       begin
          Storehouse.Hashing.Add (Hash, Data);
+         Build_Timing.Count (Build_Timing.Bytes_Hashed, Data'Length);
+         Build_Timing.Count (Build_Timing.Bytes_Copied, Data'Length);
          Stream_IO.Write (Output, Elements);
       end Write;
       procedure Copy_All is new Read_Pieces (Write);
    begin
+      Build_Timing.Count (Build_Timing.Files_Hashed);
+      Build_Timing.Count (Build_Timing.Files_Copied);
       Storehouse.Hashing.Start (Hash);
       Stream_IO.Create (Output, Stream_IO.Out_File, Target);
       Copy_All (Source);
@@ -539,6 +552,8 @@ package body Build_Store is
          return;
       end if;
       declare
+         Timed : Build_Timing.Scope (Build_Timing.Store_Write);
+         pragma Unreferenced (Timed);
          Work : constant String := New_Work (S);
          Staged : constant String := Work / "entry";
          Placed : Boolean;
@@ -597,6 +612,8 @@ package body Build_Store is
          return;
       end if;
       declare
+         Timed : Build_Timing.Scope (Build_Timing.Store_Write);
+         pragma Unreferenced (Timed);
          Work : constant String := New_Work (S);
          Staged : constant String := Work / "entry";
          Placed : Boolean;
@@ -688,6 +705,8 @@ package body Build_Store is
      (Root (S) / Actions_Directory / Storehouse.Hex.Image (Step));
 
    procedure Put_Action (S : Store; Step : Digest; Data : Byte_Array; Conflicting : out Boolean) is
+      Timed : Build_Timing.Scope (Build_Timing.Store_Write);
+      pragma Unreferenced (Timed);
       Work : constant String := New_Work (S);
       Staged : constant String := Work / "action";
       Placed : Boolean;
@@ -790,6 +809,8 @@ package body Build_Store is
    end Unlock;
 
    function Claim_Step (S : Store; Shape : Digest; Label : String) return String is
+      Timed : Build_Timing.Scope (Build_Timing.Claim);
+      pragma Unreferenced (Timed);
       Name : constant String := Storehouse.Hex.Image (Shape);
       Directory : constant String := Step_Path (S, Name);
       Claim : constant String := Directory & Owner_Suffix;
@@ -838,6 +859,8 @@ package body Build_Store is
    end Claim_Step;
 
    procedure Release_Step (S : Store; Shape : Digest; Keep : Boolean := False) is
+      Timed : Build_Timing.Scope (Build_Timing.Release);
+      pragma Unreferenced (Timed);
       Name : constant String := Storehouse.Hex.Image (Shape);
       Held : Build_Platform.Lock := Claims (Name);
    begin

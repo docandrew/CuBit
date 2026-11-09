@@ -268,6 +268,9 @@ package body Remote_Jobs is
       Argument (Toolchain_Import & "=/toolchain");
       Argument ("--out");
       Argument (Workspace & "/out");
+      --  Where each step's time went, as "timing" lines in the job's
+      --  output (PERF-010; ccl-build's Build_Timing).
+      Argument ("--timings");
       Argument (Workspace & "/" & Component);
       LA.Finish (Block, Length, Added);
       Accepted := Accepted and Added;

@@ -116,6 +116,13 @@ hello=userspace/apps/hello
 remove "$b/app-hello"
 mkdir -p "$b/app-hello"
 cp -p "$repo/$hello/component.ccl" "$repo/$hello/manifest.ccl" "$repo/$hello/main.adb" "$b/app-hello/"
+# The build benchmark's other app (PERF-010, bench_build.py): four units,
+# only the runtime's sources besides its own, as it is.
+for bench_app in secondary-stack-check; do
+    remove "$b/app-$bench_app"
+    mkdir -p "$b/app-$bench_app"
+    cp -p "$repo/userspace/apps/$bench_app/"*.ccl "$repo/userspace/apps/$bench_app/"*.ad? "$b/app-$bench_app/"
+done
 
 # The Linux reference of each, from the subset plus the app (and Linux's
 # manifest tool, where build-params.ccl names it for Linux), in a private

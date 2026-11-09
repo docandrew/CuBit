@@ -8,6 +8,7 @@ with Ada.Text_IO;
 with Interfaces.C.Strings;
 with Build_Platform;
 with Build_Steps;
+with Build_Timing;
 with Storehouse.Hex;
 with Storehouse.Paths;
 
@@ -330,11 +331,16 @@ package body Build_Ada_Programs is
       begin
          Need_Relative (Path, "source");
          if not Snapshots.Contains (Key) then
-            if Kind = Tree then
-               Store.Put_Tree (Host_Path (Path), Identity);
-            else
-               Store.Put_File (Host_Path (Path), Kind, Identity);
-            end if;
+            declare
+               Timed : Build_Timing.Scope (Build_Timing.Source_Hash);
+               pragma Unreferenced (Timed);
+            begin
+               if Kind = Tree then
+                  Store.Put_Tree (Host_Path (Path), Identity);
+               else
+                  Store.Put_File (Host_Path (Path), Kind, Identity);
+               end if;
+            end;
             Snapshots.Insert (Key, Identity);
          end if;
          return Snapshots (Key);
@@ -393,8 +399,13 @@ package body Build_Ada_Programs is
       end Find_Sources;
 
       procedure Run (S : Step; Outcome : out Build_Steps.Outcome) is
+         Start : constant Build_Timing.Totals := Build_Timing.Now;
       begin
          Build_Steps.Run (Store, S, Outcome);
+         Build_Timing.Count (if Outcome.Ran then Build_Timing.Steps_Ran else Build_Timing.Steps_Hit);
+         Build_Timing.Report_Step
+           (To_String (S.Label), Storehouse.Hex.Image (Outcome.Step_Identity) (1 .. Short_Identity),
+            Outcome.Ran, Start);
          if Outcome.Ran then Result.Ran := Result.Ran + 1; else Result.Answered := Result.Answered + 1; end if;
          if Outcome.Not_Reproducible then
             Result.Not_Reproducible := Result.Not_Reproducible + 1;
@@ -735,8 +746,13 @@ package body Build_Ada_Programs is
                      raise Step_Error with "the manifest tool " & Tool_Path &
                        " is not installed (build-params.ccl names it for this host)";
                   end if;
-                  S.Tool :=(Kind => Installed_Program, Path => Profile.Manifest_Tool.Path,
-                             Contents => Build_Store.Hash_File (Tool_Path), others => <>);
+                  declare
+                     Timed : Build_Timing.Scope (Build_Timing.Source_Hash);
+                     pragma Unreferenced (Timed);
+                  begin
+                     S.Tool := (Kind => Installed_Program, Path => Profile.Manifest_Tool.Path,
+                                Contents => Build_Store.Hash_File (Tool_Path), others => <>);
+                  end;
             end case;
             Piece_Of (S, Input_Path, Catalog);
             Piece_Of (S, Input_Path, Source);

@@ -1,6 +1,7 @@
 with Ada.Containers.Indefinite_Vectors;
 with GNAT.OS_Lib;
 with System;
+with Build_Timing;
 
 --  Build_Platform on CuBit (SELF-002; docs/ccl-build.md, "On CuBit"): the
 --  calls through CuBit's libc, which answers them from filesystem.svc and
@@ -151,6 +152,7 @@ package body Build_Platform is
             Failed := GNAT.OS_Lib.Errno /= EEXIST;
          else
             Placed := True;
+            Build_Timing.Count (Build_Timing.Files_Copied);
             loop
                Got := c_read (From, Buffer'Address, Buffer'Length);
                exit when Got = 0;
@@ -158,6 +160,7 @@ package body Build_Platform is
                   exit when GNAT.OS_Lib.Errno /= EINTR;
                else
                   Put := c_write (To, Buffer'Address, size_t (Got));
+                  Build_Timing.Count (Build_Timing.Bytes_Copied, Interfaces.Unsigned_64 (Got));
                   if Put /= Got then
                      Failed := True;
                      exit;
@@ -427,6 +430,7 @@ package body Build_Platform is
          raise Platform_Error with "fsync " & Name & ": errno" & Integer'Image (GNAT.OS_Lib.Errno);
       end if;
       Check (c_close (Descriptor), "close", Name);
+      Build_Timing.Count (Build_Timing.Syncs);
    end Sync;
 
    function Process_Id return int is (c_getpid);
@@ -457,17 +461,28 @@ package body Build_Platform is
       Check (c_file_actions_init (Actions'Address), "posix_spawn_file_actions_init", Program);
       Spawned := c_file_actions_addchdir (Actions'Address, C_Directory);
       if Spawned = 0 then
+         --  Until procmgr has read the image, the kernel made the process
+         --  and procmgr answered (Build_Timing).
+         Build_Timing.Count (Build_Timing.Spawns);
+         Build_Timing.Enter (Build_Timing.Spawn);
          Spawned := c_posix_spawn (Child'Access, C_Program, Actions'Address, System.Null_Address,
                                    Vector'Address, Environment'Address);
+         Build_Timing.Leave;
       end if;
       Ignored := c_file_actions_destroy (Actions'Address);
       Free (C_Program); Free (C_Directory);
       if Spawned /= 0 then
          raise Platform_Error with "posix_spawn " & Program & " in " & Directory & ": error"
            & Integer'Image (Integer (Spawned));
-      elsif c_waitpid (Child, Status'Access, 0) /= Child then
-         raise Platform_Error with "waitpid " & Program;
       end if;
+      declare
+         Timed : Build_Timing.Scope (Build_Timing.Tool_Wait);
+         pragma Unreferenced (Timed);
+      begin
+         if c_waitpid (Child, Status'Access, 0) /= Child then
+            raise Platform_Error with "waitpid " & Program;
+         end if;
+      end;
       if Integer (Status) mod (Signal_Mask + 1) = 0 then
          Exit_Status := Integer (Status) / Exit_Code_Shift mod Exit_Code_Range;
       else

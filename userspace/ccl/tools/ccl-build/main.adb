@@ -15,6 +15,7 @@ with Build_Encoding;
 with Build_Generations;
 with Build_Platform;
 with Build_Steps;
+with Build_Timing;
 with Build_Store;
 with Storehouse;
 with Storehouse.Hex;
@@ -23,12 +24,13 @@ with Storehouse.Profiles;
 --  ccl-build, hosted on Linux (docs/ccl-build.md):
 --
 --    ccl-build build --store DIR --source-root DIR [--import NAME=PATH]...
---                    [--out DIR] [--profile NAME] DIR/component.ccl...
+--                    [--out DIR] [--profile NAME] [--timings] DIR/component.ccl...
 --                    (with build-params.ccl and build-catalog.ccl; NAME is a
 --                    toolchain's, or a fetched library's to seed its tree
 --                    without network; --profile makes the components'
 --                    outputs the profile's next generation and switches to
---                    it)
+--                    it; --timings prints where each step's time went,
+--                    Build_Timing)
 --    ccl-build check --source-root DIR DIR/component.ccl...   (type-check only)
 --    ccl-build verify --store DIR
 --    ccl-build import --store DIR TREE   (copy a tree in, print its identity)
@@ -76,14 +78,15 @@ procedure Main is
         when Rollback_Command => "rollback", when Diff_Command => "diff", when Collect_Command => "gc");
 
    type Option is (Store_Option, Source_Root_Option, Import_Option, Out_Option, Profile_Option,
-                   Keep_Generations_Option, Dry_Run_Option);
+                   Keep_Generations_Option, Dry_Run_Option, Timings_Option);
    function Option_Name (O : Option) return String is
      (case O is
         when Store_Option => "--store", when Source_Root_Option => "--source-root",
         when Import_Option => "--import", when Out_Option => "--out", when Profile_Option => "--profile",
-        when Keep_Generations_Option => "--keep-generations", when Dry_Run_Option => "--dry-run");
+        when Keep_Generations_Option => "--keep-generations", when Dry_Run_Option => "--dry-run",
+        when Timings_Option => "--timings");
    --  Options that take no value.
-   function Is_Flag (O : Option) return Boolean is (O = Dry_Run_Option);
+   function Is_Flag (O : Option) return Boolean is (O in Dry_Run_Option | Timings_Option);
    --  Options that may be given more than once.
    function Is_Repeatable (O : Option) return Boolean is (O = Import_Option);
 
@@ -91,7 +94,8 @@ procedure Main is
    function Allowed (C : Command) return Option_Set is
      (case C is
         when Build_Command =>
-          [Store_Option | Source_Root_Option | Import_Option | Out_Option | Profile_Option => True, others => False],
+          [Store_Option | Source_Root_Option | Import_Option | Out_Option | Profile_Option | Timings_Option => True,
+           others => False],
         when Check_Command => [Source_Root_Option => True, others => False],
         when Verify_Command | Import_Command => [Store_Option => True, others => False],
         when Hash_Tree_Command => [others => False],
@@ -338,8 +342,16 @@ procedure Main is
    --  The location of the component being read, for diagnostics.
    Current_Declaration : Unbounded_String;
 
+   --  The store, opened under its shared lock (Build_Timing's Store_Open).
+   function Open_For_Build return Build_Store.Store is
+      Timed : Build_Timing.Scope (Build_Timing.Store_Open);
+      pragma Unreferenced (Timed);
+   begin
+      return Build_Store.Open (Required (Store_Option), Build_Store.Shared_Use);
+   end Open_For_Build;
+
    procedure Build is
-      Store : constant Build_Store.Store := Build_Store.Open (Required (Store_Option), Build_Store.Shared_Use);
+      Store : constant Build_Store.Store := Open_For_Build;
       Source_Root : constant String := Required (Source_Root_Option);
       Checkout : constant String := Ada.Directories.Full_Name (Source_Root);
       Schema : constant String := Read_File (Source_Root / Schema_Path);
@@ -362,13 +374,24 @@ procedure Main is
          Store.Put_File (Source_Root / Path, Storehouse.Regular_File, Identity);
          Parameter (Path, Storehouse.Regular_File, Identity);
       end Declaration;
+      Components : Unbounded_String;
    begin
-      Current_Declaration := To_Unbounded_String (Source_Root / Parameters_Path);
-      Build_Declarations.Read_Parameters (Read_File (Source_Root / Parameters_Path), Schema, Profile);
-      Current_Declaration := To_Unbounded_String (Source_Root / Catalog_Path);
-      Build_Declarations.Read_Catalog (Read_File (Source_Root / Catalog_Path), Schema, Known);
-      Compiler := Toolchain (Store, Profile.Compiler_Tools);
-      Binutils := Toolchain (Store, Profile.Binutils);
+      declare
+         Timed : Build_Timing.Scope (Build_Timing.Declarations);
+         pragma Unreferenced (Timed);
+      begin
+         Current_Declaration := To_Unbounded_String (Source_Root / Parameters_Path);
+         Build_Declarations.Read_Parameters (Read_File (Source_Root / Parameters_Path), Schema, Profile);
+         Current_Declaration := To_Unbounded_String (Source_Root / Catalog_Path);
+         Build_Declarations.Read_Catalog (Read_File (Source_Root / Catalog_Path), Schema, Known);
+      end;
+      declare
+         Timed : Build_Timing.Scope (Build_Timing.Import);
+         pragma Unreferenced (Timed);
+      begin
+         Compiler := Toolchain (Store, Profile.Compiler_Tools);
+         Binutils := Toolchain (Store, Profile.Binutils);
+      end;
       if Given (Profile_Option) then
          Declaration (Parameters_Path);
          Declaration (Catalog_Path);
@@ -383,8 +406,14 @@ procedure Main is
             Result : Build_Ada_Programs.Report;
             Pins : Build_Generations.Item_Vectors.Vector;
          begin
-            Build_Declarations.Read_Component
-              (Read_File (File), Schema, Component_Directory (Source_Root, File), Profile, Known, Program);
+            Append (Components, (if Length (Components) = 0 then "" else " ") & File);
+            declare
+               Timed : Build_Timing.Scope (Build_Timing.Declarations);
+               pragma Unreferenced (Timed);
+            begin
+               Build_Declarations.Read_Component
+                 (Read_File (File), Schema, Component_Directory (Source_Root, File), Profile, Known, Program);
+            end;
             Pins.Append (Build_Generations.Item'(Profile.Compiler_Tools.Name, Storehouse.Tree, Compiler));
             Pins.Append (Build_Generations.Item'(Profile.Binutils.Name, Storehouse.Tree, Binutils));
             --  A fetched tree may be seeded offline, against the same pin.
@@ -396,7 +425,12 @@ procedure Main is
             Store.Put_Root (Checkout, To_String (Program.Executable),
                             Build_Generations.Encode_Root (Items (Result.Products), Pins));
             if Given (Out_Option) then
-               Export (Store, Value_Of (Out_Option), Result);
+               declare
+                  Timed : Build_Timing.Scope (Build_Timing.Export);
+                  pragma Unreferenced (Timed);
+               begin
+                  Export (Store, Value_Of (Out_Option), Result);
+               end;
             end if;
             Put_Line ("ccl-build:" & Result.Ran'Image & " ran," & Result.Answered'Image & " answered by the cache" &
                       (if Result.Not_Reproducible > 0 then "," & Result.Not_Reproducible'Image & " not reproducible"
@@ -412,6 +446,7 @@ procedure Main is
             end if;
          end;
       end loop;
+      Build_Timing.Report_Build (To_String (Components));
       if Failed then
          Set_Exit_Status (Failure);
       elsif Given (Profile_Option) then
@@ -640,7 +675,11 @@ procedure Main is
 begin
    Parse;
    case The_Command is
-      when Build_Command => Build;
+      when Build_Command =>
+         if Given (Timings_Option) then
+            Build_Timing.Enable;
+         end if;
+         Build;
       when Check_Command => Check;
       when Verify_Command => Verify;
       when Import_Command =>

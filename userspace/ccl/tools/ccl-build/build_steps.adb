@@ -6,6 +6,7 @@ with Interfaces.C.Strings;
 with GNAT.OS_Lib;
 with Build_Encoding;
 with Build_Platform;
+with Build_Timing;
 with Storehouse.Paths;
 
 package body Build_Steps is
@@ -239,6 +240,8 @@ package body Build_Steps is
      (Store : Build_Store.Store; Step_Identity : Digest; S : Step;
       Outputs : out Digest_Vectors.Vector; Found : out Boolean)
    is
+      Timed : Build_Timing.Scope (Build_Timing.Recall);
+      pragma Unreferenced (Timed);
    begin
       Outputs.Clear;
       Found := False;
@@ -300,6 +303,7 @@ package body Build_Steps is
       Item : Directory_Entry_Type;
    begin
       Create_Path (Target);
+      Build_Timing.Count (Build_Timing.Directories_Made);
       Start_Search (Search, Source, "");
       while More_Entries (Search) loop
          Get_Next_Entry (Search, Item);
@@ -370,22 +374,27 @@ package body Build_Steps is
    begin
       Outputs.Clear;
       Failed := True;
-      for I of S.Inputs loop
-         declare
-            Target : constant String := Root / To_String (I.Path);
-         begin
-            case I.Kind is
-               when Tree => Place_Tree (Store.Path_Of (Tree, I.Identity), Target);
-               when others =>
-                  Make_Parent (Target);
-                  Build_Platform.Link (Store.Path_Of (I.Kind, I.Identity), Target);
-            end case;
-         end;
-      end loop;
-      Ada.Directories.Create_Path (Root / To_String (S.Directory));
-      for O of S.Outputs loop
-         Make_Parent (Root / To_String (O.Path));
-      end loop;
+      declare
+         Timed : Build_Timing.Scope (Build_Timing.Place_Inputs);
+         pragma Unreferenced (Timed);
+      begin
+         for I of S.Inputs loop
+            declare
+               Target : constant String := Root / To_String (I.Path);
+            begin
+               case I.Kind is
+                  when Tree => Place_Tree (Store.Path_Of (Tree, I.Identity), Target);
+                  when others =>
+                     Make_Parent (Target);
+                     Build_Platform.Link (Store.Path_Of (I.Kind, I.Identity), Target);
+               end case;
+            end;
+         end loop;
+         Ada.Directories.Create_Path (Root / To_String (S.Directory));
+         for O of S.Outputs loop
+            Make_Parent (Root / To_String (O.Path));
+         end loop;
+      end;
       Arguments (1) := New_String (Program_Path (Store, S, Root));
       for N in S.Arguments.First_Index .. S.Arguments.Last_Index loop
          Arguments (N + 1) := New_String (Render (Store, S, Root, S.Arguments (N)));
@@ -411,7 +420,12 @@ package body Build_Steps is
             if Build_Platform.Is_Symbolic_Link (Produced) or else not GNAT.OS_Lib.Is_Regular_File (Produced) then
                raise Step_Error with To_String (S.Label) & ": did not produce " & To_String (O.Path);
             end if;
-            Store.Put_File (Produced, Output_Kind (O), Stored);
+            declare
+               Timed : Build_Timing.Scope (Build_Timing.Output_Hash);
+               pragma Unreferenced (Timed);
+            begin
+               Store.Put_File (Produced, Output_Kind (O), Stored);
+            end;
             Outputs.Append (Stored);
          end;
       end loop;

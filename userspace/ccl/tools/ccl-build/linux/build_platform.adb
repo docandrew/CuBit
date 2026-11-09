@@ -1,5 +1,6 @@
 with GNAT.OS_Lib;
 with System;
+with Build_Timing;
 
 package body Build_Platform is
    use Interfaces.C;
@@ -98,8 +99,20 @@ package body Build_Platform is
      with Import, Convention => C, External_Name => "execve";
    procedure c_exit (Status : int)
      with Import, Convention => C, External_Name => "_exit", No_Return;
-   function c_waitpid (Process : int; Status : access int; Options : int) return int
-     with Import, Convention => C, External_Name => "waitpid";
+   --  struct rusage (<bits/types/struct_rusage.h>, x86-64): two timevals,
+   --  then fourteen longs; only the CPU times are read (Build_Timing).
+   type Timeval is record
+      Seconds, Microseconds : long;
+   end record with Convention => C;
+   type Usage_Longs is array (1 .. 14) of long with Convention => C;
+   type Resource_Usage is record
+      User, System_Time : Timeval;
+      Rest : Usage_Longs;
+   end record with Convention => C;
+   function c_wait4 (Process : int; Status : access int; Options : int; Usage : access Resource_Usage)
+     return int
+     with Import, Convention => C, External_Name => "wait4";
+   Microseconds_Per_Second : constant := 1_000_000;
 
    procedure Check (Result : int; What, Name : String) is
    begin
@@ -115,6 +128,7 @@ package body Build_Platform is
    begin
       Free (A); Free (B);
       Check (Result, "link", New_Name);
+      Build_Timing.Count (Build_Timing.Files_Linked);
    end Link;
 
    procedure Link_New (Existing, New_Name : String; Placed : out Boolean) is
@@ -344,6 +358,7 @@ package body Build_Platform is
       end if;
       Check (c_fsync (Descriptor), "fsync", Name);
       Check (c_close (Descriptor), "close", Name);
+      Build_Timing.Count (Build_Timing.Syncs);
    end Sync;
 
    function Process_Id return int is (c_getpid);
@@ -362,9 +377,12 @@ package body Build_Platform is
       Environment : aliased constant Argument_List (1 .. 1) := [others => Null_Ptr];
       Child : int;
       Status : aliased int := 0;
+      Usage : aliased Resource_Usage;
       Ignored : int;
    begin
       Vector (1 .. Arguments'Length) := Arguments;
+      Build_Timing.Count (Build_Timing.Spawns);
+      Build_Timing.Enter (Build_Timing.Spawn);
       Child := c_fork;
       if Child = 0 then
          if c_chdir (C_Directory) /= 0 then
@@ -384,13 +402,23 @@ package body Build_Platform is
          Ignored := c_execve (C_Program, Vector'Address, Environment'Address);
          c_exit (Exec_Failed_Status);
       end if;
+      Build_Timing.Leave;
       Free (C_Program); Free (C_Directory); Free (C_Output);
       if Child < 0 then
          raise Platform_Error with "fork " & Program;
       end if;
-      if c_waitpid (Child, Status'Access, 0) /= Child then
-         raise Platform_Error with "waitpid " & Program;
-      end if;
+      declare
+         Timed : Build_Timing.Scope (Build_Timing.Tool_Wait);
+         pragma Unreferenced (Timed);
+      begin
+         if c_wait4 (Child, Status'Access, 0, Usage'Access) /= Child then
+            raise Platform_Error with "waitpid " & Program;
+         end if;
+      end;
+      Build_Timing.Count
+        (Build_Timing.Tool_CPU_Us,
+         Interfaces.Unsigned_64'Mod ((Usage.User.Seconds + Usage.System_Time.Seconds) * Microseconds_Per_Second
+                                     + Usage.User.Microseconds + Usage.System_Time.Microseconds));
       --  WIFEXITED: no terminating signal in the low seven bits.
       if Integer (Status) mod (Signal_Mask + 1) = 0 then
          Exit_Status := Integer (Status) / Exit_Code_Shift mod Exit_Code_Range;
