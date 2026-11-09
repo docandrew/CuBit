@@ -248,6 +248,57 @@ begin
       Check (Checks_Out ("(gcc.outcome " & Gcc_Call & ")"), "a gcc run's outcome");
    end;
 
+   --  A program staged beneath a launch-table directory (an app built on
+   --  CuBit, tests/console-run-staged): named by its file, not its path;
+   --  no parameters, one text outlet, so its call is an empty record.
+   declare
+      Hello : PD.Signature;
+      Hello_Bound : Programs.Contracts;
+      Staged : constant String := "@system/work/remote/out/userspace/apps/hello/build/hello.app";
+      Greeting : constant String := "com.cubit.hello.greeting";
+      Run : constant String := "(hello.run (Hello_Parameters))";
+   begin
+      Hello.Connectors (0) :=
+        (Direction => PD.Outlet, Element => PD.Text_Lines, Signal => PD.Stream, Pages => 1,
+         Name => [others => ' '], Name_Length => Greeting'Length);
+      Hello.Connectors (0).Name (1 .. Greeting'Length) := Greeting;
+      Hello.Connector_Total := 1;
+      Check (Programs.Interface_Name (Staged) = "hello", "a staged program's interface name");
+      Check (Programs.Parameters_Type (Staged) = "Hello_Parameters", "a staged program's record name");
+      Programs.Publish (Catalog, Grants, 4, Staged, Hello, Hello_Bound, Error);
+      Check (Error = CCL.Catalog.Catalog_Valid, "a staged program publishes: " & Error'Image);
+      Check (Checks_Out (Run), "a call with no parameters checks");
+      Check (Compiles (Run), "a call with no parameters compiles and verifies");
+      Check (Links (Run), "hello.run links");
+      Check (Checks_Out ("(window 64 (hello.com.cubit.hello.greeting " & Run & "))"),
+             "its outlet by its qualified name");
+      Check (Links ("(hello.com.cubit.hello.greeting " & Run & ")"), "its outlet accessor links");
+      Check (not Checks_Out ("(hello.run (Hello_Parameters name => ""x""))"), "it takes no parameters");
+   end;
+
+   --  programs: refresh and check, typed (CCL.Interfaces.Programs).
+   declare
+      Directory : Programs.Directory_Contracts;
+   begin
+      Check (not Programs.Handles (Programs.REFRESH_BINDING)
+             and then not Programs.Handles (Programs.CHECK_BINDING),
+             "the directory's bindings are clear of every program's");
+      Programs.Publish_Directory (Catalog, Grants, Directory, Error);
+      Check (Error = CCL.Catalog.Catalog_Valid, "the programs directory publishes: " & Error'Image);
+      Check (Checks_Out ("(programs.refresh)"), "programs.refresh checks");
+      Check (Links ("(programs.refresh)"), "programs.refresh links");
+      Check (Checks_Out ("(length (programs.refresh))"),
+             "a refresh is a List<Program_Entry>");
+      Check (Checks_Out ("(where (fn ((p Program_Entry)) (= (field p state) Program_State.Refused)) " &
+                         "(programs.refresh))"), "entries have a Program_State");
+      Check (Checks_Out ("(programs.check (Input_File ""@system/work/generations/hello/1.app""))"),
+             "programs.check takes an Input_File");
+      Check (Links ("(field (programs.check (Input_File ""x"")) why)"), "programs.check links");
+      Check (not Checks_Out ("(programs.check ""x"")"), "a program name is an Input_File, not a String");
+      Programs.Publish_Directory (Catalog, Grants, Directory, Error);
+      Check (Error /= CCL.Catalog.Catalog_Valid, "the directory publishes once");
+   end;
+
    Put_Line ("ccl-programs:" & Checks'Image & " checks," & Failures'Image & " failures");
    if Failures /= 0 then
       raise Program_Error;

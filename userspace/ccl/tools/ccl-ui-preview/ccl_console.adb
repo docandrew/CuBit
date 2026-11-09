@@ -325,6 +325,30 @@ package body CCL_Console is
       (for some Task_Handle of Waited_On => CCL.Streams."=" (Task_Handle, Handle)));
    --  After every entry and live run: close the streams nothing binds.
    procedure Retain_Streams is new Host.Retain_Streams (Console_Holds);
+   --  programs.refresh asked for its programs to be published: build the
+   --  catalog anew, every interface with them, now that the entry ended,
+   --  and give it to the session. A catalog that does not build leaves the
+   --  old one in place.
+   Rebuilt_Interfaces : CCL.Catalog.Interface_Catalog;
+   Rebuilt_Grants : CCL.Catalog.Granted_Bindings;
+   procedure Apply_Program_Refresh is
+      Installed : Boolean;
+   begin
+      if not CCL_Program_Bindings.Refresh_Requested then return; end if;
+      CCL.Catalog.Initialize (Rebuilt_Interfaces);
+      CCL.Catalog.Initialize (Rebuilt_Grants);
+      Host.Install (Rebuilt_Interfaces, Rebuilt_Grants, Installed);
+      if Installed then Endpoints.Install (Rebuilt_Interfaces, Rebuilt_Grants, Installed); end if;
+      if Installed then
+         Visible_Interfaces := Rebuilt_Interfaces;
+         Granted_Interfaces := Rebuilt_Grants;
+         CCL_Console_View.Replace_Catalog (Console, Visible_Interfaces);
+         CCL_Log_IO.Announce ("ccl-console: programs republished");
+      else
+         CCL_Log_IO.Announce ("ccl-console: programs not republished: the catalog did not build");
+      end if;
+   end Apply_Program_Refresh;
+
    Canvas : CuBit.UI.Canvas :=
      (addr => System.Null_Address, width => WIDTH, height => HEIGHT,
       pitch => 0, clipEnabled => False, clip => (others => 0), others => <>);
@@ -492,6 +516,7 @@ package body CCL_Console is
                      Needs_Render := Needs_Render or else Redraw;
                      if Submitted then
                         Follow_Started (Console);
+                        Apply_Program_Refresh;
                         Retain_Streams;
                         Platform.REPL_Completed (CCL_Console_View.Latest_Result (Console));
                      end if;
@@ -517,7 +542,7 @@ package body CCL_Console is
                Redraw : Boolean;
             begin
                Resume_Waits (Console, Redraw);
-               if Redraw then Retain_Streams; end if;
+               if Redraw then Apply_Program_Refresh; Retain_Streams; end if;
                Needs_Render := Needs_Render or else Redraw;
             end;
             --  Live cells whose time has come.

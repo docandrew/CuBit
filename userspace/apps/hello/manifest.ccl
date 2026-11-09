@@ -1,8 +1,12 @@
 # hello: the smallest app built entirely on CuBit (SELF-002), its manifest
 # step included (tests/device-builds: no step answered from the host).
-# It says hello in a log record and on the console, then waits until it is
-# asked to stop (CuBit.Control_Events.Stop).
+# It says hello on its greeting outlet, in a log record and on the kernel
+# console, then exits 0. Its outlet gives it a program description, so a
+# console whose launch table admits it (the staged builds,
+# tests/console-run-staged) offers it as the CCL interface hello:
+# (hello.run (Hello_Parameters)), its text in (hello.com.cubit.hello.greeting r).
 (Executable_Manifest
   identity => "com.cubit.hello"
   version => "0.1.0"
-  requests => [(service "logstore" "logstore")])
+  requests => [(service "logstore" "logstore")]
+  outlets => [(Outlet "com.cubit.hello.greeting" Element.Text pages => 1)])

@@ -2,11 +2,23 @@
 --  CuBit. Program interfaces appear only where CuBit's procmgr describes
 --  them (native/ccl_launcher.adb).
 package body CCL_Launcher is
-   procedure Programs (Items : out Program_Array; Count : out Program_Count) is
+   procedure Programs (Items : out Program_Array; Count : out Program_Count; More : out Boolean) is
    begin
       Items := [others => (others => <>)];
       Count := 0;
+      More := False;
    end Programs;
+
+   procedure Check (Name : String; Item : out Program) is
+      Text : constant String := "the Linux preview starts no CuBit programs";
+   begin
+      Item := (others => <>);
+      Item.Length := Natural'Min (Name'Length, MAXIMUM_NAME);
+      Item.Name (1 .. Item.Length) := Name (Name'First .. Name'First + Item.Length - 1);
+      Item.State := Refused;
+      Item.Why (1 .. Text'Length) := Text;
+      Item.Why_Length := Text'Length;
+   end Check;
 
    procedure Start
      (Name : String; Description : PD.Signature; V : PD.Values;

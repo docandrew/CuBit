@@ -7,7 +7,9 @@ with CCL_Stream_Table;
 --  their descriptions (CCL.Interfaces.Programs), over the platform's
 --  CCL_Launcher: ld.run starts a program with typed parameters, each connector
 --  accessor answers with that run's stream, and Pump feeds the streams from
---  the programs' outlets and completes their outcomes.
+--  the programs' outlets and completes their outcomes. programs.refresh and
+--  programs.check (CCL.Interfaces.Programs) look at what may be launched
+--  while the front end runs: staged builds appear and go.
 package CCL_Program_Bindings is
    procedure Install
      (Catalog : in out CCL.Catalog.Interface_Catalog;
@@ -17,6 +19,14 @@ package CCL_Program_Bindings is
      (Binding : Interfaces.Unsigned_32; Argument : CCL.Host_Values.Value;
       Streams : in out CCL_Stream_Table.Table;
       Reply : out CCL.Host_Values.Call_Result);
+   --  programs.refresh looked again and asked for its programs to be
+   --  published: the front end builds its catalog anew (Install, with every
+   --  other interface) once the entry that asked has ended, never under an
+   --  evaluation. Install then publishes what that refresh found, and this
+   --  is False again. A front end that does not rebuild keeps its programs
+   --  until it starts again.
+   function Refresh_Requested return Boolean;
+
    --  Deliver what the running programs wrote and how they ended. Arrived:
    --  at least one stream advanced.
    procedure Pump (Streams : in out CCL_Stream_Table.Table; Arrived : out Boolean);
@@ -27,7 +37,8 @@ package CCL_Program_Bindings is
    --  elements are Integers, else text, and the session stream that carries
    --  it), and each run's outcome (the session task). Program is the
    --  interface name; Launched and Pid (the identity) make the Run value.
-   MAXIMUM_NAME : constant := 48;
+   --  A launch name: a staged program's is its full name (CCL_Launcher).
+   MAXIMUM_NAME : constant := 255;
    type Started_Kind is (Outlet_Started, Outcome_Started);
    type Started_Outlet is record
       Kind : Started_Kind := Outlet_Started;

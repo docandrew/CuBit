@@ -265,4 +265,105 @@ package body CCL.Interfaces.Programs is
          Grant_Named (OUTLETS_OPERATION);
       end;
    end Publish;
+
+   procedure Publish_Directory
+     (Item : in out CCL.Catalog.Interface_Catalog;
+      Grants : in out CCL.Catalog.Granted_Bindings;
+      Bound : out Directory_Contracts; Error : out CCL.Catalog.Catalog_Error)
+   is
+      Checked : CCL.Language.Analysis_Result;
+      Types : CCL.Types.Registry;
+      Accepted : Boolean;
+      Result : CCL.Objects.Catalog.Publication_Result;
+      Descriptor : CCL.Catalog.Interface_Descriptor;
+      Operation : CCL.Catalog.Operation_Descriptor;
+      Resolved : CCL.Catalog.Resolved_Operation;
+      Found : Boolean;
+      Grant : CCL.Catalog.Grant_Result;
+      Digest : constant CCL.Objects.Schema_Key := Key_Of (DIRECTORY_SOURCE);
+
+      procedure Bind (Root : CCL.Types.Type_Reference; Key : CCL.Objects.Schema_Key;
+                      Contract : out CCL.Objects.Binding) is
+         Unbound : CCL.Objects.Binding;
+      begin
+         Contract := Unbound;
+         if Accepted then
+            CCL.Objects.Bind (Types, Root, Key, Contract, Accepted);
+         end if;
+         if Accepted then
+            CCL.Catalog.Publish_Schema (Item, Contract, Result);
+            Accepted := Result in CCL.Objects.Catalog.Published
+                                | CCL.Objects.Catalog.Already_Published;
+         end if;
+      end Bind;
+
+      procedure Add (Operation_Name : String; Parameters : CCL.Catalog.Parameter_Count;
+                     Contract : CCL.Host_Values.Import_Declaration) is
+      begin
+         if Error = CCL.Catalog.Catalog_Valid then
+            CCL.Catalog.Define_Host_Operation (Operation_Name, Parameters, Contract, Operation, Error);
+         end if;
+         if Error = CCL.Catalog.Catalog_Valid then
+            CCL.Catalog.Add_Operation (Descriptor, Operation, Error);
+         end if;
+      end Add;
+
+      procedure Grant_Named (Operation_Name : String; Binding : Unsigned_32) is
+      begin
+         if Error /= CCL.Catalog.Catalog_Valid then return; end if;
+         CCL.Catalog.Resolve (Item, DIRECTORY_INTERFACE & "." & Operation_Name, Resolved, Found);
+         if Found then
+            CCL.Catalog.Install (Grants, Resolved, Binding, Grant);
+         end if;
+         if not Found or else Grant /= CCL.Catalog.Grant_Added then
+            Error := CCL.Catalog.Invalid_Host_Contract;
+         end if;
+      end Grant_Named;
+   begin
+      Bound := (others => <>);
+      Error := CCL.Catalog.Invalid_Host_Contract;
+      CCL.Language.Analyze (DIRECTORY_SOURCE & " 0", Checked);
+      Accepted := CCL.Language.Analysis_Status_Of (Checked) = CCL.Language.Analysis_Succeeded;
+      if not Accepted then return; end if;
+      Types := CCL.Language.Analysis_Types (Checked);
+      Bind (CCL.Types.Find (Types, CCL.Types.Named ("Input_File")),
+            Key_Of (SHARED_SOURCE, "#Input_File"), Bound.Input_File);
+      Bind (CCL.Types.Find (Types, CCL.Types.Named ("Program_Entry")),
+            Key_Of (DIRECTORY_SOURCE, "#Program_Entry"), Bound.Program_Entry);
+      if Accepted then
+         declare
+            Listed : CCL.Types.List_Result;
+            List_Type : CCL.Types.Type_Reference;
+            use type CCL.Types.List_Result;
+         begin
+            CCL.Types.Specialize_List
+              (Types, CCL.Types.Find (Types, CCL.Types.Named ("Program_Entry")), List_Type, Listed);
+            Accepted := Listed in CCL.Types.List_Specialized | CCL.Types.List_Already_Specialized;
+            Bind (List_Type, Key_Of (DIRECTORY_SOURCE, "#List-Program_Entry"), Bound.Program_Entries);
+         end;
+      end if;
+      if not Accepted then return; end if;
+
+      CCL.Catalog.Define_Interface
+        (DIRECTORY_INTERFACE, 1, 0, [for W in CCL.Catalog.Descriptor_Digest'Range => Digest (W)],
+         Descriptor, Error);
+      --  Both look; neither starts anything. refresh takes the Integer zero
+      --  of a parameterless call.
+      Add (REFRESH_OPERATION, 0,
+           (Argument => CCL.Host_Values.Integer_Value,
+            Result => CCL.Host_Values.Object_Value,
+            Result_Schema => CCL.Objects.Identity (Bound.Program_Entries),
+            Authority => CCL.VM.Observe_Authority, others => <>));
+      Add (CHECK_OPERATION, 1,
+           (Argument => CCL.Host_Values.Object_Value,
+            Argument_Schema => CCL.Objects.Identity (Bound.Input_File),
+            Result => CCL.Host_Values.Object_Value,
+            Result_Schema => CCL.Objects.Identity (Bound.Program_Entry),
+            Authority => CCL.VM.Observe_Authority, others => <>));
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Publish (Item, Descriptor, Error);
+      end if;
+      Grant_Named (REFRESH_OPERATION, REFRESH_BINDING);
+      Grant_Named (CHECK_OPERATION, CHECK_BINDING);
+   end Publish_Directory;
 end CCL.Interfaces.Programs;

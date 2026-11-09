@@ -34,6 +34,9 @@ package CCL_Console_View is
    type View_State is limited private;
    procedure Initialize
      (State : out View_State; Catalog : CCL.Catalog.Interface_Catalog);
+   --  The interfaces changed (programs.refresh): later entries, completion
+   --  and the status line use Catalog.
+   procedure Replace_Catalog (State : in out View_State; Catalog : CCL.Catalog.Interface_Catalog);
 
    --  Execute evaluates one entry (with the front end's grants and commands);
    --  Now_Ms times it. Redraw is set when the event changed what is shown.

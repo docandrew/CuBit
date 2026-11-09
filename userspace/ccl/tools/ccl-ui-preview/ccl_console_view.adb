@@ -301,6 +301,12 @@ package body CCL_Console_View is
    ---------------------------------------------------------------------------
    --  Lifecycle
    ---------------------------------------------------------------------------
+   procedure Replace_Catalog (State : in out View_State; Catalog : CCL.Catalog.Interface_Catalog) is
+   begin
+      CCL.Sessions.Replace_Catalog (State.Session, Catalog);
+      State.Visible_Interfaces := CCL.Catalog.Length (Catalog);
+   end Replace_Catalog;
+
    procedure Initialize
      (State : out View_State; Catalog : CCL.Catalog.Interface_Catalog)
    is

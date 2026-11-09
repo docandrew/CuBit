@@ -11,20 +11,49 @@ package CCL_Launcher is
    package PD renames CuBit.Program_Descriptions;
 
    MAXIMUM_PROGRAMS : constant := 16;
-   MAXIMUM_NAME : constant := 64;
+   --  A launch name: a table name ("ld.app") or a staged program's full
+   --  name ("@system/work/remote/out/userspace/apps/hello/build/hello.app").
+   MAXIMUM_NAME : constant := 255;
    subtype Name_Length is Natural range 0 .. MAXIMUM_NAME;
+   MAXIMUM_WHY : constant := 200;
+   subtype Why_Count is Natural range 0 .. MAXIMUM_WHY;
+   --  Whether it can be offered as an interface (CCL.Interfaces.Programs
+   --  .Program_State, whose Not_Published only the catalog decides).
+   type Program_State is (Ready, Refused, Not_Described);
    type Program is record
       Name : String (1 .. MAXIMUM_NAME) := [others => ' '];
       Length : Name_Length := 0;
+      --  Found beneath one of the launch table's staging directories
+      --  (CuBit.Launch_Authority.Admits_Staged), not named by it.
+      Staged : Boolean := False;
+      State : Program_State := Ready;
+      --  Not Ready: a sentence for the console.
+      Why : String (1 .. MAXIMUM_WHY) := [others => ' '];
+      Why_Length : Why_Count := 0;
       Description : PD.Signature;
    end record;
    subtype Program_Count is Natural range 0 .. MAXIMUM_PROGRAMS;
    type Program_Array is array (1 .. MAXIMUM_PROGRAMS) of Program;
 
-   --  What this process may start (its launch table), with each program's
-   --  description; programs without one, or with a malformed one, are left
-   --  out.
-   procedure Programs (Items : out Program_Array; Count : out Program_Count);
+   --  What this process may start: each name in its launch table, then
+   --  each program staged beneath the table's staging directories (an
+   --  ".app" file at most MAXIMUM_STAGING_DEPTH directories down, read
+   --  through this process's own filesystem scopes), each with its
+   --  description from procmgr, which runs the launch's admission for it
+   --  (a staged one: a read scope over it and the Desktop's "Allow app
+   --  replacement" switch). Looked at anew on every call: a program staged
+   --  or removed since is found or gone. Only Ready ones have a
+   --  Description. More: some did not fit MAXIMUM_PROGRAMS, or a staging
+   --  directory held more than the walk's ceilings.
+   MAXIMUM_STAGING_DEPTH : constant := 8;
+   MAXIMUM_STAGING_DIRECTORIES : constant := 64;
+   procedure Programs (Items : out Program_Array; Count : out Program_Count; More : out Boolean);
+
+   --  Program Name (a launch name), as Programs would report it: Refused
+   --  with why when this process may not start it (neither named by its
+   --  launch table nor beneath one of its staging directories, or procmgr
+   --  refused it). The program is not started.
+   procedure Check (Name : String; Item : out Program);
 
    MAXIMUM_RUNS : constant := 16;
    subtype Run_Index is Positive range 1 .. MAXIMUM_RUNS;

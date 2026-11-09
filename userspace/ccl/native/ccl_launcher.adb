@@ -11,6 +11,7 @@ with CuBit.Messages;
 with CuBit.Outlet_Rings;
 with CuBit.Stream_Regions;
 with CuBit.Streams;
+with CCL_Places;
 
 --  Programs on CuBit: the console's own launch table and each program's
 --  description from procmgr (CuBit.Launching); a run lends a ring for each
@@ -26,6 +27,9 @@ package body CCL_Launcher is
    use type PD.Element_Kind;
    use type PD.Check_Result;
    use type CuBit.Child_Exits.Termination_Kind;
+   use type LA.Launch_Failure;
+   use type CCL_Places.Result_Kind;
+   use type CCL_Places.Files.File_Kind;
 
    NEWLINE : constant Unsigned_8 := 10;
 
@@ -81,21 +85,124 @@ package body CCL_Launcher is
       return 0;
    end Take_Spare;
 
-   procedure Programs (Items : out Program_Array; Count : out Program_Count) is
+   procedure Set_Why (Item : in out Program; Text : String) is
+      Kept : constant Natural := Natural'Min (Text'Length, MAXIMUM_WHY);
+   begin
+      Item.Why := [others => ' '];
+      Item.Why (1 .. Kept) := Text (Text'First .. Text'First + Kept - 1);
+      Item.Why_Length := Kept;
+   end Set_Why;
+
+   --  Item for Name as procmgr describes it to this process: OP_DESCRIBE
+   --  runs the launch's own admission (the table, and for a staged
+   --  program a read scope over it and the Desktop's switch) before it
+   --  reads anything.
+   procedure Describe_Into (Name : String; Staged : Boolean; Item : out Program)
+   with Pre => Name'Length in 1 .. MAXIMUM_NAME
+   is
+      Descriptor : PD.Bytes (1 .. PD.Maximum_Descriptor_Bytes);
+      Described : PD.Descriptor_Length;
+      Result : CuBit.Launching.Launch_Result;
+      Failure : LA.Launch_Failure;
+      Decoded : Boolean;
+   begin
+      Item := (others => <>);
+      Item.Name (1 .. Name'Length) := Name;
+      Item.Length := Name'Length;
+      Item.Staged := Staged;
+      CuBit.Launching.Describe (Launcher, Name, Descriptor, Described, Result, Failure);
+      if Result /= CuBit.Launching.Launched then
+         Item.State := Refused;
+         Set_Why (Item,
+           (if Result = CuBit.Launching.No_Process_Manager
+            then "this process holds no process-manager grant"
+            elsif Failure = LA.Not_Granted and then Staged
+            then "procmgr does not admit this staged program: it needs a read scope over it " &
+                 "and the Desktop's Allow app replacement switch on"
+            elsif Failure = LA.Not_Granted
+            then "procmgr does not admit it: the launch table does not name it"
+            else CuBit.Launch_Failure_Text.Explanation (Failure)));
+      elsif Described = 0 then
+         Item.State := Not_Described;
+         Set_Why (Item, "it declares no parameters, inlets or outlets (no program description)");
+      else
+         PD.Decode (Descriptor (1 .. Described), Item.Description, Decoded);
+         if not Decoded then
+            Item.State := Not_Described;
+            Set_Why (Item, "its program description is malformed");
+         end if;
+      end if;
+   end Describe_Into;
+
+   --  The launch table procmgr holds for this process (Valid False: none).
+   procedure Read_Table
+     (Table : out LAuth.Table_Bytes; Length : out LAuth.Table_Length; Valid : out Boolean)
+   with Pre => Table'First = 1 and then Table'Length = LAuth.Maximum_Table_Bytes
+   is
+      Answered : CuBit.Launching.Launch_Result;
+   begin
+      CuBit.Launching.Launch_Table (Launcher, Table, Length, Answered);
+      Valid := Answered = CuBit.Launching.Launched and then Length > 0
+        and then LAuth.Valid (Table (1 .. Length));
+   end Read_Table;
+
+   function Ends_With (Text, Suffix : String) return Boolean is
+     (Text'Length >= Suffix'Length
+      and then Text (Text'Last - Suffix'Length + 1 .. Text'Last) = Suffix);
+
+   PROGRAM_SUFFIX : constant String := ".app";
+
+   --  One directory listing at a time: too large for the stack.
+   Listing : CCL_Places.Listing;
+
+   procedure Programs (Items : out Program_Array; Count : out Program_Count; More : out Boolean) is
       Table : LAuth.Table_Bytes (1 .. LAuth.Maximum_Table_Bytes);
       Length : LAuth.Table_Length;
-      Answered : CuBit.Launching.Launch_Result;
+      Valid : Boolean;
+
+      --  Directories still to walk, breadth first, with their depth below
+      --  the staging directory.
+      subtype Directory_Count is Natural range 0 .. MAXIMUM_STAGING_DIRECTORIES;
+      type Pending is record
+         Path : String (1 .. MAXIMUM_NAME) := [others => ' '];
+         Length : Name_Length := 0;
+         Depth : Natural range 0 .. MAXIMUM_STAGING_DEPTH := 0;
+      end record;
+      Queue : array (1 .. MAXIMUM_STAGING_DIRECTORIES) of Pending;
+      Queued, Walked : Directory_Count := 0;
+
+      procedure Add (Item : Program) is
+      begin
+         if Count = MAXIMUM_PROGRAMS then
+            More := True;
+         else
+            Count := Count + 1;
+            Items (Count) := Item;
+         end if;
+      end Add;
+
+      procedure Push (Path : String; Depth : Natural) is
+      begin
+         if Path'Length > MAXIMUM_NAME or else Depth > MAXIMUM_STAGING_DEPTH
+           or else Queued = MAXIMUM_STAGING_DIRECTORIES
+         then
+            More := True;
+         else
+            Queued := Queued + 1;
+            Queue (Queued).Path (1 .. Path'Length) := Path;
+            Queue (Queued).Length := Path'Length;
+            Queue (Queued).Depth := Depth;
+         end if;
+      end Push;
    begin
       Items := [others => (others => <>)];
       Count := 0;
-      CuBit.Launching.Launch_Table (Launcher, Table, Length, Answered);
-      if Answered /= CuBit.Launching.Launched or else Length = 0
-        or else not LAuth.Valid (Table (1 .. Length))
-      then
+      More := False;
+      Read_Table (Table, Length, Valid);
+      if not Valid then
          return;
       end if;
       for Index in 1 .. LAuth.Maximum_Names loop
-         exit when Count = MAXIMUM_PROGRAMS;
          declare
             First : Positive;
             Last : Natural;
@@ -106,31 +213,110 @@ package body CCL_Launcher is
             if Last - First + 1 in 1 .. MAXIMUM_NAME then
                declare
                   Name : String (1 .. Last - First + 1);
-                  Descriptor : PD.Bytes (1 .. PD.Maximum_Descriptor_Bytes);
-                  Described : PD.Descriptor_Length;
-                  Result : CuBit.Launching.Launch_Result;
-                  Failure : LA.Launch_Failure;
-                  Decoded : Boolean;
                   Item : Program;
                begin
                   for K in Name'Range loop
                      Name (K) := Character'Val (Table (First + K - 1));
                   end loop;
-                  CuBit.Launching.Describe (Launcher, Name, Descriptor, Described, Result, Failure);
-                  if Result = CuBit.Launching.Launched and then Described > 0 then
-                     PD.Decode (Descriptor (1 .. Described), Item.Description, Decoded);
-                     if Decoded then
-                        Item.Name (1 .. Name'Length) := Name;
-                        Item.Length := Name'Length;
-                        Count := Count + 1;
-                        Items (Count) := Item;
+                  if Name (Name'Last) = LAuth.Staging_Mark then
+                     --  A staging directory: walked below, its programs by
+                     --  their full names.
+                     if Name'Length > 1 then
+                        Push (Name (Name'First .. Name'Last - 1), 0);
                      end if;
+                  else
+                     Describe_Into (Name, False, Item);
+                     Add (Item);
                   end if;
                end;
             end if;
          end;
       end loop;
+      while Walked < Queued loop
+         Walked := Walked + 1;
+         declare
+            Directory : constant Pending := Queue (Walked);
+            Path : constant String := Directory.Path (1 .. Directory.Length);
+            Listed : CCL_Places.Listed_Count;
+            Total : Natural;
+            Result : CCL_Places.Result_Kind;
+         begin
+            CCL_Places.List (Path, Listing, Listed, Total, Result);
+            --  Not_Found: nothing staged yet. Access_Denied: the manifest
+            --  names the directory but holds no read scope over it, so
+            --  procmgr would refuse its programs anyway.
+            if Result = CCL_Places.Listed_All then
+               More := More or else Total > Listed;
+               for E in 1 .. Listed loop
+                  declare
+                     Child : CCL_Places.Listed renames Listing (E);
+                     Child_Name : constant String := Child.Name (1 .. Child.Name_Length);
+                     Full : constant String := Path & "/" & Child_Name;
+                     Item : Program;
+                  begin
+                     if Child_Name'Length = 0 or else Child_Name = "." or else Child_Name = ".." then
+                        null;
+                     elsif Child.Kind = CCL_Places.Files.Directory then
+                        if Directory.Depth < MAXIMUM_STAGING_DEPTH then
+                           Push (Full, Directory.Depth + 1);
+                        end if;
+                     elsif Child.Kind = CCL_Places.Files.File
+                       and then Ends_With (Child_Name, PROGRAM_SUFFIX)
+                     then
+                        if Full'Length <= MAXIMUM_NAME then
+                           Describe_Into (Full, True, Item);
+                           Add (Item);
+                        else
+                           More := True;
+                        end if;
+                     end if;
+                  end;
+               end loop;
+            elsif Result /= CCL_Places.Not_Found then
+               CuBit.Messages.debugPrint
+                 ("ccl-launcher: staging directory " & Path & " not listed (" & Result'Image & ")" &
+                  ASCII.LF);
+            end if;
+         end;
+      end loop;
+      if More then
+         CuBit.Messages.debugPrint
+           ("ccl-launcher: more programs than" & MAXIMUM_PROGRAMS'Image & ", or a staging directory " &
+            "past the walk's ceilings (depth" & MAXIMUM_STAGING_DEPTH'Image & "," &
+            MAXIMUM_STAGING_DIRECTORIES'Image & " directories): the rest are not offered" & ASCII.LF);
+      end if;
    end Programs;
+
+   procedure Check (Name : String; Item : out Program) is
+      Table : LAuth.Table_Bytes (1 .. LAuth.Maximum_Table_Bytes);
+      Length : LAuth.Table_Length;
+      Valid : Boolean;
+      Named, Staged : Boolean := False;
+   begin
+      Item := (others => <>);
+      if Name'Length not in 1 .. MAXIMUM_NAME then
+         Item.State := Refused;
+         Set_Why (Item, "that is not a program name (1 to" & MAXIMUM_NAME'Image & " bytes)");
+         return;
+      end if;
+      Read_Table (Table, Length, Valid);
+      if Valid then
+         Named := LAuth.Contains (Table (1 .. Length), Name);
+         Staged := not Named and then LAuth.Admits_Staged (Table (1 .. Length), Name);
+      end if;
+      --  procmgr decides either way; only the sentence is this process's.
+      Describe_Into (Name, Staged, Item);
+      if Item.State = Refused and then not Named and then not Staged then
+         Set_Why (Item,
+           (if not Valid then "this process has no launch table"
+            else "it is neither named by this process's launch table nor beneath one of its " &
+                 "staging directories"));
+      end if;
+      if Item.State = Refused then
+         CuBit.Messages.debugPrint
+           ("ccl-launcher: " & Name & " refused: " & Item.Why (1 .. Item.Why_Length) & ASCII.LF);
+      end if;
+   end Check;
 
    procedure Say (Why : out String; Why_Length : out Natural; Text : String) is
       Kept : constant Natural := Natural'Min (Text'Length, Why'Length);

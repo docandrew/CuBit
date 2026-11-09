@@ -32,6 +32,13 @@ package CCL.Sessions with SPARK_Mode is
    procedure Initialize (Item : out Session);
    procedure Initialize
      (Item : out Session; Visible_Interfaces : CCL.Catalog.Interface_Catalog);
+   --  The front end's interfaces changed while the session runs (its
+   --  programs, after programs.refresh): later entries check against
+   --  Visible_Interfaces. History and the kept environment stay; a kept
+   --  definition that names an interface no longer there stops checking
+   --  until it is redefined or the environment is reset.
+   procedure Replace_Catalog
+     (Item : in out Session; Visible_Interfaces : CCL.Catalog.Interface_Catalog);
    procedure Clear_History (Item : in out Session);
 
    --  The session environment (docs/ccl-repl.md, "Persistent session"):

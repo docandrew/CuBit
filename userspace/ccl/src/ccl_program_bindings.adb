@@ -24,11 +24,29 @@ package body CCL_Program_Bindings is
    use type PD.Kind;
    use type PD.Connector_Direction;
    use type PD.Element_Kind;
+   use type Programs.Program_State;
 
-   --  The programs published, by binding program index.
-   Known : CCL_Launcher.Program_Array;
-   Known_Count : CCL_Launcher.Program_Count := 0;
+   --  The programs published, by binding program index. An index keeps
+   --  its program across refreshes while the program is still there, and a
+   --  program that went away keeps its index (not published) while a run
+   --  this session follows refers to it.
+   type Program_Slot is record
+      Item : CCL_Launcher.Program;     --  Length 0: free
+      Published : Boolean := False;
+   end record;
+   Slots : array (Programs.Program_Index) of Program_Slot;
    Bound : array (Programs.Program_Index) of Programs.Contracts;
+   Directory : Programs.Directory_Contracts;
+
+   --  The last look at what this process may launch (programs.refresh, or
+   --  the first Install), each with the state programs.refresh reports.
+   Found : CCL_Launcher.Program_Array;
+   Found_Count : CCL_Launcher.Program_Count := 0;
+   Found_More : Boolean := False;
+   Found_State : array (1 .. CCL_Launcher.MAXIMUM_PROGRAMS) of Programs.Program_State :=
+     [others => Programs.Ready];
+   --  Install publishes Found as it is instead of looking again.
+   Pending_Refresh : Boolean := False;
 
    --  A run this session follows: its streams by connector, and its
    --  outcome (a task).
@@ -104,35 +122,140 @@ package body CCL_Program_Bindings is
    end Take_Started;
 
    function Handles (Binding : Unsigned_32) return Boolean is
-     (Programs.Handles (Binding)
-      and then Natural (Programs.Program_Of (Binding)) < Known_Count);
+     (Binding in Programs.REFRESH_BINDING | Programs.CHECK_BINDING
+      or else (Programs.Handles (Binding) and then Slots (Programs.Program_Of (Binding)).Published));
+
+   function Refresh_Requested return Boolean is (Pending_Refresh);
+
+   procedure Set_Why (Item : in out CCL_Launcher.Program; Text : String) is
+      Kept : constant Natural := Natural'Min (Text'Length, CCL_Launcher.MAXIMUM_WHY);
+   begin
+      Item.Why := [others => ' '];
+      Item.Why (1 .. Kept) := Text (Text'First .. Text'First + Kept - 1);
+      Item.Why_Length := Kept;
+   end Set_Why;
+
+   function Name_Of (Item : CCL_Launcher.Program) return String is (Item.Name (1 .. Item.Length));
+
+   --  Look again: the launch table's programs and the staged ones.
+   procedure Scan is
+      use type CCL_Launcher.Program_State;
+   begin
+      CCL_Launcher.Programs (Found, Found_Count, Found_More);
+      for I in 1 .. Found_Count loop
+         Found_State (I) :=
+           (case Found (I).State is
+               when CCL_Launcher.Ready => Programs.Ready,
+               when CCL_Launcher.Refused => Programs.Refused,
+               when CCL_Launcher.Not_Described => Programs.Not_Described);
+         --  Two programs of one name (a table program and a build of it,
+         --  or two builds): the first keeps it, as Install would.
+         if Found (I).State = CCL_Launcher.Ready then
+            declare
+               Name : constant String := Programs.Interface_Name (Name_Of (Found (I)));
+            begin
+               if Name = Programs.DIRECTORY_INTERFACE then
+                  Found_State (I) := Programs.Not_Published;
+               end if;
+               for J in 1 .. I - 1 loop
+                  if Found_State (J) = Programs.Ready
+                    and then Programs.Interface_Name (Name_Of (Found (J))) = Name
+                  then
+                     Found_State (I) := Programs.Not_Published;
+                  end if;
+               end loop;
+               if Found_State (I) = Programs.Not_Published then
+                  Set_Why (Found (I), "another program is published as " & Name);
+               end if;
+            end;
+         end if;
+      end loop;
+   end Scan;
 
    procedure Install
      (Catalog : in out CCL.Catalog.Interface_Catalog;
       Grants : in out CCL.Catalog.Granted_Bindings; Success : out Boolean)
    is
       Error : CCL.Catalog.Catalog_Error;
-      Items : CCL_Launcher.Program_Array;
-      Count : CCL_Launcher.Program_Count;
-   begin
-      Success := True;
-      Known_Count := 0;
-      CCL_Launcher.Programs (Items, Count);
-      --  A program whose interface does not publish (a name that is not a
-      --  CCL name, a clash) is left out; the others still appear.
-      for I in 1 .. Count loop
+      Taken : array (Programs.Program_Index) of Boolean := [others => False];
+      Placed : array (1 .. CCL_Launcher.MAXIMUM_PROGRAMS) of Boolean := [others => False];
+
+      --  A run this session follows refers to the program at Index.
+      function Referenced (Index : Programs.Program_Index) return Boolean is
+        (for some F of Runs => F.Active and then F.Program = Index);
+
+      --  Publish Found (I) at Index. One whose interface does not publish
+      --  (a name that is not a CCL name, a clash) is left out; the others
+      --  still appear.
+      procedure Place (Index : Programs.Program_Index; I : Positive) is
+         Kept : constant Programs.Contracts := Bound (Index);
+      begin
+         Taken (Index) := True;
+         Placed (I) := True;
          Programs.Publish
-           (Catalog, Grants, Known_Count, Items (I).Name (1 .. Items (I).Length),
-            Items (I).Description, Bound (Known_Count), Error);
+           (Catalog, Grants, Index, Name_Of (Found (I)), Found (I).Description, Bound (Index), Error);
          if Error = CCL.Catalog.Catalog_Valid then
-            Known (Known_Count + 1) := Items (I);
-            Known_Count := Known_Count + 1;
+            Slots (Index) := (Item => Found (I), Published => True);
+         else
+            Bound (Index) := Kept;
+            Taken (Index) := False;
+            Found_State (I) := Programs.Not_Published;
+            Set_Why (Found (I), "its interface " & Programs.Interface_Name (Name_Of (Found (I))) &
+                     " does not publish (" & Error'Image & "): not a CCL name, or one another " &
+                     "interface holds");
+         end if;
+      end Place;
+   begin
+      Programs.Publish_Directory (Catalog, Grants, Directory, Error);
+      Success := Error = CCL.Catalog.Catalog_Valid;
+      if not Success then return; end if;
+      if not Pending_Refresh then
+         Scan;
+      end if;
+      Pending_Refresh := False;
+      for S of Slots loop
+         S.Published := False;
+      end loop;
+      --  A program still there keeps its index.
+      for I in 1 .. Found_Count loop
+         if Found_State (I) = Programs.Ready then
+            for Index in Programs.Program_Index loop
+               if not Taken (Index) and then Slots (Index).Item.Length > 0
+                 and then Name_Of (Slots (Index).Item) = Name_Of (Found (I))
+               then
+                  Place (Index, I);
+                  exit;
+               end if;
+            end loop;
+         end if;
+      end loop;
+      --  A new one takes a free index, or one whose program went away and
+      --  no followed run refers to.
+      for I in 1 .. Found_Count loop
+         if Found_State (I) = Programs.Ready and then not Placed (I) then
+            for Index in Programs.Program_Index loop
+               if not Taken (Index)
+                 and then (Slots (Index).Item.Length = 0 or else not Referenced (Index))
+               then
+                  Place (Index, I);
+                  exit;
+               end if;
+            end loop;
+            if not Placed (I) then
+               Found_State (I) := Programs.Not_Published;
+               Set_Why (Found (I), "every program index is taken");
+            end if;
+         end if;
+      end loop;
+      for Index in Programs.Program_Index loop
+         if not Taken (Index) and then not Referenced (Index) then
+            Slots (Index) := (others => <>);
          end if;
       end loop;
    end Install;
 
    function Program_At (Index : Programs.Program_Index) return CCL_Launcher.Program is
-     (Known (Index + 1));
+     (Slots (Index).Item);
 
    --  The call's values from a captured parameters record: its fields are
    --  the parameters in order.
@@ -404,6 +527,81 @@ package body CCL_Program_Bindings is
       Reply.Why := Failures.Failed (Failures.Not_Found, "this session does not follow that run");
    end Run_Outlets;
 
+   --  One Program_Entry's cells: its interface name, its launch name,
+   --  whether it is staged, its state and why.
+   procedure Put_Entry
+     (Image : in out CCL.Objects.Image; Item : CCL_Launcher.Program; State : Programs.Program_State;
+      Step : in out CCL.Objects.Build_Result)
+   is
+      procedure Put (C : CCL.Objects.Cell) is
+      begin
+         if Step = CCL.Objects.Added then CCL.Objects.Append (Image, C, Step); end if;
+      end Put;
+      procedure Put_Text (Text : String) is
+      begin
+         if Step = CCL.Objects.Added then CCL.Objects.Append_Text (Image, Text, Step); end if;
+      end Put_Text;
+   begin
+      Put (CCL.Objects.Product_Cell (Programs.PROGRAM_ENTRY_FIELDS));
+      Put_Text (Programs.Interface_Name (Name_Of (Item)));
+      Put_Text (Name_Of (Item));
+      Put (CCL.Objects.Boolean_Cell (Item.Staged));
+      Put (CCL.Objects.Variant_Cell (Programs.Program_State'Pos (State) + 1));
+      Put (CCL.Objects.Unit_Cell);
+      Put_Text (Item.Why (1 .. Item.Why_Length));
+   end Put_Entry;
+
+   --  programs.refresh: look again, answer what was found, and have the
+   --  front end publish it once this entry has ended.
+   procedure Refresh (Reply : in out CCL.Host_Values.Call_Result) is
+      Image : CCL.Objects.Image := CCL.Objects.Empty (Directory.Program_Entries);
+      Step : CCL.Objects.Build_Result := CCL.Objects.Added;
+   begin
+      Scan;
+      Pending_Refresh := True;
+      CCL.Objects.Append (Image, CCL.Objects.Sequence_Cell (Found_Count), Step);
+      for I in 1 .. Found_Count loop
+         Put_Entry (Image, Found (I), Found_State (I), Step);
+      end loop;
+      if Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Directory.Program_Entries) then
+         Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
+      else
+         Reply.Why := Failures.Failed (Failures.Exhausted, "the programs do not fit one result");
+      end if;
+   end Refresh;
+
+   --  programs.check: whether this process may start the program named.
+   procedure Check (Argument : CCL.Host_Values.Value; Reply : in out CCL.Host_Values.Call_Result) is
+      use type CCL_Launcher.Program_State;
+      Object : Views.Snapshot;
+      Captured : Boolean := False;
+      Item : CCL_Launcher.Program;
+      State : Programs.Program_State;
+      Image : CCL.Objects.Image := CCL.Objects.Empty (Directory.Program_Entry);
+      Step : CCL.Objects.Build_Result := CCL.Objects.Added;
+   begin
+      if Argument.Kind = CCL.Host_Values.Object_Value then
+         Views.Capture (Object, Directory.Input_File, Argument.Object, Captured);
+      end if;
+      if not Captured then
+         Reply.Why := Failures.Failed (Failures.Invalid_Argument, "that is not an Input_File");
+         return;
+      end if;
+      CCL_Launcher.Check
+        (Views.Text (Object, Views.Field (Object, Views.Root (Object), Programs.FILE_FIELDS)), Item);
+      State :=
+        (case Item.State is
+            when CCL_Launcher.Ready => Programs.Ready,
+            when CCL_Launcher.Refused => Programs.Refused,
+            when CCL_Launcher.Not_Described => Programs.Not_Described);
+      Put_Entry (Image, Item, State, Step);
+      if Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Directory.Program_Entry) then
+         Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
+      else
+         Reply.Why := Failures.Failed (Failures.Exhausted, "the answer does not fit one result");
+      end if;
+   end Check;
+
    procedure Invoke
      (Binding : Unsigned_32; Argument : CCL.Host_Values.Value;
       Streams : in out CCL_Stream_Table.Table;
@@ -411,7 +609,11 @@ package body CCL_Program_Bindings is
    begin
       Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
       if not Handles (Binding) then return; end if;
-      if Programs.Number_Of (Binding) = 0 then
+      if Binding = Programs.REFRESH_BINDING then
+         Refresh (Reply);
+      elsif Binding = Programs.CHECK_BINDING then
+         Check (Argument, Reply);
+      elsif Programs.Number_Of (Binding) = 0 then
          Run_Program (Programs.Program_Of (Binding), Argument, Streams, Reply);
       elsif Programs.Number_Of (Binding) = Programs.OUTLETS_NUMBER then
          Run_Outlets (Programs.Program_Of (Binding), Argument, Streams, Reply);

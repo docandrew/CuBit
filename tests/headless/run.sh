@@ -81,7 +81,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, console-run-staged, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, threads, futex, secondary-stacks, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -330,7 +330,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|secondary-stacks|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|console-run-staged)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -697,13 +697,18 @@ with open(sys.argv[1], "wb") as f:
         # (tests/service-switch/service_switch.py).
         INIT_PROFILE="$ROOT_DIR/tests/service-switch/init.ccl"
         ;;
-    device-build)
+    device-build|console-run-staged)
         # SELF-002: an app built ON CuBit through ccl-remote, with the
         # toolchain, Storehouse and workspace on an installed root on QEMU's
         # UFS disk, which the filesystem names @system (tests/device-builds;
         # the disk is made below, once build.sh has made its root).
-        # gnat1 is a large image procmgr reads whole.
+        # gnat1 is a large image procmgr reads whole. console-run-staged:
+        # the same machine with the CCL console, which runs the builds
+        # (tests/console-run-staged).
         INIT_PROFILE="$ROOT_DIR/tests/device-builds/init.ccl"
+        if [ "$TEST_NAME" = "console-run-staged" ]; then
+            INIT_PROFILE="$ROOT_DIR/tests/console-run-staged/init.ccl"
+        fi
         QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         TEMP_UFS_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-device-build-ufs.XXXXXX.img")"
         UFS_ARGS=(-drive "file=$TEMP_UFS_DISK,if=none,id=ufs0,format=raw"
@@ -1428,7 +1433,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "virtio-vga-primary" ] ||
        [ "$TEST_NAME" = "usb-hotplug" ] ||
        [ "$TEST_NAME" = "remote-screenshot" ] ||
-       [ "$TEST_NAME" = "device-build" ] ||
+       [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "console-run-staged" ] ||
        [ "$TEST_NAME" = "boot-timeline" ]; then
         for DESKTOP_TEST_IMAGE_NAME in display.svc desktop.svc virtio-gpu.drv; do
             DESKTOP_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DESKTOP_TEST_IMAGE_NAME"
@@ -1900,17 +1905,24 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
-    if [ "$TEST_NAME" = "device-build" ]; then
+    if [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "console-run-staged" ]; then
         # The programs on the development disk; the toolchain, Storehouse
         # and workspace on the UFS disk's root (tests/device-builds/build.sh).
-        if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest ccl-build ccl-remote >/dev/null ||
+        DEVICE_BUILD_IMAGES="ccl-remote.app clock.svc logstore.svc ccl-build.app"
+        DEVICE_BUILD_TARGETS="libc user_runtime ccl-manifest ccl-build ccl-remote"
+        if [ "$TEST_NAME" = "console-run-staged" ]; then
+            DEVICE_BUILD_IMAGES="$DEVICE_BUILD_IMAGES ccl-console.app"
+            DEVICE_BUILD_TARGETS="$DEVICE_BUILD_TARGETS ccl-console"
+        fi
+        # shellcheck disable=SC2086
+        if ! make -C "$KERNEL_DIR" $DEVICE_BUILD_TARGETS >/dev/null ||
            ! bash "$ROOT_DIR/tests/device-builds/build.sh" "$KERNEL_DIR/isodir/boot" ||
            ! python3 -I "$ROOT_DIR/tests/device-builds/make-disk.py" "$TEMP_UFS_DISK" \
                "$ROOT_DIR/tests/device-builds/build/root.ext2"; then
             echo "headless: failed to build the device-build test" >&2
             exit 1
         fi
-        for DEVICE_BUILD_IMAGE in ccl-remote.app clock.svc logstore.svc ccl-build.app; do
+        for DEVICE_BUILD_IMAGE in $DEVICE_BUILD_IMAGES; do
             debugfs -w -R "rm $DEVICE_BUILD_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$DEVICE_BUILD_IMAGE $DEVICE_BUILD_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
@@ -2909,7 +2921,7 @@ if [ "$TEST_NAME" = "storage-grants" ]; then
         exit 1
     fi
 fi
-if [ "$TEST_NAME" = "device-build" ]; then
+if [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "console-run-staged" ]; then
     # The development bootstrap set with storage.system-volume = ufs:0.
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/device-builds/initrd.ccl" \
@@ -4887,6 +4899,19 @@ if [ "$TEST_NAME" = "device-build" ]; then
         "$ROOT_DIR/tests/device-builds/build" &
     INPUT_INJECTOR_PID=$!
 fi
+if [ "$TEST_NAME" = "console-run-staged" ]; then
+    # As device-build: the guest's port 8445 from the host's loopback; the
+    # driver pairs, builds hello on CuBit, types into the CCL console over
+    # QMP (the Desktop's switch turned on by a click) and quits QEMU.
+    CONSOLE_RUN_PORT="${CONSOLE_RUN_PORT:-18450}"
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:$CONSOLE_RUN_PORT-10.0.2.15:8445"
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/console-run-staged/console_run.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$CONSOLE_RUN_PORT" \
+        "$ROOT_DIR/tests/device-builds/build" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "network-authority" ]; then
     NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18444-10.0.2.15:8080"
     python3 "$ROOT_DIR/tests/network-authority/peer.py" "$SERIAL_LOG" &
@@ -5174,6 +5199,20 @@ swap-probe: build 2 running
 ccl-remote: host app rollback swap-probe
 ccl-remote: host build userspace/apps/hello/component.ccl
 hello: hello from an app built on CuBit
+"
+        ;;
+    console-run-staged)
+        required_markers="
+devmgr: disk 0 attached as @ufs:0 (writable)
+FS Server: @system is @ufs:0
+ccl-remote: a host paired
+ccl-console: first frame presented
+ccl-remote: host build userspace/apps/hello/component.ccl
+procmgr: staged app launches allowed by the Desktop switch
+procmgr: staged program @system/work/remote/out/userspace/apps/hello/build/hello.app
+hello: hello from an app built on CuBit
+hello: rebuilt on CuBit, run again from the console
+ccl-launcher: @system/work/generations/hello/1.app refused:
 "
         ;;
     service-switch)
@@ -7294,7 +7333,7 @@ CPU Vendor: ${expected_vendor%%,*}"
         ;;
 esac
 if { [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "service-switch" ] \
-       || [ "$TEST_NAME" = "service-switch-reboot" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
+       || [ "$TEST_NAME" = "service-switch-reboot" ] || [ "$TEST_NAME" = "console-run-staged" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
     # The host driver's own checks (its PASS/FAIL lines above) gate too.
     if ! wait "$INPUT_INJECTOR_PID"; then
         INPUT_INJECTOR_PID=""

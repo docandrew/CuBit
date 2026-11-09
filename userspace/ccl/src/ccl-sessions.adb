@@ -24,6 +24,12 @@ package body CCL.Sessions with SPARK_Mode is
       Item := (Catalog => Visible_Interfaces, others => <>);
    end Initialize;
 
+   procedure Replace_Catalog
+     (Item : in out Session; Visible_Interfaces : CCL.Catalog.Interface_Catalog) is
+   begin
+      Item.Catalog := Visible_Interfaces;
+   end Replace_Catalog;
+
    procedure Clear_History (Item : in out Session) is
    begin
       Item.Entries := [others => <>];

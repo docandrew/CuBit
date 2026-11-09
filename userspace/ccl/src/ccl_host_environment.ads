@@ -46,6 +46,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Install.PUBLISHED_INTERFACES + CCL.Interfaces.Clock.PUBLISHED_INTERFACES +
      CCL.Interfaces.Timer.PUBLISHED_INTERFACES +
      CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_INTERFACES +
+     CCL.Interfaces.Programs.DIRECTORY_INTERFACES +
      CCL.Interfaces.Console.PUBLISHED_INTERFACES +
      CCL.Interfaces.Llm.PUBLISHED_INTERFACES + CCL.Interfaces.Secrets.PUBLISHED_INTERFACES +
      CCL.Interfaces.Agent.PUBLISHED_INTERFACES;
@@ -59,6 +60,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Install.PUBLISHED_SCHEMAS + CCL.Interfaces.Clock.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Timer.PUBLISHED_SCHEMAS + CCL.Interfaces.Programs.SHARED_SCHEMAS +
      CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_SCHEMAS +
+     CCL.Interfaces.Programs.DIRECTORY_SCHEMAS +
      CCL.Interfaces.Console.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Llm.PUBLISHED_SCHEMAS + CCL.Interfaces.Secrets.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Agent.PUBLISHED_SCHEMAS;
@@ -72,6 +74,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Install.PUBLISHED_TYPES + CCL.Interfaces.Clock.PUBLISHED_TYPES +
      CCL.Interfaces.Timer.PUBLISHED_TYPES + CCL.Interfaces.Programs.SHARED_TYPES +
      CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_TYPES +
+     CCL.Interfaces.Programs.DIRECTORY_TYPES +
      CCL.Interfaces.Console.PUBLISHED_TYPES +
      CCL.Interfaces.Llm.PUBLISHED_TYPES + CCL.Interfaces.Secrets.PUBLISHED_TYPES +
      CCL.Interfaces.Agent.PUBLISHED_TYPES;

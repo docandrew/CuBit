@@ -46,8 +46,15 @@
     (filesystem [File_Right.Read] "@nvme:0/toolchain")
     # bible.*: the Bible's translations (APP-005), read only.
     (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-bible/")
-    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")]
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")
+    # Apps built on this machine (ccl-build's products, cubit-remote put):
+    # read only, the staging area alone, not the rest of @system/work.
+    (filesystem [File_Right.Read] "@system/work/remote/out")]
   # Each becomes a CCL interface generated from its description: as.run,
   # ld.run, gcc.run (named by the last component), and their ports
-  # (as.unix.stderr ...).
-  may_launch => [(Launch "as.app") (Launch "ld.app") (Launch "toolchain/bin/gcc")])
+  # (as.unix.stderr ...). The staging directory admits the programs built
+  # beneath it (hello.run for out/userspace/apps/hello/build/hello.app),
+  # found again by (programs.refresh); procmgr starts one only with the
+  # read scope above and the Desktop's Allow app replacement switch on.
+  may_launch => [(Launch "as.app") (Launch "ld.app") (Launch "toolchain/bin/gcc")
+    (Launch "@system/work/remote/out/")])

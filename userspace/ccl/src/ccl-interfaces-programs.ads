@@ -116,6 +116,54 @@ package CCL.Interfaces.Programs is
    --  The generated source for Program (for tests and the console's help).
    function Type_Source (Program : String; Description : PD.Signature) return String;
 
+   ---------------------------------------------------------------------------
+   --  programs: what this front end may launch, looked at again while it
+   --  runs (staged builds appear and disappear: docs/ccl-launch-parameters.md,
+   --  tests/console-run-staged).
+   --    programs.refresh   -> List<Program_Entry>: every program the launch
+   --                          table names and every one staged beneath its
+   --                          staging directories, each with its state; the
+   --                          front end publishes the Ready ones' interfaces
+   --                          in place of the old ones once the entry ends
+   --                          (a catalog never changes under an evaluation).
+   --    programs.check     Input_File -> Program_Entry: whether this front
+   --                          end may start that program, and why not.
+   --  Program_State: Ready (described: its interface is published), Refused
+   --  (procmgr will not start it for this front end: why says), Not_Described
+   --  (it declares no parameters or connectors, so it has no interface), or
+   --  Not_Published (its interface does not publish: a name that is not a
+   --  CCL name, or one another interface holds).
+   ---------------------------------------------------------------------------
+   DIRECTORY_INTERFACE : constant String := "programs";
+   DIRECTORY_SOURCE : constant String :=
+     SHARED_SOURCE &
+     " (type Program_State (enum Ready Refused Not_Described Not_Published))" &
+     " (type Program_Entry (record (name String) (program String) (staged Boolean)" &
+     " (state Program_State) (why String)))";
+   type Program_State is (Ready, Refused, Not_Described, Not_Published);
+   PROGRAM_ENTRY_FIELDS : constant := 5;
+   REFRESH_OPERATION : constant String := "refresh";
+   CHECK_OPERATION : constant String := "check";
+   --  At the top of the programs block, clear of every program's bindings.
+   REFRESH_BINDING : constant Unsigned_32 :=
+     CCL.Binding_Blocks.Base (CCL.Binding_Blocks.Programs) + CCL.Binding_Blocks.BLOCK_WIDTH - 2;
+   CHECK_BINDING : constant Unsigned_32 := REFRESH_BINDING + 1;
+   --  (tests/ccl-programs checks that no program's binding is one of these.)
+   --  What Publish_Directory adds: its interface; the schemas of
+   --  Program_Entry and List<Program_Entry> (Input_File's is shared); the
+   --  types Program_State, Program_Entry and List<Program_Entry>.
+   DIRECTORY_INTERFACES : constant := 1;
+   DIRECTORY_SCHEMAS : constant := 2;
+   DIRECTORY_TYPES : constant := 3;
+
+   type Directory_Contracts is record
+      Input_File, Program_Entry, Program_Entries : CCL.Objects.Binding;
+   end record;
+   procedure Publish_Directory
+     (Item : in out CCL.Catalog.Interface_Catalog;
+      Grants : in out CCL.Catalog.Granted_Bindings;
+      Bound : out Directory_Contracts; Error : out CCL.Catalog.Catalog_Error);
+
    --  SHA-256 of Text, then Suffix, as four big-endian words (the
    --  precomputed keys' layout).
    function Key_Of (Text : String; Suffix : String := "") return CCL.Objects.Schema_Key;
