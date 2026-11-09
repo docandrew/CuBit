@@ -1444,7 +1444,9 @@ package Process is
     -- violation. Call only for nonpresent data faults: instruction/protection
     -- faults must be rejected by the interrupt dispatcher. Preserve Write.
     ---------------------------------------------------------------------------
-    procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean);
+    -- Error_Code: the CPU's, for the stop report (Process_Stops).
+    procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean;
+                         Error_Code : Unsigned_64);
 
     -- The instruction address of the most recent page fault, for fault
     -- reports only (not per CPU; a concurrent fault may overwrite it).

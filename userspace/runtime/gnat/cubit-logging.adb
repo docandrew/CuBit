@@ -6,6 +6,7 @@ with CuBit.Log_Publish_Rings;
 with CuBit.Log_Streams;
 with CuBit.Grant_References;
 with CuBit.Memory_Grants;
+with CuBit.Last_Words;
 package body CuBit.Logging is
    use CuBit.Messages;
    use CuBit.Log_Protocol;
@@ -24,9 +25,25 @@ package body CuBit.Logging is
    --  channel open to logstore for the process's life.
    Announcer : Publisher;
 
+   --  Last words (CuBit.Last_Words, LOG-004): the logstore endpoint of the
+   --  first channel this process opened, kept as a value, so the
+   --  last-chance handler can publish through the Announcer whatever
+   --  became of the publisher that opened it. The handler waits at most
+   --  Last_Words_Wait_Ms to open the channel and again for logstore to take
+   --  the record: logstore never calls back into a dying program, and a
+   --  stuck logstore cannot keep it from exiting.
+   Last_Words_Slot : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+   Last_Words_Wait_Ms : constant := 200;
+   procedure Last_Words (Text : String; Line : Natural);
+
    --  Open the channel to logstore, once.
-   procedure Open_Channel (Item : in out Publisher);
-   procedure Open_Channel (Item : in out Publisher) is
+   procedure Open_Channel
+     (Item : in out Publisher;
+      Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever);
+   procedure Open_Channel
+     (Item : in out Publisher;
+      Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever)
+   is
       Result : Channels.Open_Result;
       Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
    begin
@@ -35,9 +52,45 @@ package body CuBit.Logging is
          return;
       end if;
       Channels.Open (Item.Slot, Publish_Rings.CONTRACT, Channels.Producing, Item.Link, Result,
-                     Ignore_Refusal, Deadline => CuBit.Messages.Wait_Forever);
+                     Ignore_Refusal, Deadline => Deadline);
       Item.State := (if Result = Channels.Opened then Ready else Disabled);
+      if Item.State = Ready and then not CuBit.Handles.Valid (Last_Words_Slot) then
+         Last_Words_Slot := Item.Slot;
+         CuBit.Last_Words.Register (Last_Words'Access);
+      end if;
    end Open_Channel;
+
+   --  "unhandled exception at main.adb:14" as an Error, with its line as a
+   --  field, through the Announcer (opened now if it never was).
+   procedure Last_Words (Text : String; Line : Natural) is
+      Made : Logs.Decoded := Logs.Make (Text, Logs.Error);
+      Submitted, Drained : Boolean;
+   begin
+      if not Made.Success then
+         return;
+      end if;
+      if Line > 0 then
+         declare
+            With_Line : constant Logs.Decoded :=
+              Logs.With_Field (Made.Value, "exception.line", Logs.Unsigned_Integer,
+                               Unsigned_64 (Line));
+         begin
+            if With_Line.Success then
+               Made := With_Line;
+            end if;
+         end;
+      end if;
+      if Announcer.State = Uninitialized then
+         if not CuBit.Handles.Valid (Announcer.Slot) then
+            Announcer.Slot := Last_Words_Slot;
+         end if;
+         Open_Channel (Announcer, CuBit.Messages.Deadline_After (Last_Words_Wait_Ms));
+      end if;
+      Emit (Announcer, Made.Value, Submitted);
+      if Submitted then
+         Flush (Announcer, Drained, Wait_Ms => Last_Words_Wait_Ms);
+      end if;
+   end Last_Words;
 
    function Bound_To (Target : Logstore_Handles.Endpoint) return Publisher is
      (Slot => Logstore_Handles.Handle (Target), others => <>);

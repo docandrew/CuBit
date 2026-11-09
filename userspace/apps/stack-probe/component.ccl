@@ -1,0 +1,2 @@
+(Component name => "stack-probe" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

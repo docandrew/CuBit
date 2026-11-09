@@ -16,6 +16,8 @@ with Boot_Output;
 with System.Machine_Code; use System.Machine_Code;
 with x86;
 with Console_Ring;
+with Kernel_Log;
+with Kernel_Log_Publication;
 
 package body TextIO is
 
@@ -216,10 +218,83 @@ package body TextIO is
         releaseTransmitter;
     end flushConsole;
 
+    ---------------------------------------------------------------------------
+    -- The kernel line being printed, for the kernel log ring (see printUser
+    -- in the spec). Touched under the output lock, like the console; when
+    -- output is unlocked (early boot, nested prints) a race can only mix
+    -- characters, as it does on the console: every index is checked
+    -- against a copy of lineUsed.
+    ---------------------------------------------------------------------------
+    lineText  : String (1 .. Kernel_Log_Publication.Text_Bytes) := (others => ASCII.NUL);
+    lineUsed  : Natural := 0;
+    lineCut   : Boolean := False;
+    -- False while a process's output prints (printUser).
+    capturing : Boolean := True;
+    -- Open private regions (beginPrivate); lines then skip the ring.
+    privateDepth : aliased Unsigned_64 := 0 with Volatile;
+
+    function fetchAdd (Ptr : System.Address; Value : Unsigned_64) return Unsigned_64
+      with Import, Convention => Intrinsic,
+           External_Name => "__sync_fetch_and_add_8";
+    function fetchSub (Ptr : System.Address; Value : Unsigned_64) return Unsigned_64
+      with Import, Convention => Intrinsic,
+           External_Name => "__sync_fetch_and_sub_8";
+
+    procedure beginPrivate is
+        Ignore : Unsigned_64;
+    begin
+        Ignore := fetchAdd (privateDepth'Address, 1);
+    end beginPrivate;
+
+    procedure endPrivate is
+        Ignore : Unsigned_64;
+    begin
+        if privateDepth > 0 then
+            Ignore := fetchSub (privateDepth'Address, 1);
+        end if;
+    end endPrivate;
+
+    function saysSomething (line : String) return Boolean is
+    begin
+        for c of line loop
+            if c in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' then
+                return True;
+            end if;
+        end loop;
+        return False;
+    end saysSomething;
+
+    procedure captureChar (ch : Character) is
+        used : constant Natural := Natural'Min (lineUsed, lineText'Last);
+    begin
+        case ch is
+            when ASCII.LF =>
+                if not x86.panicked and then privateDepth = 0
+                  and then saysSomething (lineText (1 .. used))
+                then
+                    Kernel_Log.Append_Kernel_Line (lineText (1 .. used), lineCut);
+                end if;
+                lineUsed := 0;
+                lineCut := False;
+            when ASCII.CR | ASCII.NUL =>
+                null;
+            when others =>
+                if used < lineText'Last then
+                    lineText (used + 1) := ch;
+                    lineUsed := used + 1;
+                else
+                    lineCut := True;
+                end if;
+        end case;
+    end captureChar;
+
     procedure putChar (ch : in Character; fg,bg : in TextIO.Color) is
         use ASCII;
     begin
         Boot_Output.Append (ch);
+        if capturing then
+            captureChar (ch);
+        end if;
         if output = VIDEO_ONLY or output = SERIAL_VIDEO then
             case ch is
                 when LF | CR =>
@@ -438,6 +513,18 @@ package body TextIO is
     begin
         print (str, LT_GRAY, BLACK);
     end print;
+
+    procedure printUser (str : in String) is
+        hold : Output_Hold;
+    begin
+        lockOutput (hold);
+        capturing := False;
+        for i in str'range loop
+            putChar (str(i), LT_GRAY, BLACK);
+        end loop;
+        capturing := True;
+        unlockOutput (hold);
+    end printUser;
 
     procedure println (str : in String; fg,bg : in TextIO.Color) is
         hold : Output_Hold;

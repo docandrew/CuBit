@@ -15,6 +15,8 @@ with CuBit.Channels;
 with CuBit.Control_Events;
 with CuBit.Process_Events;
 with Kernel_Device_Memory;
+with Kernel_Log_Publication;
+with Kernel_Log_Reader;
 with Startup;
 with CuBit.Refusal_Notes;
 with CuBit.Log_Sources;
@@ -139,6 +141,62 @@ procedure Main is
    --  The kernel's device-memory refusals and physical map (CAP-001).
    package Kernel_Records is new Kernel_Device_Memory (Note);
 
+   --  The kernel log ring (LOG-004): the kernel's lines, and the last words
+   --  of processes that ended abnormally, at the kernel's own times. They
+   --  are kept like any publisher's (the minimum applies).
+   procedure Publish_Kernel_Record
+     (Source, Time_Ms : Unsigned_64; Level : Logs.Severity; Text : String)
+   is
+      Made : constant Logs.Decoded := Logs.Make (Text, Level);
+   begin
+      if Made.Success and then Level >= Minimum then
+         Log_Fanout.Publish
+           (Store, (Source => Source, Node => This_Node, Publication_Tag => 0,
+                    Monotonic_Ms => Time_Ms, Data => Made.Value));
+      end if;
+   end Publish_Kernel_Record;
+
+   --  A process the kernel named that no launcher told logstore about (or
+   --  one already forgotten): known by the kernel's name for it, as an
+   --  exited source, so (logs.recent "<name>") still finds its last words.
+   procedure Learn_Kernel_Source (Source : Unsigned_64; Name : String) is
+      package LS renames CuBit.Log_Sources;
+   begin
+      if Source /= LS.No_Source and then Name'Length > 0
+        and then Name'Last < Positive'Last
+        and then not Source_Identities.Knows (Identities, Source)
+      then
+         declare
+            Who : constant LS.Source_Identity := LS.Make (Source, "", Name);
+         begin
+            if LS.Named (Who) then
+               Source_Identities.Started (Identities, Who, Now_Ms);
+               Source_Identities.Exited (Identities, Source, Now_Ms);
+            end if;
+         end;
+      end if;
+   end Learn_Kernel_Source;
+
+   procedure Publish_Kernel_Fields
+     (Source, Time_Ms : Unsigned_64; Value : Logs.Log_Record) is
+   begin
+      if Logs.Level (Value) >= Minimum then
+         Log_Fanout.Publish
+           (Store, (Source => Source, Node => This_Node, Publication_Tag => 0,
+                    Monotonic_Ms => Time_Ms, Data => Value));
+      end if;
+   end Publish_Kernel_Fields;
+
+   function Kernel_Source_Name (Source : Unsigned_64; Fallback : String) return String is
+      Known : constant String := Source_Identities.Identity_Of (Identities, Source);
+   begin
+      return (if Known'Length > 0 then Known else Fallback);
+   end Kernel_Source_Name;
+
+   package Kernel_Log is new Kernel_Log_Reader
+     (Publish_Kernel_Record, Publish_Kernel_Fields, Learn_Kernel_Source, Kernel_Source_Name);
+   Kernel_More : Boolean := False;
+
    --  storage.system-volume: where the persistent log goes ("" or absent:
    --  nowhere, as on a live boot). Read until Config answers.
    Volume_Settled : Boolean := False;
@@ -197,6 +255,12 @@ begin
       return;
    end if;
    debugPrint ("logstore: authorized typed diagnostics ready" & ASCII.LF);
+   --  The kernel's records go under this source: (logs.recent "kernel").
+   Source_Identities.Started
+     (Identities,
+      CuBit.Log_Sources.Make (Kernel_Log_Publication.Kernel_Source, "com.cubit.kernel", "kernel"),
+      Now_Ms);
+   Kernel_Log.Set_Started (Started_Ms);
    Read_Minimum_Setting;
    loop
       --  Deadline is for idle subscription reclamation, not input polling.
@@ -228,6 +292,7 @@ begin
       Log_Fanout.Advance_Time (Store, Now_Ms);
       Log_Budgets.Advance_Time (Budgets, Now_Ms);
       Kernel_Records.Poll;
+      Kernel_Log.Poll (Now_Ms, Kernel_More);
       --  Publishers that closed or died: their last records first.
       loop
          CuBit.Process_Events.Next (Ended_Event, Have_Event);
@@ -362,6 +427,8 @@ begin
       --  Published records, new events, freed ring space, ended
       --  subscriptions: every pass.
       Publisher_Rings.Drain (Publishers, Store, Budgets, Minimum, Now_Ms, Waiting_Records);
+      --  The kernel log still held records after this pass's share.
+      Waiting_Records := Waiting_Records or else Kernel_More;
       --  Who started and exited: before readers ask, and kept while their
       --  records are.
       Source_Registrars.Drain (Registrars, Identities, Now_Ms, Waiting_Notices);

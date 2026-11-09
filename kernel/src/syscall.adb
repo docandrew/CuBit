@@ -71,7 +71,9 @@ package body Syscall is
                    Unsigned_64 (To_Integer (buf)) + bytesWritten,
                    chunk'Address, Storage_Count (length), copied);
                 exit when not copied;
-                print (chunk (1 .. length));
+                -- A process's text, not a kernel line: it stays out of
+                -- the kernel log ring (LOG-004).
+                printUser (chunk (1 .. length));
                 bytesWritten := bytesWritten + Unsigned_64 (length);
             end loop;
         end if;

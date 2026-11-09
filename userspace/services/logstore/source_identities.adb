@@ -123,6 +123,24 @@ package body Source_Identities is
 
    function Count (Item : Table) return Natural is (Item.Used);
 
+   function Knows (Item : Table; Source : Unsigned_64) return Boolean is
+     (Item.Block /= No_Block and then Find (Item, Source) /= 0);
+
+   function Identity_Of (Item : Table; Source : Unsigned_64) return String is
+      Position : constant Natural := (if Item.Block = No_Block then 0 else Find (Item, Source));
+   begin
+      if Position = 0 then
+         return "";
+      end if;
+      declare
+         Data : constant Known_Array (1 .. Item.Capacity)
+           with Import, Address => Address_Of (Item.Block);
+         Who : LS.Source_Identity renames Data (Position).Listed.Who;
+      begin
+         return (if Who.Identity_Used > 0 then LS.Identity_Of (Who) else LS.Name_Of (Who));
+      end;
+   end Identity_Of;
+
    function Newest (Item : Table; Position : Positive) return LS.Source_Entry is
       Data : constant Known_Array (1 .. Item.Capacity)
         with Import, Address => Address_Of (Item.Block);

@@ -14,6 +14,7 @@ with Boot_Diagnostics;
 with Config;
 with Device_Interrupts;
 with Device_Memory_Diagnostics;
+with Process_Stops;
 with Device_Memory_Publication;
 with ioapic;
 with IPC_Labels;
@@ -351,6 +352,11 @@ is
                 print ("SYSCALL");
 
             when others =>
+                -- A user fault's addresses and registers are for the console
+                -- only: the ring gets the typed report (LOG-004).
+                if Util.isBitSet (frame.cs, 0) or Util.isBitSet (frame.cs, 1) then
+                    TextIO.beginPrivate;
+                end if;
                 print ("EXCEPTION "); print (Integer(interruptNumber));
                 print (" at RIP "); print (frame.rip);
                 print (" PID "); println (PerCPUData.getCurrentPID);
@@ -358,6 +364,7 @@ is
                     -- User-mode exception: notify supervisor, then kill
                     print ("  Killing user process "); println (PerCPUData.getCurrentPID);
                     printRegs (frame);
+                    TextIO.endPrivate;
                     Process.IPC.notifySupervisor (
                         pid        => PerCPUData.getCurrentPID,
                         faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
@@ -368,6 +375,14 @@ is
                       (PerCPUData.getCurrentPID, Device_Memory_Publication.CPU_Exception,
                        Interfaces.Unsigned_64 (interruptNumber), 0,
                        Util.addrToNum (frame.rip));
+                    -- Why, typed, under the process's own identity (LOG-004).
+                    Process_Stops.Report_Exception
+                      (Victim     => PerCPUData.getCurrentPID,
+                       Vector     => Interfaces.Unsigned_64 (interruptNumber),
+                       Error_Code => Interfaces.Unsigned_64 (frame.errorCode),
+                       Address    => 0,
+                       RIP        => Util.addrToNum (frame.rip),
+                       RSP        => Util.addrToNum (frame.rsp));
                     Process.kill (PerCPUData.getCurrentPID);
                 else
                     TextIO.stopAsynchronous;
@@ -430,6 +445,14 @@ is
             Device_Memory_Diagnostics.Record_Kill
               (pid, Kind, Unsigned_64 (InterruptNumbers.PAGE_FAULT), Util.addrToNum (faultAddr),
                Util.addrToNum (RIP));
+            -- Why, typed, under the process's own identity (LOG-004).
+            Process_Stops.Report_Exception
+              (Victim     => pid,
+               Vector     => Unsigned_64 (InterruptNumbers.PAGE_FAULT),
+               Error_Code => err,
+               Address    => Util.addrToNum (faultAddr),
+               RIP        => Util.addrToNum (RIP),
+               RSP        => Util.addrToNum (Process.lastFaultRSP));
         end Record_Fault;
     begin
         -- Reserved PTE bits indicate invalid paging structures, never a
@@ -444,7 +467,9 @@ is
         if nxeViolation then
             if userMode then
                 -- if it was a user process, then kill it.
+                TextIO.beginPrivate;
                 println("NXE violation in user process!");
+                TextIO.endPrivate;
                 Record_Fault (Device_Memory_Publication.Execute_Protection);
                 Process.kill (pid);
                 return;
@@ -465,10 +490,12 @@ is
                         case userMode is
                             when True =>
                                 -- user page-protection wr violation. kill it.
+                                TextIO.beginPrivate;
                                 println ("USER-MEMORY-FAULT: pid" &
                                   Integer'Image (Integer (pid)) & " address" &
                                   Unsigned_64'Image (Unsigned_64 (To_Integer (faultAddr))) &
                                   " kind=write-protection");
+                                TextIO.endPrivate;
                                 Record_Fault (Device_Memory_Publication.Write_Protection);
                                 Process.kill (pid);
                             when False =>
@@ -483,10 +510,12 @@ is
                         case userMode is
                             when True =>
                                 -- user page-protection rd violation. kill it.
+                                TextIO.beginPrivate;
                                 println ("USER-MEMORY-FAULT: pid" &
                                   Integer'Image (Integer (pid)) & " address" &
                                   Unsigned_64'Image (Unsigned_64 (To_Integer (faultAddr))) &
                                   " kind=read-protection");
+                                TextIO.endPrivate;
                                 Record_Fault (Device_Memory_Publication.Read_Protection);
                                 Process.kill (pid);
                             when False =>
@@ -506,7 +535,7 @@ is
                                 -- user wrote non-present page. see if it's in their
                                 -- allocated range and page in if it is. If it's not,
                                 -- then may be a stack overflow or OoM.
-                                Process.pageFault (pid, faultAddr, Write => write);
+                                Process.pageFault (pid, faultAddr, Write => write, Error_Code => err);
                             when False =>
                                 -- kernel wrote non-present page. see if it's something
                                 -- that we should have, page it in if it is.
@@ -533,7 +562,7 @@ is
                                 -- user read non-present page. see if it's in their
                                 -- allocated range and page in if it is. If it's not,
                                 -- may be a stack overflow or OoM.
-                                Process.pageFault (pid, faultAddr, Write => write);
+                                Process.pageFault (pid, faultAddr, Write => write, Error_Code => err);
                             when False =>
                                 -- kernel read non-present page. see if it's something
                                 -- that we should have. see if it's something that we should

@@ -36,6 +36,11 @@ package Source_Identities is
    function Newest (Item : Table; Position : Positive) return CuBit.Log_Sources.Source_Entry
    with Pre => Position <= Count (Item);
 
+   --  Whether an entry for Source is kept.
+   function Knows (Item : Table; Source : Unsigned_64) return Boolean;
+   --  Source's identity (com.cubit.hello), else its name, else "".
+   function Identity_Of (Item : Table; Source : Unsigned_64) return String;
+
    --  Notices given up for want of memory.
    function Lost (Item : Table) return Unsigned_64;
 private

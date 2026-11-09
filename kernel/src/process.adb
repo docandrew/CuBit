@@ -19,6 +19,8 @@ with BuddyAllocator;
 with Modules;
 with Boot_Timeline;
 with Clock_Page;
+with Kernel_Log;
+with Process_Stops;
 with Publication_Pages;
 with Cpu_Times_Page;
 with CPU_Times_Publication;
@@ -591,6 +593,8 @@ package body Process is
                 when Use_XSAVE    => "XSAVE",
                 when Use_FXSAVE   => "FXSAVE"));
         TextIO.enableOutputLocking;
+        Kernel_Log.Enable_Locking;
+        Kernel_Log.Use_Clock (Time.msTicks'Address);
         Spinlocks.Initialize (sleepList.lock, sleepListLockName'Access);
         -- ProcList.setup (allProcs, Config.MAX_PROCESSES);
         FrameLists.setup (Config.MAX_PROCESSES * Config.PAGES_PER_PROCESS);
@@ -2459,7 +2463,8 @@ package body Process is
            when Page_Table_Exhausted       => "Page_Table_Exhausted",
            when Mapping_Already_Present    => "Mapping_Already_Present");
 
-    procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean)
+    procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean;
+                         Error_Code : Unsigned_64)
     is
         ignore : System.Address;
         result : Page_Allocation_Result := Page_Added;
@@ -2519,37 +2524,31 @@ package body Process is
                 Device_Memory_Diagnostics.Record_Kill
                   (pid, Device_Memory_Publication.Out_Of_Memory, Unsigned_64 (InterruptNumbers.PAGE_FAULT),
                    Unsigned_64 (To_Integer (addr)), Unsigned_64 (To_Integer (lastFaultRIP)));
+                Process_Stops.Report_Out_Of_Memory
+                  (pid, Unsigned_64 (To_Integer (addr)), Unsigned_64 (To_Integer (lastFaultRIP)),
+                   Unsigned_64 (To_Integer (lastFaultRSP)));
                 kill (pid);
             end if;
         else
             -- @TODO use a heuristic here to figure out if this was a stack
             -- overflow, or heap over/underflow and signal the process either way.
             -- (something like distance to stackBottom < distance to heapEnd = stack overflow)
+            -- Console only (TextIO.beginPrivate): addresses are the
+            -- typed report's restricted detail in the ring (LOG-004). The
+            -- kernel reads none of the process's memory to report a fault.
+            TextIO.beginPrivate;
             println ("USER-MEMORY-FAULT: pid" & Integer'Image (Integer (pid)) &
                      " address" & Unsigned_64'Image (Unsigned_64 (To_Integer (addr))) &
                      " kind=unmapped");
             print ("Process: Illegal memory access at "); print (addr);
             print (" rip "); print (lastFaultRIP);
-            -- The words at the user stack pointer: usually return addresses.
-            declare
-                type Words is array (0 .. 7) of Unsigned_64;
-                stack : Words := (others => 0);
-                copied : Boolean;
-            begin
-                User_Memory.Copy (pid, Unsigned_64 (To_Integer (lastFaultRSP)),
-                                  stack'Address, stack'Size / 8, copied);
-                if copied then
-                    print (" stack");
-                    for w of stack loop
-                        print (" "); print (To_Address (Integer_Address (w)));
-                    end loop;
-                end if;
-            end;
+            print (" rsp "); print (lastFaultRSP);
             print (" pid "); print (Integer(pid));
             print (" stackTop "); print (Proctab(pid).stackTop);
             print (" stackBottom "); print (Proctab(pid).stackBottom);
             print (" heapStart "); print (Proctab(pid).heapStart);
             print (" heapEnd "); println (Proctab(pid).heapEnd);
+            TextIO.endPrivate;
             IPC.notifySupervisor (
                 pid        => pid,
                 faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
@@ -2559,6 +2558,13 @@ package body Process is
             Device_Memory_Diagnostics.Record_Kill
               (pid, Device_Memory_Publication.Not_Present, Unsigned_64 (InterruptNumbers.PAGE_FAULT),
                Unsigned_64 (To_Integer (addr)), Unsigned_64 (To_Integer (lastFaultRIP)));
+            Process_Stops.Report_Exception
+              (Victim     => pid,
+               Vector     => Unsigned_64 (InterruptNumbers.PAGE_FAULT),
+               Error_Code => Error_Code,
+               Address    => Unsigned_64 (To_Integer (addr)),
+               RIP        => Unsigned_64 (To_Integer (lastFaultRIP)),
+               RSP        => Unsigned_64 (To_Integer (lastFaultRSP)));
             kill (pid);
         end if;
     end pageFault;

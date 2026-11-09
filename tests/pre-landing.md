@@ -80,6 +80,39 @@ make -C kernel world
 CCL_CONSOLE_DEMO=log-exited bash tests/headless/run.sh --test ccl-console --accel kvm --timeout 90
 ```
 
+## kernel-log (LOG-004)
+
+Programs that end badly leave the reason in logstore, under their own
+names, and the kernel's own lines from before logstore started are there
+too. crash-probe logs one record and raises an exception nothing handles
+(exit code 134): the runtime's last-chance handler publishes "unhandled
+exception at main.adb:25" through the program's own log channel, so
+`(logs.recent "crash-probe")` returns it after it is gone (the kernel holds
+no program text). fault-check writes the null page and stack-probe
+overflows its stack: the kernel stops them and files a typed fault report
+(Fault_Reports) in two parts. Every reader of the program's logs gets the
+summary, "com.cubit.fault-check: stopped by a page fault (write); details
+restricted", with no address, offset or register; the detail (where:
+null page, stack overflow; anchored offsets) is for diagnostics readers
+only, and logstore has none, so it stays in the kernel ring (logstore
+says on the console that it withheld each). `(first 4 (logs.recent "kernel"))` returns
+kernel records older than logstore (tests/kernel-log-ring/check_serial.py).
+Failed before: the handler's text went only to the serial console (none on
+the laptop), a killed program left only "process killed" under logstore's
+own name, and kernel lines never reached logstore. The overflow variant
+runs a kernel whose ring holds 64 records and requires the exact "kernel
+log: N records dropped (sequence 1..N)" marker. The hosted core (record
+layout, the reader's exact account, fault decoding) is
+`tests/kernel-log-ring/run.sh` (`--prove`: level 2).
+
+```sh
+make -C kernel world
+CCL_CONSOLE_DEMO=kernel-log bash tests/headless/run.sh --test ccl-console --accel kvm --timeout 90
+KERNEL_LOG_RECORDS=64 make -C kernel world
+KERNEL_LOG_OVERFLOW=1 CCL_CONSOLE_DEMO=kernel-log bash tests/headless/run.sh --test ccl-console --accel kvm --timeout 90
+make -C kernel world
+```
+
 ## native-gprbuild-config
 
 Native fixture scripts resolve the gprbuild configuration before their

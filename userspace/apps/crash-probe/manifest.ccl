@@ -1,0 +1,8 @@
+# LOG-004: logs one record, then dies of an unhandled exception (exit code
+# 134). The runtime's last-chance handler must publish the exception
+# through this program's own log channel, so (logs.recent "crash-probe")
+# shows it after it is gone (tests/headless/run.sh, CCL_CONSOLE_DEMO=kernel-log).
+(executable-manifest v1
+  (identity "com.cubit.crash-probe")
+  (version "0.1.0")
+  (request-service logstore read-write logstore))

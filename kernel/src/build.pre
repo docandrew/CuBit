@@ -16,6 +16,10 @@ is
     OneShot_Scheduling : constant Boolean := SED_ONESHOT_SCHEDULING;
     -- An idle CPU takes unpinned ready work from other CPUs' ready lists.
     Work_Stealing : constant Boolean := SED_WORK_STEALING;
+    -- Records the kernel log ring holds (Kernel_Log, LOG-004): at most
+    -- Kernel_Log_Publication.Maximum_Records; a test build shrinks it to
+    -- exercise overflow (KERNEL_LOG_RECORDS=64 make -C kernel world).
+    Kernel_Log_Records : constant := SED_KERNEL_LOG_RECORDS;
     -- Git Commit
     COMMIT : constant String := "SED_GIT_HASH";
 

@@ -5,6 +5,7 @@
  -- Ada Exception Handling
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with CuBit.Last_Words;
 with CuBit.Messages;
 
 package body Ada.Exceptions.Last_Chance_Handler with
@@ -14,11 +15,21 @@ is
    --  thing that ran out, so it never concatenates, never uses 'Image and
    --  writes only into a fixed buffer on the primary stack. It never
    --  returns; a second entry (a fault while reporting) stops at once.
+   --
+   --  It says it twice: on the debug console as before, and as an Error
+   --  record through the program's own log (CuBit.Last_Words, LOG-004),
+   --  when the program has one, so (logs.recent "<program>") shows it after
+   --  the program is gone. The runtime calls the handler with the failing
+   --  source location (or a Raise_Exception message), not the exception's
+   --  name, so that is what both say.
 
    Max_Name_Length : constant := 160;
    Max_Line_Digits : constant := 10;
    Prefix : constant String := "User-space exception at ";
    Middle : constant String := " line ";
+   Log_Prefix : constant String := "unhandled exception at ";
+   Log_Message_Prefix : constant String := "unhandled exception: ";
+   Log_Separator : constant Character := ':';
    Last_Chance_Exit : constant Unsigned_64 := 134;
 
    Entered : Boolean := False;
@@ -40,6 +51,19 @@ is
       use type System.Address;
       Text : String (1 .. Prefix'Length + Max_Name_Length + Middle'Length + Max_Line_Digits + 1);
       Used : Natural := 0;
+      Name_First, Name_Last, Line_First, Line_Last : Natural := 0;
+      Log_Text : String (1 .. Log_Message_Prefix'Length + Max_Name_Length + 1 + Max_Line_Digits);
+      Log_Used : Natural := 0;
+      procedure Log_Put (S : String);
+      procedure Log_Put (S : String) is
+      begin
+         for C of S loop
+            if Log_Used < Log_Text'Last then
+               Log_Used := Log_Used + 1;
+               Log_Text (Log_Used) := C;
+            end if;
+         end loop;
+      end Log_Put;
 
       procedure Put (C : Character);
       procedure Put (S : String);
@@ -91,15 +115,31 @@ is
       end if;
       Entered := True;
       Put (Prefix);
+      Name_First := Used + 1;
       if msg = System.Null_Address then
          Put ("(unknown)");
       else
          Put_Name;
       end if;
+      Name_Last := Used;
       Put (Middle);
+      Line_First := Used + 1;
       Put_Line_Number;
+      Line_Last := Used;
       Put (ASCII.LF);
       CuBit.Messages.debugPrint (Text (1 .. Used));
+      --  "unhandled exception at main.adb:14", or with no line (a
+      --  Raise_Exception message) "unhandled exception: <message>".
+      if line > 0 then
+         Log_Put (Log_Prefix);
+         Log_Put (Text (Name_First .. Name_Last));
+         Log_Put ((1 => Log_Separator));
+         Log_Put (Text (Line_First .. Line_Last));
+      else
+         Log_Put (Log_Message_Prefix);
+         Log_Put (Text (Name_First .. Name_Last));
+      end if;
+      CuBit.Last_Words.Report (Log_Text (1 .. Log_Used), (if line > 0 then line else 0));
       --  The raise point has no continuation: returning would jump to
       --  whatever the failed frame left behind.
       Stop;

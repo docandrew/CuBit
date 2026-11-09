@@ -3,6 +3,11 @@ set -u
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 KERNEL_DIR="$ROOT_DIR/kernel"
+# LOG-004 overflow check (CCL_CONSOLE_DEMO=kernel-log): every kernel build
+# this script makes uses a 64-record kernel log ring.
+if [ "${KERNEL_LOG_OVERFLOW:-0}" = 1 ]; then
+    export KERNEL_LOG_RECORDS=64
+fi
 # Files this script writes into test disks (debugfs) carry the build's
 # timestamp, like the images kernel/Makefile builds, not the Nix shell's 1980.
 SOURCE_DATE_EPOCH="$(make -s --no-print-directory -C "$KERNEL_DIR" print-build-epoch)" || exit 1
@@ -611,6 +616,11 @@ with open(sys.argv[1], "wb") as f:
             # LOG-003: log-exit-probe logs and exits at boot; its records
             # must still be found by name (logs.recent) and named (boot-logs).
             INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console-log-exited.ccl"
+        fi
+        if [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then
+            # LOG-004: crash-probe dies of an unhandled exception; its last
+            # words reach logstore only through the kernel log ring.
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console-kernel-log.ccl"
         fi
         # The gcc demo runs cc1, a 45 MB image procmgr reads whole.
         if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then QEMU_MEMORY="${QEMU_MEMORY:-1G}"; fi
@@ -1605,6 +1615,9 @@ if [ -n "$INIT_PROFILE" ]; then
             CCL_IMAGES="ccl-console.app clock.svc desktop.svc display.svc logstore.svc"
             if [ "${CCL_CONSOLE_DEMO:-}" = log-exited ]; then
                 CCL_IMAGES="$CCL_IMAGES boot-logs.app log-exit-probe.app"
+            fi
+            if [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then
+                CCL_IMAGES="$CCL_IMAGES crash-probe.app fault-check.app stack-probe.app"
             fi
         elif [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ]; then
             # llm-test.svc is llm.svc with only its tls-scope replaced (the
@@ -3990,6 +4003,30 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
               '(logs.recent "log-exit-probe")' 0.08
             sleep 2
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-log-exited.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
+            elif [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then
+            # LOG-004 (CCL_CONSOLE_DEMO=kernel-log): once procmgr has seen
+            # the three probes end and logstore has caught up with the
+            # kernel log, each probe's records by its name, then the oldest
+            # kernel records logstore holds (from before it started).
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                grep -qa "procmgr: process com.cubit.crash-probe pid" "$SERIAL_LOG" &&
+                  grep -qa "procmgr: process com.cubit.fault-check pid" "$SERIAL_LOG" &&
+                  grep -qa "procmgr: process com.cubit.stack-probe pid" "$SERIAL_LOG" &&
+                  grep -qa "logstore: kernel log caught up" "$SERIAL_LOG" && break
+                sleep 0.2
+            done
+            # logstore drains the ring at least every 200 ms during boot.
+            sleep 1.5
+            for probe in crash-probe fault-check stack-probe; do
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" \
+                  "(logs.recent \"$probe\")" 0.08
+                sleep 2
+            done
+            python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" \
+              '(first 4 (logs.recent "kernel"))' 0.08
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-kernel-log.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             sleep 0.5
             elif [ "${CCL_CONSOLE_DEMO:-}" = logs ]; then
             # What logstore keeps (CCL_CONSOLE_DEMO=logs): read it, lower it
@@ -6645,6 +6682,26 @@ ccl-console: REPL completed: List<LogEntry>: [(LogEntry
 \"exit probe stage 1 of 3\")
 \"exit probe stage 3 of 3\")]
 "
+        elif [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then
+            # LOG-004: the handler's line on serial as before; in logstore
+            # the exception through crash-probe's own log channel, and the
+            # summaries of the kernel's typed fault reports under
+            # fault-check's and stack-probe's names, their details withheld
+            # (tests/kernel-log-ring/check_serial.py checks the rest).
+            required_markers="$required_markers
+crash-probe: raising an exception nobody handles
+User-space exception at main.adb line 25
+procmgr: process com.cubit.crash-probe pid
+exited code 134
+fault-check: writing an unmapped address
+stack-probe: recursing until the stack runs out
+logstore: kernel log caught up:
+\"unhandled exception at main.adb:25\")
+\"com.cubit.fault-check: stopped by a page fault (write); details restricted\")
+\"com.cubit.stack-probe: stopped by a page fault (write); details restricted\")
+withheld the restricted fault detail of com.cubit.fault-check (null page)
+withheld the restricted fault detail of com.cubit.stack-probe (stack overflow)
+"
         elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
             required_markers="$required_markers
 ccl-console: REPL completed: Integer: 42
@@ -7372,6 +7429,18 @@ if [ "$TEST_NAME" = "desktop-restart" ]; then
         exit 1
     fi
     echo "headless: desktop restarted after its failure and presents again"
+fi
+
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then
+    # LOG-004: kernel records from before logstore started, an exact
+    # account of the ring (taken + dropped = numbered), and with
+    # KERNEL_LOG_OVERFLOW=1 (a kernel built with KERNEL_LOG_RECORDS=64) the
+    # dropped marker with the same counts.
+    if ! python3 -I "$ROOT_DIR/tests/kernel-log-ring/check_serial.py" "$SERIAL_LOG" \
+        ${KERNEL_LOG_OVERFLOW:+--overflow}; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
 fi
 
 if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = wifi ]; then

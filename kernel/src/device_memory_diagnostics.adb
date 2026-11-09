@@ -138,6 +138,9 @@ package body Device_Memory_Diagnostics with SPARK_Mode => Off is
       Name : constant Pub.Process_Name := Process.proctab (Victim).name;
       Now  : constant Unsigned_64 := Unsigned_64 (Time.msTicks);
    begin
+      -- Console only: the address and instruction are the typed report's
+      -- restricted detail in the kernel log ring (Process_Stops, LOG-004).
+      beginPrivate;
       print ("process killed: ");
       print (Name);
       print (" ");
@@ -148,6 +151,7 @@ package body Device_Memory_Diagnostics with SPARK_Mode => Off is
       print (Address);
       print (" rip ");
       println (RIP);
+      endPrivate;
       Spinlocks.enterCriticalSection (Kill_Lock);
       Kills := (if Kills = Unsigned_64'Last then Kills else Kills + 1);
       Publication_Pages.Set_Process_Kills (Kills);

@@ -19,6 +19,8 @@ with Config;
 with Cpu_Times_Page;
 with Device_Interrupts;
 with Device_Memory_Diagnostics;
+with Kernel_Log_Mapping;
+with Process_Stops;
 with Device_Vector_ABI;
 with Capabilities.Operations;
 with Capability_ABI;
@@ -178,6 +180,12 @@ package body Syscall.Admin is
                 Device_Memory_Diagnostics.Map_Into (callerPID, mapped);
                 if not mapped then
                     println ("REGISTER_DRIVER: logstore refused, diagnostics page unmapped");
+                    return;
+                end if;
+                -- And the kernel log ring, which it drains (LOG-004).
+                Kernel_Log_Mapping.Map_Into (callerPID, mapped);
+                if not mapped then
+                    println ("REGISTER_DRIVER: logstore refused, kernel log unmapped");
                     return;
                 end if;
             end;
@@ -1091,6 +1099,8 @@ package body Syscall.Admin is
         else
             -- Kill another process: terminate and continue
             if Process.killProcess (targetPID, generation) then
+                -- Who stopped it, typed, under its identity (LOG-004).
+                Process_Stops.Report_Stopped (targetPID, callerPID);
                 print ("KILL: stop requested for PID ");
                 println (Integer (targetPID));
                 retval := 0;

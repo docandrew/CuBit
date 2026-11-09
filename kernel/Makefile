@@ -12,6 +12,14 @@ WAKEUP_SCHEDULING ?= 1
 ONESHOT_SCHEDULING ?= 1
 # Idle CPUs take ready work from busy CPUs (docs/threads.md).
 WORK_STEALING ?= 1
+# Records in the kernel log ring (LOG-004, src/kernel_log.ads): at most
+# Kernel_Log_Publication.Maximum_Records (4096). Tests shrink it to overflow
+# the ring before logstore starts (tests/kernel-log-ring/run.sh); src/build.ads
+# is regenerated on every build, so the next build without it is full size.
+KERNEL_LOG_RECORDS ?= 4096
+ifeq ($(shell test "$(KERNEL_LOG_RECORDS)" -ge 1 2>/dev/null && test "$(KERNEL_LOG_RECORDS)" -le 4096 2>/dev/null && echo ok),)
+$(error KERNEL_LOG_RECORDS must be a number in 1 .. 4096)
+endif
 ifneq ($(filter $(WORK_STEALING),0 1),$(WORK_STEALING))
 $(error WORK_STEALING must be 0 or 1)
 endif
@@ -59,6 +67,7 @@ build/libcubit.a:
 		-e 's/SED_WAKEUP_SCHEDULING/$(if $(filter 1,$(WAKEUP_SCHEDULING)),True,False)/' \
 		-e 's/SED_ONESHOT_SCHEDULING/$(if $(filter 1,$(ONESHOT_SCHEDULING)),True,False)/' \
 		-e 's/SED_WORK_STEALING/$(if $(filter 1,$(WORK_STEALING)),True,False)/' \
+		-e 's/SED_KERNEL_LOG_RECORDS/$(KERNEL_LOG_RECORDS)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 
 	$(ALR) gprbuild -Pkernel_runtime.gpr
@@ -2142,6 +2151,22 @@ log-exit-probe: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/log-exit-probe/component.ccl
 	cp ../userspace/apps/log-exit-probe/build/log-exit-probe.app isodir/boot/log-exit-probe.app
 
+# LOG-004: dies of an unhandled exception; its last words reach logstore
+# through the kernel log ring (run.sh --test ccl-console, CCL_CONSOLE_DEMO=kernel-log).
+.PHONY : crash-probe
+crash-probe: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/crash-probe/build
+	$(CCL_BUILD) ../userspace/apps/crash-probe/component.ccl
+	cp ../userspace/apps/crash-probe/build/crash-probe.app isodir/boot/crash-probe.app
+
+# LOG-004: overflows its stack; the kernel's typed fault report must reach
+# logstore under its name (CCL_CONSOLE_DEMO=kernel-log).
+.PHONY : stack-probe
+stack-probe: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/stack-probe/build
+	$(CCL_BUILD) ../userspace/apps/stack-probe/component.ccl
+	cp ../userspace/apps/stack-probe/build/stack-probe.app isodir/boot/stack-probe.app
+
 # Standard desktop-session build: nonblocking typed metrics, with a matching
 # startup collector. Keep bare `desktop` for profiles without metrics.svc.
 .PHONY : desktop-metrics
@@ -2611,7 +2636,7 @@ iso: cubit_kernel initrd
 # runs a binary left over from an older ABI (a stale one passes or fails for
 # the wrong reason).
 TEST_PROGRAMS := logs boot-logs timesync-test llm-test ccl-console log-check \
-	log-fields-check log-retention-check log-exit-probe libc-check cxx-check network-check net-link-check \
+	log-fields-check log-retention-check log-exit-probe crash-probe stack-probe libc-check cxx-check network-check net-link-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
 	metrics-check grant-forward ccl-control input-stress bench-storage \

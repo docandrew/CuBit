@@ -157,6 +157,30 @@ is
     procedure print (str : in String; fg,bg : in TextIO.Color);
 
     ---------------------------------------------------------------------------
+    -- printUser
+    -- A process's console output (SYSCALL_WRITE): printed like print, but it
+    -- is not a kernel line. Every other print is: each completed line that
+    -- says something (a letter or digit) also becomes a record in the kernel
+    -- log ring (Kernel_Log), cut at its record size. A process's text is
+    -- never copied into the kernel; programs log through their own
+    -- publisher rings (LOG-001).
+    ---------------------------------------------------------------------------
+    procedure printUser (str : in String);
+
+    ---------------------------------------------------------------------------
+    -- beginPrivate / endPrivate
+    -- Lines completed between them reach the console only, never the kernel
+    -- log ring: the user-fault diagnostics (addresses, register dumps) that
+    -- the serial console has always shown, which every logstore reader
+    -- would otherwise see. The ring gets the typed fault report instead
+    -- (Process_Stops), its detail for diagnostics readers only. They nest;
+    -- while one is open on any CPU, other CPUs' lines skip the ring too (a
+    -- loss on the ring only, never on the console).
+    ---------------------------------------------------------------------------
+    procedure beginPrivate;
+    procedure endPrivate;
+
+    ---------------------------------------------------------------------------
     -- Print a string with LT_GRAY text, black background.
     --  This will wrap cursor around to the next row and scroll up
     --  if necessary.

@@ -114,15 +114,16 @@ package body Kernel_Device_Memory is
    end Log_Denial;
 
    --  "kernel: process killed #N name=... pid=... kind=... vector=...
-   --  addr=... rip=... t=...ms" (Warning).
+   --  t=...ms" (Warning). Every logstore reader sees it, so no address or
+   --  instruction: those are the kernel's restricted fault detail
+   --  (Fault_Reports, LOG-004), which stays out of the store.
    procedure Log_Kill (Number : Unsigned_64; Item : Pub.Kill_Record) is
    begin
       Record_Line ("kernel: process killed #" & Decimal (Number) &
             " name=" & Trimmed (Item.Name) & " pid=" & Hex (Item.Victim) &
             " kind=" & Pub.Kill_Kind_Name (Item.Kind) &
             " vector=" & Decimal (Item.Vector) &
-            " addr=" & Hex (Item.Address) & " rip=" & Hex (Item.RIP) &
-            " t=" & Decimal (Item.Time_Ms) & "ms",
+            " t=" & Decimal (Item.Time_Ms) & "ms; details restricted",
             Logs.Warning);
    end Log_Kill;
 

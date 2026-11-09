@@ -1,0 +1,17 @@
+# LOG-004 (CCL_CONSOLE_DEMO=kernel-log): three programs end badly at boot.
+# crash-probe dies of an unhandled Ada exception (exit code 134); its
+# runtime publishes the exception through its own log channel. fault-check
+# writes the null page and stack-probe overflows its stack; the kernel stops
+# both and files a typed fault report under each one's identity. Afterwards
+# (logs.recent "<program>") at the console returns each, and
+# (logs.recent "kernel") returns kernel lines from before logstore started.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "crash-probe.app" (priority 5))
+  (start "fault-check.app" (priority 5))
+  (start "stack-probe.app" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "ccl-console.app" (priority 3))
+)

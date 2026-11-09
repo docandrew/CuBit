@@ -88,6 +88,7 @@ config-worker           | config   | . | bash tests/config-worker/run.sh --prove
 config-worker-schema    | config   | . | bash tests/config-worker/run-schema.sh --prove
 doom-port               | ports    | . | bash tests/doom-port/run.sh --prove
 fast-clock              | kernel   | . | bash tests/fast-clock/run.sh --prove
+kernel-log-ring         | kernel   | . | bash tests/kernel-log-ring/run.sh --prove --level=2
 launch-configuration    | kernel   | . | bash tests/launch-configuration/run.sh --prove
 files-app               | desktop  | . | bash tests/files-app/run.sh --prove
 grant-windows           | kernel   | . | bash tests/grant-windows/run.sh --prove

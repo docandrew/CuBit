@@ -6293,7 +6293,14 @@ begin
                              " pid" & Image (Exited) &
                              (if Report.Kind = CuBit.Child_Exits.Stopped
                               then " stopped (killed or faulted)"
-                              else " exited code" & Unsigned_64'Image (Report.Code));
+                              else " exited code" & Unsigned_64'Image (Report.Code)) &
+                             --  Why, filed under it in logstore (LOG-004): the
+                             --  kernel's typed fault report, its own last words.
+                             (if Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0
+                              then "; why: (logs.recent """ &
+                                   Records.Values (Known).Identity
+                                     (1 .. Records.Values (Known).Identity_Length) & """)"
+                              else "");
                         begin
                            if Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0 then
                               Warnings.Warn (Line);
