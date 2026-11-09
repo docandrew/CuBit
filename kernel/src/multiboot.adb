@@ -268,7 +268,9 @@ package body Multiboot with SPARK_Mode => On is
                 Multiboot2_Info.Parse (Raw, Unsigned_64 (Virtmem.PhysAddress'Last),
                   bootTagged, bootMapSnapshot, bootMapCount, State);
                 if State /= Multiboot2_Info.Success then
-                    print ("Multiboot2 admission: "); println (Multiboot2_Info.Status'Image (State));
+                    -- No_Enumeration_Maps (gnat.adc): status diagnostics
+                    -- print the position, as Enum'Image did without maps.
+                    print ("Multiboot2 admission: "); println (Natural'Image (Multiboot2_Info.Status'Pos (State)));
                     raise MemoryAreas.InvalidMemoryMap with "Invalid Multiboot2 metadata";
                 end if;
                 Destination := [others => 0];
@@ -305,7 +307,7 @@ package body Multiboot with SPARK_Mode => On is
             Entry_Check.Snapshot (Raw, Snapshot, Result);
         end;
         if Result /= Entry_Check.Success then
-            print ("Boot information: "); println (Entry_Check.Status'Image (Result));
+            print ("Boot information: "); println (Natural'Image (Entry_Check.Status'Pos (Result)));
             raise MemoryAreas.InvalidMemoryMap with "Unsupported boot information";
         end if;
         declare
@@ -445,7 +447,7 @@ package body Multiboot with SPARK_Mode => On is
                            bootMapSnapshot, Count, Result);
         end;
         if Result /= Decoder.Success then
-            print ("Boot map decoder: "); println (Decoder.Status'Image (Result));
+            print ("Boot map decoder: "); println (Natural'Image (Decoder.Status'Pos (Result)));
             raise MemoryAreas.InvalidMemoryMap with "Invalid Multiboot memory map";
         end if;
 

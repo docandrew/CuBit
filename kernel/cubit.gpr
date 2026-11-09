@@ -29,6 +29,10 @@ project CuBit is
     -- For gprbuild
     package Builder is
 
+        -- Enforce the kernel's restrictions (KERN-011). gprbuild always
+        -- passes -gnatA, so gnat.adc is read only through this setting.
+        for Global_Configuration_Pragmas use "gnat.adc";
+
         for Default_Switches ("Ada") use 
         (
             "-g",                   -- debug info

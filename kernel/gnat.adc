@@ -5,7 +5,6 @@
 -- evidence that the rest of the kernel is free of runtime errors. See
 -- docs/kernel-interrupt-handoff.md for the current assurance boundary.
 --pragma Discard_Names;
-pragma Normalize_Scalars;
 
 -- Necessary for SPARK task proofs
 --pragma Profile (Ravenscar);
@@ -25,7 +24,6 @@ pragma Restrictions (No_Implicit_Dynamic_Code);
 pragma Restrictions (No_Implicit_Heap_Allocations);
 pragma Restrictions (No_IO);
 pragma Restrictions (No_Protected_Types);
-pragma Restrictions (No_Standard_Storage_Pools);
 pragma Restrictions (No_Tasking);
 
 pragma Default_Storage_Pool (null);

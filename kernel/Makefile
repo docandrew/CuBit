@@ -89,7 +89,7 @@ build/boot.o: src/boot.asm src/cubit.inc src/multiboot_entry.inc
 MAX_STACK_USAGE := 2048
 
 # kernel ELF object
-cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr linker.ld Makefile \
+cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr gnat.adc linker.ld Makefile \
               $(wildcard ../shared/firmware/*.ads ../shared/firmware/*.adb) \
               $(wildcard ../shared/time/*.ads ../shared/time/*.adb) \
               $(wildcard ../shared/interrupts/*.ads ../shared/interrupts/*.adb) \

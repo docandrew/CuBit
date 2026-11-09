@@ -23,10 +23,11 @@ package body Platform_Monotonic is
    procedure Pause is
    begin System.Machine_Code.Asm ("pause", Volatile => True); end Pause;
    package Counter is new HPET_Clock (Read32, Read64, Write32, Pause);
+   -- No_Enumeration_Maps (gnat.adc): the position, as Enum'Image printed.
    function Startup_Diagnostic return String is
      (if not Attempted then "not-initialized"
       elsif Registers = Null_Address then "invalid-register-base"
-      else Counter.Status'Image);
+      else Natural'Image (Counter.Startup_Status'Pos (Counter.Status)));
    function Diagnostic (Detail : Unsigned_64) return Unsigned_64 is
    begin
       case Detail is
