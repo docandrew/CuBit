@@ -785,12 +785,17 @@ procedure main is
    ---------------------------------------------------------------------------
    --  Every filesystem request procmgr makes has a deadline (IPC-000 rule
    --  6: never Wait_Forever in the startup path). One request is an open,
-   --  a 1 MiB window or a close: Linux's SCSI command timeout bounds each.
-   File_Request_Deadline_Ms : constant := 30_000;
+   --  a 1 MiB window or a close. It must outlast the storage driver's own
+   --  bounded recovery of one slow command, or procmgr gives up on a read
+   --  the driver is about to deliver: nvme.drv's is two 30 s attempts
+   --  around an abort and a controller reset (BUG-003, NVMe_Recovery).
+   File_Request_Deadline_Ms : constant := 120_000;
    --  A file read at boot before the plan runs (the startup profile, the
    --  generation pointer and record): a missing or unreadable root must
-   --  stop startup with a named error, never a silent wait (SYS-002).
-   Boot_Read_Deadline_Ms : constant := 10_000;
+   --  stop startup with a named error, never a silent wait (SYS-002). A
+   --  missing file is answered at once; only storage that is still working
+   --  on the read (recovering a slow command) uses the whole deadline.
+   Boot_Read_Deadline_Ms : constant := File_Request_Deadline_Ms;
 
    --  The whole file Name into elfBuf; its size, or 0 when it could not be
    --  read (absent, unreadable, or a request past Within_Ms: Timed_Out).
@@ -5265,7 +5270,8 @@ procedure main is
    --  (the "procmgr: bootstrap" line is its CURRENT STEP) and in the log;
    --  never a silent wait. The read is retried every Profile_Retry_Ms
    --  until Startup_Profile_Deadline_Ms (the filesystem may still be
-   --  attaching the system volume).
+   --  attaching the system volume). That window bounds the retries only:
+   --  a read the storage is still serving gets Boot_Read_Deadline_Ms.
    Startup_Profile_Name : constant String := "init.ccl";
    Startup_Profile_Deadline_Ms : constant := 10_000;
    Profile_Retry_Ms : constant := 100;
@@ -5278,10 +5284,10 @@ procedure main is
       Now : Unsigned_64 := Started_At;
       Timed_Out : Boolean := False;
 
-      procedure Stop (Why : String) is
+      procedure Stop (Why : String; Deadline_Ms : Unsigned_64 := Startup_Profile_Deadline_Ms) is
          Line : constant String :=
            "procmgr: bootstrap STOPPED: startup profile " & Startup_Profile_Name & " on the system volume " &
-           Why & " (deadline" & Unsigned_64'Image (Startup_Profile_Deadline_Ms) & " ms)";
+           Why & " (deadline" & Unsigned_64'Image (Deadline_Ms) & " ms)";
       begin
          debugPrint (Line & LF);
          Warnings.Warn (Line);
@@ -5292,8 +5298,7 @@ procedure main is
       debugPrint ("procmgr: reading init.ccl..." & LF);
       loop
          Source_Size := readFileFromFS
-           (Startup_Profile_Name,
-            Unsigned_64'Max (1, Unsigned_64'Min (Boot_Read_Deadline_Ms, Deadline - Unsigned_64'Min (Now, Deadline))));
+           (Startup_Profile_Name, Boot_Read_Deadline_Ms);
          Timed_Out := Last_Read_Timed_Out;
          exit when Source_Size > 0 or else Timed_Out;
          Now := syscall (SYSCALL_GETTIME);
@@ -5306,8 +5311,12 @@ procedure main is
          Now := syscall (SYSCALL_GETTIME);
       end loop;
       if Source_Size = 0 then
-         Stop (if Timed_Out then "did not answer in time: the system volume's storage is not responding"
-               else "is missing: the install looks incomplete, or this is not a CuBit system disk");
+         if Timed_Out then
+            Stop ("did not answer in time: the system volume's storage is not responding",
+                  Boot_Read_Deadline_Ms);
+         else
+            Stop ("is missing: the install looks incomplete, or this is not a CuBit system disk");
+         end if;
          return;
       elsif Source_Size > CCL.Declarations.MAX_SOURCE then
          Stop ("is larger than" & Natural'Image (CCL.Declarations.MAX_SOURCE) & " bytes");

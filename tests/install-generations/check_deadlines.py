@@ -68,8 +68,11 @@ def main():
     ok = body is not None and "Wait_Forever" not in body.group(0)
     print(("PASS: " if ok else "FAIL: ") + "procmgr's readFileFromFS takes an explicit deadline")
     failures += 0 if ok else 1
+    # A deadline is a number, or another named deadline of the same unit.
     for unit, name in DEADLINES:
-        ok = re.search(rf"\b{name}\s*:\s*constant\s*:=\s*[0-9_]+", code(source(unit))) is not None
+        named = "|".join(re.escape(other) for u, other in DEADLINES if u == unit and other != name)
+        ok = re.search(rf"\b{name}\s*:\s*constant\s*:=\s*([0-9_]+|(?:{named})\b)",
+                       code(source(unit))) is not None
         print(("PASS: " if ok else "FAIL: ") + f"{unit}: named deadline {name}")
         failures += 0 if ok else 1
     print("INSTALL-DEADLINES: " + ("PASS" if failures == 0 else f"FAIL ({failures})"))
