@@ -1,0 +1,6 @@
+# User GNAT runtime language features (RT-008): one ada-runtime-check
+# process exercising tagged types, finalization and storage pools.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "ada-runtime-check.app" (priority 3))
+)

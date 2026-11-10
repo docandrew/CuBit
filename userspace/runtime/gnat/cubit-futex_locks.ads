@@ -12,7 +12,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Deadlines;
 
-package CuBit.Futex_Locks is
+package CuBit.Futex_Locks with Preelaborate is
 
    type Word is mod 2 ** 32 with Atomic, Size => 32;
 

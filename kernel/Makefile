@@ -1606,6 +1606,13 @@ futex-check: ccl-build user_runtime ccl-manifest
 
 # Per-thread growable secondary stacks (CuBit.Thread_Areas): headless
 # --test secondary-stacks.
+# User GNAT runtime language features (RT-008; headless --test ada-runtime).
+.PHONY : ada-runtime-check
+ada-runtime-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/ada-runtime-check/build
+	$(CCL_BUILD) ../userspace/apps/ada-runtime-check/component.ccl
+	cp ../userspace/apps/ada-runtime-check/build/ada-runtime-check.app isodir/boot/ada-runtime-check.app
+
 .PHONY : secondary-stack-check
 secondary-stack-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/secondary-stack-check/build
@@ -2710,7 +2717,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets agent ccl-remote cpu-times-check
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets agent ccl-remote cpu-times-check
 
 .PHONY : headless-test
 headless-test: world

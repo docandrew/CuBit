@@ -1,0 +1,5 @@
+# Ada language-feature regression checks for the user GNAT runtime (RT-008):
+# tagged types, finalization, storage pools. No authority.
+(executable-manifest v1
+  (identity "com.cubit.ada-runtime-check")
+  (version "0.1.0"))

@@ -31,6 +31,12 @@ library project user_runtime is
             "-fno-pic",
             "-I-"
         );
+
+        --  Ada.Tags.Length (upstream) is a NUL scan GCC turns into a strlen
+        --  call; the user runtime provides no strlen (the libc does, and
+        --  not every Ada program links it).
+        for Switches ("a-tags.adb") use
+          Compiler'Default_Switches ("Ada") & ("-fno-tree-loop-distribute-patterns");
     end Compiler;
 
     for Library_Kind use "static";

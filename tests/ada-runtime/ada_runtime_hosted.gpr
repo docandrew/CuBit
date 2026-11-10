@@ -1,0 +1,26 @@
+--  ada-runtime-check's checks (userspace/apps/ada-runtime-check) built on
+--  Linux against upstream GNAT 15's full runtime and the hosted CuAlloc: the
+--  reference the native run on the user runtime is compared with (RT-008).
+--  Run: tests/ada-runtime/run-hosted.sh
+with "../../userspace/allocator/allocator_host.gpr";
+
+project Ada_Runtime_Hosted is
+   for Source_Dirs use ("hosted", "../../userspace/apps/ada-runtime-check",
+                        "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("check_results.adb", "hosted_main.adb",
+      --  The native checks, unchanged:
+      "check_results.ads", "events.ads", "events.adb", "events-library.ads",
+      "finalization_checks.ads", "finalization_checks.adb", "pool_checks.ads", "pool_checks.adb",
+      "pooled.ads", "recording_pools.ads", "recording_pools.adb", "shapes.ads", "shapes.adb",
+      "tagged_checks.ads", "tagged_checks.adb",
+      --  The pool from the user runtime:
+      "cubit.ads", "cubit-cualloc_pool.ads", "cubit-cualloc_pool.adb");
+   for Main use ("hosted_main.adb");
+   for Object_Dir use "build/hosted";
+   for Exec_Dir use "build";
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-g", "-gnatwa", "-gnata");
+   end Compiler;
+end Ada_Runtime_Hosted;

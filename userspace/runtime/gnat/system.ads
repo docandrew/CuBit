@@ -42,18 +42,28 @@ pragma Restrictions (No_Exception_Registration);
 --  it is only required by exception stream attributes which are not supported
 --  in this run time.
 
-pragma Restrictions (No_Exception_Handlers);
---  Added for CuBit since Last_Chance_Handler is being used
+--  CuBit (RT-008): No_Exception_Handlers is lifted, No_Exception_Propagation
+--  stays until EXC-001. A handler catches only a raise in its own frame
+--  (GNAT turns it into a jump); anything else still ends the program
+--  through the last-chance handler. GNAT 15's deep Initialize for arrays
+--  of controlled components always carries a local handler, so arrays of
+--  controlled objects need handlers allowed.
 
 pragma Restrictions (No_Implicit_Dynamic_Code);
 --  Pointers to nested subprograms are not allowed in this run time, in order
---  to prevent the compiler from building "trampolines".
-
-pragma Restrictions (No_Finalization);
---  Controlled types are not supported in this run time
+--  to prevent the compiler from building "trampolines". CuBit: with
+--  Always_Compatible_Rep False (below, as upstream x86-64), GCC represents
+--  them, and nested primitives in dispatch tables, by function descriptors
+--  instead, so nested tagged types and 'Access of nested subprograms work
+--  with no executable stack.
 
 pragma Restrictions (No_Tasking);
 --  Tasking is not supported in this run time
+
+pragma Restrictions (No_Abort_Statements);
+pragma Restrictions (Max_Asynchronous_Select_Nesting => 0);
+--  No task can be aborted (no tasking; Jorvik, the planned profile, keeps
+--  both): controlled assignment and finalization need no abort deferral.
 
 pragma Discard_Names;
 --  Disable explicitly the generation of names associated with entities in
@@ -168,8 +178,13 @@ private
    Support_Composite_Assign  : constant Boolean := True;
    Support_Composite_Compare : constant Boolean := True;
    Support_Long_Shifts       : constant Boolean := True;
-   Always_Compatible_Rep     : constant Boolean := True;
-   Suppress_Standard_Library : constant Boolean := True;
+   Always_Compatible_Rep     : constant Boolean := False;
+   --  CuBit (RT-008): as upstream x86-64; see No_Implicit_Dynamic_Code
+   Suppress_Standard_Library : constant Boolean := False;
+   --  CuBit (RT-008): the binder's main then calls adafinal, which gnatbind
+   --  15 cannot generate for a suppressed standard library once
+   --  No_Finalization is gone; the hooks it calls are
+   --  CuBit.Binder_Interface and System.Standard_Library.
    Use_Ada_Main_Program_Name : constant Boolean := False;
    Frontend_Exceptions       : constant Boolean := False;
    ZCX_By_Default            : constant Boolean := False;
