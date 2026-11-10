@@ -1,5 +1,6 @@
 with CuBit.Appearance;
 with CuBit.UI;
+with CuBit.UI.Boxes;
 with Desktop_Backdrop_Style;
 with Desktop_Wallpaper_Catalog;
 with CuBit.Display_Layouts;
@@ -49,16 +50,21 @@ package Desktop_Settings is
    subtype Mode_Row is Natural;
    Auto_Row : constant Mode_Row := 0;
    --  DISP-009/010: monitors attached to outputs no pipe drives
-   --  (CuBit.Output_Discovery.Connected_Not_Lit), one line each under the
-   --  mode list, e.g. "Also connected: HDMI - DELL U2720Q - 600 x 340 mm,
-   --  best 3840 x 2160 - not in use". They are named only: lighting one
-   --  is DISP-010, so nothing on the page selects them.
+   --  (CuBit.Output_Discovery.Connected_Not_Lit), shown as rows of their
+   --  own ("Also connected, not in use") on the Displays and Monitor pages:
+   --  the connector, the EDID monitor name, its size and its best mode,
+   --  e.g. "HDMI | DELL U2720Q | 600 x 340 mm | best 3840 x 2160". They are
+   --  named only: lighting one is DISP-010, so nothing on the page selects
+   --  them.
    Attached_Lines : constant := 2;
    subtype Attached_Count is Natural range 0 .. Attached_Lines;
-   type Attached_Array is array (1 .. Attached_Lines) of Monitor_Line;
-   --  The line for Item (Connected_Not_Lit), Name its EDID monitor name
-   --  ("" when it has none).
-   function Attached_Line (Item : CuBit.Output_Discovery.Description; Name : String) return Monitor_Line;
+   type Attached_Monitor is record
+      Connector, Name, Size, Best : Monitor_Line;
+   end record;
+   type Attached_Array is array (1 .. Attached_Lines) of Attached_Monitor;
+   --  The row for Item (Connected_Not_Lit), Name its EDID monitor name
+   --  ("" when it has none; fields it does not state stay empty).
+   function Describe_Attached (Item : CuBit.Output_Discovery.Description; Name : String) return Attached_Monitor;
    type Monitor_Info is record
       Summary, Detail : Monitor_Line;
       Attached : Attached_Array;
@@ -86,6 +92,13 @@ package Desktop_Settings is
       X, Y : Integer := 0;
       Logical_X, Logical_Y : Integer := 0;
       Divisor : Positive := 1;
+   end record;
+   --  Where the lists were laid out last (Place): their heights, and the
+   --  width of the mode list's status column (its reasons wrap there), so
+   --  keys page by the rows actually visible. Zero: not placed yet; the
+   --  lists then show their least row counts.
+   type List_Places is record
+      Zone_Height, Mode_Height, Wallpaper_Height, Status_Width : Natural := 0;
    end record;
    type State is record
       Current_Page : Page := Appearance;
@@ -119,6 +132,7 @@ package Desktop_Settings is
       Trial_Open : Boolean := False;
       Trial_Seconds : Natural := 0;
       Answer : Trial_Response := No_Response;
+      Places : List_Places;
    end record;
    procedure Open (View : out State; Current : CuBit.Appearance.Preferences;
                    Layout : CuBit.Display_Layouts.Layout;
@@ -155,6 +169,43 @@ package Desktop_Settings is
       with procedure Paint_Wallpaper
         (C : CuBit.UI.Canvas; Bounds : CuBit.UI.Rect; Style : CuBit.Appearance.Preferences);
    procedure Render (View : State; C : CuBit.UI.Canvas; Window_Bounds : CuBit.UI.Rect);
+
+   --  The window's layout (CuBit.UI.Boxes, UI-033): the smallest client
+   --  area in which every page fits, measured from its content with the
+   --  real UI font (the window's minimum size), and the size the pages
+   --  prefer (the size it opens at).
+   procedure Measure (View : State; Minimum, Natural_Size : out CuBit.UI.Boxes.Size);
+   --  Where a control of the current page is in a window at Window_Bounds
+   --  (empty when the page does not show it), and a list's visible Line
+   --  (from 0, the top row shown): tests and the Desktop address widgets
+   --  by identity, never by pixel constants.
+   function Control_Bounds (View : State; Window_Bounds : CuBit.UI.Rect; Item : Control) return CuBit.UI.Rect;
+   function Row_Bounds
+     (View : State; Window_Bounds : CuBit.UI.Rect; List : Control; Line : Natural) return CuBit.UI.Rect
+     with Pre => List in Zone_List | Mode_List | Wallpaper_List;
+   --  Every part of the current page fits in a window at Window_Bounds.
+   function Fits (View : State; Window_Bounds : CuBit.UI.Rect) return Boolean;
+   --  Lay the window out at Window_Bounds and remember where its lists are
+   --  (Pointer and Wheel do this themselves; Desktop calls it before Key).
+   procedure Place (View : in out State; Window_Bounds : CuBit.UI.Rect);
+   --  The rows a list shows from its top row at the last Place: Page Up,
+   --  Page Down and the lists' Up and Down buttons move by this many.
+   function Page_Rows (View : State; List : Control) return Positive
+     with Pre => List in Zone_List | Mode_List | Wallpaper_List;
+   --  UI-035: the mouse wheel at X, Y scrolls the list under the pointer
+   --  (Wheel_Rows a notch, positive up), whether or not it has the focus;
+   --  it never changes the choice.
+   Wheel_Rows : constant := 3;
+   procedure Wheel (View : in out State; Window_Bounds : CuBit.UI.Rect; X, Y : Natural; Notches : Integer);
+   --  One line per widget of the current page, for tests that address
+   --  widgets by identity: "Settings layout <NAME> <x> <y> <w> <h>" in
+   --  the window's coordinates (Desktop: logical desktop coordinates), NAME
+   --  a Control (e.g. DISPLAYS_TAB, APPLY) or a part: SIDEBAR, PAGE,
+   --  PREVIEW, PREVIEW_WINDOW (the miniature window in the preview),
+   --  DIAGRAM.
+   generic
+      with procedure Put (Line : String);
+   procedure Publish_Layout (View : State; Window_Bounds : CuBit.UI.Rect);
 
    --  The software canvas rendering; Preview is View.Pending resolved
    --  against the catalog (Desktop_Wallpaper_Assets.Resolve) for the preview.

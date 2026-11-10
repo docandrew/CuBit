@@ -15,6 +15,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.System_Facts;
 with CuBit.UI;
 with CuBit.UI.App;
+with CuBit.UI.Input;
 with CuBit.UI.Clipboard;
 with Clipboard_Chords;
 with Clipboard_Text;
@@ -908,7 +909,11 @@ procedure main is
                end if;
             end;
          end if;
-      elsif event.kind = CuBit.UI.App.INPUT_POINTER_WHEEL and then treeFocused
+      elsif event.kind = CuBit.UI.App.INPUT_POINTER_WHEEL and then
+        --  UI-035: the wheel scrolls the tree under the pointer (the
+        --  event carries the pointer's position), clicked into or not.
+        CuBit.UI.Point_In_Rect (CuBit.UI.Input.Pointer_X (event), CuBit.UI.Input.Pointer_Y (event),
+                                lastTreeBounds)
       then
          wheel := CuBit.UI.App.Pointer_Wheel_Delta (event);
          Rebuild_Visible_Keys;

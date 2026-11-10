@@ -164,6 +164,7 @@ with CCL.Interfaces.Desktop_Launch;
 with CuBit.Appearance;
 with CuBit.Settings;
 with CuBit.UI;
+with CuBit.UI.Boxes;
 with CuBit.UI.Theme_CCL;
 with CuBit.UI.Theme_Data;
 with CuBit.Desktop_Protocol;
@@ -1246,6 +1247,8 @@ procedure main is
 
    appearance : CuBit.Appearance.Preferences := CuBit.Appearance.Default;
    settingsView : Desktop_Settings.State;
+   --  The Settings window's layout sizes (client area), measured when it opens.
+   settingsMinimum, settingsNatural : CuBit.UI.Boxes.Size;
    themeRevision : Unsigned_64 := 1;
    chromePalette : Window_Chrome.Palette := Window_Chrome.Alloy_Light;
    --  The window button under the pointer (hover feedback), if any.
@@ -5502,6 +5505,30 @@ procedure main is
      (settingsFill, settingsStroke, settingsGradient, settingsText,
       Settings_Controls.Draw_Button, Settings_Controls.Draw_Tab, settingsWallpaper);
 
+   --  UI-033: tests address Settings' widgets by identity. When its page,
+   --  question or place changes, its layout goes to the log, one line per
+   --  widget ("desktop: Settings layout APPLY x y w h", logical desktop
+   --  coordinates; Desktop_Settings.Publish_Layout).
+   settingsPublished : Rect := (others => 0);
+   settingsPublishedPage : Desktop_Settings.Page := Desktop_Settings.Appearance;
+   settingsPublishedTrial : Boolean := False;
+   procedure settingsLogLine (Line : String) is
+   begin
+      debugPrint ("desktop: " & Line & LF);
+   end settingsLogLine;
+   procedure publishSettingsLayout is new Desktop_Settings.Publish_Layout (settingsLogLine);
+   procedure noteSettingsLayout (Bounds : Rect) is
+   begin
+      if Bounds /= settingsPublished or else settingsView.Current_Page /= settingsPublishedPage
+        or else settingsView.Trial_Open /= settingsPublishedTrial
+      then
+         publishSettingsLayout (settingsView, (Bounds.x, Bounds.y, Bounds.w, Bounds.h));
+         settingsPublished := Bounds;
+         settingsPublishedPage := settingsView.Current_Page;
+         settingsPublishedTrial := settingsView.Trial_Open;
+      end if;
+   end noteSettingsLayout;
+
    --  One window button: a square, bordered tile with a Glyph_Size stroke
    --  glyph, all solid fills (Window_Chrome geometry and palette).
    type Button_Glyph is (Minimize_Glyph, Maximize_Glyph, Restore_Glyph, Close_Glyph);
@@ -5642,6 +5669,7 @@ procedure main is
                             else (0, 0, fbWidth, fbHeight)), others => <>),
                   (bounds.x, bounds.y, bounds.w, bounds.h));
             begin
+               noteSettingsLayout (bounds);
                if nativeOutputPass then
                   renderSettings (settingsView, C, (bounds.x, bounds.y, bounds.w, bounds.h));
                else
@@ -7817,8 +7845,6 @@ procedure main is
 
       case appKind is
          when APP_SETTINGS =>
-            winW := 742;
-            winH := 420;
             declare
                Zone : Time_Zones.Time_Zone;
                Known : Boolean;
@@ -7830,6 +7856,13 @@ procedure main is
                Desktop_Settings.Open (settingsView, appearance, desktopLayout,
                  desktopLayout.Items (Natural (primaryOutput) + 1).Display, displayScale.Auto, Zone);
                Desktop_Settings.Set_Monitor (settingsView, monitorInfo);
+               --  UI-033: the window opens at the size its pages prefer
+               --  and keeps at least the size they need (frame included).
+               Desktop_Settings.Measure (settingsView, settingsMinimum, settingsNatural);
+               --  A new window: its layout is published again.
+               settingsPublished := (others => 0);
+               winW := settingsNatural.Width + 2 * CLIENT_INSET_X;
+               winH := settingsNatural.Height + CLIENT_INSET_TOP + CLIENT_INSET_BOTTOM;
             end;
          when others =>
             null;
@@ -7908,14 +7941,15 @@ procedure main is
          restoreY => y,
          restoreW => w,
          restoreH => h,
-         minW => MIN_WIN_W,
-         minH => MIN_WIN_H,
+         --  Settings: resizable down to its layout's minimum (UI-033).
+         minW => (if appKind = APP_SETTINGS
+                  then Natural'Max (MIN_WIN_W, settingsMinimum.Width + 2 * CLIENT_INSET_X) else MIN_WIN_W),
+         minH => (if appKind = APP_SETTINGS
+                  then Natural'Max (MIN_WIN_H, settingsMinimum.Height + CLIENT_INSET_TOP + CLIENT_INSET_BOTTOM)
+                  else MIN_WIN_H),
          maxW => 0,
          maxH => 0,
-         windowFlags => (if appKind = APP_SETTINGS then
-           WINDOW_FLAG_DECORATED or WINDOW_FLAG_MINIMIZABLE or
-           WINDOW_FLAG_CLOSEABLE or WINDOW_FLAG_FIXED_SIZE
-           else WINDOW_FLAGS_DEFAULT),
+         windowFlags => WINDOW_FLAGS_DEFAULT,
          title => (0, ""),
          bufferAttached => False, bufferLoan => Source_Loans.No_Ticket,
          bufferGrant => <>,
@@ -10267,6 +10301,18 @@ procedure main is
       end case;
    end Apply_Settings_Page;
 
+   --  UI-035: the wheel over Settings scrolls the list under the pointer.
+   procedure Settings_Wheel (Index : SurfaceIndex; Notches : Integer; damage : in out Rect) is
+      Bounds : constant Rect := clientRect (store.Surfaces (Index));
+      Before : constant Desktop_Settings.State := settingsView;
+      use type Desktop_Settings.State;
+   begin
+      Desktop_Settings.Wheel (settingsView, (Bounds.x, Bounds.y, Bounds.w, Bounds.h), cursorX, cursorY, Notches);
+      if Before /= settingsView then
+         damage := unionRect (damage, Bounds);
+      end if;
+   end Settings_Wheel;
+
    procedure Settings_Pointer (Index : SurfaceIndex; Down, Pressed, Released : Boolean;
                                damage : in out Rect) is
       Bounds : constant Rect := clientRect (store.Surfaces (Index));
@@ -10299,6 +10345,12 @@ procedure main is
          when APP_SETTINGS =>
             if raw < 128 then
                declare Apply : Boolean; begin
+                  declare
+                     Client : constant Rect := clientRect (store.Surfaces (SurfaceIndex (idx)));
+                  begin
+                     --  Keys page by the rows the window's lists show now.
+                     Desktop_Settings.Place (settingsView, (Client.x, Client.y, Client.w, Client.h));
+                  end;
                   Desktop_Settings.Key (settingsView, Natural (raw), desktopShiftDown, Apply);
                   if Apply then
                      Apply_Settings_Page (SurfaceIndex (idx), damage);
@@ -11530,7 +11582,11 @@ procedure main is
          end if;
          if dz /= 0 then
             wheelIdx := hitSurface (cursorX, cursorY);
-            if wheelIdx >= 0 then
+            if wheelIdx >= 0 and then store.Surfaces (SurfaceIndex (wheelIdx)).owner = No_Process
+              and then store.Surfaces (SurfaceIndex (wheelIdx)).appKind = APP_SETTINGS
+            then
+               Settings_Wheel (SurfaceIndex (wheelIdx), dz, damage);
+            elsif wheelIdx >= 0 then
                queuePointerWheel
                  (store.Surfaces (SurfaceIndex (wheelIdx)).id,
                   cursorX,
@@ -13212,9 +13268,14 @@ procedure main is
                         Text (I) := Attached.Value.Name (I);
                      end loop;
                      Info.Attached_Used := Info.Attached_Used + 1;
-                     Info.Attached (Info.Attached_Used) := Desktop_Settings.Attached_Line (D, Text);
-                     debugPrint ("desktop: Settings " & Info.Attached (Info.Attached_Used).Text
-                       (1 .. Info.Attached (Info.Attached_Used).Length) & LF);
+                     Info.Attached (Info.Attached_Used) := Desktop_Settings.Describe_Attached (D, Text);
+                     declare
+                        Row : Desktop_Settings.Attached_Monitor renames Info.Attached (Info.Attached_Used);
+                     begin
+                        debugPrint ("desktop: Settings also connected: " &
+                          Row.Connector.Text (1 .. Row.Connector.Length) & " " & Row.Name.Text (1 .. Row.Name.Length) &
+                          " " & Row.Best.Text (1 .. Row.Best.Length) & LF);
+                     end;
                   end;
                end if;
                if D.Native_Number = Natural (primaryOutput) and then D.Role /= OD.Detected_Only then

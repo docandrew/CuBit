@@ -20,8 +20,12 @@
 --  The window stays while the endpoint runs: once a host pairs, "Paired
 --  with <address>" takes the code's place (the token is never shown again)
 --  and the window lists what the host does (Remote_Activity), newest at
---  the bottom, scrolled with the wheel or Up/Down/Page Up/Page Down/Home/
---  End. On Kernel_Console the same lines go to the console and logstore.
+--  the bottom, in a read-only text field (CuBit.UI.Text_Views): it follows
+--  new entries unless scrolled back (wheel, Up/Down/Page Up/Page Down/
+--  Home/End, its scroll bar), selects by dragging or Shift+keys, and Ctrl+C
+--  copies the selection. The window is laid out by CuBit.UI.Boxes and
+--  resizes down to its layout's minimum (UI-033). On Kernel_Console the
+--  same lines go to the console and logstore.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Remote_Wire;

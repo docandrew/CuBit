@@ -5,6 +5,7 @@ memory. Timing waits allow asynchronous presentation to settle, not benchmark it
 """
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 import socket
@@ -119,6 +120,25 @@ with socket.socket(socket.AF_UNIX) as connection:
         hmp("mouse_button 1")
         time.sleep(0.07)
         hmp("mouse_button 0")
+
+    def settings_layout(name):
+        """The latest place of a Settings widget, by identity (UI-033):
+        Desktop logs "Settings layout NAME x y w h" whenever the page or the
+        window's place changes (Desktop_Settings.Publish_Layout)."""
+        until = min(deadline, time.monotonic() + 15)
+        pattern = re.compile(rf"desktop: Settings layout {name} (\d+) (\d+) (\d+) (\d+)")
+        while True:
+            found = pattern.findall(log.read_text(errors="replace"))
+            if found:
+                return tuple(map(int, found[-1]))
+            require(time.monotonic() < until, f"Settings layout {name} not published")
+            time.sleep(0.05)
+
+    def middle(rect):
+        return (rect[0] + rect[2] // 2, rect[1] + rect[3] // 2)
+
+    def area(image, rect):
+        return region(image, rect[0], rect[1], rect[2], rect[3])
 
     command("qmp_capabilities")
     while True:
@@ -238,39 +258,46 @@ with socket.socket(socket.AF_UNIX) as connection:
     # (CuBit.UI.Window_Chrome, App-colour stripe design).
     preview_stripe = bytes.fromhex("2e7180")
     preview_bar = bytes.fromhex("f4f6f8")
+    # Where Settings put them (by identity, not pixel constants): the
+    # miniature window in the preview, its page, its Displays tab. The
+    # stripe is the window's first rows under its 1-pixel border, the flat
+    # title bar under the 4-pixel stripe (CuBit.UI.Window_Chrome); sample
+    # the bar's right part, clear of the title text.
+    miniature = settings_layout("PREVIEW_WINDOW")
+    page = settings_layout("PAGE")
+    preview = settings_layout("PREVIEW")
+    sample_x = miniature[0] + miniature[2] - 48
     settings_deadline = min(deadline, time.monotonic() + 15)
     while True:
         appearance = capture("settings-appearance")
-        preview_ready = (region(appearance[0], 400, 196, 40, 1) == preview_stripe * 40 and
-                         region(appearance[0], 400, 200, 40, 18) == preview_bar * 40 * 18)
+        preview_ready = (region(appearance[0], sample_x, miniature[1] + 1, 40, 1) == preview_stripe * 40 and
+                         region(appearance[0], sample_x, miniature[1] + 5, 40, 18) == preview_bar * 40 * 18)
         if preview_ready:
             break
         require(time.monotonic() < settings_deadline, "Settings preview not visible")
-    require(region(appearance[0], 120, 180, 550, 170) !=
-            region(baseline[0], 120, 180, 550, 170), "Settings did not open")
-    move(151, 184)
+    require(area(appearance[0], page) != area(baseline[0], page), "Settings did not open")
+    move(*middle(settings_layout("DISPLAYS_TAB")))
     click()
     displays = capture("settings-displays")
-    require(region(displays[0], 120, 180, 550, 170) !=
-            region(appearance[0], 120, 180, 550, 170), "Displays tab did not change content")
+    require(area(displays[0], page) != area(appearance[0], page), "Displays tab did not change content")
     hmp("sendkey shift-tab")
     time.sleep(0.15)
     hmp("sendkey ret")
-    # Focus moved from the Light button to the Appearance tab; compare content
-    # below that button, not its intentionally changed keyboard-focus border.
+    # Focus moved from the Light button to the Appearance tab; compare the
+    # preview, not the intentionally changed keyboard-focus borders.
     # The input and scanout are asynchronous. Wait for this exact restoration,
     # rather than treating one fixed-delay capture as completed presentation.
     returned_deadline = min(deadline, time.monotonic() + 15)
     while True:
         returned = capture("settings-returned")
-        if region(returned[0], 120, 210, 550, 140) == region(appearance[0], 120, 210, 550, 140):
+        if area(returned[0], preview) == area(appearance[0], preview):
             break
         require(time.monotonic() < returned_deadline, "Settings keyboard tab navigation failed")
     if os.environ.get("CUBIT_TEST_ARRANGEMENT") == "1":
         import math
         import re
 
-        move(151, 184)
+        move(*middle(settings_layout("DISPLAYS_TAB")))
         click()
         origins = [(0, 0), (main_width, 0)]
         sizes = [(main_width, main_height), (side_width, side_height)]
@@ -279,13 +306,18 @@ with socket.socket(socket.AF_UNIX) as connection:
             old_primary = origins[0]
             right = max(origins[i][0] + sizes[i][0] for i in range(2))
             bottom = max(origins[i][1] + sizes[i][1] for i in range(2))
-            divisor = max(1, math.ceil(right / 530), math.ceil(bottom / 152))
-            # Settings stays at (96,72) on its monitor; client inset is (1,34)
-            # (CuBit.UI.Window_Chrome: border, stripe, title bar, rule).
-            tx = 249 + (550 - right // divisor) // 2
-            ty = 182 + (172 - bottom // divisor) // 2
-            sx = old_primary[0] + tx + origins[1][0] // divisor + side_width // divisor // 2
-            sy = old_primary[1] + ty + origins[1][1] // divisor + side_height // divisor // 2
+            # The arrangement diagram where Settings last put it (logical
+            # desktop coordinates; it follows its monitor), and its scale:
+            # the displays fit inside it less a 16-pixel margin each side
+            # (Desktop_Settings.Projection).
+            diagram = settings_layout("DIAGRAM")
+            margin = 16
+            divisor = max(1, math.ceil(right / (diagram[2] - 2 * margin)),
+                          math.ceil(bottom / (diagram[3] - 2 * margin)))
+            tx = diagram[0] + (diagram[2] - right // divisor) // 2
+            ty = diagram[1] + (diagram[3] - bottom // divisor) // 2
+            sx = tx + origins[1][0] // divisor + side_width // divisor // 2
+            sy = ty + origins[1][1] // divisor + side_height // divisor // 2
             move(sx, sy)
             hmp("mouse_button 1")
             time.sleep(0.1)
@@ -294,7 +326,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             hmp("mouse_button 0")
             capture(f"settings-{phase}-preview")
             before = len(log.read_text(errors="replace"))
-            move(old_primary[0] + 645, old_primary[1] + 455)
+            move(*middle(settings_layout("APPLY")))
             click()
             expected = [(-min(0, dx), -min(0, dy)), (max(0, dx), max(0, dy))]
             until = time.monotonic() + 5
@@ -338,7 +370,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         move(80, side_height + 80)
         restored = capture("settings-seam-restored")
         require(restored[1] == baseline[1], "secondary cursor artifacts after vertical seam crossing")
-        # Settings is intentionally fixed-size. Launch a real resizable client
+        # Launch a real resizable client
         # on the relocated primary and exercise its work-area calculation.
         ready_before = log.read_text(errors="replace").count("ccl-workbench: first frame presented")
         launch_workbench()

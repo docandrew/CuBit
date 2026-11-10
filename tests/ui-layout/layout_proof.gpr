@@ -1,0 +1,12 @@
+--  gnatprove for Box_Distribution (UI-033), level 2: run.sh --prove.
+project Layout_Proof is
+   for Source_Dirs use ("../../userspace/lib/ui");
+   for Source_Files use ("box_distribution.ads", "box_distribution.adb");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end Layout_Proof;

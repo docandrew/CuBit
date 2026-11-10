@@ -1160,9 +1160,8 @@ package body CuBit.UI is
 
    --  Label insets: a button's text keeps BUTTON_TEXT_INSET from both
    --  sides; a tab's starts TAB_TEXT_LEFT in and ends TAB_TEXT_INSET short.
-   BUTTON_TEXT_INSET : constant := CuBit.UI_Metrics.Space_S + CuBit.UI_Metrics.Space_XS;
-   TAB_TEXT_LEFT : constant := CuBit.UI_Metrics.Space_M + CuBit.UI_Metrics.Space_XS;
-   TAB_TEXT_INSET : constant := CuBit.UI_Metrics.Space_M;
+   --  (BUTTON_TEXT_INSET, TAB_TEXT_LEFT and TAB_TEXT_INSET: in the spec, so
+   --  layouts size buttons and tabs from the same insets.)
    PANE_TITLE_INSET : constant := CuBit.UI_Metrics.Space_L;
 
    package body Control_Renderer is
@@ -1908,11 +1907,11 @@ package body CuBit.UI is
        focused : Boolean; hot : Boolean; firstColumn : Positive := 1)
    is
       face : Color := colors.field;
-      lineHeight : constant Natural := Code_Text_Height + 2;
+      lineHeight : constant Natural := Code_Text_Height + Multiline_Line_Gap;
       line : Positive := 1;
       column : Positive := 1;
-      textX : Natural := r.x + 6;
-      textY : Natural := r.y + 5;
+      textX : Natural := r.x + Multiline_Text_Left;
+      textY : Natural := r.y + Multiline_Text_Top;
       charW : Natural;
       fg : Color;
       bg : Color;
@@ -2014,7 +2013,7 @@ package body CuBit.UI is
          if line >= firstLine and then line <= lastVisible and then
            column >= firstColumn
          then
-            textY := r.y + 5 + (line - firstLine) * lineHeight;
+            textY := r.y + Multiline_Text_Top + (line - firstLine) * lineHeight;
             if text (index) /= ASCII.LF then
                if Selected (absolutePosition) then
                   fg := colors.selectionText;
@@ -2044,7 +2043,7 @@ package body CuBit.UI is
          if text (index) = ASCII.LF then
             line := line + 1;
             column := 1;
-            textX := r.x + 6;
+            textX := r.x + Multiline_Text_Left;
          else
             column := column + 1;
          end if;
@@ -2054,7 +2053,7 @@ package body CuBit.UI is
       if line >= firstLine and then line <= lastVisible and then
         column >= firstColumn
       then
-         textY := r.y + 5 + (line - firstLine) * lineHeight;
+         textY := r.y + Multiline_Text_Top + (line - firstLine) * lineHeight;
          Draw_Carets (absolutePosition);
       end if;
    end Draw_Multiline_Text_Edit_Multiple_Styled;

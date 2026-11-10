@@ -296,6 +296,13 @@ package CuBit.UI is
       (c : Canvas; box : Rect; x, y : Natural; text : String; fg, bg : Color);
    procedure Draw_Code_Text_Fitted
       (c : Canvas; box : Rect; x, y : Natural; text : String; fg, bg : Color);
+   --  Label insets: a button's text keeps BUTTON_TEXT_INSET from both
+   --  sides; a tab's starts TAB_TEXT_LEFT in and ends TAB_TEXT_INSET short.
+   --  Wider than the label and these, a button or tab shows it whole
+   --  (CuBit.UI.Boxes sizes them so); narrower, it is elided.
+   BUTTON_TEXT_INSET : constant := CuBit.UI_Metrics.Space_S + CuBit.UI_Metrics.Space_XS;
+   TAB_TEXT_LEFT : constant := CuBit.UI_Metrics.Space_M + CuBit.UI_Metrics.Space_XS;
+   TAB_TEXT_INSET : constant := CuBit.UI_Metrics.Space_M;
    procedure Draw_Button_Frame
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style);
    type Arrow_Direction is (Arrow_Up, Arrow_Down, Arrow_Left, Arrow_Right);
@@ -408,6 +415,13 @@ package CuBit.UI is
    Secret_Mask : constant String := CuBit.UI_Masking.Fixed_Mask;
    --  Optional display-only suffix, clipped inside the field and drawn in the
    --  muted theme color. It never participates in selection or caret geometry.
+   --  The multi-line text grid (monospace): the first character's line box
+   --  is Multiline_Text_Left, Multiline_Text_Top inside r, and lines are
+   --  Code_Text_Height + Multiline_Line_Gap apart (CuBit.UI.Text_Views hit
+   --  tests against the same grid).
+   Multiline_Text_Left : constant := 6;
+   Multiline_Text_Top  : constant := 5;
+   Multiline_Line_Gap  : constant := 2;
    procedure Draw_Multiline_Text_Edit
       (c : Canvas; r : Rect; colors : Theme; text : String;
        firstLine, visibleLines, cursor, selectionStart, selectionEnd : Positive;
