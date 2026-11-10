@@ -349,11 +349,26 @@ begin
             end if;
          end loop;
          Check (for all P in M.Slab_Id => M.Used (Heap, P) = Counts (P));
+         --  The fast free's computed liveness (one multiplication) agrees
+         --  with the specification's, at every block and at random offsets.
+         for B of Blocks loop
+            if B.Active then
+               Check (M.Is_Live (Heap, B.Position) and then M.Is_Live (Heap, B.Position) = M.Live (Heap, B.Position));
+            end if;
+         end loop;
+         for K in 1 .. 8 loop
+            Seed := Seed * 1_664_525 + 1_013_904_223;
+            declare
+               Probe : constant M.Offset := M.Offset (Seed mod Unsigned_32 (M.Offset'Last + 1));
+            begin
+               Check (M.Is_Live (Heap, Probe) = M.Live (Heap, Probe));
+            end;
+         end loop;
       end loop;
       for B of Blocks loop
          if B.Active then M.Release (Heap, B.Position, Status); Check (Status = M.Released); end if;
       end loop;
       Check (for all P in M.Slab_Id => M.Used (Heap, P) = 0);
    end;
-   Ada.Text_IO.Put_Line ("PASS slabs: 30000 mixed-lifetime operations, independent live intervals and counts");
+   Ada.Text_IO.Put_Line ("PASS slabs: 30000 mixed-lifetime operations, independent live intervals and counts, computed liveness");
 end Slab_Tests;

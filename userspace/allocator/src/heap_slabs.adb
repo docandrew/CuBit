@@ -161,8 +161,16 @@ package body Heap_Slabs with SPARK_Mode is
       end if;
    end Allocate_At;
 
+   function Is_Live (Heap : State; Position : Offset) return Boolean is
+      Item : Natural;
+      Exact : Boolean;
+   begin
+      Divide (Local_Of (Position), Heap.Kinds (Page_Of (Position)), Item, Exact);
+      return Exact and then Heap_Bitmap.Live (Heap.Pages (Page_Of (Position)), Item + 1);
+   end Is_Live;
+
    procedure Release_Reporting (Heap : in out State; Position : Offset; Status : out Release_Status;
-                                Class : out Size_Class; Was_Full, Emptied : out Boolean) is
+                                Class : out Size_Class; Was_Full, Emptied, Single : out Boolean) is
       Page : constant Slab_Id := Page_Of (Position);
       Relative : constant Local_Offset := Local_Of (Position);
       Item : Natural;
@@ -171,6 +179,7 @@ package body Heap_Slabs with SPARK_Mode is
       Class := Heap.Kinds (Page);
       Was_Full := False;
       Emptied := False;
+      Single := False;
       -- One multiplication by the class's reciprocal: the slot, and
       -- whether Relative starts it.
       Divide (Relative, Class, Item, Exact);
@@ -182,6 +191,7 @@ package body Heap_Slabs with SPARK_Mode is
       if OK then
          Was_Full := Full;
          Emptied := Used (Heap, Page) = 0;
+         Single := Used (Heap, Page) = 1;
          -- A slab that was full is a new source of free capacity: prefer it
          -- on the next search for this class, rather than scanning from an
          -- unrelated full slab (Find_Page still validates the hint). Only
@@ -193,9 +203,9 @@ package body Heap_Slabs with SPARK_Mode is
 
    procedure Release (Heap : in out State; Position : Offset; Status : out Release_Status) is
       Class : Size_Class;
-      Was_Full, Emptied : Boolean;
+      Was_Full, Emptied, Single : Boolean;
    begin
-      Release_Reporting (Heap, Position, Status, Class, Was_Full, Emptied);
+      Release_Reporting (Heap, Position, Status, Class, Was_Full, Emptied, Single);
    end Release;
 
    procedure Prove_Disjoint (A, B : Slab_Id; AC, BC : Size_Class; AI, BI : Slot) is

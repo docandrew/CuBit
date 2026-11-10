@@ -69,6 +69,9 @@ package Heap_Slabs with SPARK_Mode, Pure is
           Position mod 16 = 0 and then Position <= Arena_Bytes - Stride (Class) and then
           Preserved (Heap'Old, Heap, Page, Local_Of (Position) / Stride (Class) + 1)
         else Heap = Heap'Old);
+   -- Live, computed: one multiplication and one bitmap word.
+   function Is_Live (Heap : State; Position : Offset) return Boolean with
+     Inline_Always, Pre => Valid (Heap), Post => Is_Live'Result = Live (Heap, Position);
    type Release_Status is (Released, Not_Allocated, Invalid_Offset);
    procedure Release (Heap : in out State; Position : Offset; Status : out Release_Status) with
      Inline_Always, Pre => Valid (Heap),
@@ -80,10 +83,10 @@ package Heap_Slabs with SPARK_Mode, Pure is
         else Heap = Heap'Old);
 
    -- Release, also saying what changed: Class, the slab's class; Was_Full,
-   -- the slab had no free slot before; Emptied, it has no live slot after
-   -- (both False unless Released).
+   -- the slab had no free slot before; Emptied, it has no live slot after;
+   -- Single, it has exactly one (all False unless Released).
    procedure Release_Reporting (Heap : in out State; Position : Offset; Status : out Release_Status;
-                                Class : out Size_Class; Was_Full, Emptied : out Boolean) with
+                                Class : out Size_Class; Was_Full, Emptied, Single : out Boolean) with
      Inline_Always, Pre => Valid (Heap),
      Post => Valid (Heap) and then (Status = Released) = Live (Heap'Old, Position) and then
        Class = Class_Of (Heap, Page_Of (Position)) and then
@@ -91,6 +94,7 @@ package Heap_Slabs with SPARK_Mode, Pure is
        Was_Full = (Status = Released and then
                    Used (Heap'Old, Page_Of (Position)) = Slots_For (Class)) and then
        Emptied = (Status = Released and then Used (Heap, Page_Of (Position)) = 0) and then
+       Single = (Status = Released and then Used (Heap, Page_Of (Position)) = 1) and then
        (if Status = Released then not Live (Heap, Position) and then
           Preserved (Heap'Old, Heap, Page_Of (Position),
                      Local_Of (Position) / Stride (Class_Of (Heap, Page_Of (Position))) + 1)

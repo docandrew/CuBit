@@ -45,6 +45,10 @@ static inline void F(void *p) { cualloc_free((uint64_t)p); }
 static inline void *R(void *p, size_t n) { return (void *)cualloc_reallocate((uint64_t)p, n); }
 static inline void *C(size_t k, size_t n) { return (void *)cualloc_allocate_zeroed(k * n, FUNDAMENTAL); }
 static inline size_t U(void *p) { return cualloc_usable_size((uint64_t)p); }
+void cualloc_free_sized(uint64_t, uint64_t, uint64_t);
+#if defined(SIZED_FREE)
+static inline void FS(void *p, size_t n) { cualloc_free_sized((uint64_t)p, n, FUNDAMENTAL); }
+#endif
 #else
 #include <malloc.h>
 #if defined(ENGINE_JEMALLOC)
@@ -61,6 +65,20 @@ static inline void F(void *p) { free(p); }
 static inline void *R(void *p, size_t n) { return realloc(p, n); }
 static inline void *C(size_t k, size_t n) { return calloc(k, n); }
 static inline size_t U(void *p) { return malloc_usable_size(p); }
+#if defined(SIZED_FREE)
+/* C23 free_sized (jemalloc, tcmalloc). */
+void free_sized(void *, size_t);
+static inline void FS(void *p, size_t n) { free_sized(p, n); }
+#endif
+#endif
+/* SIZED_FREE: frees that know the block's size (Rust GlobalAlloc dealloc,
+ * Ada storage pools, C23 free_sized) where the harness knows it (single,
+ * replay, strings); otherwise the plain free. */
+#if !defined(SIZED_FREE)
+static inline void FS(void *p, size_t n) { (void)n; F(p); }
+#define SIZED_NAME ""
+#else
+#define SIZED_NAME "-sized"
 #endif
 
 enum { LIVE = 1024, SAMPLE_EVERY = 128, BATCH = 512, THREAD_SAMPLE_EVERY = 64,
@@ -127,7 +145,7 @@ static int single(const char *w, long n) {
     uint64_t start = now();
     for (long i = 0; i < n; i++) {
         uint64_t t = i % SAMPLE_EVERY == 0 ? now() : 0;
-        F((void *)p[slots[i]]);
+        FS((void *)p[slots[i]], held[slots[i]]);
         volatile unsigned char *q = A(sizes[i]);
         if (!q) die("OOM");
         q[0] = 1; q[sizes[i] - 1] = 2;
@@ -300,6 +318,7 @@ static int replay(const char *file) {
     uint32_t ids = 0;
     for (long i = 0; i < n; i++) if (ops[i].id >= ids) ids = ops[i].id + 1;
     void **live = mmap(0, (size_t)ids * 8 + 8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint64_t *bytes = mmap(0, (size_t)ids * 8 + 8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     uint32_t *samples = mmap(0, (n / THREAD_SAMPLE_EVERY + 1) * 4, PROT_READ | PROT_WRITE,
                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     long taken = 0;
@@ -310,10 +329,10 @@ static int replay(const char *file) {
         uint64_t t = i % THREAD_SAMPLE_EVERY == 0 ? now() : 0;
         unsigned char *p;
         switch (o->op) {
-        case 1: p = A(o->a); if (!p) die("OOM"); p[0] = 1; live[o->id] = p; break;
-        case 2: F(live[o->id]); live[o->id] = 0; break;
-        case 3: p = R(live[o->id], o->a); if (!p) die("OOM"); p[0] = 1; live[o->id] = p; break;
-        case 4: p = C(o->a, o->b); if (!p) die("OOM"); live[o->id] = p; break;
+        case 1: p = A(o->a); if (!p) die("OOM"); p[0] = 1; live[o->id] = p; bytes[o->id] = o->a; break;
+        case 2: FS(live[o->id], bytes[o->id]); live[o->id] = 0; break;
+        case 3: p = R(live[o->id], o->a); if (!p) die("OOM"); p[0] = 1; live[o->id] = p; bytes[o->id] = o->a; break;
+        case 4: p = C(o->a, o->b); if (!p) die("OOM"); live[o->id] = p; bytes[o->id] = o->a * o->b; break;
         default: die("bad op");
         }
         if (t) samples[taken++] = (uint32_t)(now() - t);
@@ -329,7 +348,37 @@ static int replay(const char *file) {
     return 0;
 }
 
+/* String building: LIVE strings, each grown by appending 1..64 bytes
+ * (realloc to the new length) until it passes a random length up to 64
+ * KiB, then freed and started again; one op is one append. */
+static int strings(long n) {
+    enum { STRINGS = 64, LONGEST = 65536 };
+    static unsigned char *s[STRINGS];
+    static size_t len[STRINGS], goal[STRINGS];
+    uint64_t seed = 0x2545f4914f6cdd1dull;
+    for (int i = 0; i < STRINGS; i++) { s[i] = 0; len[i] = 0; goal[i] = 1 + next(&seed) % LONGEST; }
+    uint64_t start = now();
+    for (long i = 0; i < n; i++) {
+        uint64_t r = next(&seed);
+        int k = r % STRINGS;
+        size_t add = 1 + (r >> 8) % 64;
+        unsigned char *q = R(s[k], len[k] + add);
+        if (!q) die("OOM");
+        q[len[k]] = (unsigned char)i; q[len[k] + add - 1] = 1;
+        s[k] = q; len[k] += add;
+        if (len[k] >= goal[k]) {
+            FS(s[k], len[k]); s[k] = 0; len[k] = 0; goal[k] = 1 + (r >> 20) % LONGEST;
+        }
+    }
+    uint64_t elapsed = now() - start;
+    printf("{\"engine\":\"%s%s\",\"mode\":\"strings\",\"workload\":\"strings\",\"pairs\":%ld,\"ns_per_pair\":%.3f,"
+           "\"peak_rss_kib\":%ld}\n", ENGINE, SIZED_NAME, n, (double)elapsed / n, status_kib("VmHWM:"));
+    for (int i = 0; i < STRINGS; i++) if (s[i]) FS(s[i], len[i]);
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (argc >= 3 && !strcmp(argv[1], "strings")) return strings(atol(argv[2]));
     if (argc >= 4 && !strcmp(argv[1], "single")) return single(argv[2], atol(argv[3]));
     if (argc >= 3 && !strcmp(argv[1], "split")) return split(atol(argv[2]));
     if (argc >= 4 && !strcmp(argv[1], "hot")) return hot((size_t)atol(argv[2]), atol(argv[3]));

@@ -114,18 +114,24 @@ is
    --  its own lock or reenter it.
    function Unlocked return Boolean with Ghost, Global => (Input => Heap_State);
 
+   --  Allocate, Allocate_Zeroed, Free and Free_Sized are Inline: the C,
+   --  Rust and Ada entry points (CuAlloc_Native, CuAlloc_Host) take their
+   --  fast paths with no wrapper frame or extra jump.
    --  A block of at least Bytes (1 when 0), aligned to Alignment (a power of
    --  two; at least 16), or No_Address when the provider refuses.
    function Allocate (Bytes, Alignment : Unsigned_64) return Unsigned_64 with
+     Inline,
      Side_Effects, Pre => Invariant and then Unlocked, Post => Invariant and then Unlocked,
      Global => (In_Out => Heap_State);
    --  As Allocate, every byte zero.
    function Allocate_Zeroed (Bytes, Alignment : Unsigned_64) return Unsigned_64 with
+     Inline,
      Side_Effects, Pre => Invariant and then Unlocked, Post => Invariant and then Unlocked,
      Global => (In_Out => Heap_State);
    --  No_Address is ignored; anything not from Allocate is ignored too.
    --  Any thread may free any block.
    procedure Free (Item : Unsigned_64) with
+     Inline,
      Pre => Invariant and then Unlocked, Post => Invariant and then Unlocked,
      Global => (In_Out => Heap_State);
    --  Free, given the block's size and alignment as allocated (or as last
@@ -137,6 +143,7 @@ is
    --  heap's small arena takes the radix map. A wrong size costs a lookup,
    --  never a corruption (tests/cualloc). Item must still be a block.
    procedure Free_Sized (Item, Bytes, Alignment : Unsigned_64) with
+     Inline,
      Pre => Invariant and then Unlocked, Post => Invariant and then Unlocked,
      Global => (In_Out => Heap_State);
    --  The bytes the block at Item holds (0 when Item is not a live block).

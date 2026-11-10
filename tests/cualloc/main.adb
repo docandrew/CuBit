@@ -15,6 +15,7 @@ with Heap;
 with Linux_Provider;
 with Thread_Stress;
 with Remote_Twice;
+with Parked_Twice;
 
 procedure Main is
    Failures, Checks : Natural := 0;
@@ -39,6 +40,9 @@ procedure Main is
       return (for all X of B => X = Value);
    end Holds;
 
+   type Unsigned_64_Array is array (Positive range <>) of Unsigned_64;
+   --  A request of each small class's size.
+   Classes : constant Unsigned_64_Array := [16, 32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 640, 768, 896, 1_024, 1_280, 1_536, 1_792, 2_048, 2_560, 3_072, 3_584, 4_096];
    A, B, C : Unsigned_64;
    --  Just over the medium limit: a reservation of its own.
    HUGE_BYTES : constant := 1_048_577;
@@ -122,6 +126,30 @@ begin
       end;
    end loop;
    Check (Heap.Allocate (16, 48) = 0, "a non-power-of-two alignment is refused");
+   --  Small requests aligned beyond 16 bytes, several live at once (a
+   --  regression: with classes of non-power-of-two strides (step 12) only
+   --  a slab's first block was aligned; a single allocate-free loop always
+   --  reused it and passed).
+   declare
+      Aligned : Boolean := True;
+      Items : array (1 .. 5) of Unsigned_64;
+   begin
+      for Shift in 5 .. 12 loop
+         for Size of Unsigned_64_Array'(1, 2 ** Shift / 2 + 1, 2 ** Shift - 1, 100, 1_000, 3_000) loop
+            if Size <= 4_096 then
+               for K in Items'Range loop
+                  Items (K) := Heap.Allocate (Size, 2 ** Shift);
+                  Aligned := Aligned and then Items (K) /= 0 and then Items (K) mod 2 ** Shift = 0
+                    and then Heap.Usable_Size (Items (K)) >= Size;
+               end loop;
+               for K in Items'Range loop
+                  Heap.Free (Items (K));
+               end loop;
+            end if;
+         end loop;
+      end loop;
+      Check (Aligned, "small blocks aligned to 32 .. 4096, five live at once");
+   end;
 
    --  Growth past one arena: 40 MiB of 1 KiB blocks.
    declare
@@ -150,6 +178,33 @@ begin
    A := Heap.Allocate (64, 16); Fill (A, 64, 16#FF#); Heap.Free (A);
    B := Heap.Allocate_Zeroed (64, 16);
    Check (B = A and then Holds (B, 64, 0), "a reused block comes back zeroed");
+   --  Medium calloc (step 13: a medium block never handed out before is
+   --  not cleared, its backing is still the provider's zero). More than the
+   --  heap parks (8 a class): most of the first size's blocks are released,
+   --  and the second size (another class, nothing parked) reuses their
+   --  dirty pages; fresh, parked and reused blocks all read zero.
+   declare
+      Blocks : array (1 .. 40) of Unsigned_64;
+      Zeroed : Boolean := True;
+      procedure Round (Bytes : Unsigned_64; Value : Storage_Element) is
+      begin
+         for K in Blocks'Range loop
+            Blocks (K) := Heap.Allocate_Zeroed (Bytes, 16);
+            Zeroed := Zeroed and then Blocks (K) /= 0 and then Holds (Blocks (K), Bytes, 0);
+            Fill (Blocks (K), Bytes, Value);
+         end loop;
+         for K in reverse Blocks'Range loop
+            Heap.Free (Blocks (K));
+         end loop;
+      end Round;
+   begin
+      for R in 1 .. 2 loop
+         Round (64 * 4_096, 16#A5#);
+         Round (40 * 4_096 - 100, 16#5A#);
+         Round (20 * 4_096, 16#3C#);
+      end loop;
+      Check (Zeroed, "medium calloc reads zero: fresh, parked, released and reused blocks");
+   end;
    Heap.Free (B);
 
    --  Sized frees (Rust's dealloc): small, medium, a medium block shrunk
@@ -359,10 +414,136 @@ begin
              and then Heap.Usable_Size (Kept) = 224, "after Thread_Exit the thread takes a heap again");
       Heap.Free (Again);
       Heap.Free (Kept);
-      Check (Heap.Allocate (200, 16) = Kept, "its blocks are freed locally again");
+      --  Both come back to this heap's next two allocations of the class
+      --  (the first freed is parked and taken first, step 13).
+      declare
+         First : constant Unsigned_64 := Heap.Allocate (200, 16);
+         Second : constant Unsigned_64 := Heap.Allocate (200, 16);
+      begin
+         Check ((First = Kept and then Second = Again) or else (First = Again and then Second = Kept),
+                "its blocks are freed locally again");
+         Heap.Free (First);
+         Heap.Free (Second);
+      end;
    end;
 
    Check (Remote_Twice.Run, "a remote free that fills its batch is sent once (no block handed out twice)");
+
+   --  Small double frees. A freed small block is parked when its heap has
+   --  none (step 13: the heap's spare, live in its core, free to its heap,
+   --  taken by its class's next allocation); others go back to the core.
+   declare
+      Parked, Plain, A, B, C, D, E : Unsigned_64;
+      --  One block of every class, held through the checks: the heap's
+      --  spare block (one per heap, any class) comes back to one of them,
+      --  so the next free here is parked.
+      Drained : Unsigned_64_Array (Classes'Range);
+   begin
+      for K in Classes'Range loop
+         Drained (K) := Heap.Allocate (Classes (K), 16);
+      end loop;
+      Parked := Heap.Allocate (40, 16);
+      Plain := Heap.Allocate (40, 16);
+      Heap.Free (Parked);
+      Check (Heap.Usable_Size (Parked) = 0 and then Heap.Reallocate (Parked, 10) = 0,
+             "a parked small block reports no usable bytes and is not reallocated");
+      Heap.Free (Parked);
+      Heap.Free_Sized (Parked, 40, 16);
+      Heap.Free (Plain);
+      Heap.Free (Plain);
+      Heap.Free_Sized (Plain, 40, 16);
+      A := Heap.Allocate (40, 16);
+      B := Heap.Allocate (40, 16);
+      C := Heap.Allocate (40, 16);
+      D := Heap.Allocate (40, 16);
+      Check (A = Parked and then B = Plain, "the parked block, then the core's latest");
+      Check (A /= 0 and then B /= 0 and then C /= 0 and then D /= 0 and then C /= A and then C /= B
+             and then D /= A and then D /= B and then C /= D,
+             "small blocks freed twice (parked or not, plain or sized) are handed out once");
+      --  An interior address of a parked block, and of a live one: ignored.
+      Heap.Free (A);
+      Heap.Free (A + 16);
+      Heap.Free (C + 16);
+      E := Heap.Allocate (40, 16);
+      Check (E = A and then Heap.Usable_Size (C) = 48, "interior addresses are not freed");
+      --  A block the core released, freed again while nothing is parked:
+      --  not live, so not parked.
+      Heap.Free (E);
+      Heap.Free (B);
+      E := Heap.Allocate (40, 16);
+      Heap.Free (B);
+      B := Heap.Allocate (40, 16);
+      A := Heap.Allocate (40, 16);
+      Check (B /= A and then A /= C and then A /= D and then A /= E and then B /= 0 and then A /= 0,
+             "a released block freed again is not parked");
+      Heap.Free (A);
+      Heap.Free (B);
+      Heap.Free (C);
+      Heap.Free (D);
+      Heap.Free (E);
+      for Item of Drained loop
+         Heap.Free (Item);
+      end loop;
+   end;
+   Check (Parked_Twice.Run, "a parked block freed again by another thread is handed out once");
+   --  A slab whose last live block but one is freed while that one is
+   --  parked: both go back to the core (the slab empties), and every block
+   --  is handed out once.
+   declare
+      Items : array (1 .. 3 * 21) of Unsigned_64;
+      Drained : Unsigned_64_Array (Classes'Range);
+      Distinct : Boolean := True;
+   begin
+      --  Each round's first free is parked (the spare, whatever its class,
+      --  comes back to one of these).
+      for Round in 1 .. 2 loop
+         for K in Classes'Range loop
+            Drained (K) := Heap.Allocate (Classes (K), 16);
+         end loop;
+         for K in Items'Range loop
+            Items (K) := Heap.Allocate (3_000, 16);
+         end loop;
+         for K in Items'Range loop
+            for J in K + 1 .. Items'Last loop
+               Distinct := Distinct and then Items (K) /= 0 and then Items (K) /= Items (J);
+            end loop;
+         end loop;
+         --  Every block handed out is live (a stale parked block, free in
+         --  its core, reports no usable bytes).
+         for K in Items'Range loop
+            Distinct := Distinct and then Heap.Usable_Size (Items (K)) = 3_072;
+         end loop;
+         for D in Drained'Range loop
+            Distinct := Distinct and then Heap.Usable_Size (Drained (D)) = Classes (D);
+         end loop;
+         --  No item overlaps a block of Drained (a stale parked block
+         --  handed out again may lie under a block of another class).
+         for K in Items'Range loop
+            for D in Drained'Range loop
+               Distinct := Distinct and then Drained (D) /= 0
+                 and then (Items (K) + 3_000 <= Drained (D) or else Drained (D) + Classes (D) <= Items (K));
+            end loop;
+         end loop;
+         for D in Drained'Range loop
+            for E in D + 1 .. Drained'Last loop
+               Distinct := Distinct and then
+                 (Drained (D) + Classes (D) <= Drained (E) or else Drained (E) + Classes (E) <= Drained (D));
+            end loop;
+         end loop;
+         --  A block from the middle first (parked: its slab is full of
+         --  Items), then the rest.
+         Heap.Free (Items (Items'Last / 2));
+         for K in Items'Range loop
+            if K /= Items'Last / 2 then
+               Heap.Free (Items (K));
+            end if;
+         end loop;
+         for Item of Drained loop
+            Heap.Free (Item);
+         end loop;
+      end loop;
+      Check (Distinct, "a slab left with only its parked block empties; no block handed out twice");
+   end;
 
    --  Threads: cross-thread frees, exits, adoption.
    declare

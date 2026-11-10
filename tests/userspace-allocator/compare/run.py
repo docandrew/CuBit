@@ -30,6 +30,7 @@ p.add_argument('--traces', default=','.join(TRACES))
 p.add_argument('--threads', default='1,2,4,8')
 p.add_argument('--thread-rounds', type=int, default=256)
 p.add_argument('--split', type=int, default=10_000)
+p.add_argument('--strings', type=int, default=0, help='appends of the string-building trace (0: none)')
 p.add_argument('--replay', action='append', default=[])
 p.add_argument('--output', type=pathlib.Path, required=True)
 a = p.parse_args()
@@ -37,6 +38,8 @@ bins = dict(b.split('=', 1) for b in a.bin)
 cases = [('single', t) for t in a.traces.split(',') if t]
 if a.split:
     cases.append(('split', None))
+if a.strings:
+    cases.append(('strings', None))
 for n in [int(x) for x in a.threads.split(',') if x]:
     cases.append(('threads', ('local', n)))
     if n > 1:
@@ -49,6 +52,8 @@ def command(path, mode, arg):
         return [path, 'single', arg, str(a.pairs)], 1
     if mode == 'split':
         return [path, 'split', str(a.split)], 1
+    if mode == 'strings':
+        return [path, 'strings', str(a.strings)], 1
     if mode == 'threads':
         return [path, 'threads', arg[0], str(arg[1]), str(a.thread_rounds)], arg[1]
     return [path, 'replay', arg], 1

@@ -13,14 +13,14 @@ with Interfaces; use Interfaces;
 
 package CuAlloc_Native is
    function Allocate (Bytes, Alignment : Unsigned_64) return Unsigned_64
-     with Export, Convention => C, External_Name => "cualloc_allocate";
+     with Export, Convention => C, External_Name => "cualloc_allocate", Inline;
    function Allocate_Zeroed (Bytes, Alignment : Unsigned_64) return Unsigned_64
-     with Export, Convention => C, External_Name => "cualloc_allocate_zeroed";
+     with Export, Convention => C, External_Name => "cualloc_allocate_zeroed", Inline;
    procedure Free (Item : Unsigned_64)
-     with Export, Convention => C, External_Name => "cualloc_free";
+     with Export, Convention => C, External_Name => "cualloc_free", Inline;
    --  Free given the block's size and alignment (Rust's GlobalAlloc dealloc).
    procedure Free_Sized (Item, Bytes, Alignment : Unsigned_64)
-     with Export, Convention => C, External_Name => "cualloc_free_sized";
+     with Export, Convention => C, External_Name => "cualloc_free_sized", Inline;
    function Usable_Size (Item : Unsigned_64) return Unsigned_64
      with Export, Convention => C, External_Name => "cualloc_usable_size";
    function Reallocate (Item, Bytes : Unsigned_64) return Unsigned_64

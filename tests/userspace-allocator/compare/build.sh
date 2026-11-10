@@ -36,6 +36,15 @@ gcc "${cflags[@]}" -DENGINE_TCMALLOC "$here/alloc-bench.c" \
 gcc "${cflags[@]}" -DENGINE_JEMALLOC "$here/alloc-bench.c" \
   "${CUBIT_BENCH_JEMALLOC_STATIC:?static jemalloc lib directory}/libjemalloc.a" -lm -o "$out/alloc-bench-jemalloc"
 gcc -O2 -g -shared -fPIC "$here/record.c" -o "$out/record.so"
+# Sized frees (Rust GlobalAlloc dealloc, Ada pools, C23 free_sized) where the
+# harness knows the size: CuAlloc's cualloc_free_sized, jemalloc's and
+# tcmalloc's free_sized.
+gcc "${cflags[@]}" -DENGINE_CUALLOC -DSIZED_FREE "$here/alloc-bench.c" \
+  "$cualloc_lib" -o "$out/alloc-bench-cualloc-sized"
+gcc "${cflags[@]}" -DENGINE_TCMALLOC -DSIZED_FREE "$here/alloc-bench.c" \
+  "$(lib "$CUBIT_BENCH_TCMALLOC")/libtcmalloc_minimal.a" -lstdc++ -lm -o "$out/alloc-bench-tcmalloc-sized"
+gcc "${cflags[@]}" -DENGINE_JEMALLOC -DSIZED_FREE "$here/alloc-bench.c" \
+  "${CUBIT_BENCH_JEMALLOC_STATIC:?static jemalloc lib directory}/libjemalloc.a" -lm -o "$out/alloc-bench-jemalloc-sized"
 if [[ "${CUBIT_BENCH_LTO:-off}" == on ]]; then
   # The allocator's objects with LTO bytecode (and fat code), relocated so
   # the release library is untouched; harness, CuAlloc and the inlined

@@ -13,7 +13,7 @@ package body Heap_Classes with SPARK_Mode is
       65 .. 80 => Bytes_1280, 81 .. 96 => Bytes_1536, 97 .. 112 => Bytes_1792, 113 .. 128 => Bytes_2048,
       129 .. 160 => Bytes_2560, 161 .. 192 => Bytes_3072, 193 .. 224 => Bytes_3584, 225 .. 256 => Bytes_4096];
    function Class_For (Size : Request_Size) return Size_Class is
-     (Classes (Bucket ((Size - 1) / 16 + 1)));
+     (Classes (Bucket ((Size + 15) / 16)));
 
    procedure Prove_Stride (Class : Size_Class) is
    begin

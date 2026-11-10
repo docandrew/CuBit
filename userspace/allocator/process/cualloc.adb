@@ -16,6 +16,7 @@ is
    package E renames Heap_Extents;
    package HC renames Heap_Classes;
    use type S.Release_Status;
+   use type HC.Size_Class;
 
    SMALL_LIMIT : constant := 4_096;
    --  Larger, or aligned beyond a page: a reservation of its own.
@@ -36,6 +37,8 @@ is
    --  Page 0 is the arena's header: its identity word (the map entry that
    --  names it), for sized frees. The core state follows it.
    ARENA_HEADER : constant := Page_Bytes;
+   --  A medium arena's clean mark (Try_Medium), after its identity word.
+   CLEAN_MARK : constant := 4;
    SLAB_META : constant := 270_336;
    EXTENT_META : constant := 36_864;
    pragma Compile_Time_Error (SLAB_META mod Page_Bytes /= 0 or else EXTENT_META mod Page_Bytes /= 0,
@@ -257,11 +260,26 @@ is
    type Class_Caches is array (HC.Size_Class) of Slab_Cache;
    type Class_Sets is array (HC.Size_Class) of Arena_Set;
    type Bucket_Sets is array (Medium_Bucket) of Arena_Set;
-   --  The fast paths read Holder, Id, Arenas and one Cache entry: first.
+   --  The fast paths read Holder, Id, Arenas, Hot, Spare, Spare_Class and
+   --  one Cache entry: first. Hot is the base of the small arena of
+   --  this heap that the last free found through the map (0: none): a free
+   --  whose address rounds down to it is this heap's small block with no
+   --  map lookup (arenas are never given back; one that is would have to
+   --  clear Hot, as Cache). Spare: a small block the holder freed (0:
+   --  none), of class Spare_Class, still live in its slab's core: the
+   --  next allocation of that class returns it with no core step, and a
+   --  free of it is ignored (see Free_Fast for why that catches every
+   --  double free). One per heap, not one per class: whether a class has
+   --  one would be a coin toss on mixed sizes (a mispredicted branch on
+   --  each allocation and free); one block catches the common free and
+   --  allocate again of one size, and is otherwise rarely there to take.
    type Heap_Private is record
       Holder : Unsigned_64;          --  the holding thread's token (0: none)
       Id : Heap_Number;
       Arenas : Arena_Number;         --  table records in use: 1 .. Arenas
+      Hot : Unsigned_64;             --  a small arena of this heap (0: none)
+      Spare : Unsigned_64;           --  a freed small block, live in its core (0: none)
+      Spare_Class : HC.Size_Class;   --  its class
       Cache : Class_Caches;          --  where each small class allocates next
       Capacity : Arena_Number;       --  table records backed
       Committed : Unsigned_64;       --  bytes of the heap's reservation backed
@@ -289,6 +307,7 @@ is
       and then P.Committed <= HEAP_BYTES and then P.Committed mod Page_Bytes = 0
       and then TABLE_OFFSET + Unsigned_64 (P.Capacity) * ARENA_RECORD_BYTES <= P.Committed
       and then (for all K in HC.Size_Class => Cache_Valid (P.Cache (K)))
+      and then P.Hot mod ARENA_SPAN = 0 and then P.Hot < ADDRESS_LIMIT
       and then P.Current_Medium <= P.Arenas
       and then Batches_Valid (P.Outgoing))
      with Ghost;
@@ -1097,9 +1116,9 @@ is
 
    --  Released: Position was live and is now free; Class: its slab's class;
    --  Was_Full: the slab had no free slot before; Emptied: it is now empty
-   --  (it may serve any class).
+   --  (it may serve any class); Single: one live block is left in it.
    procedure Slab_Release
-     (Base : Unsigned_64; Position : S.Offset; Released, Was_Full, Emptied : out Boolean;
+     (Base : Unsigned_64; Position : S.Offset; Released, Was_Full, Emptied, Single : out Boolean;
       Class : out HC.Size_Class)
      with Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57, Inline_Always
    is
@@ -1107,9 +1126,35 @@ is
       Status : S.Release_Status;
    begin
       pragma Assume (S.Valid (Heap), "a small arena's metadata is as its holder last left it");
-      S.Release_Reporting (Heap, Position, Status, Class, Was_Full, Emptied);
+      S.Release_Reporting (Heap, Position, Status, Class, Was_Full, Emptied, Single);
       Released := Status = S.Released;
    end Slab_Release;
+
+   --  The fast free's step in the block's core (the block at Item, at
+   --  Position): when the heap has no parked block and this one is live,
+   --  it is parked (Spare, Spare_Class); when another block is parked,
+   --  Release says to release this one into the core (Release_Small); the
+   --  parked block itself, or a block that is not live, is left alone. The
+   --  core (its class byte and the block's bitmap word) is read only when
+   --  the block may be parked.
+   procedure Slab_Park (Base : Unsigned_64; Position : S.Offset; Item : Unsigned_64;
+                        Spare : in out Unsigned_64; Spare_Class : in out HC.Size_Class;
+                        Release : out Boolean)
+     with Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57, Inline_Always
+   is
+      Heap : S.State with Import, Alignment => 8, Address => Page_Address (Base + ARENA_HEADER);
+   begin
+      pragma Assume (S.Valid (Heap), "a small arena's metadata is as its holder last left it");
+      Release := False;
+      if Spare = 0 then
+         if S.Is_Live (Heap, Position) then
+            Spare := Item;
+            Spare_Class := S.Class_Of (Heap, S.Page_Of (Position));
+         end if;
+      elsif Spare /= Item then
+         Release := True;
+      end if;
+   end Slab_Park;
 
    --  The bytes of the live small block at Position, or 0.
    function Slab_Usable (Base : Unsigned_64; Position : S.Offset) return Unsigned_64 with
@@ -1241,12 +1286,12 @@ is
      Pre => Arena_Usable (R) and then Ends <= ARENA_SPAN,
      Post => R.Kind = R.Kind'Old and then R.Slot = R.Slot'Old and then Arena_Usable (R)
    is
-      Released, Was_Full, Emptied : Boolean;
+      Released, Was_Full, Emptied, Single : Boolean;
       Class : HC.Size_Class;
    begin
       Ensure_Arena (R, Ends, Done);
       if not Done then
-         Slab_Release (Base_Of (R), Position, Released, Was_Full, Emptied, Class);
+         Slab_Release (Base_Of (R), Position, Released, Was_Full, Emptied, Single, Class);
       end if;
    end Grow_Small;
 
@@ -1285,14 +1330,23 @@ is
       Item := Base_Of (R) + Offset;
    end Try_Small;
 
-   procedure Try_Medium (R : in out Arena_Record; Pages : Medium_Pages; Hinted : Boolean; Item : out Unsigned_64) with
+   --  Fresh: the block was never handed out before (every page of it lies
+   --  above the arena's clean mark, the highest page any block of the
+   --  arena has reached, kept in its header page after the identity word):
+   --  its backing is as the provider gave it, zero, so Allocate_Zeroed
+   --  need not clear it. Nothing decommits, and the payload of a medium
+   --  arena is written only through its blocks.
+   procedure Try_Medium (R : in out Arena_Record; Pages : Medium_Pages; Hinted : Boolean; Item : out Unsigned_64;
+                         Fresh : out Boolean) with
      Post => R.Kind = R.Kind'Old and then R.Slot = R.Slot'Old
    is
       First : E.Page_Reference;
       Offset, Ends : Unsigned_64;
       Done, Released : Boolean;
+      Clean : Unsigned_32;
    begin
       Item := No_Address;
+      Fresh := False;
       if R.Kind /= Medium or else not Arena_Usable (R) then
          return;
       end if;
@@ -1310,6 +1364,11 @@ is
          end if;
       end if;
       Item := Base_Of (R) + Offset;
+      Load_32 (Base_Of (R) + CLEAN_MARK, Clean);
+      Fresh := Unsigned_64 (First) > Unsigned_64 (Clean);
+      if Unsigned_64 (First) + Unsigned_64 (Pages) - 1 > Unsigned_64 (Clean) then
+         Store_32 (Base_Of (R) + CLEAN_MARK, Unsigned_32 (First + Pages - 1));
+      end if;
    end Try_Medium;
 
    --  The bytes of the live block Item in arena R (0: none).
@@ -1341,9 +1400,10 @@ is
    --  the class again (any class, when empty). Only these transitions are
    --  noted; a release into a slab with room changes nothing here (the
    --  arena's bit is set already, or was cleared only when none of its
-   --  slabs had room). I outside the table: nothing is noted. Note_Room is
-   --  inline (a slab at its fill line toggles it on every free: a bit test
-   --  when it is set already); Note_Empty, which touches every class, not.
+   --  slabs had room). I outside the table: nothing is noted. Used by
+   --  Release_Local (frees from other threads, the fallback heap); the fast
+   --  free notes no room (Release_Small). Note_Empty, which touches every
+   --  class, is out of line.
    procedure Note_Room (P : in out Heap_Private; I : Natural; Class : HC.Size_Class) with
      Inline_Always,
      Pre => Private_Valid (P),
@@ -1436,7 +1496,7 @@ is
    is
       R : constant Arena_Record := Table (I);
       Base, Offset : Unsigned_64;
-      Released, Was_Full, Emptied : Boolean;
+      Released, Was_Full, Emptied, Single : Boolean;
       Class : HC.Size_Class;
    begin
       if not Arena_Usable (R) or else Shift_Right (Item, ARENA_SHIFT) /= Unsigned_64 (R.Slot) then
@@ -1448,9 +1508,18 @@ is
          if Offset < SLAB_META or else Offset - SLAB_META >= ARENA_PAYLOAD then
             return;
          end if;
-         Slab_Release (Base, S.Offset (Offset - SLAB_META), Released, Was_Full, Emptied, Class);
-         if Released then
-            P.Cache (Class) := (Arena => Base, Page => S.Page_Of (S.Offset (Offset - SLAB_META)));
+         Slab_Release (Base, S.Offset (Offset - SLAB_META), Released, Was_Full, Emptied, Single, Class);
+         --  The parked block (live in its core, free to the holder) freed
+         --  again: it is free now, and no longer parked.
+         if Released and then P.Spare = Item then
+            P.Spare := 0;
+         end if;
+         --  The class's cached arena may hold room no set records (the
+         --  fast free notes none: Release_Small): it stays cached, unless
+         --  it is this arena. Room made here is noted below.
+         if Released and then (P.Cache (Class).Arena = Base or else P.Cache (Class).Arena = 0) then
+            P.Cache (Class).Arena := Base;
+            P.Cache (Class).Page := S.Page_Of (S.Offset (Offset - SLAB_META));
          end if;
          if Was_Full then
             Note_Room (P, I, Class);
@@ -1483,6 +1552,36 @@ is
          I := Index;
       end if;
    end Own_Arena;
+
+   --  The fast free's rare cases, out of line (the fast path keeps no
+   --  registers across a call). Displaced (Old /= Arena): a free into the
+   --  arena at Arena took Class's cache from the arena Old, which may have
+   --  room for Class that no set records (the fast free notes none): Old
+   --  goes back into the class's set. Emptied: a slab of the arena at
+   --  Arena became empty: it may serve every class.
+   procedure Note_Rare (P : in out Heap_Private; Class : HC.Size_Class; Old, Arena : Unsigned_64;
+                        Emptied : Boolean) with
+     No_Inline,
+     Pre => State_Valid and then Ready and then Private_Valid (P),
+     Post => Private_Valid (P) and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
+       and then P.Arenas = P.Arenas'Old
+   is
+      I : Arena_Number := 0;
+      Capacity : constant Arena_Number := P.Capacity with Ghost;
+      Committed : constant Unsigned_64 := P.Committed with Ghost;
+   begin
+      if Old /= Arena and then Old /= 0 and then Old <= Unsigned_64'Last - SLAB_META then
+         Own_Arena (P, Old + SLAB_META, I);
+         if I /= 0 then
+            Include (P.Small_Sets (Class), I);
+         end if;
+      end if;
+      pragma Assert (P.Capacity = Capacity and then P.Committed = Committed);
+      if Emptied and then Arena <= Unsigned_64'Last - SLAB_META then
+         Own_Arena (P, Arena + SLAB_META, I);
+         Note_Empty (P, I);
+      end if;
+   end Note_Rare;
 
    --  Room in the table for one more arena (backing another page of
    --  records when the backed ones are all used).
@@ -1879,7 +1978,7 @@ is
    end Take_Parked;
 
    procedure Allocate_Medium (P : in out Heap_Private; Table : in out Arena_Table; Me, Base : Unsigned_64;
-                              Bytes : Unsigned_64; Item : out Unsigned_64) with
+                              Bytes : Unsigned_64; Item : out Unsigned_64; Fresh : out Boolean) with
      Pre => State_Valid and then Ready and then not Lock_Held and then Private_Valid (P)
        and then Holds (P, Me) and then Heap_Base_Valid (Base) and then Bytes in 1 .. HUGE_THRESHOLD,
      Post => State_Valid and then Ready and then not Lock_Held and then Private_Valid (P)
@@ -1898,7 +1997,7 @@ is
         Post => P.Holder = P.Holder'Old and then P.Id = P.Id'Old and then P.Arenas = P.Arenas'Old
           and then P.Capacity = P.Capacity'Old and then P.Committed = P.Committed'Old
           and then P.Cache = P.Cache'Old and then P.Current_Medium = P.Current_Medium'Old
-          and then P.Outgoing = P.Outgoing'Old
+          and then P.Outgoing = P.Outgoing'Old and then P.Hot = P.Hot'Old
       is
       begin
          for B in Bucket .. Medium_Bucket'Last loop
@@ -1908,11 +2007,14 @@ is
                                    and then P.Committed = P.Committed'Loop_Entry
                                    and then P.Cache = P.Cache'Loop_Entry
                                    and then P.Current_Medium = P.Current_Medium'Loop_Entry
-                                   and then P.Outgoing = P.Outgoing'Loop_Entry);
+                                   and then P.Outgoing = P.Outgoing'Loop_Entry
+                                   and then P.Hot = P.Hot'Loop_Entry);
             Exclude (P.Medium_Sets (B), I);
          end loop;
       end Note_Short;
    begin
+      --  A parked block was handed out before: not fresh.
+      Fresh := False;
       Take_Parked (P, Table, Class, Pages, Item);
       if Item /= No_Address then
          return;
@@ -1927,7 +2029,7 @@ is
          I := Member_After (P.Medium_Sets (Bucket), I);
          exit when I = 0;
          if I <= P.Arenas then
-            Try_Medium (Table (I), Pages, True, Item);
+            Try_Medium (Table (I), Pages, True, Item, Fresh);
             if Item /= No_Address then
                P.Current_Medium := I;
                return;
@@ -1936,7 +2038,7 @@ is
       end loop;
       I := P.Current_Medium;
       if I /= 0 then
-         Try_Medium (Table (I), Pages, False, Item);
+         Try_Medium (Table (I), Pages, False, Item, Fresh);
          if Item /= No_Address then
             return;
          end if;
@@ -1952,7 +2054,7 @@ is
             First (P.Medium_Sets (Bucket), I);
             exit when I = 0;
             if I <= P.Arenas then
-               Try_Medium (Table (I), Pages, False, Item);
+               Try_Medium (Table (I), Pages, False, Item, Fresh);
                if Item /= No_Address then
                   P.Current_Medium := I;
                   return;
@@ -1971,7 +2073,7 @@ is
       Item := No_Address;
       if I /= 0 then
          P.Current_Medium := I;
-         Try_Medium (Table (I), Pages, False, Item);
+         Try_Medium (Table (I), Pages, False, Item, Fresh);
       end if;
    end Allocate_Medium;
 
@@ -2087,7 +2189,8 @@ is
             P : Heap_Private with Import, Alignment => 8, Address => Page_Address (Fresh + PRIVATE_OFFSET);
             Empty : constant Arena_Set := (Summary => 0, Words => [others => 0]);
          begin
-            P := (Id => Id, Holder => Me, Arenas => 0,
+            P := (Id => Id, Holder => Me, Arenas => 0, Hot => 0, Spare => 0,
+                  Spare_Class => HC.Size_Class'First,
                   Capacity => Arena_Number ((Committed - TABLE_OFFSET) / ARENA_RECORD_BYTES),
                   Committed => Committed, Cache => [others => (0, S.Slab_Id'First)],
                   Current_Medium => 0, Small_Sets => [others => Empty],
@@ -2226,8 +2329,33 @@ is
       elsif Wanted <= HUGE_THRESHOLD and then Align <= Page_Bytes then Medium_Request
       else Huge_Request);
 
+   --  The request size for a small block of Wanted bytes aligned to Align:
+   --  Wanted itself up to 16-byte alignment; beyond it the smallest power
+   --  of two that holds Wanted and Align. Every power of two from 16 to
+   --  4096 is a class's stride, and a slab's blocks lie a stride apart from
+   --  a 64 KiB boundary, so the block is aligned (other strides are not
+   --  powers of two: a block of the 112 class may sit 16 bytes past a
+   --  32-byte boundary).
+   function Small_Size (Wanted, Align : Unsigned_64) return HC.Request_Size with
+     Pre => Wanted in 1 .. SMALL_LIMIT and then Align in 1 .. SMALL_LIMIT
+   is
+      Need : constant Unsigned_64 := Unsigned_64'Max (Wanted, Align);
+   begin
+      if Align <= STANDARD_ALIGNMENT then
+         return HC.Request_Size (Wanted);
+      end if;
+      for Shift in 5 .. 11 loop
+         if Need <= Shift_Left (Unsigned_64 (1), Shift) then
+            return HC.Request_Size (Shift_Left (Unsigned_64 (1), Shift));
+         end if;
+      end loop;
+      return SMALL_LIMIT;
+   end Small_Size;
+
+   --  Fresh: a medium block never handed out before (Try_Medium), still
+   --  zero.
    procedure Allocate_Here (Base, Me : Unsigned_64; Kind : Request_Kind; Wanted, Align : Unsigned_64;
-                            Item : out Unsigned_64) with
+                            Item : out Unsigned_64; Fresh : out Boolean) with
      No_Inline,
      Pre => State_Valid and then Ready and then not Lock_Held and then Heap_Base_Valid (Base)
        and then Me /= 0 and then (if Me = FALLBACK_TOKEN then Fallback_Held)
@@ -2239,13 +2367,14 @@ is
    begin
       pragma Assume (Private_Valid (P), "a heap's private part is as its holder last left it");
       Item := No_Address;
+      Fresh := False;
       if P.Holder /= Me then
          return;
       end if;
       if Kind = Small_Request then
-         Allocate_Small (P, Table, Me, Base, HC.Request_Size (Unsigned_64'Max (Wanted, Align)), Item);
+         Allocate_Small (P, Table, Me, Base, Small_Size (Wanted, Align), Item);
       else
-         Allocate_Medium (P, Table, Me, Base, Wanted, Item);
+         Allocate_Medium (P, Table, Me, Base, Wanted, Item, Fresh);
       end if;
    end Allocate_Here;
 
@@ -2344,8 +2473,19 @@ is
          Position : S.Offset;
       begin
          pragma Assume (Private_Valid (P), "a heap's private part is as its holder last left it");
+         if P.Holder /= Me then
+            return;
+         end if;
+         --  The parked block (Free_Fast): live in its core, free to the
+         --  holder.
+         if P.Spare_Class = Class and then P.Spare /= 0 then
+            Item := P.Spare;
+            P.Spare := 0;
+            Hit := True;
+            return;
+         end if;
          Arena := P.Cache (Class).Arena;
-         if P.Holder /= Me or else Arena = 0 then
+         if Arena = 0 then
             return;
          end if;
          Slab_Take (Arena, P.Cache (Class).Page, Class, Position, Hit);
@@ -2355,13 +2495,77 @@ is
       end;
    end Allocate_Fast;
 
-   --  A free of a small block of the caller's own heap: the map entry Value
-   --  names the heap and says small, so the block's arena is its address
-   --  rounded down to the span; no table record is read. Hit False: take
-   --  the full path.
-   procedure Free_Fast (Item : Unsigned_64; Value : Unsigned_32; Hit : out Boolean) with
+   --  Release the small block at Item of this heap's small arena at Arena
+   --  (Position in its payload): its class caches its slab (LIFO reuse,
+   --  warm in cache); nothing else is noted unless the release took the
+   --  class's cache from another arena or emptied the slab (Note_Rare). So
+   --  an arena with room for a class is in that class's set or is the
+   --  class's cached arena: the slow path tries the cached one first, and
+   --  Release_Local leaves another arena's cache entry alone. When the one
+   --  block left in the slab is the heap's parked block, it is released
+   --  too: the slab empties (and is handed out in order again) instead of
+   --  being kept by a block no one holds. Out of line: the fast free keeps
+   --  no registers across a call.
+   procedure Release_Small (P : in out Heap_Private; Me, Arena : Unsigned_64; Position : S.Offset) with
+     No_Inline,
+     Pre => State_Valid and then Ready and then Private_Valid (P) and then Holds (P, Me)
+       and then Arena mod ARENA_SPAN = 0 and then Arena < ADDRESS_LIMIT,
+     Post => Private_Valid (P) and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
+       and then P.Arenas = P.Arenas'Old
+   is
+      Released, Was_Full, Emptied, Single : Boolean;
+      Class : HC.Size_Class;
+      Old, Parked, Parked_Offset : Unsigned_64;
+   begin
+      Slab_Release (Arena, Position, Released, Was_Full, Emptied, Single, Class);
+      if not Released then
+         return;
+      end if;
+      Parked := P.Spare;
+      if Single and then Parked /= 0 and then Parked - Parked mod ARENA_SPAN = Arena then
+         Parked_Offset := Parked mod ARENA_SPAN - SLAB_META;
+         if Parked_Offset < ARENA_PAYLOAD and then S.Page_Of (S.Offset (Parked_Offset)) = S.Page_Of (Position) then
+            Slab_Release (Arena, S.Offset (Parked_Offset), Released, Was_Full, Emptied, Single, Class);
+            if Released then
+               P.Spare := 0;
+            end if;
+         end if;
+      end if;
+      Old := P.Cache (Class).Arena;
+      --  The slab held a block, so it is backed to its end (Try_Small).
+      --  Field by field: an aggregate would also clear the padding.
+      P.Cache (Class).Arena := Arena;
+      P.Cache (Class).Page := S.Page_Of (Position);
+      if Old /= Arena or else Emptied then
+         Note_Rare (P, Class, Old, Arena, Emptied);
+      end if;
+   end Release_Small;
+
+   --  A free of a small block of the caller's own heap. Its arena is its
+   --  address rounded down to the span: the heap's Hot arena, or else one
+   --  the map names as this heap's small arena (which becomes Hot); no
+   --  table record is read. When the heap has no parked block, the block
+   --  is checked live in its core (one bitmap word read) and parked: the
+   --  class's next allocation returns it with no core step. Otherwise it
+   --  is released into its core (Release_Small). A parked block is live in
+   --  its core but free, so a double free is caught either way: a block
+   --  the core released fails the live check or the core's release, the
+   --  parked one is compared (a free from another thread reaches
+   --  Release_Local, which un-parks it), and its class's next allocation
+   --  takes it before anything else.
+   --  Sized (Free_Sized, with the block's claimed Wanted bytes and Align):
+   --  on a Hot miss, when the claimed size is small or medium and the
+   --  address lies past an arena's header page, the arena's identity word
+   --  names the arena instead of the map (a huge block's header page reads
+   --  zero there; a wrong size never makes it read client data or unmapped
+   --  memory). Worked out only on a Hot miss.
+   --  Hit False: take the full path (Free_Other), given the map entry
+   --  Value when Mapped (the map was read here), so it is not read again;
+   --  a block that is not live is ignored here.
+   procedure Free_Fast (Item : Unsigned_64; Sized : Boolean; Wanted, Align : Unsigned_64; Hit : out Boolean;
+                        Value : out Unsigned_32; Mapped : out Boolean) with
      Inline_Always,
-     Pre => State_Valid and then Ready and then Unlocked and then Item < ADDRESS_LIMIT,
+     Pre => State_Valid and then Ready and then Unlocked,
      Post => State_Valid and then Unlocked
    is
       Me, Base : Unsigned_64;
@@ -2370,6 +2574,8 @@ is
       Offset : constant Unsigned_64 := Item mod ARENA_SPAN - SLAB_META;
    begin
       Hit := False;
+      Value := 0;
+      Mapped := False;
       Get_Token (Me);
       if Me <= FALLBACK_TOKEN or else Offset >= ARENA_PAYLOAD then
          return;
@@ -2380,29 +2586,31 @@ is
       end if;
       declare
          P : Heap_Private with Import, Alignment => 8, Address => Page_Address (Base + PRIVATE_OFFSET);
-         Position : constant S.Offset := S.Offset (Offset);
-         Released, Was_Full, Emptied : Boolean;
-         Class : HC.Size_Class;
+         Release : Boolean;
       begin
          pragma Assume (Private_Valid (P), "a heap's private part is as its holder last left it");
-         if P.Holder /= Me or else Natural (Value and 16#FFFF#) /= P.Id then
+         if P.Holder /= Me then
             return;
          end if;
-         Slab_Release (Arena, Position, Released, Was_Full, Emptied, Class);
-         if Released then
-            --  The class allocates next where it last freed: that slot is
-            --  on top of the slab's cache (LIFO reuse, warm in cache). The
-            --  slab held a block, so it is backed to its end (Try_Small).
-            P.Cache (Class).Arena := Arena;
-            P.Cache (Class).Page := S.Page_Of (Position);
-            if Was_Full then
-               Note_Room (P, Natural (Shift_Right (Value, ENTRY_SHIFT) and 16#1FFF#), Class);
+         if Arena /= P.Hot then
+            if Sized and then Item < ADDRESS_LIMIT and then Item mod ARENA_SPAN >= ARENA_HEADER
+              and then Kind_Of (Wanted, Align) in Small_Request | Medium_Request
+            then
+               Load_32 (Arena, Value);
+            else
+               Map_Lookup (Item, Value);
+               Mapped := True;
             end if;
-            if Emptied then
-               Note_Empty (P, Natural (Shift_Right (Value, ENTRY_SHIFT) and 16#1FFF#));
+            if Value = 0 or else (Value and ENTRY_MEDIUM) /= 0 or else Natural (Value and 16#FFFF#) /= P.Id then
+               return;
             end if;
+            P.Hot := Arena;
          end if;
+         Slab_Park (Arena, S.Offset (Offset), Item, P.Spare, P.Spare_Class, Release);
          Hit := True;
+         if Release then
+            Release_Small (P, Me, Arena, S.Offset (Offset));
+         end if;
       end;
    end Free_Fast;
 
@@ -2627,6 +2835,7 @@ is
       Align : constant Unsigned_64 := Unsigned_64'Max (Alignment, STANDARD_ALIGNMENT);
       Kind : constant Request_Kind := Kind_Of (Wanted, Align);
       Me, Base : Unsigned_64;
+      Fresh : Boolean := False;
    begin
       Item := No_Address;
       case Kind is
@@ -2639,14 +2848,33 @@ is
          when Small_Request | Medium_Request =>
             Enter (Me, Base);
             if Base /= 0 then
-               Allocate_Here (Base, Me, Kind, Wanted, Align, Item);
+               Allocate_Here (Base, Me, Kind, Wanted, Align, Item, Fresh);
             end if;
             Leave (Me);
-            if Zeroed and then Item /= No_Address then
+            if Zeroed and then Item /= No_Address and then not Fresh then
                Zero (Item, Wanted);
             end if;
       end case;
    end Allocate_Slow;
+
+   --  A medium request: a parked block, or the full path. Out of line, so
+   --  the small path keeps no registers across a call.
+   procedure Allocate_Medium_Entry (Bytes, Alignment : Unsigned_64; Zeroed : Boolean; Item : out Unsigned_64) with
+     No_Inline,
+     Pre => State_Valid and then Unlocked and then Bytes in SMALL_LIMIT + 1 .. HUGE_THRESHOLD,
+     Post => State_Valid and then Unlocked
+   is
+      Hit : Boolean;
+   begin
+      Allocate_Medium_Fast (Bytes, Item, Hit);
+      if Hit then
+         if Zeroed then
+            Zero (Item, Bytes);
+         end if;
+         return;
+      end if;
+      Allocate_Slow (Bytes, Alignment, Zeroed, Item);
+   end Allocate_Medium_Entry;
 
    procedure Allocate_Entry (Bytes, Alignment : Unsigned_64; Zeroed : Boolean; Item : out Unsigned_64) with
      Inline_Always, Pre => State_Valid and then Unlocked, Post => State_Valid and then Unlocked
@@ -2663,13 +2891,8 @@ is
             return;
          end if;
       elsif Bytes - 1 < HUGE_THRESHOLD and then Alignment <= STANDARD_ALIGNMENT then
-         Allocate_Medium_Fast (Bytes, Item, Hit);
-         if Hit then
-            if Zeroed then
-               Zero (Item, Bytes);
-            end if;
-            return;
-         end if;
+         Allocate_Medium_Entry (Bytes, Alignment, Zeroed, Item);
+         return;
       end if;
       Allocate_Slow (Bytes, Alignment, Zeroed, Item);
    end Allocate_Entry;
@@ -2709,11 +2932,15 @@ is
    --  Every free but the small fast path's: a medium block of the
    --  caller's own heap, or the full path (out of line, so the small path
    --  keeps no registers across a call).
-   procedure Free_Other (Item : Unsigned_64; Value : Unsigned_32) with
+   procedure Free_Other (Item : Unsigned_64; Known : Unsigned_32; Mapped : Boolean) with
      No_Inline, Pre => State_Valid and then Ready and then Unlocked, Post => State_Valid and then Unlocked
    is
+      Value : Unsigned_32 := Known;
       Hit : Boolean;
    begin
+      if not Mapped then
+         Map_Lookup (Item, Value);
+      end if;
       if Value /= 0 and then (Value and ENTRY_MEDIUM) /= 0 then
          Free_Medium_Fast (Item, Value, Hit);
          if Hit then
@@ -2724,57 +2951,63 @@ is
    end Free_Other;
 
    procedure Free (Item : Unsigned_64) is
+      Hit, Mapped : Boolean;
       Value : Unsigned_32;
-      Hit : Boolean;
    begin
       if Item = No_Address or else not Ready then
          return;
       end if;
-      Map_Lookup (Item, Value);
-      if Value /= 0 and then (Value and ENTRY_MEDIUM) = 0 then
-         Free_Fast (Item, Value, Hit);
-         if Hit then
-            return;
-         end if;
+      Free_Fast (Item, False, 1, STANDARD_ALIGNMENT, Hit, Value, Mapped);
+      if not Hit then
+         Free_Other (Item, Value, Mapped);
       end if;
-      Free_Other (Item, Value);
    end Free;
 
    procedure Free_Sized (Item, Bytes, Alignment : Unsigned_64) is
       Wanted : constant Unsigned_64 := Unsigned_64'Max (Bytes, 1);
       Align : constant Unsigned_64 := Unsigned_64'Max (Alignment, STANDARD_ALIGNMENT);
+      Hit, Mapped : Boolean;
       Value : Unsigned_32;
-      Hit : Boolean;
    begin
       if Item = No_Address or else not Ready then
          return;
       end if;
-      --  A small or medium block: its arena's identity word names its heap
-      --  and table place. The size is not trusted: the probe is made only
-      --  where a small or medium block can start (past an arena's header
-      --  page), and every huge block is placed so that the same address
-      --  rounded down is its own zero header page (Allocate_Huge_Over); a
-      --  zero word, or an entry that is not this heap's small arena, takes
-      --  the radix map (Free). A wrong size never makes it read client data
-      --  or unmapped memory.
-      if Item < ADDRESS_LIMIT and then Item mod ARENA_SPAN >= ARENA_HEADER
-        and then Kind_Of (Wanted, Align) in Small_Request | Medium_Request
-      then
-         Load_32 (Item - Item mod ARENA_SPAN, Value);
-         if Value /= 0 and then (Value and ENTRY_MEDIUM) = 0 then
-            Free_Fast (Item, Value, Hit);
-            if Hit then
-               return;
-            end if;
-         end if;
+      --  The size is a hint, not trusted (Free_Fast): it only lets a Hot
+      --  miss read the arena's identity word instead of the radix map.
+      Free_Fast (Item, True, Wanted, Align, Hit, Value, Mapped);
+      if not Hit then
+         Free_Other (Item, Value, Mapped);
       end if;
-      Free (Item);
    end Free_Sized;
+
+   --  Item is the block the caller's heap parked.
+   procedure Parked_Here (Item : Unsigned_64; Parked : out Boolean) with
+     Pre => State_Valid and then Unlocked, Post => State_Valid and then Unlocked
+   is
+      Me, Base : Unsigned_64;
+   begin
+      Parked := False;
+      Get_Token (Me);
+      if Me <= FALLBACK_TOKEN then
+         return;
+      end if;
+      Get_Thread_Heap (Base);
+      if Base = 0 or else Base mod Page_Bytes /= 0 then
+         return;
+      end if;
+      declare
+         P : Heap_Private with Import, Alignment => 8, Address => Page_Address (Base + PRIVATE_OFFSET);
+      begin
+         pragma Assume (Private_Valid (P), "a heap's private part is as its holder last left it");
+         Parked := P.Holder = Me and then P.Spare = Item;
+      end;
+   end Parked_Here;
 
    procedure Usable_Entry (Item : Unsigned_64; Bytes : out Unsigned_64) with
      Pre => State_Valid and then Unlocked,
      Post => State_Valid and then Unlocked and then Bytes <= Maximum_Request
    is
+      Parked : Boolean;
       Value : Unsigned_32;
       R : Arena_Record;
       Found : Boolean;
@@ -2793,6 +3026,13 @@ is
       Find_Arena (Value, R, Found);
       if Found then
          Bytes := Usable_In_Arena (R, Item);
+      end if;
+      --  A block the caller's heap parked (Free_Fast) is free.
+      if Bytes in 1 .. SMALL_LIMIT then
+         Parked_Here (Item, Parked);
+         if Parked then
+            Bytes := 0;
+         end if;
       end if;
    end Usable_Entry;
 
