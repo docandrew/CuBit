@@ -15,7 +15,7 @@ package Heap_Slabs with SPARK_Mode, Pure is
    function Local_Of (Position : Offset) return Local_Offset with Inline_Always,
      Post => Local_Of'Result = Position mod Slab_Bytes;
    function First_Byte (Page : Slab_Id; Class : Size_Class; Item : Slot) return Offset is
-     ((Page - 1) * Slab_Bytes + (Item - 1) * Stride (Class)) with
+     ((Page - 1) * Slab_Bytes + Scale (Item - 1, Class)) with
      Pre => Item <= Slots_For (Class),
      Post => Page_Of (First_Byte'Result) = Page and then
        Local_Of (First_Byte'Result) = (Item - 1) * Stride (Class) and then
@@ -55,11 +55,42 @@ package Heap_Slabs with SPARK_Mode, Pure is
           Preserved (Heap'Old, Heap, Page_Of (Value.Value.Position),
                      Local_Of (Value.Value.Position) / Stride (Class_For (Size)) + 1)
         else Heap = Heap'Old);
+   -- The fast path: a block of Class from slab Page's free-slot cache, with
+   -- no search and no call. Fails (Heap unchanged) when Page is not of
+   -- Class or its cache is empty; the caller then takes Allocate.
+   procedure Allocate_At (Heap : in out State; Page : Slab_Id; Class : Size_Class;
+                          Position : out Offset; Success : out Boolean) with
+     Inline_Always, Pre => Valid (Heap),
+     Post => Valid (Heap) and then
+       (if Success then
+          Live (Heap, Position) and then not Live (Heap'Old, Position) and then
+          Page_Of (Position) = Page and then Class_Of (Heap, Page) = Class and then
+          (for all P in Slab_Id => Class_Of (Heap, P) = Class_Of (Heap'Old, P)) and then
+          Position mod 16 = 0 and then Position <= Arena_Bytes - Stride (Class) and then
+          Preserved (Heap'Old, Heap, Page, Local_Of (Position) / Stride (Class) + 1)
+        else Heap = Heap'Old);
    type Release_Status is (Released, Not_Allocated, Invalid_Offset);
    procedure Release (Heap : in out State; Position : Offset; Status : out Release_Status) with
      Inline_Always, Pre => Valid (Heap),
      Post => Valid (Heap) and then (Status = Released) = Live (Heap'Old, Position) and then
        (for all P in Slab_Id => Class_Of (Heap, P) = Class_Of (Heap'Old, P)) and then
+       (if Status = Released then not Live (Heap, Position) and then
+          Preserved (Heap'Old, Heap, Page_Of (Position),
+                     Local_Of (Position) / Stride (Class_Of (Heap, Page_Of (Position))) + 1)
+        else Heap = Heap'Old);
+
+   -- Release, also saying what changed: Class, the slab's class; Was_Full,
+   -- the slab had no free slot before; Emptied, it has no live slot after
+   -- (both False unless Released).
+   procedure Release_Reporting (Heap : in out State; Position : Offset; Status : out Release_Status;
+                                Class : out Size_Class; Was_Full, Emptied : out Boolean) with
+     Inline_Always, Pre => Valid (Heap),
+     Post => Valid (Heap) and then (Status = Released) = Live (Heap'Old, Position) and then
+       Class = Class_Of (Heap, Page_Of (Position)) and then
+       (for all P in Slab_Id => Class_Of (Heap, P) = Class_Of (Heap'Old, P)) and then
+       Was_Full = (Status = Released and then
+                   Used (Heap'Old, Page_Of (Position)) = Slots_For (Class)) and then
+       Emptied = (Status = Released and then Used (Heap, Page_Of (Position)) = 0) and then
        (if Status = Released then not Live (Heap, Position) and then
           Preserved (Heap'Old, Heap, Page_Of (Position),
                      Local_Of (Position) / Stride (Class_Of (Heap, Page_Of (Position))) + 1)

@@ -228,6 +228,21 @@ routes each free by binary search). `miss K`: 4096-byte churn over K full
 arenas (CuAlloc scans arenas from the first on each miss). Synthetic worst
 cases for the costs ALLOC-001 step 3 removes, not general claims.
 
+## Apples-to-apples comparison (`compare/`)
+
+One C harness (`compare/alloc-bench.c`) built once per allocator with the
+same compiler and flags, each allocator linked statically into a fully
+static binary (`compare/build.sh`: CuAlloc's release host library, nixpkgs
+jemalloc rebuilt with its static archive, gperftools' `libtcmalloc_minimal.a`,
+mimalloc's `libmimalloc.a`, static glibc; `CUBIT_BENCH_LTO=on` adds a
+link-time optimised CuAlloc build). Modes: bench.rs's single-thread traces,
+`hot` (one block allocated and freed again), `split` (alloc and free timed
+apart), thread_bench.rs's local/remote batches, and `replay` of a recorded
+trace (`compare/record.c`, an `LD_PRELOAD` recorder over glibc's
+`__libc_malloc` family, one file per process). `compare/run.py` interleaves
+rounds, pins CPUs and reports medians, sampled p99, peak RSS and rounding
+waste. Hold `coordination/build.lock`. Linux-hosted only.
+
 ## CuAlloc on CuBit
 
 `cubit/build-cubit.sh`, then `tests/headless/run.sh --test bench-cualloc --accel

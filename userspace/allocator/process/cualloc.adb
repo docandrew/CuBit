@@ -86,8 +86,11 @@ is
    subtype Heap_Number is Natural range 0 .. MAXIMUM_HEAPS;
    subtype Heap_Id is Positive range 1 .. MAXIMUM_HEAPS;
 
-   --  Map entry: heap (low 16 bits) and the arena's place in its table.
+   --  Map entry: heap (low 16 bits), the arena's place in its table (13
+   --  bits from ENTRY_SHIFT) and, in ENTRY_MEDIUM, its kind (set: medium),
+   --  so a free knows a small block's arena from the entry alone.
    ENTRY_SHIFT : constant := 16;
+   ENTRY_MEDIUM : constant := 2 ** 29;
 
    ------------------------------------------------------------------------
    --  Huge blocks: the sorted directory.
@@ -159,7 +162,7 @@ is
    --  Backed when a heap is made: its private part and 512 arena records.
    HEAP_INITIAL : constant := TABLE_OFFSET + Page_Bytes;
    RECORDS_PER_PAGE : constant := Page_Bytes / ARENA_RECORD_BYTES;
-   pragma Compile_Time_Error (ENTRY_SHIFT + 13 > 32 or else MAXIMUM_HEAP_ARENAS >= 2 ** 13,
+   pragma Compile_Time_Error (2 ** (ENTRY_SHIFT + 13) > ENTRY_MEDIUM or else MAXIMUM_HEAP_ARENAS >= 2 ** 13,
                               "map entries hold a heap and an arena number");
    --  The fallback heap's holder token (FS bases are aligned, never 1).
    FALLBACK_TOKEN : constant := 1;
@@ -214,16 +217,27 @@ is
    end record;
    type Batches is array (Outgoing_Slot) of Batch;
 
-   type Class_Arenas is array (HC.Size_Class) of Arena_Number;
+   --  Where each small class allocates next: an arena (its base; 0: none)
+   --  and one of its slabs (the slow path finds the arena's table number
+   --  from its identity word). A cached slab is
+   --  backed through its end (the slow path backs it before caching it, and
+   --  a slab that was full held blocks to its end; nothing is decommitted),
+   --  so the fast path takes a slot from it with no commit check.
+   type Slab_Cache is record
+      Arena : Unsigned_64 := 0;
+      Page : S.Slab_Id := S.Slab_Id'First;
+   end record;
+   type Class_Caches is array (HC.Size_Class) of Slab_Cache;
    type Class_Sets is array (HC.Size_Class) of Arena_Set;
    type Bucket_Sets is array (Medium_Bucket) of Arena_Set;
+   --  The fast paths read Holder, Id, Arenas and one Cache entry: first.
    type Heap_Private is record
-      Id : Heap_Number;
       Holder : Unsigned_64;          --  the holding thread's token (0: none)
+      Id : Heap_Number;
       Arenas : Arena_Number;         --  table records in use: 1 .. Arenas
+      Cache : Class_Caches;          --  where each small class allocates next
       Capacity : Arena_Number;       --  table records backed
       Committed : Unsigned_64;       --  bytes of the heap's reservation backed
-      Current_Small : Class_Arenas;  --  where each class last succeeded
       Current_Medium : Arena_Number;
       Small_Sets : Class_Sets;       --  arenas that may serve each class
       Medium_Sets : Bucket_Sets;     --  arenas that may serve each bucket
@@ -236,11 +250,15 @@ is
         and then (if B (O).Destination = 0 then B (O).Count = 0 else B (O).Node /= 0))
      with Ghost;
 
+   function Cache_Valid (C : Slab_Cache) return Boolean is
+     (C.Arena mod ARENA_SPAN = 0 and then C.Arena < ADDRESS_LIMIT)
+     with Ghost;
+
    function Private_Valid (P : Heap_Private) return Boolean is
      (P.Id /= 0 and then P.Arenas <= P.Capacity
       and then P.Committed <= HEAP_BYTES and then P.Committed mod Page_Bytes = 0
       and then TABLE_OFFSET + Unsigned_64 (P.Capacity) * ARENA_RECORD_BYTES <= P.Committed
-      and then (for all K in HC.Size_Class => P.Current_Small (K) <= P.Arenas)
+      and then (for all K in HC.Size_Class => Cache_Valid (P.Cache (K)))
       and then P.Current_Medium <= P.Arenas
       and then Batches_Valid (P.Outgoing))
      with Ghost;
@@ -834,7 +852,7 @@ is
    --  The map entry for Address's slot (0: no small or medium arena).
    --  Lock-free: entries change only under the lock, one word at a time.
    procedure Map_Lookup (Address : Unsigned_64; Value : out Unsigned_32) with
-     Inline, Pre => State_Valid and then Ready
+     Inline, Pre => State_Valid and then Ready, Post => (if Value /= 0 then Address < ADDRESS_LIMIT)
    is
       Leaf : Unsigned_64;
    begin
@@ -990,20 +1008,33 @@ is
       S.Allocate (Heap, Size, Value);
    end Slab_Allocate;
 
+   --  The fast path's allocation: a slot of Class from slab Page's cache.
+   procedure Slab_Take (Base : Unsigned_64; Page : S.Slab_Id; Class : HC.Size_Class;
+                        Position : out S.Offset; Success : out Boolean)
+     with Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57, Inline_Always,
+     Post => (if Success then S.Page_Of (Position) = Page
+              and then Unsigned_64 (Position) <= ARENA_PAYLOAD - Unsigned_64 (HC.Stride (Class)))
+   is
+      Heap : S.State with Import, Alignment => 8, Address => Page_Address (Base + ARENA_HEADER);
+   begin
+      pragma Assume (S.Valid (Heap), "a small arena's metadata is as its holder last left it");
+      S.Allocate_At (Heap, Page, Class, Position, Success);
+   end Slab_Take;
+
    --  Released: Position was live and is now free; Class: its slab's class;
-   --  Emptied: that slab is now empty (it may serve any class).
+   --  Was_Full: the slab had no free slot before; Emptied: it is now empty
+   --  (it may serve any class).
    procedure Slab_Release
-     (Base : Unsigned_64; Position : S.Offset; Released, Emptied : out Boolean; Class : out HC.Size_Class)
+     (Base : Unsigned_64; Position : S.Offset; Released, Was_Full, Emptied : out Boolean;
+      Class : out HC.Size_Class)
      with Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57, Inline_Always
    is
       Heap : S.State with Import, Alignment => 8, Address => Page_Address (Base + ARENA_HEADER);
       Status : S.Release_Status;
    begin
       pragma Assume (S.Valid (Heap), "a small arena's metadata is as its holder last left it");
-      S.Release (Heap, Position, Status);
+      S.Release_Reporting (Heap, Position, Status, Class, Was_Full, Emptied);
       Released := Status = S.Released;
-      Class := S.Class_Of (Heap, S.Page_Of (Position));
-      Emptied := Released and then S.Used (Heap, S.Page_Of (Position)) = 0;
    end Slab_Release;
 
    --  The bytes of the live small block at Position, or 0.
@@ -1061,7 +1092,9 @@ is
      (R.Kind /= Unused and then R.Slot /= 0 and then Unsigned_64 (R.Slot) < MAP_SLOTS
       and then Unsigned_64 (R.Pages) <= ARENA_PAGES);
    function Base_Of (R : Arena_Record) return Unsigned_64 is (Unsigned_64 (R.Slot) * ARENA_SPAN)
-     with Post => Base_Of'Result mod Page_Bytes = 0 and then Base_Of'Result < 2 ** 57;
+     with Post => Base_Of'Result mod Page_Bytes = 0 and then Base_Of'Result < 2 ** 57
+       and then Base_Of'Result mod ARENA_SPAN = 0
+       and then (if Arena_Usable (R) then Base_Of'Result < ADDRESS_LIMIT and then Base_Of'Result /= 0);
    function Meta_Of (Kind : Arena_Kind) return Unsigned_64 is
      (if Kind = Small then SLAB_META else EXTENT_META)
      with Post => Meta_Of'Result in EXTENT_META .. SLAB_META;
@@ -1087,23 +1120,25 @@ is
    with
      No_Inline,
      Pre => Arena_Usable (R) and then Ends <= ARENA_SPAN,
-     Post => R.Kind = R.Kind'Old and then R.Slot = R.Slot'Old
+     Post => R.Kind = R.Kind'Old and then R.Slot = R.Slot'Old and then Arena_Usable (R)
    is
-      Released, Emptied : Boolean;
+      Released, Was_Full, Emptied : Boolean;
       Class : HC.Size_Class;
    begin
       Ensure_Arena (R, Ends, Done);
       if not Done then
-         Slab_Release (Base_Of (R), Position, Released, Emptied, Class);
+         Slab_Release (Base_Of (R), Position, Released, Was_Full, Emptied, Class);
       end if;
    end Grow_Small;
 
    --  A block for Size from small arena I, its backing in place; or
-   --  No_Address (the arena's slabs unchanged) when it has none.
+   --  No_Address (the arena's slabs unchanged) when it has none. The whole
+   --  slab that holds it is backed (so it may be cached: Slab_Cache), Page
+   --  is that slab.
    procedure Try_Small (Table : in out Arena_Table; I : Arena_Index; Size : HC.Request_Size;
-                        Item : out Unsigned_64) with
-     Inline_Always,
+                        Item : out Unsigned_64; Page : out S.Slab_Id) with
      Post => (for all J in Arena_Index => Table (J).Kind = Table'Old (J).Kind)
+       and then (if Item /= No_Address then Arena_Usable (Table (I)) and then Table (I).Kind = Small)
    is
       R : constant Arena_Record := Table (I);
       Value : S.Allocation;
@@ -1111,6 +1146,7 @@ is
       Done : Boolean;
    begin
       Item := No_Address;
+      Page := S.Slab_Id'First;
       if R.Kind /= Small or else not Arena_Usable (R) then
          return;
       end if;
@@ -1118,8 +1154,9 @@ is
       if not Value.Value.Success then
          return;
       end if;
+      Page := S.Page_Of (Value.Value.Position);
       Offset := SLAB_META + Unsigned_64 (Value.Value.Position);
-      Ends := Offset + Unsigned_64 (HC.Stride (HC.Class_For (Size)));
+      Ends := SLAB_META + Unsigned_64 (Page) * S.Slab_Bytes;
       if Ends > Unsigned_64 (R.Pages) * Page_Bytes then
          Grow_Small (Table (I), Value.Value.Position, Ends, Done);
          if not Done then
@@ -1180,29 +1217,43 @@ is
       return 0;
    end Usable_In_Arena;
 
-   --  A block of Class was released in arena I (Emptied: its slab is now
-   --  empty): the arena may serve the class (any class, when Emptied), and
-   --  the next allocation of the class starts there (as the core's slab
-   --  hint does).
-   procedure Note_Small_Free (P : in out Heap_Private; I : Arena_Index; Class : HC.Size_Class;
-                              Emptied : Boolean) with
+   --  A block of Class was released in arena I, into a slab that was full
+   --  before (Note_Room) or is now empty (Note_Empty): the arena may serve
+   --  the class again (any class, when empty). Only these transitions are
+   --  noted; a release into a slab with room changes nothing here (the
+   --  arena's bit is set already, or was cleared only when none of its
+   --  slabs had room). I outside the table: nothing is noted. Note_Room is
+   --  inline (a slab at its fill line toggles it on every free: a bit test
+   --  when it is set already); Note_Empty, which touches every class, not.
+   procedure Note_Room (P : in out Heap_Private; I : Natural; Class : HC.Size_Class) with
      Inline_Always,
-     Pre => Private_Valid (P) and then I <= P.Arenas,
+     Pre => Private_Valid (P),
      Post => Private_Valid (P) and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
        and then P.Arenas = P.Arenas'Old
    is
       Capacity : constant Arena_Number := P.Capacity with Ghost;
       Committed : constant Unsigned_64 := P.Committed with Ghost;
    begin
-      if P.Current_Small (Class) /= I then
-         P.Current_Small (Class) := I;
+      if I /= 0 and then I <= P.Arenas then
+         Include (P.Small_Sets (Class), I);
       end if;
-      Include (P.Small_Sets (Class), I);
-      if Emptied then
+      pragma Assert (P.Capacity = Capacity and then P.Committed = Committed);
+   end Note_Room;
+
+   procedure Note_Empty (P : in out Heap_Private; I : Natural) with
+     No_Inline,
+     Pre => Private_Valid (P),
+     Post => Private_Valid (P) and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
+       and then P.Arenas = P.Arenas'Old
+   is
+      Capacity : constant Arena_Number := P.Capacity with Ghost;
+      Committed : constant Unsigned_64 := P.Committed with Ghost;
+   begin
+      if I /= 0 and then I <= P.Arenas then
          Include_Every (P.Small_Sets, I);
       end if;
       pragma Assert (P.Capacity = Capacity and then P.Committed = Committed);
-   end Note_Small_Free;
+   end Note_Empty;
 
    procedure Note_Medium_Free (P : in out Heap_Private; I : Arena_Index) with
      Inline_Always,
@@ -1231,7 +1282,7 @@ is
    is
       R : constant Arena_Record := Table (I);
       Base, Offset : Unsigned_64;
-      Released, Emptied : Boolean;
+      Released, Was_Full, Emptied : Boolean;
       Class : HC.Size_Class;
    begin
       if not Arena_Usable (R) or else Shift_Right (Item, ARENA_SHIFT) /= Unsigned_64 (R.Slot) then
@@ -1243,9 +1294,15 @@ is
          if Offset < SLAB_META or else Offset - SLAB_META >= ARENA_PAYLOAD then
             return;
          end if;
-         Slab_Release (Base, S.Offset (Offset - SLAB_META), Released, Emptied, Class);
+         Slab_Release (Base, S.Offset (Offset - SLAB_META), Released, Was_Full, Emptied, Class);
          if Released then
-            Note_Small_Free (P, I, Class, Emptied);
+            P.Cache (Class) := (Arena => Base, Page => S.Page_Of (S.Offset (Offset - SLAB_META)));
+         end if;
+         if Was_Full then
+            Note_Room (P, I, Class);
+         end if;
+         if Emptied then
+            Note_Empty (P, I);
          end if;
       else
          if Offset < EXTENT_META or else Offset - EXTENT_META >= ARENA_PAYLOAD
@@ -1342,7 +1399,8 @@ is
       --  The record and the identity word first: a thread that sees the map
       --  entry, or holds a block of the arena, sees them.
       Table (P.Arenas + 1) := R;
-      Identity := Unsigned_32 (P.Id) or Shift_Left (Unsigned_32 (P.Arenas + 1), ENTRY_SHIFT);
+      Identity := Unsigned_32 (P.Id) or Shift_Left (Unsigned_32 (P.Arenas + 1), ENTRY_SHIFT)
+        or (if Kind = Medium then ENTRY_MEDIUM else 0);
       Store_32 (Arena, Identity);
       Lock;
       Map_Set (Unsigned_64 (R.Slot), Identity, Mapped);
@@ -1564,12 +1622,30 @@ is
        and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
    is
       Class : constant HC.Size_Class := HC.Class_For (Size);
-      I : Arena_Number := P.Current_Small (Class);
+      I : Arena_Number := 0;
+      Page : S.Slab_Id;
       Pending : Boolean;
+
+      --  Item came from slab Page of arena I: the class allocates there next.
+      procedure Remember (I : Arena_Index) with
+        Pre => Private_Valid (P) and then I <= P.Arenas and then Arena_Usable (Table (I)),
+        Post => Private_Valid (P) and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
+          and then P.Arenas = P.Arenas'Old
+      is
+      begin
+         P.Cache (Class) := (Arena => Base_Of (Table (I)), Page => Page);
+      end Remember;
    begin
+      Item := No_Address;
+      if P.Cache (Class).Arena /= 0 then
+         Own_Arena (P, P.Cache (Class).Arena + SLAB_META, I);
+      end if;
       if I /= 0 then
-         Try_Small (Table, I, Size, Item);
+         --  The cached slab's cache is empty or it is full: the core
+         --  refills, or finds another slab in the same arena.
+         Try_Small (Table, I, Size, Item, Page);
          if Item /= No_Address then
+            Remember (I);
             return;
          end if;
          Exclude (P.Small_Sets (Class), I);
@@ -1587,9 +1663,9 @@ is
             First (P.Small_Sets (Class), I);
             exit when I = 0;
             if I <= P.Arenas then
-               Try_Small (Table, I, Size, Item);
+               Try_Small (Table, I, Size, Item, Page);
                if Item /= No_Address then
-                  P.Current_Small (Class) := I;
+                  Remember (I);
                   return;
                end if;
             end if;
@@ -1603,8 +1679,10 @@ is
       Create_Arena (P, Table, Me, Base, Small, I);
       Item := No_Address;
       if I /= 0 then
-         P.Current_Small (Class) := I;
-         Try_Small (Table, I, Size, Item);
+         Try_Small (Table, I, Size, Item, Page);
+         if Item /= No_Address then
+            Remember (I);
+         end if;
       end if;
    end Allocate_Small;
 
@@ -1624,7 +1702,7 @@ is
       procedure Note_Short (I : Arena_Index) with
         Post => P.Holder = P.Holder'Old and then P.Id = P.Id'Old and then P.Arenas = P.Arenas'Old
           and then P.Capacity = P.Capacity'Old and then P.Committed = P.Committed'Old
-          and then P.Current_Small = P.Current_Small'Old and then P.Current_Medium = P.Current_Medium'Old
+          and then P.Cache = P.Cache'Old and then P.Current_Medium = P.Current_Medium'Old
           and then P.Outgoing = P.Outgoing'Old
       is
       begin
@@ -1633,7 +1711,7 @@ is
                                    and then P.Arenas = P.Arenas'Loop_Entry
                                    and then P.Capacity = P.Capacity'Loop_Entry
                                    and then P.Committed = P.Committed'Loop_Entry
-                                   and then P.Current_Small = P.Current_Small'Loop_Entry
+                                   and then P.Cache = P.Cache'Loop_Entry
                                    and then P.Current_Medium = P.Current_Medium'Loop_Entry
                                    and then P.Outgoing = P.Outgoing'Loop_Entry);
             Exclude (P.Medium_Sets (B), I);
@@ -1794,7 +1872,7 @@ is
          begin
             P := (Id => Id, Holder => Me, Arenas => 0,
                   Capacity => Arena_Number ((Committed - TABLE_OFFSET) / ARENA_RECORD_BYTES),
-                  Committed => Committed, Current_Small => [others => 0],
+                  Committed => Committed, Cache => [others => (0, S.Slab_Id'First)],
                   Current_Medium => 0, Small_Sets => [others => Empty],
                   Medium_Sets => [others => Empty], Outgoing => [others => (0, 0, 0)]);
          end;
@@ -2034,54 +2112,78 @@ is
       Item := No_Address;
       Hit := False;
       Get_Token (Me);
+      if Me <= FALLBACK_TOKEN then
+         return;
+      end if;
       Get_Thread_Heap (Base);
-      if Me <= FALLBACK_TOKEN or else Base = 0 or else not Ready or else Base mod Page_Bytes /= 0
-        or else Base > Unsigned_64'Last - HEAP_BYTES
-      then
+      if Base = 0 or else Base mod Page_Bytes /= 0 then
          return;
       end if;
       declare
          P : Heap_Private with Import, Alignment => 8, Address => Page_Address (Base + PRIVATE_OFFSET);
-         Table : Arena_Table with Import, Alignment => 8, Address => Page_Address (Base + TABLE_OFFSET);
          Class : constant HC.Size_Class := HC.Class_For (Size);
-         I : constant Arena_Number := P.Current_Small (Class);
+         Arena : Unsigned_64;
+         Position : S.Offset;
       begin
          pragma Assume (Private_Valid (P), "a heap's private part is as its holder last left it");
-         if P.Holder /= Me or else I = 0 then
+         Arena := P.Cache (Class).Arena;
+         if P.Holder /= Me or else Arena = 0 then
             return;
          end if;
-         Try_Small (Table, I, Size, Item);
-         if Item = No_Address then
-            return;
+         Slab_Take (Arena, P.Cache (Class).Page, Class, Position, Hit);
+         if Hit then
+            Item := Arena + SLAB_META + Unsigned_64 (Position);
          end if;
-         Hit := True;
       end;
    end Allocate_Fast;
 
+   --  A free of a small block of the caller's own heap: the map entry Value
+   --  names the heap and says small, so the block's arena is its address
+   --  rounded down to the span; no table record is read. Hit False: take
+   --  the full path.
    procedure Free_Fast (Item : Unsigned_64; Value : Unsigned_32; Hit : out Boolean) with
      Inline_Always,
-     Pre => State_Valid and then Ready and then Unlocked, Post => State_Valid and then Unlocked
+     Pre => State_Valid and then Ready and then Unlocked and then Item < ADDRESS_LIMIT,
+     Post => State_Valid and then Unlocked
    is
       Me, Base : Unsigned_64;
-      Index : constant Natural := Natural (Shift_Right (Value, ENTRY_SHIFT) and 16#1FFF#);
+      Arena : constant Unsigned_64 := Item - Item mod ARENA_SPAN;
+      --  Below the payload, the subtraction wraps past the payload's size.
+      Offset : constant Unsigned_64 := Item mod ARENA_SPAN - SLAB_META;
    begin
       Hit := False;
       Get_Token (Me);
+      if Me <= FALLBACK_TOKEN or else Offset >= ARENA_PAYLOAD then
+         return;
+      end if;
       Get_Thread_Heap (Base);
-      if Me <= FALLBACK_TOKEN or else Base = 0 or else Base mod Page_Bytes /= 0
-        or else Base > Unsigned_64'Last - HEAP_BYTES or else Index = 0
-      then
+      if Base = 0 or else Base mod Page_Bytes /= 0 then
          return;
       end if;
       declare
          P : Heap_Private with Import, Alignment => 8, Address => Page_Address (Base + PRIVATE_OFFSET);
-         Table : Arena_Table with Import, Alignment => 8, Address => Page_Address (Base + TABLE_OFFSET);
+         Position : constant S.Offset := S.Offset (Offset);
+         Released, Was_Full, Emptied : Boolean;
+         Class : HC.Size_Class;
       begin
          pragma Assume (Private_Valid (P), "a heap's private part is as its holder last left it");
-         if P.Holder /= Me or else Natural (Value and 16#FFFF#) /= P.Id or else Index > P.Arenas then
+         if P.Holder /= Me or else Natural (Value and 16#FFFF#) /= P.Id then
             return;
          end if;
-         Release_Local (P, Table, Me, Index, Item);
+         Slab_Release (Arena, Position, Released, Was_Full, Emptied, Class);
+         if Released then
+            --  The class allocates next where it last freed: that slot is
+            --  on top of the slab's cache (LIFO reuse, warm in cache). The
+            --  slab held a block, so it is backed to its end (Try_Small).
+            P.Cache (Class).Arena := Arena;
+            P.Cache (Class).Page := S.Page_Of (Position);
+            if Was_Full then
+               Note_Room (P, Natural (Shift_Right (Value, ENTRY_SHIFT) and 16#1FFF#), Class);
+            end if;
+            if Emptied then
+               Note_Empty (P, Natural (Shift_Right (Value, ENTRY_SHIFT) and 16#1FFF#));
+            end if;
+         end if;
          Hit := True;
       end;
    end Free_Fast;
@@ -2099,9 +2201,18 @@ is
    is
       Table : Block_Table (1 .. Last) with Import, Alignment => 8, Address => Page_Address (Base);
       Align : constant Unsigned_64 := Unsigned_64'Max (Alignment, Page_Bytes);
+      --  The reservation starts on an arena span boundary, the block Offset
+      --  above it: below the span, one alignment unit (at least the header
+      --  page, never handed out, reading zero); from the span up, the block
+      --  is the span boundary itself. Either way a sized free that probes
+      --  the arena header at Item rounded down to the span (Free_Sized)
+      --  reads this reservation's zero header page or is refused before
+      --  the probe, never reads client data or unmapped memory.
+      Offset : constant Unsigned_64 := (if Align >= ARENA_SPAN then 0 else Round_Up_Pages (Align));
+      Placement : constant Unsigned_64 := Unsigned_64'Max (Align, ARENA_SPAN);
       Payload_Bytes : constant Unsigned_64 := Round_Up_Pages (Bytes);
-      Total : constant Unsigned_64 := Round_Up_Pages (Payload_Bytes + (Align - Page_Bytes));
-      Reserved, Misalign, Offset : Unsigned_64;
+      Total : constant Unsigned_64 := Offset + Payload_Bytes;
+      Reserved : Unsigned_64;
       R : Block_Record;
       Position : Block_Number := No_Block;
       Done : Boolean;
@@ -2111,24 +2222,21 @@ is
       if Count >= Table'Last then
          return;
       end if;
-      Provider_Reserve (Total, Page_Bytes, Reserved);
+      Provider_Reserve (Total, Placement, Reserved);
       if Reserved = 0 then
          return;
       end if;
-      --  The provider's answer must be a page-aligned range that fits the
-      --  address space with room for the aligned block; anything else is
-      --  given back.
-      Misalign := (if Reserved <= Unsigned_64'Last - Total then Reserved mod Align else 0);
-      Offset := (if Misalign = 0 then 0 elsif Misalign < Align then Align - Misalign else Unsigned_64'Last);
-      if Reserved > Unsigned_64'Last - Total or else Reserved mod Page_Bytes /= 0
-        or else Offset > Total or else Total - Offset < Payload_Bytes
+      --  The provider's answer must be placed as asked and fit the address
+      --  space; anything else is given back.
+      if Reserved > Unsigned_64'Last - Total or else Reserved mod Placement /= 0
+        or else Reserved mod Page_Bytes /= 0
       then
          Provider_Release (Reserved, Total, Done);
          return;
       end if;
       R := (Base => Reserved, Total => Total, Payload => Reserved + Offset, Committed => 0,
             Bytes => Payload_Bytes);
-      Ensure (R.Base, R.Total, R.Committed, Offset + Payload_Bytes, Done);
+      Ensure (R.Base, R.Total, R.Committed, Total, Done);
       if Done then
          Insert (Table, R, Position);
       end if;
@@ -2225,12 +2333,14 @@ is
       Unlock;
    end Allocate_Huge;
 
-   procedure Allocate_Slow (Wanted, Align : Unsigned_64; Kind : Request_Kind; Zeroed : Boolean;
-                            Item : out Unsigned_64) with
+   procedure Allocate_Slow (Bytes, Alignment : Unsigned_64; Zeroed : Boolean; Item : out Unsigned_64) with
      No_Inline,
-     Pre => State_Valid and then Unlocked and then Kind = Kind_Of (Wanted, Align),
+     Pre => State_Valid and then Unlocked,
      Post => State_Valid and then Unlocked
    is
+      Wanted : constant Unsigned_64 := Unsigned_64'Max (Bytes, 1);
+      Align : constant Unsigned_64 := Unsigned_64'Max (Alignment, STANDARD_ALIGNMENT);
+      Kind : constant Request_Kind := Kind_Of (Wanted, Align);
       Me, Base : Unsigned_64;
    begin
       Item := No_Address;
@@ -2256,20 +2366,19 @@ is
    procedure Allocate_Entry (Bytes, Alignment : Unsigned_64; Zeroed : Boolean; Item : out Unsigned_64) with
      Inline, Pre => State_Valid and then Unlocked, Post => State_Valid and then Unlocked
    is
-      Wanted : constant Unsigned_64 := Unsigned_64'Max (Bytes, 1);
-      Align : constant Unsigned_64 := Unsigned_64'Max (Alignment, STANDARD_ALIGNMENT);
       Hit : Boolean;
    begin
-      if Wanted <= SMALL_LIMIT and then Align = STANDARD_ALIGNMENT then
-         Allocate_Fast (HC.Request_Size (Wanted), Item, Hit);
+      --  Bytes in 1 .. SMALL_LIMIT (0 wraps above it), plain alignment.
+      if Bytes - 1 < SMALL_LIMIT and then Alignment <= STANDARD_ALIGNMENT then
+         Allocate_Fast (HC.Request_Size (Bytes), Item, Hit);
          if Hit then
             if Zeroed then
-               Zero (Item, Wanted);
+               Zero (Item, Bytes);
             end if;
             return;
          end if;
       end if;
-      Allocate_Slow (Wanted, Align, Kind_Of (Wanted, Align), Zeroed, Item);
+      Allocate_Slow (Bytes, Alignment, Zeroed, Item);
    end Allocate_Entry;
 
    function Allocate (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
@@ -2312,7 +2421,7 @@ is
          return;
       end if;
       Map_Lookup (Item, Value);
-      if Value /= 0 then
+      if Value /= 0 and then (Value and ENTRY_MEDIUM) = 0 then
          Free_Fast (Item, Value, Hit);
          if Hit then
             return;
@@ -2331,10 +2440,18 @@ is
          return;
       end if;
       --  A small or medium block: its arena's identity word names its heap
-      --  and table place (Free_Fast checks both against the table).
-      if Item < ADDRESS_LIMIT and then Kind_Of (Wanted, Align) in Small_Request | Medium_Request then
+      --  and table place. The size is not trusted: the probe is made only
+      --  where a small or medium block can start (past an arena's header
+      --  page), and every huge block is placed so that the same address
+      --  rounded down is its own zero header page (Allocate_Huge_Over); a
+      --  zero word, or an entry that is not this heap's small arena, takes
+      --  the radix map (Free). A wrong size never makes it read client data
+      --  or unmapped memory.
+      if Item < ADDRESS_LIMIT and then Item mod ARENA_SPAN >= ARENA_HEADER
+        and then Kind_Of (Wanted, Align) in Small_Request | Medium_Request
+      then
          Load_32 (Item - Item mod ARENA_SPAN, Value);
-         if Value /= 0 then
+         if Value /= 0 and then (Value and ENTRY_MEDIUM) = 0 then
             Free_Fast (Item, Value, Hit);
             if Hit then
                return;

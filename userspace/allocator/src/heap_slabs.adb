@@ -80,6 +80,25 @@ package body Heap_Slabs with SPARK_Mode is
       end if;
    end Find_Page;
 
+   -- A multiple of a class's stride is aligned to it (each stride is a
+   -- constant: linear in each case).
+   procedure Prove_Multiple (K : Natural; Class : Size_Class) with Ghost,
+     Pre => K < Heap_Bitmap.Max_Slots, Post => (K * Stride (Class)) mod Stride (Class) = 0
+   is
+   begin
+      case Class is
+         when Bytes_16 => pragma Assert ((K * 16) mod 16 = 0);
+         when Bytes_32 => pragma Assert ((K * 32) mod 32 = 0);
+         when Bytes_64 => pragma Assert ((K * 64) mod 64 = 0);
+         when Bytes_128 => pragma Assert ((K * 128) mod 128 = 0);
+         when Bytes_256 => pragma Assert ((K * 256) mod 256 = 0);
+         when Bytes_512 => pragma Assert ((K * 512) mod 512 = 0);
+         when Bytes_1024 => pragma Assert ((K * 1_024) mod 1_024 = 0);
+         when Bytes_2048 => pragma Assert ((K * 2_048) mod 2_048 = 0);
+         when Bytes_4096 => pragma Assert ((K * 4_096) mod 4_096 = 0);
+      end case;
+   end Prove_Multiple;
+
    procedure Allocate (Heap : in out State; Size : Request_Size; Value : out Allocation) is
       C : constant Size_Class := Class_For (Size);
       Page : Slab_Id;
@@ -98,21 +117,63 @@ package body Heap_Slabs with SPARK_Mode is
       pragma Assert (OK);
       Heap.Current (C) := Page;
       Value := (Value => (True, First_Byte (Page, C, Item)));
+      Prove_Multiple (Item - 1, C);
+      pragma Assert (Page_Of (Value.Value.Position) = Page and then Heap.Kinds (Page) = C);
+      pragma Assert (Local_Of (Value.Value.Position) = (Item - 1) * Stride (C));
+      pragma Assert (Local_Of (Value.Value.Position) mod Stride (Heap.Kinds (Page_Of (Value.Value.Position))) = 0);
+      pragma Assert (Local_Of (Value.Value.Position) / Stride (C) + 1 = Item);
    end Allocate;
 
-   procedure Release (Heap : in out State; Position : Offset; Status : out Release_Status) is
+   procedure Allocate_At (Heap : in out State; Page : Slab_Id; Class : Size_Class;
+                          Position : out Offset; Success : out Boolean) is
+      Item : Slot;
+   begin
+      Position := 0;
+      Success := False;
+      if Heap.Kinds (Page) /= Class then return; end if;
+      Heap_Bitmap.Take (Heap.Pages (Page), Item, Success);
+      if Success then
+         Position := First_Byte (Page, Class, Item);
+         Prove_Multiple (Item - 1, Class);
+         pragma Assert (Page_Of (Position) = Page and then Heap.Kinds (Page) = Class);
+         pragma Assert (Local_Of (Position) = (Item - 1) * Stride (Class));
+         pragma Assert (Local_Of (Position) mod Stride (Heap.Kinds (Page_Of (Position))) = 0);
+         pragma Assert (Local_Of (Position) / Stride (Class) + 1 = Item);
+      end if;
+   end Allocate_At;
+
+   procedure Release_Reporting (Heap : in out State; Position : Offset; Status : out Release_Status;
+                                Class : out Size_Class; Was_Full, Emptied : out Boolean) is
       Page : constant Slab_Id := Page_Of (Position);
-      C : constant Size_Class := Heap.Kinds (Page);
       Relative : constant Local_Offset := Local_Of (Position);
+      Full : Boolean;
       OK : Boolean;
    begin
-      if not Aligned (Relative, C) then Status := Invalid_Offset; return; end if;
-      Heap_Bitmap.Release (Heap.Pages (Page), Quotient (Relative, C) + 1, OK);
-      -- A successful release makes this slab a known source of free capacity.
-      -- Prefer it on the next request for this class, rather than scanning
-      -- from an unrelated full slab. Find_Page still validates the hint.
-      if OK then Heap.Current (C) := Page; end if;
+      Class := Heap.Kinds (Page);
+      Was_Full := False;
+      Emptied := False;
+      if not Aligned (Relative, Class) then Status := Invalid_Offset; return; end if;
+      -- The pool's capacity is its class's slot count (Valid): one load
+      -- beside the count, no computation.
+      Full := Used (Heap, Page) = Heap_Bitmap.Capacity (Heap.Pages (Page));
+      Heap_Bitmap.Release (Heap.Pages (Page), Quotient (Relative, Class) + 1, OK);
+      if OK then
+         Was_Full := Full;
+         Emptied := Used (Heap, Page) = 0;
+         -- A slab that was full is a new source of free capacity: prefer it
+         -- on the next search for this class, rather than scanning from an
+         -- unrelated full slab (Find_Page still validates the hint). Only
+         -- on that transition, so the common release stores nothing here.
+         if Full then Heap.Current (Class) := Page; end if;
+      end if;
       Status := (if OK then Released else Not_Allocated);
+   end Release_Reporting;
+
+   procedure Release (Heap : in out State; Position : Offset; Status : out Release_Status) is
+      Class : Size_Class;
+      Was_Full, Emptied : Boolean;
+   begin
+      Release_Reporting (Heap, Position, Status, Class, Was_Full, Emptied);
    end Release;
 
    procedure Prove_Disjoint (A, B : Slab_Id; AC, BC : Size_Class; AI, BI : Slot) is

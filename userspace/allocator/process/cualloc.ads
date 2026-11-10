@@ -10,13 +10,24 @@
 --                         Heap_Slabs metadata;
 --    medium, up to 1 MiB  arenas of 4 KiB page runs, each with its own
 --                         proved Heap_Extents metadata;
---    huge, above 1 MiB    one reservation per block, given back on Free.
+--    huge, above 1 MiB    one reservation per block, given back on Free;
+--                         it starts on a 32 MiB boundary, the block one
+--                         alignment unit above it (from 32 MiB alignment
+--                         up, at it), so the page below is a zero header.
 --  A small or medium arena is one naturally aligned 32 MiB reservation
 --  (its metadata first, then 16 MiB of payload, backed as blocks reach
 --  further into it), so the arena holding an address is the address with
 --  its low 25 bits cleared; a two-level radix map from that slot names the
 --  arena's heap and its place in that heap's arena table. Huge blocks are
 --  found in a sorted directory by binary search.
+--
+--  Fast paths. Each small class caches one slab (arena and slab number):
+--  an allocation takes a slot from that slab's free-slot cache or its
+--  never-used slots, with no search and no call; a free of the caller's
+--  own small block finds its arena from its address and the map entry
+--  alone, releases it and makes its slab the class's cache (LIFO reuse).
+--  Availability sets change only when a slab stops being full or becomes
+--  empty.
 --
 --  Threads. Each thread holds its own heap (its arenas, its per-class
 --  availability sets, its outgoing batches): allocation and frees of its
@@ -113,10 +124,12 @@ is
      Global => (In_Out => Heap_State);
    --  Free, given the block's size and alignment as allocated (or as last
    --  reallocated): Rust's GlobalAlloc dealloc. A small or medium block is
-   --  found from its arena's header instead of the radix map. Assumed, not
-   --  checked: Bytes and Alignment are the block's (Rust's Layout contract);
-   --  a wrong pair can only make it read the header of an arena-aligned
-   --  address that may not be mapped.
+   --  found from its arena's identity word instead of the radix map. The
+   --  size is a hint, not trusted: the word is read only where a small or
+   --  medium block can start, every huge block is placed so that the same
+   --  probe reads its own zero header page, and anything that is not this
+   --  heap's small arena takes the radix map. A wrong size costs a lookup,
+   --  never a corruption (tests/cualloc). Item must still be a block.
    procedure Free_Sized (Item, Bytes, Alignment : Unsigned_64) with
      Pre => Invariant and then Unlocked, Post => Invariant and then Unlocked,
      Global => (In_Out => Heap_State);

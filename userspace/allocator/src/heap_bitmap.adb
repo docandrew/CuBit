@@ -43,18 +43,19 @@ package body Heap_Bitmap with SPARK_Mode is
 
    procedure Initialize (State : out Pool; Limit : Slot) is
    begin
-      State := (Bits => [others => [others => False]], Limit => Limit,
-                Occupied => 0, Cached => 0, Free => [others => 1]);
+      State := (Occupied => 0, Limit => Limit, Cached => 0, Fresh => 1, Free => [others => 1],
+                Bits => [others => [others => False]]);
       Prove_Uniform (State.Bits, Limit, False);
    end Initialize;
 
    -- Refill only an empty cache, so no cached slot can be inserted twice.
    -- Slots omitted from a full cache remain free in the membership bitmap.
    procedure Refill (State : in out Pool) with No_Inline,
-     Pre => Valid (State) and then State.Cached = 0 and then State.Occupied < State.Limit,
+     Pre => Valid (State) and then State.Cached = 0 and then State.Occupied < State.Limit
+       and then State.Fresh > State.Limit,
      Post => Valid (State) and then State.Cached > 0 and then
        State.Bits = State.Bits'Old and then State.Limit = State.Limit'Old and then
-       State.Occupied = State.Occupied'Old
+       State.Occupied = State.Occupied'Old and then State.Fresh = State.Fresh'Old
    is
    begin
       for I in 1 .. State.Limit loop
@@ -78,14 +79,44 @@ package body Heap_Bitmap with SPARK_Mode is
       Item := Slot'First;
       Success := State.Occupied < State.Limit;
       if Success then
-         if State.Cached = 0 then Refill (State); end if;
-         Item := Slot (State.Free (State.Cached));
-         State.Cached := State.Cached - 1;
+         -- Neither cached nor fresh slots: some released slot was dropped
+         -- from a full cache; find it (and up to a cache full more).
+         if State.Cached = 0 and then State.Fresh > State.Limit then Refill (State); end if;
+         if State.Cached > 0 then
+            Item := Slot (State.Free (State.Cached));
+            State.Cached := State.Cached - 1;
+         else
+            Item := State.Fresh;
+            State.Fresh := State.Fresh + 1;
+         end if;
          State.Bits (Word_Of (Item)) (Bit_Of (Item)) := True;
          Prove_Change (Before, State.Bits, Item, State.Limit);
          State.Occupied := State.Occupied + 1;
       end if;
    end Allocate;
+
+   procedure Take (State : in out Pool; Item : out Slot; Success : out Boolean) is
+      Before : constant Bitmap := State.Bits with Ghost;
+   begin
+      Item := Slot'First;
+      if State.Cached > 0 then
+         Item := Slot (State.Free (State.Cached));
+         State.Cached := State.Cached - 1;
+      elsif State.Fresh <= State.Limit then
+         Item := State.Fresh;
+         State.Fresh := State.Fresh + 1;
+      else
+         Success := False;
+         return;
+      end if;
+      Success := True;
+      -- A cached or fresh slot is free and within the limit: not every
+      -- slot is used.
+      Prove_Bit (State.Bits, Item, State.Limit);
+      State.Bits (Word_Of (Item)) (Bit_Of (Item)) := True;
+      Prove_Change (Before, State.Bits, Item, State.Limit);
+      State.Occupied := State.Occupied + 1;
+   end Take;
 
    procedure Release (State : in out Pool; Item : Slot; Success : out Boolean) is
       Before : constant Bitmap := State.Bits with Ghost;

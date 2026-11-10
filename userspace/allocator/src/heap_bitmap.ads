@@ -30,6 +30,18 @@ package Heap_Bitmap with SPARK_Mode, Pure is
           (for all I in Slot => (if I /= Item then Live (State, I) = Live (State'Old, I)))
         else State = State'Old);
 
+   -- Allocate from the free-slot cache, or else the never-used slots
+   -- (in order), only: no scan, no call. Fails (State unchanged) when both
+   -- are empty, even if free slots remain: the caller then takes Allocate.
+   procedure Take (State : in out Pool; Item : out Slot; Success : out Boolean) with Inline_Always,
+     Pre => Valid (State),
+     Post => Valid (State) and then Capacity (State) = Capacity (State'Old) and then
+       (if Success then Used (State'Old) < Capacity (State'Old) and then Item <= Capacity (State) and then
+          Used (State) = Used (State'Old) + 1 and then
+          not Live (State'Old, Item) and then Live (State, Item) and then
+          (for all I in Slot => (if I /= Item then Live (State, I) = Live (State'Old, I)))
+        else State = State'Old);
+
    -- The lifecycle gate: no capacity change while even one live slot remains.
    procedure Reconfigure (State : in out Pool; Limit : Slot; Success : out Boolean) with
      Pre => Valid (State),
@@ -52,19 +64,28 @@ private
    function Bit (Bits : Bitmap; Item : Slot) return Boolean is
      (Bits (Word_Of (Item)) (Bit_Of (Item))) with Inline_Always;
    type Stored_Slot is range 1 .. Max_Slots with Size => 16;
-   Cache_Size : constant := 64;
+   -- As many cached free slots as fit the 1 KiB record beside the bitmap
+   -- and the counters: a refill (a bitmap scan) is needed at most once per
+   -- Cache_Size allocations of reused slots.
+   Cache_Size : constant := 248;
    subtype Cache_Count is Natural range 0 .. Cache_Size;
    subtype Cache_Index is Positive range 1 .. Cache_Size;
    type Free_Stack is array (Cache_Index) of Stored_Slot with Component_Size => 16;
    -- Keep counters apart to avoid costly paired SIMD updates on the tested
    -- compiler. A power-of-two object stride simplifies slab address arithmetic;
    -- padding is deliberate, not additional usable cache capacity.
+   -- The counters and the cache first: an allocation or release from the
+   -- cache touches the record's first cache lines and one bitmap word.
+   -- Fresh: the first never-used slot; every slot from it up is free and
+   -- uncached, so a fresh slab hands out slots in order with no scan.
+   subtype Fresh_Slot is Positive range 1 .. Max_Slots + 1;
    type Pool is record
-      Bits : Bitmap;
-      Limit : Slot;
       Occupied : Count;
-      Free : Free_Stack;
+      Limit : Slot;
       Cached : Cache_Count;
+      Fresh : Fresh_Slot;
+      Free : Free_Stack;
+      Bits : Bitmap;
    end record with Object_Size => 1_024 * 8;
    function Population (Bits : Bitmap; Prefix : Count) return Count is
      (if Prefix = 0 then 0 else Population (Bits, Prefix - 1) +
@@ -72,11 +93,12 @@ private
      Post => Population'Result <= Prefix,
      Subprogram_Variant => (Decreases => Prefix);
    function Valid (State : Pool) return Boolean is
-     (State.Occupied <= State.Limit and then
+     (State.Occupied <= State.Limit and then State.Fresh <= State.Limit + 1 and then
+      (for all I in Slot => (if I >= State.Fresh then not Bit (State.Bits, I))) and then
       State.Occupied = Population (State.Bits, State.Limit) and then
       (for all I in Slot => (if I > State.Limit then not Bit (State.Bits, I))) and then
       (for all I in 1 .. State.Cached =>
-         Slot (State.Free (I)) <= State.Limit and then
+         Slot (State.Free (I)) < State.Fresh and then
          not Bit (State.Bits, Slot (State.Free (I))) and then
          (for all J in 1 .. I - 1 => State.Free (I) /= State.Free (J))));
    function Capacity (State : Pool) return Slot is (State.Limit);

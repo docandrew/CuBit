@@ -13,7 +13,8 @@ heap slot (whose package, SPARK_Mode Off, holds no subprogram). Its stated assum
      gives; and two read-only overlays of other heaps (Find_Arena, for
      Usable_Size: the record read is fixed while the block is live;
      Statistics: diagnostics, approximate while threads run).
-  2  "a small arena's metadata is as its holder last left it" (Slab_Allocate,
+  3  "a small arena's metadata is as its holder last left it" (Slab_Allocate,
+     Slab_Take, the fast path's allocation from a cached slab, and
      Slab_Release), and
   2  the same for medium arenas (Extent_Allocate, Extent_Release): only the
      arena's heap's holder calls them.
@@ -38,7 +39,7 @@ BOUNDARY = {
 }
 ASSUMES = {
     "a heap's private part is as its holder last left it": 7,
-    "a small arena's metadata is as its holder last left it": 2,
+    "a small arena's metadata is as its holder last left it": 3,
     "a medium arena's metadata is as its holder last left it": 2,
     'the directory is as the last locked operation left it': 4,
 }

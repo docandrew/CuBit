@@ -130,6 +130,51 @@ begin
       Check (Heap.Usable_Size (Moved) = 0, "and its sized free releases it");
    end;
 
+   --  A sized free with the wrong size never corrupts (ALLOC-001 item 11):
+   --  the size is not trusted. Huge blocks of every placement (plain, page,
+   --  64 KiB, 32 MiB and 64 MiB alignment) freed with a small size are
+   --  found through the radix map (their arena-header probe reads their own
+   --  zero header page, or is not made at all); a block whose first word
+   --  is a forged copy of a live small arena's identity is not taken for
+   --  that arena; small blocks freed with another small size, or a huge
+   --  one, are released from their slab; nothing else changes.
+   declare
+      type Alignments is array (Positive range <>) of Unsigned_64;
+      Aligns : constant Alignments := [16, 4_096, 65_536, 33_554_432, 67_108_864];
+      Canary : constant Unsigned_64 := Heap.Allocate (48, 16);
+      Identity : Unsigned_64 with Import, Address => Addr (Canary - Canary mod 33_554_432);
+      Forged : Unsigned_64;
+      Reserved : Unsigned_64;
+      Small, Other : Unsigned_64;
+   begin
+      Fill (Canary, 48, 16#5C#);
+      Forged := Identity;
+      Check (Forged /= 0, "a small arena carries its identity word");
+      for Align of Aligns loop
+         declare
+            H : constant Unsigned_64 := Heap.Allocate (3_000_000, Align);
+            First : Unsigned_64 with Import, Address => Addr (H);
+         begin
+            Check (H /= 0 and then H mod Align = 0, "huge block aligned" & Align'Image);
+            First := Forged;
+            Reserved := Heap.Reserved_Bytes;
+            Heap.Free_Sized (H, 40, 16);
+            Check (Heap.Usable_Size (H) = 0 and then Heap.Reserved_Bytes < Reserved,
+                   "a huge block freed with a small size is released, alignment" & Align'Image);
+         end;
+      end loop;
+      Check (Holds (Canary, 48, 16#5C#) and then Heap.Usable_Size (Canary) = 64,
+             "the arena named by the forged identity is untouched");
+      Small := Heap.Allocate (40, 16);
+      Other := Heap.Allocate (100, 16);
+      Heap.Free_Sized (Small, 2_000, 16);
+      Heap.Free_Sized (Other, 5_000_000, 16);
+      Check (Heap.Usable_Size (Small) = 0 and then Heap.Usable_Size (Other) = 0,
+             "small blocks freed with another small size, or a huge size, are released");
+      Check (Holds (Canary, 48, 16#5C#), "and the canary is still intact");
+      Heap.Free_Sized (Canary, 48, 16);
+   end;
+
    --  Invalid frees are ignored.
    Heap.Free (12345); Heap.Free (A + 8); Heap.Free (0);
    Check (Heap.Usable_Size (12345) = 0, "an unknown address holds nothing");
