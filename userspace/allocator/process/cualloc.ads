@@ -7,9 +7,15 @@
 --
 --  Three paths, by size:
 --    small, up to 4 KiB   arenas of 64 KiB slabs, each with its own proved
---                         Heap_Slabs metadata;
+--                         Heap_Slabs metadata; 28 classes (16-byte steps
+--                         to 64, then four per power of two);
 --    medium, up to 1 MiB  arenas of 4 KiB page runs, each with its own
---                         proved Heap_Extents metadata;
+--                         proved Heap_Extents metadata; sizes rounded to
+--                         classes of pages (exact to 8, then four per
+--                         power of two); a freed block is parked (still
+--                         allocated in its arena's core, marked parked) for
+--                         its heap's next request of the class, up to a
+--                         bound per class and in all;
 --    huge, above 1 MiB    one reservation per block, given back on Free;
 --                         it starts on a 32 MiB boundary, the block one
 --                         alignment unit above it (from 32 MiB alignment

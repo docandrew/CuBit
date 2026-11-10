@@ -155,7 +155,7 @@ is
    HEAP_ABANDONED : constant := 2;
    --  The private part, then the arena table, backed as arenas are added.
    PRIVATE_OFFSET : constant := Page_Bytes;
-   TABLE_OFFSET : constant := PRIVATE_OFFSET + 4 * Page_Bytes;
+   TABLE_OFFSET : constant := PRIVATE_OFFSET + 8 * Page_Bytes;
    MAXIMUM_HEAP_ARENAS : constant := 4_096;
    ARENA_RECORD_BYTES : constant := 8;
    HEAP_BYTES : constant := TABLE_OFFSET + MAXIMUM_HEAP_ARENAS * ARENA_RECORD_BYTES;
@@ -200,6 +200,33 @@ is
    MEDIUM_PAGE_LIMIT : constant := HUGE_THRESHOLD / Page_Bytes;
    subtype Medium_Pages is Positive range 1 .. MEDIUM_PAGE_LIMIT;
    subtype Medium_Bucket is Natural range 0 .. 8;
+   --  A medium request first looks for a remembered hole in at most this
+   --  many arenas of its bucket.
+   HINTED_PROBES : constant := 16;
+   --  Medium sizes are rounded to classes of pages: every count to 8, then
+   --  four per power of two (at most 25 % more).
+   MEDIUM_CLASS_COUNT : constant := 28;
+   subtype Medium_Class is Natural range 0 .. MEDIUM_CLASS_COUNT - 1;
+   type Class_Page_Table is array (Medium_Class) of Medium_Pages;
+   Class_Pages : constant Class_Page_Table :=
+     [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 56, 64,
+      80, 96, 112, 128, 160, 192, 224, 256];
+   --  Freed medium blocks a heap keeps parked (allocated in their arena's
+   --  core, marked parked there) for reuse by its next request of the
+   --  class: per class at most PARKED_DEPTH, in all at most PARKED_PAGES.
+   PARKED_DEPTH : constant := 8;
+   PARKED_PAGES : constant := 2_048;
+   subtype Parked_Count is Natural range 0 .. PARKED_DEPTH;
+   subtype Parked_Slot is Positive range 1 .. PARKED_DEPTH;
+   subtype Parked_Total is Natural range 0 .. PARKED_PAGES;
+   --  A parked block: its arena's table number and its first page.
+   type Parked_Run is record
+      Arena : Arena_Number := 0;
+      First : E.Page_Id := E.Page_Id'First;
+   end record;
+   type Parked_Stack is array (Parked_Slot) of Parked_Run;
+   type Parked_Stacks is array (Medium_Class) of Parked_Stack;
+   type Parked_Counts is array (Medium_Class) of Parked_Count;
    pragma Compile_Time_Error (2 ** Medium_Bucket'Last /= MEDIUM_PAGE_LIMIT, "buckets cover medium");
 
    --  Batches of remote frees: a node is a small block of NODE_BYTES,
@@ -242,6 +269,9 @@ is
       Small_Sets : Class_Sets;       --  arenas that may serve each class
       Medium_Sets : Bucket_Sets;     --  arenas that may serve each bucket
       Outgoing : Batches;
+      Parked : Parked_Counts;        --  parked medium blocks, per class
+      Parked_Pages : Parked_Total;   --  and their pages in all
+      Parked_Runs : Parked_Stacks;
    end record;
 
    function Batches_Valid (B : Batches) return Boolean is
@@ -979,12 +1009,56 @@ is
       end loop;
    end First;
 
+   --  The smallest member above After (0: none, or a stale summary word
+   --  was met), the set unchanged.
+   function Member_After (Set : Arena_Set; After : Arena_Number) return Arena_Number with
+     Post => Member_After'Result <= MAXIMUM_HEAP_ARENAS
+   is
+      W : Word_Number;
+      Bits, Above : Unsigned_64;
+   begin
+      if After >= MAXIMUM_HEAP_ARENAS then
+         return 0;
+      end if;
+      --  Member I is bit (I - 1) mod 64 of word (I - 1) / 64: those above
+      --  After are bits After mod 64 and up of word After / 64, then the
+      --  later words.
+      W := After / 64;
+      Bits := Set.Words (W) and Shift_Left (not 0, After mod 64);
+      if Bits /= 0 then
+         return W * 64 + Lowest_Bit (Bits) + 1;
+      elsif W = Word_Number'Last then
+         return 0;
+      end if;
+      Above := Set.Summary and Shift_Left (not 0, W + 1);
+      if Above = 0 then
+         return 0;
+      end if;
+      W := Lowest_Bit (Above);
+      Bits := Set.Words (W);
+      if Bits = 0 then
+         return 0;
+      end if;
+      return W * 64 + Lowest_Bit (Bits) + 1;
+   end Member_After;
+
    --  Medium requests of Pages look in bucket Bucket_Of (Pages): the
    --  smallest B with 2 ** B >= Pages.
    function Bucket_Of (Pages : Medium_Pages) return Medium_Bucket is
      (if Pages <= 1 then 0 elsif Pages <= 2 then 1 elsif Pages <= 4 then 2 elsif Pages <= 8 then 3
       elsif Pages <= 16 then 4 elsif Pages <= 32 then 5 elsif Pages <= 64 then 6
       elsif Pages <= 128 then 7 else 8);
+
+   --  The medium class of Pages: the smallest whose pages hold them (a
+   --  table, one load; a wrong entry could only cost reuse: requests take
+   --  at least their pages, and a parked block too short is not reused).
+   type Medium_Class_Table is array (Medium_Pages) of Medium_Class;
+   Medium_Classes : constant Medium_Class_Table :=
+     [1 => 0, 2 => 1, 3 => 2, 4 => 3, 5 => 4, 6 => 5, 7 => 6,
+      8 => 7, 9 .. 10 => 8, 11 .. 12 => 9, 13 .. 14 => 10, 15 .. 16 => 11, 17 .. 20 => 12, 21 .. 24 => 13,
+      25 .. 28 => 14, 29 .. 32 => 15, 33 .. 40 => 16, 41 .. 48 => 17, 49 .. 56 => 18, 57 .. 64 => 19, 65 .. 80 => 20,
+      81 .. 96 => 21, 97 .. 112 => 22, 113 .. 128 => 23, 129 .. 160 => 24, 161 .. 192 => 25, 193 .. 224 => 26,
+      225 .. 256 => 27];
 
    ------------------------------------------------------------------------
    --  Arena metadata: each arena's proved core (Heap_Slabs or Heap_Extents)
@@ -1055,14 +1129,20 @@ is
       E.Initialize (Heap);
    end Extent_Initialize;
 
-   procedure Extent_Allocate (Base : Unsigned_64; Pages : E.Run_Length; First : out E.Page_Reference)
+   --  Hinted: only from a remembered hole (no search; may fail although
+   --  the arena has room).
+   procedure Extent_Allocate (Base : Unsigned_64; Pages : E.Run_Length; Hinted : Boolean; First : out E.Page_Reference)
      with Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57,
      Post => (if First /= E.No_Page then E.Fits (First, Pages))
    is
       Heap : E.State with Import, Alignment => 8, Address => Page_Address (Base + ARENA_HEADER);
    begin
       pragma Assume (E.Valid (Heap), "a medium arena's metadata is as its holder last left it");
-      E.Allocate (Heap, Pages, 1, First);
+      if Hinted then
+         E.Allocate_Hinted (Heap, Pages, First);
+      else
+         E.Allocate (Heap, Pages, 1, First);
+      end if;
    end Extent_Allocate;
 
    procedure Extent_Release (Base : Unsigned_64; First : E.Page_Id; Released : out Boolean) with
@@ -1075,14 +1155,53 @@ is
       E.Release (Heap, First, Released);
    end Extent_Release;
 
-   --  The bytes of the page run starting at First, or 0.
+   --  The bytes of the page run starting at First, or 0 (also when parked:
+   --  its client freed it).
    function Extent_Usable (Base : Unsigned_64; First : E.Page_Id) return Unsigned_64 with
      Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57, Post => Extent_Usable'Result <= ARENA_PAYLOAD
    is
       Heap : E.State with Import, Alignment => 8, Address => Page_Address (Base + ARENA_HEADER);
    begin
+      if E.Parked (Heap, First) then
+         return 0;
+      end if;
       return Unsigned_64 (E.Length (Heap, First)) * Page_Bytes;
    end Extent_Usable;
+
+   --  Park the live block at First (Pages: its length; Parked False: not
+   --  a live block, or parked already).
+   procedure Extent_Park (Base : Unsigned_64; First : E.Page_Id; Pages : out E.Page_Reference; Parked : out Boolean)
+     with Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57
+   is
+      Heap : E.State with Import, Alignment => 8, Address => Page_Address (Base + ARENA_HEADER);
+   begin
+      pragma Assume (E.Valid (Heap), "a medium arena's metadata is as its holder last left it");
+      E.Park (Heap, First, Pages, Parked);
+   end Extent_Park;
+
+   --  Take back the parked block at First (Pages: its length).
+   procedure Extent_Unpark (Base : Unsigned_64; First : E.Page_Id; Pages : out E.Page_Reference; Taken : out Boolean)
+     with Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57,
+     Post => (if Taken then Pages > 0 and then E.Fits (First, Pages))
+   is
+      Heap : E.State with Import, Alignment => 8, Address => Page_Address (Base + ARENA_HEADER);
+   begin
+      pragma Assume (E.Valid (Heap), "a medium arena's metadata is as its holder last left it");
+      Pages := E.Length (Heap, First);
+      E.Unpark (Heap, First, Taken);
+   end Extent_Unpark;
+
+   --  The length of the live (unparked) block at First, 0: none.
+   function Extent_Live (Base : Unsigned_64; First : E.Page_Id) return E.Page_Reference with
+     Global => null, Pre => Base mod Page_Bytes = 0 and then Base < 2 ** 57
+   is
+      Heap : E.State with Import, Alignment => 8, Address => Page_Address (Base + ARENA_HEADER);
+   begin
+      if E.Parked (Heap, First) then
+         return 0;
+      end if;
+      return E.Length (Heap, First);
+   end Extent_Live;
 
    ------------------------------------------------------------------------
    --  A heap's arenas
@@ -1166,7 +1285,7 @@ is
       Item := Base_Of (R) + Offset;
    end Try_Small;
 
-   procedure Try_Medium (R : in out Arena_Record; Pages : Medium_Pages; Item : out Unsigned_64) with
+   procedure Try_Medium (R : in out Arena_Record; Pages : Medium_Pages; Hinted : Boolean; Item : out Unsigned_64) with
      Post => R.Kind = R.Kind'Old and then R.Slot = R.Slot'Old
    is
       First : E.Page_Reference;
@@ -1177,7 +1296,7 @@ is
       if R.Kind /= Medium or else not Arena_Usable (R) then
          return;
       end if;
-      Extent_Allocate (Base_Of (R), Pages, First);
+      Extent_Allocate (Base_Of (R), Pages, Hinted, First);
       if First = E.No_Page then
          return;
       end if;
@@ -1271,6 +1390,41 @@ is
       pragma Assert (P.Capacity = Capacity and then P.Committed = Committed);
    end Note_Medium_Free;
 
+   --  The medium block at First of this heap's arena I is freed: park it
+   --  for the class's next request when there is room, or else release it.
+   --  A block that is not live (never was, or freed already: parked or
+   --  released) is ignored.
+   procedure Park_Or_Release (P : in out Heap_Private; I : Arena_Index; Base : Unsigned_64; First : E.Page_Id) with
+     Pre => Private_Valid (P) and then I <= P.Arenas and then Base mod Page_Bytes = 0 and then Base < 2 ** 57,
+     Post => Private_Valid (P) and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
+       and then P.Arenas = P.Arenas'Old
+   is
+      Length : constant E.Page_Reference := Extent_Live (Base, First);
+      Class : Medium_Class;
+      Pages : E.Page_Reference;
+      Released : Boolean;
+   begin
+      if Length = 0 then
+         return;
+      end if;
+      if Length <= MEDIUM_PAGE_LIMIT then
+         Class := Medium_Classes (Length);
+         if P.Parked (Class) < PARKED_DEPTH and then P.Parked_Pages <= PARKED_PAGES - Length then
+            Extent_Park (Base, First, Pages, Released);
+            if Released then
+               P.Parked (Class) := P.Parked (Class) + 1;
+               P.Parked_Runs (Class) (P.Parked (Class)) := (Arena => I, First => First);
+               P.Parked_Pages := P.Parked_Pages + Length;
+            end if;
+            return;
+         end if;
+      end if;
+      Extent_Release (Base, First, Released);
+      if Released then
+         Note_Medium_Free (P, I);
+      end if;
+   end Park_Or_Release;
+
    --  Release Item, in this heap's arena I, and note the capacity it gives
    --  back. Anything that is not a live block there is ignored.
    procedure Release_Local (P : in out Heap_Private; Table : Arena_Table; Me : Unsigned_64;
@@ -1310,10 +1464,7 @@ is
          then
             return;
          end if;
-         Extent_Release (Base, E.Page_Id ((Offset - EXTENT_META) / Page_Bytes + 1), Released);
-         if Released then
-            Note_Medium_Free (P, I);
-         end if;
+         Park_Or_Release (P, I, Base, E.Page_Id ((Offset - EXTENT_META) / Page_Bytes + 1));
       end if;
    end Release_Local;
 
@@ -1686,6 +1837,47 @@ is
       end if;
    end Allocate_Small;
 
+   --  A parked block of Class of at least Pages (its pages are backed:
+   --  they were when it was allocated, and nothing decommits), or
+   --  No_Address. Parked entries that are no longer parked blocks of this
+   --  heap's medium arenas are dropped.
+   procedure Take_Parked (P : in out Heap_Private; Table : Arena_Table; Class : Medium_Class;
+                          Pages : Medium_Pages; Item : out Unsigned_64) with
+     Inline_Always,
+     Pre => Private_Valid (P),
+     Post => Private_Valid (P) and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
+       and then P.Arenas = P.Arenas'Old
+   is
+      R : Parked_Run;
+      Length : E.Page_Reference;
+      Taken, Released : Boolean;
+   begin
+      Item := No_Address;
+      for Attempt in Parked_Slot loop
+         pragma Loop_Invariant (Private_Valid (P) and then P.Holder = P.Holder'Loop_Entry
+                                and then P.Id = P.Id'Loop_Entry and then P.Arenas = P.Arenas'Loop_Entry);
+         exit when P.Parked (Class) = 0;
+         R := P.Parked_Runs (Class) (P.Parked (Class));
+         P.Parked (Class) := P.Parked (Class) - 1;
+         if R.Arena /= 0 and then R.Arena <= P.Arenas and then Table (R.Arena).Kind = Medium
+           and then Arena_Usable (Table (R.Arena))
+         then
+            Extent_Unpark (Base_Of (Table (R.Arena)), R.First, Length, Taken);
+            if Taken then
+               P.Parked_Pages := P.Parked_Pages - Natural'Min (Length, P.Parked_Pages);
+               if Length >= Pages then
+                  Item := Base_Of (Table (R.Arena)) + EXTENT_META + Unsigned_64 (R.First - 1) * Page_Bytes;
+                  return;
+               end if;
+               Extent_Release (Base_Of (Table (R.Arena)), R.First, Released);
+               if Released then
+                  Note_Medium_Free (P, R.Arena);
+               end if;
+            end if;
+         end if;
+      end loop;
+   end Take_Parked;
+
    procedure Allocate_Medium (P : in out Heap_Private; Table : in out Arena_Table; Me, Base : Unsigned_64;
                               Bytes : Unsigned_64; Item : out Unsigned_64) with
      Pre => State_Valid and then Ready and then not Lock_Held and then Private_Valid (P)
@@ -1693,10 +1885,13 @@ is
      Post => State_Valid and then Ready and then not Lock_Held and then Private_Valid (P)
        and then P.Holder = P.Holder'Old and then P.Id = P.Id'Old
    is
-      Pages : constant Medium_Pages := Medium_Pages ((Bytes + (Page_Bytes - 1)) / Page_Bytes);
+      Need : constant Medium_Pages := Medium_Pages ((Bytes + (Page_Bytes - 1)) / Page_Bytes);
+      Class : constant Medium_Class := Medium_Classes (Need);
+      Pages : constant Medium_Pages := Medium_Pages'Max (Class_Pages (Class), Need);
       Bucket : constant Medium_Bucket := Bucket_Of (Pages);
-      I : Arena_Number := P.Current_Medium;
+      I : Arena_Number;
       Pending : Boolean;
+
 
       --  Arena I cannot serve Pages, so none of the buckets from this one up.
       procedure Note_Short (I : Arena_Index) with
@@ -1718,8 +1913,30 @@ is
          end loop;
       end Note_Short;
    begin
+      Take_Parked (P, Table, Class, Pages, Item);
+      if Item /= No_Address then
+         return;
+      end if;
+      --  Remembered holes first, in arena order (the lowest arenas fill
+      --  first), with no search; then the current arena, the others and a
+      --  new one, each searched.
+      I := 0;
+      for Probe in 1 .. HINTED_PROBES loop
+         pragma Loop_Invariant (Private_Valid (P) and then P.Holder = P.Holder'Loop_Entry
+                                and then P.Id = P.Id'Loop_Entry);
+         I := Member_After (P.Medium_Sets (Bucket), I);
+         exit when I = 0;
+         if I <= P.Arenas then
+            Try_Medium (Table (I), Pages, True, Item);
+            if Item /= No_Address then
+               P.Current_Medium := I;
+               return;
+            end if;
+         end if;
+      end loop;
+      I := P.Current_Medium;
       if I /= 0 then
-         Try_Medium (Table (I), Pages, Item);
+         Try_Medium (Table (I), Pages, False, Item);
          if Item /= No_Address then
             return;
          end if;
@@ -1735,7 +1952,7 @@ is
             First (P.Medium_Sets (Bucket), I);
             exit when I = 0;
             if I <= P.Arenas then
-               Try_Medium (Table (I), Pages, Item);
+               Try_Medium (Table (I), Pages, False, Item);
                if Item /= No_Address then
                   P.Current_Medium := I;
                   return;
@@ -1754,7 +1971,7 @@ is
       Item := No_Address;
       if I /= 0 then
          P.Current_Medium := I;
-         Try_Medium (Table (I), Pages, Item);
+         Try_Medium (Table (I), Pages, False, Item);
       end if;
    end Allocate_Medium;
 
@@ -1874,7 +2091,8 @@ is
                   Capacity => Arena_Number ((Committed - TABLE_OFFSET) / ARENA_RECORD_BYTES),
                   Committed => Committed, Cache => [others => (0, S.Slab_Id'First)],
                   Current_Medium => 0, Small_Sets => [others => Empty],
-                  Medium_Sets => [others => Empty], Outgoing => [others => (0, 0, 0)]);
+                  Medium_Sets => [others => Empty], Outgoing => [others => (0, 0, 0)],
+                  Parked => [others => 0], Parked_Pages => 0, Parked_Runs => [others => [others => (0, 1)]]);
          end;
          Write_State (Fresh, HEAP_HELD);
          Store_64 (Registry.Base + Unsigned_64 (Id) * 8, Fresh);
@@ -2188,6 +2406,73 @@ is
       end;
    end Free_Fast;
 
+   --  A medium request served from a block its heap parked, with no
+   --  search. Hit False: take the full path.
+   procedure Allocate_Medium_Fast (Bytes : Unsigned_64; Item : out Unsigned_64; Hit : out Boolean) with
+     No_Inline,
+     Pre => State_Valid and then Unlocked and then Bytes in SMALL_LIMIT + 1 .. HUGE_THRESHOLD,
+     Post => State_Valid and then Unlocked
+   is
+      Me, Base : Unsigned_64;
+   begin
+      Item := No_Address;
+      Hit := False;
+      Get_Token (Me);
+      if Me <= FALLBACK_TOKEN then
+         return;
+      end if;
+      Get_Thread_Heap (Base);
+      if Base = 0 or else Base mod Page_Bytes /= 0 or else Base > Unsigned_64'Last - HEAP_BYTES then
+         return;
+      end if;
+      declare
+         P : Heap_Private with Import, Alignment => 8, Address => Page_Address (Base + PRIVATE_OFFSET);
+         Table : Arena_Table with Import, Alignment => 8, Address => Page_Address (Base + TABLE_OFFSET);
+         Need : constant Medium_Pages := Medium_Pages ((Bytes + (Page_Bytes - 1)) / Page_Bytes);
+         Class : constant Medium_Class := Medium_Classes (Need);
+      begin
+         pragma Assume (Private_Valid (P), "a heap's private part is as its holder last left it");
+         if P.Holder /= Me or else P.Parked (Class) = 0 then
+            return;
+         end if;
+         Take_Parked (P, Table, Class, Medium_Pages'Max (Class_Pages (Class), Need), Item);
+         Hit := Item /= No_Address;
+      end;
+   end Allocate_Medium_Fast;
+
+   --  A free of a medium block of the caller's own heap (the map entry
+   --  Value names it and its table place): parked or released, with no
+   --  heap entry. Hit False: take the full path.
+   procedure Free_Medium_Fast (Item : Unsigned_64; Value : Unsigned_32; Hit : out Boolean) with
+     Inline_Always,
+     Pre => State_Valid and then Ready and then Unlocked,
+     Post => State_Valid and then Unlocked
+   is
+      Me, Base : Unsigned_64;
+      Index : constant Natural := Natural (Shift_Right (Value, ENTRY_SHIFT) and 16#1FFF#);
+   begin
+      Hit := False;
+      Get_Token (Me);
+      if Me <= FALLBACK_TOKEN then
+         return;
+      end if;
+      Get_Thread_Heap (Base);
+      if Base = 0 or else Base mod Page_Bytes /= 0 or else Base > Unsigned_64'Last - HEAP_BYTES then
+         return;
+      end if;
+      declare
+         P : Heap_Private with Import, Alignment => 8, Address => Page_Address (Base + PRIVATE_OFFSET);
+         Table : Arena_Table with Import, Alignment => 8, Address => Page_Address (Base + TABLE_OFFSET);
+      begin
+         pragma Assume (Private_Valid (P), "a heap's private part is as its holder last left it");
+         if P.Holder /= Me or else Natural (Value and 16#FFFF#) /= P.Id or else Index = 0 or else Index > P.Arenas then
+            return;
+         end if;
+         Release_Local (P, Table, Me, Index, Item);
+         Hit := True;
+      end;
+   end Free_Medium_Fast;
+
    ------------------------------------------------------------------------
    --  Huge blocks, under the lock: overlay the directory records.
    ------------------------------------------------------------------------
@@ -2364,13 +2649,21 @@ is
    end Allocate_Slow;
 
    procedure Allocate_Entry (Bytes, Alignment : Unsigned_64; Zeroed : Boolean; Item : out Unsigned_64) with
-     Inline, Pre => State_Valid and then Unlocked, Post => State_Valid and then Unlocked
+     Inline_Always, Pre => State_Valid and then Unlocked, Post => State_Valid and then Unlocked
    is
       Hit : Boolean;
    begin
       --  Bytes in 1 .. SMALL_LIMIT (0 wraps above it), plain alignment.
       if Bytes - 1 < SMALL_LIMIT and then Alignment <= STANDARD_ALIGNMENT then
          Allocate_Fast (HC.Request_Size (Bytes), Item, Hit);
+         if Hit then
+            if Zeroed then
+               Zero (Item, Bytes);
+            end if;
+            return;
+         end if;
+      elsif Bytes - 1 < HUGE_THRESHOLD and then Alignment <= STANDARD_ALIGNMENT then
+         Allocate_Medium_Fast (Bytes, Item, Hit);
          if Hit then
             if Zeroed then
                Zero (Item, Bytes);
@@ -2413,6 +2706,23 @@ is
       Leave (Me);
    end Free_Slow;
 
+   --  Every free but the small fast path's: a medium block of the
+   --  caller's own heap, or the full path (out of line, so the small path
+   --  keeps no registers across a call).
+   procedure Free_Other (Item : Unsigned_64; Value : Unsigned_32) with
+     No_Inline, Pre => State_Valid and then Ready and then Unlocked, Post => State_Valid and then Unlocked
+   is
+      Hit : Boolean;
+   begin
+      if Value /= 0 and then (Value and ENTRY_MEDIUM) /= 0 then
+         Free_Medium_Fast (Item, Value, Hit);
+         if Hit then
+            return;
+         end if;
+      end if;
+      Free_Slow (Item, Value);
+   end Free_Other;
+
    procedure Free (Item : Unsigned_64) is
       Value : Unsigned_32;
       Hit : Boolean;
@@ -2427,7 +2737,7 @@ is
             return;
          end if;
       end if;
-      Free_Slow (Item, Value);
+      Free_Other (Item, Value);
    end Free;
 
    procedure Free_Sized (Item, Bytes, Alignment : Unsigned_64) is

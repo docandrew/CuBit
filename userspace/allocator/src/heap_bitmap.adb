@@ -41,6 +41,15 @@ package body Heap_Bitmap with SPARK_Mode is
       if Item < Prefix then Prove_Bit (Bits, Item, Prefix - 1); end if;
    end Prove_Bit;
 
+   procedure Prove_Empty (Bits : Bitmap; Prefix : Count) with Ghost,
+     Pre => Population (Bits, Prefix) = 0,
+     Post => (for all I in 1 .. Prefix => not Bit (Bits, I)),
+     Subprogram_Variant => (Decreases => Prefix)
+   is
+   begin
+      if Prefix > 0 then Prove_Empty (Bits, Prefix - 1); end if;
+   end Prove_Empty;
+
    procedure Initialize (State : out Pool; Limit : Slot) is
    begin
       State := (Occupied => 0, Limit => Limit, Cached => 0, Fresh => 1, Free => [others => 1],
@@ -126,10 +135,18 @@ package body Heap_Bitmap with SPARK_Mode is
          State.Bits (Word_Of (Item)) (Bit_Of (Item)) := False;
          Prove_Change (Before, State.Bits, Item, State.Limit);
          State.Occupied := State.Occupied - 1;
-         -- Prefer the latest return even when full. The displaced cached slot
-         -- stays free in Bits and will be found by a later refill.
-         if State.Cached < Cache_Size then State.Cached := State.Cached + 1; end if;
-         State.Free (State.Cached) := Stored_Slot (Item);
+         if State.Occupied = 0 then
+            -- Empty: every slot is free again, so hand them out in order
+            -- (no cache, no refill scan).
+            Prove_Empty (State.Bits, State.Limit);
+            State.Cached := 0;
+            State.Fresh := 1;
+         else
+            -- Prefer the latest return even when full. The displaced cached
+            -- slot stays free in Bits and will be found by a later refill.
+            if State.Cached < Cache_Size then State.Cached := State.Cached + 1; end if;
+            State.Free (State.Cached) := Stored_Slot (Item);
+         end if;
       end if;
    end Release;
 

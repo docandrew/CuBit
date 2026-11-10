@@ -7,17 +7,19 @@ inboxes, lock words), node words, the thread token and the thread-local
 heap slot (whose package, SPARK_Mode Off, holds no subprogram). Its stated assumptions are all at the memory boundary
 (userspace/allocator/process/cualloc.adb), per heap instance:
 
-  7  "a heap's private part is as its holder last left it": the overlay of
+  9  "a heap's private part is as its holder last left it": the overlay of
      the calling thread's heap at each entry (Allocate_Fast, Free_Fast,
-     Allocate_Here, Free_Here, Exit_Here), which the holder discipline
+     Allocate_Medium_Fast, Free_Medium_Fast, Allocate_Here, Free_Here,
+     Exit_Here), which the holder discipline
      gives; and two read-only overlays of other heaps (Find_Arena, for
      Usable_Size: the record read is fixed while the block is live;
      Statistics: diagnostics, approximate while threads run).
   3  "a small arena's metadata is as its holder last left it" (Slab_Allocate,
      Slab_Take, the fast path's allocation from a cached slab, and
      Slab_Release), and
-  2  the same for medium arenas (Extent_Allocate, Extent_Release): only the
-     arena's heap's holder calls them.
+  4  the same for medium arenas (Extent_Allocate, Extent_Release,
+     Extent_Park, Extent_Unpark): only the arena's heap's holder calls
+     them.
   4  "the directory is as the last locked operation left it": the huge
      directory's overlay in each locked huge-block operation.
 """
@@ -38,9 +40,9 @@ BOUNDARY = {
     'Try_Take', 'Give_Back', 'Try_Take_Fallback', 'Give_Back_Fallback', 'Pause',
 }
 ASSUMES = {
-    "a heap's private part is as its holder last left it": 7,
+    "a heap's private part is as its holder last left it": 9,
     "a small arena's metadata is as its holder last left it": 3,
-    "a medium arena's metadata is as its holder last left it": 2,
+    "a medium arena's metadata is as its holder last left it": 4,
     'the directory is as the last locked operation left it': 4,
 }
 source = (pathlib.Path(__file__).resolve().parents[2] / 'userspace/allocator/process/cualloc.adb').read_text()

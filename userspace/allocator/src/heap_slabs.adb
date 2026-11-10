@@ -89,12 +89,31 @@ package body Heap_Slabs with SPARK_Mode is
       case Class is
          when Bytes_16 => pragma Assert ((K * 16) mod 16 = 0);
          when Bytes_32 => pragma Assert ((K * 32) mod 32 = 0);
+         when Bytes_48 => pragma Assert ((K * 48) mod 48 = 0);
          when Bytes_64 => pragma Assert ((K * 64) mod 64 = 0);
+         when Bytes_80 => pragma Assert ((K * 80) mod 80 = 0);
+         when Bytes_96 => pragma Assert ((K * 96) mod 96 = 0);
+         when Bytes_112 => pragma Assert ((K * 112) mod 112 = 0);
          when Bytes_128 => pragma Assert ((K * 128) mod 128 = 0);
+         when Bytes_160 => pragma Assert ((K * 160) mod 160 = 0);
+         when Bytes_192 => pragma Assert ((K * 192) mod 192 = 0);
+         when Bytes_224 => pragma Assert ((K * 224) mod 224 = 0);
          when Bytes_256 => pragma Assert ((K * 256) mod 256 = 0);
+         when Bytes_320 => pragma Assert ((K * 320) mod 320 = 0);
+         when Bytes_384 => pragma Assert ((K * 384) mod 384 = 0);
+         when Bytes_448 => pragma Assert ((K * 448) mod 448 = 0);
          when Bytes_512 => pragma Assert ((K * 512) mod 512 = 0);
+         when Bytes_640 => pragma Assert ((K * 640) mod 640 = 0);
+         when Bytes_768 => pragma Assert ((K * 768) mod 768 = 0);
+         when Bytes_896 => pragma Assert ((K * 896) mod 896 = 0);
          when Bytes_1024 => pragma Assert ((K * 1_024) mod 1_024 = 0);
+         when Bytes_1280 => pragma Assert ((K * 1_280) mod 1_280 = 0);
+         when Bytes_1536 => pragma Assert ((K * 1_536) mod 1_536 = 0);
+         when Bytes_1792 => pragma Assert ((K * 1_792) mod 1_792 = 0);
          when Bytes_2048 => pragma Assert ((K * 2_048) mod 2_048 = 0);
+         when Bytes_2560 => pragma Assert ((K * 2_560) mod 2_560 = 0);
+         when Bytes_3072 => pragma Assert ((K * 3_072) mod 3_072 = 0);
+         when Bytes_3584 => pragma Assert ((K * 3_584) mod 3_584 = 0);
          when Bytes_4096 => pragma Assert ((K * 4_096) mod 4_096 = 0);
       end case;
    end Prove_Multiple;
@@ -146,17 +165,20 @@ package body Heap_Slabs with SPARK_Mode is
                                 Class : out Size_Class; Was_Full, Emptied : out Boolean) is
       Page : constant Slab_Id := Page_Of (Position);
       Relative : constant Local_Offset := Local_Of (Position);
-      Full : Boolean;
-      OK : Boolean;
+      Item : Natural;
+      Full, Exact, OK : Boolean;
    begin
       Class := Heap.Kinds (Page);
       Was_Full := False;
       Emptied := False;
-      if not Aligned (Relative, Class) then Status := Invalid_Offset; return; end if;
+      -- One multiplication by the class's reciprocal: the slot, and
+      -- whether Relative starts it.
+      Divide (Relative, Class, Item, Exact);
+      if not Exact then Status := Invalid_Offset; return; end if;
       -- The pool's capacity is its class's slot count (Valid): one load
       -- beside the count, no computation.
       Full := Used (Heap, Page) = Heap_Bitmap.Capacity (Heap.Pages (Page));
-      Heap_Bitmap.Release (Heap.Pages (Page), Quotient (Relative, Class) + 1, OK);
+      Heap_Bitmap.Release (Heap.Pages (Page), Item + 1, OK);
       if OK then
          Was_Full := Full;
          Emptied := Used (Heap, Page) = 0;

@@ -9,7 +9,7 @@ package Heap_Slabs with SPARK_Mode, Pure is
    subtype Offset is Natural range 0 .. Arena_Bytes - 1;
    subtype Local_Offset is Natural range 0 .. Slab_Bytes - 1;
    subtype Slot is Heap_Bitmap.Slot;
-   function Slots_For (Class : Size_Class) return Slot is (Quotient (Slab_Bytes, Class));
+   function Slots_For (Class : Size_Class) return Slot is (Slots (Class));
    function Page_Of (Position : Offset) return Slab_Id with Inline_Always,
      Post => Page_Of'Result = Position / Slab_Bytes + 1;
    function Local_Of (Position : Offset) return Local_Offset with Inline_Always,

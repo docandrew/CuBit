@@ -19,6 +19,8 @@ bridge = root / 'userspace/allocator/build/objects/heap_bridge.o'
 undefined = subprocess.check_output(['nm', '-u', str(bridge)], text=True).splitlines()
 allowed = {'heap_slab_instance__initialize', 'heap_slab_instance__scan_pages',
            'heap_bitmap__reconfigure', 'heap_bitmap__refill',
-           'heap_slab_instance__live', 'heap_classes__classes'}
+           'heap_slab_instance__live', 'heap_classes__classes',
+           # The class tables (data): strides, slots per slab, reciprocals.
+           'heap_classes__strides', 'heap_classes__slot_counts', 'heap_classes__magics'}
 assert all(line.split()[-1] in allowed for line in undefined), undefined
-print('PASS release codegen: no Ghost/assertion symbols; bridge dependencies limited to slab core and class table')
+print('PASS release codegen: no Ghost/assertion symbols; bridge dependencies limited to slab core and class tables')

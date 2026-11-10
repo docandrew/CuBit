@@ -53,6 +53,54 @@ begin
    Check (C /= 0 and then Heap.Usable_Size (C) >= 3_000_000, "huge: its own reservation");
    Fill (A, 24, 1); Fill (B, 10_000, 2); Fill (C, 3_000_000, 3);
    Check (Holds (A, 24, 1) and Holds (B, 10_000, 2) and Holds (C, 3_000_000, 3), "each holds what was written");
+   --  Size classes (ALLOC-001 step 12): four per power of two above 64
+   --  bytes, so a request is rounded by at most a quarter; medium sizes
+   --  likewise in pages above 8 pages.
+   declare
+      type Pair is record
+         Bytes, Usable : Unsigned_64;
+      end record;
+      type Pairs is array (Positive range <>) of Pair;
+      Cases : constant Pairs :=
+        [(1, 16), (16, 16), (17, 32), (33, 48), (49, 64), (65, 80), (97, 112), (129, 160), (200, 224),
+         (257, 320), (1_025, 1_280), (1_537, 1_792), (2_049, 2_560), (3_585, 4_096), (4_096, 4_096),
+         (4_097, 8_192), (32_769, 40_960), (36_865, 40_960), (200_000, 229_376), (1_048_576, 1_048_576)];
+      Item : Unsigned_64;
+      Rounded : Boolean := True;
+   begin
+      for C of Cases loop
+         Item := Heap.Allocate (C.Bytes, 16);
+         Rounded := Rounded and then Item /= 0 and then Item mod 16 = 0 and then Heap.Usable_Size (Item) = C.Usable;
+         if Item /= 0 then
+            Fill (Item, C.Bytes, 16#3C#);
+            Rounded := Rounded and then Holds (Item, C.Bytes, 16#3C#);
+            Heap.Free (Item);
+         end if;
+      end loop;
+      Check (Rounded, "small and medium requests take the smallest class that holds them");
+   end;
+   --  A freed medium block is parked for the class's next request (still
+   --  allocated in its arena's core, marked parked): it reports no usable
+   --  bytes, a second free of it is ignored (parking twice fails), so it
+   --  is handed out once; an interior address is ignored too.
+   declare
+      M1 : constant Unsigned_64 := Heap.Allocate (20_000, 16);
+      M2, M3 : Unsigned_64;
+   begin
+      Fill (M1, 20_000, 16#4D#);
+      Heap.Free (M1 + 4_096);
+      Check (Heap.Usable_Size (M1) = 20_480, "an interior address of a medium block is not freed");
+      Heap.Free (M1);
+      Check (Heap.Usable_Size (M1) = 0, "a parked medium block reports no usable bytes");
+      Heap.Free (M1);
+      M2 := Heap.Allocate (20_000, 16);
+      M3 := Heap.Allocate (20_000, 16);
+      Check (M2 = M1 and then M3 /= 0 and then M3 /= M1 and then Heap.Usable_Size (M2) = 20_480,
+             "a medium block freed twice is parked once and handed out once");
+      Heap.Free_Sized (M2, 20_000, 16);
+      Heap.Free (M3);
+      Check (Heap.Usable_Size (M2) = 0 and then Heap.Usable_Size (M3) = 0, "both parked or released");
+   end;
    declare
       Reserved : constant Unsigned_64 := Heap.Reserved_Bytes;
    begin
@@ -163,7 +211,7 @@ begin
                    "a huge block freed with a small size is released, alignment" & Align'Image);
          end;
       end loop;
-      Check (Holds (Canary, 48, 16#5C#) and then Heap.Usable_Size (Canary) = 64,
+      Check (Holds (Canary, 48, 16#5C#) and then Heap.Usable_Size (Canary) = 48,
              "the arena named by the forged identity is untouched");
       Small := Heap.Allocate (40, 16);
       Other := Heap.Allocate (100, 16);
@@ -308,7 +356,7 @@ begin
       Heap.Thread_Exit;
       Again := Heap.Allocate (200, 16);
       Check (Again /= 0 and then Again /= Kept and then Holds (Kept, 200, 7)
-             and then Heap.Usable_Size (Kept) = 256, "after Thread_Exit the thread takes a heap again");
+             and then Heap.Usable_Size (Kept) = 224, "after Thread_Exit the thread takes a heap again");
       Heap.Free (Again);
       Heap.Free (Kept);
       Check (Heap.Allocate (200, 16) = Kept, "its blocks are freed locally again");

@@ -14,21 +14,44 @@ procedure Slab_Tests is
       if not Condition then raise Program_Error with "slab regression"; end if;
    end Check;
 begin
+   --  Classes: 16-byte steps to 64, then four per power of two; each size
+   --  takes the smallest class that holds it.
    for Size in Heap_Classes.Request_Size loop
       declare
+         --  The next class above Expected: +16 up to 64, then a quarter of
+         --  the power of two below.
+         function Next (Expected : Positive) return Positive is
+            Power : Positive := 64;
+         begin
+            if Expected < 64 then return Expected + 16; end if;
+            while Power * 2 <= Expected loop Power := Power * 2; end loop;
+            return Expected + Power / 4;
+         end Next;
          Expected : Positive := 16;
       begin
-         while Expected < Size loop Expected := Expected * 2; end loop;
+         while Expected < Size loop Expected := Next (Expected); end loop;
          Check (Heap_Classes.Stride (Heap_Classes.Class_For (Size)) = Expected);
+         Check (Heap_Classes.Stride (Heap_Classes.Class_For (Size)) * 4 <= Size * 5 + 60);
       end;
    end loop;
    for Class in Heap_Classes.Size_Class loop
+      Check (Heap_Classes.Slots (Class) = Slab_Model.Slab_Bytes / Heap_Classes.Stride (Class));
+      Check (Heap_Classes.Stride (Class) mod 16 = 0);
       for Offset in 0 .. Slab_Model.Slab_Bytes loop
-         Check (Heap_Classes.Quotient (Offset, Class) = Offset / Heap_Classes.Stride (Class));
-         Check (Heap_Classes.Aligned (Offset, Class) = (Offset mod Heap_Classes.Stride (Class) = 0));
+         declare
+            Q : Natural;
+            Exact : Boolean;
+         begin
+            Heap_Classes.Divide (Offset, Class, Q, Exact);
+            Check (Q = Offset / Heap_Classes.Stride (Class));
+            Check (Exact = (Offset mod Heap_Classes.Stride (Class) = 0));
+         end;
+      end loop;
+      for Item in 0 .. Heap_Classes.Slots (Class) - 1 loop
+         Check (Heap_Classes.Scale (Item, Class) = Item * Heap_Classes.Stride (Class));
       end loop;
    end loop;
-   Ada.Text_IO.Put_Line ("PASS classes: all request sizes and slab-local quotient/alignment boundaries");
+   Ada.Text_IO.Put_Line ("PASS classes: all request sizes, every slab offset's reciprocal quotient and exactness");
    for Position in Heap_Slab_Instance.Offset loop
       Check (Heap_Slab_Instance.Page_Of (Position) = Position / Heap_Slab_Instance.Slab_Bytes + 1);
       Check (Heap_Slab_Instance.Local_Of (Position) = Position mod Heap_Slab_Instance.Slab_Bytes);
@@ -72,6 +95,8 @@ begin
          for Hole in 2 .. Limit loop
             -- Recycle two slots in both release orders, across every bitmap
             -- word boundary and at partial-tail capacities.
+            -- (With Limit 2 the pool empties: it then hands out its slots in
+            -- order again, 1 first.)
             Release (State, Hole, OK); Check (OK);
             Release (State, 1, OK); Check (OK);
             Allocate (State, Item, OK); Check (OK and then Item = 1);
@@ -79,8 +104,8 @@ begin
             Check (Used (State) = Limit);
             Release (State, 1, OK); Check (OK);
             Release (State, Hole, OK); Check (OK);
-            Allocate (State, Item, OK); Check (OK and then Item = Hole);
-            Allocate (State, Item, OK); Check (OK and then Item = 1);
+            Allocate (State, Item, OK); Check (OK and then Item = (if Limit = 2 then 1 else Hole));
+            Allocate (State, Item, OK); Check (OK and then Item = (if Limit = 2 then Hole else 1));
             Check (Used (State) = Limit);
          end loop;
          Allocate (State, Item, OK); Check (not OK);
@@ -302,8 +327,7 @@ begin
          end if;
          Seed := Seed * 1_664_525 + 1_013_904_223;
          Size := Integer (Shift_Right (Seed, 16) mod 4_096) + 1;
-         Rounded := 16;
-         while Rounded < Size loop Rounded := Rounded * 2; end loop;
+         Rounded := Heap_Classes.Stride (Heap_Classes.Class_For (Size));
          Before := Heap;
          M.Allocate (Heap, Size, Value);
          if Value.Value.Success then
