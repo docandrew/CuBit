@@ -6,7 +6,8 @@ check_serial.py SERIAL_LOG [--overflow]
 - logstore's catch-up summary accounts for every number the kernel gave:
   records taken + records dropped = the last sequence number read.
 - (logs.recent "crash-probe") holds the runtime's last words,
-  "unhandled exception at main.adb:25", at Severity.Error under
+  "unhandled exception PROGRAM_ERROR: main.adb:25 explicit raise" and its
+  traceback (EXC-001), at Severity.Error under
   crash-probe's own source (its log channel: the kernel holds no program
   text).
 - (logs.recent "fault-check") and (logs.recent "stack-probe") hold the
@@ -34,7 +35,8 @@ SUMMARY = re.compile(
     r"(\d+) restricted withheld")
 ENTRY = re.compile(r'\(LogEntry (\d+) Severity\.(\w+) (\d+) "((?:[^"\\]|\\.)*)"\)')
 REPL = "ccl-console: REPL completed: List<LogEntry>: "
-LAST_WORDS = "unhandled exception at main.adb:25"
+# EXC-001: the exception's name and message, then "; traceback 0x..."
+LAST_WORDS = "unhandled exception PROGRAM_ERROR: main.adb:25 explicit raise"
 SUMMARY_TEXT = "{}: stopped by a page fault (write); details restricted"
 WITHHELD = "logstore: kernel log: withheld the restricted fault detail of {} ({})"
 
@@ -77,7 +79,7 @@ def main():
     fault_summaries = {name: SUMMARY_TEXT.format(f"com.cubit.{name}")
                        for name in ("fault-check", "stack-probe")}
     for label, predicate in (
-            ("crash-probe's last words", lambda e: e[3] == LAST_WORDS),
+            ("crash-probe's last words", lambda e: e[3].startswith(LAST_WORDS + "; traceback 0x")),
             ("fault-check's fault summary", lambda e: e[3] == fault_summaries["fault-check"]),
             ("stack-probe's fault summary", lambda e: e[3] == fault_summaries["stack-probe"])):
         _, level, source, message = find(lists, predicate, label)

@@ -34,20 +34,15 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-pragma Restrictions (No_Exception_Propagation);
---  Only local exception handling is supported in this profile
-
-pragma Restrictions (No_Exception_Registration);
---  Disable exception name registration. This capability is not used because
---  it is only required by exception stream attributes which are not supported
---  in this run time.
-
---  CuBit (RT-008): No_Exception_Handlers is lifted, No_Exception_Propagation
---  stays until EXC-001. A handler catches only a raise in its own frame
---  (GNAT turns it into a jump); anything else still ends the program
---  through the last-chance handler. GNAT 15's deep Initialize for arrays
---  of controlled components always carries a local handler, so arrays of
---  controlled objects need handlers allowed.
+--  CuBit (EXC-001): full Ada exceptions, zero-cost (ZCX): GCC's DWARF
+--  tables (.eh_frame, .gcc_except_table), GNAT's personality routine
+--  (raise-gcc.c) and libgcc's unwinder (CuBit.Unwinder_Support). Nothing
+--  runs on the normal path: code that never raises, such as proved SPARK
+--  units compiled with -gnatp, pays only the tables' size. No_Exception_
+--  Propagation, No_Exception_Handlers (RT-008 lifted it) and No_Exception_
+--  Registration are gone: an exception propagates to any handler, and an
+--  unhandled one ends the program through the last-chance handler with its
+--  name, message and traceback (Ada.Exceptions.Last_Chance_Handler).
 
 pragma Restrictions (No_Implicit_Dynamic_Code);
 --  Pointers to nested subprograms are not allowed in this run time, in order
@@ -65,10 +60,10 @@ pragma Restrictions (Max_Asynchronous_Select_Nesting => 0);
 --  No task can be aborted (no tasking; Jorvik, the planned profile, keeps
 --  both): controlled assignment and finalization need no abort deferral.
 
-pragma Discard_Names;
---  Disable explicitly the generation of names associated with entities in
---  order to reduce the amount of storage used. These names are not used anyway
---  (attributes such as 'Image and 'Value are not supported in this run time).
+--  CuBit (EXC-001): no pragma Discard_Names any more. GNAT applies it to
+--  exceptions too (Exception_Name would be empty, and an unhandled
+--  exception's report could not say which it was), so every program keeps
+--  the names of its exceptions, enumeration literals and tagged types.
 
 package System is
    pragma Pure;
@@ -187,6 +182,7 @@ private
    --  CuBit.Binder_Interface and System.Standard_Library.
    Use_Ada_Main_Program_Name : constant Boolean := False;
    Frontend_Exceptions       : constant Boolean := False;
-   ZCX_By_Default            : constant Boolean := False;
+   ZCX_By_Default            : constant Boolean := True;
+   --  CuBit (EXC-001): zero-cost exceptions (see the restrictions above)
 
 end System;

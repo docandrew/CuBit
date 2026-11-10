@@ -57,7 +57,10 @@ package CuBit.Binder_Interface is
      with Export, Convention => C, External_Name => "__gl_num_interrupt_states";
    Unreserve_All_Interrupts : int := 0
      with Export, Convention => C, External_Name => "__gl_unreserve_all_interrupts";
-   Exception_Tracebacks : int := 0
+   --  CuBit (EXC-001): every occurrence records its traceback, as
+   --  gnatbind -E would ask (the binder sets this only when given -E), so
+   --  an unhandled exception's report names where it came from.
+   Exception_Tracebacks : int := 1
      with Export, Convention => C, External_Name => "__gl_exception_tracebacks";
    Exception_Tracebacks_Symbolic : int := 0
      with Export, Convention => C, External_Name => "__gl_exception_tracebacks_symbolic";

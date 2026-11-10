@@ -5,10 +5,11 @@ with Startup;
 
 --  Native regression for LOG-004: a program that logs one record through
 --  its own log channel and then raises an exception nothing handles. The
---  runtime's last-chance handler prints "User-space exception at main.adb
---  line N" on the debug console as before, publishes "unhandled exception
---  at main.adb:N" as an Error through the same channel, and exits with
---  code 134; (logs.recent "crash-probe") must show it after the program is
+--  runtime's last-chance handler prints "User-space exception
+--  PROGRAM_ERROR: main.adb:N explicit raise" and its traceback on the debug
+--  console, publishes "unhandled exception PROGRAM_ERROR: main.adb:N
+--  explicit raise; traceback 0x..." as an Error through the same channel
+--  (EXC-001), and exits with code 134; (logs.recent "crash-probe") must show it after the program is
 --  gone (tests/headless/run.sh, CCL_CONSOLE_DEMO=kernel-log). The kernel
 --  holds none of this text.
 procedure Main is

@@ -97,7 +97,10 @@ configuration project Default is
 
    package Linker is
       for Driver use Driver;
-      for Required_Switches use (Tools, "-Wl,--build-id=sha1");
+      --  --eh-frame-hdr: the unwinder's search table over .eh_frame (and
+      --  PT_GNU_EH_FRAME), which a static link leaves out unless asked:
+      --  zero-cost Ada exceptions find their handlers through it (EXC-001).
+      for Required_Switches use (Tools, "-Wl,--build-id=sha1", "-Wl,--eh-frame-hdr");
       for Response_File_Format use "GCC_GNU";
       for Max_Command_Line_Length use "8192";
    end Linker;

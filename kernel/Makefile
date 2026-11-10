@@ -1782,6 +1782,10 @@ time-zones: $(TIME_ZONE_SOURCES)
 $(TIME_ZONE_SOURCES) &: ../tools/generate_time_zones.py ../flake.lock ../flake.nix
 	$(ALR) python3 ../tools/generate_time_zones.py ../userspace/lib/time/build/generated
 
+# libgcc_eh.a's unwinder: the DWARF frame walker and the .eh_frame_hdr
+# lookup through dl_iterate_phdr (not emutls, SJLJ or the C personality).
+UNWINDER_OBJECTS := unwind-dw2.o unwind-dw2-fde-dip.o
+
 # Build userspace Ada runtime (needed by filesystem server)
 .PHONY : user_runtime
 user_runtime:
@@ -1793,6 +1797,26 @@ user_runtime:
 	# objects as in libc.a and libcubit_allocator.a.
 	$(NATIVE_GPRBUILD) -p -P ../userspace/allocator/allocator_native.gpr
 	ar rcs ../userspace/runtime/adalib/libgnat-user.a ../userspace/allocator/build/native-objects/*.o
+	# Zero-cost exceptions (EXC-001). GNAT's personality routine, upstream's
+	# raise-gcc.c unchanged, compiled as libgnat does (IN_RTS), with no
+	# libgcc configuration headers (STANDALONE: runtime.h), no C++
+	# exception interoperation, and the unwinder's abort (no libc).
+	mkdir -p ../userspace/runtime/build/unwinder
+	$(KERNEL_GCC) -B$(CUBIT_BINUTILS)/bin/ -c -O2 -g -mno-red-zone -fno-pic -fexceptions \
+	  -ffile-prefix-map=$(abspath ..)=. -DIN_RTS -DSTANDALONE -DGXX_EH_INTEROP=0 \
+	  -Dabort=__cubit_unwind_abort -I../userspace/runtime/gnat \
+	  ../userspace/runtime/gnat/raise-gcc.c -o ../userspace/runtime/build/unwinder/raise-gcc.o
+	ar rcs ../userspace/runtime/adalib/libgnat-user.a ../userspace/runtime/build/unwinder/raise-gcc.o
+	# libgcc's DWARF unwinder, for zero-cost exceptions and tracebacks: the
+	# pinned compiler's own objects, unchanged except that their libc calls
+	# are renamed to CuBit.Unwinder_Support's
+	# (userspace/runtime/unwinder-symbols.txt).
+	cd ../userspace/runtime/build/unwinder && ar x $$($(KERNEL_GCC) -print-file-name=libgcc_eh.a) $(UNWINDER_OBJECTS)
+	for object in $(UNWINDER_OBJECTS); do \
+	  $(CUBIT_BINUTILS)/bin/objcopy --redefine-syms=../userspace/runtime/unwinder-symbols.txt \
+	    ../userspace/runtime/build/unwinder/$$object ../userspace/runtime/build/unwinder/cubit-$$object || exit 1; \
+	done
+	ar rcs ../userspace/runtime/adalib/libgnat-user.a $(addprefix ../userspace/runtime/build/unwinder/cubit-,$(UNWINDER_OBJECTS))
 
 # RAM storage uses the same block-device protocol as hardware drivers.
 .PHONY : ramdisk

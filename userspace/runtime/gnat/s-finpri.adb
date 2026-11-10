@@ -29,18 +29,22 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  CuBit: this runtime has no exception propagation yet (No_Exception_
---  Propagation, No_Exception_Handlers in System; EXC-001), so an exception
---  raised by a Finalize ends the program through the last-chance handler.
---  The upstream paths that save an occurrence, finish the remaining objects
---  and re-raise it are therefore left out, and the collection lock is
---  System.OS_Locks' futex mutex rather than a soft link.
-
+with Ada.Exceptions;           use Ada.Exceptions;
 with Ada.Unchecked_Conversion;
 
-with System.OS_Locks; use System.OS_Locks;
+--  CuBit: the collection lock is System.OS_Locks' futex mutex rather than
+--  the RTS lock soft links, which are null without the tasking runtime
+--  (CuBit processes have threads even without Ada tasking; CuBit's
+--  System.Soft_Links has no RTS lock links).
+
+with System.OS_Locks;   use System.OS_Locks;
+with System.Soft_Links; use System.Soft_Links;
 
 package body System.Finalization_Primitives is
+
+   procedure Raise_From_Controlled_Operation (X : Exception_Occurrence);
+   pragma Import (Ada, Raise_From_Controlled_Operation,
+                              "__gnat_raise_from_controlled_operation");
 
    function To_Collection_Node_Ptr is
      new Ada.Unchecked_Conversion (Address, Collection_Node_Ptr);
@@ -104,6 +108,15 @@ package body System.Finalization_Primitives is
       Collection.Head.Next      := Node;
 
       Unlock_Collection (Collection);
+
+   exception
+      when others =>
+
+         --  Unlock the collection in case the attachment failed and reraise
+         --  the exception.
+
+         Unlock_Collection (Collection);
+         raise;
    end Attach_Object_To_Collection;
 
    -----------------------------
@@ -191,6 +204,8 @@ package body System.Finalization_Primitives is
 
    procedure Finalize (Collection : in out Finalization_Collection) is
       Curr_Ptr                      : Collection_Node_Ptr;
+      Exc_Occur                     : Exception_Occurrence;
+      Finalization_Exception_Raised : Boolean := False;
       Obj_Addr                      : Address;
 
       function Is_Empty_List (L : not null Collection_Node_Ptr) return Boolean;
@@ -257,7 +272,15 @@ package body System.Finalization_Primitives is
 
          Unlock_Collection (Collection);
 
-         Curr_Ptr.Finalize_Address (Obj_Addr);
+         begin
+            Curr_Ptr.Finalize_Address (Obj_Addr);
+         exception
+            when Fin_Occur : others =>
+               if not Finalization_Exception_Raised then
+                  Finalization_Exception_Raised := True;
+                  Save_Occurrence (Exc_Occur, Fin_Occur);
+               end if;
+         end;
 
          --  Retake the lock for the next iteration
 
@@ -265,6 +288,12 @@ package body System.Finalization_Primitives is
       end loop;
 
       Unlock_Collection (Collection);
+
+      --  If one of the finalization actions raised an exception, reraise it
+
+      if Finalization_Exception_Raised then
+         Raise_From_Controlled_Operation (Exc_Occur);
+      end if;
    end Finalize;
 
    ---------------------
@@ -272,22 +301,64 @@ package body System.Finalization_Primitives is
    ---------------------
 
    procedure Finalize_Master (Master : in out Finalization_Master) is
-      Node : Master_Node_Ptr;
+      Exc_Occur                     : Exception_Occurrence;
+      Finalization_Exception_Raised : Boolean := False;
+      Node                          : Master_Node_Ptr;
 
    begin
       Node := Master.Head;
 
-      --  CuBit: Exceptions_OK is False under No_Exception_Propagation; an
-      --  exception from a finalization action ends the program, so the
-      --  objects are finalized without the upstream local handler.
+      --  If exceptions are enabled, we catch them locally and reraise one
+      --  once all the finalization actions have been completed.
 
-      while Node /= null loop
-         Finalize_Object (Node.all, Node.Finalize_Address);
+      if Master.Exceptions_OK then
+         while Node /= null loop
+            begin
+               Finalize_Object (Node.all, Node.Finalize_Address);
 
-         Node := Node.Next;
-      end loop;
+            exception
+               when Exc : others =>
+                  if not Finalization_Exception_Raised then
+                     Finalization_Exception_Raised := True;
+
+                     if Master.Library_Level then
+                        if Master.Extra_Info then
+                           Save_Library_Occurrence (Exc'Unrestricted_Access);
+                        else
+                           Save_Library_Occurrence (null);
+                        end if;
+
+                     elsif Master.Extra_Info then
+                        Save_Occurrence (Exc_Occur, Exc);
+                     end if;
+                  end if;
+            end;
+
+            Node := Node.Next;
+         end loop;
+
+      --  Otherwise we call finalization procedures without protection
+
+      else
+         while Node /= null loop
+            Finalize_Object (Node.all, Node.Finalize_Address);
+
+            Node := Node.Next;
+         end loop;
+      end if;
 
       Master.Head := null;
+
+      --  If one of the finalization actions raised an exception, and we are
+      --  not at library level, then reraise the exception.
+
+      if Finalization_Exception_Raised and then not Master.Library_Level then
+         if Master.Extra_Info then
+            Raise_From_Controlled_Operation (Exc_Occur);
+         else
+            raise Program_Error with "finalize/adjust raised exception";
+         end if;
+      end if;
    end Finalize_Master;
 
    ---------------------

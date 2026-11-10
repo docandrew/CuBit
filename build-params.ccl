@@ -28,10 +28,13 @@
   process_manager_catalog => "userspace/ccl/catalogs/native-runtime-services.ccl"
   device_manager_catalog => "userspace/ccl/catalogs/driver-services.ccl"
   # Native CuBit code: no red zone (interrupt frames), not position independent.
+  # --eh-frame-hdr: the unwinder's search table over .eh_frame, which a
+  # static link leaves out unless asked (zero-cost exceptions, EXC-001).
   target => ["-mno-red-zone" "-fno-pic"]
   binder => ["-d_C" "-nostdlib"]
   linker => [(Link_Argument.Text "-nostdlib") (Link_Argument.Text "-static")
-             (Link_Argument.Text "-no-pie") (Link_Argument.Text "-Wl,-z,stack-size=16777216")
+             (Link_Argument.Text "-no-pie") (Link_Argument.Text "-Wl,--eh-frame-hdr")
+             (Link_Argument.Text "-Wl,-z,stack-size=16777216")
              (Link_Argument.Text "-lgnat-user") (Link_Argument.Text "-T")
              (Link_Argument.File "userspace/c/link.ld") (Link_Argument.File "userspace/c/build/crt0.o")
              Link_Argument.Manifest_Object])

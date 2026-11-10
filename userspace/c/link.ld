@@ -13,7 +13,12 @@ ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x400000;
+    /* The ELF and program headers are loaded, read-only, on their own
+     * page (the loader takes page-aligned segments; text stays apart from
+     * them): the exception unwinder finds the program's .eh_frame_hdr
+     * through them (CuBit.Unwinder_Support's dl_iterate_phdr, from
+     * __ehdr_start). */
+    . = 0x400000 + SIZEOF_HEADERS;
 
     .text : ALIGN(4096)
     {
@@ -32,6 +37,13 @@ SECTIONS
     {
         KEEP(*(.note.gnu.build-id))
     }
+
+    /* Unwind tables for zero-cost Ada exceptions and tracebacks (EXC-001):
+     * the call-frame information, the binary-search table over it that
+     * --eh-frame-hdr builds (PT_GNU_EH_FRAME), and the handlers' tables. */
+    .eh_frame_hdr : { *(.eh_frame_hdr) }
+    .eh_frame : { KEEP(*(.eh_frame)) }
+    .gcc_except_table : { *(.gcc_except_table .gcc_except_table.*) }
 
     /* Thread-local data: the static TLS segment (PT_TLS), its image then
      * its zero-initialized rest. CuBit.Thread_Areas (the user runtime's
@@ -124,7 +136,6 @@ SECTIONS
 
     /DISCARD/ :
     {
-        *(.eh_frame)
         *(.comment)
         *(.note.*)
         *(.note.gnu.build-id)

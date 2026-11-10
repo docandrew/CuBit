@@ -17,8 +17,9 @@
 ------------------------------------------------------------------------------
 package CuBit.Last_Words with Preelaborate is
 
-   --  Text: what failed ("unhandled exception at main.adb:14"); Line: the
-   --  source line, 0 when unknown. Returns when the record is in logstore
+   --  Text: what failed ("unhandled exception PROGRAM_ERROR: main.adb:14
+   --  explicit raise; traceback 0x..."); Line: the source line, 0 when
+   --  unknown (the exception's report carries it in its message). Returns when the record is in logstore
    --  or its bounded wait is over.
    type Reporter is access procedure (Text : String; Line : Natural);
 

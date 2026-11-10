@@ -8,3 +8,7 @@ pragma Restrictions (No_Tasking);
 pragma Restrictions (No_Allocators);
 pragma Restrictions (No_Implicit_Heap_Allocations);
 pragma Restrictions (No_Dispatch);
+--  The user runtime's System no longer discards names (EXC-001: exception
+--  names in reports); the libc has no exceptions and no 'Image, so it keeps
+--  discarding them, and libc.a stays as it was.
+pragma Discard_Names;

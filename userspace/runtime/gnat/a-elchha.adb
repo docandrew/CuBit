@@ -1,148 +1,146 @@
 -------------------------------------------------------------------------------
  -- CuBitOS
- -- Copyright (C) 2019 Jon Andrew
+ -- Copyright (C) 2019-2026 Jon Andrew
  --
- -- Ada Exception Handling
+ -- Ada Exception Handling: the last-chance handler (EXC-001)
 -------------------------------------------------------------------------------
-with Interfaces; use Interfaces;
+--  Upstream GNAT's interface (a-elchha.ads, unchanged): called once with the
+--  occurrence of an exception no handler took, from the propagation code
+--  (Ada.Exceptions.Exception_Traces.Unhandled_Exception_Terminate) on the
+--  thread that raised it. CuBit has no standard error, so instead of
+--  upstream's stderr report it says it twice:
+--    - on the debug console: "User-space exception NAME: MESSAGE" and the
+--      traceback (code addresses, most recent call first; the program's
+--      debug file, kept by image staging under its build-id, turns them
+--      into source lines: addr2line -e <debug file> <addresses>);
+--    - as an Error record through the program's own log (CuBit.Last_Words,
+--      LOG-004), when the program has one: "unhandled exception NAME:
+--      MESSAGE; traceback 0x... 0x...", within one record's text.
+--  Then the process exits with Unhandled_Exception_Status
+--  (CuBit.Program_Endings), which a launcher reads as the typed outcome
+--  Failed (Unhandled_Exception).
+--
+--  Like upstream, nothing here allocates: no secondary stack (it may be
+--  what ran out), no heap; the text is built in fixed buffers on the
+--  primary stack. Library-level finalization is not run (upstream runs
+--  Adafinal here; CuBit's configurable runtime finalizes no library-level
+--  objects, RT-008). A second entry (an exception while reporting, on this
+--  or another thread) stops at once.
+
+with System.Storage_Elements; use System.Storage_Elements;
+with System.Standard_Library; use System.Standard_Library;
 with CuBit.Last_Words;
-with CuBit.Messages;
+with CuBit.Program_Endings.Last_Chance;
 
-package body Ada.Exceptions.Last_Chance_Handler with
-   SPARK_Mode => Off
+procedure Ada.Exceptions.Last_Chance_Handler
+  (Except : Exception_Occurrence)
 is
-   --  Allocation-free: the handler runs when the secondary stack may be the
-   --  thing that ran out, so it never concatenates, never uses 'Image and
-   --  writes only into a fixed buffer on the primary stack. It never
-   --  returns; a second entry (a fault while reporting) stops at once.
-   --
-   --  It says it twice: on the debug console as before, and as an Error
-   --  record through the program's own log (CuBit.Last_Words, LOG-004),
-   --  when the program has one, so (logs.recent "<program>") shows it after
-   --  the program is gone. The runtime calls the handler with the failing
-   --  source location (or a Raise_Exception message), not the exception's
-   --  name, so that is what both say.
+   Console_Prefix : constant String := "User-space exception ";
+   Log_Prefix : constant String := "unhandled exception ";
+   Message_Separator : constant String := ": ";
+   Console_Traceback : constant String := "  traceback:";
+   Log_Traceback : constant String := "; traceback";
+   Hex_Prefix : constant String := " 0x";
+   Unknown_Name : constant String := "(unknown)";
+   Reentered : constant String :=
+     "Unhandled exception while reporting an unhandled exception; stopping";
 
-   Max_Name_Length : constant := 160;
-   Max_Line_Digits : constant := 10;
-   Prefix : constant String := "User-space exception at ";
-   Middle : constant String := " line ";
-   Log_Prefix : constant String := "unhandled exception at ";
-   Log_Message_Prefix : constant String := "unhandled exception: ";
-   Log_Separator : constant Character := ':';
-   Last_Chance_Exit : constant Unsigned_64 := 134;
+   Maximum_Name_Length : constant := 256;
+   --  Longer names (fully qualified, with their package) are cut
 
-   Entered : Boolean := False;
+   Address_Text_Length : constant := Hex_Prefix'Length + 16;
+   Console_Text_Length : constant :=
+     Console_Prefix'Length + Maximum_Name_Length + Message_Separator'Length
+     + Exception_Msg_Max_Length + 1 + Console_Traceback'Length
+     + Max_Tracebacks * Address_Text_Length + 1;
 
-   procedure Stop with No_Return;
-   procedure Stop is
-      Ignore : Unsigned_64;
+   Console : String (1 .. Console_Text_Length);
+   Console_Used : Natural := 0;
+   Log : String (1 .. CuBit.Program_Endings.Last_Chance.Maximum_Report_Length);
+   Log_Used : Natural := 0;
+
+   procedure Put (Into : in out String; Used : in out Natural; S : String);
+   procedure Put (Into : in out String; Used : in out Natural; S : String) is
    begin
-      loop
-         Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_EXIT, Last_Chance_Exit);
+      for C of S loop
+         exit when Used >= Into'Last;
+         Used := Used + 1;
+         Into (Used) := C;
       end loop;
-   end Stop;
+   end Put;
 
-   --------------------------
-   -- Last_Chance_Handler  --
-   --------------------------
-   procedure Last_Chance_Handler (msg : System.Address; line : Integer)
-   is
-      use type System.Address;
-      Text : String (1 .. Prefix'Length + Max_Name_Length + Middle'Length + Max_Line_Digits + 1);
-      Used : Natural := 0;
-      Name_First, Name_Last, Line_First, Line_Last : Natural := 0;
-      Log_Text : String (1 .. Log_Message_Prefix'Length + Max_Name_Length + 1 + Max_Line_Digits);
-      Log_Used : Natural := 0;
-      procedure Log_Put (S : String);
-      procedure Log_Put (S : String) is
-      begin
-         for C of S loop
-            if Log_Used < Log_Text'Last then
-               Log_Used := Log_Used + 1;
-               Log_Text (Log_Used) := C;
-            end if;
-         end loop;
-      end Log_Put;
-
-      procedure Put (C : Character);
-      procedure Put (S : String);
-      procedure Put_Name;
-      procedure Put_Line_Number;
-
-      procedure Put (C : Character) is
-      begin
-         if Used < Text'Last then
-            Used := Used + 1;
-            Text (Used) := C;
-         end if;
-      end Put;
-
-      procedure Put (S : String) is
-      begin
-         for C of S loop
-            Put (C);
-         end loop;
-      end Put;
-
-      procedure Put_Name is
-         Name : String (1 .. Max_Name_Length) with Import, Address => msg;
-      begin
-         for C of Name loop
-            exit when C = ASCII.NUL;
-            Put (C);
-         end loop;
-      end Put_Name;
-
-      procedure Put_Line_Number is
-         Digits_Text : String (1 .. Max_Line_Digits);
-         Count : Natural := 0;
-         Value : Natural := (if line < 0 then 0 else line);
-      begin
-         loop
-            Count := Count + 1;
-            Digits_Text (Max_Line_Digits - Count + 1) :=
-              Character'Val (Character'Pos ('0') + Value mod 10);
-            Value := Value / 10;
-            exit when Value = 0 or else Count = Max_Line_Digits;
-         end loop;
-         Put (Digits_Text (Max_Line_Digits - Count + 1 .. Max_Line_Digits));
-      end Put_Line_Number;
+   --  The name, without its NUL; Unknown_Name for a null Id.
+   procedure Put_Name (Into : in out String; Used : in out Natural);
+   procedure Put_Name (Into : in out String; Used : in out Natural) is
    begin
-      if Entered then
-         CuBit.Messages.debugPrint ("User-space exception while reporting an exception; stopping" & ASCII.LF);
-         Stop;
-      end if;
-      Entered := True;
-      Put (Prefix);
-      Name_First := Used + 1;
-      if msg = System.Null_Address then
-         Put ("(unknown)");
+      if Except.Id = null or else Except.Id.Name_Length <= 1 then
+         Put (Into, Used, Unknown_Name);
       else
-         Put_Name;
+         Put (Into, Used,
+              To_Ptr (Except.Id.Full_Name)
+                (1 .. Natural'Min (Except.Id.Name_Length - 1, Maximum_Name_Length)));
       end if;
-      Name_Last := Used;
-      Put (Middle);
-      Line_First := Used + 1;
-      Put_Line_Number;
-      Line_Last := Used;
-      Put (ASCII.LF);
-      CuBit.Messages.debugPrint (Text (1 .. Used));
-      --  "unhandled exception at main.adb:14", or with no line (a
-      --  Raise_Exception message) "unhandled exception: <message>".
-      if line > 0 then
-         Log_Put (Log_Prefix);
-         Log_Put (Text (Name_First .. Name_Last));
-         Log_Put ((1 => Log_Separator));
-         Log_Put (Text (Line_First .. Line_Last));
-      else
-         Log_Put (Log_Message_Prefix);
-         Log_Put (Text (Name_First .. Name_Last));
-      end if;
-      CuBit.Last_Words.Report (Log_Text (1 .. Log_Used), (if line > 0 then line else 0));
-      --  The raise point has no continuation: returning would jump to
-      --  whatever the failed frame left behind.
-      Stop;
-   end Last_Chance_Handler;
+   end Put_Name;
 
+   procedure Put_Message (Into : in out String; Used : in out Natural);
+   procedure Put_Message (Into : in out String; Used : in out Natural) is
+   begin
+      if Except.Msg_Length > 0 then
+         Put (Into, Used, Message_Separator);
+         Put (Into, Used, Except.Msg (1 .. Except.Msg_Length));
+      end if;
+   end Put_Message;
+
+   procedure Put_Traceback (Into : in out String; Used : in out Natural);
+   procedure Put_Traceback (Into : in out String; Used : in out Natural) is
+      Hex_Digits : constant String := "0123456789abcdef";
+      Nibble_Bits : constant := 4;
+      Nibbles : constant := Standard'Address_Size / Nibble_Bits;
+   begin
+      for J in 1 .. Except.Num_Tracebacks loop
+         declare
+            Value : Integer_Address := To_Integer (Except.Tracebacks (J));
+            Text : String (1 .. Nibbles);
+            First : Positive := Text'Last;
+         begin
+            for K in reverse Text'Range loop
+               Text (K) := Hex_Digits (Hex_Digits'First + Natural (Value mod 2 ** Nibble_Bits));
+               Value := Value / 2 ** Nibble_Bits;
+               if Text (K) /= '0' then
+                  First := K;
+               end if;
+            end loop;
+            Put (Into, Used, Hex_Prefix);
+            Put (Into, Used, Text (First .. Text'Last));
+         end;
+      end loop;
+   end Put_Traceback;
+
+begin
+   if not CuBit.Program_Endings.Last_Chance.First_Entry then
+      CuBit.Program_Endings.Last_Chance.Write_Console (Reentered & ASCII.LF);
+      CuBit.Program_Endings.Last_Chance.Stop;
+   end if;
+
+   Put (Console, Console_Used, Console_Prefix);
+   Put_Name (Console, Console_Used);
+   Put_Message (Console, Console_Used);
+   if Except.Num_Tracebacks > 0 then
+      Put (Console, Console_Used, (1 => ASCII.LF));
+      Put (Console, Console_Used, Console_Traceback);
+      Put_Traceback (Console, Console_Used);
+   end if;
+   Put (Console, Console_Used, (1 => ASCII.LF));
+   CuBit.Program_Endings.Last_Chance.Write_Console (Console (1 .. Console_Used));
+
+   Put (Log, Log_Used, Log_Prefix);
+   Put_Name (Log, Log_Used);
+   Put_Message (Log, Log_Used);
+   if Except.Num_Tracebacks > 0 then
+      Put (Log, Log_Used, Log_Traceback);
+      Put_Traceback (Log, Log_Used);
+   end if;
+   CuBit.Last_Words.Report (Log (1 .. Log_Used), 0);
+
+   CuBit.Program_Endings.Last_Chance.Stop;
 end Ada.Exceptions.Last_Chance_Handler;

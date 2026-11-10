@@ -6,6 +6,7 @@ with CCL.Streams;
 with CCL_Launcher;
 with CuBit.Failures;
 with CuBit.Program_Descriptions;
+with CuBit.Program_Endings;
 
 package body CCL_Program_Bindings is
    use Interfaces;
@@ -623,7 +624,9 @@ package body CCL_Program_Bindings is
    end Invoke;
 
    --  The run's outcome task completes with its Run_Outcome:
-   --  Finished (Unix_Exit code) or Stopped.
+   --  Finished (Unix_Exit code), Stopped, or Failed
+   --  (Run_Failure.Unhandled_Exception) when it exited with the user
+   --  runtime's last-chance status (CuBit.Program_Endings, EXC-001).
    procedure Complete_Outcome
      (Streams : in out CCL_Stream_Table.Table; F : Followed; How : CCL_Launcher.Ending)
    is
@@ -637,9 +640,17 @@ package body CCL_Program_Bindings is
       end Put;
       function Alternative (A : Programs.Outcome_Alternative) return CCL.Objects.Cell is
         (CCL.Objects.Variant_Cell (Programs.Outcome_Alternative'Pos (A) + 1));
+      function Failure (A : Programs.Failure_Alternative) return CCL.Objects.Cell is
+        (CCL.Objects.Variant_Cell (Programs.Failure_Alternative'Pos (A) + 1));
    begin
       if F.Outcome = CCL.Streams.No_Handle then return; end if;
-      if How.Kind = CCL_Launcher.Exited then
+      if How.Kind = CCL_Launcher.Exited
+        and then How.Code = CuBit.Program_Endings.Unhandled_Exception_Status
+      then
+         Put (Alternative (Programs.Failed));
+         Put (Failure (Programs.Unhandled_Exception));
+         Put (CCL.Objects.Unit_Cell);
+      elsif How.Kind = CCL_Launcher.Exited then
          Put (Alternative (Programs.Finished));
          Put (CCL.Objects.Product_Cell (Programs.UNIX_EXIT_FIELDS));
          Put (CCL.Objects.Integer_Cell (How.Code));

@@ -69,4 +69,13 @@ package System.Parameters is
    --  The run-time chosen default size for secondary stacks that may be
    --  overridden by the user with the use of binder -D switch.
 
+   ------------------------------
+   -- Exception Message Length --
+   ------------------------------
+
+   Default_Exception_Msg_Max_Length : constant := 200;
+   --  This constant specifies the default number of characters to allow
+   --  in an exception message (200 is minimum required by RM 11.4.1(18)).
+   --  CuBit (EXC-001): upstream's value, for Ada.Exceptions.
+
 end System.Parameters;

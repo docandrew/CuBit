@@ -29,12 +29,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  CuBit: no exception propagation in this runtime yet (EXC-001), so a
---  failing subpool finalization ends the program through the last-chance
---  handler instead of being saved and re-raised; the subpool list lock is a
---  System.OS_Locks futex mutex rather than the Lock_Task soft link; and the
---  debugging dumps write to the kernel console (no System.IO: CuBit has no
---  standard output).
+--  CuBit: the subpool list lock is a System.OS_Locks futex mutex rather
+--  than the Lock_Task soft link, and the debugging dumps write to the
+--  kernel console (no System.IO: CuBit has no standard output).
+
+with Ada.Exceptions; use Ada.Exceptions;
 
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -411,7 +410,9 @@ package body System.Storage_Pools.Subpools is
 
    procedure Finalize_Pool (Pool : in out Root_Storage_Pool_With_Subpools) is
       Curr_Ptr : SP_Node_Ptr;
+      Ex_Occur : Exception_Occurrence;
       Handle   : Subpool_Handle;
+      Raised   : Boolean := False;
 
       function Is_Empty_List (L : not null SP_Node_Ptr) return Boolean;
       --  Determine whether a list contains only one element, the dummy head
@@ -449,9 +450,25 @@ package body System.Storage_Pools.Subpools is
          --  to by Curr_Ptr will be deallocated so may not be passed as actual
          --  in the call, since the formal parameter is In Out.
 
-         Handle := Curr_Ptr.Subpool;
-         Finalize_And_Deallocate (Handle);
+         begin
+            Handle := Curr_Ptr.Subpool;
+            Finalize_And_Deallocate (Handle);
+
+         exception
+            when Fin_Occur : others =>
+               if not Raised then
+                  Raised := True;
+                  Save_Occurrence (Ex_Occur, Fin_Occur);
+               end if;
+         end;
       end loop;
+
+      --  If the finalization of a particular collection failed, reraise the
+      --  exception now.
+
+      if Raised then
+         Reraise_Occurrence (Ex_Occur);
+      end if;
    end Finalize_Pool;
 
    ------------------------------

@@ -24,6 +24,9 @@ tools/cubit-remote and keys typed into the console over QMP:
     line, and it finished with exit code 0;
   - hello rebuilt on CuBit with another line; the next (hello.run ...)
     shows the new line: no refresh, no console restart;
+  - hello rebuilt to raise an exception nobody handles after its line: its
+    outcome is Failed (Run_Failure.Unhandled_Exception) and the runtime's
+    report names the exception and its message (EXC-001);
   - the product removed: (programs.refresh) no longer lists it and
     hello.run no longer checks; put back with cubit-remote put (the Linux
     build of the first hello, BUILD_DIR/expected-hello.app): listed again,
@@ -66,6 +69,10 @@ STAGED = "@system/work/remote/%s" % PRODUCT
 GENERATION = "@system/work/generations/hello/1.app"
 FIRST_LINE = "hello: hello from an app built on CuBit"
 SECOND_LINE = "hello: rebuilt on CuBit, run again from the console"
+RAISING_LINE = "hello: about to raise an exception nobody handles"
+EXIT_STATEMENT = "Ignore := syscall (SYSCALL_EXIT, Exit_Success);"
+RAISE_STATEMENT = 'raise Program_Error with "hello raised on purpose";'
+UNHANDLED_REPORT = b"User-space exception PROGRAM_ERROR: hello raised on purpose"
 STATE_RUNNING, STATE_EXITED = 1, 2
 APP_REPLACED = 0
 MOUSE_STEP = 60
@@ -260,8 +267,10 @@ def entry_of(result, name, program):
     return (found.group(2), found.group(3), found.group(1) == "true") if found else None
 
 
-def run_hello(name, line, label):
-    """Run hello from the console; check its greeting outlet and outcome."""
+def run_hello(name, line, label, raises=False):
+    """Run hello from the console; check its greeting outlet and outcome:
+    finished with exit code 0, or (raises) failed with an unhandled
+    exception (EXC-001)."""
     console("(define %s (hello.run (Hello_Parameters)))" % name)
     end = min(deadline, time.monotonic() + RUN_SECONDS)
     outcome = ""
@@ -270,8 +279,12 @@ def run_hello(name, line, label):
         if "Done" in outcome:
             break
         time.sleep(1)
-    check("Run_Outcome.Finished" in outcome and "(Unix_Exit 0)" in outcome,
-          "%s: the run finished with exit code 0: %s" % (label, outcome[:200]))
+    if raises:
+        check("Run_Outcome.Failed" in outcome and "Run_Failure.Unhandled_Exception" in outcome,
+              "%s: the run failed with an unhandled exception: %s" % (label, outcome[:200]))
+    else:
+        check("Run_Outcome.Finished" in outcome and "(Unix_Exit 0)" in outcome,
+              "%s: the run finished with exit code 0: %s" % (label, outcome[:200]))
     greeting = console("(window 64 (hello.com.cubit.hello.greeting %s))" % name)
     check('"%s"' % line in greeting, "%s: its greeting outlet holds \"%s\"" % (label, line))
     return greeting
@@ -317,6 +330,24 @@ def main():
     second = run_hello("r2", SECOND_LINE, "hello rebuilt")
     check(FIRST_LINE not in second, "the rebuilt hello's outlet does not hold the first line")
     check(serial_bytes().count(CONSOLE_SPAWNED) == 1, "the console never restarted")
+
+    # EXC-001: a build that raises an exception nobody handles after its
+    # greeting; the console's outcome is the typed failure, and the
+    # runtime's report names the exception.
+    raising = Path(tempfile.mkdtemp(prefix="cubit-console-run-"))
+    try:
+        for name in ("component.ccl", "manifest.ccl"):
+            shutil.copy2(build_dir / "app-hello" / name, raising / name)
+        text = (build_dir / "app-hello" / "main.adb").read_text()
+        check(EXIT_STATEMENT in text, "hello's source ends with its exit")
+        (raising / "main.adb").write_text(
+            text.replace(FIRST_LINE, RAISING_LINE).replace(EXIT_STATEMENT, RAISE_STATEMENT))
+        build_hello(host, raising, "hello, raising")
+    finally:
+        shutil.rmtree(raising)
+    run_hello("r2x", RAISING_LINE, "hello raising", raises=True)
+    check(wait_for_serial(UNHANDLED_REPORT),
+          "the runtime reported the unhandled exception by name and message")
 
     # Gone, then staged again by a put.
     host.call("remove", "workspace", cr.name_field(PRODUCT))

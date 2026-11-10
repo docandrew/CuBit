@@ -13,7 +13,7 @@ project Ada_Runtime_Hosted is
       "check_results.ads", "events.ads", "events.adb", "events-library.ads",
       "finalization_checks.ads", "finalization_checks.adb", "pool_checks.ads", "pool_checks.adb",
       "pooled.ads", "recording_pools.ads", "recording_pools.adb", "shapes.ads", "shapes.adb",
-      "tagged_checks.ads", "tagged_checks.adb",
+      "tagged_checks.ads", "tagged_checks.adb", "exception_checks.ads", "exception_checks.adb",
       --  The pool from the user runtime:
       "cubit.ads", "cubit-cualloc_pool.ads", "cubit-cualloc_pool.adb");
    for Main use ("hosted_main.adb");

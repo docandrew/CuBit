@@ -133,10 +133,13 @@ begin
    Check (Checks_Out ("(latest (ld.org.gnu.ld.progress " & Call & "))"), "an Integer connector");
    Check (Checks_Out ("(window 10 (ld.unix.stderr " & Call & "))"), "a text window");
    Check (Checks_Out ("(ld.outcome " & Call & ")"), "a run's outcome is a task");
-   Check (Checks_Out ("(match (wait (ld.outcome " & Call & ")) ((Run_Outcome.Finished e) (field e code)) ((Run_Outcome.Stopped) -1))"),
-          "waiting on it gives a Run_Outcome: Finished with a Unix_Exit, or Stopped");
-   Check (Compiles ("(match (wait (ld.outcome " & Call & ")) ((Run_Outcome.Finished e) (field e code)) ((Run_Outcome.Stopped) -1))"),
+   Check (Checks_Out ("(match (wait (ld.outcome " & Call & ")) ((Run_Outcome.Finished e) (field e code)) ((Run_Outcome.Stopped) -1) ((Run_Outcome.Failed f) -2))"),
+          "waiting on it gives a Run_Outcome: Finished with a Unix_Exit, Stopped, or Failed");
+   Check (Compiles ("(match (wait (ld.outcome " & Call & ")) ((Run_Outcome.Finished e) (field e code)) ((Run_Outcome.Stopped) -1) ((Run_Outcome.Failed f) -2))"),
           "waiting on the outcome compiles and verifies");
+   --  EXC-001: an unhandled exception is its own typed failure.
+   Check (Checks_Out ("(match (wait (ld.outcome " & Call & ")) ((Run_Outcome.Failed f) (match f ((Run_Failure.Unhandled_Exception) 1))) ((Run_Outcome.Finished e) 0) ((Run_Outcome.Stopped) 0))"),
+          "Failed carries a Run_Failure: Unhandled_Exception");
    Check (Compiles ("(ld.outcome " & Call & ")"), "a task-returning import compiles and verifies");
    Check (not Checks_Out ("(latest (ld.outcome " & Call & "))"), "an outcome is no stream");
    Check (not Checks_Out ("(ld.com.cubit.exit " & Call & ")"), "there is no exit outlet");

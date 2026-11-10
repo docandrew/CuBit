@@ -16,10 +16,16 @@ with CuBit.Program_Descriptions;
 --    ld.<outlet>        Run -> Stream: one accessor per outlet, named by
 --                     its qualified name, so (ld.unix.stderr r).
 --    ld.outcome       Run -> Task<Run_Outcome>: how it ended, once it has:
---                     Finished with its Unix_Exit (the exit code), or
+--                     Finished with its Unix_Exit (the exit code),
 --                     Stopped (killed, faulted, or its main thread ended:
---                     no result). Every program's result is Unix_Exit
---                     until a manifest can declare its own result type.
+--                     no result), or Failed with a Run_Failure: an
+--                     Unhandled_Exception ended it (EXC-001: the runtime's
+--                     last-chance handler, which reports the exception's
+--                     name, message and traceback in the program's log,
+--                     exits with CuBit.Program_Endings
+--                     .Unhandled_Exception_Status). Every program's result
+--                     is Unix_Exit until a manifest can declare its own
+--                     result type.
 --    ld.outlets       Run -> List<Outlet_State>: each outlet, the type of
 --                     its stream (Stream<String>), how many elements arrived
 --                     and were lost, whether it ended.
@@ -40,7 +46,8 @@ package CCL.Interfaces.Programs is
      "(type Run (record (program String) (pid Integer))) " &
      "(type Outlet_Signal (enum Stream Level Edge)) " &
      "(type Unix_Exit (record (code Integer))) " &
-     "(type Run_Outcome (variant (Finished Unix_Exit) (Stopped))) " &
+     "(type Run_Failure (variant (Unhandled_Exception))) " &
+     "(type Run_Outcome (variant (Finished Unix_Exit) (Stopped) (Failed Run_Failure))) " &
      "(type Outlet_State (record (name String) (stream String) (signal Outlet_Signal) (arrived Integer) " &
      "(lost Integer) (ended Boolean)))";
    --  Run's fields, in order.
@@ -56,7 +63,9 @@ package CCL.Interfaces.Programs is
    OUTCOME_NUMBER : constant := 62;
    UNIX_EXIT_FIELDS : constant := 1;
    --  Run_Outcome's alternatives, numbered from 1 in declaration order.
-   type Outcome_Alternative is (Finished, Stopped);
+   type Outcome_Alternative is (Finished, Stopped, Failed);
+   --  Run_Failure's alternatives, likewise.
+   type Failure_Alternative is (Unhandled_Exception);
 
    MAXIMUM_PROGRAMS : constant := 16;
    --  What Publish adds per program: its interface and its parameters'
@@ -69,7 +78,7 @@ package CCL.Interfaces.Programs is
    --  Declared types: each program's parameters; once for all programs,
    --  the shared types (SHARED_SOURCE) and List<Outlet_State>.
    PER_PROGRAM_TYPES : constant := 1;
-   SHARED_TYPES : constant := 10;
+   SHARED_TYPES : constant := 11;
    --  Operations per program: run, its outlets, outlets and outcome.
    MAXIMUM_OPERATIONS : constant := 3 + PD.Maximum_Connectors;
    subtype Program_Index is Natural range 0 .. MAXIMUM_PROGRAMS - 1;

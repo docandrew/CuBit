@@ -812,7 +812,7 @@ with open(sys.argv[1], "wb") as f:
     ada-runtime)
         # ada-runtime-check (build: make -C kernel ada-runtime-check): the
         # user GNAT runtime's tagged types, finalization and storage pools
-        # (RT-008).
+        # (RT-008), and zero-cost exceptions (EXC-001).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ada-runtime.ccl"
         ;;
     acpi-native-smoke)
@@ -6071,8 +6071,10 @@ TEST: PASS acpi-metrics
         # it (ACPI agent's decode, 2026-10-30): exactly these are accepted
         # (sleep registers come from the FADT alone, so they must be ok);
         # any other failed stage, recovery, heap exhaustion or exit fails.
+        # Both enum renderings are accepted: numeric under Discard_Names,
+        # names once EXC-001 keeps enumeration names in the user runtime.
         if grep -aE '^acpi: stage [a-z-]+ fail' "$SERIAL_LOG" |
-           grep -avE '^acpi: stage (devices fail DEVICES_INCOMPLETE regions=REGIONS_UNAVAILABLE errors= 0 fuel= 0|hid-discovery fail  1 search= 0 query= 0 |power-discovery fail  1 phase= 0 fuel= 0 )' ||
+           grep -avE '^acpi: stage (devices fail DEVICES_INCOMPLETE regions=REGIONS_UNAVAILABLE errors= 0 fuel= 0|hid-discovery fail ( 1 search= 0 query= 0 |NOT_READY search=NOT_READY query=NOT_ATTEMPTED )|power-discovery fail ( 1 phase= 0 fuel= 0 |NOT_READY phase=LID_SAMPLING fuel= 0 ))' ||
            grep -aqE 'recovery=TRUE|Ada heap: cannot allocate|com\.cubit\.acpi pid[0-9]+ exited|acpi-metrics-check: .* FAIL' "$SERIAL_LOG"; then
             echo "headless: acpi.svc bring-up or metrics check failed" >&2
             exit 1
@@ -6342,6 +6344,14 @@ ada-runtime-check: collection finalizes live objects when its access type ends
 ada-runtime-check: controlled object in a user pool finalized before Deallocate PASS
 ada-runtime-check: Deallocate receives exact address, size and alignment ( 5 of 5) PASS
 ada-runtime-check: pragma Default_Storage_Pool (CuBit.CuAlloc_Pool.Pool) in a package spec PASS
+ada-runtime-check: exception raised three calls down reaches the caller's handler PASS
+ada-runtime-check: Exception_Name (EXCEPTION_CHECKS.CUSTOM_ERROR) PASS
+ada-runtime-check: index check raises Constraint_Error, caught by the caller PASS
+ada-runtime-check: overflow check raises Constraint_Error PASS
+ada-runtime-check: controlled objects finalized while the exception propagates (I0F2F1F0) PASS
+ada-runtime-check: raise; keeps the occurrence; Save_Occurrence copies it PASS
+ada-runtime-check: Finalize raising: the collection finishes, then Program_Error PASS
+ada-runtime-check: three threads raise and handle at once, each sees its own occurrence ( 200 200 200 of 200) PASS
 TEST: PASS ada-runtime
 "
         if grep -aF 'ada-runtime-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
@@ -6362,7 +6372,7 @@ secondary-stack-check: every thread has its own secondary-stack region PASS
 secondary-stack-check: ended threads gave back their secondary stacks PASS
 TEST: PASS secondary-stacks
 secondary-stack-check: exhausting the secondary-stack reservation
-User-space exception at s-secsta.adb line
+User-space exception STORAGE_ERROR
 "
         # The exhaustion ends the program through the runtime's report and
         # Storage_Error (the last-chance handler), after the PASS line and
@@ -6370,7 +6380,7 @@ User-space exception at s-secsta.adb line
         if grep -F 'secondary-stack-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
            ! awk '/secondary-stack-check: exhausting the secondary-stack reservation/ { seen = 1; next }
                   seen && /secondary stack overflow: request=[0-9]+ top=[0-9]+ max=[0-9]+ committed=[0-9]+ reservation=[0-9]+ \((reservation exhausted|commit refused)\)/ { report = 1; next }
-                  report && /User-space exception at s-secsta.adb line/ { found = 1 }
+                  report && /User-space exception STORAGE_ERROR/ { found = 1 }
                   END { exit !found }' "$SERIAL_LOG" ||
            grep -aE 'killed|Page fault|PAGE FAULT' "$SERIAL_LOG" | grep -qi 'secondary-stack-check'; then
             echo "headless: secondary-stack checks failed, or the exhaustion was not reported cleanly" >&2
@@ -6871,13 +6881,13 @@ ccl-console: REPL completed: List<LogEntry>: [(LogEntry
             # (tests/kernel-log-ring/check_serial.py checks the rest).
             required_markers="$required_markers
 crash-probe: raising an exception nobody handles
-User-space exception at main.adb line 25
+User-space exception PROGRAM_ERROR: main.adb:25 explicit raise
 procmgr: process com.cubit.crash-probe pid
 exited code 134
 fault-check: writing an unmapped address
 stack-probe: recursing until the stack runs out
 logstore: kernel log caught up:
-\"unhandled exception at main.adb:25\")
+\"unhandled exception PROGRAM_ERROR: main.adb:25 explicit raise; traceback 0x
 \"com.cubit.fault-check: stopped by a page fault (write); details restricted\")
 \"com.cubit.stack-probe: stopped by a page fault (write); details restricted\")
 withheld the restricted fault detail of com.cubit.fault-check (null page)
