@@ -7,6 +7,7 @@
 pragma Ada_2022;
 with System.Storage_Elements;
 with CuBit.Handles.Kernel;
+with DMA_Allocation_ABI;
 
 package body CuBit.Handles.Control is
 
@@ -138,6 +139,14 @@ package body CuBit.Handles.Control is
       Order, Virtual, Mode, Ceiling : Unsigned_64) return Unsigned_64 is
      (K.Call (K.Allocate_DMA, CuBit.Process_IDs.To_Word (Target), Order, Virtual,
               Mode, Ceiling, K.Word (Authority)));
+
+   function Allocate_Device_DMA
+     (Target : Process_ID; Authority : Process;
+      Order, Virtual, Mode, Ceiling : Unsigned_64;
+      Requester : Unsigned_16; Config : IO_Ports) return Unsigned_64 is
+     (K.Call (K.Allocate_DMA, CuBit.Process_IDs.To_Word (Target), Order, Virtual,
+              DMA_Allocation_ABI.Device_Mode (Mode, Requester), Ceiling,
+              K.Word (Authority), K.Word (Config)));
 
    function Map_Into
      (Target : Process_ID; Authority : Process; Region : Device_Memory;

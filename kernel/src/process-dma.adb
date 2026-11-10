@@ -3,6 +3,7 @@ with Spinlocks;
 with BuddyAllocator;
 with Virtmem;
 with TextIO;
+with DMA_Remapping;
 package body Process.DMA is
    use type Records.Reference;
    use type Records.Arena;
@@ -80,18 +81,20 @@ package body Process.DMA is
       end if;
       Records.Reserve (Arenas (PID),
         (Physical => 0, Owner => Unsigned_64 (PID),
-         Generation => Unsigned_64 (generationOf (PID)), Order => Order, Retained => Retained),
+         Generation => Unsigned_64 (generationOf (PID)), Order => Order, Retained => Retained,
+         Domain => 0),
         Limit, Item.Ref, Success);
       if not Success and then Records.Empty (Arenas (PID)) then
          Records.Close (Arenas (PID));
       end if;
       Spinlocks.exitCriticalSection (Registry_Lock);
    end Reserve;
-   procedure Commit (Item : in out Ticket; Physical : Unsigned_64) is
+   procedure Commit (Item : in out Ticket; Physical : Unsigned_64; Domain : Unsigned_64) is
       Data : Retirement.Allocation := Records.Value (Item.Ref);
    begin
       -- Both procedures are called while the target mailbox remains held.
       Data.Physical := Physical;
+      Data.Domain := Domain;
       Spinlocks.enterCriticalSection (Registry_Lock);
       Records.Set_Value (Item.Ref, Data);
       Records.Push (Owned (ProcessID (Data.Owner)), Item.Ref);
@@ -134,6 +137,33 @@ package body Process.DMA is
       if Current (PID) = null then
          Records.Pop (Owned (PID), Current (PID));
          declare Fresh : Retirement.Cursor; begin Positions (PID) := Fresh; end;
+         -- IOMMU-001: out of the device's domain, IOTLB invalidated and
+         -- waited for, before Step may free a frame. Retained blocks stay
+         -- mapped: they are never freed.
+         if Current (PID) /= null then
+            declare
+               Data : Retirement.Allocation := Records.Value (Current (PID));
+               Released : Boolean;
+            begin
+               if Data.Domain /= 0 and then not Data.Retained then
+                  DMA_Remapping.Unmap_Grant
+                    (Data.Domain, Data.Physical, 2 ** Data.Order, Released);
+                  if Released then
+                     Data.Domain := 0;
+                     Records.Set_Value (Current (PID), Data);
+                  else
+                     Poisoned (PID) := True;
+                     Records.Push (Poison, Current (PID));
+                     Current (PID) := null;
+                     Records.Move (Owned (PID), Poison);
+                     Spinlocks.exitCriticalSection (Registry_Lock);
+                     TextIO.println ("DMA retirement: IOMMU unmap incomplete; backing and PID quarantined" &
+                       ProcessID'Image (PID));
+                     return;
+                  end if;
+               end if;
+            end;
+         end if;
       end if;
       if Current (PID) /= null then
          Retirement.Step (Records.Value (Current (PID)), Positions (PID), True, Finished);

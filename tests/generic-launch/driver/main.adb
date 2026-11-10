@@ -8,7 +8,10 @@
 --  else. Every step is a bring-up line through logstore (the convention in
 --  coordination/release-stack.md): its Generic_PCI configuration, its
 --  register window, the device's identification and liveness registers,
---  its DMA region, and one MSI raised by the device after OP_READY.
+--  its DMA region, a DMA round trip through its DMA region, one read DMA
+--  from an address outside it (IOMMU-001: with an IOMMU the kernel reports
+--  exactly one typed DMA fault and nothing is read), and one MSI raised by
+--  the device after OP_READY.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -41,7 +44,33 @@ procedure Main is
    REGISTER_VIRTUAL_BASE : constant := 16#0000_6800_0000_0000#;
    PAGE_BYTES : constant := 4096;
    INTERRUPT_WAIT_MS : constant := 2_000;
-   TOTAL_STAGES : constant := 5;
+   TOTAL_STAGES : constant := 7;
+
+   --  edu's DMA engine: source, destination, count, command; the command's
+   --  start bit (clear when done) and direction (set: device to RAM). The
+   --  device's side is its 4 KiB buffer at 40000h. edu runs a DMA 100 ms
+   --  after the command (virtual clock).
+   EDU_DMA_SOURCE       : constant := 16#80#;
+   EDU_DMA_DESTINATION  : constant := 16#88#;
+   EDU_DMA_COUNT        : constant := 16#90#;
+   EDU_DMA_COMMAND      : constant := 16#98#;
+   EDU_DMA_START        : constant Unsigned_64 := 1;
+   EDU_DMA_TO_RAM       : constant Unsigned_64 := 2;
+   EDU_BUFFER           : constant Unsigned_64 := 16#4_0000#;
+   --  edu's default DMA mask is 28 bits; above it the device clamps the
+   --  address (it would reach the wrong RAM), so the round trip needs the
+   --  block below it.
+   EDU_DMA_LIMIT        : constant Unsigned_64 := 2 ** 28;
+   DMA_PROBE_BYTES      : constant := 64;
+   DMA_RETURN_OFFSET    : constant := 2048;   --  where the copy comes back
+   DMA_WAIT_MS          : constant := 2_000;
+   DMA_POLL_MS          : constant := 10;
+   PROBE_PATTERN        : constant Unsigned_8 := 16#A5#;
+   --  A physical page outside the driver's DMA block: 1 MiB, the kernel
+   --  image on every CuBit machine. Only ever read (RAM to the device):
+   --  without an IOMMU nothing is written anywhere; with one the read is
+   --  refused and the kernel logs one typed DMA fault.
+   UNMAPPED_PROBE_ADDRESS : constant Unsigned_64 := 16#10_0000#;
 
    Log : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
    Config : LC.Generic_PCI_Configuration;
@@ -97,6 +126,38 @@ procedure Main is
       Target := Value;
    end Set_Register;
 
+   function Register_64 (Offset : Storage_Offset) return Unsigned_64 is
+      Value : Unsigned_64 with Import, Volatile,
+        Address => System'To_Address (REGISTER_VIRTUAL_BASE) + Offset;
+   begin
+      return Value;
+   end Register_64;
+   procedure Set_Register_64 (Offset : Storage_Offset; Value : Unsigned_64) is
+      Target : Unsigned_64 with Import, Volatile,
+        Address => System'To_Address (REGISTER_VIRTUAL_BASE) + Offset;
+   begin
+      Target := Value;
+   end Set_Register_64;
+
+   --  One edu DMA of Count bytes, waited for (bounded): True when the
+   --  engine reported it done.
+   function Run_DMA (Source, Destination, Count, Direction : Unsigned_64) return Boolean is
+      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + DMA_WAIT_MS;
+      Ignore : Activity_Result;
+   begin
+      Set_Register_64 (EDU_DMA_SOURCE, Source);
+      Set_Register_64 (EDU_DMA_DESTINATION, Destination);
+      Set_Register_64 (EDU_DMA_COUNT, Count);
+      Set_Register_64 (EDU_DMA_COMMAND, EDU_DMA_START or Direction);
+      while (Register_64 (EDU_DMA_COMMAND) and EDU_DMA_START) /= 0 loop
+         if syscall (SYSCALL_GETTIME) >= Deadline then
+            return False;
+         end if;
+         Ignore := Wait_For_Activity_Until (syscall (SYSCALL_GETTIME) + DMA_POLL_MS);
+      end loop;
+      return True;
+   end Run_DMA;
+
    procedure Report (Label : Unsigned_32) is
       Ignore : MessageTag;
    begin
@@ -147,6 +208,57 @@ begin
       Decline;
       return;
    end if;
+   --  RAM to the device and back through the DMA block: the device reaches
+   --  its block (with an IOMMU: through its domain).
+   declare
+      Block : Storage_Array (0 .. DMA_RETURN_OFFSET + DMA_PROBE_BYTES - 1)
+        with Import, Volatile, Address => System'To_Address (Config.DMA_Virtual);
+      Below_Mask : constant Boolean :=
+        Config.DMA.First < EDU_DMA_LIMIT
+        and then Config.DMA.Bytes <= EDU_DMA_LIMIT - Config.DMA.First;
+      Same : Boolean := True;
+      Done : Boolean := True;
+   begin
+      if Below_Mask then
+         for I in 0 .. Storage_Offset (DMA_PROBE_BYTES - 1) loop
+            Block (I) := Storage_Element (Unsigned_8 (PROBE_PATTERN) xor Unsigned_8 (I));
+            Block (DMA_RETURN_OFFSET + I) := 0;
+         end loop;
+         Done := Run_DMA (Config.DMA.First, EDU_BUFFER, DMA_PROBE_BYTES, 0)
+           and then Run_DMA (EDU_BUFFER, Config.DMA.First + DMA_RETURN_OFFSET,
+                             DMA_PROBE_BYTES, EDU_DMA_TO_RAM);
+         for I in 0 .. Storage_Offset (DMA_PROBE_BYTES - 1) loop
+            Same := Same and then Block (DMA_RETURN_OFFSET + I) = Block (I);
+         end loop;
+      end if;
+      if not Stage ("dma-round-trip", Done and then Same,
+                    (if Below_Mask then "bytes=" & Natural'Image (DMA_PROBE_BYTES) &
+                       (if not Done then " engine timed out"
+                        elsif not Same then " data differs" else " match")
+                     else "skipped: block above the device's 28-bit DMA mask"))
+      then
+         Decline;
+         return;
+      end if;
+   end;
+   --  A read DMA from outside the block (the IOMMU fault probe).
+   declare
+      Probe : constant Unsigned_64 :=
+        (if UNMAPPED_PROBE_ADDRESS >= Config.DMA.First
+           and then UNMAPPED_PROBE_ADDRESS - Config.DMA.First < Config.DMA.Bytes
+         then Config.DMA.First + Config.DMA.Bytes else UNMAPPED_PROBE_ADDRESS);
+      Done : constant Boolean :=
+        Probe < EDU_DMA_LIMIT
+        and then Run_DMA (Probe, EDU_BUFFER + DMA_RETURN_OFFSET, DMA_PROBE_BYTES, 0);
+   begin
+      if not Stage ("dma-unmapped", Done,
+                    "probe=" & Hex (Probe) &
+                    " (with an IOMMU the kernel reports one DMA fault)")
+      then
+         Decline;
+         return;
+      end if;
+   end;
    --  Ready: devmgr unmasks (MSI-X) and the device may interrupt now.
    Report (CuBit.Driver_Readiness.Ready_Label);
    declare

@@ -457,14 +457,6 @@ package CuBit.Messages is
 
    --  Device manager wrappers
 
-   --  Allocate DMA: contiguous physical pages mapped into target process.
-   --  Returns physical address, or -1 on error.
-   function allocDma
-     (targetPID : Process_ID;
-      order     : Unsigned_64;
-      virtBase  : Unsigned_64;
-      authority : CuBit.Handles.Process) return Unsigned_64;
-
    --  Enable IOAPIC routing and register an IRQ subscriber. PCI INTx callers
    --  must request level-triggered, active-low routing; ISA-style sources use
    --  the edge-triggered, active-high defaults.

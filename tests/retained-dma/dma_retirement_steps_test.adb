@@ -20,7 +20,7 @@ begin
    for Retained in Boolean loop
       declare
          Position : R.Cursor;
-         Item : R.Allocation := (16#200000#, 7, 42, 9, Retained);
+         Item : R.Allocation := (16#200000#, 7, 42, 9, Retained, 0);
       begin
          Released := 0; Freed := 0;
          R.Step (Item, Position, False, Complete);
@@ -47,13 +47,23 @@ begin
    end loop;
    declare
       Position : R.Cursor;
-      Invalid : R.Allocation := (16#200000#, 7, 0, 9, True);
+      Invalid : R.Allocation := (16#200000#, 7, 0, 9, True, 0);
    begin
       Released := 0; Freed := 0;
       R.Step (Invalid, Position, True, Complete);
       pragma Assert (R.Rejected (Position) and not Complete and Released = 0 and Freed = 0);
       Invalid.Generation := 42;
       R.Step (Invalid, Position, True, Complete);
+      pragma Assert (R.Rejected (Position) and not Complete and Released = 0 and Freed = 0);
+   end;
+   --  IOMMU-001: an ordinary block still in an IOMMU domain is never freed
+   --  (the owner unmaps and invalidates first and clears Domain).
+   declare
+      Position : R.Cursor;
+      Mapped : constant R.Allocation := (16#200000#, 7, 42, 9, False, 3);
+   begin
+      Released := 0; Freed := 0;
+      R.Step (Mapped, Position, True, Complete);
       pragma Assert (R.Rejected (Position) and not Complete and Released = 0 and Freed = 0);
    end;
    Ada.Text_IO.Put_Line ("PASS bounded DMA cleanup: grant/CPU gate,64pages/step, retained never freed, ordinary freed once, changed owner generation rejected");

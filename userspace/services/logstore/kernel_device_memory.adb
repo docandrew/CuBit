@@ -22,7 +22,9 @@ package body Kernel_Device_Memory is
 
    Seen       : Unsigned_64 := 0;     --  the last record taken
    Kills_Seen : Unsigned_64 := 0;     --  the last kill record taken
+   Faults_Seen : Unsigned_64 := 0;    --  the last DMA fault record taken
    Map_Logged : Boolean := False;
+   IOMMU_Logged : Boolean := False;
    Spans_Per_Line : constant := 3;
 
    Digits_Of : constant String := "0123456789ABCDEF";
@@ -168,6 +170,99 @@ package body Kernel_Device_Memory is
       end if;
    end Poll_Kills;
 
+   function State_Field (Word : Unsigned_64; Shift : Natural) return Unsigned_64 is
+     (Shift_Right (Word, Shift) and Pub.State_Field_Mask);
+
+   --  "kernel: IOMMU active, units 1 of 1 translating" (Information) or
+   --  "kernel: IOMMU degraded: DMA unconfined (no DMAR table), units 0 of
+   --  0 translating" (Warning): the boot's DMA protection, never
+   --  silent (IOMMU-001).
+   procedure Log_IOMMU is
+      Word : constant Unsigned_64 := Page.IOMMU;
+      Status : constant Unsigned_64 := State_Field (Word, Pub.State_Status_Shift);
+      Degraded : constant Boolean :=
+        Status = Unsigned_64 (Pub.IOMMU_Status'Pos (Pub.Degraded));
+   begin
+      if Status = Unsigned_64 (Pub.IOMMU_Status'Pos (Pub.Not_Reported)) then
+         return;
+      end if;
+      IOMMU_Logged := True;
+      Record_Line ("kernel: IOMMU " & Pub.IOMMU_Status_Name (Status) &
+            (if Degraded then
+               ": DMA unconfined (" &
+               Pub.IOMMU_Reason_Name (State_Field (Word, Pub.State_Reason_Shift)) & ")"
+             else "") &
+            ", units " & Decimal (State_Field (Word, Pub.State_Translating_Shift)) & " of " &
+            Decimal (State_Field (Word, Pub.State_Units_Shift)) & " translating" &
+            (if State_Field (Word, Pub.State_Graphics_Shift) /= 0
+             then ", integrated GPU untranslated" else ""),
+            (if Degraded then Logs.Warning else Logs.Information));
+   end Log_IOMMU;
+
+   --  "kernel: DMA fault #N requester 00:03.0 read 0x100000 (RAM)
+   --  reason=not-mapped code=6 unit=1 t=...ms" (Warning): a device
+   --  reached for memory its domain does not map (IOMMU-001).
+   procedure Log_Fault (Number : Unsigned_64; Item : Pub.Fault_Record) is
+      RID : constant Unsigned_64 := Item.Requester and 16#FFFF#;
+      function Two (V : Unsigned_64) return String is
+        ([Digits_Of (Natural (Shift_Right (V, 4) and 16#F#) + 1),
+          Digits_Of (Natural (V and 16#F#) + 1)]);
+      Code : constant Unsigned_64 := Shift_Right (Item.Detail, Pub.Detail_Code_Shift) and 16#FF#;
+   begin
+      Record_Line ("kernel: DMA fault #" & Decimal (Number) &
+            " requester " & Two (Shift_Right (RID, 8)) & ":" &
+            Two (Shift_Right (RID, 3) and 16#1F#) & "." & Decimal (RID and 7) &
+            (if (Shift_Right (Item.Detail, Pub.Detail_Write_Shift) and 1) /= 0
+             then " write " else " read ") &
+            Hex (Item.Address) & " (" &
+            Pub.Class_Name (Shift_Right (Item.Detail, Pub.Detail_Class_Shift) and 16#FF#) &
+            ") reason=" & Pub.Fault_Reason_Name (Code) & " code=" & Decimal (Code) &
+            " unit=" & Decimal (Shift_Right (Item.Detail, Pub.Detail_Unit_Shift) and 16#FF#) &
+            " t=" & Decimal (Item.Time_Ms) & "ms",
+            Logs.Warning);
+   end Log_Fault;
+
+   procedure Poll_Faults is
+      Total_Word : Unsigned_64 with
+        Import, Atomic, Address => Page.Fault_Total'Address;
+      Total : constant Unsigned_64 := Total_Word;
+      Lost  : Unsigned_64 := 0;
+      First : Unsigned_64;
+   begin
+      if Total < Faults_Seen then
+         Faults_Seen := 0;
+      end if;
+      if Total = Faults_Seen then
+         return;
+      end if;
+      First := Pub.First_Fault_Available (Faults_Seen, Total);
+      Lost := First - Faults_Seen - 1;
+      for Number in First .. Total loop
+         declare
+            Slot : constant Pub.Fault_Slot := Pub.Fault_Slot_Of (Number);
+            Sequence : Unsigned_64 with
+              Import, Atomic, Address => Page.Faults (Slot).Sequence'Address;
+            Item : Pub.Fault_Record;
+         begin
+            if Sequence = Number then
+               Item := Page.Faults (Slot);
+               if Sequence = Number then
+                  Log_Fault (Number, Item);
+               else
+                  Lost := Lost + 1;
+               end if;
+            else
+               Lost := Lost + 1;
+            end if;
+         end;
+      end loop;
+      Faults_Seen := Total;
+      if Lost /= 0 then
+         Record_Line ("kernel: DMA fault records lost:" & Unsigned_64'Image (Lost),
+                      Logs.Warning);
+      end if;
+   end Poll_Faults;
+
    procedure Poll is
       Total : Unsigned_64;
       First : Unsigned_64;
@@ -180,7 +275,11 @@ package body Kernel_Device_Memory is
          Map_Logged := True;
          Log_Map;
       end if;
+      if not IOMMU_Logged then
+         Log_IOMMU;
+      end if;
       Poll_Kills;
+      Poll_Faults;
       Total := Total_Word;
       if Total < Seen then
          Seen := 0;

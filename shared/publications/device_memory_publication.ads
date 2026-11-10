@@ -36,7 +36,8 @@ package Device_Memory_Publication with Pure, SPARK_Mode is
    Page_Address : constant := Clock_Publication.Page_Address + 4 * Page_Bytes;
 
    --  2: process-kill records (Kill_Total, Kills) after the roots.
-   Layout_Version : constant := 2;
+   --  3: the IOMMU state and DMA fault records (IOMMU-001) after the kills.
+   Layout_Version : constant := 3;
    Unpublished    : constant := 0;
 
    --  What a physical page is (kernel Physical_Ranges.Range_Class derives
@@ -169,6 +170,132 @@ package Device_Memory_Publication with Pure, SPARK_Mode is
         Post => First_Kill_Available'Result in Seen + 1 .. Total
                 and then Total - First_Kill_Available'Result < Kill_Capacity;
 
+   ---------------------------------------------------------------------------
+   --  The IOMMU (IOMMU-001): whether DMA is confined, and every DMA fault.
+   ---------------------------------------------------------------------------
+
+   --  Active: every remapping unit the kernel drives translates (the
+   --  integrated GPU may still be untranslated: Graphics_Untranslated).
+   --  Degraded: DMA is unconfined, for every device (no DMAR, a rejected
+   --  DMAR, no unit could translate) or for the devices of a unit that
+   --  failed (Reason). Not_Reported: the kernel has not written it yet.
+   type IOMMU_Status is (Not_Reported, Active, Degraded);
+
+   type IOMMU_Reason is
+     (No_Reason,              --  Active
+      No_DMAR,                --  the firmware has no DMAR table
+      DMAR_Rejected,          --  the DMAR failed admission (Rejection_Code)
+      No_Unit_Translating,    --  no unit could be brought up
+      Unit_Failed,            --  some units translate, at least one does not
+      Segment_Unsupported);   --  a unit on a PCI segment other than 0
+
+   --  The state word: status, reason, units and the DMAR rejection
+   --  (Firmware_Tables.Remapping.Rejection'Pos when DMAR_Rejected), one byte
+   --  each, low byte first.
+   State_Status_Shift      : constant := 0;
+   State_Reason_Shift      : constant := 8;
+   State_Units_Shift       : constant := 16;   --  units in the DMAR
+   State_Translating_Shift : constant := 24;   --  units translating
+   State_Graphics_Shift    : constant := 32;   --  1: the iGPU is untranslated
+   State_Rejection_Shift   : constant := 40;
+   State_Field_Mask        : constant := 16#FF#;
+
+   --  Why a DMA was refused (VT-d fault reason codes, legacy mode).
+   type DMA_Fault_Reason is
+     (Other_Reason,             --  any code below not named here
+      Root_Not_Present,         --  01h
+      Context_Not_Present,      --  02h: the device has no domain
+      Context_Invalid,          --  03h
+      Beyond_Address_Width,     --  04h
+      Write_Not_Permitted,      --  05h
+      Read_Not_Permitted,       --  06h: the address is not mapped for it
+      Table_Address_Invalid,    --  07h
+      Root_Table_Invalid,       --  08h
+      Context_Table_Invalid,    --  09h
+      Root_Reserved_Bits,       --  0Ah
+      Context_Reserved_Bits,    --  0Bh
+      Entry_Reserved_Bits,      --  0Ch
+      Translation_Type_Blocked); --  0Dh
+
+   type Fault_Record is record
+      Sequence  : Unsigned_64 := Writing;
+      Requester : Unsigned_64 := 0;   --  segment 31:16, requester ID 15:0
+      Address   : Unsigned_64 := 0;   --  the faulting page
+      Detail    : Unsigned_64 := 0;   --  Detail_* fields below
+      Time_Ms   : Unsigned_64 := 0;
+   end record;
+   for Fault_Record use record
+      Sequence  at 0 range 0 .. 63;
+      Requester at 8 range 0 .. 63;
+      Address   at 16 range 0 .. 63;
+      Detail    at 24 range 0 .. 63;
+      Time_Ms   at 32 range 0 .. 63;
+   end record;
+   Fault_Record_Bytes : constant := 40;
+   --  Detail: the raw VT-d reason code, the page's Physical_Class'Pos, 1 for
+   --  a write request (0: read), the unit (1-based), one byte each.
+   Detail_Code_Shift  : constant := 0;
+   Detail_Class_Shift : constant := 8;
+   Detail_Write_Shift : constant := 16;
+   Detail_Unit_Shift  : constant := 24;
+
+   --  Faults use the same numbering, slot rule and Writing protocol as
+   --  denials, with their own Fault_Total.
+   Fault_Capacity : constant := 4;
+   subtype Fault_Slot is Unsigned_64 range 0 .. Fault_Capacity - 1;
+   type Fault_Ring is array (Fault_Slot) of Fault_Record;
+
+   function Fault_Slot_Of (Number : Unsigned_64) return Fault_Slot is
+     ((Number - 1) mod Fault_Capacity)
+   with Pre => Number >= 1;
+
+   function First_Fault_Available (Seen, Total : Unsigned_64) return Unsigned_64 is
+     (if Total - Seen > Fault_Capacity then Total - (Fault_Capacity - 1)
+      else Seen + 1)
+   with Pre  => Seen < Total,
+        Post => First_Fault_Available'Result in Seen + 1 .. Total
+                and then Total - First_Fault_Available'Result < Fault_Capacity;
+
+   function Reason_Of_Code (Code : Unsigned_64) return DMA_Fault_Reason is
+     (if Code in 1 .. DMA_Fault_Reason'Pos (DMA_Fault_Reason'Last)
+      then DMA_Fault_Reason'Val (Code) else Other_Reason);
+
+   function Fault_Reason_Name (Code : Unsigned_64) return String is
+     (case Reason_Of_Code (Code) is
+        when Other_Reason             => "other",
+        when Root_Not_Present         => "root-not-present",
+        when Context_Not_Present      => "no-domain",
+        when Context_Invalid          => "context-invalid",
+        when Beyond_Address_Width     => "beyond-address-width",
+        when Write_Not_Permitted      => "write-not-permitted",
+        when Read_Not_Permitted       => "not-mapped",
+        when Table_Address_Invalid    => "table-address-invalid",
+        when Root_Table_Invalid       => "root-table-invalid",
+        when Context_Table_Invalid    => "context-table-invalid",
+        when Root_Reserved_Bits       => "root-reserved-bits",
+        when Context_Reserved_Bits    => "context-reserved-bits",
+        when Entry_Reserved_Bits      => "entry-reserved-bits",
+        when Translation_Type_Blocked => "translation-type-blocked");
+
+   function IOMMU_Status_Name (Status : Unsigned_64) return String is
+     (if Status > IOMMU_Status'Pos (IOMMU_Status'Last) then "status?"
+      else
+        (case IOMMU_Status'Val (Status) is
+           when Not_Reported => "not reported",
+           when Active       => "active",
+           when Degraded     => "degraded"));
+
+   function IOMMU_Reason_Name (Reason : Unsigned_64) return String is
+     (if Reason > IOMMU_Reason'Pos (IOMMU_Reason'Last) then "reason?"
+      else
+        (case IOMMU_Reason'Val (Reason) is
+           when No_Reason           => "none",
+           when No_DMAR             => "no DMAR table",
+           when DMAR_Rejected       => "DMAR rejected",
+           when No_Unit_Translating => "no remapping unit translating",
+           when Unit_Failed         => "a remapping unit failed",
+           when Segment_Unsupported => "a unit on PCI segment above 0"));
+
    type Diagnostics_Page is record
       Version    : Unsigned_64 := Unpublished;
       Total      : Unsigned_64 := 0;   --  latest record number; 0: none
@@ -180,6 +307,9 @@ package Device_Memory_Publication with Pure, SPARK_Mode is
       Roots      : Run_Table;
       Kill_Total : Unsigned_64 := 0;   --  latest kill record number; 0: none
       Kills      : Kill_Ring;
+      IOMMU      : Unsigned_64 := 0;   --  the state word (State_* fields)
+      Fault_Total : Unsigned_64 := 0;  --  latest DMA fault number; 0: none
+      Faults     : Fault_Ring;
    end record;
    for Diagnostics_Page use record
       Version    at 0 range 0 .. 63;
@@ -192,7 +322,12 @@ package Device_Memory_Publication with Pure, SPARK_Mode is
       Roots      at 3176 range 0 .. Root_Capacity * 16 * 8 - 1;
       Kill_Total at 3304 range 0 .. 63;
       Kills      at 3312 range 0 .. Kill_Capacity * Kill_Record_Bytes * 8 - 1;
+      IOMMU      at 3888 range 0 .. 63;
+      Fault_Total at 3896 range 0 .. 63;
+      Faults     at 3904 range 0 .. Fault_Capacity * Fault_Record_Bytes * 8 - 1;
    end record;
+   pragma Compile_Time_Error (Fault_Record'Size /= Fault_Record_Bytes * 8,
+                              "a DMA fault record is 40 bytes");
    pragma Compile_Time_Error (Kill_Record'Size /= Kill_Record_Bytes * 8,
                               "a kill record is 72 bytes");
    pragma Compile_Time_Error (Denial_Record'Size /= Denial_Record_Bytes * 8,

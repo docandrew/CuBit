@@ -49,7 +49,7 @@ begin
       Retained_DMA_Budget.Reserve (Limit, Charged, 512, OK);
       pragma Assert (OK);
       Records.Reserve (Store,
-        (Unsigned_64 (I) * 2 * 1024 ** 2, 7, 42, 9, True),
+        (Unsigned_64 (I) * 2 * 1024 ** 2, 7, 42, 9, True, 0),
         65536, Ref, Status);
       pragma Assert (Status = Records.Ready);
       Old (I) := Ref;
@@ -81,7 +81,7 @@ begin
    pragma Assert (Freed = 0 and Records.Empty (Owner));
    pragma Assert (Charged = 40 * 512);
    -- Same numerical PID, new incarnation; no orphan metadata is reused.
-   Records.Reserve (Store, (16#10000000#, 7, 43, 9, False), 65536, Ref, Status);
+   Records.Reserve (Store, (16#10000000#, 7, 43, 9, False, 0), 65536, Ref, Status);
    pragma Assert (Status = Records.Ready);
    for I in Old'Range loop
       pragma Assert (Old (I) /= Ref and Records.Value (Old (I)).Generation = 42);

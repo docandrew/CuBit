@@ -30,6 +30,7 @@ with Build;
 with Trace;
 with Capabilities.IRQ;
 with Device_Interrupts;
+with DMA_Remapping;
 with Device_Memory_Diagnostics;
 with Device_Memory_Publication;
 with InterruptNumbers;
@@ -2074,6 +2075,9 @@ package body Process is
         --  device manager masks it and releases them.
         Capabilities.IRQ.unregisterAllByPID (Unsigned_64 (pid));
         Device_Interrupts.retireProcess (pid);
+        -- Its devices' IOMMU domains may be bound again; their mappings go
+        -- with its DMA blocks (Process.DMA, unmap then invalidate).
+        DMA_Remapping.Release_Owner (Process_Identities.To_Word (identityOf (pid)));
         Service_Registry.Unregister_Process (pid);
 
         -- Bump the generation counter to invalidate caps held by others.  A

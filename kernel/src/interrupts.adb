@@ -13,6 +13,7 @@ with Boot_Timer_Probe;
 with Boot_Diagnostics;
 with Config;
 with Device_Interrupts;
+with DMA_Remapping;
 with Device_Memory_Diagnostics;
 with Process_Stops;
 with Device_Memory_Publication;
@@ -336,6 +337,12 @@ is
                     cpuData2.needReschedule := True;
                     TLB_Shootdown.Service (myCPU);
                 end reschedIPI;
+
+            when IOMMU_FAULT =>
+                -- DMA faults: drain every unit's fault records into typed
+                -- records (DMA_Remapping, IOMMU-001).
+                eoi (IOMMU_FAULT);
+                DMA_Remapping.Service_Faults;
 
             when SPURIOUS =>
                 println ("Spurious Interrupt");
@@ -764,6 +771,9 @@ is
 
         -- Reschedule IPI
         idt(249) := createIDTEntry(addrToNum(isr249'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
+        -- IOMMU fault event
+        idt(250) := createIDTEntry(addrToNum(isr250'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
 
         -- Spurious Vector
         idt(255) := createIDTEntry(addrToNum(isr255'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);

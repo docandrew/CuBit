@@ -28,9 +28,13 @@ is
                                arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
                                retval    : out Unsigned_64);
 
-    -- ALLOC_DMA: arg5 = a process handle with RIGHT_GRANT for the target.
+    -- ALLOC_DMA: arg3 = the mode word (shared/launch DMA_Allocation_ABI),
+    -- arg5 = a process handle with RIGHT_GRANT for the target, arg6 (a
+    -- device-bound request only) = the caller's CAP_IOPORT covering the PCI
+    -- configuration mechanism, the authority to name a PCI function's IOMMU
+    -- domain (IOMMU-001).
     procedure handleAllocDma (callerPID : Process.ProcessID;
-                              arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+                              arg0, arg1, arg2, arg3, arg4, arg5, arg6 : Unsigned_64;
                               retval    : out Unsigned_64);
 
     -- MAP_INTO: arg5 = a process handle with RIGHT_GRANT for the target,

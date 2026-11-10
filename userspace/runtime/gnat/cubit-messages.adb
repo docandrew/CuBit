@@ -380,13 +380,6 @@ package body CuBit.Messages is
 
    --  Device manager wrappers
 
-   function allocDma
-     (targetPID : Process_ID;
-      order     : Unsigned_64;
-      virtBase  : Unsigned_64;
-      authority : CuBit.Handles.Process) return Unsigned_64 is
-     (CuBit.Handles.Control.Allocate_DMA (targetPID, authority, order, virtBase, 0, 0));
-
    function enableIrq
      (vector    : Unsigned_64;
       ownerPID  : Process_ID;

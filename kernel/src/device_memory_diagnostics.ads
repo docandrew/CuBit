@@ -47,6 +47,25 @@ is
       RIP     : Unsigned_64)
      with Global => (In_Out => Records);
 
+   -- The IOMMU's state (IOMMU-001), as Device_Memory_Publication's state
+   -- word. Written once by Iommu.Setup, after Publish_Classification and
+   -- before the first process. Also printed on the kernel console.
+   procedure Record_IOMMU_State (Word : Unsigned_64)
+     with Global => (In_Out => Records);
+
+   -- One DMA fault a remapping unit reported (IOMMU-001): the requester
+   -- (segment 31:16, requester ID 15:0), the faulting page, the raw VT-d
+   -- reason code, whether it was a write, and the unit (1-based). The
+   -- page's class comes from the sealed physical classification. Also
+   -- printed on the kernel console. Never blocks (interrupt path).
+   procedure Record_DMA_Fault
+     (Requester : Unsigned_64;
+      Address   : Unsigned_64;
+      Code      : Unsigned_64;
+      Write     : Boolean;
+      Unit      : Unsigned_64)
+     with Global => (In_Out => Records);
+
    -- The registered log service reads the page (SYSCALL_REGISTER_DRIVER
    -- for the logstore role). Mapped is False only if the page could not be
    -- mapped; the registration is then refused, so a registered log

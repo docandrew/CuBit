@@ -70,6 +70,8 @@ TEMP_STORAGE_FIXTURE=""
 # --test ufs: the GPT disk behind QEMU's UFS logical unit, and its devices.
 TEMP_UFS_DISK=""
 UFS_ARGS=()
+# --iommu (IOMMU-001): boot on QEMU's VT-d model (tests/headless/check-iommu.py).
+IOMMU=0
 MONITOR_SOCKET=""
 QMP_SOCKET=""
 # This run's QEMU UNIX socket of one KIND (qmp, monitor, vnc): unique by
@@ -107,6 +109,12 @@ Options:
   --turso-export DIR  turso-native: save validated disk and SQLite in a NEW directory
   --config-export DIR config-objects/reopen/benchmark: save validated disk and SQLite/WAL in a NEW directory
   --check-ext2         bench-storage: verify Linux/CuBit/Linux inode reuse, data and e2fsck
+  --iommu              Add QEMU's VT-d model (intel-iommu, intremap=on, aw-bits
+                       CUBIT_IOMMU_AW_BITS, default 39 as on ADL-N; virtio-net
+                       modern-only with iommu_platform=on) and check the IOMMU
+                       is active with no DMA fault (generic-launch: the fault
+                       probe gives exactly one typed DMA fault). Without it
+                       every test checks the typed "IOMMU degraded" record.
   -h, --help           Show this help
 
 The suite boots the NVMe profile headlessly and checks serial output for
@@ -248,6 +256,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --keep-logs)
             KEEP_LOGS=1
+            shift
+            ;;
+        --iommu)
+            IOMMU=1
             shift
             ;;
         --turso-revision)
@@ -5128,6 +5140,22 @@ if [ "$CHECK_EXT2" -eq 1 ]; then
     fi
 fi
 
+# IOMMU-001: QEMU's VT-d model. Interrupt remapping is offered (intremap,
+# which needs the split irqchip) but CuBit does not enable it yet; virtio
+# devices reach memory through the IOMMU only as modern devices that
+# negotiate VIRTIO_F_ACCESS_PLATFORM.
+MACHINE_ARGS=(-machine q35)
+if [ "$IOMMU" = 1 ]; then
+    MACHINE_ARGS=(-machine q35,kernel-irqchip=split
+                  -device "intel-iommu,intremap=on,aw-bits=${CUBIT_IOMMU_AW_BITS:-39}")
+    NET_DEVICE_OPTIONS="${NET_DEVICE_OPTIONS:-},disable-legacy=on,iommu_platform=on"
+    # The fault probe's DMA round trip needs its block below edu's 28-bit
+    # DMA mask (above it edu clamps addresses), so all of RAM below 256 MiB.
+    if [ "$TEST_NAME" = "generic-launch" ]; then
+        QEMU_MEMORY=256M
+    fi
+fi
+
 # The benchmark runs without a packet capture, as its Linux reference does.
 PCAP_ARGS=(-object "filter-dump,id=f0,netdev=net0,file=$NET_PCAP")
 if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARGS=(); fi   # BENCH_NET_PCAP=1 keeps the capture
@@ -5136,7 +5164,7 @@ if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARG
     # shellcheck disable=SC2086
     "$TIMEOUT_BIN" "$TIMEOUT_SECONDS" "${PIN_ARGS[@]}" "$QEMU_BIN" \
         "${ACCEL_ARGS[@]}" \
-        -machine q35 \
+        "${MACHINE_ARGS[@]}" \
         -cpu "$QEMU_CPU_MODEL" \
         -smp "$QEMU_CPUS" \
         -m "${QEMU_MEMORY:-256M}" \
@@ -7350,6 +7378,8 @@ generic-check: stage identify ok
 generic-check: stage map ok
 generic-check: stage registers ok
 generic-check: stage dma ok
+generic-check: stage dma-round-trip ok
+generic-check: stage dma-unmapped ok
 devmgr: generic driver ready for
 generic-check: stage irq ok
 generic-check: bring-up complete
@@ -7719,6 +7749,20 @@ if [ "$TEST_NAME" = "startup-health" ] || [ "$TEST_NAME" = "logs" ]; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi
+fi
+
+# IOMMU-001: DMA protection is a typed boot record, never silent. With
+# --iommu the IOMMU is active and no device faults (generic-launch: its
+# fault probe gives exactly one typed DMA fault); without it the record
+# says DMA is unconfined.
+if [ "$IOMMU" = 1 ]; then
+    if [ "$TEST_NAME" = "generic-launch" ]; then IOMMU_CHECK=fault; else IOMMU_CHECK=active; fi
+else
+    IOMMU_CHECK=degraded
+fi
+if ! python3 -I "$ROOT_DIR/tests/headless/check-iommu.py" "$IOMMU_CHECK" "$SERIAL_LOG"; then
+    echo "headless: serial log: $SERIAL_LOG" >&2
+    exit 1
 fi
 
 if [ "$TEST_NAME" = "desktop-doom" ]; then

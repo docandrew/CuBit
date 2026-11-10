@@ -4,6 +4,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with acpi;
 with Boot_Modules;
 with Firmware_Tables.Catalog;
+with Firmware_Tables.Remapping;
 with Config;
 with Multiboot;
 with TextIO; use TextIO;
@@ -13,6 +14,7 @@ package body Physical_Range_Map with SPARK_Mode => Off is
 
    package PR renames Physical_Ranges;
    use type Firmware_Tables.Catalog.Phase;
+   use type acpi.DMAR_Status;
 
    -- The x86 interrupt-message window: the local APIC registers and every
    -- MSI/MSI-X write target. Architectural, independent of firmware tables.
@@ -27,7 +29,8 @@ package body Physical_Range_Map with SPARK_Mode => Off is
 
    pragma Compile_Time_Error
      (Config.MAX_BOOT_MEMORY_REGIONS + Boot_Modules.Maximum_Modules
-      + acpi.MAX_IOAPICS + Fixed_Spans > PR.Max_Spans,
+      + acpi.MAX_IOAPICS + Firmware_Tables.Remapping.Maximum_Units + Fixed_Spans
+        > PR.Max_Spans,
       "Physical classification cannot hold every boot description");
    pragma Compile_Time_Error
      (Firmware_Tables.Catalog.Max_Tables > PR.Max_Table_Extents,
@@ -64,6 +67,16 @@ package body Physical_Range_Map with SPARK_Mode => Off is
          PR.Invalidate (Kernel_Map);
       end if;
       Add_Register_Page (acpi.hpetAddr);
+      -- Every DMA remapping unit's register set (IOMMU-001): the kernel
+      -- drives them; no process may map them.
+      if acpi.dmarStatus = acpi.DMAR_Accepted then
+         for U in 1 .. acpi.dmarFacts.Unit_Total loop
+            PR.Add (Kernel_Map, acpi.dmarFacts.Units (U).Register_Base,
+                    acpi.dmarFacts.Units (U).Register_Base
+                      + Unsigned_64 (acpi.dmarFacts.Units (U).Register_Pages) * PR.Page_Bytes - 1,
+                    PR.Kernel_MMIO);
+         end loop;
+      end if;
       -- The FACS page: firmware memory (write-back) when it is a whole
       -- NVS or firmware-reserved page; nothing when the FADT names none.
       if acpi.facsAddr /= 0 then

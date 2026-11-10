@@ -580,3 +580,31 @@ bash tests/headless/run.sh --test nvme-timeout --accel kvm --timeout 180
 bash tests/headless/run.sh --test nvme-stuck --accel kvm --timeout 180
 NVME_DRIVE_OPTIONS=,throttling.bps-read=50000 bash tests/headless/run.sh --test boot-shell-nvme --accel kvm --timeout 150
 ```
+
+## iommu and iommu fault probe (IOMMU-001)
+
+DMA is confined by VT-d, and every DMA fault is a typed record. On QEMU's
+VT-d model (`--iommu`: intel-iommu, intremap=on, aw-bits 39 as on the
+IdeaPad's ADL-N; virtio-net modern-only with iommu_platform=on) the full
+desktop boots: the kernel parses the DMAR, brings the unit up, and NVMe and
+virtio-net each do DMA through their own domain with no DMA fault
+(tests/headless/check-iommu.py active). With `--iommu` the generic launch's
+edu driver does a DMA round trip through its domain, then reads from an
+address outside its block: exactly one typed fault record names edu's
+requester, the probe address and reason not-mapped (kernel console and
+logstore), and the boot carries on (check-iommu.py fault). Without
+`--iommu` every headless test checks the typed degraded record ("kernel:
+IOMMU degraded: DMA unconfined (no DMAR table)"). Failed before: there was
+no IOMMU support, any device could DMA anywhere, and nothing said so. The
+hosted regressions (DMAR admission with the IdeaPad's 136-byte table,
+truncations, every single-byte mutation, typed rejections; I/O page-table
+arithmetic; the walker against the domain ledger) and the level 2 proofs
+are `tests/iommu/run.sh --prove`.
+
+```sh
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 bash tests/iommu/run.sh --prove
+make -C kernel world boot-logs
+bash tests/headless/run.sh --test startup-health --iommu --accel kvm --timeout 90
+bash tests/headless/run.sh --test generic-launch --iommu --accel kvm
+bash tests/headless/run.sh --test startup-health --accel kvm --timeout 90
+```

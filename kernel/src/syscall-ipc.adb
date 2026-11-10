@@ -25,6 +25,8 @@ with Device_Memory_Admission;
 with Device_Memory_Authority;
 with Device_Memory_Diagnostics;
 with Device_Memory_Publication;
+with DMA_Allocation_ABI;
+with DMA_Remapping;
 with InterruptNumbers;
 with IPC_Labels;
 with ELF;
@@ -508,6 +510,8 @@ package body Syscall.IPC is
                               retain    : Boolean;
                               largePage : Boolean;
                               ceiling   : Unsigned_64;
+                              forDevice : Boolean;
+                              requester : DMA_Allocation_ABI.Requester_ID;
                               retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- generic instantiation
     is
@@ -530,6 +534,9 @@ package body Syscall.IPC is
         chargedPages : Unsigned_64 := 0;
         boundPages : Unsigned_64 := 0;
         chargeOK : Boolean;
+        -- The block's IOMMU domain (IOMMU-001), 0 when unconfined.
+        domain : Unsigned_64 := 0;
+        use type DMA_Remapping.Grant_Result;
 
         procedure Cancel_Unbound_Charge is
             cancelled : Boolean;
@@ -674,6 +681,43 @@ package body Syscall.IPC is
                 boundPages := boundPages + 1;
             end loop;
 
+            -- Into the device's IOMMU domain only, before any mapping is
+            -- published (IOMMU-001). Unconfined when the device's unit does
+            -- not translate (no IOMMU): the kernel reports that state.
+            if forDevice then
+                declare
+                    result : DMA_Remapping.Grant_Result;
+                begin
+                    DMA_Remapping.Map_Grant
+                      (Requester => requester,
+                       Owner     => Process_Identities.To_Word (Process.identityOf (targetPID)),
+                       Physical  => Unsigned_64 (dmaPhys),
+                       Pages     => Unsigned_64 (numPages),
+                       Writable  => True,
+                       Domain    => domain,
+                       Result    => result);
+                    if result = DMA_Remapping.Refused then
+                        for page in 0 .. numPages - 1 loop
+                            BuddyAllocator.releaseUserFrame
+                              (dmaPhys + Virtmem.PhysAddress (page * Virtmem.PAGE_SIZE),
+                               BuddyAllocator.Frame_Owner (targetPID));
+                        end loop;
+                        -- Refused with a domain: the rollback's invalidation
+                        -- did not complete, so the block is never reused.
+                        if domain = 0 then
+                            BuddyAllocator.free (order, dmaAddr);
+                        else
+                            println ("ALLOC_DMA: IOMMU rollback incomplete; block quarantined");
+                        end if;
+                        Process.DMA.Cancel (tracking);
+                        println ("ALLOC_DMA: refused by the IOMMU");
+                        return;
+                    elsif result = DMA_Remapping.Unconfined then
+                        domain := 0;
+                    end if;
+                end;
+            end if;
+
             Process.lockAddressSpace (targetPID);
             for i in 0 .. numMappings - 1 loop
                 -- mapPage permits replacement for privileged callers. DMA
@@ -723,7 +767,20 @@ package body Syscall.IPC is
                              (page * Virtmem.PAGE_SIZE),
                            BuddyAllocator.Frame_Owner (targetPID));
                     end loop;
-                    BuddyAllocator.free (order, dmaAddr);
+                    -- Out of the IOMMU domain, invalidated, before reuse.
+                    declare
+                        released : Boolean := True;
+                    begin
+                        if domain /= 0 then
+                            DMA_Remapping.Unmap_Grant
+                              (domain, Unsigned_64 (dmaPhys), Unsigned_64 (numPages), released);
+                        end if;
+                        if released then
+                            BuddyAllocator.free (order, dmaAddr);
+                        else
+                            println ("ALLOC_DMA: IOMMU rollback incomplete; block quarantined");
+                        end if;
+                    end;
                     Process.unlockAddressSpace (targetPID);
                     Process.DMA.Cancel (tracking);
                     return;
@@ -732,7 +789,7 @@ package body Syscall.IPC is
             end loop;
 
             -- Publication cannot allocate metadata: reservation preceded DMA.
-            Process.DMA.Commit (tracking, Unsigned_64 (dmaPhys));
+            Process.DMA.Commit (tracking, Unsigned_64 (dmaPhys), domain);
             Process.unlockAddressSpace (targetPID);
 
             retval := Unsigned_64 (dmaPhys);
@@ -742,27 +799,60 @@ package body Syscall.IPC is
     procedure allocateDmaRequest
       (callerPID : Process.ProcessID;
        authority : Unsigned_64;
-       arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
+       arg0, arg1, arg2, arg3, arg4, arg6 : Unsigned_64;
        retval : out Unsigned_64) with SPARK_Mode => Off
     is
+        package ABI renames DMA_Allocation_ABI;
+        mode      : constant Unsigned_64 := ABI.Mode_Of (arg3);
+        forDevice : constant Boolean := ABI.Is_Device (arg3);
+        requester : constant ABI.Requester_ID := ABI.Requester_Of (arg3);
     begin
         retval := reterr;
-        if arg3 = 0 then
-            allocateDma (callerPID, authority, arg0, arg1, arg2, False, False, arg4, retval);
+        if not ABI.Well_Formed (arg3) or else
+          (not forDevice and then requester /= 0)
+        then
             return;
-        elsif (arg3 /= 1 and then arg3 /= 3) or else arg1 > 14 or else
-          (arg3 = 3 and then arg1 /= 9)
+        end if;
+        -- A device-bound block names a PCI function's IOMMU domain: arg6 is
+        -- the caller's CAP_IOPORT over the PCI configuration mechanism,
+        -- with write (it can already program any function's bus mastering).
+        -- The caller's mailbox lock is held (handleAllocDma).
+        if forDevice then
+            declare
+                held : constant Process_Capabilities.Found := Process_Capabilities.Find
+                  (Process.proctab(callerPID).caps, arg6, Capabilities.CAP_IOPORT,
+                   onlyRight (Capabilities.RIGHT_WRITE));
+            begin
+                if not held.OK or else
+                  held.Cap.object.ref > ABI.PCI_Config_First_Port or else
+                  ABI.PCI_Config_First_Port - held.Cap.object.ref > held.Cap.object.param or else
+                  held.Cap.object.param - (ABI.PCI_Config_First_Port - held.Cap.object.ref)
+                    < ABI.PCI_Config_Ports
+                then
+                    println ("ALLOC_DMA: device binding denied, no PCI configuration authority");
+                    return;
+                end if;
+            end;
+        end if;
+        if mode = ABI.Mode_Ordinary then
+            allocateDma (callerPID, authority, arg0, arg1, arg2, False, False, arg4,
+                         forDevice, requester, retval);
+            return;
+        elsif (mode /= ABI.Mode_Retained and then mode /= ABI.Mode_Retained_Large)
+          or else arg1 > 14 or else
+          (mode = ABI.Mode_Retained_Large and then arg1 /= 9)
         then
             return;
         end if;
         -- The common ledger reserves global and owner budgets together after
         -- authorization. Bound charges refund only at actual physical free.
-        allocateDma (callerPID, authority, arg0, arg1, arg2, True, arg3 = 3, arg4, retval);
+        allocateDma (callerPID, authority, arg0, arg1, arg2, True,
+                     mode = ABI.Mode_Retained_Large, arg4, forDevice, requester, retval);
     end allocateDmaRequest;
 
     procedure handleAllocDma
       (callerPID : Process.ProcessID;
-       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       arg0, arg1, arg2, arg3, arg4, arg5, arg6 : Unsigned_64;
        retval : out Unsigned_64) with SPARK_Mode => Off
     is
         use type Process.ProcessID;
@@ -794,7 +884,7 @@ package body Syscall.IPC is
             then
                 -- Below this point the target is the resolved slot.
                 allocateDmaRequest
-                  (callerPID, arg5, Unsigned_64 (Target), arg1, arg2, arg3, arg4, retval);
+                  (callerPID, arg5, Unsigned_64 (Target), arg1, arg2, arg3, arg4, arg6, retval);
             else
                 println ("ALLOC_DMA: process closing or unavailable");
             end if;

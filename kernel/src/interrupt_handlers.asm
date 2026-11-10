@@ -62,6 +62,7 @@ global deviceVectorStubsEnd
 global isr127   ; KERNEL PANIC
 global isr128   ; SYSCALL
 global isr249   ; Reschedule IPI
+global isr250   ; IOMMU fault event
 global isr255   ; Spurious
 
 ; If this interrupt occurred while executing a user-mode process, we need to 
@@ -383,6 +384,13 @@ isr249:
     swapGSIfFromProcess
     push long 0
     push long 249
+    jmp isrCommon
+
+; IOMMU fault event (VT-d, IOMMU-001)
+isr250:
+    swapGSIfFromProcess
+    push long 0
+    push long 250
     jmp isrCommon
 
 ; Spurious Interrupt

@@ -631,7 +631,8 @@ package body Syscall is
 
             when SYSCALL_ALLOC_DMA =>
                 IPC.handleAllocDma (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, arg5, retval);
+                    Process.processOf (percpu.currentThread),
+                    arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_ENABLE_IRQ =>
                 Admin.handleEnableIrq (

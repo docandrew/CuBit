@@ -15,6 +15,11 @@ package Virtio.Modern is
    F_NET_MAC   : constant Unsigned_64 := Shift_Left (1, 5);
    F_EVENT_IDX : constant Unsigned_64 := Shift_Left (1, 29);
    F_NET_STATUS : constant Unsigned_64 := Shift_Left (1, 16);
+   --  VIRTIO_F_ACCESS_PLATFORM (virtio 1.1 6): the device's DMA goes
+   --  through the platform's IOMMU. Accepted when offered: devmgr's DMA
+   --  block is mapped into the device's domain at its physical address
+   --  (IOMMU-001), so the addresses the driver uses are the same.
+   F_ACCESS_PLATFORM : constant Unsigned_64 := Shift_Left (1, 33);
 
    --  The layout devmgr found; False if it does not fit what was mapped.
    procedure Bind

@@ -897,7 +897,8 @@ begin
       begin
          Virtio.Modern.Negotiate
            (Virtio.Modern.F_VERSION_1 or Virtio.Modern.F_NET_MAC or
-            Virtio.Modern.F_EVENT_IDX or Virtio.Modern.F_NET_STATUS, agreed, ok);
+            Virtio.Modern.F_EVENT_IDX or Virtio.Modern.F_NET_STATUS or
+            Virtio.Modern.F_ACCESS_PLATFORM, agreed, ok);
          eventIdx := (agreed and Virtio.Modern.F_EVENT_IDX) /= 0;
          statusFeature := (agreed and Virtio.Modern.F_NET_STATUS) /= 0;
          if not ok then

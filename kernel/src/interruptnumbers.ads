@@ -64,6 +64,9 @@ is
     -- CuBitOS defined
     KERNEL_PANIC                : constant x86Interrupt := 127;
     RESCHEDULE                  : constant x86Interrupt := 249;
+    -- VT-d fault events (IOMMU-001, DMA_Remapping): every remapping unit
+    -- signals its DMA faults here, on the boot CPU.
+    IOMMU_FAULT                 : constant x86Interrupt := 250;
 
     -- User interrupt. Use same number as Linux for ease of porting sw
     SYSCALL                     : constant x86Interrupt := 128;

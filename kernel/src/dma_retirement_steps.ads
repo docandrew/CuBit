@@ -12,6 +12,10 @@ package DMA_Retirement_Steps is
       Physical, Owner, Generation : Unsigned_64 := 0;
       Order : Allocation_Order := 0;
       Retained : Boolean := False;
+      -- The IOMMU domain the block is mapped into (IOMMU-001), 0: none.
+      -- The owner (Process.DMA) unmaps and invalidates before the first
+      -- Step and clears this; Step never frees a block still in a domain.
+      Domain : Unsigned_64 := 0;
    end record;
    type Cursor is private;
    function Rejected (Position : Cursor) return Boolean;

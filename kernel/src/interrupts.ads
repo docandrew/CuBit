@@ -296,6 +296,7 @@ private
 
     -- Reschedule IPI
     isr249  : Symbol with Import, Convention => C;
+    isr250  : Symbol with Import, Convention => C;
 
     -- Spurious Vector
     isr255  : Symbol with Import, Convention => C;

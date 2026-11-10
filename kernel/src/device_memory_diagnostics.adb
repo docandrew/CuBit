@@ -22,6 +22,10 @@ package body Device_Memory_Diagnostics with SPARK_Mode => Off is
    -- Kills are counted even before the page exists (System facts).
    Kills     : Unsigned_64 := 0;
    Kill_Lock : Spinlocks.Spinlock;
+   -- DMA faults (IOMMU-001), numbered like kills; the state word.
+   Faults     : Unsigned_64 := 0;
+   Fault_Lock : Spinlocks.Spinlock;
+   IOMMU_Word : Unsigned_64 := 0;
 
    procedure Publish_Classification is
       Ignore : System.Address;
@@ -49,6 +53,7 @@ package body Device_Memory_Diagnostics with SPARK_Mode => Off is
                Class => Unsigned_64 (PR.Range_Class'Pos (M.Spans (I).Class)));
          end loop;
          PR.Largest_Device_Runs (M, Runs, Count);
+         Page.IOMMU := IOMMU_Word;
          Page.Root_Count := Unsigned_64 (Count);
          for I in 1 .. Count loop
             Page.Roots (I) := (First => Runs (I).First, Last => Runs (I).Last);
@@ -180,6 +185,108 @@ package body Device_Memory_Diagnostics with SPARK_Mode => Off is
       end if;
       Spinlocks.exitCriticalSection (Kill_Lock);
    end Record_Kill;
+
+   -- Two hex digits, as lspci prints bus and device numbers.
+   function Hex2 (V : Unsigned_64) return String is
+      Digits_Of : constant String := "0123456789abcdef";
+   begin
+      return [Digits_Of (Natural (Shift_Right (V, 4) and 16#F#) + 1),
+              Digits_Of (Natural (V and 16#F#) + 1)];
+   end Hex2;
+
+   procedure Record_IOMMU_State (Word : Unsigned_64) is
+      function Field (Shift : Natural) return Unsigned_64 is
+        (Shift_Right (Word, Shift) and Pub.State_Field_Mask);
+      Status : constant Unsigned_64 := Field (Pub.State_Status_Shift);
+   begin
+      print ("kernel: IOMMU ");
+      print (Pub.IOMMU_Status_Name (Status));
+      if Status = Unsigned_64 (Pub.IOMMU_Status'Pos (Pub.Degraded)) then
+         print (": DMA unconfined (");
+         print (Pub.IOMMU_Reason_Name (Field (Pub.State_Reason_Shift)));
+         print (")");
+      end if;
+      print (", units");
+      print (Integer'Image (Integer (Field (Pub.State_Translating_Shift))));
+      print (" of");
+      print (Integer'Image (Integer (Field (Pub.State_Units_Shift))));
+      print (" translating");
+      if Field (Pub.State_Graphics_Shift) /= 0 then
+         print (", integrated GPU untranslated");
+      end if;
+      println;
+      IOMMU_Word := Word;
+      if Frame /= 0 then
+         declare
+            Page : Pub.Diagnostics_Page with
+              Import, Volatile, Address => Virtmem.P2Va (Frame);
+         begin
+            Page.IOMMU := Word;
+         end;
+      end if;
+   end Record_IOMMU_State;
+
+   procedure Record_DMA_Fault
+     (Requester : Unsigned_64;
+      Address   : Unsigned_64;
+      Code      : Unsigned_64;
+      Write     : Boolean;
+      Unit      : Unsigned_64)
+   is
+      M : PR.Map renames Physical_Range_Map.Kernel_Map;
+      Page_First : constant Unsigned_64 := Address - Address mod PR.Page_Bytes;
+      Class : constant Unsigned_64 :=
+        (if M.Sealed and then Page_First < PR.Address_Limit
+         then Unsigned_64 (PR.Range_Class'Pos (PR.Class_Of (M, PR.Page_Of (Page_First))))
+         else Unsigned_64 (Pub.Physical_Class'Pos (Pub.Unreported)));
+      Detail : constant Unsigned_64 :=
+        Shift_Left (Code and 16#FF#, Pub.Detail_Code_Shift)
+        or Shift_Left (Class and 16#FF#, Pub.Detail_Class_Shift)
+        or Shift_Left ((if Write then 1 else 0), Pub.Detail_Write_Shift)
+        or Shift_Left (Unit and 16#FF#, Pub.Detail_Unit_Shift);
+      Now : constant Unsigned_64 := Time.msTicks;
+      RID : constant Unsigned_64 := Requester and 16#FFFF#;
+   begin
+      print ("kernel: DMA fault requester ");
+      print (Hex2 (Shift_Right (RID, 8)));
+      print (":");
+      print (Hex2 (Shift_Right (RID, 3) and 16#1F#));
+      print (".");
+      print (Hex2 (RID and 7) (2 .. 2));
+      print (if Write then " write " else " read ");
+      print (Page_First);
+      print (" class ");
+      print (Pub.Class_Name (Class));
+      print (" reason ");
+      print (Pub.Fault_Reason_Name (Code));
+      print (" (");
+      print (Code);
+      print (") unit ");
+      println (Unit);
+      Spinlocks.enterCriticalSection (Fault_Lock);
+      Faults := (if Faults = Unsigned_64'Last then Faults else Faults + 1);
+      if Frame /= 0 then
+         declare
+            Page : Pub.Diagnostics_Page with
+              Import, Volatile, Address => Virtmem.P2Va (Frame);
+            Slot : constant Pub.Fault_Slot := Pub.Fault_Slot_Of (Faults);
+            Sequence : Unsigned_64 with
+              Import, Atomic, Address => Page.Faults (Slot).Sequence'Address;
+            Total : Unsigned_64 with
+              Import, Atomic, Address => Page.Fault_Total'Address;
+         begin
+            -- Readers see Writing until every field is in place.
+            Sequence := Pub.Writing;
+            Page.Faults (Slot).Requester := Requester;
+            Page.Faults (Slot).Address   := Page_First;
+            Page.Faults (Slot).Detail    := Detail;
+            Page.Faults (Slot).Time_Ms   := Now;
+            Sequence := Faults;
+            Total := Faults;
+         end;
+      end if;
+      Spinlocks.exitCriticalSection (Fault_Lock);
+   end Record_DMA_Fault;
 
    procedure Map_Into (Reader : Process.ProcessID; Mapped : out Boolean) is
       procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);

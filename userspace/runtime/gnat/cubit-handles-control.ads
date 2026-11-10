@@ -106,6 +106,15 @@ package CuBit.Handles.Control is
      (Target : Process_ID; Authority : Process;
       Order, Virtual, Mode, Ceiling : Unsigned_64) return Unsigned_64;
 
+   --  The same, for one PCI function's DMA (IOMMU-001): the block is mapped
+   --  into that function's IOMMU domain only (DMA_Allocation_ABI), and the
+   --  domain is bound to Target. Config is the caller's PCI configuration
+   --  ports (0CF8h .. 0CFFh), the authority to name a function's domain.
+   function Allocate_Device_DMA
+     (Target : Process_ID; Authority : Process;
+      Order, Virtual, Mode, Ceiling : Unsigned_64;
+      Requester : Unsigned_16; Config : IO_Ports) return Unsigned_64;
+
    --  Map pages into Target: boot-image pages (Kind_Boot_Image, Source a
    --  byte offset; Region unused) or device pages Region covers
    --  (Kind_Device, Source a physical address).

@@ -4,7 +4,10 @@ with CuBit.Log_Records;
 --  The kernel's device-memory diagnostics (Device_Memory_Publication) as log
 --  records: each refused request becomes a Warning starting with
 --  "kernel: device-memory denied", the boot classification Information
---  records starting with "kernel: physical map". Logstore calls Poll every
+--  records starting with "kernel: physical map", the IOMMU's state one
+--  record starting with "kernel: IOMMU" (a Warning when DMA is unconfined)
+--  and each DMA fault a Warning starting with "kernel: DMA fault"
+--  (IOMMU-001). Logstore calls Poll every
 --  turn of its loop (at least once a second); it reads the page the kernel
 --  mapped into it at registration, never waits and never calls the kernel.
 --  Each record is also echoed to the debug console.

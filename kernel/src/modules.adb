@@ -36,6 +36,7 @@ with Time;
 with Util;
 with Physical_Range_Map;
 with Device_Memory_Diagnostics;
+with DMA_Remapping;
 with Device_Memory_Authority;
 with Device_Memory_Admission;
 with Physical_Ranges;
@@ -723,6 +724,9 @@ package body Modules with SPARK_Mode => Off is
         -- exists; device-memory authority consults nothing else.
         Physical_Range_Map.Seal_From_Boot;
         Device_Memory_Diagnostics.Publish_Classification;
+        -- DMA remapping on before any process can bind a device (IOMMU-001);
+        -- without an IOMMU this records the degraded state.
+        DMA_Remapping.Setup;
         -- System facts are final now; every process maps them from its start.
         Publication_Pages.Publish_Facts;
         -- Per-CPU times: the CPUs kmain starts (acpi.numCPUs, at most

@@ -11,6 +11,7 @@ package body DMA_Retirement_Steps is
       if Item.Owner = 0 or else Item.Generation = 0 or else Item.Physical = 0 or else
         Item.Physical mod (Unsigned_64 (Pages) * 4096) /= 0 or else
         Item.Physical > Unsigned_64'Last - Unsigned_64 (Pages) * 4096 or else
+        (Item.Domain /= 0 and then not Item.Retained) or else
         (Position.Started and then Position.Identity /= Item)
       then
          Position.Poisoned := True;

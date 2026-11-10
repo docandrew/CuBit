@@ -12,6 +12,7 @@ with Firmware_Tables;
 with Firmware_Tables.HPET;
 with Firmware_Tables.MCFG;
 with Firmware_Tables.Provisioning;
+with Firmware_Tables.Remapping;
 with BuddyAllocator;
 
 with TextIO; use TextIO;
@@ -658,6 +659,48 @@ package body acpi is
     end parseMCFG;
 
     ---------------------------------------------------------------------------
+    -- parseDMAR (IOMMU-001)
+    -- The DMA remapping table, admitted whole by the proved decoder. The
+    -- table was admitted (signature, checksum, extent) and retained before
+    -- this. A second DMAR is refused: the facts stay from the first.
+    ---------------------------------------------------------------------------
+    procedure parseDMAR (dmarAddr : System.Address; length : Natural) is
+        package R renames Firmware_Tables.Remapping;
+        use type R.Outcome;
+        Data : Firmware_Tables.Bytes (1 .. length) with Import, Address => dmarAddr;
+    begin
+        if dmarStatus /= DMAR_Absent then
+            println ("ACPI: second DMAR ignored");
+            return;
+        end if;
+        declare
+            Status : R.Outcome;
+        begin
+            R.Decode (Data, dmarFacts, Status, dmarRejection, dmarOffset);
+            if Status = R.Accepted then
+                dmarStatus := DMAR_Accepted;
+                print ("ACPI: DMAR accepted: host address width ");
+                print (Integer (dmarFacts.Width));
+                print (", units ");
+                print (Integer (dmarFacts.Unit_Total));
+                print (", reserved regions ");
+                print (Integer (dmarFacts.Region_Total));
+                print (", flags");
+                if dmarFacts.Interrupt_Remapping then print (" intr-remap"); end if;
+                if dmarFacts.X2APIC_Opt_Out then print (" x2apic-opt-out"); end if;
+                if dmarFacts.DMA_Control_Opt_In then print (" dma-ctrl-opt-in"); end if;
+                println;
+            else
+                dmarStatus := DMAR_Rejected;
+                print ("ACPI: DMAR rejected: ");
+                print (R.Rejection_Name (dmarRejection));
+                print (" at byte ");
+                println (Integer (dmarOffset));
+            end if;
+        end;
+    end parseDMAR;
+
+    ---------------------------------------------------------------------------
     -- setup
     -- parse ACPI tables, get information we need out of them.
     ---------------------------------------------------------------------------
@@ -910,6 +953,8 @@ package body acpi is
                         hpetAddr := Virtmem.PhysAddress (Item.Base);
                         print ("HPET register base: "); println (hpetAddr);
                     end;
+                elsif descHdr.signature = "DMAR" then
+                    parseDMAR (descHdr'Address, Natural (descHdr.length));
                 elsif descHdr.signature = "SSDT" then
                     println(" SSDT present, not supported.");
                 else

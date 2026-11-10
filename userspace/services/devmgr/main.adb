@@ -41,6 +41,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with DMA_Allocation_ABI;
 with CuBit.Launch_Configurations;
 with CuBit.System_Facts;
 with Launch_Configuration;
@@ -173,6 +174,9 @@ procedure main is
    PCI_INTERRUPT_LINE  : constant Unsigned_8 := 60;
    PCI_HEADER_MULTIFUNCTION : constant Unsigned_8 := 16#80#;
    PCI_PROG_IF_XHCI         : constant Unsigned_8 := 16#30#;
+   --  Command register bit 2: the function may issue memory requests (DMA
+   --  and MSI writes). Off until a driver is bound (IOMMU-001).
+   PCI_COMMAND_BUS_MASTER   : constant Unsigned_16 := 16#0004#;
 
    --  VirtIO modern PCI capability types
    PCI_CAP_ID_VENDOR_SPECIFIC : constant Unsigned_8 := 9;
@@ -194,6 +198,20 @@ procedure main is
    use type CuBit.Devices.Device_Kind;
    --  Set first thing in the body (Devmgr_Authority.Initialize).
    Root : CuBit.Handles.Boot_Roots.Roots;
+
+   --  DMA memory for one PCI function (IOMMU-001): the kernel maps it into
+   --  that function's IOMMU domain only and binds the domain to the driver
+   --  (DMA_Allocation_ABI); devmgr's PCI configuration ports are the
+   --  authority. Without an IOMMU the block is unconfined, as before.
+   function allocDeviceDma
+     (targetPID : Process_ID;
+      order     : Unsigned_64;
+      virtBase  : Unsigned_64;
+      authority : CuBit.Handles.Process;
+      bus, slot, func : Unsigned_8) return Unsigned_64 is
+     (HC.Allocate_Device_DMA
+        (targetPID, authority, order, virtBase, DMA_Allocation_ABI.Mode_Ordinary, 0,
+         DMA_Allocation_ABI.Requester (bus, slot, func), Root.PCI_Ports));
 
    Read_Write_Grant : constant H.Rights := (Read | Write | Grant => True, others => False);
 
@@ -1230,6 +1248,27 @@ procedure main is
          debugPrint (LF & "");
          --  Its memory decode, claimed for devices before any driver starts.
          Claim_PCI_Memory (location, vendorID, deviceID, classCode);
+         --  Bus mastering off until a driver is bound (IOMMU-001): every
+         --  binding turns it on with the function's DMA domain. Left alone:
+         --  bridges (they forward their devices' DMA), display controllers
+         --  (the firmware scanout may be live) and USB controllers (firmware
+         --  legacy emulation runs until the xHCI driver's BIOS handoff).
+         declare
+            Command : constant Unsigned_16 := pciReadConfig16 (bus, pSlot, func, PCI_COMMAND);
+         begin
+            if (pciReadConfig8 (bus, pSlot, func, PCI_HEADER_TYPE) and PCI_HEADER_LAYOUT_MASK)
+                 = PCI_HEADER_GENERAL
+              and then Unsigned_8 (Shift_Right (classCode, 8)) /= CLASS_BASE_DISPLAY
+              and then classCode /= CLASS_SERIAL_USB
+              and then (Command and PCI_COMMAND_BUS_MASTER) /= 0
+            then
+               pciWriteConfig16 (bus, pSlot, func, PCI_COMMAND,
+                                 Command and not PCI_COMMAND_BUS_MASTER);
+               debugPrint ("devmgr: PCI " & Hex (Unsigned_64 (bus), 2) & ":"
+                 & Hex (Unsigned_64 (pSlot), 2) & "." & Hex (Unsigned_64 (func), 1)
+                 & " bus mastering off until bound" & LF);
+            end if;
+         end;
          if vendorID = 16#8086# and then Shift_Right (classCode, 8) = 3 then
             Report_Intel_Display (location, deviceID, classCode);
          end if;
@@ -2645,7 +2684,8 @@ procedure main is
       Setup_Message_Interrupts (dev, child, "nvme.drv", instances (I).Interrupts);
 
       --  Allocate DMA
-      dmaPhys := allocDma (instances (I).PID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (child));
+      dmaPhys := allocDeviceDma (instances (I).PID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (child),
+                                 dev.bus, dev.slot, dev.func);
       if dmaPhys = reterr then
          debugPrint ("devmgr: NVMe DMA alloc failed" & LF);
          return;
@@ -2814,7 +2854,8 @@ procedure main is
                         PCI_COMMAND, pciCmd or 16#0407#);
 
       --  Allocate DMA
-      dmaPhys := allocDma (virtioNetPID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (virtioNetChild));
+      dmaPhys := allocDeviceDma (virtioNetPID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (virtioNetChild),
+                                 netDev.bus, netDev.slot, netDev.func);
       if dmaPhys = reterr then
          debugPrint ("devmgr: virtio-net DMA alloc failed" & LF);
          return;
@@ -2909,7 +2950,8 @@ procedure main is
       end if;
 
       --  Allocate DMA
-      dmaPhys := allocDma (instances (I).PID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (child));
+      dmaPhys := allocDeviceDma (instances (I).PID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (child),
+                                 dev.bus, dev.slot, dev.func);
       if dmaPhys = reterr then
          debugPrint ("devmgr: HDA DMA alloc failed" & LF);
          return;
@@ -3121,10 +3163,12 @@ procedure main is
          Give_Line (virtioGpuChild, "", irqVector);
       end if;
 
-      dmaPhys := allocDma (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (virtioGpuChild));
+      dmaPhys := allocDeviceDma (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (virtioGpuChild),
+                                 gpuDev.bus, gpuDev.slot, gpuDev.func);
       if dmaPhys = reterr and then DMA_ORDER /= SMALL_DMA_ORDER then
          DMA_ORDER := SMALL_DMA_ORDER;
-         dmaPhys := allocDma (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (virtioGpuChild));
+         dmaPhys := allocDeviceDma (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE, DL.Control (virtioGpuChild),
+                                    gpuDev.bus, gpuDev.slot, gpuDev.func);
       end if;
       if dmaPhys = reterr then
          debugPrint ("devmgr: virtio-gpu DMA alloc failed" & LF);
@@ -3132,8 +3176,9 @@ procedure main is
       end if;
       DMA_SIZE := 2 ** Natural (DMA_ORDER) * 4096;
 
-      secondDmaPhys := allocDma
-        (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE + DMA_SIZE, DL.Control (virtioGpuChild));
+      secondDmaPhys := allocDeviceDma
+        (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE + DMA_SIZE, DL.Control (virtioGpuChild),
+         gpuDev.bus, gpuDev.slot, gpuDev.func);
       if secondDmaPhys = reterr then
          secondDmaPhys := 0;
          debugPrint ("devmgr: second GPU DMA bank unavailable" & LF);
@@ -3274,7 +3319,8 @@ procedure main is
       pciWriteConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND,
         pciCmd or MEMORY_SPACE or BUS_MASTER or INTX_DISABLE);
 
-      dmaPhys := allocDma (virtioInputPID, 0, DMA_VIRT_BASE, DL.Control (virtioInputChild));
+      dmaPhys := allocDeviceDma (virtioInputPID, 0, DMA_VIRT_BASE, DL.Control (virtioInputChild),
+                                 dev.bus, dev.slot, dev.func);
       if dmaPhys = reterr then
          debugPrint ("devmgr: virtio-input DMA alloc failed" & LF);
          return;
@@ -3540,8 +3586,8 @@ procedure main is
          end if;
          dmaLayout := XHCI_DMA_Layout.Plan (scratchpads, Fitting);
       end;
-      dmaPhys := allocDma (instances (I).PID, Unsigned_64 (dmaLayout.Order), DMA_VIRT_BASE,
-                           DL.Control (child));
+      dmaPhys := allocDeviceDma (instances (I).PID, Unsigned_64 (dmaLayout.Order), DMA_VIRT_BASE,
+                           DL.Control (child), dev.bus, dev.slot, dev.func);
       if dmaPhys = reterr then
          debugPrint ("devmgr: xHCI DMA allocation failed" & LF);
          return;
@@ -3778,7 +3824,8 @@ procedure main is
                            Physical := reterr;
                         else
                            Order := Unsigned_64 (Contiguous_Memory.Order_For (Natural (Pages)));
-                           Physical := allocDma (PID, Order, DMA_VIRT_BASE, DL.Control (Child));
+                           Physical := allocDeviceDma (PID, Order, DMA_VIRT_BASE, DL.Control (Child),
+                                                       dev.bus, dev.slot, dev.func);
                         end if;
                         if Failed then
                            null;

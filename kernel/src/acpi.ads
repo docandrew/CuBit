@@ -15,6 +15,7 @@ with Firmware_Tables.Catalog;
 with Firmware_Tables.Snapshots;
 with Firmware_Tables.Snapshots.Transfers;
 with Firmware_Tables.Exposure;
+with Firmware_Tables.Remapping;
 
 -- Firmware-table overlays are Ada; no blanket SPARK claim for this package.
 package acpi is
@@ -36,6 +37,18 @@ package acpi is
     pciConfigBus0 : Unsigned_64 := 0;
     PCI_Segment_Zero : constant Unsigned_16 := 0;
     PCI_Bus_Zero     : constant Unsigned_8 := 0;
+
+    -- The DMA remapping table (DMAR, IOMMU-001): absent (no table in the
+    -- XSDT), rejected (dmarRejection says why and dmarOffset where) or
+    -- accepted (dmarFacts holds its units, reserved regions and scopes,
+    -- admitted by the proved Firmware_Tables.Remapping). Iommu.Setup
+    -- drives VT-d from it; anything but accepted means no IOMMU.
+    type DMAR_Status is (DMAR_Absent, DMAR_Rejected, DMAR_Accepted);
+    dmarStatus    : DMAR_Status := DMAR_Absent;
+    dmarRejection : Firmware_Tables.Remapping.Rejection :=
+                      Firmware_Tables.Remapping.Header_Rejected;
+    dmarOffset    : Natural := 0;
+    dmarFacts     : Firmware_Tables.Remapping.Facts;
 
     type ACPIVersion is (AcpiVersion1, AcpiVersion2);
 
