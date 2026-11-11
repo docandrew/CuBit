@@ -124,6 +124,18 @@ class Images(unittest.TestCase):
                     self.assertEqual(len(mesa), 2)
                     self.assertTrue(all(row[0] == "OPTICAL" for row in mesa))
 
+    def test_build_images_place_every_laptop_app(self):
+        # The laptop-build images are laptop-usb plus the build tools; an app
+        # the launch menu offers but the image omits fails with "the program
+        # file was not found" (Bible on image 9, 2026-11-09).
+        def apps(name):
+            _, rows, _ = realizer.compile_plan(ROOT / "images/artifacts.ccl", ROOT / f"images/{name}.ccl")
+            return {row[5] for row in rows if row[5].startswith("apps/")}
+        usb = apps("laptop-usb")
+        for name in ("laptop-build", "laptop-build-test"):
+            with self.subTest(profile=name):
+                self.assertEqual(usb - apps(name), set())
+
     def test_graphics_profiles_include_diagnostics_and_console(self):
         for name in ('laptop-usb', 'render-session', 'mesa-device',
                      'mesa-triangle', 'mesa-triangle-window', 'desktop-mesa-startup'):
