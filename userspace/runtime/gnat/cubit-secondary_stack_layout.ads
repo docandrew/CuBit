@@ -3,33 +3,27 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Where a thread's secondary stack lives and how it grows (the user
---  runtime's System.Secondary_Stack, CuBit.Thread_Areas).
+--  Where a thread's secondary stack lives and how large it may grow (the
+--  user runtime's System.Secondary_Stack, CuBit.Thread_Areas).
 --
 --  @description
---  Every thread's secondary stack is its own owned-memory reservation
---  (kernel Process.Owned_Memory: Reserve, Commit_Prefix,
---  Release_Reservation), never part of a primary stack. A region is laid
---  out from its base as
+--  A thread's secondary stack is upstream GNAT's: a stack object holding a
+--  static chunk, then dynamic chunks on CuAlloc as its top needs them, each
+--  max (request, Chunk_Bytes) bytes, kept for reuse after a release and
+--  given back when the thread ends. All of one thread's chunks together
+--  never pass Ceiling_Bytes; a request that would is refused before any
+--  memory is touched, with Storage_Error and a CAPACITY message.
 --
---     [prefix][stack header][stack data ...........][guard]
+--  A thread area (CuBit.Thread_Areas) is one owned-memory region, laid out
+--  from its base as
+--
+--     [prefix][stack object: header and static chunk]
 --
 --  The prefix is the thread's static TLS block and thread control block
---  when the runtime made the thread pointer itself (CuBit.Thread_Areas);
---  it is empty for threads whose TLS another runtime owns (musl, Rust).
---  The region is committed from its base: the first commit backs the
---  prefix, the header and Initial_Data_Bytes of data; later commits extend
---  it as the stack's top crosses the committed mark, Minimum_Growth_Bytes
---  or the size already committed (doubling), whichever is larger, and at
---  most Maximum_Commit_Bytes per system call. Committed addresses never
---  move. The last Guard_Bytes are never committed, so the stack's data is
---  never contiguous with whatever owned region follows it.
---
---  Reservation_Bytes is address space only: reserving costs no RAM. The
---  RAM a stack really uses is bounded by the process's frame quota, which
---  refuses a commit; that limit is policy, not this constant. The
---  reservation bounds one stack's reach so an allocation past it is
---  refused by a bounds check before any memory is touched.
+--  when the runtime made the thread pointer itself; threads whose TLS
+--  another runtime owns (musl, Rust) have no area, and their stack object
+--  is a CuAlloc block. The whole area is committed when it is made: it
+--  never grows (the stack grows on CuAlloc).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -39,41 +33,40 @@ package CuBit.Secondary_Stack_Layout with Pure, SPARK_Mode is
    --  CuBit.Kernel_ABI.Page_Bytes.
    Page_Bytes : constant := 4096;
 
-   --  Address space each thread's secondary stack reserves: 256 MiB, the
-   --  same reach as the largest primary stack a program may declare
-   --  (kernel Process.MAX_USER_STACK_SIZE). The owned-memory aperture is
-   --  1 TiB, so this admits 4096 threads' stacks at once.
-   Reservation_Bytes : constant := 256 * 1024 * 1024;
+   --  Every thread's static chunk, and the smallest dynamic chunk: twice
+   --  the fixed 32 KiB stack the runtime once had, which nearly every
+   --  program stays within, so most threads never touch the heap for it.
+   Chunk_Bytes : constant := 64 * 1024;
 
-   --  The never-committed tail of every region.
-   Guard_Bytes : constant := Page_Bytes;
+   --  The named ceiling: the most one thread's secondary-stack chunks may
+   --  hold together, 256 MiB, the same reach as the largest primary stack
+   --  a program may declare (kernel Process.MAX_USER_STACK_SIZE). The RAM
+   --  really used is also bounded by the process's frame quota, which
+   --  makes CuAlloc refuse (HEAP_REFUSED) whatever this constant says.
+   Ceiling_Bytes : constant := 256 * 1024 * 1024;
 
-   --  The most a region may ever commit.
-   Usable_Bytes : constant := Reservation_Bytes - Guard_Bytes;
-
-   --  Data the first commit backs: twice the fixed 32 KiB stack this
-   --  replaces, which nearly every program stays within.
-   Initial_Data_Bytes : constant := 64 * 1024;
-
-   --  The smallest commit after the first.
-   Minimum_Growth_Bytes : constant := 1024 * 1024;
-
-   --  The most one commit may add (kernel Owned_Reservation_Policy
-   --  .Maximum_Commit_Bytes, CuBit.Kernel_ABI.Maximum_Owned_Commit_Bytes).
-   Maximum_Commit_Bytes : constant := 16 * 1024 * 1024;
-
-   --  The largest prefix (static TLS and thread control block) a region
+   --  The largest prefix (static TLS and thread control block) an area
    --  holds. Programs' static TLS is a few words; a larger one is refused.
    Maximum_Prefix_Bytes : constant := 1024 * 1024;
 
-   --  Room for the stack header (System.Secondary_Stack.SS_Stack's fields
-   --  before its data), which the runtime checks its record against.
-   Header_Bytes : constant := 64;
+   --  Where the stack object starts after the prefix: a multiple of this
+   --  (at least the target's maximum alignment).
+   Object_Alignment : constant := 64;
 
-   --  Offsets and sizes within one region.
-   subtype Region_Bytes is Unsigned_64 range 0 .. Usable_Bytes;
+   --  The largest stack object an area holds: the static chunk and room for
+   --  the header (System.Secondary_Stack.SS_Object_Bytes, which the runtime
+   --  checks against it).
+   Maximum_Header_Bytes : constant := 256;
+   Maximum_Object_Bytes : constant := Chunk_Bytes + Maximum_Header_Bytes;
+
+   --  The largest area.
+   Maximum_Area_Bytes : constant :=
+     Maximum_Prefix_Bytes + Object_Alignment + Maximum_Object_Bytes + Page_Bytes;
+
+   --  Offsets and sizes within one area.
+   subtype Region_Bytes is Unsigned_64 range 0 .. Maximum_Area_Bytes;
    subtype Prefix_Bytes is Unsigned_64 range 0 .. Maximum_Prefix_Bytes;
-   subtype Commit_Bytes is Unsigned_64 range 0 .. Maximum_Commit_Bytes;
+   subtype Object_Bytes is Unsigned_64 range 1 .. Maximum_Object_Bytes;
 
    function Page_Aligned (Bytes : Region_Bytes) return Boolean is
      (Bytes mod Page_Bytes = 0);
@@ -81,46 +74,26 @@ package CuBit.Secondary_Stack_Layout with Pure, SPARK_Mode is
    --  Bytes rounded up to whole pages.
    function Page_Round (Bytes : Region_Bytes) return Region_Bytes is
      ((Bytes + Page_Bytes - 1) / Page_Bytes * Page_Bytes)
-   with Post => Page_Aligned (Page_Round'Result)
+   with Pre  => Bytes <= Maximum_Area_Bytes - Page_Bytes + 1,
+        Post => Page_Aligned (Page_Round'Result)
                   and then Page_Round'Result >= Bytes
                   and then Page_Round'Result - Bytes < Page_Bytes;
 
-   --  The prefix rounded up so the header that follows it is aligned to
-   --  Header_Bytes (at least the target's maximum alignment).
-   function Header_Offset (Prefix : Prefix_Bytes) return Region_Bytes is
-     ((Prefix + Header_Bytes - 1) / Header_Bytes * Header_Bytes)
-   with Post => Header_Offset'Result >= Prefix
-                  and then Header_Offset'Result mod Header_Bytes = 0
-                  and then Header_Offset'Result - Prefix < Header_Bytes;
+   --  Where the stack object starts: the prefix rounded up to
+   --  Object_Alignment.
+   function Object_Offset (Prefix : Prefix_Bytes) return Region_Bytes is
+     ((Prefix + Object_Alignment - 1) / Object_Alignment * Object_Alignment)
+   with Post => Object_Offset'Result >= Prefix
+                  and then Object_Offset'Result mod Object_Alignment = 0
+                  and then Object_Offset'Result - Prefix < Object_Alignment;
 
-   --  Where the stack's data starts.
-   function Data_Offset (Prefix : Prefix_Bytes) return Region_Bytes is
-     (Header_Offset (Prefix) + Header_Bytes);
-
-   --  The data a region can ever hold.
-   function Data_Capacity (Prefix : Prefix_Bytes) return Region_Bytes is
-     (Usable_Bytes - Data_Offset (Prefix))
-   with Post => Data_Offset (Prefix) + Data_Capacity'Result = Usable_Bytes;
-
-   --  The first commit: the prefix, the header and Initial_Data_Bytes.
-   function First_Commit (Prefix : Prefix_Bytes) return Commit_Bytes is
-     (Page_Round (Data_Offset (Prefix) + Initial_Data_Bytes))
-   with Post => First_Commit'Result > 0
-                  and then Page_Aligned (First_Commit'Result)
-                  and then First_Commit'Result >= Data_Offset (Prefix) + Initial_Data_Bytes;
-
-   --  The next commit for a region that has Committed bytes backed and
-   --  needs Needed: at least Minimum_Growth_Bytes and at least Committed
-   --  again, enough to reach Needed when one call may, and at most
-   --  Maximum_Commit_Bytes and what the region has left. A caller repeats
-   --  it until Committed reaches Needed.
-   function Next_Commit (Committed, Needed : Region_Bytes) return Commit_Bytes
-   with Pre => Page_Aligned (Committed) and then Committed < Needed,
-        Post => Next_Commit'Result > 0
-                  and then Page_Aligned (Next_Commit'Result)
-                  and then Next_Commit'Result <= Usable_Bytes - Committed
-                  and then (Committed + Next_Commit'Result >= Needed
-                            or else Next_Commit'Result = Maximum_Commit_Bytes);
+   --  The whole area: the prefix and the stack object, in whole pages.
+   function Area_Bytes (Prefix : Prefix_Bytes; Object : Object_Bytes) return Region_Bytes is
+     (Page_Round (Object_Offset (Prefix) + Object))
+   with Post => Area_Bytes'Result > 0
+                  and then Page_Aligned (Area_Bytes'Result)
+                  and then Area_Bytes'Result >= Object_Offset (Prefix) + Object
+                  and then Area_Bytes'Result <= Maximum_Area_Bytes;
 
    --  The prefix of a thread area (CuBit.Thread_Areas): the static TLS
    --  block, then the thread control block at the thread pointer.

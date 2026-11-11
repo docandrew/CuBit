@@ -18,7 +18,7 @@ package body Stack_Threads is
 
    --  PROTECT_OWNED_MEMORY modes (kernel Process.Owned_Memory.Protect).
    Inaccessible : constant := 0;
-   --  The first seed of the workers' runs (the main thread's are 1 and 2).
+   --  The first seed of the workers' runs (the main thread's are below).
    First_Seed : constant := 10;
    --  A SysV function expects RSP + 8 to be 16-byte aligned at entry.
    Stack_Alignment : constant := 16;
@@ -28,7 +28,7 @@ package body Stack_Threads is
    procedure Worker (Argument : Unsigned_64) is
       Index : constant Worker_Index := Worker_Index (Argument);
    begin
-      Results (Index) := Stack_Work.Run (First_Seed + Argument);
+      Results (Index) := Stack_Work.Full_Run (First_Seed + Argument);
       CuBit.Thread_Areas.Exit_Thread;
    end Worker;
 
@@ -36,6 +36,8 @@ package body Stack_Threads is
       Thread : Started;
       Area : Unsigned_64;
    begin
+      --  Armed again for each batch: the kernel clears it when the thread ends.
+      Exit_Words (Index) := 1;
       Thread.Stack := CuBit.Kernel_Calls.Call (ABI.Allocate_Owned_Memory, Stack_Bytes);
       if Thread.Stack = 0 then
          return Thread;

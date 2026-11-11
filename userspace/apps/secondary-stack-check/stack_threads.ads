@@ -5,7 +5,7 @@
 --  @summary
 --  secondary-stack-check's extra threads: each its own primary stack (owned
 --  memory, guard page at the bottom) and thread area (CuBit.Thread_Areas),
---  running Stack_Work at the same time as the main thread.
+--  running Stack_Work.Full_Run at the same time as the main thread.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -13,7 +13,7 @@ with Stack_Work;
 
 package Stack_Threads is
 
-   Workers : constant := 2;
+   Workers : constant := 4;
    subtype Worker_Index is Positive range 1 .. Workers;
 
    --  Each worker's primary stack: room for Stack_Work's depth.

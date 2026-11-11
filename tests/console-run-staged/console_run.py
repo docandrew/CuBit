@@ -27,6 +27,9 @@ tools/cubit-remote and keys typed into the console over QMP:
   - hello rebuilt to raise an exception nobody handles after its line: its
     outcome is Failed (Run_Failure.Unhandled_Exception) and the runtime's
     report names the exception and its message (EXC-001);
+  - hello rebuilt to ask for a result past its secondary stack's ceiling,
+    unhandled: the same typed outcome, and the runtime's report is
+    Storage_Error with the CAPACITY message (EXC-001 step 5);
   - the product removed: (programs.refresh) no longer lists it and
     hello.run no longer checks; put back with cubit-remote put (the Linux
     build of the first hello, BUILD_DIR/expected-hello.app): listed again,
@@ -73,6 +76,18 @@ RAISING_LINE = "hello: about to raise an exception nobody handles"
 EXIT_STATEMENT = "Ignore := syscall (SYSCALL_EXIT, Exit_Success);"
 RAISE_STATEMENT = 'raise Program_Error with "hello raised on purpose";'
 UNHANDLED_REPORT = b"User-space exception PROGRAM_ERROR: hello raised on purpose"
+EXHAUSTING_LINE = "hello: about to ask for more secondary stack than its ceiling"
+EXHAUST_STATEMENT = """declare
+      function Past_Ceiling (Length : Natural) return String with No_Inline;
+      function Past_Ceiling (Length : Natural) return String is
+      begin
+         return (1 .. Length => 'x');
+      end Past_Ceiling;
+   begin
+      Ignore := Unsigned_64 (Past_Ceiling (Natural'Last)'Length);
+   end;"""
+EXHAUSTED_REPORT = (b"User-space exception STORAGE_ERROR: secondary stack exhausted: "
+                    b"CAPACITY CEILING_REACHED demand=")
 STATE_RUNNING, STATE_EXITED = 1, 2
 APP_REPLACED = 0
 MOUSE_STEP = 60
@@ -348,6 +363,22 @@ def main():
     run_hello("r2x", RAISING_LINE, "hello raising", raises=True)
     check(wait_for_serial(UNHANDLED_REPORT),
           "the runtime reported the unhandled exception by name and message")
+
+    # EXC-001 step 5: secondary-stack exhaustion nobody handles is the same
+    # typed failure, and the report is the runtime's CAPACITY message.
+    exhausting = Path(tempfile.mkdtemp(prefix="cubit-console-run-"))
+    try:
+        for name in ("component.ccl", "manifest.ccl"):
+            shutil.copy2(build_dir / "app-hello" / name, exhausting / name)
+        text = (build_dir / "app-hello" / "main.adb").read_text()
+        (exhausting / "main.adb").write_text(
+            text.replace(FIRST_LINE, EXHAUSTING_LINE).replace(EXIT_STATEMENT, EXHAUST_STATEMENT))
+        build_hello(host, exhausting, "hello, exhausting its secondary stack")
+    finally:
+        shutil.rmtree(exhausting)
+    run_hello("r2s", EXHAUSTING_LINE, "hello exhausting its secondary stack", raises=True)
+    check(wait_for_serial(EXHAUSTED_REPORT),
+          "the runtime reported Storage_Error with the CAPACITY message")
 
     # Gone, then staged again by a put.
     host.call("remove", "workspace", cr.name_field(PRODUCT))

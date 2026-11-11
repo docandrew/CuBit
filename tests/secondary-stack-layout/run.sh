@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#  Hosted checks of CuBit.Secondary_Stack_Layout (the per-thread secondary
-#  stack's region layout and commit plan); --prove also runs gnatprove at
+#  Hosted checks of CuBit.Secondary_Stack_Layout (the thread area's layout
+#  and the secondary stack's named sizes); --prove also runs gnatprove at
 #  level 2. Run in the Nix shell from anywhere.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)

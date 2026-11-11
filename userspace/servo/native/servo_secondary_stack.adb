@@ -12,10 +12,15 @@ package body Servo_Secondary_Stack is
    function Get return SS.SS_Stack_Ptr is
    begin
       -- SS_Init only writes the runtime's counters; it does not allocate.
+      -- Past Scratch, the runtime grows the stack in chunks on CuAlloc.
       -- Every allocating/marking runtime entry asks this wrapped getter first,
       -- including any call made during standalone library elaboration.
       if not Initialized then
-         SS.SS_Init (Scratch'Access);
+         declare
+            Stack : SS.SS_Stack_Ptr := Scratch'Access;
+         begin
+            SS.SS_Init (Stack);
+         end;
          Initialized := True;
       end if;
       return Scratch'Access;

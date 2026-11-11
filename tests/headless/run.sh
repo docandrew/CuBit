@@ -804,8 +804,8 @@ with open(sys.argv[1], "wb") as f:
         ;;
     secondary-stacks)
         # secondary-stack-check (build: make -C kernel secondary-stack-check):
-        # three threads' stacks at once, then a 256 MiB secondary-stack
-        # reservation grown until it refuses.
+        # five threads' stacks at once, twice, then the main thread's grown
+        # to its 256 MiB ceiling, refused and handled.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-secondary-stacks.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-1G}"
         ;;
@@ -6362,28 +6362,39 @@ TEST: PASS ada-runtime
         ;;
     secondary-stacks)
         required_markers="
-secondary-stack-check: main thread: 20 MiB primary, 9 MiB secondary, all intact PASS
+secondary-stack-check: main thread: 20 MiB primary, 9 MiB secondary, intact PASS
+secondary-stack-check: main thread: a result past the ceiling refused (CAPACITY CEILING_REACHED), handled, stack usable PASS
+secondary-stack-check: main thread: grew again on the same chunks after the release PASS
 secondary-stack-check: main thread's secondary stack is outside its primary stack PASS
 secondary-stack-check: extra threads started with their own areas PASS
-secondary-stack-check: main thread again, alongside the extra threads, intact PASS
-secondary-stack-check: extra thread 1: 20 MiB primary, 9 MiB secondary, intact PASS
-secondary-stack-check: extra thread 2: 20 MiB primary, 9 MiB secondary, intact PASS
-secondary-stack-check: every thread has its own secondary-stack region PASS
-secondary-stack-check: ended threads gave back their secondary stacks PASS
+secondary-stack-check: main thread alongside the extra threads: 20 MiB primary, 9 MiB secondary, intact PASS
+secondary-stack-check: the main thread kept its stack PASS
+secondary-stack-check: extra thread 1: a result past the ceiling refused (CAPACITY CEILING_REACHED), handled, stack usable PASS
+secondary-stack-check: extra thread 4: grew again on the same chunks after the release PASS
+secondary-stack-check: every thread has its own secondary stack PASS
+secondary-stack-check: a second batch of threads, intact PASS
+secondary-stack-check: ended threads gave back their secondary stacks (a second batch needs no more memory) PASS
+secondary-stack-check: exhaustion caught as Storage_Error with a CAPACITY reason PASS
+secondary-stack-check: the ceiling refused exactly the piece that would pass it PASS
+secondary-stack-check: everything grown before the refusal is intact PASS
+secondary-stack-check: released to the mark after the refusal PASS
+secondary-stack-check: after the exhaustion, the program continues: results intact PASS
 TEST: PASS secondary-stacks
-secondary-stack-check: exhausting the secondary-stack reservation
-User-space exception STORAGE_ERROR
+secondary-stack-check: a result past the ceiling, unhandled
+User-space exception STORAGE_ERROR: secondary stack exhausted: CAPACITY CEILING_REACHED demand=
 "
-        # The exhaustion ends the program through the runtime's report and
-        # Storage_Error (the last-chance handler), after the PASS line and
-        # before any other output of it: no corruption, no fault.
-        if grep -F 'secondary-stack-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
-           ! awk '/secondary-stack-check: exhausting the secondary-stack reservation/ { seen = 1; next }
-                  seen && /secondary stack overflow: request=[0-9]+ top=[0-9]+ max=[0-9]+ committed=[0-9]+ reservation=[0-9]+ \((reservation exhausted|commit refused)\)/ { report = 1; next }
-                  report && /User-space exception STORAGE_ERROR/ { found = 1 }
+        # The last request ends the program through the last-chance handler
+        # (Storage_Error with the runtime's CAPACITY message, which names
+        # the demand and the 256 MiB ceiling) and exit code 134, the typed
+        # Unhandled_Exception outcome, after the PASS line: no corruption,
+        # no fault, no "never refused".
+        if grep -aF 'secondary-stack-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           ! awk '/secondary-stack-check: a result past the ceiling, unhandled/ { seen = 1; next }
+                  seen && /User-space exception STORAGE_ERROR: secondary stack exhausted: CAPACITY CEILING_REACHED demand=[0-9]+ ceiling=268435456/ { report = 1; next }
+                  report && /procmgr: process com\.cubit\.secondary-stack-check pid[0-9 ]+ exited code 134/ { found = 1 }
                   END { exit !found }' "$SERIAL_LOG" ||
            grep -aE 'killed|Page fault|PAGE FAULT' "$SERIAL_LOG" | grep -qi 'secondary-stack-check'; then
-            echo "headless: secondary-stack checks failed, or the exhaustion was not reported cleanly" >&2
+            echo "headless: secondary-stack checks failed, or the unhandled exhaustion did not end the program cleanly" >&2
             exit 1
         fi
         ;;
