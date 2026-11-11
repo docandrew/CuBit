@@ -11,7 +11,13 @@ set -euo pipefail
 dir="$(cd "$(dirname "$0")" && pwd)/build/pki"
 mkdir -p "$dir"
 cd "$dir"
-if [ -f good.pem ] && openssl x509 -in good.pem -noout -checkend $((30 * 86400)) >/dev/null; then
+# Reuse an existing PKI only when every output is present (a run that failed
+# part-way must not look complete) and the valid leaf has 30+ days left.
+complete=1
+for f in ca.pem ca.der other-ca.pem other-ca.der good.pem good.key wronghost.pem untrusted.pem expired.pem; do
+    [ -f "$f" ] || complete=0
+done
+if [ "$complete" = 1 ] && openssl x509 -in good.pem -noout -checkend $((30 * 86400)) >/dev/null; then
     exit 0
 fi
 rm -f ./*.pem ./*.der ./*.key ./*.srl ./*.cnf

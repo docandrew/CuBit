@@ -123,6 +123,9 @@
           default = pkgs.mkShell {
             packages = with pkgs; [
               alire
+              # The test PKI (tests/tls/make-pki.sh) needs OpenSSL >= 3.4
+              # (x509 -not_before/-not_after); pin it here, not the host's.
+              openssl
               binutils
               cvc5
               cpio
