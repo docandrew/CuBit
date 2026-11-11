@@ -100,6 +100,12 @@ is
     FIRMWARE_CONTROL_TAG    : constant Authority_Tag := 16#4657_4D45_4D00_0002#;
     FIRMWARE_PCI_CONFIG_TAG : constant Authority_Tag := 16#4657_4D45_4D00_0004#;
     FIRMWARE_DATA_TAG       : constant Authority_Tag := 16#4657_4D45_4D00_0005#;
+    -- The platform-register pool (ACPI-POOL-001, Platform_Pool_ABI): a
+    -- CAP_DEVICE_MEM naming the kernel's one pool of chipset and firmware
+    -- MMIO devmgr discovered. Set only on the kernel's pool root; maps only
+    -- through MAP_DEVICE into the holder, uncached, inside one pool
+    -- interval and clear of every claim (Platform_Pool).
+    PLATFORM_POOL_TAG       : constant Authority_Tag := 16#4657_4D45_4D00_0006#;
 
     ---------------------------------------------------------------------------
     -- Generation Counter

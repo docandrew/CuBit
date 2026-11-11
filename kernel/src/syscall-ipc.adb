@@ -20,6 +20,7 @@ with Capabilities;
 with Capabilities.IRQ;
 with Capabilities.Operations;
 with Capability_ABI;
+with Capability_Install;
 with Process_Capabilities;
 with Device_Memory_Admission;
 with Device_Memory_Authority;
@@ -50,6 +51,8 @@ with Process.User_Memory;
 with Spinlocks;
 with Process_Lifetime;
 with Physical_Range_Map;
+with Platform_Pool;
+with Platform_Pool_ABI;
 with Service_Registry;
 with System_Publications;
 with TextIO; use TextIO;
@@ -65,6 +68,7 @@ use type Process.ProcessMode;
 use type Capabilities.Operations.OperationStatus;
 
 package body Syscall.IPC is
+    use type Platform_Pool.Claim_Outcome;
     use type Process_Capabilities.Tables.Slot_Base;
     -- ALLOC_DMA's largest order is the one userspace sizes DMA by
     -- (shared/launch Contiguous_Memory, LIM-001).
@@ -378,6 +382,7 @@ package body Syscall.IPC is
                                arg2      : Unsigned_64;
                                arg3      : Unsigned_64;
                                arg4      : Unsigned_64;
+                               arg5      : Unsigned_64;
                                retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- generic instantiation
     is
@@ -399,6 +404,49 @@ package body Syscall.IPC is
         authority : constant Capabilities.Capability := deviceMemoryOf (callerPID, arg4);
     begin
         retval := reterr;
+
+        -- The platform-register pool (ACPI-POOL-001, Platform_Pool_ABI):
+        -- checked once here against the pool; arg5 names a refusal record.
+        declare
+            use type Capabilities.CapabilityType;
+            use type Capabilities.Authority_Tag;
+        begin
+            if authority.capType = Capabilities.CAP_DEVICE_MEM
+              and then authority.authorityTag = Capabilities.PLATFORM_POOL_TAG
+            then
+                declare
+                    mapped  : Boolean;
+                    why     : Platform_Pool_ABI.Refusal;
+                    refusal : aliased Platform_Pool_ABI.Refusal_Record;
+                    copied  : Boolean;
+                begin
+                    if arg3 > Platform_Pool_ABI.Read_Only_Mode
+                      or else numPages = 0 or else numPages > Platform_Pool_ABI.Maximum_Pages
+                      or else arg1 mod Unsigned_64 (Virtmem.PAGE_SIZE) /= 0
+                      or else arg1 >= USER_ADDRESS_LIMIT
+                      or else numPages * Unsigned_64 (Virtmem.PAGE_SIZE) > USER_ADDRESS_LIMIT - arg1
+                      or else Memory_Grants.Overlaps_Received_Region
+                                (arg1, Memory_Grants.Page_Count (numPages))
+                      or else Owned_Memory_Layout.Conflicts
+                                (arg1, numPages * Unsigned_64 (Virtmem.PAGE_SIZE))
+                    then
+                        -- Never over a received grant or owned memory.
+                        retval := Platform_Pool_ABI.Refusal_Word (Platform_Pool_ABI.Invalid_Request);
+                        return;
+                    end if;
+                    Platform_Pool.Map
+                      (callerPID, authority, arg0, arg1, numPages,
+                       arg3 = Platform_Pool_ABI.Read_Only_Mode, mapped, why, refusal);
+                    retval := (if mapped then 0 else Platform_Pool_ABI.Refusal_Word (why));
+                    if not mapped and then arg5 /= 0 then
+                        Process.User_Memory.Copy_To_User
+                          (callerPID, arg5, refusal'Address,
+                           Platform_Pool_ABI.Refusal_Record_Bytes, copied);
+                    end if;
+                end;
+                return;
+            end if;
+        end;
 
         -- arg3: 0 = read/write, 1 = read-only. Never silently widen a
         -- requested inspection mapping, including when a broader cap exists.
@@ -990,6 +1038,16 @@ package body Syscall.IPC is
                     return;
                 end if;
                 pgFlags := Virtmem.PG_USERIO;
+                -- Device pages mapped into another process are a claim on
+                -- the platform pool, recorded before they are mapped.
+                -- No room for the claim: refused (CAPACITY, kernel log).
+                if targetPID /= callerPID
+                  and then Platform_Pool.Mapping_Into
+                             (targetPID, arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE))
+                           = Platform_Pool.Refused_Capacity
+                then
+                    return;
+                end if;
             when others =>
                 Refuse_Into ((Why => Device_Memory_Publication.Invalid_Range, others => <>));
                 return;
@@ -1376,6 +1434,29 @@ package body Syscall.IPC is
     -- requester's identity, arg1 = address of the reply message, arg2 =
     -- address of a Capability_ABI.Derivation. See Process.IPC.
     ---------------------------------------------------------------------------
+    -- A capability derivation the caller is about to place in targetPID:
+    -- device memory there is a claim on the platform pool (ACPI-POOL-001).
+    -- False: no room for the claim; the caller refuses (CAPACITY).
+    function claimDelegation (callerPID, targetPID : Process.ProcessID;
+                              derivation : Capability_ABI.Derivation) return Boolean is
+        use type Process.ProcessID;
+    begin
+        if targetPID = Process.NO_PROCESS or else targetPID = callerPID
+          or else not Capability_Install.Well_Formed (derivation)
+        then
+            return True;
+        end if;
+        declare
+            copy : constant Capability_Install.Outcome := Capability_Install.Derive
+              (ownCap (callerPID, derivation (Capability_ABI.Source)),
+               Capability_Install.Decode (derivation));
+        begin
+            return not copy.Accepted
+              or else Platform_Pool.Delegating (targetPID, copy.Copy)
+                      /= Platform_Pool.Refused_Capacity;
+        end;
+    end claimDelegation;
+
     procedure handleReplyWithCap (callerPID : Process.ProcessID;
                                   arg0, arg1, arg2 : Unsigned_64;
                                   retval : out Unsigned_64) with
@@ -1393,6 +1474,15 @@ package body Syscall.IPC is
         Process.User_Memory.Copy
           (callerPID, arg2, derivation'Address, Capability_ABI.Derivation_Bytes, ok);
         if not ok then
+            return;
+        end if;
+        -- Device memory given in the reply is a claim on the platform pool,
+        -- recorded before the copy exists (Platform_Pool).
+        if not claimDelegation
+          (callerPID, Process.processOfIdentity (Process_Identities.From_Word (arg0)),
+           derivation)
+        then
+            retval := Capability_ABI.Refusal_Word (Capability_ABI.Table_Full);
             return;
         end if;
         -- The kernel stamps the reply's authority tag (the new handle).
@@ -1422,6 +1512,16 @@ package body Syscall.IPC is
         if not ok then
             return;
         end if;
+        declare
+            targetPID : Process.ProcessID;
+            targetTID : Process.ThreadID;
+        begin
+            Process.IPC.replyTargetOf (ownCap (callerPID, arg0), targetPID, targetTID);
+            if not claimDelegation (callerPID, targetPID, derivation) then
+                retval := Capability_ABI.Refusal_Word (Capability_ABI.Table_Full);
+                return;
+            end if;
+        end;
         replyMsg.authorityTag := 0;
         retval := Process.IPC.replySavedWithCapability (arg0, replyMsg, derivation);
     end handleReplySavedWithCap;

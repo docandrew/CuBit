@@ -605,7 +605,7 @@ package body Syscall is
 
             when SYSCALL_MAP_DEVICE =>
                 IPC.handleMapDevice (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_PROCLIST =>
                 Admin.handleProclist (

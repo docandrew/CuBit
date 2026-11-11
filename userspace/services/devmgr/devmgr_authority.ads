@@ -58,6 +58,16 @@ package Devmgr_Authority is
    --  Whether one covers it (nothing is claimed).
    function Covered (Physical, Bytes : Unsigned_64) return Boolean;
 
+   --  The device-memory root covering [Physical, Physical + Bytes), ACPI's
+   --  pages excluded, with nothing claimed: the authority devmgr names when
+   --  it adds the range to the platform-register pool (ACPI-POOL-001; the
+   --  kernel records a claim only when device memory reaches a driver).
+   function Covering_Root (Physical, Bytes : Unsigned_64) return H.Device_Memory;
+
+   --  The platform-register pool's root (Platform_Pool_ABI.Platform_Pool_Tag,
+   --  read, write, grant), or the null handle when the kernel gave none.
+   function Platform_Pool_Root return H.Device_Memory;
+
    --  That range of the covering root, with Kept rights (a copy for a
    --  child), claimed for devices.
    function Device_Copy (Physical, Bytes : Unsigned_64; Kept : H.Rights) return H.Derivation

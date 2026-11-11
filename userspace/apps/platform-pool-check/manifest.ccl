@@ -1,0 +1,15 @@
+# The platform-register pool regression (ACPI-POOL-001; tests/headless,
+# platform-pool): a test-only backend stand-in (the validated
+# com.cubit.acpi-backend identity, like acpi-pci-check) approved for
+# acpi-hardware, acpi-pci-config (bus 0's window from devmgr's PCI broker, to
+# find QEMU's edu device) and acpi-firmware-data (devmgr's "hardware-data"
+# endpoint, over which the pool is asked for). No policy widening.
+(Executable_Manifest
+  identity => "com.cubit.acpi-backend"
+  version => "0.1.0"
+  optional => ["pci-windows"]
+  requests => [
+    (Request.Firmware_Snapshot "tables")
+    (Request.ACPI_Hardware "hardware")
+    (service "acpi-pci-windows" "pci-windows")
+    (service "device-manager" "device-manager")])

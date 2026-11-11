@@ -1,0 +1,23 @@
+--  ACPI-POOL-001: the platform-register pool's proved core (kernel
+--  Platform_Pool_Sets), devmgr's discovery (Devmgr_Platform_Pool) and its
+--  sideband layout (Devmgr_Sideband_Layout). Hosted tests (main) and the SPARK proof target
+--  (tests/prove-all.targets: platform-pool).
+project Pool is
+   for Source_Dirs use (".", "../../kernel/src", "../../userspace/services/devmgr",
+     "../../shared/capabilities");
+   for Source_Files use ("main.adb", "platform_pool_sets.ads", "platform_pool_sets.adb",
+     "devmgr_platform_pool.ads", "devmgr_platform_pool.adb",
+     "devmgr_sideband_layout.ads", "devmgr_sideband_layout.adb", "platform_pool_abi.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use
+        ("--level=2", "--prover=cvc5,z3", "--checks-as-errors=on",
+         "--report=fail", "-j2");
+   end Prove;
+end Pool;

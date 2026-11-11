@@ -31,6 +31,7 @@ with Trace;
 with Capabilities.IRQ;
 with Device_Interrupts;
 with DMA_Remapping;
+with Platform_Pool;
 with Device_Memory_Diagnostics;
 with Device_Memory_Publication;
 with InterruptNumbers;
@@ -2078,6 +2079,9 @@ package body Process is
         -- Its devices' IOMMU domains may be bound again; their mappings go
         -- with its DMA blocks (Process.DMA, unmap then invalidate).
         DMA_Remapping.Release_Owner (Process_Identities.To_Word (identityOf (pid)));
+        -- Its platform-pool claims (its devices are unbound) and its pool
+        -- mapping records (its address space goes next) (ACPI-POOL-001).
+        Platform_Pool.Release_Process (pid);
         Service_Registry.Unregister_Process (pid);
 
         -- Bump the generation counter to invalidate caps held by others.  A

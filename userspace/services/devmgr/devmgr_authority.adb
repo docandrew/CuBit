@@ -7,6 +7,7 @@
 pragma Ada_2022;
 with CuBit.Handles.IPC;
 with Firmware_Data_ABI;
+with Platform_Pool_ABI;
 with Devmgr_Growable;
 
 package body Devmgr_Authority is
@@ -42,6 +43,7 @@ package body Devmgr_Authority is
    PCI_Roots : Window_Store.Store;
    Data    : Data_Store.Store;
    Refused : Natural := 0;
+   Pool    : H.Device_Memory := H.No_Device_Memory;
    Device_Failure : Capacity_Report;
    Device_Failed  : Boolean := False;
 
@@ -53,6 +55,7 @@ package body Devmgr_Authority is
       Window_Store.Clear (PCI_Roots);
       Data_Store.Clear (Data);
       Refused := 0;
+      Pool := H.No_Device_Memory;
       if not Held.Valid then
          return;
       end if;
@@ -83,6 +86,16 @@ package body Devmgr_Authority is
             Kept : Boolean := False;
          begin
             if D.Current and then D.Kind = H.ABI.Device_Memory
+              and then D.Authority_Tag = Platform_Pool_ABI.Platform_Pool_Tag
+              and then D.Held.Read and then D.Held.Write and then D.Held.Grant
+              and then not H.Valid (Pool)
+            then
+               --  The platform-register pool (ACPI-POOL-001): devmgr adds
+               --  the register blocks it discovers and hands copies to the
+               --  approved ACPI program.
+               Pool := Memory;
+               Kept := True;
+            elsif D.Current and then D.Kind = H.ABI.Device_Memory
               and then D.Authority_Tag = Firmware_Data_ABI.Firmware_Data_Tag
               and then D.Held.Read and then D.Held.Write and then D.Held.Grant
               and then MC.Whole_Pages (D.Object, D.Parameter)
@@ -151,6 +164,8 @@ package body Devmgr_Authority is
 
    function Valid return Boolean is (Held.Valid);
    function Roots return BR.Roots is (Held);
+
+   function Platform_Pool_Root return H.Device_Memory is (Pool);
 
    --  The root covering the range, ACPI's pages excluded; nothing claimed.
    function Covering_Root (Physical, Bytes : Unsigned_64) return H.Device_Memory is

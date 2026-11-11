@@ -24,8 +24,11 @@ is
     -- device memory (untagged) maps uncached, firmware memory (the ACPI
     -- hardware grant's NVS runs and FACS page) write-back, and PCI segment
     -- 0 bus 0 configuration (the grant's ECAM slice) uncached, read-only.
+    -- Through a platform-pool capability (Platform_Pool_ABI): mapped
+    -- uncached inside one pool interval clear of every claim, arg5 = the
+    -- address of a refusal record to fill (0: none); 0 or a refusal code.
     procedure handleMapDevice (callerPID : Process.ProcessID;
-                               arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
+                               arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
                                retval    : out Unsigned_64);
 
     -- ALLOC_DMA: arg3 = the mode word (shared/launch DMA_Allocation_ABI),

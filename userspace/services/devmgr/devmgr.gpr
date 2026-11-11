@@ -35,6 +35,11 @@ project Devmgr is
        "devmgr_authority.ads", "devmgr_authority.adb",
        "devmgr_port_claims.ads", "devmgr_port_claims.adb",
        "devmgr_memory_claims.ads", "devmgr_memory_claims.adb",
+       --  The platform-register pool's discovery (ACPI-POOL-001).
+       "devmgr_platform_pool.ads", "devmgr_platform_pool.adb",
+       --  The sideband subsystem (P2SB, its window and port blocks).
+       "devmgr_sideband_layout.ads", "devmgr_sideband_layout.adb",
+       "devmgr_sideband.ads", "devmgr_sideband.adb",
        --  The ledgers and records on the heap (LIM-001b), firmware data.
        "devmgr_growable.ads", "devmgr_growable.adb", "devmgr_heap.ads", "devmgr_heap.adb",
        "devmgr_claim_ledgers.ads", "devmgr_claim_ledgers.adb",

@@ -1,0 +1,3 @@
+(Component name => "platform-pool-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["shared/acpi" "userspace/services/acpi/backend/native"])))

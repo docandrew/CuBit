@@ -441,6 +441,29 @@ package Physical_Ranges with SPARK_Mode, Pure is
    -- page, PCI configuration (segment 0 bus 0) and table-named firmware data.
    type Firmware_Kind is (NVS_Memory, Control_Memory, PCI_Config_Memory, Data_Memory);
 
+   -- Platform-pool mappings are uncached. A page that another firmware
+   -- authority already maps with its own cache class must never get a
+   -- second, uncached alias through the pool: the FACS control page
+   -- (mapped write-back for the ACPI Global Lock; it may lie in a
+   -- Firmware_Reserved span) and every validated PCI configuration page
+   -- (every validated MCFG allocation, handed out through devmgr's PCI
+   -- broker). ACPI NVS is
+   -- already excluded by Device_Range (it is not a device-mappable class).
+   function Pool_Mappable_Range (M : Map; First, Last : Address) return Boolean is
+     (Device_Range (M, First, Last)
+      and then (not M.Control_Known
+                or else M.Control_Page < Page_Of (First)
+                or else M.Control_Page > Page_Of (Last))
+      and then (for all P in Page_Of (First) .. Page_Of (Last) =>
+                  not In_PCI_Config (M, P)));
+
+   -- The same question for a base and byte count (empty, wrapping and
+   -- out-of-range requests are refused).
+   function Pool_Mappable_Bytes (M : Map; Base, Bytes : Unsigned_64) return Boolean is
+     (Bytes > 0 and then Base < Address_Limit
+      and then Bytes - 1 <= Address_Limit - 1 - Base
+      and then Pool_Mappable_Range (M, Base, Base + (Bytes - 1)));
+
    function Firmware_Page (M : Map; P : Page_Number; Kind : Firmware_Kind) return Boolean is
      ((Kind = NVS_Memory and then NVS_Page (M, P))
       or else (Kind = Control_Memory and then Control_Page_Admitted (M, P))

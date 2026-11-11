@@ -28,6 +28,12 @@ with Devmgr_Data_Windows;
 with Devmgr_Growable;
 with Devmgr_Heap;
 with CuBit.Firmware_Data_Exchange;
+with CuBit.Platform_Pool_Exchange;
+with CuBit.Handles.Platform_Pools;
+with Devmgr_Platform_Pool;
+with Devmgr_Sideband;
+with Devmgr_Sideband_Layout;
+with Platform_Pool_ABI;
 with CuBit.Firmware_Snapshot;
 with CuBit.Disk_Install;
 with CuBit.Block_Devices;
@@ -4228,6 +4234,443 @@ procedure main is
       end if;
    end Reply_Data;
 
+   ---------------------------------------------------------------------------
+   --  The platform-register pool (ACPI-POOL-001), devmgr's part of the flow
+   --  (the whole flow is in the kernel's Platform_Pool spec):
+   --    1. Build_Platform_Pool, right after the PCI scan and before any ACPI
+   --       program starts (ACPI's _INI methods touch these registers):
+   --       devmgr's own discovery (MCHBAR, the PMC, and the sideband
+   --       subsystem's window and GPIO community ranges) is ADDED to the
+   --       pool. devmgr maps none of it; the pool only permits mapping.
+   --    2. Serve_Pool hands the ACPI backend its copy; it maps what AML
+   --       touches.
+   --    3. After _INI the ACPI service's _CRS report arrives (future work,
+   --       marked "ACPI-POOL-001 step 3" below).
+   --    4. Drivers devmgr binds claim their memory: chipset blocks are
+   --       shared with firmware, device BARs revoked from it (kernel).
+   --
+   --  Build_Platform_Pool (Devmgr_Platform_Pool):
+   --  what devmgr itself found of the chipset's register blocks and the
+   --  firmware-reserved spans, added to the kernel's pool once after the
+   --  PCI scan. devmgr first collects every member (with its typed kind),
+   --  then declares the pool's sizes from what it found (members, and a
+   --  claim per member and per device BAR extent), then installs them. The
+   --  kernel keeps a bound driver's device BARs out (its claims) and shares
+   --  the chipset blocks; devmgr never names a range it did not discover.
+   ---------------------------------------------------------------------------
+   Pool_Members : Natural := 0;
+
+   --  The QEMU edu device's BAR0 is 1 MiB (QEMU docs/specs/edu.rst).
+   QEMU_Edu_BAR0_Bytes : constant := Devmgr_Platform_Pool.Edu_BAR0_Bytes;
+   PCI_Vendor_Offset   : constant := 16#00#;
+   PCI_Device_Offset   : constant := 16#02#;
+   PCI_BAR0_Offset     : constant := 16#10#;
+   PCI_Memory_BAR_Mask : constant Unsigned_32 := 16#FFFF_FFF0#;
+
+   --  The sideband subsystem: the only code that touches the P2SB.
+   package Sideband is new Devmgr_Sideband
+     (Read_Config_16 => pciReadConfig16, Read_Config_32 => pciReadConfig32,
+      Write_Config_32 => pciWriteConfig32, Inform => Warnings.Inform, Warn => Warnings.Warn,
+      Hex => Hex);
+
+   --  Who a member is, for its log line (Detail: a port or a counter).
+   type Member_Owner is
+     (Host_Bridge_MCHBAR, PMC_PWRMBASE, GPIO_Community, Sideband_Window, Firmware_Reserved,
+      Test_MCHBAR, Test_Community, Test_Window);
+
+   type Pool_Candidate is record
+      First, Bytes : Unsigned_64 := 0;
+      Kind   : Platform_Pool_ABI.Pool_Member_Kind := Platform_Pool_ABI.Device_BAR;
+      Owner  : Member_Owner := Firmware_Reserved;
+      Detail : Unsigned_64 := 0;
+   end record;
+   package Candidate_Store is new Devmgr_Growable
+     (Pool_Candidate, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   use type Candidate_Store.Growth_Status;
+   Pool_Candidates : Candidate_Store.Store;
+   Candidates_Short : Natural := 0;   --  members the list itself had no room for
+
+   function Owner_Name (C : Pool_Candidate) return String is
+     (case C.Owner is
+        when Host_Bridge_MCHBAR => "host-bridge MCHBAR",
+        when PMC_PWRMBASE       => "PMC PWRMBASE (LPIT residency counter " & Hex (C.Detail) & ")",
+        when GPIO_Community     => "P2SB GPIO community port " & Hex (C.Detail),
+        when Sideband_Window    => "P2SB sideband window",
+        when Firmware_Reserved  => "firmware-reserved span",
+        when Test_MCHBAR        => "test profile: QEMU edu BAR0 for MCHBAR",
+        when Test_Community     => "test profile: edu BAR0 for a GPIO community",
+        when Test_Window        => "test profile: edu BAR0 for the sideband window");
+
+   procedure Propose
+     (Owner : Member_Owner; Kind : Platform_Pool_ABI.Pool_Member_Kind; First, Bytes : Unsigned_64;
+      Detail : Unsigned_64 := 0)
+   is
+      Room : Candidate_Store.Capacity_Report;
+   begin
+      Candidate_Store.Append
+        (Pool_Candidates,
+         (First => First, Bytes => Bytes, Kind => Kind, Owner => Owner, Detail => Detail), Room);
+      if Room.Status /= Candidate_Store.Grown then
+         Candidates_Short := Candidates_Short + 1;
+      end if;
+   end Propose;
+
+   procedure Add_Pool_Member (C : Pool_Candidate) is
+      Pool   : constant H.Device_Memory := Devmgr_Authority.Platform_Pool_Root;
+      Source : constant H.Device_Memory := Devmgr_Authority.Covering_Root (C.First, C.Bytes);
+      Answer : Unsigned_64;
+   begin
+      if not H.Valid (Source) then
+         Warnings.Warn ("devmgr: platform pool: " & Owner_Name (C) & " " & Hex (C.First) & " +" &
+                        Hex (C.Bytes) & " is not device memory devmgr holds; left out");
+         return;
+      end if;
+      Answer := CuBit.Handles.Platform_Pools.Insert (Pool, Source, C.First, C.Bytes, C.Kind);
+      if Answer = 0 then
+         Pool_Members := Pool_Members + 1;
+         Warnings.Inform ("devmgr: platform pool member " & Hex (C.First) & " +" & Hex (C.Bytes) &
+                          " " & Platform_Pool_ABI.Member_Kind_Name (C.Kind) &
+                          " owner=" & Owner_Name (C));
+      else
+         Warnings.Warn ("devmgr: platform pool: " & Owner_Name (C) & " " & Hex (C.First) & " +" &
+                        Hex (C.Bytes) & " refused by the kernel (" & Unsigned_64'Image (Answer) & ")");
+      end if;
+   end Add_Pool_Member;
+
+   --  Ranges left out of a span, in whole pages (Devmgr_Platform_Pool.Span).
+   type Span_List is array (Positive range <>) of Devmgr_Platform_Pool.Span;
+
+   --  A firmware-reserved piece is shared with firmware unless a PCI
+   --  device's BAR devmgr claimed overlaps it: then the bound driver owns
+   --  it (Device_BAR).
+   function Piece_Kind (Owner : Member_Owner; Kind : Platform_Pool_ABI.Pool_Member_Kind;
+                        S : Devmgr_Platform_Pool.Span) return Platform_Pool_ABI.Pool_Member_Kind is
+     (if Owner /= Firmware_Reserved then Kind
+      elsif Devmgr_Authority.Clear_Of_Devices (S.First, S.Bytes) then Platform_Pool_ABI.Chipset_Shared
+      else Platform_Pool_ABI.Device_BAR);
+
+   --  Propose what of S lies outside every exclusion I and up (each a
+   --  valid span or empty), each piece one member of Owner.
+   procedure Add_Outside
+     (Owner : Member_Owner; Kind : Platform_Pool_ABI.Pool_Member_Kind;
+      S : Devmgr_Platform_Pool.Span; Exclusions : Span_List; I : Positive)
+   is
+      package PP renames Devmgr_Platform_Pool;
+      Low, High : PP.Span;
+   begin
+      if I > Exclusions'Last then
+         Propose (Owner, Piece_Kind (Owner, Kind, S), S.First, S.Bytes);
+      elsif not PP.Valid (Exclusions (I)) then
+         Add_Outside (Owner, Kind, S, Exclusions, I + 1);
+      else
+         PP.Outside (S, Exclusions (I), Low, High);
+         if Low.Bytes /= 0 then
+            Add_Outside (Owner, Kind, Low, Exclusions, I + 1);
+         end if;
+         if High.Bytes /= 0 then
+            Add_Outside (Owner, Kind, High, Exclusions, I + 1);
+         end if;
+      end if;
+   end Add_Outside;
+
+   --  The first enabled SystemMemory residency counter of the firmware's
+   --  LPIT (Devmgr_Platform_Pool.LPIT_Memory_Counter), 0 without one.
+   function LPIT_Counter return Unsigned_64 is
+      package FS renames CuBit.Firmware_Snapshot;
+      package PP renames Devmgr_Platform_Pool;
+      use type FS.Outcome, FS.Byte_Count;
+      Tables : constant FS.Authority := FS.Held (Root.Firmware_Snapshot_Root);
+      Catalog : FS.Catalog_Info;
+      D : FS.Table_Description;
+      Status : FS.Outcome;
+   begin
+      FS.Info (Tables, Catalog, Status);
+      if Status /= FS.Ok then
+         return 0;
+      end if;
+      for T in 1 .. FS.Table_ID (Catalog.Table_Count) loop
+         FS.Describe (Tables, T, D, Status);
+         if Status = FS.Ok
+           and then (for all I in FS.Signature_Index =>
+                       D.Signature (I) =
+                         Character'Pos (PP.LPIT_Signature (PP.LPIT_Signature'First + I - 1)))
+         then
+            declare
+               Wanted : constant Natural := Natural (FS.Byte_Count'Min (D.Extent, FS.Chunk_Max));
+               Bytes : FS.Byte_Array (1 .. Wanted);
+               Copied : FS.Byte_Count;
+            begin
+               FS.Copy_Part (Tables, T, 0, Bytes, Copied, Status);
+               if Status = FS.Ok and then Copied > 0 then
+                  declare
+                     Table : PP.Byte_Array (0 .. Natural (Copied) - 1);
+                  begin
+                     for K in Table'Range loop
+                        Table (K) := Bytes (K + 1);
+                     end loop;
+                     return PP.LPIT_Memory_Counter (Table);
+                  end;
+               end if;
+            end;
+            return 0;
+         end if;
+      end loop;
+      return 0;
+   end LPIT_Counter;
+
+   procedure Build_Platform_Pool is
+      package PP renames Devmgr_Platform_Pool;
+      package PA renames Platform_Pool_ABI;
+      use type PP.Bridge_Kind;
+      use type PP.Block_Status;
+      Vendor : constant Unsigned_16 := pciReadConfig16 (0, 0, 0, PCI_Vendor_Offset);
+      Device : constant Unsigned_16 := pciReadConfig16 (0, 0, 0, PCI_Device_Offset);
+      --  The test profile: QEMU's q35 bridge with QEMU's edu device present.
+      Edu : Natural := 0;
+      Kind : PP.Bridge_Kind;
+      Block : PP.Block;
+      Edu_Base : Unsigned_64 := 0;
+      --  What devmgr found, each excluded from the firmware-reserved spans
+      --  below: the register block, the PMC, the sideband window (whole),
+      --  then each community.
+      Max_Found : constant := 3;
+      Found : Span_List (1 .. Max_Found) := [others => (First => 0, Bytes => 0)];
+      Found_Count : Natural := 0;
+      Window : PP.Block := (Status => PP.No_Source, Base => 0, Bytes => 0);
+      Test : Boolean;
+
+      procedure Note (B : PP.Block) is
+      begin
+         if B.Status = PP.Found and then Found_Count < Max_Found then
+            Found_Count := Found_Count + 1;
+            Found (Found_Count) := (First => B.Base, Bytes => B.Bytes);
+         end if;
+      end Note;
+
+      function Status_Name (S : PP.Block_Status) return String is
+        (case S is
+           when PP.Disabled => "disabled",
+           when PP.Not_Placed => "not placed",
+           when PP.Beyond_Limit => "beyond the physical limit",
+           when PP.No_Source => "no firmware source",
+           when PP.Unknown_Host_Bridge => "unknown host bridge",
+           when PP.Found => "found");
+   begin
+      if not H.Valid (Devmgr_Authority.Platform_Pool_Root) then
+         Warnings.Warn ("devmgr: platform pool: the kernel gave no pool root");
+         return;
+      end if;
+      for K in 1 .. inventoryCount loop
+         if inventory (K).vendorID = PP.QEMU_Edu_Vendor
+           and then inventory (K).deviceID = PP.QEMU_Edu_Device
+         then
+            Edu := K;
+            exit;
+         end if;
+      end loop;
+      Kind := PP.Bridge_Of (Vendor, Device, Test_Profile => Edu /= 0);
+      Test := Kind = PP.QEMU_Q35_Test;
+      if Test then
+         Edu_Base := Unsigned_64 (pciReadConfig32
+           (inventory (Edu).location.bus, inventory (Edu).location.slot,
+            inventory (Edu).location.func, PCI_BAR0_Offset) and PCI_Memory_BAR_Mask);
+      end if;
+      Block := PP.Discover
+        (Kind,
+         (if Kind = PP.Alder_Lake_N then pciReadConfig32 (0, 0, 0, PP.MCHBAR_Low_Offset) else 0),
+         (if Kind = PP.Alder_Lake_N then pciReadConfig32 (0, 0, 0, PP.MCHBAR_High_Offset) else 0),
+         Edu_Base, QEMU_Edu_BAR0_Bytes);
+      case Block.Status is
+         when PP.Found =>
+            --  edu's BAR0 is a device's BAR: the bound driver owns it.
+            Propose ((if Test then Test_MCHBAR else Host_Bridge_MCHBAR),
+                     (if Test then PA.Device_BAR else PA.Chipset_Shared), Block.Base, Block.Bytes);
+            Note (Block);
+         when PP.Unknown_Host_Bridge =>
+            Warnings.Warn ("devmgr: platform pool: host bridge " & Hex (Unsigned_64 (Vendor)) & ":" &
+                           Hex (Unsigned_64 (Device)) &
+                           " unknown; no register blocks read from it");
+         when others =>
+            Warnings.Warn ("devmgr: platform pool: host bridge register block not usable (" &
+                           Status_Name (Block.Status) & ")");
+      end case;
+
+      --  The PMC, and the sideband window from the sideband subsystem
+      --  (Alder Lake-N), or the test profile's stand-in.
+      if Kind = PP.Alder_Lake_N then
+         declare
+            Counter : constant Unsigned_64 := LPIT_Counter;
+            PMC : constant PP.Block := PP.PWRM_Block (Counter);
+         begin
+            if PMC.Status = PP.Found then
+               Propose (PMC_PWRMBASE, PA.Chipset_Shared, PMC.Base, PMC.Bytes, Counter);
+               Note (PMC);
+            else
+               Warnings.Warn ("devmgr: platform pool: PMC PWRMBASE " & Status_Name (PMC.Status) &
+                              " (LPIT counter " & Hex (Counter) & "); left out");
+            end if;
+         end;
+         Sideband.Discover_Before_ACPI;
+      elsif Test and then Block.Status = PP.Found then
+         Sideband.Adopt_Test_Window (Edu_Base);
+      end if;
+      Window := Sideband.Window;
+      if Kind = PP.Alder_Lake_N and then Window.Status /= PP.Found then
+         Warnings.Warn ("devmgr: platform pool: sideband window " &
+                        Status_Name (Window.Status) & "; GPIO communities left out");
+      end if;
+      if Window.Status = PP.Found then
+         Note (Window);
+         declare
+            Communities : Span_List (1 .. Natural'Max (1, Sideband.Community_Range_Count)) :=
+              [others => (First => 0, Bytes => 0)];
+         begin
+            for C in 1 .. Sideband.Community_Range_Count loop
+               declare
+                  B : constant PP.Block := Sideband.Community_Range (C);
+               begin
+                  Communities (C) := (First => B.Base, Bytes => B.Bytes);
+                  --  A GPIO community is the chipset's, shared with
+                  --  firmware even in the test profile (its claim test).
+                  Propose ((if Test then Test_Community else GPIO_Community), PA.Chipset_Shared,
+                           B.Base, B.Bytes,
+                           (if Test then 0
+                            else Devmgr_Sideband_Layout.ADL_N_GPIO_Ports
+                                   (Devmgr_Sideband_Layout.ADL_N_GPIO_Ports'First + C - 1)));
+               end;
+            end loop;
+            --  The rest of the window, between the communities.
+            Add_Outside ((if Test then Test_Window else Sideband_Window),
+                         (if Test then PA.Device_BAR else PA.Chipset_Shared),
+                         (First => Window.Base, Bytes => Window.Bytes), Communities, 1);
+         end;
+      end if;
+
+      --  Firmware-reserved spans (the kernel's firmware-data roots), less
+      --  every MCFG allocation (PCI configuration space stays devmgr's:
+      --  ECAM is firmware-reserved too) and every block found above.
+      if not Data_Facts_Read then
+         Read_Data_Facts;
+      end if;
+      if not Data_Facts_Whole then
+         Warnings.Warn ("devmgr: platform pool: MCFG facts incomplete; firmware-reserved spans left out");
+      else
+         declare
+            ECAM : constant DW.Range_Array (1 .. Range_Store.Length (ECAM_Ranges))
+            with Import, Address => Range_Store.Block (ECAM_Ranges);
+            Exclusions : Span_List (1 .. Found_Count + ECAM'Length);
+         begin
+            for K in 1 .. Found_Count loop
+               Exclusions (K) := Found (K);
+            end loop;
+            for K in ECAM'Range loop
+               Exclusions (Found_Count + K) :=
+                 (First => ECAM (K).First_Page * PP.Page_Bytes,
+                  Bytes => ECAM (K).Pages * PP.Page_Bytes);
+            end loop;
+            for K in 1 .. Devmgr_Authority.Data_Root_Count loop
+               declare
+                  R : constant Devmgr_Authority.Data_Root := Devmgr_Authority.Data_Root_At (K);
+                  Span : constant PP.Span := (First => R.First, Bytes => R.Bytes);
+               begin
+                  if PP.Valid (Span) then
+                     Add_Outside (Firmware_Reserved, PA.Chipset_Shared, Span, Exclusions, 1);
+                  end if;
+               end;
+            end loop;
+         end;
+      end if;
+      if Candidates_Short /= 0 then
+         Warnings.Warn ("devmgr: platform pool:" & Natural'Image (Candidates_Short) &
+                        " members left out (the list could not grow)");
+      end if;
+
+      --  Declare the sizes from what was found, then install.
+      if Candidate_Store.Length (Pool_Candidates) /= 0 then
+         declare
+            Members : constant Unsigned_64 :=
+              PP.Member_Room (Candidate_Store.Length (Pool_Candidates));
+            Claims  : constant Unsigned_64 :=
+              PP.Claim_Room (Candidate_Store.Length (Pool_Candidates), PCI_Extents_Claimed);
+            Answer  : constant Unsigned_64 := CuBit.Handles.Platform_Pools.Declare_Pool
+              (Devmgr_Authority.Platform_Pool_Root, Members, Claims);
+         begin
+            if Answer /= 0 then
+               Warnings.Warn ("devmgr: platform pool: the kernel refused its sizes (" &
+                              Unsigned_64'Image (Answer) & "); no members");
+            else
+               Warnings.Inform ("devmgr: platform pool declared:" & Unsigned_64'Image (Members) &
+                                " members," & Unsigned_64'Image (Claims) & " claims (" &
+                                Natural'Image (PCI_Extents_Claimed) & " device BAR extents)");
+               for K in 1 .. Candidate_Store.Length (Pool_Candidates) loop
+                  Add_Pool_Member (Candidate_Store.Element_At (Pool_Candidates, K));
+               end loop;
+            end if;
+         end;
+      end if;
+      Candidate_Store.Clear (Pool_Candidates);
+      Warnings.Inform ("devmgr: platform pool:" & Natural'Image (Pool_Members) & " members");
+   end Build_Platform_Pool;
+
+   --  CuBit.Platform_Pool_Exchange: a copy of the pool, read-write without
+   --  grant, only through the firmware-data badge.
+   procedure Serve_Pool (From : Process_ID; Msg : Message) is
+      package PX renames CuBit.Platform_Pool_Exchange;
+      use type PX.Disposition;
+      Request : constant Unsigned_64 := Msg.words (PX.Request_Word);
+      Answer  : PX.Disposition := PX.Granted;
+
+      function Reply_Message (D : PX.Disposition) return Message is
+        (tag => (label => PX.Pool_Request, length => PX.Reply_Words,
+                 protocol => 0, ipc => <>, reserved => 0),
+         authorityTag => 0,
+         words => [PX.Reply_Request_Word => Request,
+                   PX.Disposition_Word   => PX.Disposition'Enum_Rep (D),
+                   PX.Members_Word       => Unsigned_64 (Pool_Members),
+                   others => 0]);
+      ignore : Unsigned_64;
+   begin
+      if Msg.authorityTag /= FDX.Authority_Tag then
+         Answer := PX.Not_Approved;
+         Warnings.Warn ("devmgr: platform pool refused: no acpi-firmware-data approval");
+      elsif Request = 0 then
+         Answer := PX.Malformed;
+      elsif not H.Valid (Devmgr_Authority.Platform_Pool_Root) then
+         Answer := PX.No_Pool;
+      end if;
+      if Answer = PX.Granted then
+         declare
+            Result : constant IPC.Reply_Result :=
+              IPC.Reply_With (From, Reply_Message (PX.Granted),
+                              H.Copy (Devmgr_Authority.Platform_Pool_Root, H.Read_Write));
+         begin
+            case Result.Outcome is
+               when IPC.Transferred =>
+                  debugPrint ("devmgr: platform pool given to " & Hex (To_Word (From)) & LF);
+               when IPC.Delivered_Refused =>
+                  Warnings.Warn ("devmgr: platform pool copy refused by the requester's table");
+               when IPC.Refused =>
+                  ignore := reply (From, Reply_Message (PX.Refused));
+            end case;
+            return;
+         end;
+      end if;
+      ignore := reply (From, Reply_Message (Answer));
+   end Serve_Pool;
+
+   ---------------------------------------------------------------------------
+   --  ACPI-POOL-001 step 3 (future work: the ACPI service and devmgr): the
+   --  hand-off point for the ACPI service's report of the platform devices'
+   --  _CRS resources after _INI (who uses what: GPIO controller ranges and
+   --  interrupts, I2C controllers, the touchpad's I2C address and GpioInt
+   --  pin). The report will arrive on this same firmware-data endpoint, as
+   --  a new CuBit.Platform_Pool_Exchange label served next to Serve_Pool.
+   --  On it devmgr will (a) cross-check Sideband.Community_Range against
+   --  the GPIO controller's _CRS ranges, logging any mismatch, and (b) bind
+   --  drivers from it, Windows-style. Its claims then follow step 4. No
+   --  label exists yet: TODO(ACPI-POOL-001).
+   ---------------------------------------------------------------------------
+
    procedure Serve_Data_Window (From : Process_ID; Msg : Message) is
       First_Page : constant Unsigned_64 := Msg.words (FDX.First_Page_Word);
       Pages      : constant Unsigned_64 := Msg.words (FDX.Page_Count_Word);
@@ -4560,6 +5003,7 @@ begin
    scanPCI;
    Warnings.Inform ("devmgr: PCI memory claimed for devices:" & Natural'Image (PCI_Extents_Claimed) &
                     " BAR extents and bridge windows");
+   Build_Platform_Pool;
    for K in 1 .. Failure_Store.Length (PCI_Extent_Failures) loop
       declare
          F : constant Extent_Failure := Failure_Store.Element_At (PCI_Extent_Failures, K);
@@ -5664,6 +6108,11 @@ begin
                        ipc => Accepting, reserved => 0)
       then
          Serve_Data_Window (from, msg);
+      elsif msg.tag = (label => CuBit.Platform_Pool_Exchange.Pool_Request,
+                       length => CuBit.Platform_Pool_Exchange.Request_Words, protocol => 0,
+                       ipc => Accepting, reserved => 0)
+      then
+         Serve_Pool (from, msg);
       elsif msg.tag = (label => CuBit.Disk_Install.Open_Disk,
                        length => CuBit.Disk_Install.Open_Words, protocol => 0,
                        ipc => Accepting, reserved => 0)

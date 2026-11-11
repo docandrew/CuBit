@@ -261,6 +261,7 @@ volume-list             | fs       | kernel | alr exec -- gnatprove -P ../tests/
 # --- Added by the second proof sweep (2026-10-10 night) --------------------
 msi-vectors             | kernel   | . | bash tests/msi-vectors/run.sh --prove
 iommu                   | kernel   | . | bash tests/iommu/run.sh --prove
+platform-pool           | kernel   | . | bash tests/platform-pool/run.sh --prove
 key-repeat              | desktop  | kernel | alr exec -- gnatprove -P ../tests/key-repeat/prove.gpr --mode=all -u key_repeat.adb --level=2 -j2
 absolute-pointer        | drivers  | kernel | alr exec -- gnatprove -P ../tests/absolute-pointer/prove.gpr --mode=all --level=2 --checks-as-errors=on --report=fail -j2
 output-modes            | display  | . | bash tests/output-modes/prepare.sh && gnatprove -P tests/output-modes/modes.gpr -u cubit-output_modes.adb --level=2 --report=fail -j2

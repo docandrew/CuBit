@@ -1,0 +1,14 @@
+# The platform-register pool (ACPI-POOL-001; Platform_Pool_ABI,
+# CuBit.Platform_Pool_Exchange). run.sh adds QEMU's edu device: on q35 that
+# is devmgr's declared test profile (edu's BAR0 stands in for the host
+# bridge's MCHBAR). platform-pool-check stands in for acpi-backend.svc
+# approved for the firmware-data endpoint; it maps edu through the pool
+# before logstore starts, then edu's fixture driver (generic-check.drv,
+# launched once logstore runs) binds and claims the BAR, which revokes the
+# mapping.
+(startup v1
+  (start "platform-pool-check.app" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-pci-config approve-declared) (acpi-firmware-data approve-declared))
+  (start "logstore.svc" (priority 5))
+)

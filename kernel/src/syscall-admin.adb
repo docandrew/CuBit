@@ -19,6 +19,13 @@ with Config;
 with Cpu_Times_Page;
 with Device_Interrupts;
 with Device_Memory_Diagnostics;
+with Device_Memory_Admission;
+with Device_Memory_Authority;
+with Physical_Range_Map;
+with Physical_Ranges;
+with Platform_Pool;
+with Platform_Pool_ABI;
+with Platform_Pool_Sets;
 with Kernel_Log_Mapping;
 with Process_Stops;
 with Device_Vector_ABI;
@@ -56,6 +63,7 @@ use type Process.ProcessMode;
 use type Capabilities.Operations.OperationStatus;
 
 package body Syscall.Admin is
+    use type Platform_Pool.Claim_Outcome;
     use type Process_Capabilities.Tables.Slot_Base;
 
     function toErr is
@@ -93,6 +101,19 @@ package body Syscall.Admin is
         Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
         return found;
     end findOwn;
+
+    -- The capability a handle names in the caller's table (a snapshot), or
+    -- the null capability.
+    function ownCap (callerPID : Process.ProcessID; handle : Unsigned_64)
+                     return Capabilities.Capability
+    is
+        found : Process_Capabilities.Found;
+    begin
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        found := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, handle);
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        return (if found.OK then found.Cap else Capabilities.NULL_CAPABILITY);
+    end ownCap;
 
     function onlyRight (right : Capabilities.CapabilityRight)
                         return Capabilities.CapabilityRights
@@ -526,6 +547,22 @@ package body Syscall.Admin is
         if not source.OK or else not offer.Accepted then
             return;
         end if;
+        -- Device memory offered to the server is a claim on the platform
+        -- pool for it, recorded before it can take the offer (Platform_Pool).
+        declare
+            callee : constant Process_Capabilities.Found :=
+              findOwn (callerPID, arg0, Capabilities.CAP_ENDPOINT, Capabilities.NO_RIGHTS);
+        begin
+            -- No room for the claim: the call is not made (CAPACITY).
+            if callee.OK
+              and then callee.Cap.object.ref in 1 .. Unsigned_64 (Process.ProctabRange'Last)
+              and then Platform_Pool.Delegating
+                         (Process.ProcessID (callee.Cap.object.ref), offer.Copy)
+                       = Platform_Pool.Refused_Capacity
+            then
+                return;
+            end if;
+        end;
         replyTag := Process.IPC.capCallOffering
           (handle => arg0, msg => localMsg, deadlineMs => arg3, offer => offer.Copy);
         Process.User_Memory.Write_Message
@@ -737,6 +774,86 @@ package body Syscall.Admin is
     -- the handle word in that process's table, or a refusal code. Nothing
     -- else about another process's table can be read or changed.
     ---------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
+    -- Insert_Into_Pool (INSTALL_CAPABILITY with the pool as the target,
+    -- ACPI-POOL-001, Platform_Pool_ABI): Pool is the caller's pool
+    -- capability, which must carry Grant (devmgr's root; the ACPI pair's
+    -- copy has none).
+    --   * Source = the pool itself: declare the pool's size (Base members,
+    --     Length claims, Narrow), derived from devmgr's discovery.
+    --   * Source = an untagged device-memory root: add a member. The
+    --     derivation narrows it to whole pages inside it (the ordinary
+    --     derivation check: Grant on the source, never wider), inside the
+    --     pool capability's own range, of device-mappable pages that are not
+    --     the boot framebuffer; Set_Tag with Tag = the member's kind
+    --     (Platform_Pool_ABI.Member_Kind_Word), which must be given.
+    -- 0, or a refusal code.
+    ---------------------------------------------------------------------------
+    function Insert_Into_Pool
+      (callerPID  : Process.ProcessID;
+       Pool       : Capabilities.Capability;
+       derivation : Capability_ABI.Derivation) return Unsigned_64
+    is
+        use type Capabilities.CapabilityType;
+        use type Capabilities.Authority_Tag;
+        use type Physical_Ranges.Range_Class;
+        package PR renames Physical_Ranges;
+        package PA renames Platform_Pool_ABI;
+        M      : PR.Map renames Physical_Range_Map.Kernel_Map;
+        source : constant Capabilities.Capability :=
+          ownCap (callerPID, derivation (Capability_ABI.Source));
+        given  : constant Capability_Install.Request := Capability_Install.Decode (derivation);
+        -- The kind travels in the Tag word; the derivation proper is untagged.
+        item   : constant Capability_Install.Request :=
+          (given with delta Set_Tag => False, Tag => Capabilities.NO_AUTHORITY_TAG);
+        outcome : constant Capability_Install.Outcome := Capability_Install.Derive (source, item);
+        kind   : Platform_Pool_Sets.Pool_Member_Kind;
+    begin
+        if not Pool.rights (Capabilities.RIGHT_GRANT) then
+            return Capability_ABI.Refusal_Word (Capability_ABI.Insufficient_Rights);
+        elsif source.capType = Capabilities.CAP_DEVICE_MEM
+          and then source.authorityTag = Capabilities.PLATFORM_POOL_TAG
+        then
+            -- The declaration: the pool names itself.
+            if not given.Narrow or else given.Set_Tag then
+                return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+            end if;
+            return Platform_Pool.Declare_Pool (callerPID, given.Base, given.Length);
+        elsif source.capType /= Capabilities.CAP_DEVICE_MEM
+          or else source.authorityTag /= Capabilities.NO_AUTHORITY_TAG
+        then
+            return Capability_ABI.Refusal_Word (Capability_ABI.Wrong_Kind);
+        elsif not given.Narrow or else not given.Set_Tag
+          or else item.Base mod Platform_Pool_Sets.Page_Bytes /= 0
+          or else item.Length mod Platform_Pool_Sets.Page_Bytes /= 0
+        then
+            return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        elsif given.Tag = PA.Member_Kind_Word (PA.Device_BAR) then
+            kind := Platform_Pool_Sets.Device_BAR;
+        elsif given.Tag = PA.Member_Kind_Word (PA.Chipset_Shared) then
+            kind := Platform_Pool_Sets.Chipset_Shared;
+        else
+            return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
+        end if;
+        if not outcome.Accepted then
+            return Capability_ABI.Refusal_Word (outcome.Why);
+        elsif not Device_Memory_Admission.Covers
+                    (Pool.object.ref, Pool.object.param, item.Base, item.Length)
+          or else not Device_Memory_Authority.Mint_Admissible (M, item.Base, item.Length)
+        then
+            return Capability_ABI.Refusal_Word (Capability_ABI.Not_Permitted);
+        end if;
+        for I in 1 .. M.Count loop
+            if M.Spans (I).Class = PR.Firmware_Framebuffer
+              and then M.Spans (I).First <= item.Base + (item.Length - 1)
+              and then item.Base <= M.Spans (I).Last
+            then
+                return Capability_ABI.Refusal_Word (Capability_ABI.Not_Permitted);
+            end if;
+        end loop;
+        return Platform_Pool.Insert (item.Base, item.Length, kind);
+    end Insert_Into_Pool;
+
     procedure handleInstallCap (callerPID : Process.ProcessID;
                                 arg0, arg1 : Unsigned_64;
                                 retval : out Unsigned_64) with
@@ -757,6 +874,20 @@ package body Syscall.Admin is
         if not copied or else not Capability_Install.Well_Formed (derivation) then
             return;
         end if;
+        -- The platform-register pool as the target (ACPI-POOL-001): add the
+        -- narrowed range of an untagged device-memory source to the pool.
+        declare
+            use type Capabilities.CapabilityType;
+            use type Capabilities.Authority_Tag;
+            target : constant Capabilities.Capability := ownCap (callerPID, arg0);
+        begin
+            if target.capType = Capabilities.CAP_DEVICE_MEM
+              and then target.authorityTag = Capabilities.PLATFORM_POOL_TAG
+            then
+                retval := Insert_Into_Pool (callerPID, target, derivation);
+                return;
+            end if;
+        end;
         cspace := findOwn (callerPID, arg0, Capabilities.CAP_CSPACE,
                            onlyRight (Capabilities.RIGHT_GRANT));
         if not cspace.OK then
@@ -767,6 +898,22 @@ package body Syscall.Admin is
             return;
         end if;
         targetPID := Process.ProcessID (cspace.Cap.object.ref);
+        -- Device memory placed in another process is a claim on the pool:
+        -- recorded (and any overlapping pool mapping of another process
+        -- unmapped) before the copy exists (Platform_Pool).
+        declare
+            copy : constant Capability_Install.Outcome := Capability_Install.Derive
+              (ownCap (callerPID, derivation (Capability_ABI.Source)),
+               Capability_Install.Decode (derivation));
+        begin
+            -- No room for the claim: refused (CAPACITY), the copy never made.
+            if copy.Accepted
+              and then Platform_Pool.Delegating (targetPID, copy.Copy) = Platform_Pool.Refused_Capacity
+            then
+                retval := Capability_ABI.Refusal_Word (Capability_ABI.Table_Full);
+                return;
+            end if;
+        end;
         firstPID := Process.ProcessID'Min (callerPID, targetPID);
         secondPID := Process.ProcessID'Max (callerPID, targetPID);
         -- The IPC two-mailbox ascending-PID order. The CSPACE, the source and

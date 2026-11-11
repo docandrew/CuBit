@@ -352,7 +352,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|secondary-stacks|ada-runtime|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|secondary-stacks|ada-runtime|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -852,6 +852,15 @@ with open(sys.argv[1], "wb") as f:
         # the same image without (acpi-pci-config approve-declared) gets
         # the grant without it (build: make -C kernel acpi-pci-check).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-pci-config.ccl"
+        ;;
+    platform-pool)
+        # ACPI-POOL-001: the platform-register pool (devmgr's test profile:
+        # q35 plus QEMU's edu device, whose BAR0 stands in for MCHBAR
+        # (Device_BAR) and a sideband window (Device_BAR) with one GPIO
+        # community (Chipset_Shared)), mappings through it, their
+        # revocation when edu's fixture driver binds, and the shared
+        # community kept (build: make -C kernel platform-pool-check).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-platform-pool.ccl"
         ;;
     acpi-firmware-data)
         # Table-named firmware data: devmgr's narrowed, uncached windows
@@ -2223,6 +2232,20 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
+    if [ "$TEST_NAME" = "platform-pool" ]; then
+        for POOL_IMAGE in logstore.svc platform-pool-check.app; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$POOL_IMAGE" ]; then
+                echo "headless: build $POOL_IMAGE first (make -C kernel world platform-pool-check)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $POOL_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$POOL_IMAGE $POOL_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $POOL_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
     if [ "$TEST_NAME" = "acpi-firmware-data" ]; then
         # acpi-data-unapproved.app is acpi-data-check.app under another name:
         # the same declaration, approved for the hardware grant but not for
@@ -3174,7 +3197,7 @@ AUDIO_ARGS=(-audiodev none,id=snd0)
 # Devices only some tests add: QEMU's edu device binds the generic launch's
 # fixture driver (HW-002); without it the driver stays unbound.
 TEST_DEVICE_ARGS=()
-if [ "$TEST_NAME" = "generic-launch" ]; then
+if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "platform-pool" ]; then
     TEST_DEVICE_ARGS=(-device edu)
 fi
 # QEMU's PCI test device has no CuBit driver: its 1 MiB 64-bit prefetchable
@@ -6303,6 +6326,67 @@ TEST: PASS acpi-firmware-data
            [ "$(grep -acF 'TEST: PASS acpi-firmware-data' "$SERIAL_LOG")" -ne 1 ] ||
            [ "$(grep -acF 'acpi-data-check: no firmware-data endpoint' "$SERIAL_LOG")" -ne 1 ]; then
             echo "headless: ACPI firmware-data checks failed, or the unapproved image got the endpoint" >&2
+            exit 1
+        fi
+        ;;
+    platform-pool)
+        # devmgr builds the pool from its own discovery (the test profile's
+        # register block), declaring its sizes first; the stand-in maps it,
+        # plain loads and stores work, its mapping records grow, the
+        # driver's later bind revokes the device-BAR mappings (kernel log),
+        # the same request is then refused CLAIMED naming the driver, the
+        # shared community stays mapped and admitted (kernel log "shared"),
+        # and a touch of the revoked mapping faults.
+        required_markers="
+platform-pool: declared members=
+devmgr: platform pool declared:
+devmgr: platform pool member
+DEVICE_BAR owner=test profile: QEMU edu BAR0 for MCHBAR
+CHIPSET_SHARED owner=test profile: edu BAR0 for a GPIO community
+DEVICE_BAR owner=test profile: edu BAR0 for the sideband window
+platform-pool: member phys=
+platform-pool-check: devmgr grants the pool PASS
+platform-pool-check: the pool capability is carried PASS
+platform-pool-check: its kernel tag is the platform pool PASS
+platform-pool-check: read-write without grant PASS
+platform-pool-check: cannot be copied on PASS
+platform-pool-check: bus 0 acquired from the PCI broker PASS
+platform-pool-check: edu found PASS
+platform-pool-check: edu's register page maps through the pool PASS
+platform-pool: mapped phys=
+platform-pool-check: a plain load reads the register PASS
+platform-pool-check: a plain store reaches the register PASS
+platform-pool-check: two pages at MCHBAR+0x7000 map (image-10 MBAR witness) PASS
+platform-pool-check: a request across the MCHBAR block's end refused (OUTSIDE_POOL) PASS
+platform-pool-check: a GPIO community page maps through the pool PASS
+platform-pool-check: a sideband window page between members maps PASS
+platform-pool-check: 300 mappings of one community page: the kernel's records grow PASS
+platform-pool-check: a request across the community's start refused (OUTSIDE_POOL) PASS
+platform-pool-check: the page past the member refused (OUTSIDE_POOL) PASS
+platform-pool-check: a RAM page refused (NOT_COVERED) PASS
+platform-pool-check: PCI configuration of bus 1 refused (NOT_COVERED) PASS
+devmgr: generic-check.drv launched for
+platform-pool: revoked phys=
+platform-pool: shared phys=
+kind=CHIPSET_SHARED
+platform-pool: refused phys=
+why=CLAIMED claimant=
+platform-pool-check: a bound driver's BAR is refused, naming both claimants (CLAIMED) PASS
+platform-pool-check: the shared community stays mapped after the bind PASS
+platform-pool-check: the community under the bound driver is still admitted (shared) PASS
+shared-with=
+TEST: PASS platform-pool
+platform-pool-check: touching the revoked mapping
+ address 105553116266496 kind=unmapped
+"
+        if grep -aF 'platform-pool-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aqF 'TEST: FAIL platform-pool' "$SERIAL_LOG" ||
+           grep -aqF 'platform-pool-check: revoked mapping still readable' "$SERIAL_LOG" ||
+           grep -aqF 'why=CAPACITY' "$SERIAL_LOG" ||
+           grep -aqF 'MAPPING_CAPACITY' "$SERIAL_LOG" ||
+           [ "$(grep -acF 'platform-pool: shared phys=' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'TEST: PASS platform-pool' "$SERIAL_LOG")" -ne 1 ]; then
+            echo "headless: platform-pool checks failed, or the revoked mapping stayed readable" >&2
             exit 1
         fi
         ;;

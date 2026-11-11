@@ -14,6 +14,8 @@ with BuddyAllocator;
 with Capabilities;
 with Capability_ABI;
 with Firmware_Data_ABI;
+with Platform_Pool;
+with Platform_Pool_ABI;
 with InterruptNumbers;
 with Process_Capabilities;
 with Device_Vector_ABI;
@@ -59,7 +61,8 @@ package body Modules with SPARK_Mode => Off is
       (Capabilities.FIRMWARE_NVS_TAG /= Capability_ABI.Firmware_NVS_Tag
        or else Capabilities.FIRMWARE_CONTROL_TAG /= Capability_ABI.Firmware_Control_Tag
        or else Capabilities.FIRMWARE_PCI_CONFIG_TAG /= Capability_ABI.Firmware_PCI_Config_Tag
-       or else Capabilities.FIRMWARE_DATA_TAG /= Firmware_Data_ABI.Firmware_Data_Tag,
+       or else Capabilities.FIRMWARE_DATA_TAG /= Firmware_Data_ABI.Firmware_Data_Tag
+       or else Capabilities.PLATFORM_POOL_TAG /= Platform_Pool_ABI.Platform_Pool_Tag,
        "the kernel and the runtime must agree on the firmware-memory tags");
 
     initrdAddr  : Virtmem.PhysAddress := 0;
@@ -742,6 +745,11 @@ package body Modules with SPARK_Mode => Off is
                 exit when not Found;
                 Firmware_Total := Firmware_Total + 1;
             end loop;
+            -- One more firmware-root word: the platform-register pool's root
+            -- (ACPI-POOL-001), placed after the firmware-memory runs. Counting
+            -- it here keeps the inventory indivisible: admission covers the
+            -- pool root together with every run, or none of them.
+            Firmware_Total := Firmware_Total + 1;
             return Root_Export_Admission.Choose (Device_Total, Firmware_Total);
         end Select_Roots;
     begin
@@ -1032,7 +1040,9 @@ package body Modules with SPARK_Mode => Off is
                 end loop;
                 Cursor := PR.First_Firmware_Cursor (M);
                 Left_Out := 0;
-                for Index in 1 .. Natural (Kept_Firmware) loop
+                -- The last firmware slot is the pool root (counted by
+                -- Select_Roots), so the runs fill 1 .. Kept_Firmware - 1.
+                for Index in 1 .. Natural (Kept_Firmware) - 1 loop
                     PR.Next_Firmware_Run (M, Cursor, Found, Run, Left_Out);
                     exit when not Found;
                     declare
@@ -1051,6 +1061,27 @@ package body Modules with SPARK_Mode => Off is
                                 when PR.PCI_Config_Memory => " (PCI configuration)",
                                 when PR.Data_Memory       => " (firmware data)"));
                 end loop;
+                -- The platform-register pool's root (ACPI-POOL-001): empty
+                -- until devmgr installs the register blocks it discovers
+                -- (INSTALL_CAPABILITY, each a narrowed device-memory root);
+                -- devmgr owns it, and its delegations are never claims.
+                -- Admission is all-or-nothing (Root_Export_Admission), so an
+                -- admitted inventory always has this slot.
+                if Natural (Kept_Firmware) >= 1 then
+                    declare
+                        word : Unsigned_64;
+                    begin
+                        place ((capType      => Capabilities.CAP_DEVICE_MEM,
+                                rights       => RW_GRANT,
+                                authorityTag => Capabilities.PLATFORM_POOL_TAG,
+                                object       => (ref => 0, param => Physical_Ranges.Address_Limit),
+                                gen          => Capabilities.INITIAL_GENERATION), word);
+                        Put_Word (LC.Firmware_Root_Word (Kept_Device, Natural (Kept_Firmware)), word);
+                    end;
+                    Platform_Pool.Set_Owner
+                      (Process_Identities.To_Word (Process.identityOf (devmgrPID)));
+                    println ("Modules: devmgr platform-register pool root");
+                end if;
                 if Left_Out > 0 then
                     print ("Modules: firmware-memory runs left out: ");
                     println (Left_Out);

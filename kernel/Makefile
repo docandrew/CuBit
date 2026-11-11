@@ -1698,6 +1698,15 @@ acpi-data-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/acpi-data-check/component.ccl
 	cp ../userspace/apps/acpi-data-check/build/acpi-data-check.app isodir/boot/acpi-data-check.app
 
+# The platform-register pool (ACPI-POOL-001): devmgr's pool, mapped once,
+# refused over a bound driver's BAR, revoked when the driver binds after the
+# mapping (headless --test platform-pool). Test-only (never in world/images).
+.PHONY : platform-pool-check
+platform-pool-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/platform-pool-check/build
+	$(CCL_BUILD) ../userspace/apps/platform-pool-check/component.ccl
+	cp ../userspace/apps/platform-pool-check/build/platform-pool-check.app isodir/boot/platform-pool-check.app
+
 firmware-undeclared: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/firmware-undeclared/build
 	$(CCL_BUILD) ../userspace/apps/firmware-undeclared/component.ccl
