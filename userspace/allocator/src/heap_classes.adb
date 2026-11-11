@@ -343,4 +343,106 @@ package body Heap_Classes with SPARK_Mode is
       end case;
       return V;
    end Scale;
+
+   procedure Prove_Scale (Item : Natural; Class : Size_Class) is
+   begin
+      case Class is
+         when Bytes_16 => pragma Assert (Stride (Class) = 16 and then Scale (Item, Class) = Item * 16);
+         when Bytes_32 => pragma Assert (Stride (Class) = 32 and then Scale (Item, Class) = Item * 32);
+         when Bytes_48 => pragma Assert (Stride (Class) = 48 and then Scale (Item, Class) = Item * 48);
+         when Bytes_64 => pragma Assert (Stride (Class) = 64 and then Scale (Item, Class) = Item * 64);
+         when Bytes_80 => pragma Assert (Stride (Class) = 80 and then Scale (Item, Class) = Item * 80);
+         when Bytes_96 => pragma Assert (Stride (Class) = 96 and then Scale (Item, Class) = Item * 96);
+         when Bytes_112 => pragma Assert (Stride (Class) = 112 and then Scale (Item, Class) = Item * 112);
+         when Bytes_128 => pragma Assert (Stride (Class) = 128 and then Scale (Item, Class) = Item * 128);
+         when Bytes_160 => pragma Assert (Stride (Class) = 160 and then Scale (Item, Class) = Item * 160);
+         when Bytes_192 => pragma Assert (Stride (Class) = 192 and then Scale (Item, Class) = Item * 192);
+         when Bytes_224 => pragma Assert (Stride (Class) = 224 and then Scale (Item, Class) = Item * 224);
+         when Bytes_256 => pragma Assert (Stride (Class) = 256 and then Scale (Item, Class) = Item * 256);
+         when Bytes_320 => pragma Assert (Stride (Class) = 320 and then Scale (Item, Class) = Item * 320);
+         when Bytes_384 => pragma Assert (Stride (Class) = 384 and then Scale (Item, Class) = Item * 384);
+         when Bytes_448 => pragma Assert (Stride (Class) = 448 and then Scale (Item, Class) = Item * 448);
+         when Bytes_512 => pragma Assert (Stride (Class) = 512 and then Scale (Item, Class) = Item * 512);
+         when Bytes_640 => pragma Assert (Stride (Class) = 640 and then Scale (Item, Class) = Item * 640);
+         when Bytes_768 => pragma Assert (Stride (Class) = 768 and then Scale (Item, Class) = Item * 768);
+         when Bytes_896 => pragma Assert (Stride (Class) = 896 and then Scale (Item, Class) = Item * 896);
+         when Bytes_1024 => pragma Assert (Stride (Class) = 1_024 and then Scale (Item, Class) = Item * 1_024);
+         when Bytes_1280 => pragma Assert (Stride (Class) = 1_280 and then Scale (Item, Class) = Item * 1_280);
+         when Bytes_1536 => pragma Assert (Stride (Class) = 1_536 and then Scale (Item, Class) = Item * 1_536);
+         when Bytes_1792 => pragma Assert (Stride (Class) = 1_792 and then Scale (Item, Class) = Item * 1_792);
+         when Bytes_2048 => pragma Assert (Stride (Class) = 2_048 and then Scale (Item, Class) = Item * 2_048);
+         when Bytes_2560 => pragma Assert (Stride (Class) = 2_560 and then Scale (Item, Class) = Item * 2_560);
+         when Bytes_3072 => pragma Assert (Stride (Class) = 3_072 and then Scale (Item, Class) = Item * 3_072);
+         when Bytes_3584 => pragma Assert (Stride (Class) = 3_584 and then Scale (Item, Class) = Item * 3_584);
+         when Bytes_4096 => pragma Assert (Stride (Class) = 4_096 and then Scale (Item, Class) = Item * 4_096);
+      end case;
+   end Prove_Scale;
+
+   procedure Prove_Start (Relative : Geometry_Offset; Class : Size_Class) is
+   begin
+      case Class is
+         when Bytes_16 => pragma Assert (Stride (Class) = 16 and then Slots (Class) = 4_096 and then Relative = (Relative / 16) * 16);
+         when Bytes_32 => pragma Assert (Stride (Class) = 32 and then Slots (Class) = 2_048 and then Relative = (Relative / 32) * 32);
+         when Bytes_48 => pragma Assert (Stride (Class) = 48 and then Slots (Class) = 1_365 and then Relative = (Relative / 48) * 48);
+         when Bytes_64 => pragma Assert (Stride (Class) = 64 and then Slots (Class) = 1_024 and then Relative = (Relative / 64) * 64);
+         when Bytes_80 => pragma Assert (Stride (Class) = 80 and then Slots (Class) = 819 and then Relative = (Relative / 80) * 80);
+         when Bytes_96 => pragma Assert (Stride (Class) = 96 and then Slots (Class) = 682 and then Relative = (Relative / 96) * 96);
+         when Bytes_112 => pragma Assert (Stride (Class) = 112 and then Slots (Class) = 585 and then Relative = (Relative / 112) * 112);
+         when Bytes_128 => pragma Assert (Stride (Class) = 128 and then Slots (Class) = 512 and then Relative = (Relative / 128) * 128);
+         when Bytes_160 => pragma Assert (Stride (Class) = 160 and then Slots (Class) = 409 and then Relative = (Relative / 160) * 160);
+         when Bytes_192 => pragma Assert (Stride (Class) = 192 and then Slots (Class) = 341 and then Relative = (Relative / 192) * 192);
+         when Bytes_224 => pragma Assert (Stride (Class) = 224 and then Slots (Class) = 292 and then Relative = (Relative / 224) * 224);
+         when Bytes_256 => pragma Assert (Stride (Class) = 256 and then Slots (Class) = 256 and then Relative = (Relative / 256) * 256);
+         when Bytes_320 => pragma Assert (Stride (Class) = 320 and then Slots (Class) = 204 and then Relative = (Relative / 320) * 320);
+         when Bytes_384 => pragma Assert (Stride (Class) = 384 and then Slots (Class) = 170 and then Relative = (Relative / 384) * 384);
+         when Bytes_448 => pragma Assert (Stride (Class) = 448 and then Slots (Class) = 146 and then Relative = (Relative / 448) * 448);
+         when Bytes_512 => pragma Assert (Stride (Class) = 512 and then Slots (Class) = 128 and then Relative = (Relative / 512) * 512);
+         when Bytes_640 => pragma Assert (Stride (Class) = 640 and then Slots (Class) = 102 and then Relative = (Relative / 640) * 640);
+         when Bytes_768 => pragma Assert (Stride (Class) = 768 and then Slots (Class) = 85 and then Relative = (Relative / 768) * 768);
+         when Bytes_896 => pragma Assert (Stride (Class) = 896 and then Slots (Class) = 73 and then Relative = (Relative / 896) * 896);
+         when Bytes_1024 => pragma Assert (Stride (Class) = 1_024 and then Slots (Class) = 64 and then Relative = (Relative / 1_024) * 1_024);
+         when Bytes_1280 => pragma Assert (Stride (Class) = 1_280 and then Slots (Class) = 51 and then Relative = (Relative / 1_280) * 1_280);
+         when Bytes_1536 => pragma Assert (Stride (Class) = 1_536 and then Slots (Class) = 42 and then Relative = (Relative / 1_536) * 1_536);
+         when Bytes_1792 => pragma Assert (Stride (Class) = 1_792 and then Slots (Class) = 36 and then Relative = (Relative / 1_792) * 1_792);
+         when Bytes_2048 => pragma Assert (Stride (Class) = 2_048 and then Slots (Class) = 32 and then Relative = (Relative / 2_048) * 2_048);
+         when Bytes_2560 => pragma Assert (Stride (Class) = 2_560 and then Slots (Class) = 25 and then Relative = (Relative / 2_560) * 2_560);
+         when Bytes_3072 => pragma Assert (Stride (Class) = 3_072 and then Slots (Class) = 21 and then Relative = (Relative / 3_072) * 3_072);
+         when Bytes_3584 => pragma Assert (Stride (Class) = 3_584 and then Slots (Class) = 18 and then Relative = (Relative / 3_584) * 3_584);
+         when Bytes_4096 => pragma Assert (Stride (Class) = 4_096 and then Slots (Class) = 16 and then Relative = (Relative / 4_096) * 4_096);
+      end case;
+   end Prove_Start;
+
+   procedure Prove_Order (I, J : Natural; Class : Size_Class) is
+   begin
+      case Class is
+         when Bytes_16 => pragma Assert (Stride (Class) = 16 and then I * 16 + 16 <= J * 16);
+         when Bytes_32 => pragma Assert (Stride (Class) = 32 and then I * 32 + 32 <= J * 32);
+         when Bytes_48 => pragma Assert (Stride (Class) = 48 and then I * 48 + 48 <= J * 48);
+         when Bytes_64 => pragma Assert (Stride (Class) = 64 and then I * 64 + 64 <= J * 64);
+         when Bytes_80 => pragma Assert (Stride (Class) = 80 and then I * 80 + 80 <= J * 80);
+         when Bytes_96 => pragma Assert (Stride (Class) = 96 and then I * 96 + 96 <= J * 96);
+         when Bytes_112 => pragma Assert (Stride (Class) = 112 and then I * 112 + 112 <= J * 112);
+         when Bytes_128 => pragma Assert (Stride (Class) = 128 and then I * 128 + 128 <= J * 128);
+         when Bytes_160 => pragma Assert (Stride (Class) = 160 and then I * 160 + 160 <= J * 160);
+         when Bytes_192 => pragma Assert (Stride (Class) = 192 and then I * 192 + 192 <= J * 192);
+         when Bytes_224 => pragma Assert (Stride (Class) = 224 and then I * 224 + 224 <= J * 224);
+         when Bytes_256 => pragma Assert (Stride (Class) = 256 and then I * 256 + 256 <= J * 256);
+         when Bytes_320 => pragma Assert (Stride (Class) = 320 and then I * 320 + 320 <= J * 320);
+         when Bytes_384 => pragma Assert (Stride (Class) = 384 and then I * 384 + 384 <= J * 384);
+         when Bytes_448 => pragma Assert (Stride (Class) = 448 and then I * 448 + 448 <= J * 448);
+         when Bytes_512 => pragma Assert (Stride (Class) = 512 and then I * 512 + 512 <= J * 512);
+         when Bytes_640 => pragma Assert (Stride (Class) = 640 and then I * 640 + 640 <= J * 640);
+         when Bytes_768 => pragma Assert (Stride (Class) = 768 and then I * 768 + 768 <= J * 768);
+         when Bytes_896 => pragma Assert (Stride (Class) = 896 and then I * 896 + 896 <= J * 896);
+         when Bytes_1024 => pragma Assert (Stride (Class) = 1_024 and then I * 1_024 + 1_024 <= J * 1_024);
+         when Bytes_1280 => pragma Assert (Stride (Class) = 1_280 and then I * 1_280 + 1_280 <= J * 1_280);
+         when Bytes_1536 => pragma Assert (Stride (Class) = 1_536 and then I * 1_536 + 1_536 <= J * 1_536);
+         when Bytes_1792 => pragma Assert (Stride (Class) = 1_792 and then I * 1_792 + 1_792 <= J * 1_792);
+         when Bytes_2048 => pragma Assert (Stride (Class) = 2_048 and then I * 2_048 + 2_048 <= J * 2_048);
+         when Bytes_2560 => pragma Assert (Stride (Class) = 2_560 and then I * 2_560 + 2_560 <= J * 2_560);
+         when Bytes_3072 => pragma Assert (Stride (Class) = 3_072 and then I * 3_072 + 3_072 <= J * 3_072);
+         when Bytes_3584 => pragma Assert (Stride (Class) = 3_584 and then I * 3_584 + 3_584 <= J * 3_584);
+         when Bytes_4096 => pragma Assert (Stride (Class) = 4_096 and then I * 4_096 + 4_096 <= J * 4_096);
+      end case;
+   end Prove_Order;
 end Heap_Classes;

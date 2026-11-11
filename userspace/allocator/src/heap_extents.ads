@@ -50,6 +50,22 @@ package Heap_Extents with SPARK_Mode, Pure is
               else Owner (Heap, P) = Owner (Heap'Old, P))) and then
           (for all P in Page_Id => (if P /= First then Length (Heap, P) = Length (Heap'Old, P)))
         else Same_Map (Heap, Heap'Old));
+   -- Grow the live, unparked run at First to Count pages where it is: the
+   -- pages after it up to Count must be free (realloc growing a block in
+   -- place). Otherwise nothing changes.
+   procedure Grow (Heap : in out State; First : Page_Id; Count : Run_Length; Success : out Boolean) with
+     Pre => Valid (Heap),
+     Post => Valid (Heap) and then
+       Success = (Length (Heap'Old, First) > 0 and then not Parked (Heap'Old, First)
+                  and then Count > Length (Heap'Old, First) and then Fits (First, Count)
+                  and then Free_Run (Heap'Old, First + Length (Heap'Old, First), Count - Length (Heap'Old, First)))
+       and then
+       (if Success then Length (Heap, First) = Count and then not Parked (Heap, First) and then
+          (for all P in Page_Id =>
+             (if P in First .. First + Count - 1 then Owner (Heap, P) = First
+              else Owner (Heap, P) = Owner (Heap'Old, P))) and then
+          (for all P in Page_Id => (if P /= First then Length (Heap, P) = Length (Heap'Old, P)))
+        else Heap = Heap'Old);
    -- A parked run is allocated but held for reuse by its owner (a cache
    -- of freed blocks above this core): it is not released, and parking it
    -- again fails, so a block freed twice is caught.

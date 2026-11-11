@@ -1,12 +1,13 @@
 with Ada.Text_IO;
+with Ada.Unchecked_Conversion;
 with Heap_Bitmap; use Heap_Bitmap;
-with Heap_Classes;
+with Heap_Classes; use type Heap_Classes.Size_Class;
 with Slab_Model;
 with Heap_Slab_Instance;
 with Interfaces; use Interfaces;
 procedure Slab_Tests is
    State : Pool;
-   Item : Slot;
+   Position : Local;
    OK : Boolean;
    Seen : array (Slot) of Boolean := [others => False];
    procedure Check (Condition : Boolean) is
@@ -57,71 +58,103 @@ begin
       Check (Heap_Slab_Instance.Local_Of (Position) = Position mod Heap_Slab_Instance.Slab_Bytes);
    end loop;
    Ada.Text_IO.Put_Line ("PASS geometry: every offset in the 16 MiB arena matches integer division/remainder");
-   Initialize (State, Max_Slots);
+   --  CuAlloc never initializes a small arena's core: fresh backing reads
+   --  as zero, which must be exactly the initial state.
+   declare
+      type Bytes is array (1 .. Heap_Slab_Instance.State'Size / 8) of Unsigned_8;
+      function To_Bytes is new Ada.Unchecked_Conversion (Heap_Slab_Instance.State, Bytes);
+      type Pool_Bytes is array (1 .. Pool'Size / 8) of Unsigned_8;
+      function Pool_To_Bytes is new Ada.Unchecked_Conversion (Pool, Pool_Bytes);
+      Heap : Heap_Slab_Instance.State;
+      Fresh : Pool;
+   begin
+      Heap_Slab_Instance.Initialize (Heap);
+      Check (for all B of To_Bytes (Heap) => B = 0);
+      Check (Heap_Slab_Instance.State'Size = 256 * Heap_Slab_Instance.Pool_Bytes * 8);
+      Initialize (Fresh, Heap_Classes.Size_Class'First);
+      Check (for all B of Pool_To_Bytes (Fresh) => B = 0);
+   end;
+   Ada.Text_IO.Put_Line ("PASS initial state: all zero bytes (fresh backing needs no initialization)");
+   --  The pool: blocks are byte offsets; a live bit per 16-byte granule.
+   Initialize (State, Heap_Classes.Bytes_16);
    for I in 1 .. Max_Slots loop
-      Allocate (State, Item, OK);
-      Check (OK and then not Seen (Item)); Seen (Item) := True;
+      Allocate (State, Position, OK);
+      Check (OK and then Position mod 16 = 0 and then not Seen (Position / 16 + 1));
+      Seen (Position / 16 + 1) := True;
    end loop;
-   Allocate (State, Item, OK);
+   Allocate (State, Position, OK);
    Check (not OK);
-   Reconfigure (State, 1, OK);
+   Reconfigure (State, Heap_Classes.Bytes_32, OK);
    Check (not OK and then Capacity (State) = Max_Slots and then Used (State) = Max_Slots);
    for I in reverse Slot loop
-      Release (State, I, OK);
+      Release (State, (I - 1) * 16, OK);
       Check (OK);
-      Release (State, I, OK);
+      Release (State, (I - 1) * 16, OK);
       Check (not OK);
    end loop;
-   Reconfigure (State, 1, OK);
-   Check (OK and then Capacity (State) = 1);
-   Release (State, Max_Slots, OK);
+   Reconfigure (State, Heap_Classes.Bytes_4096, OK);
+   Check (OK and then Capacity (State) = 16 and then Class (State) = Heap_Classes.Bytes_4096);
+   Release (State, 0, OK);
    Check (not OK);
-   Allocate (State, Item, OK);
-   Check (OK and then Item = 1);
-   Allocate (State, Item, OK);
-   Check (not OK);
-   Ada.Text_IO.Put_Line ("PASS bitmap: exhaustion, duplicate release, live reconfiguration denied, empty reuse");
+   Allocate (State, Position, OK);
+   Check (OK and then Position = 0);
+   --  Inside the block, unaligned, or past its start: refused.
+   for Probe in 1 .. 4_095 loop
+      Release (State, Probe, OK);
+      Check (not OK and then Used (State) = 1);
+   end loop;
+   Check (Is_Live (State, 0) and then not Is_Live (State, 16) and then not Is_Live (State, 4_096));
+   Ada.Text_IO.Put_Line ("PASS pool: exhaustion, duplicate release, live reconfiguration denied, interior offsets refused");
    declare
-      type Limits is array (Positive range <>) of Slot;
-      Boundaries : constant Limits := [1, 2, 63, 64, 65, 127, 128, 129, 4_095, 4_096];
+      type Kinds is array (Positive range <>) of Heap_Classes.Size_Class;
+      Classes : constant Kinds :=
+        [Heap_Classes.Bytes_16, Heap_Classes.Bytes_48, Heap_Classes.Bytes_64, Heap_Classes.Bytes_112,
+         Heap_Classes.Bytes_1280, Heap_Classes.Bytes_3584, Heap_Classes.Bytes_4096];
+      Limit, Stride : Positive;
+      First : Local;
    begin
-      for Limit of Boundaries loop
-         Initialize (State, Limit);
+      for C of Classes loop
+         Initialize (State, C);
+         Limit := Heap_Classes.Slots (C);
+         Stride := Heap_Classes.Stride (C);
+         Check (Capacity (State) = Limit);
          Seen := [others => False];
          for I in 1 .. Limit loop
-            Allocate (State, Item, OK);
-            Check (OK and then Item <= Limit and then not Seen (Item)); Seen (Item) := True;
+            Allocate (State, Position, OK);
+            Check (OK and then Position mod Stride = 0 and then Position + Stride <= 65_536
+                   and then not Seen (Position / Stride + 1));
+            Seen (Position / Stride + 1) := True;
          end loop;
          for Hole in 2 .. Limit loop
-            -- Recycle two slots in both release orders, across every bitmap
-            -- word boundary and at partial-tail capacities.
-            -- (With Limit 2 the pool empties: it then hands out its slots in
-            -- order again, 1 first.)
-            Release (State, Hole, OK); Check (OK);
-            Release (State, 1, OK); Check (OK);
-            Allocate (State, Item, OK); Check (OK and then Item = 1);
-            Allocate (State, Item, OK); Check (OK and then Item = Hole);
+            -- Recycle two blocks in both release orders, across every bitmap
+            -- word boundary and at the slab's last block. (With two blocks
+            -- the pool empties: it then hands out its blocks in order again.)
+            Release (State, (Hole - 1) * Stride, OK); Check (OK);
+            Release (State, 0, OK); Check (OK);
+            Allocate (State, First, OK); Check (OK and then First = 0);
+            Allocate (State, Position, OK); Check (OK and then Position = (Hole - 1) * Stride);
             Check (Used (State) = Limit);
-            Release (State, 1, OK); Check (OK);
-            Release (State, Hole, OK); Check (OK);
-            Allocate (State, Item, OK); Check (OK and then Item = (if Limit = 2 then 1 else Hole));
-            Allocate (State, Item, OK); Check (OK and then Item = (if Limit = 2 then Hole else 1));
+            Release (State, 0, OK); Check (OK);
+            Release (State, (Hole - 1) * Stride, OK); Check (OK);
+            Allocate (State, Position, OK); Check (OK and then Position = (Hole - 1) * Stride);
+            Allocate (State, Position, OK); Check (OK and then Position = 0);
             Check (Used (State) = Limit);
          end loop;
-         Allocate (State, Item, OK); Check (not OK);
+         Allocate (State, Position, OK); Check (not OK);
          Check (for all I in Slot => Live (State, I) = (I <= Limit));
       end loop;
    end;
-   Ada.Text_IO.Put_Line ("PASS slots: every recycled position, both LIFO orders, word boundaries and tail capacities");
+   Ada.Text_IO.Put_Line ("PASS blocks: every recycled position, both LIFO orders, word boundaries, seven classes");
    declare
-      Order : array (Slot) of Slot;
+      Order : array (Slot) of Local;
       Seed : Unsigned_32 := 16#A824_F075#;
-      J, Saved : Slot;
+      J : Slot;
+      Saved : Local;
    begin
-      Initialize (State, Max_Slots);
+      Initialize (State, Heap_Classes.Bytes_16);
       for I in Slot loop
-         Allocate (State, Item, OK); Check (OK);
-         Order (I) := Item;
+         Allocate (State, Position, OK); Check (OK);
+         Order (I) := Position;
       end loop;
       for I in reverse 2 .. Max_Slots loop
          Seed := Seed * 1_664_525 + 1_013_904_223;
@@ -134,56 +167,65 @@ begin
       Check (Used (State) = 0);
       Seen := [others => False];
       for I in reverse Slot loop
-         Allocate (State, Item, OK); Check (OK and then not Seen (Item)); Seen (Item) := True;
+         Allocate (State, Position, OK); Check (OK and then not Seen (Position / 16 + 1));
+         Seen (Position / 16 + 1) := True;
       end loop;
       Check (Used (State) = Max_Slots);
-      Allocate (State, Item, OK); Check (not OK);
+      Allocate (State, Position, OK); Check (not OK);
    end;
    Ada.Text_IO.Put_Line ("PASS cache: full-capacity shuffled release and complete reuse without duplicates");
-   -- One more free slot than the cache can hold, spread across a mostly live
-   -- slab. The evicted entry must remain recoverable, and unrelated live slots
-   -- must never be returned. Also reject duplicate releases while full.
-   Initialize (State, Max_Slots);
-   for I in Slot loop Allocate (State, Item, OK); Check (OK); end loop;
-   for I in 1 .. 65 loop
-      Release (State, I * 61, OK); Check (OK);
-      Release (State, I * 61, OK); Check (not OK);
+   -- One more free block than the cache can hold, spread across a mostly
+   -- live slab. The evicted entry must remain recoverable, and unrelated
+   -- live blocks must never be returned. Also reject duplicate releases.
+   Initialize (State, Heap_Classes.Bytes_16);
+   for I in Slot loop Allocate (State, Position, OK); Check (OK); end loop;
+   for I in 1 .. 249 loop
+      Release (State, (I * 16 - 1) * 16, OK); Check (OK);
+      Release (State, (I * 16 - 1) * 16, OK); Check (not OK);
    end loop;
-   Check (Used (State) = Max_Slots - 65);
+   Check (Used (State) = Max_Slots - 249);
    Seen := [others => False];
-   for I in 1 .. 65 loop
-      Allocate (State, Item, OK);
-      Check (OK and then Item mod 61 = 0 and then Item <= 65 * 61
-             and then not Seen (Item));
-      Seen (Item) := True;
-      if I = 1 then Check (Item = 65 * 61); end if;
+   for I in 1 .. 249 loop
+      Allocate (State, Position, OK);
+      Check (OK and then (Position / 16 + 1) mod 16 = 0 and then Position / 16 + 1 <= 249 * 16
+             and then not Seen (Position / 16 + 1));
+      Seen (Position / 16 + 1) := True;
+      if I = 1 then Check (Position = (249 * 16 - 1) * 16); end if;
    end loop;
    Check (Used (State) = Max_Slots and then (for all I in Slot => Live (State, I)));
-   Allocate (State, Item, OK); Check (not OK);
+   Allocate (State, Position, OK); Check (not OK);
    Ada.Text_IO.Put_Line ("PASS cache: overflow eviction, sparse refill and duplicate release preserve all capacity");
    declare
-      Occupied : array (Slot) of Boolean := [others => False];
+      Occupied : array (0 .. 65_535) of Boolean := [others => False];
       Counted : Natural := 0;
       Seed : Unsigned_32 := 16#7182_4567#;
+      Probe : Local;
    begin
-      Initialize (State, 257);
+      --  Blocks of 48 bytes: 1365 of them, the slab's last 16 bytes unused.
+      Initialize (State, Heap_Classes.Bytes_48);
       for Iteration in 1 .. 20_000 loop
          Seed := Seed * 1_664_525 + 1_013_904_223;
          if (Seed and 256) = 0 then
-            Allocate (State, Item, OK);
-            Check (OK = (Counted < 257));
-            if OK then Check (not Occupied (Item)); Occupied (Item) := True; Counted := Counted + 1; end if;
+            Allocate (State, Position, OK);
+            Check (OK = (Counted < 1_365));
+            if OK then
+               Check (Position mod 48 = 0 and then not Occupied (Position));
+               Occupied (Position) := True; Counted := Counted + 1;
+            end if;
          else
-            Item := Slot (Shift_Right (Seed, 16) mod 300 + 1);
-            Release (State, Item, OK);
-            Check (OK = Occupied (Item));
-            if OK then Occupied (Item) := False; Counted := Counted - 1; end if;
+            --  Any offset: a block's start, its inside, unaligned, the tail.
+            Probe := Local (Shift_Right (Seed, 16) mod 65_536);
+            if (Seed and 512) = 0 then Probe := Probe - Probe mod 48; end if;
+            Check (Is_Live (State, Probe) = Occupied (Probe));
+            Release (State, Probe, OK);
+            Check (OK = Occupied (Probe));
+            if OK then Occupied (Probe) := False; Counted := Counted - 1; end if;
          end if;
          Check (Used (State) = Counted);
-         Check (for all I in Slot => Live (State, I) = Occupied (I));
       end loop;
+      Check (for all I in 1 .. 1_365 => Live (State, I) = Occupied ((I - 1) * 48));
    end;
-   Ada.Text_IO.Put_Line ("PASS bitmap: 20000 independent model operations, non-power-of-two capacity");
+   Ada.Text_IO.Put_Line ("PASS pool: 20000 independent model operations at any offset, non-power-of-two stride");
 
    declare
       package M renames Slab_Model;
@@ -197,35 +239,37 @@ begin
    begin
       M.Initialize (Heap);
       for I in Saved'Range loop
-         M.Allocate (Heap, 4_096, Value);
+         M.Allocate (Heap, 4_096, 1, 1, Value);
          Check (Value.Value.Success);
          Saved (I) := Value.Value.Position;
       end loop;
       Before := Heap;
-      M.Allocate (Heap, 16, Value);
+      M.Allocate (Heap, 16, 1, 1, Value);
       Check (not Value.Value.Success and then Heap = Before);
       M.Release (Heap, Saved (1), Status);
       Check (Status = M.Released);
       Before := Heap;
-      M.Allocate (Heap, 16, Value);
+      M.Allocate (Heap, 16, 1, 1, Value);
       Check (not Value.Value.Success and then Heap = Before); -- Partial is not empty.
       for I in 2 .. 16 loop M.Release (Heap, Saved (I), Status); Check (Status = M.Released); end loop;
-      M.Allocate (Heap, 16, Value);
+      M.Allocate (Heap, 16, 1, 1, Value);
       Check (Value.Value.Success and then M.Page_Of (Value.Value.Position) = 1);
       for I in 17 .. 64 loop Check (M.Live (Heap, Saved (I))); end loop;
       M.Release (Heap, Value.Value.Position + 1, Status);
-      Check (Status = M.Invalid_Offset);
+      Check (Status = M.Not_Allocated);
+      M.Release (Heap, Value.Value.Position + 16, Status);
+      Check (Status = M.Not_Allocated);
       M.Release (Heap, Value.Value.Position, Status);
       Check (Status = M.Released);
       for I in 17 .. 64 loop M.Release (Heap, Saved (I), Status); Check (Status = M.Released); end loop;
       -- Every backing slab can now serve the smallest class, not a fixed quota.
       for I in Small'Range loop
-         M.Allocate (Heap, 16, Value);
+         M.Allocate (Heap, 16, 1, 1, Value);
          Check (Value.Value.Success);
          Small (I) := Value.Value.Position;
       end loop;
       Before := Heap;
-      M.Allocate (Heap, 4_096, Value);
+      M.Allocate (Heap, 4_096, 1, 1, Value);
       Check (not Value.Value.Success and then Heap = Before);
       for Position of Small loop
          M.Release (Heap, Position, Status); Check (Status = M.Released);
@@ -246,7 +290,7 @@ begin
    begin
       M.Initialize (Heap);
       for I in Saved'Range loop
-         M.Allocate (Heap, 4_096, Value); Check (Value.Value.Success);
+         M.Allocate (Heap, 4_096, 1, 1, Value); Check (Value.Value.Success);
          Saved (I) := Value.Value.Position;
       end loop;
       -- Finish a release/reallocate at each end of the slab range while a
@@ -262,12 +306,13 @@ begin
             Check (M.Page_Of (Low) = M.Slab_Id'First and then M.Page_Of (High) = M.Slab_Id'Last);
             M.Release (Heap, First, Status); Check (Status = M.Released);
             M.Release (Heap, Last, Status); Check (Status = M.Released);
-            M.Allocate (Heap, 4_096, Value);
+            --  The hint (the caller's last slab) first, then the scan.
+            M.Allocate (Heap, 4_096, M.Page_Of (Last), M.Page_Of (Last), Value);
             Check (Value.Value.Success and then Value.Value.Position = Last);
-            M.Allocate (Heap, 4_096, Value);
+            M.Allocate (Heap, 4_096, M.Page_Of (Last), M.Page_Of (Last), Value);
             Check (Value.Value.Success and then Value.Value.Position = First);
             Before := Heap;
-            M.Allocate (Heap, 4_096, Value);
+            M.Allocate (Heap, 4_096, 1, 1, Value);
             Check (not Value.Value.Success and then Heap = Before);
             Check (for all Position of Saved => M.Live (Heap, Position));
          end;
@@ -284,17 +329,17 @@ begin
    begin
       M.Initialize (Heap);
       for I in Saved'Range loop
-         M.Allocate (Heap, 4_096, Value); Check (Value.Value.Success);
+         M.Allocate (Heap, 4_096, 1, 1, Value); Check (Value.Value.Success);
          Saved (I) := Value.Value.Position;
       end loop;
       Check (M.Page_Of (Saved (1)) = 1 and then M.Page_Of (Saved (256)) = 16);
       M.Release (Heap, Saved (256), Status); Check (Status = M.Released);
       M.Release (Heap, Saved (1), Status); Check (Status = M.Released);
-      M.Allocate (Heap, 4_096, Value);
+      M.Allocate (Heap, 4_096, M.Page_Of (Saved (1)), M.Page_Of (Saved (1)), Value);
       Check (Value.Value.Success and then Value.Value.Position = Saved (1));
       -- The remaining hole is beyond lookahead. Prefer it to retyping any of
       -- the many unused slabs, and preserve all existing allocations.
-      M.Allocate (Heap, 4_096, Value);
+      M.Allocate (Heap, 4_096, 1, 1, Value);
       Check (Value.Value.Success and then Value.Value.Position = Saved (256));
       Check (for all Position of Saved => M.Live (Heap, Position));
    end;
@@ -329,7 +374,7 @@ begin
          Size := Integer (Shift_Right (Seed, 16) mod 4_096) + 1;
          Rounded := Heap_Classes.Stride (Heap_Classes.Class_For (Size));
          Before := Heap;
-         M.Allocate (Heap, Size, Value);
+         M.Allocate (Heap, Size, 1, 1, Value);
          if Value.Value.Success then
             for B of Blocks loop
                Check (not B.Active or else

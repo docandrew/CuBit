@@ -10,6 +10,8 @@ package body Heap_Bridge is
    -- Slabs share this backing region. The OS page-provider boundary is next.
    type Byte_Array is array (0 .. Arena_Bytes - 1) of Interfaces.C.unsigned_char;
    Arena : aliased Byte_Array with Alignment => 4_096;
+   -- Where each class allocated last: the next allocation's hint.
+   Last : array (Heap_Classes.Size_Class) of H.Slab_Id := [others => H.Slab_Id'First];
 
    procedure Initialize is
    begin
@@ -18,10 +20,13 @@ package body Heap_Bridge is
 
    function Allocate (Size : Interfaces.C.size_t) return System.Address is
       Item : H.Allocation;
+      Class : Heap_Classes.Size_Class;
    begin
       if Size = 0 or else Size > 4_096 then return System.Null_Address; end if;
-      H.Allocate (Heap, Heap_Classes.Request_Size (Size), Item);
+      Class := Heap_Classes.Class_For (Heap_Classes.Request_Size (Size));
+      H.Allocate (Heap, Heap_Classes.Request_Size (Size), Last (Class), Last (Class), Item);
       if not Item.Value.Success then return System.Null_Address; end if;
+      Last (Class) := H.Page_Of (Item.Value.Position);
       return Arena'Address + Storage_Offset (Item.Value.Position);
    end Allocate;
 

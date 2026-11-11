@@ -20,7 +20,7 @@ import random
 import statistics
 import subprocess
 
-TRACES = ['fixed64', 'fixed256', 'small', 'mixed', 'boundary', 'bimodal', 'medium']
+TRACES = ['fixed64', 'fixed256', 'small', 'mixed', 'boundary', 'bimodal', 'medium', 'medium-full']
 p = argparse.ArgumentParser()
 p.add_argument('--bin', action='append', required=True, help='NAME=PATH of an alloc-bench binary')
 p.add_argument('--rounds', type=int, default=5)

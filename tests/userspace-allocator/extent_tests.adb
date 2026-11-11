@@ -45,6 +45,39 @@ begin
    Check (OK);
    for P in Page_Id loop Check (Owner (Heap, P) = 0 and then Length (Heap, P) = 0); end loop;
    Ada.Text_IO.Put_Line ("PASS extent alignment, exhaustion, interior/double release and reuse");
+   -- Grow in place (ALLOC-001 step 15): over free pages only, never a
+   -- parked run, never past the arena or into another run.
+   declare
+      A, B : Page_Reference;
+      Pages : Page_Reference;
+   begin
+      Allocate (Heap, 2, 1, A);
+      Allocate (Heap, 3, 1, B);
+      Check (A /= No_Page and then B = A + 2);
+      Grow (Heap, A, 3, OK);
+      Check (not OK and then Length (Heap, A) = 2 and then Owner (Heap, B) = B);
+      Release (Heap, B, OK);
+      Check (OK);
+      Grow (Heap, A, 5, OK);
+      Check (OK and then Length (Heap, A) = 5);
+      for P in A .. A + 4 loop Check (Owner (Heap, P) = A); end loop;
+      Check (Owner (Heap, A + 5) = No_Page);
+      Grow (Heap, A, 4, OK);
+      Check (not OK and then Length (Heap, A) = 5);
+      Grow (Heap, A + 1, 9, OK);
+      Check (not OK);
+      Park (Heap, A, Pages, OK);
+      Check (OK and then Pages = 5);
+      Grow (Heap, A, 6, OK);
+      Check (not OK and then Length (Heap, A) = 5);
+      Unpark (Heap, A, OK);
+      Grow (Heap, A, Page_Count - A + 1, OK);
+      Check (OK and then Length (Heap, A) = Page_Count - A + 1);
+      Release (Heap, A, OK);
+      Check (OK);
+      for P in Page_Id loop Check (Owner (Heap, P) = 0 and then Length (Heap, P) = 0); end loop;
+   end;
+   Ada.Text_IO.Put_Line ("PASS extent grow in place: free pages only, not parked, not past the arena");
    -- Remembered holes, the rover, parking (ALLOC-001 step 12): 200,000
    -- random operations against a page model. Every run handed out was free
    -- in the model; Allocate fails only when the model has no fitting run

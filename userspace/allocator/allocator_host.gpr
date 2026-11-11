@@ -3,7 +3,7 @@
 --  memory (cualloc_*).
 library project Allocator_Host is
    for Source_Dirs use ("src", "host", "process");
-   for Excluded_Source_Files use ("cualloc_native.ads", "cualloc_native.adb");
+   for Excluded_Source_Files use ("cualloc_native.ads", "cualloc_native.adb", "cualloc_gnat.ads", "cualloc_gnat.adb");
    for Object_Dir use "build/objects";
    for Library_Dir use "build/lib";
    for Library_Name use "cubit_heap";

@@ -9,6 +9,8 @@ package Heap_Slabs with SPARK_Mode, Pure is
    subtype Offset is Natural range 0 .. Arena_Bytes - 1;
    subtype Local_Offset is Natural range 0 .. Slab_Bytes - 1;
    subtype Slot is Heap_Bitmap.Slot;
+   -- The state is the slabs' pools, one after another, each this many bytes.
+   Pool_Bytes : constant := 1_024;
    function Slots_For (Class : Size_Class) return Slot is (Slots (Class));
    function Page_Of (Position : Offset) return Slab_Id with Inline_Always,
      Post => Page_Of'Result = Position / Slab_Bytes + 1;
@@ -45,7 +47,11 @@ package Heap_Slabs with SPARK_Mode, Pure is
 
    procedure Initialize (Heap : out State) with
      Post => Valid (Heap) and then (for all P in Slab_Id => Used (Heap, P) = 0);
-   procedure Allocate (Heap : in out State; Size : Request_Size; Value : out Allocation) with
+   -- A block for Size: from slab Hint when it has room for Size's class,
+   -- or else from slab Empty when it is empty (retyped), or else from the
+   -- next slab with room nearby, any slab with room, an empty slab, in
+   -- that order (the hints spare the scan; it stays the complete search).
+   procedure Allocate (Heap : in out State; Size : Request_Size; Hint, Empty : Slab_Id; Value : out Allocation) with
      Inline_Always, Pre => Valid (Heap),
      Post => Valid (Heap) and then Value.Value.Success = Can_Allocate (Heap'Old, Size) and then
        (if Value.Value.Success then
@@ -69,10 +75,16 @@ package Heap_Slabs with SPARK_Mode, Pure is
           Position mod 16 = 0 and then Position <= Arena_Bytes - Stride (Class) and then
           Preserved (Heap'Old, Heap, Page, Local_Of (Position) / Stride (Class) + 1)
         else Heap = Heap'Old);
-   -- Live, computed: one multiplication and one bitmap word.
+   -- Live, computed: one bitmap word (a bit per 16-byte granule, set only
+   -- at a live block's start: no division).
    function Is_Live (Heap : State; Position : Offset) return Boolean with
      Inline_Always, Pre => Valid (Heap), Post => Is_Live'Result = Live (Heap, Position);
-   type Release_Status is (Released, Not_Allocated, Invalid_Offset);
+   -- Is_Live's bit test with no precondition (a reader of another
+   -- holder's arena): no proved meaning when the state is not valid.
+   function Live_Start (Heap : State; Position : Offset) return Boolean with Inline_Always;
+   -- Not_Allocated: no live block starts at the offset (it is free, inside
+   -- a block, or unaligned).
+   type Release_Status is (Released, Not_Allocated);
    procedure Release (Heap : in out State; Position : Offset; Status : out Release_Status) with
      Inline_Always, Pre => Valid (Heap),
      Post => Valid (Heap) and then (Status = Released) = Live (Heap'Old, Position) and then
@@ -108,32 +120,30 @@ package Heap_Slabs with SPARK_Mode, Pure is
 private
    subtype Slab_Reference is Natural range 0 .. Slab_Count;
    No_Slab : constant Slab_Reference := 0;
-   type Pools is array (Slab_Id) of Heap_Bitmap.Pool;
-   type Classes is array (Slab_Id) of Size_Class;
-   type Hints is array (Size_Class) of Slab_Id;
-   type State is record
-      Pages : Pools;
-      Kinds : Classes;
-      Current : Hints;
-   end record;
+   -- One pool per slab, nothing else: slab Page's pool is at
+   -- (Page - 1) * Pool_Bytes from the state's start, so a fast path can
+   -- reach one slab's pool from its address alone.
+   type State is array (Slab_Id) of Heap_Bitmap.Pool with Component_Size => Pool_Bytes * 8;
    function Valid (Heap : State) return Boolean is
-     (for all P in Slab_Id => Heap_Bitmap.Valid (Heap.Pages (P)) and then
-        Heap_Bitmap.Capacity (Heap.Pages (P)) = Slots_For (Heap.Kinds (P)));
-   function Class_Of (Heap : State; Page : Slab_Id) return Size_Class is (Heap.Kinds (Page));
+     (for all P in Slab_Id => Heap_Bitmap.Valid (Heap (P)) and then
+        Heap_Bitmap.Capacity (Heap (P)) = Slots_For (Heap_Bitmap.Class (Heap (P))));
+   function Class_Of (Heap : State; Page : Slab_Id) return Size_Class is (Heap_Bitmap.Class (Heap (Page)));
+   function Live_Start (Heap : State; Position : Offset) return Boolean is
+     (Heap_Bitmap.Live_Start (Heap (Page_Of (Position)), Local_Of (Position)));
    function Used (Heap : State; Page : Slab_Id) return Heap_Bitmap.Count is
-     (Heap_Bitmap.Used (Heap.Pages (Page)));
+     (Heap_Bitmap.Used (Heap (Page)));
    function Member (Heap : State; Page : Slab_Id; Item : Slot) return Boolean is
-     (Heap_Bitmap.Live (Heap.Pages (Page), Item));
+     (Heap_Bitmap.Live (Heap (Page), Item));
    function Live (Heap : State; Position : Offset) return Boolean is
-     (Local_Of (Position) mod Stride (Heap.Kinds (Page_Of (Position))) = 0 and then
+     (Local_Of (Position) mod Stride (Class_Of (Heap, Page_Of (Position))) = 0 and then
         Member (Heap, Page_Of (Position),
-          Local_Of (Position) / Stride (Heap.Kinds (Page_Of (Position))) + 1));
+          Local_Of (Position) / Stride (Class_Of (Heap, Page_Of (Position))) + 1));
    function Can_Allocate (Heap : State; Size : Request_Size) return Boolean is
      (for some P in Slab_Id => Used (Heap, P) = 0 or else
-        (Heap.Kinds (P) = Class_For (Size) and then Used (Heap, P) < Slots_For (Heap.Kinds (P))));
+        (Class_Of (Heap, P) = Class_For (Size) and then Used (Heap, P) < Slots_For (Class_Of (Heap, P))));
    function Preserved (Before, After : State; Page : Slab_Id; Item : Slot) return Boolean is
      ((for all P in Slab_Id =>
-         (if Before.Kinds (P) /= After.Kinds (P) then Used (Before, P) = 0)) and then
+         (if Class_Of (Before, P) /= Class_Of (After, P) then Used (Before, P) = 0)) and then
       (for all P in Slab_Id =>
          (for all I in Slot => (if P /= Page or else I /= Item then
             Member (Before, P, I) = Member (After, P, I)))));

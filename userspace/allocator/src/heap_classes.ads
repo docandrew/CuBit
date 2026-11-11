@@ -66,4 +66,18 @@ package Heap_Classes with SPARK_Mode, Pure is
      with Inline_Always, Pre => Item < Slots (Class),
      Post => Scale'Result = Item * Stride (Class) and then Scale'Result mod 16 = 0
        and then Scale'Result + Stride (Class) <= 65_536;
+   -- Block Item's start is a multiple of the stride, Item strides in.
+   procedure Prove_Scale (Item : Natural; Class : Size_Class) with Ghost,
+     Pre => Item < Slots (Class),
+     Post => Scale (Item, Class) mod Stride (Class) = 0 and then Scale (Item, Class) / Stride (Class) = Item;
+   -- A multiple of the stride within the slab's blocks starts one: it is a
+   -- 16-byte multiple and Scale gives it back.
+   procedure Prove_Start (Relative : Geometry_Offset; Class : Size_Class) with Ghost,
+     Pre => Relative mod Stride (Class) = 0 and then Relative / Stride (Class) < Slots (Class),
+     Post => Relative mod 16 = 0 and then Scale (Relative / Stride (Class), Class) = Relative
+       and then Relative + Stride (Class) <= 65_536;
+   -- Blocks follow one another: a later block starts after an earlier one ends.
+   procedure Prove_Order (I, J : Natural; Class : Size_Class) with Ghost,
+     Pre => I < J and then J < Slots (Class),
+     Post => Scale (I, Class) + Stride (Class) <= Scale (J, Class);
 end Heap_Classes;

@@ -7,7 +7,8 @@
  *
  *   single <trace> <pairs>     the traces of bench.rs (xorshift, 1024 live
  *                              slots, free + malloc + first/last byte touch
- *                              per pair, every 128th pair timed)
+ *                              per pair, every 128th pair timed); medium-full
+ *                              is medium writing every page of each block
  *   hot <bytes> <pairs>        one block allocated and freed, repeatedly
  *   split <rounds>             1024 x 64 B allocated, then freed: alloc and
  *                              free timed apart
@@ -114,7 +115,8 @@ static size_t trace_size(const char *w, uint64_t *seed) {
     if (!strcmp(w, "mixed")) return 1 + next(seed) % SMALL_LIMIT;
     if (!strcmp(w, "small")) return 1 + next(seed) % 128;
     if (!strcmp(w, "boundary")) return boundary[next(seed) % (sizeof boundary / sizeof *boundary)];
-    if (!strcmp(w, "medium")) return SMALL_LIMIT + 1 + next(seed) % (MEDIUM_LIMIT - SMALL_LIMIT);
+    if (!strcmp(w, "medium") || !strcmp(w, "medium-full"))
+        return SMALL_LIMIT + 1 + next(seed) % (MEDIUM_LIMIT - SMALL_LIMIT);
     if (!strcmp(w, "bimodal")) {
         uint64_t n = next(seed);
         return n % 8 == 0 ? 2048 + (n >> 3) % 2049 : 1 + (n >> 3) % 64;
@@ -141,6 +143,12 @@ static int single(const char *w, long n) {
         if (!p[i]) die("OOM");
         p[i][0] = 1; p[i][63] = 2; held[i] = 64;
     }
+    /* "-full" traces write every page of each block, as a program that
+     * uses its memory does: peak RSS is then the allocator's footprint.
+     * The others write the first and last byte only, so a page in the
+     * middle of a block counts only if an earlier block touched it. */
+    size_t len = strlen(w);
+    int full = len > 5 && !strcmp(w + len - 5, "-full");
     long taken = 0;
     uint64_t start = now();
     for (long i = 0; i < n; i++) {
@@ -148,6 +156,8 @@ static int single(const char *w, long n) {
         FS((void *)p[slots[i]], held[slots[i]]);
         volatile unsigned char *q = A(sizes[i]);
         if (!q) die("OOM");
+        if (full)
+            for (size_t o = 4096; o < sizes[i]; o += 4096) q[o] = 1;
         q[0] = 1; q[sizes[i] - 1] = 2;
         p[slots[i]] = q;
         held[slots[i]] = sizes[i];

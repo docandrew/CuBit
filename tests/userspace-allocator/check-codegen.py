@@ -23,4 +23,33 @@ allowed = {'heap_slab_instance__initialize', 'heap_slab_instance__scan_pages',
            # The class tables (data): strides, slots per slab, reciprocals.
            'heap_classes__strides', 'heap_classes__slot_counts', 'heap_classes__magics'}
 assert all(line.split()[-1] in allowed for line in undefined), undefined
-print('PASS release codegen: no Ghost/assertion symbols; bridge dependencies limited to slab core and class tables')
+
+
+def body(archive, symbol):
+    """The instructions of symbol's function in archive (objdump)."""
+    out = subprocess.check_output(['objdump', '-d', '--no-show-raw-insn', f'--disassemble={symbol}', str(archive)],
+                                  text=True)
+    return [line.split('\t', 1)[1] for line in out.splitlines() if re.match(r'^\s+[0-9a-f]+:\t', line)]
+
+
+# The allocation entry points are CuAlloc's fast path with no frame: no
+# call (a miss is a tail jump to the out-of-line rest, where errno or the
+# Ada heap's stop lives) and no register saved (ALLOC-001 step 15).
+def frameless(archive, symbol):
+    code = body(archive, symbol)
+    assert code, (archive, symbol)
+    bad = [i for i in code if i.startswith(('call', 'push'))]
+    assert not bad, (archive.name, symbol, bad)
+
+
+frameless(archive, 'cualloc_allocate')
+checked = ['cualloc_allocate']
+# Native archives, when built (make -C kernel world): the libc's malloc and
+# GNAT's __gnat_malloc over the same fast path.
+for native, symbol in [(root / 'userspace/libc/build/sysroot/lib/libc.a', 'malloc'),
+                       (root / 'userspace/runtime/adalib/libgnat-user.a', '__gnat_malloc')]:
+    if native.exists():
+        frameless(native, symbol)
+        checked.append(f'{native.name}:{symbol}')
+print('PASS release codegen: no Ghost/assertion symbols; bridge dependencies limited to slab core and class tables;'
+      ' frameless: ' + ', '.join(checked))

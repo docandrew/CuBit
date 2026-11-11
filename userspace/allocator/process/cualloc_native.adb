@@ -25,6 +25,22 @@ package body CuAlloc_Native is
    function Allocate_Zeroed (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
      (Heap.Allocate_Zeroed (Bytes, Alignment));
 
+   function Allocate_Quick (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
+     (Heap.Allocate_Quick (Bytes, Alignment));
+   function Allocate_Quick (Bytes, Alignment : Unsigned_64; Untouched : out Boolean) return Unsigned_64 is
+      Item : Unsigned_64;
+   begin
+      Item := Heap.Allocate_Quick (Bytes, Alignment, Untouched);
+      return Item;
+   end Allocate_Quick;
+   function Allocate_Rest (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
+     (Heap.Allocate_Rest (Bytes, Alignment));
+   function Allocate_Zeroed_Rest (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
+     (Heap.Allocate_Zeroed_Rest (Bytes, Alignment));
+
+   function Reallocate_Quick (Item, Bytes : Unsigned_64) return Unsigned_64 is
+     (Heap.Reallocate_Quick (Item, Bytes));
+
    procedure Free (Item : Unsigned_64) is
    begin
       Heap.Free (Item);

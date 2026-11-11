@@ -6,7 +6,10 @@
  * figure: CuBit has no per-process resident count yet.
  *
  *   single WORKLOAD: 1024 live slots, free + malloc + first/last byte touch
- *     per pair; every 128th pair timed alone.
+ *     per pair; every 128th pair timed alone. The slots and sizes are drawn
+ *     before the timed loop, as the hosted harness does (compare/alloc-bench.c);
+ *     "single-inline WORKLOAD" draws them in the loop (the size by strcmp on
+ *     the workload's name), as this harness did up to ALLOC-001 step 13.
  *   threads N: N workers, each its own 1024 slots of 1..4096 bytes, local
  *     free + malloc; wall time / all pairs, plus every 64th pair timed alone.
  *   remote N: as threads, but each worker frees the blocks of the worker
@@ -98,12 +101,18 @@ static void report_samples(const char *what, uint64_t *samples, size_t count, do
     say(line);
 }
 
-static void single(const char *workload) {
+static void single(const char *workload, int inline_draw) {
     static unsigned char *slot[LIVE];
     static size_t sizes[LIVE];
     static uint64_t samples[SINGLE_PAIRS / SINGLE_SAMPLE + 1];
+    static uint32_t drawn_slot[SINGLE_PAIRS], drawn_size[SINGLE_PAIRS];
     uint64_t seed = 0x123456789abcdefull, start, elapsed;
     size_t count = 0, requested = 0, usable = 0;
+    if (!inline_draw)
+        for (int i = 0; i < SINGLE_PAIRS; i++) {
+            drawn_slot[i] = next(&seed) % LIVE;
+            drawn_size[i] = size_for(workload, &seed);
+        }
     for (int i = 0; i < LIVE; i++) {
         slot[i] = malloc(64);
         sizes[i] = 64;
@@ -111,8 +120,15 @@ static void single(const char *workload) {
     }
     start = now_ns();
     for (int i = 0; i < SINGLE_PAIRS; i++) {
-        unsigned k = next(&seed) % LIVE;
-        size_t size = size_for(workload, &seed);
+        unsigned k;
+        size_t size;
+        if (inline_draw) {
+            k = next(&seed) % LIVE;
+            size = size_for(workload, &seed);
+        } else {
+            k = drawn_slot[i];
+            size = drawn_size[i];
+        }
         uint64_t t = i % SINGLE_SAMPLE == 0 ? now_ns() : 0;
         free(slot[k]);
         slot[k] = malloc(size);
@@ -129,7 +145,8 @@ static void single(const char *workload) {
         free(slot[i]);
     }
     char what[96];
-    snprintf(what, sizeof what, "single %s waste=%.1f%%", workload, 100.0 * ((double)usable / requested - 1));
+    snprintf(what, sizeof what, "%s %s waste=%.1f%%", inline_draw ? "single-inline" : "single", workload,
+             100.0 * ((double)usable / requested - 1));
     report_samples(what, samples, count, (double)elapsed / SINGLE_PAIRS);
 }
 
@@ -308,7 +325,8 @@ int main(void) {
     reserve_check();
     stress();
     const char *workloads[] = {"fixed64", "mixed", "bimodal", "medium"};
-    for (int w = 0; w < 4; w++) single(workloads[w]);
+    for (int w = 0; w < 4; w++) single(workloads[w], 0);
+    for (int w = 0; w < 2; w++) single(workloads[w], 1);
     for (int n = 1; n <= MAX_THREADS; n *= 2) threads(n, 0);
     for (int n = 2; n <= MAX_THREADS; n *= 2) threads(n, 1);
     say("cualloc-bench: done\n");

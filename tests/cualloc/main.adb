@@ -10,6 +10,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Numerics.Discrete_Random;
 with Interfaces; use Interfaces;
+with Interfaces.C; use Interfaces.C;
 with System.Storage_Elements; use System.Storage_Elements;
 with Heap;
 with Linux_Provider;
@@ -48,6 +49,32 @@ procedure Main is
    HUGE_BYTES : constant := 1_048_577;
    HUGE_USABLE : constant := 1_052_672;
 begin
+   --  Before this thread's first free (its heap has no Hot arena yet): a
+   --  free of an address in the first 32 MiB (where static data lives, at
+   --  4 MiB) is ignored. It once matched the empty Hot (arena base 0) and
+   --  read "pool metadata" at 0x1000 .. 0x41000: a crash here, or a write
+   --  to that memory where it is mapped.
+   declare
+      function mmap (Address : System.Address; Length : size_t; Prot, Flags, Fd : int; Offset : long)
+        return System.Address with Import, Convention => C, External_Name => "mmap";
+      --  MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, read and write.
+      Low : constant := 16#80_0000#;
+      Mapped : constant System.Address :=
+        mmap (Addr (Low), 4096, 3, 16#02# + 16#20# + 16#10_0000#, -1, 0);
+      First : constant Unsigned_64 := Heap.Allocate (48, 16);
+   begin
+      Check (First /= 0, "a heap before the first free");
+      if To_Integer (Mapped) = Integer_Address (Low) then
+         Fill (Low, 4096, 16#3C#);
+         Heap.Free (Low + 64);
+         Check (Heap.Usable_Size (Low + 64) = 0 and then Heap.Allocate (48, 16) /= Low + 64
+                and then Holds (Low, 4096, 16#3C#),
+                "a free of a low address before any Hot arena is ignored");
+      else
+         Put_Line ("note: 8 MiB not mappable, low-address free not checked");
+      end if;
+   end;
+
    --  Each path.
    A := Heap.Allocate (24, 16);
    Check (A /= 0 and then A mod 16 = 0 and then Heap.Usable_Size (A) = 32, "small: 24 bytes from the 32 class");
@@ -114,6 +141,69 @@ begin
    Heap.Free (A); Heap.Free (B);
    Check (Heap.Allocate (24, 16) = A, "a freed small block is reused");
    Check (Heap.Allocate (10_000, 16) = B, "a freed medium run is reused");
+
+   --  A medium block grows where it is when the pages after it are free
+   --  (ALLOC-001 step 15: Heap_Extents.Grow), contents kept; it once
+   --  moved at every class step.
+   declare
+      Item, Next, Held : Unsigned_64;
+      Bytes : Unsigned_64 := 5_000;
+      In_Place : Natural := 0;
+      Kept : Boolean := True;
+   begin
+      Item := Heap.Allocate (Bytes, 16);
+      Fill (Item, Bytes, 16#6B#);
+      while Bytes < 200_000 loop
+         Held := Heap.Usable_Size (Item);
+         Next := Heap.Reallocate (Item, Bytes + 4_096);
+         Kept := Kept and then Next /= 0 and then Holds (Next, Bytes, 16#6B#);
+         exit when Next = 0;
+         if Next = Item and then Bytes + 4_096 > Held then
+            In_Place := In_Place + 1;
+         end if;
+         Item := Next;
+         Fill (Item + Bytes, 4_096, 16#6B#);
+         Bytes := Bytes + 4_096;
+      end loop;
+      Check (Kept and then In_Place > 0 and then Heap.Usable_Size (Item) >= Bytes,
+             "a medium block grows in place past its class, contents kept");
+      Heap.Free (Item);
+   end;
+
+   --  Parked medium blocks are memory for any size before the heap grows
+   --  (ALLOC-001 step 15): eight freed 64-page blocks stay parked (they
+   --  serve their class next); requests of another size then fill the
+   --  heap's free space, and before a new arena the heap releases the
+   --  parked blocks and reuses them. It once grew a new arena instead.
+   declare
+      type Blocks is array (Positive range <>) of Unsigned_64;
+      Big : Blocks (1 .. 8);
+      Small : Blocks (1 .. 50_000);
+      Used : Natural := 0;
+      Before : Natural;
+      Reused, Grew : Boolean := False;
+      Item : Unsigned_64;
+   begin
+      for K in Big'Range loop
+         Big (K) := Heap.Allocate (64 * 4_096, 16);
+      end loop;
+      for K in Big'Range loop
+         Heap.Free (Big (K));
+      end loop;
+      Before := Heap.Arena_Count;
+      while Used < Small'Last and then not Reused and then not Grew loop
+         Item := Heap.Allocate (7 * 4_096, 16);
+         exit when Item = 0;
+         Used := Used + 1;
+         Small (Used) := Item;
+         Reused := (for some K in Big'Range => Item in Big (K) .. Big (K) + 64 * 4_096 - 1);
+         Grew := Heap.Arena_Count > Before;
+      end loop;
+      Check (Reused and then not Grew, "parked medium blocks are reused by other sizes before the heap grows");
+      for K in 1 .. Used loop
+         Heap.Free (Small (K));
+      end loop;
+   end;
 
    --  Alignment.
    for Shift in 4 .. 30 loop
@@ -204,6 +294,34 @@ begin
          Round (20 * 4_096, 16#3C#);
       end loop;
       Check (Zeroed, "medium calloc reads zero: fresh, parked, released and reused blocks");
+   end;
+   --  Small calloc (step 14: a block above its slab's clean mark, never
+   --  handed out since the slab's backing was given, is not cleared). Slabs
+   --  filled with dirty blocks of one class, emptied, then handed out again
+   --  in order in their class and, retyped, in others: every block reads
+   --  zero (the mark survives emptying and the class change).
+   declare
+      Blocks : array (1 .. 3_000) of Unsigned_64;
+      Zeroed : Boolean := True;
+      procedure Round (Bytes : Unsigned_64; Value : Storage_Element) is
+      begin
+         for K in Blocks'Range loop
+            Blocks (K) := Heap.Allocate_Zeroed (Bytes, 16);
+            Zeroed := Zeroed and then Blocks (K) /= 0 and then Holds (Blocks (K), Bytes, 0);
+            Fill (Blocks (K), Bytes, Value);
+         end loop;
+         for K in Blocks'Range loop
+            Heap.Free (Blocks (K));
+         end loop;
+      end Round;
+   begin
+      for R in 1 .. 2 loop
+         Round (48, 16#A5#);
+         Round (96, 16#5A#);
+         Round (16, 16#3C#);
+         Round (1_000, 16#C3#);
+      end loop;
+      Check (Zeroed, "small calloc reads zero: fresh, emptied and retyped slabs");
    end;
    Heap.Free (B);
 
@@ -449,7 +567,11 @@ begin
              "a parked small block reports no usable bytes and is not reallocated");
       Heap.Free (Parked);
       Heap.Free_Sized (Parked, 40, 16);
+      Check (Heap.Reallocate (Plain, 48) = Plain and then Heap.Reallocate (Plain, 1) = Plain
+             and then Heap.Reallocate (Plain, 0) = Plain,
+             "a small block reallocated within its class stays (Reallocate_Quick)");
       Heap.Free (Plain);
+      Check (Heap.Reallocate (Plain, 10) = 0, "a freed small block is not reallocated");
       Heap.Free (Plain);
       Heap.Free_Sized (Plain, 40, 16);
       A := Heap.Allocate (40, 16);
@@ -543,6 +665,14 @@ begin
          end loop;
       end loop;
       Check (Distinct, "a slab left with only its parked block empties; no block handed out twice");
+      --  The parked block went back with its slab (regression: kept parked,
+      --  it would be the next block of its class and pin the slab).
+      declare
+         Next : constant Unsigned_64 := Heap.Allocate (3_000, 16);
+      begin
+         Check (Next /= 0 and then Next /= Items (Items'Last / 2), "a slab's last block, parked, is released with it");
+         Heap.Free (Next);
+      end;
    end;
 
    --  Threads: cross-thread frees, exits, adoption.

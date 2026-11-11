@@ -369,6 +369,27 @@ package body Heap_Extents with SPARK_Mode is
       end;
    end Release;
 
+   procedure Grow (Heap : in out State; First : Page_Id; Count : Run_Length; Success : out Boolean) is
+      Before : constant State := Heap with Ghost;
+      Held : constant Page_Reference := Heap.Lengths (First);
+   begin
+      Success := Held > 0 and then not Heap.Parks (First) and then Count > Held and then Fits (First, Count)
+        and then Run_Is_Free (Heap, First + Held, Count - Held);
+      if not Success then
+         return;
+      end if;
+      --  The run's own pages are First's already (Valid).
+      pragma Assert (for all Q in First .. First + Held - 1 => Heap.Owners (Q) = First);
+      for P in First + Held .. First + Count - 1 loop
+         Heap.Owners (P) := First;
+         pragma Loop_Invariant
+           (for all Q in Page_Id => Heap.Owners (Q) =
+              (if Q in First + Held .. P then First else Before.Owners (Q)));
+      end loop;
+      Heap.Lengths (First) := Count;
+      pragma Assert (for all Q in First .. First + Count - 1 => Heap.Owners (Q) = First);
+   end Grow;
+
    procedure Park (Heap : in out State; First : Page_Id; Pages : out Page_Reference; Success : out Boolean) is
    begin
       Pages := Heap.Lengths (First);

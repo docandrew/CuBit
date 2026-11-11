@@ -7,21 +7,26 @@ inboxes, lock words), node words, the thread token and the thread-local
 heap slot (whose package, SPARK_Mode Off, holds no subprogram). Its stated assumptions are all at the memory boundary
 (userspace/allocator/process/cualloc.adb), per heap instance:
 
-  10 "a heap's private part is as its holder last left it": the overlay of
-     the calling thread's heap at each entry (Allocate_Fast, Free_Fast,
-     Allocate_Medium_Fast, Free_Medium_Fast, Allocate_Here, Free_Here,
-     Exit_Here; Parked_Here: Usable_Size's check that the block is not its
-     own heap's spare), which the holder discipline
+  13 "a heap's private part is as its holder last left it": the overlay of
+     the calling thread's heap at each entry (Allocate_Cached,
+     Allocate_Refill, Free_Fast, Usable_Hot, Grow_Medium, Allocate_Medium_Fast,
+     Free_Medium_Fast, Allocate_Here, Free_Here, Exit_Here; Parked_Here:
+     Usable_Size's check that the block is not its own heap's spare),
+     which the holder discipline
      gives; and two read-only overlays of other heaps (Find_Arena, for
      Usable_Size: the record read is fixed while the block is live;
      Statistics: diagnostics, approximate while threads run).
-  4  "a small arena's metadata is as its holder last left it" (Slab_Allocate,
-     Slab_Take, the fast path's allocation from a cached slab,
-     Slab_Release, and Slab_Park, the fast free's live check and parking,
-     which reads the core and writes only the heap's private part), and
-  4  the same for medium arenas (Extent_Allocate, Extent_Release,
-     Extent_Park, Extent_Unpark): only the arena's heap's holder calls
-     them.
+  5  "a small arena's metadata is as its holder last left it" (Slab_Allocate
+     and Slab_Release, over the arena's whole core; Pool_Take, Pool_Release
+     and Pool_Live, the fast paths' allocation, release and live check in
+     one slab's pool, which the core lays out one after another at the
+     arena's core: Heap_Slabs.State). A small arena's core is never
+     initialized: its backing is fresh, which reads as zero, and the
+     all-zero state is Heap_Slabs.Initialize's (checked by
+     tests/userspace-allocator/slab_tests), and
+  5  the same for medium arenas (Extent_Allocate, Extent_Release,
+     Extent_Park, Extent_Unpark, Extent_Grow): only the arena's heap's
+     holder calls them.
   4  "the directory is as the last locked operation left it": the huge
      directory's overlay in each locked huge-block operation.
 """
@@ -42,9 +47,9 @@ BOUNDARY = {
     'Try_Take', 'Give_Back', 'Try_Take_Fallback', 'Give_Back_Fallback', 'Pause',
 }
 ASSUMES = {
-    "a heap's private part is as its holder last left it": 10,
-    "a small arena's metadata is as its holder last left it": 4,
-    "a medium arena's metadata is as its holder last left it": 4,
+    "a heap's private part is as its holder last left it": 13,
+    "a small arena's metadata is as its holder last left it": 5,
+    "a medium arena's metadata is as its holder last left it": 5,
     'the directory is as the last locked operation left it': 4,
 }
 source = (pathlib.Path(__file__).resolve().parents[2] / 'userspace/allocator/process/cualloc.adb').read_text()

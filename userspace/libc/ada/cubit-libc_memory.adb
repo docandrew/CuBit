@@ -29,29 +29,68 @@ package body CuBit.Libc_Memory is
       return To_Address (Item);
    end Result;
 
-   function malloc (Bytes : size_t) return System.Address is
-     (Result (CuAlloc_Native.Allocate (Unsigned_64 (Bytes), FUNDAMENTAL_ALIGNMENT)));
+   --  Each entry point is CuAlloc's fast path (CuAlloc_Native's Quick
+   --  calls, inline, with no call of their own), else one tail call to
+   --  its out-of-line rest, which is where errno is set: the fast path
+   --  sets up no frame and makes no call.
+   function Allocate_Rest (Bytes, Alignment : Unsigned_64) return System.Address with No_Inline;
+   function Allocate_Rest (Bytes, Alignment : Unsigned_64) return System.Address is
+     (Result (CuAlloc_Native.Allocate_Rest (Bytes, Alignment)));
+   function Allocate_Zeroed_Rest (Bytes : Unsigned_64) return System.Address with No_Inline;
+   function Allocate_Zeroed_Rest (Bytes : Unsigned_64) return System.Address is
+     (Result (CuAlloc_Native.Allocate_Zeroed_Rest (Bytes, FUNDAMENTAL_ALIGNMENT)));
 
+   --  A tail call from calloc (it returns its target).
+   function Memset (Target : System.Address; Value : int; Bytes : size_t) return System.Address
+     with Import, Convention => C, External_Name => "memset";
+
+   function malloc (Bytes : size_t) return System.Address is
+      Item : constant Unsigned_64 := CuAlloc_Native.Allocate_Quick (Unsigned_64 (Bytes), FUNDAMENTAL_ALIGNMENT);
+   begin
+      if Item /= 0 then
+         return To_Address (Item);
+      end if;
+      return Allocate_Rest (Unsigned_64 (Bytes), FUNDAMENTAL_ALIGNMENT);
+   end malloc;
+
+   --  CuAlloc ignores a null pointer (no test here).
    procedure free (Item : System.Address) is
    begin
-      if Item /= System.Null_Address then
-         CuAlloc_Native.Free (To_Value (Item));
-      end if;
+      CuAlloc_Native.Free (To_Value (Item));
    end free;
 
    --  The arithmetic is CuAlloc_Requests' (proved): the product only when
    --  it fits, else ENOMEM.
    function calloc (Count, Bytes : size_t) return System.Address is
+      Total : Unsigned_64;
+      Item : Unsigned_64;
+      Untouched : Boolean;
    begin
       if not Requests.Product_Fits (Unsigned_64 (Count), Unsigned_64 (Bytes)) then
          return Result (0);
       end if;
-      return Result (CuAlloc_Native.Allocate_Zeroed
-        (Requests.Product (Unsigned_64 (Count), Unsigned_64 (Bytes)), FUNDAMENTAL_ALIGNMENT));
+      Total := Requests.Product (Unsigned_64 (Count), Unsigned_64 (Bytes));
+      Item := CuAlloc_Native.Allocate_Quick (Total, FUNDAMENTAL_ALIGNMENT, Untouched);
+      if Item = 0 then
+         return Allocate_Zeroed_Rest (Total);
+      elsif Untouched then
+         return To_Address (Item);
+      end if;
+      return Memset (To_Address (Item), 0, size_t (Total));
    end calloc;
 
-   function realloc (Item : System.Address; Bytes : size_t) return System.Address is
+   function Reallocate_Rest (Item : System.Address; Bytes : size_t) return System.Address with No_Inline;
+   function Reallocate_Rest (Item : System.Address; Bytes : size_t) return System.Address is
      (Result (CuAlloc_Native.Reallocate (To_Value (Item), Unsigned_64 (Bytes))));
+
+   function realloc (Item : System.Address; Bytes : size_t) return System.Address is
+      Kept : constant Unsigned_64 := CuAlloc_Native.Reallocate_Quick (To_Value (Item), Unsigned_64 (Bytes));
+   begin
+      if Kept /= 0 then
+         return To_Address (Kept);
+      end if;
+      return Reallocate_Rest (Item, Bytes);
+   end realloc;
 
    function reallocarray (Item : System.Address; Count, Bytes : size_t) return System.Address is
    begin
@@ -62,31 +101,51 @@ package body CuBit.Libc_Memory is
    end reallocarray;
 
    function aligned_alloc (Alignment, Bytes : size_t) return System.Address is
+      Align : Unsigned_64;
+      Item : Unsigned_64;
    begin
       if not Requests.Power_Of_Two (Unsigned_64 (Alignment)) then
          CuBit.Libc_Imports.Errno_Location.all := CuBit.Libc_ABI.EINVAL;
          return System.Null_Address;
       end if;
-      return Result (CuAlloc_Native.Allocate
-        (Unsigned_64 (Bytes), Requests.Request_Alignment (Unsigned_64 (Alignment))));
+      Align := Requests.Request_Alignment (Unsigned_64 (Alignment));
+      Item := CuAlloc_Native.Allocate_Quick (Unsigned_64 (Bytes), Align);
+      if Item /= 0 then
+         return To_Address (Item);
+      end if;
+      return Allocate_Rest (Unsigned_64 (Bytes), Align);
    end aligned_alloc;
 
    function memalign (Alignment, Bytes : size_t) return System.Address is
      (aligned_alloc (Alignment, Bytes));
 
-   function posix_memalign (Result : System.Address; Alignment, Bytes : size_t) return int is
+   function Posix_Rest (Result : System.Address; Alignment, Bytes : Unsigned_64) return int with No_Inline;
+   function Posix_Rest (Result : System.Address; Alignment, Bytes : Unsigned_64) return int is
       Target : System.Address with Import, Address => Result;
-      Item : Unsigned_64;
+      Item : constant Unsigned_64 := CuAlloc_Native.Allocate_Rest (Bytes, Alignment);
    begin
-      if not Requests.Posix_Alignment (Unsigned_64 (Alignment)) then
-         return CuBit.Libc_ABI.EINVAL;
-      end if;
-      Item := CuAlloc_Native.Allocate (Unsigned_64 (Bytes), Requests.Request_Alignment (Unsigned_64 (Alignment)));
       if Item = 0 then
          return CuBit.Libc_ABI.ENOMEM;
       end if;
       Target := To_Address (Item);
       return 0;
+   end Posix_Rest;
+
+   function posix_memalign (Result : System.Address; Alignment, Bytes : size_t) return int is
+      Target : System.Address with Import, Address => Result;
+      Align : Unsigned_64;
+      Item : Unsigned_64;
+   begin
+      if not Requests.Posix_Alignment (Unsigned_64 (Alignment)) then
+         return CuBit.Libc_ABI.EINVAL;
+      end if;
+      Align := Requests.Request_Alignment (Unsigned_64 (Alignment));
+      Item := CuAlloc_Native.Allocate_Quick (Unsigned_64 (Bytes), Align);
+      if Item /= 0 then
+         Target := To_Address (Item);
+         return 0;
+      end if;
+      return Posix_Rest (Result, Align, Unsigned_64 (Bytes));
    end posix_memalign;
 
    function malloc_usable_size (Item : System.Address) return size_t is
