@@ -1,6 +1,8 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with Device_Memory_Publication;
+with Firmware_Tables.MCFG;
+with Firmware_Tables.PCI_Windows;
 
 -------------------------------------------------------------------------------
 -- Physical_Ranges (CAP-001)
@@ -27,6 +29,9 @@ with Device_Memory_Publication;
 -------------------------------------------------------------------------------
 package Physical_Ranges with SPARK_Mode, Pure is
 
+   package MC renames Firmware_Tables.MCFG;
+   package PW renames Firmware_Tables.PCI_Windows;
+   use type MC.Allocation;
    Page_Bytes    : constant := 4096;
    -- Exclusive physical limit; matches Virtmem.PhysAddress (47 bits).
    Address_Limit : constant := 2 ** 47;
@@ -80,6 +85,19 @@ package Physical_Ranges with SPARK_Mode, Pure is
    -- The highest page a bus slice may start at and still end below the
    -- physical limit.
    Last_PCI_Bus_Page        : constant Page_Number := Last_Page - (PCI_Bus_Pages - 1);
+   -- Same explicit boot-description budget as the physical classifier.
+   -- Exhaustion invalidates authority; allocations are never silently dropped.
+   Max_PCI_Allocations : constant := Max_Spans;
+   subtype PCI_Allocation_Count is Natural range 0 .. Max_PCI_Allocations;
+   subtype PCI_Allocation_Index is Positive range 1 .. Max_PCI_Allocations;
+   type PCI_Allocation_Array is array (PCI_Allocation_Index) of MC.Allocation;
+   function PCI_First_Page (Item : MC.Allocation) return Page_Number is
+     ((Item.Base + Unsigned_64 (Item.First_Bus) * PCI_Bus_Bytes) / Page_Bytes)
+     with Pre => PW.Valid (Item, Address_Limit);
+   function PCI_End_Page (Item : MC.Allocation) return Unsigned_64 is
+     ((Item.Base + PW.Upper_Bytes (Item)) / Page_Bytes)
+     with Pre => PW.Valid (Item, Address_Limit);
+
 
    -- The sealed ACPI tables' bytes (the kernel's admitted table catalog
    -- and its root table), inclusive. They do not change any page's class
@@ -109,8 +127,8 @@ package Physical_Ranges with SPARK_Mode, Pure is
       Sealed   : Boolean := False;
       Control_Known : Boolean := False;
       Control_Page  : Page_Number := 0;
-      PCI_Config_Known : Boolean := False;
-      PCI_Config_Page  : Page_Number := 0;
+      PCI_Used : PCI_Allocation_Count := 0;
+      PCI : PCI_Allocation_Array := [others => (0,0,0,0,0)];
       Tables          : Extent_Array := [others => (First => 0, Last => 0)];
       Tables_Used     : Table_Extent_Count := 0;
       Tables_Complete : Boolean := True;
@@ -123,15 +141,16 @@ package Physical_Ranges with SPARK_Mode, Pure is
       Sealed   => False,
       Control_Known => False,
       Control_Page  => 0,
-      PCI_Config_Known => False,
-      PCI_Config_Page  => 0,
+      PCI_Used => 0,
+      PCI => [others => (0,0,0,0,0)],
       Tables          => [others => (First => 0, Last => 0)],
       Tables_Used     => 0,
       Tables_Complete => True);
 
    function Well_Formed (M : Map) return Boolean is
      ((for all I in 1 .. M.Count => M.Spans (I).First <= M.Spans (I).Last)
-      and then (for all I in 1 .. M.Tables_Used => M.Tables (I).First <= M.Tables (I).Last));
+      and then (for all I in 1 .. M.Tables_Used => M.Tables (I).First <= M.Tables (I).Last)
+      and then (for all I in 1 .. M.PCI_Used => PW.Valid (M.PCI (I), Address_Limit)));
 
    function Touches (S : Span; P : Page_Number) return Boolean is
      (Page_Of (S.First) <= P and then P <= Page_Of (S.Last));
@@ -171,8 +190,8 @@ package Physical_Ranges with SPARK_Mode, Pure is
                   and then M.Complete = M.Complete'Old
                   and then M.Control_Known = M.Control_Known'Old
                   and then M.Control_Page = M.Control_Page'Old
-                  and then M.PCI_Config_Known = M.PCI_Config_Known'Old
-                  and then M.PCI_Config_Page = M.PCI_Config_Page'Old
+                  and then M.PCI_Used = M.PCI_Used'Old
+                  and then M.PCI = M.PCI'Old
                   and then M.Tables_Used >= M.Tables_Used'Old
                   and then (if not M.Tables_Complete'Old then not M.Tables_Complete);
 
@@ -202,27 +221,22 @@ package Physical_Ranges with SPARK_Mode, Pure is
                   and then M.Control_Known = (Physical < Address_Limit)
                   and then (if M.Control_Known
                             then M.Control_Page = Physical / Page_Bytes)
-                  and then M.PCI_Config_Known = M.PCI_Config_Known'Old
-                  and then M.PCI_Config_Page = M.PCI_Config_Page'Old;
+                  and then M.PCI_Used = M.PCI_Used'Old
+                  and then M.PCI = M.PCI'Old;
 
-   -- Records segment 0 bus 0's ECAM slice from the MCFG: Bus_Zero is the
-   -- physical address of bus 0's function 0:0 (the base of an allocation
-   -- for segment 0 that starts at bus 0). An unaligned base, or a slice
-   -- that would reach Address_Limit, is ignored (no slice).
-   procedure Set_PCI_Config (M : in out Map; Bus_Zero : Unsigned_64)
-     with Pre  => not M.Sealed and then Well_Formed (M),
-          Post => not M.Sealed and then Well_Formed (M)
-                  and then M.Count = M.Count'Old
-                  and then M.Spans = M.Spans'Old
-                  and then M.Complete = M.Complete'Old
-                  and then M.Control_Known = M.Control_Known'Old
-                  and then M.Control_Page = M.Control_Page'Old
-                  and then M.PCI_Config_Known =
-                             (Bus_Zero mod Page_Bytes = 0
-                              and then Bus_Zero <= Address_Limit - PCI_Bus_Bytes)
-                  and then (if M.PCI_Config_Known
-                            then M.PCI_Config_Page = Bus_Zero / Page_Bytes
-                                 and then M.PCI_Config_Page <= Last_PCI_Bus_Page);
+   -- Checked MCFG metadata only. Conflicting/invalid/allocation-capacity
+   -- descriptions invalidate authority rather than installing a prefix.
+   procedure Add_PCI_Config (M : in out Map; Item : MC.Allocation)
+     with Pre => not M.Sealed and then Well_Formed (M),
+       Post => not M.Sealed and then Well_Formed (M)
+         and then M.Count = M.Count'Old and then M.Spans = M.Spans'Old
+         and then M.Control_Known = M.Control_Known'Old
+         and then M.Control_Page = M.Control_Page'Old
+         and then M.Tables = M.Tables'Old and then M.Tables_Used = M.Tables_Used'Old
+         and then M.PCI_Used >= M.PCI_Used'Old
+         and then (for all I in 1 .. M.PCI_Used'Old => M.PCI (I) = M.PCI'Old (I))
+         and then (if M.Complete then PW.Valid (Item, Address_Limit)
+           and then M.PCI_Used = M.PCI_Used'Old + 1 and then M.PCI (M.PCI_Used) = Item);
 
    procedure Seal (M : in out Map)
      with Pre  => Well_Formed (M),
@@ -232,8 +246,8 @@ package Physical_Ranges with SPARK_Mode, Pure is
                   and then M.Complete = M.Complete'Old
                   and then M.Control_Known = M.Control_Known'Old
                   and then M.Control_Page = M.Control_Page'Old
-                  and then M.PCI_Config_Known = M.PCI_Config_Known'Old
-                  and then M.PCI_Config_Page = M.PCI_Config_Page'Old
+                  and then M.PCI_Used = M.PCI_Used'Old
+                  and then M.PCI = M.PCI'Old
                   and then M.Tables = M.Tables'Old
                   and then M.Tables_Used = M.Tables_Used'Old
                   and then M.Tables_Complete = M.Tables_Complete'Old;
@@ -388,13 +402,15 @@ package Physical_Ranges with SPARK_Mode, Pure is
       and then (for some I in 1 .. M.Count =>
                   Control_Class (M.Spans (I).Class) and then Within (M.Spans (I), P)));
 
-   -- Page P is in the map's segment 0 bus 0 ECAM slice.
+   -- Any validated MCFG allocation, including nonzero segment/start bus.
    function In_PCI_Config (M : Map; P : Page_Number) return Boolean is
-     (M.PCI_Config_Known and then M.PCI_Config_Page <= Last_PCI_Bus_Page
-      and then P >= M.PCI_Config_Page and then P - M.PCI_Config_Page < PCI_Bus_Pages);
+     (for some I in 1 .. M.PCI_Used =>
+       PW.Valid (M.PCI (I), Address_Limit)
+       and then P >= PCI_First_Page (M.PCI (I)) and then P < PCI_End_Page (M.PCI (I)));
 
    function PCI_Config_Page_Admitted (M : Map; P : Page_Number) return Boolean is
      (In_PCI_Config (M, P)
+      and then (not M.Control_Known or else P /= M.Control_Page)
       and then (for all I in 1 .. M.Count =>
                   Device_Mappable (M.Spans (I).Class) or else not Touches (M.Spans (I), P)));
 
@@ -499,7 +515,7 @@ package Physical_Ranges with SPARK_Mode, Pure is
       Phase           : Firmware_Phase := Finished;
       From            : Page_Number := 0;   -- the next run starts here or above
       Control_Pending : Boolean := False;
-      PCI_Pending     : Boolean := False;
+      PCI_From        : Unsigned_64 := 0; -- independent enumeration lane
    end record;
 
    -- Where the enumeration starts: nothing for a map that is not sealed and
@@ -566,8 +582,10 @@ package Physical_Ranges with SPARK_Mode, Pure is
      ((for all I in 1 .. M.Count => Span_Steady (M.Spans (I), A, B))
       and then (for all I in 1 .. M.Tables_Used => Extent_Steady (M.Tables (I), A, B))
       and then Steady (M.Control_Page, A, B) and then Steady (M.Control_Page + 1, A, B)
-      and then Steady (M.PCI_Config_Page, A, B)
-      and then Steady (M.PCI_Config_Page + PCI_Bus_Pages, A, B));
+      and then (for all I in 1 .. M.PCI_Used =>
+        PW.Valid (M.PCI (I), Address_Limit)
+        and then Steady (PCI_First_Page (M.PCI (I)), A, B)
+        and then Steady (PCI_End_Page (M.PCI (I)), A, B)));
 
    -- Every page of a uniform stretch is a data page exactly when its first
    -- page is.

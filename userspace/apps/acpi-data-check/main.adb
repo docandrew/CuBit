@@ -1,34 +1,12 @@
-------------------------------------------------------------------------------
---  CuBit
---  Copyright (C) 2026 Jon Andrew
---
---  @summary
---  ACPI firmware-data regression (CuBit.Firmware_Data_Exchange; kernel
---  Physical_Ranges Data_Memory, FIRMWARE_DATA_TAG): devmgr's narrowed,
---  uncached, read-write windows over table-named firmware data, for a
---  program the startup plan approves with (acpi-firmware-data
---  approve-declared).
---
---  @description
---  Approved: it asks devmgr, through the "hardware-data" endpoint, for one
---  page of a firmware-reserved span q35 has (the ICH9 root complex register
---  block, then SeaBIOS's other reserved spans), gets it with the kernel's
---  firmware-data tag, exactly that page, read-write without grant, maps it
---  uncached and reads it; the page past it is refused and the capability
---  cannot be copied on. The same request id again is answered the same,
---  never a second grant. Then the named refusals: PCI configuration space
---  (an ECAM page of bus 0 and of bus 1, from its own MCFG copy), a RAM page,
---  a PCI BAR's page (found through its read-only PCI configuration window),
---  the tail of a driverless BAR past its base page (QEMU's pci-testdev,
---  which the test adds: devmgr sized it at enumeration), the FACS page
---  (from its own FADT copy), a malformed request, and the
---  ordinary "device-manager" endpoint, which is not the firmware-data
---  badge. TEST: PASS acpi-firmware-data when all hold.
---
---  Unapproved (the same image as acpi-data-unapproved.app): it has no
---  "hardware-data" endpoint, and the same request through "device-manager"
---  is refused (Not_Approved) without a capability.
-------------------------------------------------------------------------------
+--  Native QEMU regression for devmgr's firmware-data windows.
+--  This test-only executable is a validated com.cubit.acpi-backend stand-in.
+--  The launch plan independently approves hardware, PCI and firmware-data.
+--  The approved instance requests a read-only segment0/bus0 handle from the
+--  PCI broker to discover real device BARs; no startup PCI pregrant is used.
+--  Existing data-window cache/range/rights, idempotence and refusal assertions
+--  remain, including real BAR base and driverless BAR-tail Overlaps_Device.
+--  The unapproved instance has no firmware-data endpoint and exercises a
+--  typed refusal through ordinary devmgr. Production approval policy is unchanged.
 pragma Ada_2022;
 with System;
 with Interfaces; use Interfaces;
@@ -38,11 +16,13 @@ with CuBit.Handles.IPC;
 with CuBit.Handles.Control;
 with CuBit.Handles.Devices;
 with CuBit.Handles.Startup;
-with CuBit.ACPI_Windows; use CuBit.ACPI_Windows;
 with CuBit.ACPI_Memory_Classes;
 with CuBit.Firmware_Snapshot;
 with CuBit.Firmware_Data_Exchange;
 with CuBit.Deadlines.Clock;
+with CuBit.Process_IDs;
+with CuBit.Monotonic;
+with ACPI_PCI_Window_Client;
 with Firmware_Data_ABI;
 with Startup;
 
@@ -53,11 +33,15 @@ procedure Main is
    package FS renames CuBit.Firmware_Snapshot;
    package AMC renames CuBit.ACPI_Memory_Classes;
    package FDX renames CuBit.Firmware_Data_Exchange;
+   package Client renames ACPI_PCI_Window_Client;
+   package Q renames Client.Q;
    use type ABI.Kind;
    use type FS.Outcome, FS.Byte_Count;
-   use type AMC.Memory_Kind;
    use type FDX.Disposition;
    use type IPC.Carried_Kind;
+   use type Client.Outcome;
+   PCI_Run : Client.Context;
+   PCI_Endpoint : constant HS.Optional_Endpoint := Startup.Pci_Windows;
 
    Failures : Natural := 0;
 
@@ -139,11 +123,9 @@ procedure Main is
    Testdev_BAR_Bytes     : constant := 16#10_0000#;
 
    Tables : constant FS.Authority := Startup.Tables;
-   Grant_Value : constant CuBit.ACPI_Windows.Grant := Startup.Hardware;
-   G : CuBit.ACPI_Windows.Grant renames Grant_Value;
-   Data_Endpoint : constant HS.Optional_Endpoint :=
-     HS.Optional_Endpoint_Named (FDX.Data_Label ("hardware"));
-   Plain : constant HS.Optional_Endpoint := HS.Optional_Endpoint_Named ("device-manager");
+   Data_Endpoint : constant HS.Optional_Endpoint := Startup.Hardware_Data;
+   Plain : constant HS.Optional_Endpoint :=
+     (Present => True, Value => Startup.Device_Manager);
 
    type Byte_Array is array (Positive range <>) of Unsigned_8;
 
@@ -481,28 +463,44 @@ begin
    --  A PCI BAR's page, found through the read-only configuration window,
    --  and the tail of a driverless BAR: every page of it but its base page.
    declare
-      PCI_Index : Natural := 0;
       BAR_Page : Unsigned_64 := 0;
       Testdev_Base : Unsigned_64 := 0;
+      Report : Client.Report;
    begin
-      for K in 1 .. G.Memory_Used loop
-         if G.Memory (K).Kind = AMC.PCI_Config then
-            PCI_Index := K;
-         end if;
-      end loop;
-      if PCI_Index /= 0
+      Check (PCI_Endpoint.Present, "PCI broker endpoint available for BAR probes");
+      if PCI_Endpoint.Present then
+         declare
+            D : constant IPC.Description := IPC.Describe (PCI_Endpoint.Value);
+            Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+         begin
+            if D.Current and then Now <= Unsigned_64'Last - Request_Deadline_Ms then
+               Client.Acquire (PCI_Run, PCI_Endpoint.Value,
+                 CuBit.Process_IDs.From_Word (D.Object),
+                 (ID => 1, Key => (Segment => 0, Bus => 0), Mode => Q.Read_Only),
+                 Now + Request_Deadline_Ms, Report);
+            end if;
+         end;
+      end if;
+      Check (Report.Status = Client.Acquired and then Client.Ready (PCI_Run),
+             "bus 0 acquired from the PCI broker for BAR probes");
+      if Client.Ready (PCI_Run)
+        and then Client.Description (PCI_Run).First = Bus_Zero_Base
         and then CuBit.Handles.Devices.Map_Device
-                   (G.Memory (PCI_Index).Memory, G.Memory (PCI_Index).First_Page * Page_Bytes,
-                    PCI_Virtual, G.Memory (PCI_Index).Pages, True)
+                   (Client.Memory (PCI_Run), Client.Description (PCI_Run).First,
+                    PCI_Virtual, Q.Bus_Bytes / Page_Bytes, True)
       then
+         Check (True, "PCI bus window maps read-only for BAR probes");
          BAR_Page := First_BAR_Page;
          Testdev_Base := Testdev_BAR_Base;
+      else
+         Check (False, "PCI bus window maps read-only for BAR probes");
       end if;
       Check (BAR_Page /= 0
              and then Refused_As (Ask (Data_Endpoint.Value, BAR_Page, 1, Request_Id),
                                   FDX.Overlaps_Device),
              "a device BAR page refused (Overlaps_Device)");
       debugPrint ("acpi-data-check: driverless test device BAR at " & Hex (Testdev_Base) & LF);
+      if Testdev_Base /= 0 and then Testdev_Base mod Testdev_BAR_Bytes = 0 then
       declare
          Tail : constant Answer :=
            Ask (Data_Endpoint.Value, Testdev_Base / Page_Bytes + 1,
@@ -514,6 +512,9 @@ begin
                 and then Refused_As (Tail, FDX.Overlaps_Device),
                 "a driverless BAR's tail refused (Overlaps_Device)");
       end;
+      else
+         Check (False, "a driverless BAR's tail refused (Overlaps_Device)");
+      end if;
    end;
 
    declare

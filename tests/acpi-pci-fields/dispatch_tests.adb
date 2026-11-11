@@ -166,14 +166,43 @@ procedure Dispatch_Tests is
       Check (Loads = Before and then R.Status (State) = R.Serving);
    end Refuse;
 begin
-   Check (Mode in 1 .. 19);
+   Check (Mode in 1 .. 20);
    C.Bind_Memory (Hardware, (ID => 1, Space => C.W.P.Memory_Space,
      Base => Physical, Length => Window_Bytes, Readable => True, Writable => Writable, Delegable => False),
      1, 100, Bound);
    Check (Bound.Status = B.Bound and then Mappings = 1);
    C.Authorize_Scope (Hardware, Scope, Accepted); Check (Accepted);
    C.Seal (Hardware, Accepted); Check (Accepted);
-   R.Configure (State, Scope, 11, 1, Code);
+   R.Configure (State, Scope, 11, 1, Code, Key => (if Mode = 20 then (7, 1) else (0, 0)));
+   if Mode = 20 then
+      Check (Code = R.Configured);
+      R.Header (State, Scope, Header);
+      declare
+         Output : Q.Packet;
+         Reply : Q.Reply;
+         Region : P.Region := ((7, 1, 31, 7), 0, P.Function_Bytes);
+         Encoded : constant Q.Encoded_Request := Q.Read_Request
+           (Unsigned_64 (Header.Epoch), Unsigned_64 (Header.ID), Region,
+            P.Function_Bytes - 4, P.T.Dword_Access, 100, Key => (7, 1));
+      begin
+         D.Dispatch (State, Scope, Q.Header_Request, Output);
+         Reply := Q.Decode_Reply (Output, Q.Header);
+         Check (Reply.Valid and then Reply.Status = Q.Not_Ready and then Loads = 0);
+         D.Dispatch (State, Scope, Q.Header_Request ((7, 1)), Output);
+         Reply := Q.Decode_Reply (Output, Q.Header);
+         Check (Reply.Valid and then Reply.Status = Q.Ready);
+         Check (Encoded.Status = Q.Encoded);
+         D.Dispatch (State, Scope, Encoded.Item, Output);
+         Reply := Q.Decode_Reply (Output, Q.Read, P.T.Dword_Access);
+         Check (Reply.Valid and then Reply.Status = Q.Done and then Loads = 1);
+         Check (Last_Address = Virtual_First + P.Bus_Bytes - 4);
+         Region.Device.Bus := 2;
+         R.Read (State, Scope, Header.Epoch, Header.ID, Region, 0, P.T.Dword_Access,
+           Value, Code, Reason, 100);
+         Check (Code = R.Policy_Refused and then Reason = P.Unsupported_Bus and then Loads = 1);
+      end;
+      Ada.Text_IO.Put_Line ("mode20 keyed reader/dispatch PASS"); return;
+   end if;
    if Mode in 2 | 9 | 10 then
       Check (Code = R.Invalid_Record and then R.Status (State) = R.Failed and then Loads = 0);
    else

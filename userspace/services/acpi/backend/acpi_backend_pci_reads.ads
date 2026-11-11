@@ -2,13 +2,13 @@ pragma Ada_2022;
 with Interfaces;
 with ACPI_Backend_Catalog;
 with ACPI_PCI_Config_Reads;
--- One named, retained segment-zero/bus-zero ECAM record. Logical PCI offsets
+-- One named, retained ECAM bus record with an independently validated key. Logical PCI offsets
 -- never authorize SystemMemory access. Kernel receive metadata supplies Scope.
 generic
    with package Catalog is new ACPI_Backend_Catalog (<>);
    Hardware : in out Catalog.Context;
    -- Fresh independent tag/cache/rights/geometry inspection of the retained
-   -- kernel handle. True attests the kernel's exact read-only/uncached bus0 tag.
+   -- kernel handle. True attests the kernel's exact read-only/uncached PCI tag and selected bus geometry.
    with function Is_PCI (Window : Catalog.W.Window_ID) return Boolean;
    with procedure Read_Clock
      (Now : out Catalog.B.Tick; Available : out Boolean);
@@ -32,16 +32,18 @@ package ACPI_Backend_PCI_Reads with SPARK_Mode is
    -- root; no IPC-supplied address/class/extent installs or broadens a record.
    procedure Configure
      (State : in out Context; Scope : Word; ID : Record_ID;
-      Window : Catalog.W.Window_ID; Result : out Outcome);
+      Window : Catalog.W.Window_ID; Result : out Outcome;
+      Key : P.Bus_Key := (others => <>));
    type Header_Report is record
       Status : Outcome := Not_Ready;
       Epoch : Epoch_Number := No_Epoch;
       ID : Record_ID := No_Record;
       First : Word := 0;
+      Key : P.Bus_Key;
    end record;
    -- Physical base is metadata for bounding aliases, never a mapping or
    -- virtual address. It is populated only after fresh root inspection. The
-   -- protocol fact P.Bus_Bytes, with P.Function_Bytes per function, bus0 only.
+   -- protocol fact P.Bus_Bytes, with P.Function_Bytes per function.
    procedure Header (State : in out Context; Scope : Word; Result : out Header_Report);
    procedure Read
      (State : in out Context; Scope : Word; Epoch : Epoch_Number; ID : Record_ID;
@@ -58,6 +60,7 @@ private
       Revision : Catalog.Revision_Number := Catalog.No_Revision;
       Window : Catalog.W.Window_ID := Catalog.W.No_Window;
       Base : Word := 0;
+      Key : P.Bus_Key;
       Working : Boolean := False;
    end record;
 end ACPI_Backend_PCI_Reads;

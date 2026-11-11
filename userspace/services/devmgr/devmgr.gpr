@@ -4,7 +4,7 @@ project Devmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display", "../../lib/logging");
+    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display", "../../lib/logging", "../../../shared/acpi", "../../../shared/firmware");
 
     for Main use ("main.adb");
 
@@ -38,6 +38,21 @@ project Devmgr is
        --  The ledgers and records on the heap (LIM-001b), firmware data.
        "devmgr_growable.ads", "devmgr_growable.adb", "devmgr_heap.ads", "devmgr_heap.adb",
        "devmgr_claim_ledgers.ads", "devmgr_claim_ledgers.adb",
+       -- Existing devmgr PCI broker and its pure shared table/protocol units.
+       "devmgr_pci_claims.ads",
+       "devmgr_pci_claims.adb",
+       "devmgr_claim_ledgers-pci.ads",
+       "devmgr_claim_ledgers-pci.adb",
+       "devmgr_pci_broker.ads",
+       "devmgr_pci_broker.adb",
+       "acpi_pci_window_exchange.ads",
+       "acpi_pci_window_exchange.adb",
+       "firmware_tables.ads",
+       "firmware_tables.adb",
+       "firmware_tables-mcfg.ads",
+       "firmware_tables-mcfg.adb",
+       "firmware_tables-pci_windows.ads",
+       "firmware_tables-pci_windows.adb",
        "devmgr_data_windows.ads", "devmgr_data_windows.adb",
        "fs_attachments.ads",
        "ccl-resource_sections.ads", "ccl-resource_sections.adb",

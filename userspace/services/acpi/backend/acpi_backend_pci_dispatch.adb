@@ -2,7 +2,7 @@ pragma Ada_2022;
 with ACPI_Backend_Binding_Types;
 package body ACPI_Backend_PCI_Dispatch with SPARK_Mode is
    package Q renames ACPI_PCI_Protocol;
-   use type Interfaces.Unsigned_32, Interfaces.Unsigned_64, Reader.Outcome;
+   use type Interfaces.Unsigned_32, Interfaces.Unsigned_64, Reader.Outcome, Q.P.Bus_Key;
    function Classify (Code : Reader.Outcome) return Q.Outcome is
      (case Code is
         when Reader.Denied => Q.Denied,
@@ -25,6 +25,7 @@ package body ACPI_Backend_PCI_Dispatch with SPARK_Mode is
       Code : Reader.Outcome;
       Reason : Q.P.Outcome;
       Value : Interfaces.Unsigned_64;
+      Region : Q.P.Region;
    begin
       if Item.Label = Q.Header_Operation then Kind := Q.Header;
       elsif Item.Label = Q.Describe_Operation then Kind := Q.Describe; end if;
@@ -33,7 +34,9 @@ package body ACPI_Backend_PCI_Dispatch with SPARK_Mode is
       case Request.Kind is
          when Q.Header =>
             Reader.Header (State, Scope, Header);
-            if Header.Status = Reader.Ready then
+            if Header.Status = Reader.Ready and then Header.Key /= Request.Key then
+               Result := Q.Error_Reply (Q.Header, Q.Not_Ready);
+            elsif Header.Status = Reader.Ready then
                Result := Q.Header_Result (Interfaces.Unsigned_64 (Header.Epoch), Interfaces.Unsigned_64 (Header.ID));
             else Result := Q.Error_Reply (Q.Header, Classify (Header.Status)); end if;
          when Q.Describe =>
@@ -46,8 +49,15 @@ package body ACPI_Backend_PCI_Dispatch with SPARK_Mode is
                Result := Q.Error_Reply (Q.Describe, Q.Denied);
             else Result := Q.Describe_Result (Header.First, Q.P.Bus_Bytes); end if;
          when Q.Read =>
+            Reader.Header (State, Scope, Header);
+            if Header.Status /= Reader.Ready then
+               Result := Q.Error_Reply (Q.Read, Classify (Header.Status)); return;
+            end if;
+            Region := Request.Region;
+            Region.Device.Segment := Header.Key.Segment;
+            Region.Device.Bus := Header.Key.Bus;
             Reader.Read (State, Scope, Reader.Epoch_Number (Request.Epoch), Reader.Record_ID (Request.ID),
-              Request.Region, Request.Offset, Request.Width, Value, Code, Reason,
+              Region, Request.Offset, Request.Width, Value, Code, Reason,
               ACPI_Backend_Binding_Types.Tick (Request.Deadline), Request.For_Write);
             if Code = Reader.Done then Result := Q.Read_Result (Value);
             elsif Code = Reader.Policy_Refused then Result := Q.Error_Reply (Q.Read, Q.Policy_Refused, Reason);

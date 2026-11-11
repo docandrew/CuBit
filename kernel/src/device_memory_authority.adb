@@ -44,8 +44,14 @@ package body Device_Memory_Authority with SPARK_Mode is
       for P in Physical_Ranges.Page_Of (Base) .. Physical_Ranges.Page_Of (Base + (Bytes - 1)) loop
          pragma Assert (Physical_Ranges.Firmware_Page (M, P, Physical_Ranges.Data_Memory));
          pragma Assert (Physical_Ranges.Data_Page (M, P));
+         pragma Assert (Physical_Ranges.Data_Page_Admitted (M, P));
          pragma Loop_Invariant
-           (for all Q in Physical_Ranges.Page_Of (Base) .. P => Physical_Ranges.Data_Page (M, Q));
+           (for all Q in Physical_Ranges.Page_Of (Base) .. P =>
+              Physical_Ranges.Data_Page (M, Q)
+              and then not Physical_Ranges.NVS_Page (M, Q)
+              and then not Physical_Ranges.Control_Page_Admitted (M, Q)
+              and then not Physical_Ranges.In_PCI_Config (M, Q)
+              and then not Physical_Ranges.Table_Page (M, Q));
       end loop;
    end Lemma_Data_Uncached_Alone;
 

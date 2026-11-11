@@ -1,29 +1,12 @@
-------------------------------------------------------------------------------
---  CuBit
---  Copyright (C) 2026 Jon Andrew
---
---  @summary
---  ACPI PCI configuration window regression (ACPI-PCI-001): the read-only,
---  uncached PCI segment 0 bus 0 window an ACPI hardware grant carries when
---  the startup plan opts in, (acpi-pci-config approve-declared).
---
---  @description
---  With the window: exactly one PCI configuration window; its kernel
---  capability covers exactly bus 0's ECAM slice (1 MiB) at the base this
---  program finds itself in its own MCFG copy (segment 0, starting at bus
---  0); its kind and cache mode are the kernel tag's (PCI_Config,
---  uncached); it is held read-only without grant and cannot be copied on;
---  a writable mapping of it is refused, the pages just past and before it
---  are refused, and a read-only mapping of function 00:00.0 reads the host
---  bridge's vendor and device ID (the headless test compares them with
---  devmgr's enumeration). The rest of the grant is unchanged (the FACS
---  window stays write-back). Last, after TEST: PASS, it writes to the
---  read-only mapping on purpose: the kernel must stop it with a
---  write-protection fault.
---
---  Without the window (the same image, not approved for PCI configuration):
---  it says so and that the rest of the grant is still there, and stops.
-------------------------------------------------------------------------------
+--  Native QEMU regression for devmgr's named PCI-window broker.
+--  This test-only executable is a validated com.cubit.acpi-backend stand-in.
+--  Startup hardware contains no PCI pregrant. With the launch plan's hardware
+--  and PCI approvals it requests segment0/bus0, verifies the read-only,
+--  uncached, non-delegable one-bus handle against its own MCFG copy, reads the
+--  host bridge and retains the existing kernel write-protection check.
+--  Without PCI approval it receives no broker endpoint and verifies a real
+--  Not_Approved reply through ordinary devmgr with no carried capability.
+--  Both instances retain the ordinary FADT/FACS hardware grant checks.
 pragma Ada_2022;
 with System;
 with Interfaces; use Interfaces;
@@ -36,6 +19,11 @@ with CuBit.ACPI_Windows; use CuBit.ACPI_Windows;
 with CuBit.ACPI_Windows.Launch;
 with CuBit.ACPI_Memory_Classes;
 with CuBit.Firmware_Snapshot;
+with CuBit.Handles.Startup;
+with CuBit.Process_IDs;
+with CuBit.Monotonic;
+with Capability_ABI;
+with ACPI_PCI_Window_Client;
 with Startup;
 
 procedure Main is
@@ -43,9 +31,18 @@ procedure Main is
    package IPC renames CuBit.Handles.IPC;
    package FS renames CuBit.Firmware_Snapshot;
    package AMC renames CuBit.ACPI_Memory_Classes;
+   package Client renames ACPI_PCI_Window_Client;
+   package Q renames Client.Q;
    use type ABI.Kind;
    use type FS.Outcome, FS.Byte_Count;
    use type AMC.Memory_Kind, AMC.Cache_Mode;
+   use type Client.Outcome, Q.Disposition, IPC.Carried_Kind;
+   Broker : constant CuBit.Handles.Startup.Optional_Endpoint := Startup.Pci_Windows;
+   Run : Client.Context;
+   Broker_Result : Client.Report;
+   Request_Deadline_Ms : constant Unsigned_64 := 2_000;
+   Bus_Request : constant Q.Request :=
+     (ID => 1, Key => (Segment => 0, Bus => 0), Mode => Q.Read_Only);
 
    Failures : Natural := 0;
 
@@ -175,7 +172,6 @@ procedure Main is
       return 0;
    end Bus_Zero_Base;
 
-   PCI_Index : Natural := 0;
    PCI_Count : Natural := 0;
    Write_Back_Others : Boolean := True;
 begin
@@ -183,31 +179,71 @@ begin
    for K in 1 .. G.Memory_Used loop
       if G.Memory (K).Kind = AMC.PCI_Config then
          PCI_Count := PCI_Count + 1;
-         PCI_Index := K;
       elsif G.Memory (K).Cache /= AMC.Write_Back then
          Write_Back_Others := False;
       end if;
    end loop;
 
-   if PCI_Count = 0 then
-      --  Not approved for PCI configuration: the rest of the grant only.
-      debugPrint ("acpi-pci-check: no PCI configuration window; grant has" &
-                  Natural'Image (G.IO_Used) & " I/O and" & Natural'Image (G.Memory_Used) &
-                  " memory windows" & LF);
-      if G.IO_Used > 0 and then G.Memory_Used > 0 and then Write_Back_Others
-        and then CuBit.ACPI_Windows.Launch.Well_Formed (G)
-      then
-         debugPrint ("acpi-pci-check: grant without PCI configuration intact" & LF);
-      end if;
+   Check (PCI_Count = 0, "no PCI configuration startup pregrant");
+   Check (G.IO_Used > 0 and then G.Memory_Used > 0 and then Write_Back_Others,
+          "the rest of the grant is unchanged (I/O and write-back firmware windows)");
+   if not Broker.Present then
+      --  The ordinary devmgr endpoint is available, but carries no broker
+      --  approval. Exercise a real typed refusal without receiving authority.
+      declare
+         Packet : constant Q.Packet := Q.Encode (Bus_Request);
+         Msg : Message := NULL_MESSAGE;
+         Tag : MessageTag;
+         Got : IPC.Carried;
+         Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      begin
+         Msg.tag := (label => Packet.Label, length => Packet.Length,
+                     protocol => 0, ipc => <>, reserved => 0);
+         Msg.words := MessageWords (Packet.Words);
+         if Now > Unsigned_64'Last - Request_Deadline_Ms then
+            Check (False, "unapproved broker deadline representable"); return;
+         end if;
+         Tag := IPC.Call_Accepting
+           (Startup.Device_Manager, Msg, Now + Request_Deadline_Ms, Got);
+         declare
+            Reply : constant Q.Decoded_Reply := Q.Decode
+              ((Label => Msg.tag.label, Length => Msg.tag.length,
+                Flags => Q.Word (Capability_ABI.Flag_Byte
+                  (0, Capability_ABI.IPC_Flags (Msg.tag.ipc))),
+                Protocol => Q.Word (Msg.tag.protocol), Reserved => Q.Word (Msg.tag.reserved),
+                Words => Q.Word_Array (Msg.words)), Bus_Request.ID,
+               Has_Capability => Got.Kind = IPC.Present);
+         begin
+            Check (Tag = Msg.tag and then Got.Kind = IPC.Absent and then Reply.Valid
+              and then Reply.Item.Status = Q.Not_Approved,
+              "unapproved broker request refused without a capability");
+         end;
+         Check (IPC.Close (Got).Closed, "unapproved reply cleanup complete");
+      end;
       return;
    end if;
-
-   Check (PCI_Count = 1, "exactly one PCI configuration window");
-   Check (CuBit.ACPI_Windows.Launch.Well_Formed (G), "windows sorted and disjoint");
-   Check (G.IO_Used > 0 and then G.Memory_Used > PCI_Count and then Write_Back_Others,
-          "the rest of the grant is unchanged (I/O and write-back firmware windows)");
    declare
-      W : constant Memory_Window := G.Memory (PCI_Index);
+      D : constant IPC.Description := IPC.Describe (Broker.Value);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+   begin
+      if not D.Current or else Now > Unsigned_64'Last - Request_Deadline_Ms then
+         Check (False, "broker endpoint and deadline available"); return;
+      end if;
+      Client.Acquire (Run, Broker.Value, CuBit.Process_IDs.From_Word (D.Object),
+        Bus_Request, Now + Request_Deadline_Ms, Broker_Result);
+      Check (Broker_Result.Status = Client.Acquired and then Client.Ready (Run),
+             "bus 0 acquired from the PCI broker");
+      if not Client.Ready (Run) then
+         debugPrint ("acpi-pci-check: broker result " & Broker_Result.Status'Image & LF);
+         return;
+      end if;
+   end;
+   Check (CuBit.ACPI_Windows.Launch.Well_Formed (G), "windows sorted and disjoint");
+   declare
+      W : constant Memory_Window :=
+        (Memory => Client.Memory (Run),
+         First_Page => Page_Number (Client.Description (Run).First / Page_Bytes),
+         Pages => Q.Bus_Bytes / Page_Bytes, Kind => AMC.PCI_Config, Cache => AMC.Uncached);
       D : constant IPC.Description := IPC.Describe (W.Memory);
       First : constant Unsigned_64 := W.First_Page * Page_Bytes;
       Past : constant Unsigned_64 := (W.First_Page + W.Pages) * Page_Bytes;

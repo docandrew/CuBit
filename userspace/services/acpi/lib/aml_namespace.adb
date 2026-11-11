@@ -2613,7 +2613,8 @@ package body AML_Namespace with SPARK_Mode is
          Append_Runtime_Package => Package_Adapter_Append,
          Defer_Runtime_Package_Name => Package_Adapter_Defer,
          Finish_Runtime_Package => Package_Adapter_Finish,
-         Abort_Runtime_Packages => Package_Adapter_Abort);
+         Abort_Runtime_Packages => Package_Adapter_Abort,
+         Profile_Enabled => Profile_Enabled, Observe_Profile => Observe_Profile);
       Method : constant AML_Execute.Method_Definition := Read_Method (Tree, Node);
    begin
       if Pending_Members (Tree) /= 0 then
@@ -8150,6 +8151,7 @@ package body Owned with SPARK_Mode is
       is
          Data : AML_Decode.Bytes (1 .. AML_Interface_Policy.Max_Interface_Bytes) := [others => 0];
          Used : AML_Interface_Policy.Interface_Length := 0;
+         Supported : Boolean;
          ID : AML_Objects.Object_ID;
          Length : Natural;
          B : AML_Decode.Byte;
@@ -8176,13 +8178,16 @@ package body Owned with SPARK_Mode is
          for J in 1 .. Natural'Min (Length, AML_Interface_Policy.Max_Interface_Bytes + 1) loop
             B := AML_Objects.Stored_Byte (Environment.Tree.Values, ID, J - 1);
             exit when B = 0;
-            if Used = AML_Interface_Policy.Max_Interface_Bytes then return; end if;
+            if Used = AML_Interface_Policy.Max_Interface_Bytes then
+               Observe_Interface_Query (Data (1 .. Used), False, True);
+               return;
+            end if;
             Used := Used + 1;
             Data (Used) := B;
          end loop;
-         if AML_Interface_Policy.Supports (Interface_Policy, Data (1 .. Used)) then
-            Reply.Value := AML_Decode.Integer_Value'Last;
-         end if;
+         Supported := AML_Interface_Policy.Supports (Interface_Policy, Data (1 .. Used));
+         if Supported then Reply.Value := AML_Decode.Integer_Value'Last; end if;
+         Observe_Interface_Query (Data (1 .. Used), Supported, False);
       end Evaluate_Internal;
       procedure Execute_Declaration_Enter
         (Environment : in out Arena; Intent : AML_Declaration_Contexts.Request; Scope : Natural;
@@ -9542,7 +9547,8 @@ package body Owned with SPARK_Mode is
          Next_Runtime_Package_Field => Next_Runtime_Package_Field,
          Complete_Runtime_Package_Field => Complete_Runtime_Package_Field,
          Begin_Field_Context => PCI_Begin, Advance_Field_Context => PCI_Advance,
-         Finish_Field_Context => PCI_Finish);
+         Finish_Field_Context => PCI_Finish,
+         Profile_Enabled => Profile_Enabled, Observe_Profile => Observe_Profile);
    begin
       -- Unknown external completion survives tree rollback and Reset. Even
       -- the default rejecting-provider entry cannot restart AML implicitly.
@@ -11057,7 +11063,7 @@ package body Owned with SPARK_Mode is
                   Report.Field_Failure :=
                     (Present => True, Region_Known => False, For_Write => For_Write,
                      Name => E.Tree.Items (Node).Part, Region => "____", Space => 0,
-                     Failure => (if Result in AML_Execute.Execution_Failure then Result else AML_Execute.Unsupported_Value));
+                     Failure => (if Result in AML_Execute.Execution_Failure then Result else AML_Execute.Unsupported_Value), others => <>);
                   declare Region : constant Node_ID := E.Tree.Items (Node).Region_Field_Info.Region; begin
                   if Region > Root and then Region <= E.Tree.Used
                     and then E.Tree.Items (Region).Object_Type = Operation_Region_Object
@@ -11066,6 +11072,10 @@ package body Owned with SPARK_Mode is
                      Report.Field_Failure.Region_Known := True;
                      Report.Field_Failure.Region := E.Tree.Items (Region).Part;
                      Report.Field_Failure.Space := AML_Decode.Byte (E.Tree.Items (Region).Operation_Info.Space);
+                     Report.Field_Failure.Region_Address := E.Tree.Items (Region).Operation_Info.Address;
+                     Report.Field_Failure.Region_Length := E.Tree.Items (Region).Operation_Info.Length;
+                     Report.Field_Failure.Address_Is_Literal := E.Tree.Items (Region).Operation_Info.Syntax.Address_Is_Literal;
+                     Report.Field_Failure.Length_Is_Literal := E.Tree.Items (Region).Operation_Info.Syntax.Length_Is_Literal;
                   end if;
                   end;
                end;
@@ -11098,7 +11108,7 @@ package body Owned with SPARK_Mode is
                return [Character'Val (Input.Data.Bytes (Offset + 1)), Character'Val (Input.Data.Bytes (Offset + 2)),
                  Character'Val (Input.Data.Bytes (Offset + 3)), Character'Val (Input.Data.Bytes (Offset + 4))];
             end Signature_At;
-            procedure Execute_Selected (Index : Positive) is
+            procedure Execute_Selected_Body (Index : Positive) is
                Snapshot : Namespace_Snapshot_Owner := null;
                procedure Execute_With_Snapshot (Prior : State) is
                   type Definition_Snapshot is array (Positive range <>) of Definition_Identity;
@@ -11211,6 +11221,18 @@ package body Owned with SPARK_Mode is
                Execute_With_Snapshot (Snapshot.all);
                Free_Namespace_Snapshot (Snapshot);
 
+            end Execute_Selected_Body;
+            procedure Execute_Selected (Index : Positive) is
+            begin
+               if Profile_Enabled then
+                  Observe_Profile ((Kind => AML_Profile_Events.Table_Enter,
+                    Logical_Table => AML_Profile_Events.Logical_Table_ID (Index), others => <>));
+               end if;
+               Execute_Selected_Body (Index);
+               if Profile_Enabled then
+                  Observe_Profile ((Kind => AML_Profile_Events.Table_Leave,
+                    Logical_Table => AML_Profile_Events.Logical_Table_ID (Index), others => <>));
+               end if;
             end Execute_Selected;
          begin
             Report := (others => <>);

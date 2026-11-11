@@ -10,7 +10,6 @@ with CPU_Topology.Boot;
 with Multiboot2_Info;
 with Firmware_Tables;
 with Firmware_Tables.HPET;
-with Firmware_Tables.MCFG;
 with Firmware_Tables.Provisioning;
 with Firmware_Tables.Remapping;
 with BuddyAllocator;
@@ -605,36 +604,6 @@ package body acpi is
 
         -- Save this for later when we're enumerating PCI devices.
         pcieConfig := mcfg.entries;
-
-        -- Segment 0's allocation that starts at bus 0 (the checked decoder,
-        -- every allocation): bus 0's ECAM slice, firmware memory that the
-        -- ACPI hardware grant may read (Physical_Ranges, ACPI-PCI-001).
-        declare
-            package MC renames Firmware_Tables.MCFG;
-            use type MC.Segment_Number, MC.Bus_Number;
-            Data  : Firmware_Tables.Bytes (1 .. Natural (mcfg.header.length))
-              with Import, Address => mcfgAddr;
-            Table : constant MC.Table_Metadata := MC.Decode (Data);
-        begin
-            if Table.Valid then
-                for Index in 1 .. Table.Count loop
-                    declare
-                        Item : constant MC.Allocation_Result := MC.Read_Allocation (Data, Index);
-                    begin
-                        if Item.Valid and then Item.Value.Segment = PCI_Segment_Zero
-                          and then Item.Value.First_Bus = PCI_Bus_Zero
-                          and then Item.Value.Last_Bus >= PCI_Bus_Zero
-                          and then pciConfigBus0 = 0
-                        then
-                            pciConfigBus0 := Item.Value.Base;
-                        end if;
-                    end;
-                end loop;
-            else
-                println ("ACPI: MCFG rejected by the checked decoder");
-            end if;
-            print (" Segment 0 bus 0 ECAM:  "); println (pciConfigBus0);
-        end;
 
         -- @TODO this code works if there are multiple configuration spaces, for
         -- now just use the first one we find.

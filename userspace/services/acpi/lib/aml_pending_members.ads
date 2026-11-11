@@ -9,7 +9,7 @@ generic
 package AML_Pending_Members with SPARK_Mode is
    subtype Member_Count is Natural range 0 .. Max_Members;
    subtype Segment_Count is Natural range 0 .. Max_Segments;
-   subtype Element_Index is Natural range 0 .. AML_Objects.Max_Elements - 1;
+   subtype Element_Index is Natural range 0 .. AML_Objects.Storage_Capacity'Last - 1;
    type State is private;
    function Count (Journal : State) return Member_Count;
    function Segments_Used (Journal : State) return Segment_Count;
@@ -26,7 +26,7 @@ package AML_Pending_Members with SPARK_Mode is
    type Member_Result (Found : Boolean := False) is record
       case Found is
          when True =>
-            Package_ID : AML_Objects.Object_ID range 1 .. AML_Objects.Max_Objects;
+            Package_ID : AML_Objects.Object_ID range 1 .. AML_Objects.Object_ID'Last;
             Element : Element_Index;
             Scope : Scope_ID;
             Path : AML_Names.Name_Result (AML_Names.Accepted);

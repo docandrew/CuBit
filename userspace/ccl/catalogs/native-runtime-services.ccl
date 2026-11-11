@@ -56,6 +56,8 @@
   # only a startup entry approving (display-capture approve-declared) gets
   # this endpoint, badged with CuBit.Display_Capture.Authority_Tag.
   (service display-capture 39 read-write)
+  # System_Publications.ACPI_PCI_Windows_Role; startup-approved backend only.
+  (service acpi-pci-windows 40 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)

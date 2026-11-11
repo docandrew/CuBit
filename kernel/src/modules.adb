@@ -23,10 +23,13 @@ with Process.Loader;
 with Multiboot;
 with Boot_Modules;
 with Boot_Timeline;
+with Boot_Diagnostics;
+with Boot_Panel;
 with Boot_Timeline_Layout;
 with Process_Identities;
 with Owned_Memory_Layout;
 with Launch_Configuration;
+with Root_Export_Admission;
 with Process_Launch;
 with Publication_Pages;
 with Cpu_Times_Page;
@@ -711,6 +714,36 @@ package body Modules with SPARK_Mode => Off is
     procedure setup
     is
         cpioOk : Boolean;
+        use type Root_Export_Admission.Outcome;
+        Root_Selection : Root_Export_Admission.Selection;
+
+        function Select_Roots return Root_Export_Admission.Selection is
+            package PR renames Physical_Ranges;
+            M : PR.Map renames Physical_Range_Map.Kernel_Map;
+            use type Root_Export_Admission.Root_Demand;
+            Device_Total, Firmware_Total : Root_Export_Admission.Root_Demand := 0;
+            Left_Out : Natural := 0;
+            Found : Boolean;
+            First, Last : PR.Address;
+            Run : PR.Firmware_Run;
+            Cursor : PR.Firmware_Cursor;
+            From : PR.Page_Number := 0;
+        begin
+            loop
+                PR.Next_Device_Run (M, From, Found, First, Last);
+                exit when not Found;
+                Device_Total := Device_Total + 1;
+                exit when PR.Page_Of (Last) = PR.Last_Page;
+                From := PR.Page_Of (Last) + 1;
+            end loop;
+            Cursor := PR.First_Firmware_Cursor (M);
+            loop
+                PR.Next_Firmware_Run (M, Cursor, Found, Run, Left_Out);
+                exit when not Found;
+                Firmware_Total := Firmware_Total + 1;
+            end loop;
+            return Root_Export_Admission.Choose (Device_Total, Firmware_Total);
+        end Select_Roots;
     begin
         if setupStarted then
             raise ModuleException with "Boot module startup is one-shot";
@@ -791,6 +824,21 @@ package body Modules with SPARK_Mode => Off is
         -- ---------------------------------------------------------------
         -- Phase 3: Load devmgr.svc from CPIO
         -- ---------------------------------------------------------------
+        --  Refuse an indivisible inventory before creating a process,
+        --  placing capabilities, or opening a launch configuration.
+        Root_Selection := Select_Roots;
+        if Root_Selection.Status = Root_Export_Admission.Inventory_Capacity then
+            println ("Modules: stage root-inventory fail " &
+                     Root_Export_Admission.Capacity_Reason);
+            println ("Modules: devmgr not started: ROOT_INVENTORY_CAPACITY");
+            println ("Modules: ACPI backend not started: ROOT_INVENTORY_CAPACITY");
+            Boot_Timeline.Mark_Stage
+              (Boot_Timeline_Layout.Device_Manager_Roots_Refused);
+            Boot_Diagnostics.Set_Evidence
+              (Boot_Panel.Firmware_Evidence,
+               "devmgr/acpi-backend refused: ROOT_INVENTORY_CAPACITY");
+            return;
+        end if;
         devmgrPID := loadFromCpio (cpioArchive, "devmgr.svc",
                                    priority => 5);
         if devmgrPID = Process.NO_PROCESS then
@@ -932,14 +980,14 @@ package body Modules with SPARK_Mode => Off is
             -- envelope at a time for a program approved with
             -- acpi-firmware-data.
             --
-            -- Two passes over the same deterministic enumeration: count, so
-            -- the configuration's pages can be sized, then place.
+            --  The preflight counted this sealed, deterministic inventory
+            --  before loading devmgr. Place exactly the admitted inventory.
             declare
                 package PR renames Physical_Ranges;
                 M : PR.Map renames Physical_Range_Map.Kernel_Map;
-                Device_Total, Firmware_Total : Natural := 0;
                 Left_Out : Natural := 0;
-                Kept_Device, Kept_Firmware : LC.Root_Count;
+                Kept_Device : constant LC.Root_Count := Root_Selection.Device;
+                Kept_Firmware : constant LC.Root_Count := Root_Selection.Firmware;
                 Found : Boolean;
                 First, Last : PR.Address;
                 Run : PR.Firmware_Run;
@@ -956,33 +1004,6 @@ package body Modules with SPARK_Mode => Off is
                     object       => (ref => R.First, param => R.Last - R.First + 1),
                     gen          => Capabilities.INITIAL_GENERATION));
             begin
-                From := 0;
-                loop
-                    PR.Next_Device_Run (M, From, Found, First, Last);
-                    exit when not Found;
-                    Device_Total := Device_Total + 1;
-                    exit when PR.Page_Of (Last) = PR.Last_Page;
-                    From := PR.Page_Of (Last) + 1;
-                end loop;
-                Cursor := PR.First_Firmware_Cursor (M);
-                loop
-                    PR.Next_Firmware_Run (M, Cursor, Found, Run, Left_Out);
-                    exit when not Found;
-                    Firmware_Total := Firmware_Total + 1;
-                end loop;
-                -- The block's ceiling is far above any real classification
-                -- (Physical_Ranges.Max_Spans bounds the runs); say so if not.
-                Kept_Device := LC.Root_Count (Natural'Min (Device_Total, LC.Maximum_Roots));
-                Kept_Firmware := LC.Root_Count
-                  (Natural'Min (Firmware_Total, LC.Maximum_Roots - Natural (Kept_Device)));
-                if Natural (Kept_Device) /= Device_Total
-                  or else Natural (Kept_Firmware) /= Firmware_Total
-                then
-                    print ("Modules: CAPACITY devmgr roots: demand ");
-                    print (Device_Total + Firmware_Total);
-                    print (", limit ");
-                    println (Integer (LC.Maximum_Roots));
-                end if;
                 Open_Configuration
                   (devmgrPID,
                    (Device_Roots   => Kept_Device,

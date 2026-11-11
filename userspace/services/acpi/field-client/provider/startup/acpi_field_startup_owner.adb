@@ -1,6 +1,8 @@
 pragma Ada_2022;
+with AML_Decode;
 package body ACPI_Field_Startup_Owner is
    use type Wire.Time_Instant, Interfaces.Unsigned_64;
+   use type AML_Decode.Byte;
    package F renames ACPI_Field_Diagnostics;
    function First_Failure return F.Report is
      (if F.Present (First) then First else Provider.First_Failure (IO.Physical));
@@ -329,6 +331,18 @@ package body ACPI_Field_Startup_Owner is
       Target := AML_Field_Access.No_Target; Accepted := False;
       if not Root_Ready (IO) then return; end if;
       Provider.Select_Target (IO.Physical,Geometry,For_Write,Inner,Good);
+      if not Good and then not Root_Pending (IO) and then Enable_PCI and then not For_Write
+        and then (Geometry.Region.Space = AML_Field_Layout.Memory_Space
+          or else (Geometry.Region.Space = AML_Field_Layout.PCI_Config_Space
+            and then Geometry.Region.PCI.Known)) then
+         declare Now, Due : Wire.Time_Instant; Prepared : Boolean; begin
+            Read_Window (Now, Due);
+            if Due /= Wire.No_Finite_Deadline and then Now < Due then
+               Provider.Prepare_Target (IO.Physical, Geometry, For_Write, Due, Prepared);
+               if Prepared then Provider.Select_Target (IO.Physical,Geometry,For_Write,Inner,Good); end if;
+            end if;
+         end;
+      end if;
       if Good then Adopt_Existing (IO,Inner,Target,Accepted); return; end if;
       if Root_Pending (IO) then return; end if;
       -- Reuse only an already issued association, never publish from geometry.
@@ -350,6 +364,18 @@ package body ACPI_Field_Startup_Owner is
       Target := AML_Field_Access.No_Target; Accepted := False;
       if not Root_Ready (IO) then return; end if;
       Provider.Resolve_Module_Target (IO.Physical,Geometry,Inner,Accepted);
+      if not Accepted and then not Root_Pending (IO) and then Enable_PCI
+        and then (Geometry.Region.Space = AML_Field_Layout.Memory_Space
+          or else (Geometry.Region.Space = AML_Field_Layout.PCI_Config_Space
+            and then Geometry.Region.PCI.Known)) then
+         declare Now, Due : Wire.Time_Instant; Prepared : Boolean; begin
+            Read_Window (Now, Due);
+            if Due /= Wire.No_Finite_Deadline and then Now < Due then
+               Provider.Prepare_Target (IO.Physical, Geometry, False, Due, Prepared);
+               if Prepared then Provider.Resolve_Module_Target (IO.Physical,Geometry,Inner,Accepted); end if;
+            end if;
+         end;
+      end if;
       if Accepted then Adopt_Existing (IO,Inner,Target,Accepted); end if;
    end Root_Resolve_Module;
    procedure Root_Resolve_Firmware (IO : in out Root_Context; Declaration : Core.Namespace.Operation_Region_Attributes;

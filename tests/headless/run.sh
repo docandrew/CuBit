@@ -6197,15 +6197,11 @@ TEST: PASS acpi-registers-client
         ;;
     acpi-pci-config)
         required_markers="
-Segment 0 bus 0 ECAM:  0x00000000B0000000
-Modules: devmgr firmware-memory root 0x00000000B0000000 .. 0x00000000B00FFFFF
-devmgr: ACPI memory window 0xB0000000 +0x100000 claimed, closed to device memory
 procmgr: ACPI memory window 1 installed for acpi-pci-unapproved.app
-acpi-pci-check: no PCI configuration window; grant has
-acpi-pci-check: grant without PCI configuration intact
-procmgr: ACPI PCI configuration approved for acpi-pci-check.app
-procmgr: ACPI memory window 2 (PCI configuration, read-only) installed for acpi-pci-check.app
-acpi-pci-check: exactly one PCI configuration window PASS
+acpi-pci-check: no PCI configuration startup pregrant PASS
+acpi-pci-check: unapproved broker request refused without a capability PASS
+acpi-pci-check: unapproved reply cleanup complete PASS
+acpi-pci-check: bus 0 acquired from the PCI broker PASS
 acpi-pci-check: windows sorted and disjoint PASS
 acpi-pci-check: the rest of the grant is unchanged (I/O and write-back firmware windows) PASS
 acpi-pci-check: handle covers exactly bus 0 (1 MiB) PASS
@@ -6233,7 +6229,8 @@ acpi-pci-check: attempting forbidden write at 0000600000000000
            grep -aqF 'ACPI PCI configuration approved for acpi-pci-unapproved.app' "$SERIAL_LOG" ||
            [ "$(grep -acF 'acpi-pci-check: starting' "$SERIAL_LOG")" -ne 2 ] ||
            [ "$(grep -acF 'TEST: PASS acpi-pci-config' "$SERIAL_LOG")" -ne 1 ] ||
-           [ "$(grep -acF 'acpi-pci-check: no PCI configuration window' "$SERIAL_LOG")" -ne 1 ]; then
+           [ "$(grep -acF 'acpi-pci-check: unapproved broker request refused without a capability PASS' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'acpi-pci-check: no PCI configuration startup pregrant PASS' "$SERIAL_LOG")" -ne 2 ]; then
             echo "headless: ACPI PCI configuration checks failed, or the unapproved image got the window" >&2
             exit 1
         fi
@@ -6287,6 +6284,9 @@ devmgr: firmware data request
 acpi-data-check: an ECAM page of bus 0 refused (Overlaps_PCI_Config) PASS
 acpi-data-check: an ECAM page of bus 1 refused (Overlaps_PCI_Config) PASS
 acpi-data-check: a RAM page refused (Not_Firmware_Class) PASS
+acpi-data-check: PCI broker endpoint available for BAR probes PASS
+acpi-data-check: bus 0 acquired from the PCI broker for BAR probes PASS
+acpi-data-check: PCI bus window maps read-only for BAR probes PASS
 acpi-data-check: a device BAR page refused (Overlaps_Device) PASS
 acpi-data-check: a driverless BAR's tail refused (Overlaps_Device) PASS
 acpi-data-check: the FACS page refused (Overlaps_Control) PASS

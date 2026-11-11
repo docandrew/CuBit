@@ -16,7 +16,7 @@ procedure Provider_Tests is
    package C renames ACPI_Capacity_Diagnostics;
    package Heap renames ACPI_Target_Heap_Test_Control;
    use type Interfaces.Unsigned_64, A.Register_ID, A.Operation_ID, A.Target, A.Completion;
-   use type P.Device_Number, P.Function_Number;
+   use type P.Device_Number, P.Function_Number, P.Segment_Number, P.Bus_Number;
    use type Q.Wire.Time_Instant, Q.Microsecond_Deadline, Q.Operation, P.T.Access_Width;
    use type C.Cache_Kind, C.Entry_Count, C.Failure_Kind, L.Register_Geometry;
    Mode : constant Positive := Positive'Value (Ada.Command_Line.Argument (1));
@@ -59,7 +59,7 @@ procedure Provider_Tests is
    Response : A.Response;
    Geometry : constant L.Register_Geometry :=
      (Region => (Space => L.PCI_Config_Space, Base => 0, Length => 256,
-       PCI => (Known => True, Device => (0, 0, 0, 0))),
+       PCI => (Known => True, Device => ((if Mode in 29 | 30 then 7 else 0), (if Mode in 29 | 30 then 1 else 0), 0, 0))),
       Byte_Offset => 16#60#, Width => P.T.Dword_Access);
    procedure Exchange (State : in out Channel; Destination : Natural;
       Deadline : Q.Wire.Time_Instant; Item : Q.Packet; Reply : out Q.Packet;
@@ -73,6 +73,9 @@ procedure Provider_Tests is
       Check (Request.Valid, "request framing");
       Delivered := Q.Wire.Reply_Received;
       if Request.Kind = Q.Header then
+         if Mode in 29 | 30 then
+            Check (Request.Key.Segment = 7 and then Request.Key.Bus = 1, "selected nonzero bus");
+         end if;
          Reply := Q.Header_Result (Peer_Epoch, Peer_ID);
          if Mode = 11 then Reply.Length := 0;
          elsif Mode = 12 then Millis := 10;
@@ -144,7 +147,8 @@ procedure Provider_Tests is
    procedure Send is
    begin F.Dispatch (IO, (Original, False, 0), Response); end Send;
 begin
-   F.Initialize (IO, (if Mode = 10 then 0 else 42), 17, 10, Accepted);
+   F.Initialize (IO, (if Mode = 10 then 0 else 42), 17, 10, Accepted,
+     Key => (if Mode in 29 | 30 then (7, 1) else (0, 0)));
    if Mode in 10 .. 12 | 16 .. 24 then
       Check (not Accepted and then F.Status (IO) = F.Failed, "header admission refused");
       Check (Reads = 0 and then Exchanges = (if Mode = 10 then 0 elsif Mode in 11 | 12 then 1 else 2), "header no read");
@@ -153,7 +157,7 @@ begin
       Check (Accepted and then F.Status (IO) = F.Ready and then Exchanges = 2, "initialize");
       F.Install (IO, Geometry, Original, Accepted);
       Check (Accepted and then Exchanges = 2, "install metadata only");
-      if Mode in 15 | 26 | 27 then
+      if Mode in 15 | 26 | 27 | 30 then
          declare Alias_Geometry : L.Register_Geometry := Geometry;
             Described : L.Register_Geometry;
             Before : constant Natural := Exchanges;
@@ -214,6 +218,9 @@ begin
             Check (Accepted and then Target = Original, "reuse survives OOM");
             F.Describe (IO, Original, Described, Accepted);
             Check (Accepted and then Described = Geometry, "describe retained route");
+            -- The previous checks covered operation while growth is refused.
+            -- A separate owner now needs storage for its first bus binding.
+            Heap.Successful_Allocation_Budget := Natural'Last;
             F.Initialize (Foreign, 42, 17, 10, Accepted);
             Check (Accepted, "independent identity");
             F.Authorize (Foreign, Original, False, Accepted);
@@ -232,7 +239,7 @@ begin
       end if;
       Send;
       case Mode is
-         when 1 | 14 | 15 | 26 | 27 | 28 =>
+         when 1 | 14 | 15 | 26 | 27 | 28 | 29 | 30 =>
             Check (Response.Status = A.Completed and then Response.Value = 16#E000_0000#
               and then Interfaces.Shift_Right (Response.Value, 26) = 56, "PXBR datum and six-bit extraction");
             Check (F.Status (IO) = F.Ready and then not F.Pending (IO), "normal complete");
@@ -242,6 +249,11 @@ begin
               "unknown completion retained");
             F.Reconciled (IO, F.Uncertain (IO), Accepted);
             Check (not Accepted, "no invented reconciliation");
+            declare Before : constant Natural := Exchanges; begin
+               F.Prepare_Bus (IO, (7, 1), 10, Accepted);
+               Check (not Accepted and then F.Pending (IO) and then Exchanges = Before,
+                 "preparation cannot replace an uncertain PCI read");
+            end;
          when 4 => Check (Response.Status = A.Denied and then F.Status (IO) = F.Ready
              and then not F.Pending (IO) and then F.Problem (IO) = F.Not_Sent, "not dispatched is distinct");
          when 5 => Check (Response.Status = A.Denied and then F.Status (IO) = F.Failed

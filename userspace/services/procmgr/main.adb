@@ -96,6 +96,8 @@ with CuBit.ACPI_Window_Exchange;
 with CuBit.Firmware_Data_Exchange;
 with ACPI_Protocol;
 with ACPI_Register_Roles;
+with ACPI_PCI_Window_Exchange;
+with ACPI_PCI_Window_Approval;
 with CuBit.Render_Startup;
 with CuBit.Launch_Policy; use CuBit.Launch_Policy;
 with CuBit.Capability_Grants;
@@ -1657,7 +1659,8 @@ procedure main is
       elsif Role = CuBit.Metric_Protocol.Observer_Service_Role
       then CuBit.Metric_Protocol.Publisher_Service_Role
       elsif Role = CuBit.Process_Observer.Observer_Service_Role then DRIVER_PROCMGR
-      elsif Role = CuBit.Disk_Install.Service_Role then DRIVER_DEVMGR
+      elsif Role = CuBit.Disk_Install.Service_Role
+        or else Role = ACPI_PCI_Window_Exchange.Service_Role then DRIVER_DEVMGR
       --  A read-only copy of the composed frame: Desktop composes it.
       elsif Role = CuBit.Display_Capture.Service_Role then DRIVER_DESKTOP
       else Role);
@@ -3017,6 +3020,11 @@ procedure main is
             Session_Approved => True,
             Issuer_Allowed => True);
       begin
+         if Role = ACPI_PCI_Window_Exchange.Service_Role then
+            return not ACPI_PCI_Window_Approval.May_Issue
+              (systemStartup, approveACPIHardware, approvePCIConfig,
+               pkgId (1 .. pkgIdLen));
+         end if;
          return (isAudioControl or isLogObserver or isClockControl
                  or isMetricObserver or isProcessObserver or isLogControl
                  or isDiskInstall or isInstaller or isACPIRegisters or isNetManager
@@ -3070,7 +3078,9 @@ procedure main is
          end if;
          Service := providerFor (Provider_Role);
 
-         if isACPI then
+         if Role = ACPI_PCI_Window_Exchange.Service_Role then
+            Issued_Tag := ACPI_PCI_Window_Exchange.Backend_Tag;
+         elsif isACPI then
             Issued_Tag := Unsigned_64 (ACPI_Protocol.Observer_Tag);
          elsif isACPIRegisters then
             --  A fixed compile-time stamp; the copy keeps no Grant, so the
@@ -3376,11 +3386,8 @@ procedure main is
                --  runs and FACS page, each the kernel's root exactly,
                --  installed read-write without grant, until devmgr has no
                --  further window. Each must fit the child's startup table.
-               --  devmgr's PCI configuration window (ACPI-PCI-001, kernel tag
-               --  Firmware_PCI_Config_Tag) is installed read-only, and only
-               --  when the plan also approves (acpi-pci-config
-               --  approve-declared); otherwise it is closed unseen and the
-               --  installed windows are numbered as if it did not exist.
+               -- PCI buses are requested on demand through the approved
+               -- devmgr endpoint; startup memory enumeration carries NVS/FACS.
                if Outcome = SB.Granted then
                   for K in AHA.Memory_Window_Number loop
                      declare
@@ -3389,7 +3396,6 @@ procedure main is
                         Tag : MessageTag;
                         Placed : SB.Mint_Outcome := SB.Not_Available;
                         Word : Unsigned_64 := ST.No_Handle;
-                        Skipped : Boolean := False;
                      begin
                         Request.tag := (label => AX.Memory_Window_Request, length => AX.Request_Words,
                                         protocol => 0, ipc => <>, reserved => 0);
@@ -3403,32 +3409,28 @@ procedure main is
                            What : constant HIPC.Description :=
                              (if Taken.OK then HIPC.Describe (Taken.Value)
                               else (Current => False, Why => H.ABI.Invalid_Handle));
-                           PCI : constant Boolean :=
-                             What.Current
-                             and then What.Authority_Tag = H.ABI.Firmware_PCI_Config_Tag;
                            Ignore : HIPC.Close_Result;
                         begin
-                           if PCI and then not approvePCIConfig then
-                              Skipped := True;
+                           if What.Current and then What.Authority_Tag = H.ABI.Firmware_PCI_Config_Tag then
+                              -- Stale enumerators must not inject a PCI pregrant.
+                              -- Named buses are acquired only through devmgr's
+                              -- independently approved PCI-window endpoint.
+                              Placed := SB.Not_Available;
+                              Warnings.Warn ("procmgr: stage acpi-startup-memory fail PCI_PREGRANT_REFUSED");
                            elsif View.Declared.Count + SB.Self_Entries + ACPI_Window_Total
                                    + ACPI_Memory_Total + 1 > ST.Maximum_Entries
                            then
                               Placed := SB.Limit_Reached;
                            elsif Taken.OK then
-                              Install (Copy (Taken.Value,
-                                             (if PCI then H.Read_Only else H.Read_Write)),
-                                       Word, Placed);
+                              Install (Copy (Taken.Value, H.Read_Write), Word, Placed);
                            end if;
                            if Taken.OK then
                               Ignore := HIPC.Close (Taken.Value);
                            end if;
-                           if Skipped then
-                              null;
-                           elsif Placed = SB.Granted then
+                           if Placed = SB.Granted then
                               ACPI_Memory_Total := ACPI_Memory_Total + 1;
                               ACPI_Memory_Words (ACPI_Memory_Total) := Word;
                               debugPrint ("procmgr: ACPI memory window" & Natural'Image (ACPI_Memory_Total) &
-                                          (if PCI then " (PCI configuration, read-only)" else "") &
                                           " installed for " & name & LF);
                            else
                               Outcome := (if Placed in SB.Limit_Reached | SB.Out_Of_Memory then Placed
@@ -3441,9 +3443,6 @@ procedure main is
                         exit when Outcome /= SB.Granted;
                      end;
                   end loop;
-                  if approvePCIConfig then
-                     debugPrint ("procmgr: ACPI PCI configuration approved for " & name & LF);
-                  end if;
                end if;
                --  Table-named firmware data: devmgr's endpoint badged for
                --  the grant (CuBit.Firmware_Data_Exchange.Authority_Tag),

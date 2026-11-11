@@ -43,6 +43,13 @@ package body ACPI_Native_Log is
    begin
       Write (Text, CuBit.Log_Records.Critical);
    end Critical;
+   Diagnostic_Drain_Milliseconds : constant Natural := 200;
+   procedure Drain_Diagnostics (IO_Pending, IO_Uncertain : Boolean; Drained : out Boolean) is
+   begin
+      Drained := False;
+      if IO_Pending or else IO_Uncertain or else not Enabled then return; end if;
+      CuBit.Logging.Flush (Logger, Drained, Wait_Ms => Diagnostic_Drain_Milliseconds);
+   end Drain_Diagnostics;
    procedure Grant_Notice (Item : CuBit.Control_Events.Event) is
       Finished : Boolean;
    begin

@@ -1,14 +1,17 @@
 pragma Ada_2022;
 with AML_Decode;
-with ACPI_PCI_Memory_Reads;
+with ACPI_PCI_Bus_Geometry;
 with AML_Identity.Issuer;
 package body ACPI_Field_PCI_Provider is
    package A renames AML_Field_Access;
    package L renames AML_Field_Layout;
    package P renames Q.P;
+   package G renames ACPI_PCI_Bus_Geometry;
+   use type G.Outcome;
    use type Interfaces.Unsigned_64, AML_Decode.Byte, AML_Identity.Identity;
    use type A.Endpoint_ID, Q.Wire.Time_Instant, Q.Microsecond_Deadline;
-   use type Q.Outcome, Q.Encoding_Outcome, Q.Wire.Delivery, P.Outcome, L.Register_Geometry, Storage.Outcome;
+   use type Q.Outcome, Q.Encoding_Outcome, Q.Wire.Delivery, L.Register_Geometry, Storage.Outcome;
+   use type P.Bus_Key, Bus_Store.Outcome;
    Provider_Epoch : constant A.Counter := 1;
    function Status (IO : Context) return Phase is (IO.Stage);
    function Problem (IO : Context) return Local_Failure is (IO.Failure);
@@ -48,11 +51,10 @@ package body ACPI_Field_PCI_Provider is
       if Now >= Data_Deadline then IO.Failure := Expired; return; end if;
       Good := True;
    end Check_Time;
-   procedure Initialize
+   procedure Bind
      (IO : in out Context; Destination : Peer; Symbol : A.Endpoint_ID;
-      Deadline : Q.Wire.Time_Instant; Accepted : out Boolean) is
-      Packet : Q.Packet;
-      Delivered : Q.Wire.Delivery;
+      Deadline : Q.Wire.Time_Instant; Accepted : out Boolean)
+   is
       Good : Boolean;
    begin
       Accepted := False;
@@ -63,7 +65,31 @@ package body ACPI_Field_PCI_Provider is
       end if;
       Check_IPC (IO, Deadline, Good);
       if not Good then IO.Stage := Failed; IO.Working := False; return; end if;
-      Exchange (IO.Channel, Destination, Deadline, Q.Header_Request, Packet, Delivered);
+      AML_Identity.Issuer.Issue (IO.Issuer, Accepted);
+      if not Accepted then IO.Stage := Failed; IO.Working := False; return; end if;
+      IO.Destination := Destination; IO.Symbol := Symbol;
+      IO.Stage := Ready; IO.Working := False;
+   end Bind;
+   procedure Initialize
+     (IO : in out Context; Destination : Peer; Symbol : A.Endpoint_ID;
+      Deadline : Q.Wire.Time_Instant; Accepted : out Boolean;
+      Key : Q.P.Bus_Key := (others => <>)) is
+      Packet : Q.Packet;
+      Delivered : Q.Wire.Delivery;
+      Good : Boolean;
+      Binding : Bus_Binding := (Key => Key, others => <>);
+      Slot : Natural;
+      Stored : Bus_Store.Outcome;
+   begin
+      Accepted := False;
+      if IO.Stage /= Fresh or else IO.Working then return; end if;
+      IO.Stage := Provisioning; IO.Working := True;
+      if Destination = No_Peer or else Symbol = A.No_Endpoint then
+         IO.Stage := Failed; IO.Working := False; return;
+      end if;
+      Check_IPC (IO, Deadline, Good);
+      if not Good then IO.Stage := Failed; IO.Working := False; return; end if;
+      Exchange (IO.Channel, Destination, Deadline, Q.Header_Request (Key, Deadline), Packet, Delivered);
       if Delivered /= Q.Wire.Reply_Received then
          IO.Failure := (if Delivered = Q.Wire.Not_Dispatched then Not_Sent else Completion_Unknown);
          IO.Stage := Failed; IO.Working := False; return;
@@ -74,10 +100,10 @@ package body ACPI_Field_PCI_Provider is
          if Good then IO.Failure := (if IO.Last.Valid then Backend_Refused else Bad_Reply); end if;
          IO.Stage := Failed; IO.Working := False; return;
       end if;
-      IO.Epoch := IO.Last.Epoch; IO.ID := IO.Last.ID;
+      Binding.Epoch := IO.Last.Epoch; Binding.ID := IO.Last.ID;
       Check_IPC (IO, Deadline, Good);
       if not Good then IO.Stage := Failed; IO.Working := False; return; end if;
-      Exchange (IO.Channel, Destination, Deadline, Q.Describe_Request (IO.Epoch, IO.ID), Packet, Delivered);
+      Exchange (IO.Channel, Destination, Deadline, Q.Describe_Request (Binding.Epoch, Binding.ID), Packet, Delivered);
       if Delivered /= Q.Wire.Reply_Received then
          IO.Failure := (if Delivered = Q.Wire.Not_Dispatched then Not_Sent else Completion_Unknown);
          IO.Stage := Failed; IO.Working := False; return;
@@ -88,36 +114,119 @@ package body ACPI_Field_PCI_Provider is
          if Good then IO.Failure := (if IO.Last.Valid then Backend_Refused else Bad_Reply); end if;
          IO.Stage := Failed; IO.Working := False; return;
       end if;
-      IO.Bus_First := IO.Last.First;
+      Binding.First := IO.Last.First;
+      Bus_Store.Append (IO.Buses, Binding, Slot, Stored);
+      if Stored /= Bus_Store.Stored then
+         IO.Failure := Capacity_Refused; IO.Stage := Failed; IO.Working := False;
+         Record_Capacity_Failure (Bus_Store.Capacity_Failure (IO.Buses, ACPI_Capacity_Diagnostics.PCI_Targets));
+         return;
+      end if;
       AML_Identity.Issuer.Issue (IO.Issuer, Accepted);
       if not Accepted then IO.Stage := Failed; IO.Working := False; return; end if;
       IO.Destination := Destination; IO.Symbol := Symbol;
       IO.Stage := Ready; IO.Working := False;
    end Initialize;
+   procedure Prepare_Bus
+     (IO : in out Context; Key : P.Bus_Key;
+      Deadline : Q.Wire.Time_Instant; Accepted : out Boolean)
+   is
+      Packet : Q.Packet;
+      Delivered : Q.Wire.Delivery;
+      Binding : Bus_Binding := (Key => Key, others => <>);
+      Good : Boolean;
+      Slot : Natural;
+      Stored : Bus_Store.Outcome;
+   begin
+      Accepted := False;
+      if not Live (IO) then return; end if;
+      IO.Working := True;
+      Check_IPC (IO, Deadline, Good);
+      if not Good then IO.Working := False; return; end if;
+      for K in 1 .. Bus_Store.Length (IO.Buses) loop
+         if Bus_Store.Read (IO.Buses, K).Key = Key then
+            Accepted := True; IO.Working := False; return;
+         end if;
+      end loop;
+      Exchange (IO.Channel, IO.Destination, Deadline, Q.Header_Request (Key, Deadline), Packet, Delivered);
+      if Delivered /= Q.Wire.Reply_Received then
+         IO.Failure := (if Delivered = Q.Wire.Not_Dispatched then Not_Sent else Completion_Unknown);
+         IO.Working := False; return;
+      end if;
+      IO.Last := Q.Decode_Reply (Packet, Q.Header);
+      Check_IPC (IO, Deadline, Good);
+      if not Good or else not IO.Last.Valid or else IO.Last.Status /= Q.Ready then
+         if Good then IO.Failure := (if IO.Last.Valid then Backend_Refused else Bad_Reply); end if;
+         IO.Working := False; return;
+      end if;
+      Binding.Epoch := IO.Last.Epoch; Binding.ID := IO.Last.ID;
+      Exchange (IO.Channel, IO.Destination, Deadline,
+        Q.Describe_Request (Binding.Epoch, Binding.ID), Packet, Delivered);
+      if Delivered /= Q.Wire.Reply_Received then
+         IO.Failure := (if Delivered = Q.Wire.Not_Dispatched then Not_Sent else Completion_Unknown);
+         IO.Working := False; return;
+      end if;
+      IO.Last := Q.Decode_Reply (Packet, Q.Describe);
+      Check_IPC (IO, Deadline, Good);
+      if not Good or else not IO.Last.Valid or else IO.Last.Status /= Q.Ready then
+         if Good then IO.Failure := (if IO.Last.Valid then Backend_Refused else Bad_Reply); end if;
+         IO.Working := False; return;
+      end if;
+      Binding.First := IO.Last.First;
+      for K in 1 .. Bus_Store.Length (IO.Buses) loop
+         declare Previous : constant Bus_Binding := Bus_Store.Read (IO.Buses, K); begin
+            if (Previous.Epoch = Binding.Epoch and then Previous.ID = Binding.ID)
+              or else (if Previous.First <= Binding.First then Binding.First - Previous.First < P.Bus_Bytes
+                       else Previous.First - Binding.First < P.Bus_Bytes)
+            then IO.Failure := Bad_Reply; IO.Working := False; return; end if;
+         end;
+      end loop;
+      Bus_Store.Append (IO.Buses, Binding, Slot, Stored);
+      if Stored /= Bus_Store.Stored then
+         IO.Failure := Capacity_Refused;
+         Record_Capacity_Failure (Bus_Store.Capacity_Failure (IO.Buses, ACPI_Capacity_Diagnostics.PCI_Targets));
+      else Accepted := True;
+      end if;
+      IO.Working := False;
+   end Prepare_Bus;
    procedure Install
      (IO : in out Context; Geometry : L.Register_Geometry;
       Target : out A.Target; Accepted : out Boolean; For_Write : Boolean := False) is
-      Plan : P.View;
+      Plan : G.View;
       Config : P.Region;
       Offset : Interfaces.Unsigned_64;
       Slot : Natural;
       Stored : Storage.Outcome;
+      Binding : Bus_Binding;
+      Selected : Boolean := False;
    begin
       Target := A.No_Target; Accepted := False;
       if not Live (IO) or else For_Write then return; end if;
       if Geometry.Region.Space = L.PCI_Config_Space and then Geometry.Region.PCI.Known then
          Config := (Geometry.Region.PCI.Device, Geometry.Region.Base, Geometry.Region.Length);
          Offset := Geometry.Byte_Offset;
-         Plan := P.Plan (Config, Offset, Geometry.Width, P.Bus_Bytes);
-         if Plan.Status /= P.Read_Ready then return; end if;
+         for K in 1 .. Bus_Store.Length (IO.Buses) loop
+            Binding := Bus_Store.Read (IO.Buses, K);
+            Plan := G.Plan_Config ((Binding.Key.Segment, Binding.Key.Bus, Binding.First, P.Bus_Bytes),
+              Config, Offset, Geometry.Width);
+            if Plan.Status = G.Read_Ready then Selected := True; exit; end if;
+         end loop;
+         if not Selected then return; end if;
       elsif Geometry.Region.Space = L.Memory_Space and then not Geometry.Region.PCI.Known then
-         declare Alias_View : constant ACPI_PCI_Memory_Reads.Translation := ACPI_PCI_Memory_Reads.Plan
-           (IO.Bus_First, P.Bus_Bytes, Geometry.Region.Base, Geometry.Region.Length,
-            Geometry.Byte_Offset, Geometry.Width);
-         begin
-            if Alias_View.Status /= P.Read_Ready then return; end if;
-            Config := Alias_View.Region; Offset := Alias_View.Offset;
-         end;
+         for K in 1 .. Bus_Store.Length (IO.Buses) loop
+            declare
+               Candidate : constant Bus_Binding := Bus_Store.Read (IO.Buses, K);
+               Alias_View : constant G.Translation := G.Plan_Alias
+                 ((Candidate.Key.Segment, Candidate.Key.Bus, Candidate.First, P.Bus_Bytes),
+                  Geometry.Region.Base, Geometry.Region.Length, Geometry.Byte_Offset, Geometry.Width);
+            begin
+               if Alias_View.Status = G.Read_Ready then
+                  if Selected then return; end if;
+                  Binding := Candidate; Selected := True;
+                  Config := Alias_View.Region; Offset := Alias_View.Offset;
+               end if;
+            end;
+         end loop;
+         if not Selected then return; end if;
       else return; end if;
       for I in 1 .. Storage.Length (IO.Items) loop
          if Storage.Read (IO.Items,I).Geometry = Geometry then
@@ -125,7 +234,7 @@ package body ACPI_Field_PCI_Provider is
          end if;
       end loop;
       IO.Working := True;
-      Storage.Append (IO.Items, (Geometry, Config, Offset), Slot, Stored);
+      Storage.Append (IO.Items, (Geometry, Config, Offset, Binding.Epoch, Binding.ID), Slot, Stored);
       if Stored /= Storage.Stored then
          IO.Failure := Capacity_Refused;
          Record_Capacity_Failure (Storage.Capacity_Failure (IO.Items, ACPI_Capacity_Diagnostics.PCI_Targets));
@@ -165,8 +274,9 @@ package body ACPI_Field_PCI_Provider is
       end if;
       declare
          Row : constant Association := Storage.Read (IO.Items,Positive (Item.Destination.Register));
-         Encoded : constant Q.Encoded_Request := Q.Read_Request (IO.Epoch, IO.ID,
-           Row.Config, Row.Offset, Row.Geometry.Width, Data_Deadline);
+         Encoded : constant Q.Encoded_Request := Q.Read_Request (Row.Epoch, Row.ID,
+           Row.Config, Row.Offset, Row.Geometry.Width, Data_Deadline,
+           Key => (Row.Config.Device.Segment, Row.Config.Device.Bus));
       begin
          if Encoded.Status /= Q.Encoded then IO.Stage := Failed; IO.Working := False; return; end if;
          Exchange (IO.Channel, IO.Destination, IPC_Deadline, Encoded.Item, Packet, Delivered);

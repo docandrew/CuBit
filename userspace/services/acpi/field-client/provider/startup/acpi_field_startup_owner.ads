@@ -44,6 +44,9 @@ generic
    with procedure Read_Lease_Clock
      (Now : out Interfaces.Unsigned_64; Available : out Boolean) is ACPI_Field_Clock.Unavailable;
    Enable_PCI : Boolean := False;
+   with procedure Resolve_PCI_Alias
+     (Geometry : AML_Field_Layout.Register_Geometry;
+      Key : in out ACPI_PCI_Protocol.P.Bus_Key; Accepted : in out Boolean) is null;
    -- One package instance owns one startup lifetime. Firmware actuals retain
    -- their own singleton session; they never own another physical guard.
    Enable_Firmware_Data : Boolean := False;
@@ -135,7 +138,7 @@ private
       Exchange, Read_PCI_Deadline, Maximum_Bindings, Record_Capacity_Failure);
    package Plain is new ACPI_Field_Combined_Provider
      (Endpoint, Scalar, Memory, PCI, Read_Clock, Read_Window, Maximum_Registers + Maximum_Bindings,
-      Record_Capacity_Failure, Enable_PCI);
+      Record_Capacity_Failure, Enable_PCI, Resolve_PCI_Alias);
    function Plain_Ready (IO : Plain.Context) return Boolean;
    package Plain_View is new ACPI_Field_Provider_View
      (Plain.Context, Plain_Ready, Plain.Identity, Plain.Pending, Plain.Register_Count,
@@ -155,7 +158,8 @@ private
    package Provider is new ACPI_Field_Scoped_Provider
      (Transport_State, Endpoint, No_Endpoint, Plain.Context, Plain.Initialize,
       Plain_View, Plain.Describe_Scoped_Read, Lease_Scope, Read_Lease_Window,
-      Read_NVS_Deadline, Read_Cleanup_Deadline, ACPI_Global_Lock_Protocol.Attempt_Budget'Last);
+      Read_NVS_Deadline, Read_Cleanup_Deadline, ACPI_Global_Lock_Protocol.Attempt_Budget'Last,
+      Prepare_Base => Plain.Prepare_Target);
    type Lane is (Existing_Lane, Firmware_Lane);
    procedure Lane_Describe (IO : Provider.Context; Path : Lane; Target : AML_Field_Access.Target;
       Geometry : out AML_Field_Layout.Register_Geometry; Accepted : out Boolean);

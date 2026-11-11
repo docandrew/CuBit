@@ -22,6 +22,10 @@ generic
    with procedure Record_Capacity_Failure
      (Item : ACPI_Capacity_Diagnostics.Report) is null;
    Enable_PCI : Boolean := False;
+   -- Trusted bounded immutable-MCFG metadata lookup; no hardware access.
+   with procedure Resolve_PCI_Alias
+     (Geometry : AML_Field_Layout.Register_Geometry;
+      Key : in out PCI.Q.P.Bus_Key; Accepted : in out Boolean) is null;
 package ACPI_Field_Combined_Provider is
    type Startup_State is (Fresh, Initializing, Ready, Failed);
    type Context is limited private;
@@ -31,6 +35,12 @@ package ACPI_Field_Combined_Provider is
      (IO : in out Context; Destination : Peer; Symbol : AML_Field_Access.Endpoint_ID;
       Deadline : ACPI_Inventory_Protocol.Wire.Time_Instant; Accepted : out Boolean);
    function Register_Count (IO : Context) return Natural;
+   -- Explicit setup outside metadata selection. Memory aliases require a trusted
+   -- complete-MCFG lookup; the backend independently authorizes the named bus.
+   procedure Prepare_Target
+     (IO : in out Context; Geometry : AML_Field_Layout.Register_Geometry;
+      For_Write : Boolean; Deadline : ACPI_Inventory_Protocol.Wire.Time_Instant;
+      Accepted : in out Boolean);
    procedure Export_Target
      (IO : Context; Ordinal : Positive; Target : out AML_Field_Access.Target; Accepted : out Boolean);
    -- Metadata association only. Explicit named registers take precedence over

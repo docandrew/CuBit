@@ -13,6 +13,10 @@ package ACPI_PCI_Config_Reads with SPARK_Mode, Pure is
    Bus_Bytes : constant := Devices_Per_Bus * Functions_Per_Device * Function_Bytes;
    type Segment_Number is range 0 .. 65_535;
    type Bus_Number is range 0 .. 255;
+   type Bus_Key is record
+      Segment : Segment_Number := 0;
+      Bus : Bus_Number := 0;
+   end record;
    type Device_Number is range 0 .. Devices_Per_Bus - 1;
    type Function_Number is range 0 .. Functions_Per_Device - 1;
    type Location is record

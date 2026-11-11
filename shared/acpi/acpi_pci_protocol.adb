@@ -1,27 +1,38 @@
 pragma Ada_2022;
 package body ACPI_PCI_Protocol with SPARK_Mode is
-   use type Wire.Words;
+   use type P.Segment_Number, P.Bus_Number;
    function Framed (Item : Packet) return Boolean is
      (Item.Length = 4 and then Item.Flags = 0 and then Item.Reserved = 0);
    function Label_For (Kind : Operation) return Unsigned_32 is
      (case Kind is when Header => Header_Reply, when Read => Read_Reply, when Describe => Describe_Reply);
-   function Header_Request return Packet is
-     ((Label => Header_Operation, Data => [Version,0,0,0], others => <>));
+   function Header_Request
+     (Key : P.Bus_Key := (others => <>);
+      Setup_Deadline : Wire.Time_Instant := Wire.No_Finite_Deadline) return Packet is
+     ((Label => Header_Operation, Data => [Version,Unsigned_64 (Key.Segment),
+       Unsigned_64 (Key.Bus),Unsigned_64 (Setup_Deadline)], others => <>));
    function Describe_Request (Epoch, ID : Unsigned_64) return Packet is
      ((Label => Describe_Operation, Data => [Epoch,ID,Version,0], others => <>));
    function Read_Request
      (Epoch, ID : Unsigned_64; Region : P.Region; Offset : Unsigned_64;
       Width : P.T.Access_Width; Deadline : Microsecond_Deadline;
-      For_Write : Boolean := False) return Encoded_Request is
+      For_Write : Boolean := False; Key : P.Bus_Key := (others => <>)) return Encoded_Request is
+      Relative : P.Region := Region;
       Plan : P.View;
       Shape : Unsigned_64;
    begin
       if Epoch = 0 or else ID = 0 then return (Status => Missing_Identity); end if;
       if Deadline = 0 or else Deadline = No_Finite_Deadline then return (Status => Invalid_Deadline); end if;
-      Plan := P.Plan (Region, Offset, Width, P.Bus_Bytes, For_Write);
+      if Region.Device.Segment /= Key.Segment then
+         return (Status => Rejected_Geometry, Reason => P.Unsupported_Segment);
+      elsif Region.Device.Bus /= Key.Bus then
+         return (Status => Rejected_Geometry, Reason => P.Unsupported_Bus);
+      end if;
+      -- The named record identifies its bus. Only function-relative geometry
+      -- is packed below; the backend supplies the retained record's key.
+      Relative.Device.Segment := 0; Relative.Device.Bus := 0;
+      Plan := P.Plan (Relative, Offset, Width, P.Bus_Bytes, For_Write);
       if Plan.Status /= P.Read_Ready then return (Status => Rejected_Geometry, Reason => Plan.Status); end if;
-      -- Segment and bus are properties of this named bus0 record, not a
-      -- packet selector. Nonzero inputs cannot be encoded by this client API.
+      -- Segment and bus belong to the selected named record, not this shape.
       Shape := Unsigned_64 (Region.Device.Device) * P.Functions_Per_Device + Unsigned_64 (Region.Device.Func)
         or Shift_Left (Region.Base, Base_Shift)
         or Shift_Left (Region.Length, Length_Shift)
@@ -37,7 +48,11 @@ package body ACPI_PCI_Protocol with SPARK_Mode is
    begin
       if not Framed (Item) then return Result; end if;
       if Item.Label = Header_Operation then
-         if Item.Data /= Wire.Words'[Version,0,0,0] then return Result; end if;
+         if Item.Data (0) /= Version
+           or else Item.Data (1) > Unsigned_64 (P.Segment_Number'Last)
+           or else Item.Data (2) > Unsigned_64 (P.Bus_Number'Last) then return Result; end if;
+         Result.Key := (P.Segment_Number (Item.Data (1)), P.Bus_Number (Item.Data (2)));
+         Result.Setup_Deadline := Wire.Time_Instant (Item.Data (3));
          Result.Kind := Header;
       elsif Item.Label = Describe_Operation then
          if Item.Data (0) = 0 or else Item.Data (1) = 0

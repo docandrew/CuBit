@@ -3,7 +3,7 @@ with Interfaces;
 with ACPI_Region_Protocol;
 with ACPI_Locked_NVS_Protocol;
 with ACPI_PCI_Config_Reads;
--- Version-one bus0 PCI read protocol. Requests carry no address, mapping,
+-- Version-two keyed PCI read protocol. Requests carry no address, mapping,
 -- grant or caller scope. Describe returns the named physical window bounds
 -- for alias geometry only. Scope comes from authenticated receive metadata.
 package ACPI_PCI_Protocol with Pure, SPARK_Mode is
@@ -20,7 +20,7 @@ package ACPI_PCI_Protocol with Pure, SPARK_Mode is
    Describe_Reply : constant Unsigned_32 := 16#F2B2#;
    Header_Reply : constant Unsigned_32 := 16#F2B0#;
    Read_Reply : constant Unsigned_32 := 16#F2B1#;
-   Version : constant Unsigned_64 := 1;
+   Version : constant Unsigned_64 := 2;
    pragma Compile_Time_Error
      (Header_Operation <= ACPI_Locked_NVS_Protocol.First_Operation +
         ACPI_Locked_NVS_Protocol.Operation'Pos (ACPI_Locked_NVS_Protocol.Operation'Last)
@@ -55,7 +55,11 @@ package ACPI_PCI_Protocol with Pure, SPARK_Mode is
          when others => null;
       end case;
    end record;
-   function Header_Request return Packet;
+   -- A nonfinite setup deadline permits metadata lookup only. A backend that
+   -- must acquire a missing bus requires a finite kernel-millisecond deadline.
+   function Header_Request
+     (Key : P.Bus_Key := (others => <>);
+      Setup_Deadline : Wire.Time_Instant := Wire.No_Finite_Deadline) return Packet;
    function Describe_Request (Epoch, ID : Unsigned_64) return Packet
      with Pre => Epoch /= 0 and then ID /= 0;
    function Valid_Window_Metadata (First, Bytes : Unsigned_64) return Boolean is
@@ -64,11 +68,13 @@ package ACPI_PCI_Protocol with Pure, SPARK_Mode is
    function Read_Request
      (Epoch, ID : Unsigned_64; Region : P.Region; Offset : Unsigned_64;
       Width : P.T.Access_Width; Deadline : Microsecond_Deadline;
-      For_Write : Boolean := False) return Encoded_Request;
+      For_Write : Boolean := False; Key : P.Bus_Key := (others => <>)) return Encoded_Request;
    type Request is record
       Valid : Boolean := False;
       Kind : Operation := Header;
       Epoch, ID : Unsigned_64 := 0;
+      Key : P.Bus_Key;
+      Setup_Deadline : Wire.Time_Instant := Wire.No_Finite_Deadline;
       Region : P.Region;
       Offset : Unsigned_64 := 0;
       Width : P.T.Access_Width := P.T.Byte_Access;

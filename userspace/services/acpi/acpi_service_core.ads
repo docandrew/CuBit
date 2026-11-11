@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Profile_Events;
 with AML_Work_Kinds;
 with AML_Definition_Loads;
 with AML_Copied_Tables;
@@ -43,6 +44,10 @@ generic
    -- Pending internal notifications, independent of retained AML values.
    Notification_Capacity : Positive := 32;
    Supported_Interfaces : AML_Interface_Policy.Policy := AML_Interface_Policy.Empty;
+   -- Passive observer must return normally and must not reenter this owner.
+   with procedure Observe_Interface_Query
+     (Name : AML_Decode.Bytes; Supported, Truncated : Boolean) is null;
+
    with procedure Wait_Event_Timeout
      (Milliseconds : AML_Events.Timeout; Outcome : out AML_Events.Timeout_Outcome)
      is AML_Events.Unavailable_Timeout;
@@ -53,6 +58,10 @@ generic
    Copied_Byte_Capacity : Natural := 0;
    -- Passive callback: bounded, normally returning, no allocation/hardware/logging/reentry.
    with procedure Observe_Work (Item : AML_Work_Kinds.Kind; Entering : Boolean) is null;
+   -- Passive diagnostics only; actual must return normally without AML,
+   -- allocation, logging, hardware, reentry or an effect on execution policy.
+   Profile_Enabled : Boolean := False;
+   with procedure Observe_Profile (Item : AML_Profile_Events.Event) is null;
 package ACPI_Service_Core with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
    Max_Namespace_Nodes : constant Positive := Namespace_Node_Capacity;
@@ -62,8 +71,10 @@ package ACPI_Service_Core with SPARK_Mode is
       Max_Retained_Roots => Retained_Result_Capacity,
       Max_Pending_Notifications => Notification_Capacity,
       Supported_Interfaces => Supported_Interfaces,
+      Observe_Interface_Query => Observe_Interface_Query,
       Wait_Event_Timeout => Wait_Event_Timeout,
-      Block_Capacity => Block_Capacity, Enable_PCI_Context => Enable_PCI_Context, Observe_Work => Observe_Work);
+      Block_Capacity => Block_Capacity, Enable_PCI_Context => Enable_PCI_Context, Observe_Work => Observe_Work,
+      Profile_Enabled => Profile_Enabled, Observe_Profile => Observe_Profile);
    package Values is new Namespace.Owned.Collecting;
    use type AML_Execute.Execution_Status;
    use type AML_Copied_Tables.Outcome;
@@ -346,12 +357,23 @@ package ACPI_Service_Core with SPARK_Mode is
          else Retained_Results (Service) = Retained_Results (Service)'Old);
    type Execution_Phase_Result is
      (Execution_Not_Started, Preparation_Failed, Module_Execution_Reported);
+   --  Copied immutable header facts survive terminal startup-owner cleanup.
+   --  Availability qualifies every field; no pointer or hardware authority.
+   type Failed_Table_Description is record
+      Available : Boolean := False;
+      Index : Natural := 0;
+      Metadata : Table_Metadata;
+      Identity : Firmware_Tables.Identifiers.Identity :=
+        (Name => [others => '?'], OEM => [others => '?'],
+         OEM_Table => [others => '?']);
+   end record;
    type Execution_Report is record
       Phase : Execution_Phase_Result := Execution_Not_Started;
       Preparation : Values.Preparation_Outcome := Values.Preparation_Not_Attempted;
       Modules : Values.Module_Report;
       -- Lifetime-local catalog ID, never an address or hardware capability.
       Failed_Table_ID : Natural := 0;
+      Failure_Table : Failed_Table_Description;
    end record;
    -- Opt-in provider path. Caller exclusively owns Service and IO throughout
    -- the synchronous call; trusted provider actuals must not capture Service.

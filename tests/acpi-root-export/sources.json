@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "inputs": {
+    "kernel/src/root_export_admission.ads": "78b702d58dbf91b06cadb9a1f70fcba98bdcbd242347d35d73315a6063167d01",
+    "kernel/src/root_export_admission.adb": "f9bdb8242fb54a0f51448f14c4578b13cfc2e10cea4c9bd20f02c8c2a2c99476",
+    "shared/launch/launch_configuration.ads": "e7fda8ac885e0e848dec1a8e182eace75278097f7c4882290bad54aa5bc88143",
+    "shared/launch/launch_configuration.adb": "9b3262a63bc493e2d2730c618e717a60214d50b79ff6ca5e16cac3ac25a7d047"
+  },
+  "fixtures": {
+    "root_capacity_tests.adb": "ad856415f738f48e54bb67da065c171ce3a4d25e69b712bec83e825e4731fa72"
+  }
+}

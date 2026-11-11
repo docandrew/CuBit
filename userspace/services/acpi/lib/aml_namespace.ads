@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Profile_Events;
 with AML_Work_Kinds;
 with AML_Field_Access;
 with AML_Field_Layout;
@@ -56,6 +57,10 @@ generic
    Aggregate_Method_Capacity : Positive := AML_Execute.Max_Method_Bytes;
    Max_Pending_Notifications : Positive := 32;
    Supported_Interfaces : AML_Interface_Policy.Policy := AML_Interface_Policy.Empty;
+   -- Passive observer must return normally and must not reenter this owner.
+   with procedure Observe_Interface_Query
+     (Name : AML_Decode.Bytes; Supported, Truncated : Boolean) is null;
+
    -- Local event backend is quiescent while its owner invokes this callback.
    -- Provider must really wait; no AML reentry or concurrent signals allowed.
    with procedure Wait_Event_Timeout
@@ -66,6 +71,10 @@ generic
    Enable_PCI_Context : Boolean := False;
    -- Passive callback: bounded, normally returning, no allocation/hardware/logging/reentry.
    with procedure Observe_Work (Item : AML_Work_Kinds.Kind; Entering : Boolean) is null;
+   -- Passive diagnostics only; actual must return normally without AML,
+   -- allocation, logging, hardware, reentry or an effect on execution policy.
+   Profile_Enabled : Boolean := False;
+   with procedure Observe_Profile (Item : AML_Profile_Events.Event) is null;
 package AML_Namespace with SPARK_Mode is
    use type AML_Table_Sources.Source_Kind;
    use type AML_Decode.Integer_Value;
@@ -1415,6 +1424,9 @@ package Owned with SPARK_Mode is
          Present, Region_Known, For_Write : Boolean := False;
          Name, Region : AML_Names.Segment := "____";
          Space : AML_Decode.Byte := 0;
+         -- Copied resolved geometry and syntax only; never access authority.
+         Region_Address, Region_Length : AML_Decode.Integer_Value := 0;
+         Address_Is_Literal, Length_Is_Literal : Boolean := False;
          Failure : AML_Execute.Execution_Failure := AML_Execute.No_Return;
       end record;
       type Module_Report is record

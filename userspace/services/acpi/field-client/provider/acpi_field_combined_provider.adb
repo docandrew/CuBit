@@ -57,8 +57,13 @@ package body ACPI_Field_Combined_Provider is
       Memory.Initialize (IO.NVS, Destination, Symbol, Deadline, Good);
       if not Good then IO.Stage := Failed; IO.Working := False; return; end if;
       -- An absent/disabled PCI window must not disable independent named/NVS reads.
-      -- Header failure leaves only the PCI lane unavailable for this lifetime.
-      if Enable_PCI then PCI.Initialize (IO.Config, Destination, Symbol, Deadline, Good); end if;
+      -- Keep transport binding independent of bus-zero availability. Preserve
+      -- eager bus-zero metadata for existing aliases, but a refused bus-zero
+      -- request must not prevent explicit setup of a different logical bus.
+      if Enable_PCI then
+         PCI.Bind (IO.Config, Destination, Symbol, Deadline, Good);
+         if Good then PCI.Prepare_Bus (IO.Config, (others => <>), Deadline, Good); end if;
+      end if;
       AML_Identity.Issuer.Issue (IO.Token, Good);
       if not Good then IO.Stage := Failed; IO.Working := False; return; end if;
       IO.Symbol := Symbol;
@@ -135,6 +140,26 @@ package body ACPI_Field_Combined_Provider is
          end if;
       end if;
    end Select_Target;
+   procedure Prepare_Target
+     (IO : in out Context; Geometry : L.Register_Geometry;
+      For_Write : Boolean; Deadline : ACPI_Inventory_Protocol.Wire.Time_Instant;
+      Accepted : in out Boolean)
+   is
+      Key : PCI.Q.P.Bus_Key;
+      Known : Boolean := False;
+   begin
+      Accepted := False;
+      if not Enable_PCI or else not Live (IO) or else For_Write then return; end if;
+      IO.Working := True;
+      if Geometry.Region.Space = L.PCI_Config_Space and then Geometry.Region.PCI.Known then
+         Key := (Geometry.Region.PCI.Device.Segment, Geometry.Region.PCI.Device.Bus);
+         Known := True;
+      elsif Geometry.Region.Space = L.Memory_Space then
+         Resolve_PCI_Alias (Geometry, Key, Known);
+      end if;
+      if Known then PCI.Prepare_Bus (IO.Config, Key, Deadline, Accepted); end if;
+      IO.Working := False;
+   end Prepare_Target;
    procedure Resolve_Module_Target
      (IO : in out Context; Geometry : L.Register_Geometry;
       Target : in out A.Target; Accepted : in out Boolean) is

@@ -16,15 +16,19 @@ with ACPI_Field_Startup_Owner;
 with AML_Delays;
 with Ada.Streams.Stream_IO;
 with Firmware_Tables;
+with Firmware_Tables.PCI_Aliases;
+with AML_Field_Layout;
 procedure Startup_Tests is
    package Q renames ACPI_PCI_Protocol;
    package A renames AML_Field_Access;
    use type Interfaces.Unsigned_32;
    use type Q.P.Device_Number, Q.P.Function_Number;
+   use type Q.P.Bus_Number, Q.P.Segment_Number;
    use type Interfaces.Unsigned_64, A.Completion;
    use type Q.Wire.Time_Instant, Q.Microsecond_Deadline, Q.Operation;
    Mode : constant Positive := Positive'Value (Ada.Command_Line.Argument (1));
    Checks, Exchanges, Reads : Natural := 0;
+   Extra_Bus_Headers, Extra_Bus_Descriptions, Alias_Lookups : Natural := 0;
    Millis : Q.Wire.Time_Instant := 1;
    Micros : Q.Microsecond_Deadline := 1_000;
    Micro_Available : constant Boolean := True;
@@ -58,8 +62,25 @@ procedure Startup_Tests is
      (Channel, Natural, 0, Read_Clock, Exchange, Window);
    package Memory is new ACPI_Field_NVS_Provider
      (Channel, Natural, 0, Read_Clock, Exchange, NVS_Deadline);
+   procedure Resolve_Alias
+     (Geometry : AML_Field_Layout.Register_Geometry;
+      Key : in out Q.P.Bus_Key; Accepted : in out Boolean)
+   is
+      use type Firmware_Tables.PCI_Aliases.Outcome;
+      Data : constant Firmware_Tables.Bytes := [77,67,70,71,60,0,0,0,1,189,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,224,0,0,0,0,7,0,1,1,0,0,0,0];
+      R : constant Firmware_Tables.PCI_Aliases.Selection :=
+        Firmware_Tables.PCI_Aliases.Resolve (Data, Geometry.Region.Base, Geometry.Region.Length);
+   begin
+      Accepted := False;
+      if Mode /= 18 then return; end if;
+      Alias_Lookups := Alias_Lookups + 1;
+      Check (R.Status = Firmware_Tables.PCI_Aliases.Resolved, "complete MCFG alias lookup");
+      if R.Status = Firmware_Tables.PCI_Aliases.Resolved then
+         Key := (Q.P.Segment_Number (R.Segment), Q.P.Bus_Number (R.Bus)); Accepted := True;
+      end if;
+   end Resolve_Alias;
    package F is new ACPI_Field_Combined_Provider
-     (Natural, Scalar, Memory, PCI, Read_Clock, Window, Enable_PCI => True);
+     (Natural, Scalar, Memory, PCI, Read_Clock, Window, Enable_PCI => True, Resolve_PCI_Alias => Resolve_Alias);
    package Core is new ACPI_Service_Core
      (AML_Delays.Unavailable_Provider, Namespace_Node_Capacity => 64,
       Retained_Result_Capacity => 16, Enable_PCI_Context => True);
@@ -67,7 +88,7 @@ procedure Startup_Tests is
    begin Now := Interfaces.Unsigned_64 (Micros); Available := True; end Lease_Clock;
    package Owner is new ACPI_Field_Startup_Owner
      (Core, Channel, Natural, 0, Read_Clock, Exchange, Read_Lease_Clock => Lease_Clock,
-      Enable_PCI => True);
+      Enable_PCI => True, Resolve_PCI_Alias => Resolve_Alias);
    IO : F.Context;
    Original : constant A.Target := A.No_Target;
    Accepted : Boolean;
@@ -91,23 +112,38 @@ procedure Startup_Tests is
       Check (Request.Valid, "request framing");
       Delivered := Q.Wire.Reply_Received;
       if Request.Kind = Q.Header then
-         Reply := Q.Header_Result (Peer_Epoch, Peer_ID);
+         if Mode in 17 .. 18 and then Request.Key.Bus = 0 then
+            Reply := Q.Error_Reply (Q.Header, Q.Not_Ready); return;
+         end if;
+         if Mode in 16 .. 18 then
+            if Request.Key.Bus = 1 then Extra_Bus_Headers := Extra_Bus_Headers + 1; end if;
+            Check ((Request.Key.Segment = 0 and then Request.Key.Bus = 0)
+              or else (Request.Key.Segment = 7 and then Request.Key.Bus = 1), "known bus selector");
+            Check (Request.Setup_Deadline = Deadline, "bounded setup request");
+         end if;
+         Reply := Q.Header_Result (Peer_Epoch,
+           Peer_ID + (if Mode in 16 .. 18 then Interfaces.Unsigned_64 (Request.Key.Bus) else 0));
          if Mode = 11 then Reply.Length := 0;
          elsif Mode = 12 then Millis := 10;
          end if;
          return;
       end if;
       if Request.Kind = Q.Describe then
-         Check (Request.Epoch = Peer_Epoch and then Request.ID = Peer_ID, "description identity");
-         Reply := Q.Describe_Result (16#E000_0000#, Q.P.Bus_Bytes); return;
+         if Mode in 16 .. 18 and then Request.ID = Peer_ID + 1 then
+            Extra_Bus_Descriptions := Extra_Bus_Descriptions + 1;
+         end if;
+         Check (Request.Epoch = Peer_Epoch and then
+           (Request.ID = Peer_ID or else (Mode in 16 .. 18 and then Request.ID = Peer_ID + 1)), "description identity");
+         Reply := Q.Describe_Result
+           (16#E000_0000# + (if Request.ID = Peer_ID then 0 else Q.P.Bus_Bytes), Q.P.Bus_Bytes); return;
       end if;
       Reads := Reads + 1;
-      if Reads = 2 then
+      if Reads = (if Mode = 18 then 1 else 2) then
          Check (Request.Region.Device.Device = 27 and then Request.Region.Device.Func = 0
            and then Request.Offset = 16#400# and then Request.Region.Length = 16#480#,
            "actual AML memory alias beyond legacy config extent");
       end if;
-      Check (Request.Epoch = Peer_Epoch and then Request.ID = Peer_ID
+      Check (Request.Epoch = Peer_Epoch and then Request.ID = Peer_ID + (if Mode in 17 .. 18 or else (Mode = 16 and then Reads = 1) then 1 else 0)
         and then Request.Deadline = 10_000, "full identity and data deadline");
       if Mode = 14 then
          F.Dispatch (IO, (Original, False, 0), Inner);
@@ -156,6 +192,11 @@ begin
    Check (Status = Core.Values.Available, "module status");
    Check (Report.Modules.Outcome = Core.Values.Modules_Completed, "PCI module completes");
    Check (Reads = 2, "module performed PCI and memory-alias reads");
+   if Mode in 16 .. 18 then
+      Check (Extra_Bus_Headers = 1 and then Extra_Bus_Descriptions = 1,
+        "missing bus prepared once before its actual read");
+   end if;
+   if Mode = 18 then Check (Alias_Lookups = 1, "one alias lookup before first bus acquisition"); end if;
    Core.Initialize_Members (Service, Initial, Status);
    Check (Status = Core.Values.Available, "initialize before value query");
    declare Node : Core.Namespace.Node_ID; Item : Core.Node_Descriptor; Value : Core.Values.Result;

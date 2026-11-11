@@ -1,13 +1,16 @@
 with AML_Objects.Reachability;
 package AML_Persistent_Owner_Graph with SPARK_Mode, Pure is
    subtype Object_Set is AML_Objects.Reachability.Keep_Set;
-   subtype Source_Index is AML_Objects.Object_ID range 1 .. AML_Objects.Max_Objects;
+   subtype Source_Index is AML_Objects.Object_ID range 1 .. AML_Objects.Object_ID'Last;
    type Result is (Invalid_Reachable_Edge, Incomplete_Census, Owner_Found, Owner_Not_Found);
    -- Closure masks only: caller authenticates source, roots and reference edges.
    -- A successful boolean closure is not itself a complete semantic census.
    function Classify (Keep, Invalid, Ambiguous : Object_Set;
       Source : Source_Index; Incomplete : Boolean) return Result
-     with Post => Classify'Result =
+     with Pre => Keep'First = Invalid'First and then Keep'Last = Invalid'Last
+       and then Keep'First = Ambiguous'First and then Keep'Last = Ambiguous'Last
+       and then Source in Keep'Range,
+       Post => Classify'Result =
        (if (for some ID in Keep'Range => Keep (ID) and then Invalid (ID))
         then Invalid_Reachable_Edge
         elsif Incomplete or else

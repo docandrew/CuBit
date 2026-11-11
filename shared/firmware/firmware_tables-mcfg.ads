@@ -42,4 +42,14 @@ package Firmware_Tables.MCFG with SPARK_Mode, Pure is
    -- Zero and out-of-range indices fail without returning an allocation.
    function Read_Allocation (Data : Bytes; Index : Natural)
      return Allocation_Result;
+   -- Validate this complete array once, then visit each allocation in order.
+   -- No descriptor or cursor can be reused against another byte array. Visit
+   -- must be bounded, return normally and neither mutate nor retain Data.
+   -- Invalid structural input invokes no visitor; policy remains separate.
+   generic
+      type Visitor_State is limited private;
+      with procedure Visit (State : in out Visitor_State; Item : Allocation);
+   procedure Scan
+     (Data : Bytes; State : in out Visitor_State; Table : out Table_Metadata)
+     with Pre => not Table'Constrained;
 end Firmware_Tables.MCFG;

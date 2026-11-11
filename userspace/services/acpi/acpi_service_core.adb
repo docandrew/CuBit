@@ -778,6 +778,10 @@ package body ACPI_Service_Core with SPARK_Mode is
       Report.Phase := Module_Execution_Reported;
       if Report.Modules.Failed_Table in 1 .. Service.Stats.Tables then
          Report.Failed_Table_ID := Service.Catalog (Report.Modules.Failed_Table).Metadata.ID;
+         Report.Failure_Table :=
+           (Available => True, Index => Report.Modules.Failed_Table,
+            Metadata => Table_Info (Service, Report.Modules.Failed_Table),
+            Identity => Table_Identity (Service, Report.Modules.Failed_Table));
       end if;
       if Report.Phase = Module_Execution_Reported
         and then Report.Preparation = Values.Firmware_Prepared

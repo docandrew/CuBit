@@ -20,7 +20,7 @@
   (start "acpi-backend.svc" (priority 5)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (acpi-firmware-data approve-declared)
     (acpi-pci-config approve-declared))
-  (start "acpi.svc" (priority 4)
+  (start "acpi.svc" (priority 4) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Known_Windows))
     (firmware-snapshot approve-declared) (acpi-registers approve-declared))
   # Dictionary, thesaurus and spelling (docs/lexicon.md). A system
   # generation may switch it live (replace transparent: no hardware or

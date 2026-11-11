@@ -2,6 +2,9 @@ pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with acpi;
+with Firmware_Tables.MCFG;
+with Firmware_Tables.Snapshots;
+with Firmware_PCI_Admission;
 with Boot_Modules;
 with Firmware_Tables.Catalog;
 with Firmware_Tables.Remapping;
@@ -47,6 +50,64 @@ package body Physical_Range_Map with SPARK_Mode => Off is
       end if;
    end Add_Register_Page;
 
+   -- The classifier can retain at most this many allocation records. A larger
+   -- MCFG cannot be represented and invalidates all PCI facts before copying.
+   -- Static storage avoids both the boot stack and the kernel's absent heap.
+   Max_MCFG_Bytes : constant Positive := Firmware_Tables.MCFG.Fixed_Size
+     + PR.Max_PCI_Allocations * Firmware_Tables.MCFG.Allocation_Size;
+   PCI_Metadata_Buffer : Firmware_Tables.Bytes (1 .. Max_MCFG_Bytes);
+   type PCI_Metadata_Outcome is (Recorded, No_MCFG, Snapshot_Unavailable,
+      Descriptor_Unavailable, Duplicate_MCFG, Metadata_Capacity, Copy_Refused, Policy_Refused);
+   procedure Print_Reason (Status : PCI_Metadata_Outcome) is
+   begin
+      case Status is
+         when Recorded => println ("RECORDED");
+         when No_MCFG => println ("NO_MCFG");
+         when Snapshot_Unavailable => println ("SNAPSHOT_UNAVAILABLE");
+         when Descriptor_Unavailable => println ("DESCRIPTOR_UNAVAILABLE");
+         when Duplicate_MCFG => println ("DUPLICATE_MCFG");
+         when Metadata_Capacity => println ("METADATA_CAPACITY");
+         when Copy_Refused => println ("COPY_REFUSED");
+         when Policy_Refused => println ("POLICY_REFUSED");
+      end case;
+   end Print_Reason;
+   -- Read only the owned sealed snapshot, never original firmware pointers.
+   procedure Record_PCI_Allocations (Status : out PCI_Metadata_Outcome) is
+      package S renames Firmware_Tables.Snapshots;
+      use type S.Phase, S.Metadata_Status, acpi.Table_Copy_Status;
+      use type Firmware_PCI_Admission.Outcome;
+      Copied : acpi.Table_Copy_Status;
+      Result : Firmware_PCI_Admission.Outcome;
+      Seen : Boolean := False;
+   begin
+      Status := No_MCFG;
+      if acpi.Table_Snapshot_State /= S.Ready then
+         PR.Invalidate (Kernel_Map); Status := Snapshot_Unavailable; return;
+      end if;
+      for I in 1 .. acpi.Snapshot_Table_Count loop
+         declare D : constant S.Metadata_Result := acpi.Describe_Snapshot_Table (I); begin
+            if D.Status /= S.Metadata_Available then
+               PR.Invalidate (Kernel_Map); Status := Descriptor_Unavailable; return;
+            end if;
+            if D.Info.Name = "MCFG" then
+               if Seen then PR.Invalidate (Kernel_Map); Status := Duplicate_MCFG; return; end if;
+               Seen := True;
+               if D.Info.Extent > Max_MCFG_Bytes then
+                  PR.Invalidate (Kernel_Map); Status := Metadata_Capacity; return;
+               end if;
+               acpi.Copy_Table (I, PCI_Metadata_Buffer (1 .. D.Info.Extent), Copied);
+               if Copied /= acpi.Copied then
+                  PR.Invalidate (Kernel_Map); Status := Copy_Refused; return;
+               end if;
+               Firmware_PCI_Admission.Admit
+                 (Kernel_Map, PCI_Metadata_Buffer (1 .. D.Info.Extent), Result);
+               if Result /= Firmware_PCI_Admission.Admitted then Status := Policy_Refused; return; end if;
+               Status := Recorded;
+            end if;
+         end;
+      end loop;
+   end Record_PCI_Allocations;
+
    procedure Seal_From_Boot is
       Kernel_Last : constant Unsigned_64 :=
         Unsigned_64 (Virtmem.V2P (To_Address (Virtmem.STACK_TOP))) - 1;
@@ -82,12 +143,15 @@ package body Physical_Range_Map with SPARK_Mode => Off is
       if acpi.facsAddr /= 0 then
          PR.Set_Control (Kernel_Map, acpi.facsAddr);
       end if;
-      -- PCI segment 0 bus 0's ECAM slice (the MCFG's): firmware memory
-      -- (read-only, uncached) when every page of it is device-mappable;
-      -- nothing when the MCFG names none.
-      if acpi.pciConfigBus0 /= 0 then
-         PR.Set_PCI_Config (Kernel_Map, acpi.pciConfigBus0);
-      end if;
+      -- All validated MCFG allocations become immutable classification facts.
+      -- Enumeration creates RO roots; only devmgr narrows a requested bus.
+      declare Status : PCI_Metadata_Outcome; begin
+         Record_PCI_Allocations (Status);
+         if Status not in Recorded | No_MCFG then
+            print ("Physical ranges: PCI metadata refused ");
+            Print_Reason (Status);
+         end if;
+      end;
       -- The sealed ACPI tables (the admitted catalog, root table included):
       -- never firmware data, whatever span holds them. Without the catalog
       -- nothing is firmware data.

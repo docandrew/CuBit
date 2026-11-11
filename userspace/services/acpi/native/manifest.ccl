@@ -1,5 +1,8 @@
+(type ACPI_Profile (enum Neutral Known_Windows))
+(type ACPI_Firmware_Profile (record (kind ACPI_Profile)))
 # Sealed table snapshot and optional named-register endpoint; no raw hardware authority.
 (Executable_Manifest
+  parameters => (Parameter_Signature.Declared "ACPI_Firmware_Profile")
   identity => "com.cubit.acpi"
   version => "0.1.0"
   requests => [

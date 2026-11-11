@@ -7,7 +7,8 @@ procedure Protocol_Tests is
    package P renames Q.P;
    use type Q.Encoding_Outcome, Q.Outcome, Q.Operation;
    use type Q.Microsecond_Deadline;
-   use type P.Outcome, P.Region, P.T.Access_Width;
+   use type Q.Wire.Time_Instant;
+   use type P.Outcome, P.Region, P.T.Access_Width, P.Segment_Number, P.Bus_Number;
    Checks : Natural := 0;
    Epoch : constant Unsigned_64 := Unsigned_64'Last;
    ID : constant Unsigned_64 := 16#9000_0000_0000_002A#;
@@ -22,12 +23,42 @@ procedure Protocol_Tests is
    begin Check (Encoded.Status = Q.Rejected_Geometry and then Encoded.Reason = Reason); end Rejected;
 begin
    Check (Q.Decode_Request (Q.Header_Request).Valid);
+   for Case_Number in 1 .. 4 loop
+      declare
+         Due : constant Q.Wire.Time_Instant :=
+           (case Case_Number is when 1 => 0, when 2 => 25,
+            when 3 => Q.Wire.No_Finite_Deadline - 1, when others => Q.Wire.No_Finite_Deadline);
+         Parsed : constant Q.Request := Q.Decode_Request (Q.Header_Request ((7, 1), Due));
+      begin
+         Check (Parsed.Valid and then Parsed.Setup_Deadline = Due);
+      end;
+   end loop;
    declare Encoded : constant Q.Encoded_Request := Q.Read_Request
      (Epoch, ID, Golden_Region, 16#60#, P.T.Dword_Access, Deadline); begin
       Check (Encoded.Status = Q.Encoded); Base := Encoded.Item;
-      -- Golden version-one word, independent of the round-trip assertions.
-      Check (Base.Data (2) = 16#0100_40C0_0800_2013#);
+      -- Golden version-two word, independent of the round-trip assertions.
+      Check (Base.Data (2) = 16#0200_40C0_0800_2013#);
    end;
+   for Segment_Index in 0 .. 2 loop
+      for Bus in P.Bus_Number loop
+         declare
+            Key : constant P.Bus_Key := ((case Segment_Index is when 0 => 0, when 1 => 7, when others => P.Segment_Number'Last), Bus);
+            Header : constant Q.Request := Q.Decode_Request (Q.Header_Request (Key));
+            Region : constant P.Region := ((Key.Segment, Key.Bus, 31, 7), 0, P.Function_Bytes);
+            Encoded : constant Q.Encoded_Request := Q.Read_Request
+              (Epoch, ID, Region, P.Function_Bytes - 4, P.T.Dword_Access, Deadline, Key => Key);
+         begin
+            Check (Header.Valid and then Header.Key.Segment = Key.Segment and then Header.Key.Bus = Key.Bus);
+            Check (Encoded.Status = Q.Encoded);
+         end;
+      end loop;
+   end loop;
+   for Bad_Field in 1 .. 2 loop
+      declare Bad : Q.Packet := Q.Header_Request; begin
+         Bad.Data (Bad_Field) := (if Bad_Field = 1 then 65_536 else 256);
+         Check (not Q.Decode_Request (Bad).Valid);
+      end;
+   end loop;
    for Device in P.Device_Number loop
       for Func in P.Function_Number loop
          for Width in P.T.Access_Width range P.T.Byte_Access .. P.T.Dword_Access loop

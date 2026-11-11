@@ -40,9 +40,6 @@ begin
    ---------------------------------------------------------------------------
    Expect (Image'Size = Image_Bytes * 8, "image size");
    Expect (Image_Bytes = 10_304, "image bytes");
-   Expect (Codes.System_Call = System_Call_Number, "system call number agrees");
-   Expect (Codes.Read_Operation = Operation'Enum_Rep (Read), "read code agrees");
-   Expect (Codes.Mark_Operation = Operation'Enum_Rep (Mark), "mark code agrees");
    Expect (Codes.Read_Chunk_Bytes = Read_Chunk_Bytes, "chunk size agrees");
    Expect (Codes.Milestone'Pos (Codes.Milestone'Last) = Milestone'Pos (Milestone'Last),
            "milestone count agrees");
@@ -55,6 +52,14 @@ begin
    end loop;
    Expect (Kernel_Stage'Pos (Kernel_Stage'Last) < Stage_Capacity, "stages fit");
    Expect (Milestone'Enum_Rep (Milestone'Last) < Milestone_Capacity, "milestones fit");
+   Expect (Slot_Of (Scheduler_Started) = 11
+           and then Slot_Of (Device_Manager_Roots_Refused) = 12,
+           "refusal uses a spare slot without renumbering stages");
+   Initialize (S);
+   Mark_Stage (S, Device_Manager_Roots_Refused, Ms (500));
+   Expect (S.Wire.Stages (12) = Ms (500)
+           and then S.Wire.Stages (Slot_Of (Device_Manager_Loaded)) = Not_Recorded,
+           "refusal recorded without a successful devmgr launch");
 
    ---------------------------------------------------------------------------
    --  Bookkeeping

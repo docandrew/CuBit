@@ -51,6 +51,19 @@ package body Firmware_Tables.MCFG with SPARK_Mode is
               Reserved => Read_LE (Data, Table_Header_Size, 8),
               Count => (Header.Extent - Fixed_Size) / Allocation_Size);
    end Decode;
+   function Allocation_At (Data : Bytes; Index : Positive) return Allocation
+     with Pre => Data'Length >= Fixed_Size + Allocation_Size
+       and then Index <= (Data'Length - Fixed_Size) / Allocation_Size
+   is
+      Offset : constant Natural := Fixed_Size + (Index - 1) * Allocation_Size;
+   begin
+      return
+           (Base => Read_LE (Data, Offset + Base_Offset, 8),
+            Segment => Read_Word (Data, Offset + Segment_Offset),
+            First_Bus => Data (Data'First + Offset + First_Bus_Offset),
+            Last_Bus => Data (Data'First + Offset + Last_Bus_Offset),
+            Reserved => Read_DWord (Data, Offset + Reserved_Offset));
+   end Allocation_At;
    function Read_Allocation (Data : Bytes; Index : Natural)
      return Allocation_Result
    is
@@ -59,16 +72,16 @@ package body Firmware_Tables.MCFG with SPARK_Mode is
       if not Table.Valid or else Index = 0 or else Index > Table.Count then
          return (Valid => False);
       end if;
-      declare
-         Offset : constant Natural :=
-           Fixed_Size + (Index - 1) * Allocation_Size;
-      begin
-         return (Valid => True, Value =>
-           (Base => Read_LE (Data, Offset + Base_Offset, 8),
-            Segment => Read_Word (Data, Offset + Segment_Offset),
-            First_Bus => Data (Data'First + Offset + First_Bus_Offset),
-            Last_Bus => Data (Data'First + Offset + Last_Bus_Offset),
-            Reserved => Read_DWord (Data, Offset + Reserved_Offset)));
-      end;
+      return (Valid => True, Value => Allocation_At (Data, Index));
    end Read_Allocation;
+   procedure Scan
+     (Data : Bytes; State : in out Visitor_State; Table : out Table_Metadata)
+   is
+   begin
+      Table := Decode (Data);
+      if not Table.Valid then return; end if;
+      for K in 1 .. Table.Count loop
+         Visit (State, Allocation_At (Data, K));
+      end loop;
+   end Scan;
 end Firmware_Tables.MCFG;

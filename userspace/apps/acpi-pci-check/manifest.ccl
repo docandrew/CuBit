@@ -1,14 +1,11 @@
-# ACPI PCI configuration window regression (tests/headless, acpi-pci-config;
-# ACPI-PCI-001): stands in for acpi-backend.svc's launch with the opt-in
-# (acpi-pci-config approve-declared) beside (acpi-hardware approve-declared).
-# The approved entry must receive PCI segment 0 bus 0's ECAM slice from the
-# MCFG, read-only and uncached; the same image started as
-# acpi-pci-unapproved.app (hardware approved, PCI configuration not) must
-# get the grant without it. "tables" is the firmware snapshot reader, so
-# the program finds the MCFG's bus-0 base itself.
+# Test-only backend stand-in; broker approval requires the exact validated
+# backend identity plus launch-plan hardware and PCI approvals. No policy widening.
 (Executable_Manifest
-  identity => "com.cubit.acpi-pci-check"
+  identity => "com.cubit.acpi-backend"
   version => "0.1.0"
+  optional => ["pci-windows"]
   requests => [
     (Request.Firmware_Snapshot "tables")
-    (Request.ACPI_Hardware "hardware")])
+    (Request.ACPI_Hardware "hardware")
+    (service "acpi-pci-windows" "pci-windows")
+    (service "device-manager" "device-manager")])

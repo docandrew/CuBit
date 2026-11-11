@@ -36,8 +36,19 @@ package ACPI_Field_PCI_Provider is
    function Problem (IO : Context) return Local_Failure;
    function Last_Reply (IO : Context) return Q.Reply;
    function Identity (IO : Context) return AML_Identity.Identity;
+   -- Bind a trusted transport without assuming segment zero/bus zero exists.
+   -- No bus authority or metadata is acquired here; Install remains local.
+   procedure Bind
+     (IO : in out Context; Destination : Peer; Symbol : AML_Field_Access.Endpoint_ID;
+      Deadline : Q.Wire.Time_Instant; Accepted : out Boolean);
    procedure Initialize
      (IO : in out Context; Destination : Peer; Symbol : AML_Field_Access.Endpoint_ID;
+      Deadline : Q.Wire.Time_Instant; Accepted : out Boolean;
+      Key : Q.P.Bus_Key := (others => <>));
+   -- Explicit bounded setup, never called by Install. Reuses a prepared key
+   -- without IPC; otherwise obtains and retains its named record/geometry.
+   procedure Prepare_Bus
+     (IO : in out Context; Key : Q.P.Bus_Key;
       Deadline : Q.Wire.Time_Instant; Accepted : out Boolean);
    -- Metadata association only. PCI_Config requires a known budgeted VM route;
    -- SystemMemory aliases require the complete region inside the described
@@ -59,10 +70,17 @@ package ACPI_Field_PCI_Provider is
    procedure Reconciled
      (IO : Context; Expected : AML_Field_Access.Observation; Accepted : out Boolean);
 private
+   type Bus_Binding is record
+      Key : Q.P.Bus_Key;
+      Epoch, ID, First : Interfaces.Unsigned_64 := 0;
+   end record;
+   Initial_Bus_Capacity : constant Positive := 1;
+   package Bus_Store is new ACPI_Target_Storage (Bus_Binding, Initial_Bus_Capacity);
    type Association is record
       Geometry : AML_Field_Layout.Register_Geometry;
       Config : Q.P.Region;
       Offset : Interfaces.Unsigned_64 := 0;
+      Epoch, ID : Interfaces.Unsigned_64 := 0;
    end record;
    package Storage is new ACPI_Target_Storage (Association, Initial_Target_Capacity);
    type Context is limited record
@@ -71,9 +89,8 @@ private
       Issuer : AML_Identity.Identity := AML_Identity.No_Identity;
       Symbol : AML_Field_Access.Endpoint_ID := AML_Field_Access.No_Endpoint;
       Destination : Peer := No_Peer;
-      Epoch, ID : Interfaces.Unsigned_64 := 0;
-      Bus_First : Interfaces.Unsigned_64 := 0;
       Channel : Transport_State;
+      Buses : Bus_Store.Context;
       Items : Storage.Context;
       Issued : AML_Field_Access.Counter := 0;
       Working, Seen_IPC, Seen_Data : Boolean := False;

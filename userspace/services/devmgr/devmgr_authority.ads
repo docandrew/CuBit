@@ -15,10 +15,10 @@
 --  found, held on the heap (LIM-001b).
 --
 --  The firmware-memory roots of the ACPI hardware grant (the kernel's ACPI
---  NVS runs, FACS page and PCI segment 0 bus 0 ECAM slice) are claimed for
---  ACPI at Initialize (Devmgr_Memory_Claims) and handed, whole, only to the
---  program procmgr's startup plan approves (CuBit.ACPI_Window_Exchange; the
---  PCI slice only with acpi-pci-config approved too). The firmware-data
+--  NVS runs, FACS page and MCFG-bounded PCI bus roots) are claimed for
+--  ACPI at Initialize (Devmgr_Memory_Claims). NVS/control windows are handed
+--  to the startup-approved program (CuBit.ACPI_Window_Exchange). PCI roots
+--  stay here until an approved backend requests one bus read-only. The firmware-data
 --  roots (table-named firmware data) are not handed out: devmgr narrows one
 --  envelope at a time for a program approved with acpi-firmware-data
 --  (CuBit.Firmware_Data_Exchange) and claims each envelope it grants. No
@@ -73,6 +73,11 @@ package Devmgr_Authority is
       --  configuration is held, and handed on, read-only.
       Kind : CuBit.ACPI_Memory_Classes.Memory_Kind := CuBit.ACPI_Memory_Classes.ACPI_NVS;
    end record;
+   -- Startup enumeration contains NVS/control only. PCI roots are retained
+   -- separately and never handed wholesale to an ACPI child at launch.
+   function PCI_Root_Count return Natural;
+   function PCI_Root_At (K : Positive) return ACPI_Window
+     with Pre => K <= PCI_Root_Count;
    function ACPI_Window_Count return Natural;
    function ACPI_Window_At (K : Positive) return ACPI_Window
    with Pre => K <= ACPI_Window_Count;

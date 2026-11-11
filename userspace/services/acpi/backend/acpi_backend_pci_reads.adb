@@ -1,5 +1,8 @@
 pragma Ada_2022;
+with ACPI_PCI_Bus_Geometry;
 package body ACPI_Backend_PCI_Reads with SPARK_Mode is
+   package G renames ACPI_PCI_Bus_Geometry;
+   use type G.Outcome;
    use type Word, Catalog.Revision_Number, Catalog.W.P.Address_Space, P.Outcome, Catalog.B.Tick;
    function Status (State : Context) return Phase is (State.Stage);
    function Live (State : Context) return Boolean is
@@ -18,7 +21,8 @@ package body ACPI_Backend_PCI_Reads with SPARK_Mode is
    end Live_Root;
    procedure Configure
      (State : in out Context; Scope : Word; ID : Record_ID;
-      Window : Catalog.W.Window_ID; Result : out Outcome) is
+      Window : Catalog.W.Window_ID; Result : out Outcome;
+      Key : P.Bus_Key := (others => <>)) is
       Header : Catalog.Inventory;
       Selected : Catalog.W.Window_Result;
    begin
@@ -41,7 +45,7 @@ package body ACPI_Backend_PCI_Reads with SPARK_Mode is
       then Result := Invalid_Record;
       else
          State.Scope := Scope; State.ID := ID; State.Revision := Header.Revision;
-         State.Window := Window; State.Base := Selected.Value.Base;
+         State.Window := Window; State.Base := Selected.Value.Base; State.Key := Key;
          State.Stage := Serving; Result := Configured;
       end if;
       State.Working := False;
@@ -62,7 +66,7 @@ package body ACPI_Backend_PCI_Reads with SPARK_Mode is
       if Code /= Ready then return; end if;
       State.Working := True;
       if not Live_Root (State) then State.Stage := Failed; Result.Status := Backing_Unavailable;
-      else Result.Epoch := Epoch_Number (State.Revision); Result.ID := State.ID; Result.First := State.Base;
+      else Result.Epoch := Epoch_Number (State.Revision); Result.ID := State.ID; Result.First := State.Base; Result.Key := State.Key;
       end if;
       State.Working := False;
    end Header;
@@ -71,7 +75,7 @@ package body ACPI_Backend_PCI_Reads with SPARK_Mode is
       Region : P.Region; Offset : Word; Width : P.T.Access_Width;
       Value : out Word; Result : out Outcome; Reason : out P.Outcome;
       Deadline : Catalog.B.Tick; For_Write : Boolean := False) is
-      Planned : P.View;
+      Planned : G.View;
       View : Catalog.Bindings.Access_View;
       Completed, Clock_OK : Boolean;
       Started, Current : Catalog.B.Tick;
@@ -80,9 +84,20 @@ package body ACPI_Backend_PCI_Reads with SPARK_Mode is
       Admit (State, Scope, Result); if Result /= Ready then return; end if;
       if Epoch /= Epoch_Number (State.Revision) then Result := Stale; return; end if;
       if ID = No_Record or else ID /= State.ID then Result := Denied; return; end if;
-      Planned := P.Plan (Region, Offset, Width, P.Bus_Bytes, For_Write);
-      Reason := Planned.Status;
-      if Planned.Status /= P.Read_Ready then Result := Policy_Refused; return; end if;
+      Planned := G.Plan_Config
+        ((State.Key.Segment, State.Key.Bus, State.Base, P.Bus_Bytes),
+         Region, Offset, Width, For_Write);
+      Reason := (case Planned.Status is
+        when G.Read_Ready => P.Read_Ready,
+        when G.Write_Refused => P.Write_Refused,
+        when G.Wrong_Segment => P.Unsupported_Segment,
+        when G.Wrong_Bus => P.Unsupported_Bus,
+        when G.Unsupported_Width => P.Unsupported_Width,
+        when G.Invalid_Region => P.Invalid_Region,
+        when G.Outside_Region => P.Outside_Region,
+        when G.Misaligned => P.Misaligned,
+        when G.Invalid_Window | G.Outside_Window => P.Invalid_Window);
+      if Planned.Status /= G.Read_Ready then Result := Policy_Refused; return; end if;
       State.Working := True;
       Read_Clock (Started, Clock_OK);
       if not Clock_OK then State.Working := False; Result := Clock_Unavailable; return; end if;

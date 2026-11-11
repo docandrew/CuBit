@@ -1,6 +1,5 @@
 with ACPI_Service;
 with ACPI_Device_Policy;
-with AML_Execute;
 package body ACPI_Startup_Diagnostics is
    use type ACPI_Service.Execution_Phase_Result;
    use type ACPI_Bootstrap.Device_Phase;
@@ -143,6 +142,28 @@ package body ACPI_Startup_Diagnostics is
            then " " & ACPI_Capacity_Diagnostics.Format (Capacity) else "");
    end Format_Field_Failure;
 
+   function Header_Text (Item : ACPI_Service.Failed_Table_Description) return String is
+      --  Fixed-width header strings are not guaranteed to be printable.
+      --  Keep each field on this one line without allowing quote escapes.
+      function Display (Raw : String) return String is
+         Text : String (Raw'Range);
+      begin
+         for I in Raw'Range loop
+            Text (I) := (if Raw (I) in ' ' .. '~'
+              and then Raw (I) /= '"' and then Raw (I) /= '\'
+              then Raw (I) else '?');
+         end loop;
+         return Text;
+      end Display;
+   begin
+      if not Item.Available then return ""; end if;
+      return " index=" & Item.Index'Image &
+        " sig=" & Display (Item.Identity.Name) &
+        " bytes=" & Item.Metadata.Extent'Image &
+        " oem=""" & Display (Item.Identity.OEM) & '"' &
+        " oem-table=""" & Display (Item.Identity.OEM_Table) & '"' &
+        " revision=" & Item.Metadata.Revision'Image;
+   end Header_Text;
    function Format (Item : ACPI_Bootstrap.Finish_Report) return String is
    begin
       case Item.Stage is
@@ -159,7 +180,8 @@ package body ACPI_Startup_Diagnostics is
                  " completed=" & Item.Execution.Modules.Completed'Image &
                  " charged=" & Item.Execution.Modules.Charged'Image &
                  " outcome=" & Module_Name (Item.Execution.Modules.Outcome) &
-                 " access=" & Access_Name (Item.Execution_Status);
+                 " access=" & Access_Name (Item.Execution_Status) &
+                 Header_Text (Item.Execution.Failure_Table);
             end if;
             return "acpi: stage aml-prepare fail " & Preparation_Name (Item.Execution.Preparation) &
               " phase=" & Execution_Phase_Name (Item.Execution.Phase) &

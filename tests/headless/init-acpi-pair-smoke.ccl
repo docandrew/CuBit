@@ -8,7 +8,7 @@
   (start "logstore.svc" (priority 5))
   (start "acpi-backend.svc" (priority 4)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (acpi-firmware-data approve-declared))
-  (start "acpi.svc" (priority 3)
+  (start "acpi.svc" (priority 3) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Neutral))
     (firmware-snapshot approve-declared) (acpi-registers approve-declared))
   (start "acpi-metrics-check.app" (priority 2))
 )

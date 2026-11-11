@@ -10,6 +10,8 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Devmgr_Children;
+with Devmgr_PCI_Broker;
+with ACPI_PCI_Window_Exchange; use type ACPI_PCI_Window_Exchange.Disposition;
 with CuBit.Child_Exits;
 with Interfaces; use Interfaces;
 with CuBit.Log_Protocol;
@@ -4096,78 +4098,26 @@ procedure main is
       end if;
    end Note_Growth;
 
-   --  PCI segment allocations from the MCFG (PCI Firmware 3.2, 4.1.2):
-   --  from byte 44, 16 bytes each: base (8, bus 0's address), segment (2),
-   --  start bus (1), end bus (1), reserved (4). Bus B's functions are the
-   --  1 MiB at base + B << 20.
-   MCFG_Signature   : constant String := "MCFG";
-   MCFG_Fixed_Bytes : constant := 44;
-   MCFG_Entry_Bytes : constant := 16;
-   MCFG_Start_Bus   : constant := 10;
-   MCFG_End_Bus     : constant := 11;
-   MCFG_Base_Bytes  : constant := 8;
-   PCI_Bus_Shift    : constant := 20;
-   Byte_Bits        : constant := 8;
-
+   -- Complete checked MCFG, including entries beyond the first copy chunk.
    procedure Read_ECAM is
-      package FS renames CuBit.Firmware_Snapshot;
-      use type FS.Outcome, FS.Byte_Count;
-      Tables : constant FS.Authority := FS.Held (Root.Firmware_Snapshot_Root);
-      Catalog : FS.Catalog_Info;
-      D : FS.Table_Description;
-      Status : FS.Outcome;
+      procedure Record_Exclusion (First, Bytes : Unsigned_64; Accepted : out Boolean) is
+         Item : constant DW.Page_Range := (First_Page => First / PAGE_BYTES, Pages => Bytes / PAGE_BYTES);
+         Report : Range_Store.Capacity_Report;
+      begin
+         Accepted := False;
+         if First mod PAGE_BYTES /= 0 or else Bytes mod PAGE_BYTES /= 0 or else not DW.Valid_Range (Item) then return; end if;
+         Range_Store.Append (ECAM_Ranges, Item, Report);
+         Note_Growth ("firmware-data facts (ECAM)", Report);
+         Accepted := Report.Status = Range_Store.Grown;
+      end Record_Exclusion;
+      procedure Read is new Devmgr_PCI_Broker.Read_Exclusions (Record_Exclusion);
+      Status : Devmgr_PCI_Broker.Exclusion_Status;
    begin
-      FS.Info (Tables, Catalog, Status);
-      if Status /= FS.Ok then
-         return;
+      Read (Root.Firmware_Snapshot_Root, Status);
+      if Status not in Devmgr_PCI_Broker.Collected | Devmgr_PCI_Broker.No_MCFG then
+         Data_Facts_Whole := False;
+         Warnings.Warn ("devmgr: stage ecam-facts fail " & Devmgr_PCI_Broker.Name (Status));
       end if;
-      for T in 1 .. FS.Table_ID (Catalog.Table_Count) loop
-         FS.Describe (Tables, T, D, Status);
-         if Status = FS.Ok
-           and then (for all I in FS.Signature_Index =>
-                       D.Signature (I) = Character'Pos (MCFG_Signature (MCFG_Signature'First + I - 1)))
-         then
-            declare
-               Wanted : constant Natural :=
-                 Natural (FS.Byte_Count'Min (D.Extent, FS.Chunk_Max));
-               Bytes : FS.Byte_Array (1 .. Wanted);
-               Copied : FS.Byte_Count;
-               At_Byte : Natural := MCFG_Fixed_Bytes;
-               function Little (From, Count : Natural) return Unsigned_64 is
-                  Value : Unsigned_64 := 0;
-               begin
-                  for K in 0 .. Count - 1 loop
-                     Value := Value or Shift_Left (Unsigned_64 (Bytes (From + K + 1)), Byte_Bits * K);
-                  end loop;
-                  return Value;
-               end Little;
-            begin
-               FS.Copy_Part (Tables, T, 0, Bytes, Copied, Status);
-               if Status = FS.Ok then
-                  while At_Byte + MCFG_Entry_Bytes <= Natural (Copied) loop
-                     declare
-                        Base : constant Unsigned_64 := Little (At_Byte, MCFG_Base_Bytes);
-                        First_Bus : constant Unsigned_64 :=
-                          Unsigned_64 (Bytes (At_Byte + MCFG_Start_Bus + 1));
-                        Last_Bus : constant Unsigned_64 :=
-                          Unsigned_64 (Bytes (At_Byte + MCFG_End_Bus + 1));
-                        Item : constant DW.Page_Range :=
-                          (First_Page => (Base + Shift_Left (First_Bus, PCI_Bus_Shift)) / PAGE_BYTES,
-                           Pages      => Shift_Left (Last_Bus - First_Bus + 1, PCI_Bus_Shift)
-                                           / PAGE_BYTES);
-                        Report : Range_Store.Capacity_Report;
-                     begin
-                        if Last_Bus >= First_Bus and then DW.Valid_Range (Item) then
-                           Range_Store.Append (ECAM_Ranges, Item, Report);
-                           Note_Growth ("firmware-data facts (ECAM)", Report);
-                        end if;
-                     end;
-                     At_Byte := At_Byte + MCFG_Entry_Bytes;
-                  end loop;
-               end if;
-            end;
-         end if;
-      end loop;
    end Read_ECAM;
 
    --  What devmgr knows that does not change after boot: its roots and the
@@ -4202,6 +4152,17 @@ procedure main is
                (Pages => (First_Page => R.First / PAGE_BYTES, Pages => R.Bytes / PAGE_BYTES),
                 Kind  => DW.Data_Root),
                Grown);
+            Data_Facts_Whole := Data_Facts_Whole and then Grown.Status = Root_Store.Grown;
+         end;
+      end loop;
+      for K in 1 .. Devmgr_Authority.PCI_Root_Count loop
+         declare
+            W : constant Devmgr_Authority.ACPI_Window := Devmgr_Authority.PCI_Root_At (K);
+         begin
+            Root_Store.Append
+              (Data_Roots,
+               (Pages => (First_Page => W.First / PAGE_BYTES, Pages => W.Bytes / PAGE_BYTES),
+                Kind => DW.PCI_Config_Root), Grown);
             Data_Facts_Whole := Data_Facts_Whole and then Grown.Status = Root_Store.Grown;
          end;
       end loop;
@@ -4506,10 +4467,13 @@ begin
 
    --  Bootstrap endpoint authority is established before any child runs.
    ret := registerDriver (DRIVER_DEVMGR, Root.Registration);
+   -- A second role on the same devmgr process, not another program.
+   ret := registerDriver (ACPI_PCI_Window_Exchange.Service_Role, Root.Registration);
    myPID := Registered_Driver (DRIVER_DEVMGR);
    --  Its children's (service "device-manager" ...) requests resolve to
    --  devmgr's own endpoint (a copy with the rights they asked for).
    DL.Provide (Unsigned_32 (DRIVER_DEVMGR), Root.Self_Grantable);
+   DL.Provide (Unsigned_32 (ACPI_PCI_Window_Exchange.Service_Role), Root.Self_Grantable);
 
    --  A writable live image is served by a separate Block.Device.V1 driver.
    --  It starts before FS, so FS never calls a not-yet-running provider.
@@ -5663,6 +5627,23 @@ begin
             then
                Refuse (from, Answered => H.Valid (Provider));
             end if;
+         end;
+      elsif msg.tag.label = ACPI_PCI_Window_Exchange.Request_Label then
+         -- The broker checks the full header, kernel badge, opaque sender,
+         -- copied MCFG and freshly inspected root before deriving anything.
+         declare
+            R : Devmgr_PCI_Broker.Observation;
+         begin
+            Devmgr_PCI_Broker.Serve (from, msg, Root.Firmware_Snapshot_Root, R);
+            Warnings.Inform
+              ("devmgr: stage pci-window " &
+               (if R.Status = ACPI_PCI_Window_Exchange.Granted then "ok " else "fail ") &
+               ACPI_PCI_Window_Exchange.Disposition'Image (R.Status) &
+               " peer=" & Process_ID'Image (R.Reader) &
+               " seg=" & ACPI_PCI_Window_Exchange.Segment_Number'Image (R.Request.Key.Segment) &
+               " bus=" & ACPI_PCI_Window_Exchange.Bus_Number'Image (R.Request.Key.Bus) &
+               " record=" & ACPI_PCI_Window_Exchange.Record_ID'Image (R.Record_Number) &
+               " delivery=" & Devmgr_PCI_Broker.C.Delivery'Image (R.Delivery));
          end;
       elsif msg.tag = (label => CuBit.ACPI_Window_Exchange.Window_Request,
                        length => CuBit.ACPI_Window_Exchange.Request_Words, protocol => 0,

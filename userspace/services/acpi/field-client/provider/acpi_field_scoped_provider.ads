@@ -30,6 +30,10 @@ generic
    with procedure Read_Deadline (Deadline : out ACPI_Region_Protocol.Time_Instant);
    with procedure Cleanup_Deadline (Deadline : out ACPI_Region_Protocol.Time_Instant);
    Acquisition_Budget : ACPI_Global_Lock_Protocol.Attempt_Budget;
+   with procedure Prepare_Base
+     (IO : in out Base_Context; Geometry : AML_Field_Layout.Register_Geometry;
+      For_Write : Boolean; Deadline : ACPI_Region_Protocol.Time_Instant;
+      Accepted : in out Boolean) is null;
 package ACPI_Field_Scoped_Provider is
    package W renames ACPI_Region_Protocol;
    type Startup_State is (Fresh, Ready, Failed);
@@ -51,6 +55,11 @@ package ACPI_Field_Scoped_Provider is
      (IO : in out Context; Destination : Peer; Symbol : AML_Field_Access.Endpoint_ID;
       Deadline : W.Time_Instant; Accepted : out Boolean);
    function Register_Count (IO : Context) return Natural;
+   -- Never start a setup RPC while this owner holds a usable physical lease.
+   -- Existing prepared targets remain accessible through metadata selection.
+   procedure Prepare_Target
+     (IO : in out Context; Geometry : AML_Field_Layout.Register_Geometry;
+      For_Write : Boolean; Deadline : W.Time_Instant; Accepted : out Boolean);
    procedure Export_Target
      (IO : Context; Ordinal : Positive; Target : out AML_Field_Access.Target; Accepted : out Boolean);
    procedure Select_Target

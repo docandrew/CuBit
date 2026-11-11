@@ -2387,6 +2387,14 @@ package body AML_Execute with SPARK_Mode is
             Charged := Charged + 1;
             if Offset = Parse_Limit then S := Truncated; return; end if;
             B := Code (Code'First + Offset);
+            if Profile_Enabled then
+               Observe_Profile ((Kind => AML_Profile_Events.Operand_Visit,
+                 Position => AML_Profile_Events.Code_Position (Offset), Opcode => B,
+                 Has_Extension => B = AML_Profile_Events.Extended_Prefix and then Parse_Limit - Offset > 1,
+                 Extension => (if B = AML_Profile_Events.Extended_Prefix and then Parse_Limit - Offset > 1
+                   then Code (Code'First + Offset + 1) else AML_Profile_Events.No_Extension),
+                 Logical_Table => AML_Profile_Events.Unknown_Table));
+            end if;
             Have_Value := True;
             Pending_Slot := 0;
             Pending_Identity := 0;
@@ -4208,6 +4216,14 @@ package body AML_Execute with SPARK_Mode is
          if Charged = Budget then Body_Result := Failure (Budget_Exceeded, Charged); return; end if;
          Charged := Charged + 1;
          Op := Code (Code'First + Offset);
+         if Profile_Enabled then
+            Observe_Profile ((Kind => AML_Profile_Events.Statement_Visit,
+              Position => AML_Profile_Events.Code_Position (Offset), Opcode => Op,
+              Has_Extension => Op = AML_Profile_Events.Extended_Prefix and then Limit - Offset > 1,
+              Extension => (if Op = AML_Profile_Events.Extended_Prefix and then Limit - Offset > 1
+                then Code (Code'First + Offset + 1) else AML_Profile_Events.No_Extension),
+              Logical_Table => AML_Profile_Events.Unknown_Table));
+         end if;
          Offset := Offset + 1;
          case Op is
             when 16#10# =>

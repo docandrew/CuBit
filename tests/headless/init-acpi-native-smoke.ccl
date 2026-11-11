@@ -6,6 +6,6 @@
 # not device or power validation.
 (startup v1
   (start "logstore.svc" (priority 5))
-  (start "acpi.svc" (priority 4) (firmware-snapshot approve-declared))
+  (start "acpi.svc" (priority 4) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Neutral)) (firmware-snapshot approve-declared))
   (start "acpi-metrics-check.app" (priority 3))
 )

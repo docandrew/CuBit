@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with System.Machine_Code;
 with Interfaces; with ACPI_Clock_Source; with ACPI_Native_Log;
 package body ACPI_Native_Startup_Timing is
    use type Interfaces.Unsigned_64, P.Token;
@@ -31,10 +32,41 @@ package body ACPI_Native_Startup_Timing is
    Seen_Sample, Previous_Entering, Gap_From_Entering, Gap_To_Entering : Boolean := False;
    Previous_Kind, Gap_From, Gap_To : P.Kind := P.Startup;
    Previous_Time, Largest_Gap : Interfaces.Unsigned_64 := 0;
+   -- Diagnostic wall-counter ticks, not process CPU time. Preemption and the
+   -- ordered counter-read overhead are included. No clock syscall is added.
+   Clock_Calls, Clock_Ticks, Clock_Max, Counter_Regressions : Interfaces.Unsigned_64 := 0;
+   Span_Start : Interfaces.Unsigned_64 := 0;
+   Counter_Saturated : Boolean := False;
+   function Counter return Interfaces.Unsigned_64 is
+      Low, High : Interfaces.Unsigned_32;
+      use System.Machine_Code;
+   begin
+      Asm ("lfence; rdtsc; lfence",
+        Outputs => [Interfaces.Unsigned_32'Asm_Output ("=a",Low),
+                    Interfaces.Unsigned_32'Asm_Output ("=d",High)],
+        Clobber => "memory", Volatile => True);
+      return Interfaces.Shift_Left (Interfaces.Unsigned_64 (High),32) or Interfaces.Unsigned_64 (Low);
+   end Counter;
+   procedure Add (Target : in out Interfaces.Unsigned_64; Amount : Interfaces.Unsigned_64) is
+   begin
+      if Amount > Interfaces.Unsigned_64'Last-Target then
+         Target := Interfaces.Unsigned_64'Last; Counter_Saturated := True;
+      else Target := Target+Amount; end if;
+   end Add;
+   procedure Measured_Read (Now : out Interfaces.Unsigned_64; Known : out Boolean) is
+      Before : constant Interfaces.Unsigned_64 := Counter;
+      After, Elapsed : Interfaces.Unsigned_64;
+   begin
+      ACPI_Clock_Source.Read (Now,Known);
+      After := Counter; Add (Clock_Calls,1);
+      if After < Before then Add (Counter_Regressions,1); return; end if;
+      Elapsed := After-Before; Add (Clock_Ticks,Elapsed);
+      Clock_Max := Interfaces.Unsigned_64'Max (Clock_Max,Elapsed);
+   end Measured_Read;
    procedure Sample (Item : P.Kind; Entering : Boolean;
       Now : out Interfaces.Unsigned_64; Known : out Boolean) is
    begin
-      ACPI_Clock_Source.Read (Now,Known);
+      Measured_Read (Now,Known);
       if Known and then Seen_Sample and then Now >= Previous_Time
         and then Now-Previous_Time > Largest_Gap
       then
@@ -43,7 +75,7 @@ package body ACPI_Native_Startup_Timing is
       end if;
       Seen_Sample := Known; Previous_Time := Now; Previous_Kind := Item; Previous_Entering := Entering;
    end Sample;
-   procedure Start is begin P.Start (State); end Start;
+   procedure Start is begin Span_Start := Counter; P.Start (State); end Start;
    procedure Enter (Item : P.Kind; Handle : out Token) is
       Now : Interfaces.Unsigned_64 := 0; Known : Boolean := False;
    begin
@@ -63,7 +95,7 @@ package body ACPI_Native_Startup_Timing is
          else
             -- The policy diagnoses malformed token order; diagnostics never
             -- unwind another scope or change the caller's execution result.
-            Work_Broken := True; ACPI_Clock_Source.Read (Now,Known);
+            Work_Broken := True; Measured_Read (Now,Known);
          end if;
       end if;
       P.Leave (State,Handle,Now,Known);
@@ -95,10 +127,13 @@ package body ACPI_Native_Startup_Timing is
       end loop;
       return Text (First .. Text'Last);
    end Number;
+   function Snapshot (Item : P.Kind) return P.Counters is (P.Read (State,Item));
    procedure Report is
+      Span_End : Interfaces.Unsigned_64;
    begin
       if Reported then return; end if;
-      Reported := True; P.Stop (State);
+      Reported := True; P.Stop (State); Span_End := Counter;
+      if Span_End < Span_Start then Add (Counter_Regressions,1); end if;
       ACPI_Native_Log.Info ("acpi: stage timing ok quality=" &
         (if P.Complete (State) and then Depth = 0 and then Overflow = 0 and then Dropped = 0 and then not Work_Broken then "COMPLETE" else "INCOMPLETE") &
         " clock_samples=" & Number (P.Clock_Samples (State)) & " unit=us");
@@ -118,6 +153,12 @@ package body ACPI_Native_Startup_Timing is
             end if;
          end;
       end loop;
+      ACPI_Native_Log.Info ("acpi: stage timing-clock ok basis=TSC_WALL n=" & Number (Clock_Calls) &
+        " total_ticks=" & Number (Clock_Ticks) & " max_ticks=" & Number (Clock_Max) &
+        " regressions=" & Number (Counter_Regressions) & " saturated=" & Counter_Saturated'Image);
+      ACPI_Native_Log.Info ("acpi: stage timing-span ok basis=TSC_WALL ticks=" &
+        Number (if Span_End >= Span_Start then Span_End-Span_Start else 0) &
+        " includes=PREEMPTION_AND_PROBE_OVERHEAD");
       ACPI_Native_Log.Info ("acpi: stage timing-work ok dropped=" & Number (Dropped) &
         " open=" & Number (Interfaces.Unsigned_64 (Depth)) & " overflow=" & Number (Interfaces.Unsigned_64 (Overflow)));
       ACPI_Native_Log.Info ("acpi: stage timing-gap ok basis=WALL_ONLY us=" & Number (Largest_Gap) &

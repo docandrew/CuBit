@@ -1,16 +1,11 @@
-# ACPI firmware-data regression (tests/headless, acpi-firmware-data; the
-# kernel's Firmware_Data_Tag roots, devmgr's Data_Window_Request): stands in
-# for acpi-backend.svc's launch approved for acpi-firmware-data beside
-# acpi-hardware and acpi-pci-config (which lets it find a PCI BAR to ask
-# for). The approved entry gets devmgr's firmware-data endpoint
-# ("hardware-data"); the same image started as acpi-data-unapproved.app does
-# not, and is refused through the ordinary "device-manager" endpoint.
-# "tables" is the firmware snapshot reader, so the program finds the FACS
-# and the MCFG itself.
+# Test-only backend stand-in; broker approval requires the exact validated
+# backend identity plus launch-plan hardware and PCI approvals. No policy widening.
 (Executable_Manifest
-  identity => "com.cubit.acpi-data-check"
+  identity => "com.cubit.acpi-backend"
   version => "0.1.0"
+  optional => ["pci-windows"]
   requests => [
     (Request.Firmware_Snapshot "tables")
     (Request.ACPI_Hardware "hardware")
-    (service "device-manager" "device-manager")])
+    (service "device-manager" "device-manager")
+    (service "acpi-pci-windows" "pci-windows")])

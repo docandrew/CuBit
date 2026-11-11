@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Profile_Events;
 with AML_Mutexes;
 with AML_Fatal;
 with AML_Declaration_Contexts;
@@ -662,6 +663,10 @@ package AML_Execute with SPARK_Mode, Pure is
       with procedure Finish_Field_Context
         (Environment : in out Context; Ref : AML_References.Reference;
          Ticket : Field_Context_Ticket; Completed : Boolean) is null;
+      -- Passive diagnostics only; actual must return normally without AML,
+      -- allocation, logging, hardware, reentry or an effect on execution policy.
+      Profile_Enabled : Boolean := False;
+      with procedure Observe_Profile (Item : AML_Profile_Events.Event) is null;
    procedure Execute_From_Source
      (Code : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
       Args : Value_Arguments; Argument_Count : Natural; Budget : Natural;

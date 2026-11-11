@@ -15,6 +15,7 @@ package body Devmgr_Authority is
    package MC renames Devmgr_Memory_Claims;
    package AMC renames CuBit.ACPI_Memory_Classes;
    use type H.ABI.Kind;
+   use type AMC.Memory_Kind;
    use type MC.Claim_Result;
    use type Ledgers.Port_Store.Growth_Status;
 
@@ -38,6 +39,7 @@ package body Devmgr_Authority is
    Claims  : Ledgers.Memory_Ledger;
    Extents : Extent_Store.Store;
    Windows : Window_Store.Store;
+   PCI_Roots : Window_Store.Store;
    Data    : Data_Store.Store;
    Refused : Natural := 0;
    Device_Failure : Capacity_Report;
@@ -48,6 +50,7 @@ package body Devmgr_Authority is
       Held := BR.Get;
       Extent_Store.Clear (Extents);
       Window_Store.Clear (Windows);
+      Window_Store.Clear (PCI_Roots);
       Data_Store.Clear (Data);
       Refused := 0;
       if not Held.Valid then
@@ -68,9 +71,9 @@ package body Devmgr_Authority is
                Report);
          end;
       end loop;
-      --  The firmware-memory roots: the NVS runs, the FACS page and the
-      --  PCI slice are ACPI's before any driver exists; the data roots are
-      --  kept for narrowing.
+      --  NVS, FACS and PCI roots are claimed before drivers exist. Keep PCI
+      --  roots in a separate store for individual read-only bus requests;
+      --  data roots remain available for envelope narrowing.
       for R in 1 .. Held.Firmware_Count loop
          declare
             Memory : constant H.Device_Memory := BR.Firmware_Root (Held, R);
@@ -104,9 +107,17 @@ package body Devmgr_Authority is
                   declare
                      Grown : Window_Store.Capacity_Report;
                   begin
-                     Window_Store.Append
-                       (Windows, (Memory => Memory, First => D.Object, Bytes => D.Parameter,
-                                  Kind => AMC.Kind_Of (D.Authority_Tag)), Grown);
+                     if AMC.Kind_Of (D.Authority_Tag) = AMC.PCI_Config then
+                        -- Root authority stays in devmgr; a broker request
+                        -- later selects one bus and returns a read-only copy.
+                        Window_Store.Append
+                          (PCI_Roots, (Memory => Memory, First => D.Object,
+                            Bytes => D.Parameter, Kind => AMC.PCI_Config), Grown);
+                     else
+                        Window_Store.Append
+                          (Windows, (Memory => Memory, First => D.Object, Bytes => D.Parameter,
+                            Kind => AMC.Kind_Of (D.Authority_Tag)), Grown);
+                     end if;
                      Kept := Grown.Status = Window_Store.Grown;
                   end;
                end if;
@@ -117,6 +128,10 @@ package body Devmgr_Authority is
          end;
       end loop;
    end Initialize;
+
+   function PCI_Root_Count return Natural is (Window_Store.Length (PCI_Roots));
+   function PCI_Root_At (K : Positive) return ACPI_Window is
+     (Window_Store.Element_At (PCI_Roots,K));
 
    function ACPI_Window_Count return Natural is (Window_Store.Length (Windows));
    function ACPI_Window_At (K : Positive) return ACPI_Window is

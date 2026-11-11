@@ -68,6 +68,16 @@ package body ACPI_Field_Scoped_Provider is
       Target := A.No_Target; Accepted := False;
       if Live (IO) then Base.Select_Target (IO.Inner, Geometry, For_Write, Target, Accepted); end if;
    end Select_Target;
+   procedure Prepare_Target
+     (IO : in out Context; Geometry : AML_Field_Layout.Register_Geometry;
+      For_Write : Boolean; Deadline : W.Time_Instant; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if not Live (IO) or else Scope.Observe (IO.Guard).Lease_Usable then return; end if;
+      IO.Working := True;
+      Prepare_Base (IO.Inner, Geometry, For_Write, Deadline, Accepted);
+      IO.Working := False;
+   end Prepare_Target;
    procedure Resolve_Module_Target
      (IO : in out Context; Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out A.Target; Accepted : in out Boolean) is

@@ -3,6 +3,7 @@ with Interfaces;
 with AML_Decode;
 with ACPI_Clock_Source;
 with Startup;
+with ACPI_Native_Log;
 package body ACPI_Native_Snapshot_Load is
    package K renames ACPI_Native_Snapshot_Read.K;
    package R renames L.R;
@@ -20,6 +21,12 @@ package body ACPI_Native_Snapshot_Load is
       Catalog : K.Catalog_Info;
    begin
       K.Info (Startup.Tables, Catalog, Diagnostics.Catalog_Status);
+      if Diagnostics.Catalog_Status = K.Ok then
+         ACPI_Native_Log.Info ("acpi: stage table-catalog ok tables=" & Catalog.Table_Count'Image &
+           " bytes=" & Catalog.Total_Bytes'Image & " largest=" & Catalog.Largest_Table'Image);
+      else
+         ACPI_Native_Log.Warning ("acpi: stage table-catalog fail " & Diagnostics.Catalog_Status'Image);
+      end if;
       Status := Translate (Diagnostics.Catalog_Status);
       Item := (Catalog.Ready, Interfaces.Unsigned_64 (Catalog.Table_Count),
         Interfaces.Unsigned_64 (Catalog.Total_Bytes),

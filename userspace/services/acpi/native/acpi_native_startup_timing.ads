@@ -11,5 +11,7 @@ package ACPI_Native_Startup_Timing is
    procedure Leave (Handle : in out Token);
    -- Normally returning passive observer, with no hardware/logging/reentry.
    procedure Observe_Work (Item : AML_Work_Kinds.Kind; Entering : Boolean);
+   function Snapshot (Item : P.Kind) return P.Counters;
+   -- Passive counter copy only; no clock/logging or collection-state changes.
    procedure Report;
 end ACPI_Native_Startup_Timing;

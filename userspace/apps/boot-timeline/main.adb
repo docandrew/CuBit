@@ -97,7 +97,8 @@ procedure Main is
         when Initrd_Parsed            => "initrd parsed",
         when Device_Manager_Loaded    => "devmgr loaded",
         when Secondary_CPUs_Ready     => "secondary CPUs ready",
-        when Scheduler_Started        => "scheduler started");
+        when Scheduler_Started        => "scheduler started",
+        when Device_Manager_Roots_Refused => "devmgr refused: ROOT_INVENTORY_CAPACITY");
 
    function Milestone_Name (Item : Milestone) return String is
      (case Item is

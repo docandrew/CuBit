@@ -31,12 +31,6 @@ package acpi is
     -- FADT is long enough and it is nonzero, else FIRMWARE_CTRL; zero when
     -- there is none. Physical_Ranges' control page (firmware memory).
     facsAddr    : Unsigned_64 := 0;
-    -- PCI segment 0 bus 0's ECAM slice (the MCFG allocation for segment 0
-    -- that starts at bus 0), zero when there is none. Physical_Ranges' PCI
-    -- configuration slice (firmware memory, read-only).
-    pciConfigBus0 : Unsigned_64 := 0;
-    PCI_Segment_Zero : constant Unsigned_16 := 0;
-    PCI_Bus_Zero     : constant Unsigned_8 := 0;
 
     -- The DMA remapping table (DMAR, IOMMU-001): absent (no table in the
     -- XSDT), rejected (dmarRejection says why and dmarOffset where) or

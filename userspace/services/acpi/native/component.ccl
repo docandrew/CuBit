@@ -1,7 +1,8 @@
 (Component name => "acpi" kind => (Kind.Service Launcher.Process_Manager)
   source => (Source.Ada (Ada_Source
     language => Ada_Language.Ada_2022
-    sources => ["userspace/services/acpi"
+    sources => ["userspace/ccl/src"
+                "userspace/services/acpi"
                 "userspace/services/acpi/lib"
                 "userspace/services/acpi/backend"
                 "userspace/services/acpi/native-clock"

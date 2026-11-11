@@ -51,16 +51,26 @@ package body Physical_Ranges with SPARK_Mode is
       end if;
    end Set_Control;
 
-   procedure Set_PCI_Config (M : in out Map; Bus_Zero : Unsigned_64) is
+   procedure Add_PCI_Config (M : in out Map; Item : MC.Allocation) is
+      First, Last_Exclusive : Unsigned_64;
    begin
-      if Bus_Zero mod Page_Bytes = 0 and then Bus_Zero <= Address_Limit - PCI_Bus_Bytes then
-         M.PCI_Config_Known := True;
-         M.PCI_Config_Page := Bus_Zero / Page_Bytes;
-      else
-         M.PCI_Config_Known := False;
-         M.PCI_Config_Page := 0;
+      if not M.Complete then return; end if;
+      if not PW.Valid (Item, Address_Limit) or else M.PCI_Used = Max_PCI_Allocations then
+         M.Complete := False; return;
       end if;
-   end Set_PCI_Config;
+      First := Item.Base + Unsigned_64 (Item.First_Bus) * PCI_Bus_Bytes;
+      Last_Exclusive := Item.Base + PW.Upper_Bytes (Item);
+      for I in 1 .. M.PCI_Used loop
+         if (Item.Segment = M.PCI (I).Segment
+             and then Item.First_Bus <= M.PCI (I).Last_Bus
+             and then M.PCI (I).First_Bus <= Item.Last_Bus)
+           or else (First < M.PCI (I).Base + PW.Upper_Bytes (M.PCI (I))
+             and then M.PCI (I).Base + Unsigned_64 (M.PCI (I).First_Bus) * PCI_Bus_Bytes < Last_Exclusive)
+         then M.Complete := False; return; end if;
+      end loop;
+      M.PCI_Used := M.PCI_Used + 1;
+      M.PCI (M.PCI_Used) := Item;
+   end Add_PCI_Config;
 
    procedure Seal (M : in out Map) is
    begin
@@ -427,12 +437,10 @@ package body Physical_Ranges with SPARK_Mode is
    end Next_NVS_Run;
 
    function First_Firmware_Cursor (M : Map) return Firmware_Cursor is
-     (if M.Sealed and then M.Complete
-      then (Phase           => Admitted_Runs,
-            From            => 0,
-            Control_Pending => Control_Page_Admitted (M, M.Control_Page),
-            PCI_Pending     => In_PCI_Config (M, M.PCI_Config_Page))
-      else (Phase => Finished, From => 0, Control_Pending => False, PCI_Pending => False));
+     (if M.Sealed and then M.Complete then
+        (Phase => Admitted_Runs, From => 0,
+         Control_Pending => Control_Page_Admitted (M, M.Control_Page), PCI_From => 0)
+      else (Phase => Finished, others => <>));
 
    ---------------------------------------------------------------------------
    -- Uniform stretches (firmware data)
@@ -513,8 +521,20 @@ package body Physical_Ranges with SPARK_Mode is
       end loop;
       Cut (M.Control_Page);
       Cut (M.Control_Page + 1);
-      Cut (M.PCI_Config_Page);
-      Cut (M.PCI_Config_Page + PCI_Bus_Pages);
+      for I in 1 .. M.PCI_Used loop
+         if PW.Valid (M.PCI (I), Address_Limit) then
+            Cut (PCI_First_Page (M.PCI (I)));
+            Cut (PCI_End_Page (M.PCI (I)));
+         end if;
+         pragma Loop_Invariant (B >= A);
+         pragma Loop_Invariant (for all J in 1 .. M.Count => Span_Steady (M.Spans (J), A, B));
+         pragma Loop_Invariant (for all J in 1 .. M.Tables_Used => Extent_Steady (M.Tables (J), A, B));
+         pragma Loop_Invariant (Steady (M.Control_Page, A, B) and then Steady (M.Control_Page + 1, A, B));
+         pragma Loop_Invariant (for all J in 1 .. I =>
+           PW.Valid (M.PCI (J), Address_Limit)
+           and then Steady (PCI_First_Page (M.PCI (J)), A, B)
+           and then Steady (PCI_End_Page (M.PCI (J)), A, B));
+      end loop;
       return B;
    end Stretch_End;
 
@@ -558,9 +578,43 @@ package body Physical_Ranges with SPARK_Mode is
       end loop;
       Consider (M.Control_Page);
       Consider (M.Control_Page + 1);
-      Consider (M.PCI_Config_Page);
-      Consider (M.PCI_Config_Page + PCI_Bus_Pages);
+      for I in 1 .. M.PCI_Used loop
+         if PW.Valid (M.PCI (I), Address_Limit) then
+            Consider (PCI_First_Page (M.PCI (I)));
+            Consider (PCI_End_Page (M.PCI (I)));
+         end if;
+         pragma Loop_Invariant (if Found then Low >= From and then Data_Page (M, Low));
+      end loop;
    end Next_Data_Start;
+
+   procedure Next_PCI_Window
+     (M : Map; From : Unsigned_64; Found : out Boolean; First, Last : out Page_Number)
+     with Pre => Well_Formed (M),
+       Post => (if Found then First >= From and then First <= Last_PCI_Bus_Page
+         and then Last = First + PCI_Bus_Pages - 1)
+   is
+      Bus, Relative, Base_Page, Candidate : Unsigned_64;
+   begin
+      Found := False; First := 0; Last := 0;
+      if From > Last_Page then return; end if;
+      for I in 1 .. M.PCI_Used loop
+         Base_Page := M.PCI (I).Base / Page_Bytes;
+         if From <= Base_Page then Bus := Unsigned_64 (M.PCI (I).First_Bus);
+         else
+            Relative := From - Base_Page;
+            Bus := Relative / PCI_Bus_Pages + (if Relative mod PCI_Bus_Pages = 0 then 0 else 1);
+            Bus := Unsigned_64'Max (Bus, Unsigned_64 (M.PCI (I).First_Bus));
+         end if;
+         if Bus <= Unsigned_64 (M.PCI (I).Last_Bus) then
+            Candidate := Base_Page + Bus * PCI_Bus_Pages;
+            if not Found or else Candidate < First then
+               First := Candidate; Last := Candidate + PCI_Bus_Pages - 1; Found := True;
+            end if;
+         end if;
+         pragma Loop_Invariant (if Found then First >= From and then First <= Last_PCI_Bus_Page
+           and then Last = First + PCI_Bus_Pages - 1);
+      end loop;
+   end Next_PCI_Window;
 
    procedure Next_Firmware_Run
      (M : Map; Cursor : in out Firmware_Cursor;
@@ -569,8 +623,9 @@ package body Physical_Ranges with SPARK_Mode is
       Start : constant Firmware_Cursor := Cursor with Ghost;
       NVS_Found : Boolean;
       Low, High : Page_Number;
-      -- The control page, or the PCI slice, comes before the next NVS run.
-      Control_Next, PCI_Next : Boolean;
+      -- The control page, or the next PCI bus window, precedes the NVS run.
+      Control_Next, PCI_Next, PCI_Found : Boolean;
+      PCI_First, PCI_Last : Page_Number;
 
       -- Pages [First_Page, Last_Page_Of] are the run if they are verified
       -- firmware memory of Kind and short enough; otherwise they are counted
@@ -596,18 +651,15 @@ package body Physical_Ranges with SPARK_Mode is
          end if;
       end Try;
 
-      -- The admitted phase is over: a PCI slice the search passed without
-      -- recording is left out, not lost; firmware data comes next.
+      -- The admitted phase is over; firmware data comes next. Rejected PCI
+      -- bus candidates were counted by their lane, never again at this transition.
       procedure End_Admitted
         with Pre  => Cursor.Phase = Admitted_Runs,
              Post => Cursor.Phase = Data_Runs and then Cursor.From = 0
       is
       begin
-         if Cursor.PCI_Pending and then Left_Out < Natural'Last then
-            Left_Out := Left_Out + 1;
-         end if;
          Cursor := (Phase => Data_Runs, From => 0, Control_Pending => False,
-                    PCI_Pending => False);
+                    PCI_From => 0);
       end End_Admitted;
    begin
       Found := False;
@@ -617,37 +669,37 @@ package body Physical_Ranges with SPARK_Mode is
          return;
       end if;
 
-      -- NVS runs, the control page and the PCI slice, ascending. Each round
-      -- records the control page, considers the PCI slice, or consumes at
-      -- least one NVS candidate, so Count + 3 rounds enumerate them all.
+      -- NVS runs, the control page and individual PCI buses, ascending.
+      -- Each round advances a PCI candidate, the control page, or an NVS
+      -- boundary. The bound includes every bus in every allocation and
+      -- both boundaries of every span; it is not just the span count.
+      -- PCI_From advances even for a rejected bus, while From still allows
+      -- an NVS/control root inside it. Left_Out counts that bus once.
       if Cursor.Phase = Admitted_Runs then
-         for Round in 0 .. M.Count + 2 loop
+         for Round in 0 .. 2 * M.Count + (Natural (MC.Bus_Number'Last) + 1) * M.PCI_Used + 2 loop
             pragma Loop_Invariant (not Found and then Cursor.Phase = Admitted_Runs
                                    and then Cursor.From >= Start.From);
             Next_NVS_Run (M, Cursor.From, NVS_Found, Low, High);
             Control_Next := Cursor.Control_Pending and then M.Control_Page >= Cursor.From
               and then (not NVS_Found or else M.Control_Page < Low);
-            PCI_Next := Cursor.PCI_Pending and then In_PCI_Config (M, M.PCI_Config_Page)
-              and then M.PCI_Config_Page >= Cursor.From
-              and then (not NVS_Found or else M.PCI_Config_Page < Low)
-              and then (not Control_Next or else M.PCI_Config_Page < M.Control_Page);
+            Next_PCI_Window (M, Cursor.PCI_From, PCI_Found, PCI_First, PCI_Last);
+            PCI_Next := PCI_Found and then
+              (PCI_First < Cursor.From or else
+               ((not NVS_Found or else PCI_First < Low)
+                and then (not Control_Next or else PCI_First < M.Control_Page)));
             if PCI_Next then
-               -- The slice exactly, or nothing (Try re-checks every page);
-               -- only a recorded slice moves the search past it.
-               Cursor.PCI_Pending := False;
-               declare
-                  Last_Of : constant Page_Number := M.PCI_Config_Page + (PCI_Bus_Pages - 1);
-               begin
-                  Try (M.PCI_Config_Page, Last_Of, PCI_Config_Memory);
-                  if Found then
-                     if Last_Of = Last_Page then
-                        End_Admitted;
-                     else
-                        Cursor.From := Last_Of + 1;
-                     end if;
-                     return;
-                  end if;
-               end;
+               -- Advance this lane even when another class blocks the bus.
+               -- Do not skip an NVS/control root within a rejected PCI window.
+               Cursor.PCI_From := PCI_Last + 1;
+               if PCI_First >= Cursor.From then
+                  Try (PCI_First, PCI_Last, PCI_Config_Memory);
+               elsif Left_Out < Natural'Last then Left_Out := Left_Out + 1;
+               end if;
+               if Found then
+                  if PCI_Last = Last_Page then End_Admitted;
+                  else Cursor.From := PCI_Last + 1; end if;
+                  return;
+               end if;
             elsif Control_Next then
                Cursor.Control_Pending := False;
                Try (M.Control_Page, M.Control_Page, Control_Memory);
@@ -705,7 +757,7 @@ package body Physical_Ranges with SPARK_Mode is
             Lemma_Uniform_Data (M, Low, High, P);
             pragma Loop_Invariant (for all Q in Low .. P => Data_Page (M, Q));
          end loop;
-         for Round in 0 .. 4 * M.Count + 2 * M.Tables_Used + 4 loop
+         for Round in 0 .. 4 * M.Count + 2 * M.Tables_Used + 2 * M.PCI_Used + 4 loop
             pragma Loop_Invariant (Low <= High and then (for all Q in Low .. High => Data_Page (M, Q)));
             exit when High = Last_Page or else High - Low + 1 >= Max_Firmware_Run_Pages
               or else not Data_Page (M, High + 1);

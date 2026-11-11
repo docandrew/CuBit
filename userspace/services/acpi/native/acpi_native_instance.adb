@@ -1,4 +1,7 @@
+with ACPI_Catalog_Header_Notes;
 with ACPI_Native_Startup_Timing;
+with ACPI_Native_AML_Profile;
+with ACPI_Native_Firmware_Profile;
 with ACPI_Native_Lock_Dump;
 with Interfaces; use Interfaces;
 with AML_Decode;
@@ -28,6 +31,7 @@ with ACPI_Unprovisioned_Regions;
 with AML_Execute;
 with ACPI_Native_Evaluation;
 with ACPI_Native_Fields;
+with ACPI_Native_PCI_Aliases;
 with ACPI_Native_Data;
 with ACPI_Capacity_Diagnostics;
 with AML_Field_Access;
@@ -59,7 +63,7 @@ package body ACPI_Native_Instance is
             if Line'Length /= 0 then ACPI_Native_Log.Warning ("acpi: stage firmware-client fail " & Line); end if;
          end;
          declare Line : constant String := ACPI_Native_Data.Native.Diagnostic_Line (I); begin
-            if Line'Length /= 0 then ACPI_Native_Log.Warning ("acpi: stage firmware-rpc fail " & Line); end if;
+            if Line'Length /= 0 then ACPI_Native_Log.Warning ("acpi: stage firmware-rpc trace " & Line); end if;
          end;
       end loop;
       if ACPI_Capacity_Diagnostics.Present (Capacity) then
@@ -68,10 +72,10 @@ package body ACPI_Native_Instance is
       end if;
    end Report_Firmware_Session;
    -- Native monotonic samples and snapshot deadlines are microseconds.
-   Startup_Timeout_Microseconds : constant L.R.Tick := 10_000_000;
+   Startup_Timeout_Microseconds : constant L.R.Tick := 60_000_000;
    -- Separate absolute deadlines: snapshot/delays use microseconds; register
    -- IPC uses GETTIME milliseconds. Their raw epochs are never interconverted.
-   Startup_Timeout_Milliseconds : constant Unsigned_64 := 10_000;
+   Startup_Timeout_Milliseconds : constant Unsigned_64 := 60_000;
    -- Discard_Names in the native runtime makes enum Image numeric. Keep
    -- explicit names for the failure stages visible in laptop boot photos.
    function Name (Item : L.Outcome) return String is
@@ -141,14 +145,143 @@ package body ACPI_Native_Instance is
    end Initialize_Regions;
    package Driver is new ACPI_Device_Initialization
      (ACPI_Service, Initialize_Regions, ACPI_Native_Evaluation.Evaluate_Named);
+   function Hex (Value : Unsigned_64) return String;
+   Catalog_Reported : Boolean := False;
+   procedure Report_Catalog (Service : ACPI_Service.State;
+      IO_Pending, IO_Uncertain : Boolean) is
+      package H renames ACPI_Catalog_Header_Notes;
+      Text : H.Line_Text;
+      Last : H.Line_Length;
+      Status : H.Format_Status;
+      Count : Natural;
+      Diagnostic_Batch_Rows : constant Positive := 4;
+      Drained : Boolean;
+      use type H.Format_Status;
+      procedure Drain_Catalog (After_Row : Natural; Accepted : out Boolean) is
+      begin
+         ACPI_Native_Log.Drain_Diagnostics (IO_Pending, IO_Uncertain, Accepted);
+         if not Accepted then
+            ACPI_Native_Log.Warning ("acpi: stage catalog-headers fail LOG_NOT_DRAINED after=" & After_Row'Image);
+         end if;
+      end Drain_Catalog;
+   begin
+      if Catalog_Reported or else IO_Pending or else IO_Uncertain then return; end if;
+      Catalog_Reported := True;
+      if not ACPI_Service.Valid (Service) then
+         ACPI_Native_Log.Warning ("acpi: stage catalog-headers fail CATALOG_INVALID"); return;
+      end if;
+      Count := ACPI_Service.Table_Count (Service);
+      Drain_Catalog (0, Drained);
+      if not Drained then return; end if;
+      for Index in 1 .. Count loop
+         declare
+            Metadata : constant ACPI_Service.Table_Metadata := ACPI_Service.Table_Info (Service, Index);
+         begin
+            -- Retained catalog entries passed SDT checksum admission. This
+            -- reports that existing result; it never rereads table payloads.
+            H.Format ((Index => Index, ID => Metadata.ID, Length => Metadata.Extent,
+              Revision => Metadata.Revision, Identity => ACPI_Service.Table_Identity (Service, Index),
+              Checksum_Admitted => True), Text, Last, Status);
+            if Status = H.Formatted then ACPI_Native_Log.Info (Text (1 .. Last));
+            else ACPI_Native_Log.Warning ("acpi: stage table-header fail FORMAT_LIMIT index=" & Index'Image);
+            end if;
+         end;
+         if Index mod Diagnostic_Batch_Rows = 0 then
+            Drain_Catalog (Index, Drained);
+            if not Drained then return; end if;
+         end if;
+      end loop;
+      if Count mod Diagnostic_Batch_Rows /= 0 then
+         Drain_Catalog (Count, Drained);
+         if not Drained then return; end if;
+      end if;
+      ACPI_Native_Log.Info ("acpi: stage catalog-headers ok rows=" & Count'Image & " source=ADMITTED_COPY");
+      Drain_Catalog (Count, Drained);
+   end Report_Catalog;
+   procedure Report_Module_Field_Context
+     (Result : ACPI_Service.Execution_Report; IO_Pending, IO_Uncertain : Boolean) is
+   begin
+      -- Copied diagnostics only, after execution stopped. No provider callback,
+      -- metadata refresh, register access or logging during unresolved Field IO.
+      if IO_Pending or else IO_Uncertain then return; end if;
+      declare
+         First : constant ACPI_Field_Diagnostics.Report := ACPI_Native_Fields.First_Failure;
+      begin
+         ACPI_Native_Log.Warning ("acpi: stage module-field-context ok aml-recorded=" &
+           Result.Modules.Field_Failure.Present'Image & " provider-recorded=" &
+           ACPI_Field_Diagnostics.Present (First)'Image &
+           (if Result.Modules.Field_Failure.Present then
+              " aml-name=" & Result.Modules.Field_Failure.Name &
+              " aml-region=" & Result.Modules.Field_Failure.Region &
+              " region-known=" & Result.Modules.Field_Failure.Region_Known'Image &
+              " space=" & Result.Modules.Field_Failure.Space'Image &
+              " write=" & Result.Modules.Field_Failure.For_Write'Image &
+              " region-base=0x" & Hex (Unsigned_64 (Result.Modules.Field_Failure.Region_Address)) &
+              " region-bytes=0x" & Hex (Unsigned_64 (Result.Modules.Field_Failure.Region_Length)) &
+              " address-literal=" & Result.Modules.Field_Failure.Address_Is_Literal'Image &
+              " length-literal=" & Result.Modules.Field_Failure.Length_Is_Literal'Image &
+              " failure=" & ACPI_Startup_Diagnostics.Execution_Name (Result.Modules.Field_Failure.Failure) else "") &
+           " " & ACPI_Field_Diagnostics.Format (First));
+      end;
+   end Report_Module_Field_Context;
    procedure Timed_Module_Startup
      (Service : in out ACPI_Service.State; Budget : Natural;
       Result : out ACPI_Service.Execution_Report; Status : out ACPI_Service.Values.Access_Status) is
-      Timing : ACPI_Native_Startup_Timing.Token;
+      package T renames ACPI_Native_Startup_Timing;
+      Timing : T.Token;
+      Before : constant ACPI_Service.Metrics := ACPI_Service.Observe (Service);
+      Module_Before : constant T.P.Counters := T.Snapshot (T.P.Module_Execution);
+      Sleep_Before : constant T.P.Counters := T.Snapshot (T.P.AML_Sleep);
+      Stall_Before : constant T.P.Counters := T.Snapshot (T.P.AML_Stall);
+      GC_Before : constant T.P.Counters := T.Snapshot (T.P.Work_Allocation);
+      function Delta_Value (After, Prior : Unsigned_64) return Unsigned_64 is
+        (if After >= Prior then After-Prior else 0);
    begin
-      ACPI_Native_Startup_Timing.Enter (ACPI_Native_Startup_Timing.P.Module_Execution,Timing);
+      ACPI_Native_Log.Info ("acpi: stage module-start ok budget=" & Budget'Image);
+      T.Enter (T.P.Module_Execution,Timing);
+      ACPI_Native_AML_Profile.Start;
       ACPI_Native_Evaluation.Execute_Module_Startup (Service,Budget,Result,Status);
-      ACPI_Native_Startup_Timing.Leave (Timing);
+      ACPI_Native_AML_Profile.Stop;
+      T.Leave (Timing);
+      ACPI_Native_AML_Profile.Report;
+      case Result.Modules.Outcome is
+         when ACPI_Service.Values.Modules_Completed => null;
+         when others => Report_Module_Field_Context (Result,
+           IO_Pending => ACPI_Native_Fields.Observe.IO_Pending,
+           IO_Uncertain => ACPI_Native_Fields.Uncertain.Present);
+            ACPI_Native_AML_Profile.Report_Tail
+           (IO_Pending => ACPI_Native_Fields.Observe.IO_Pending,
+            IO_Uncertain => ACPI_Native_Fields.Uncertain.Present);
+            Report_Catalog (Service, IO_Pending => ACPI_Native_Fields.Observe.IO_Pending,
+              IO_Uncertain => ACPI_Native_Fields.Uncertain.Present);
+      end case;
+      declare
+         After : constant ACPI_Service.Metrics := ACPI_Service.Observe (Service);
+         Module_After : constant T.P.Counters := T.Snapshot (T.P.Module_Execution);
+         GC_After : constant T.P.Counters := T.Snapshot (T.P.Work_Allocation);
+         Wall : constant Unsigned_64 := Delta_Value (Module_After.Total_US,Module_Before.Total_US);
+         External_Time : constant Unsigned_64 := Delta_Value (Module_After.External_US,Module_Before.External_US);
+      begin
+         ACPI_Native_Log.Info ("acpi: stage module-timing ok basis=WALL_ONLY cpu_us=UNAVAILABLE scope=BATCH" &
+           " failed-table=" & Result.Modules.Failed_Table'Image & " completed=" & Result.Modules.Completed'Image &
+           " charged=" & Result.Modules.Charged'Image & " budget=" & Budget'Image &
+           " wall_us=" & Wall'Image & " external_union_us=" & External_Time'Image &
+           " sleep_us=" & Delta_Value (T.Snapshot (T.P.AML_Sleep).Total_US,Sleep_Before.Total_US)'Image &
+           " stall_us=" & Delta_Value (T.Snapshot (T.P.AML_Stall).Total_US,Stall_Before.Total_US)'Image &
+           " unaccounted_wall_us=" & Delta_Value (Wall,External_Time)'Image);
+         ACPI_Native_Log.Info ("acpi: stage gc-timing ok attempted=" &
+           Delta_Value (Unsigned_64 (After.Collections.Attempted),Unsigned_64 (Before.Collections.Attempted))'Image &
+           " completed_mark_sweeps=" & Delta_Value (Unsigned_64 (After.Collections.Completed),Unsigned_64 (Before.Collections.Completed))'Image &
+           " rejected=" & Delta_Value (Unsigned_64 (After.Collections.Rejected),Unsigned_64 (Before.Collections.Rejected))'Image &
+           " us=" & Delta_Value (GC_After.Total_US,GC_Before.Total_US)'Image & " max_us_total=" & GC_After.Worst_US'Image &
+           " freed_objects=" & Delta_Value (Unsigned_64 (After.Collections.Freed_Objects),Unsigned_64 (Before.Collections.Freed_Objects))'Image &
+           " freed_bytes=" & Delta_Value (Unsigned_64 (After.Collections.Freed_Bytes),Unsigned_64 (Before.Collections.Freed_Bytes))'Image &
+           " freed_elements=" & Delta_Value (Unsigned_64 (After.Collections.Freed_Elements),Unsigned_64 (Before.Collections.Freed_Elements))'Image);
+         ACPI_Native_Log.Info ("acpi: stage value-arena ok policy=FIXED growths=0 sample=EXIT_NOT_PEAK objects=" &
+           After.Value_Objects'Image & "/" & Service.Value_Object_Capacity'Image &
+           " bytes=" & After.Value_Bytes'Image & "/" & Service.Value_Byte_Capacity'Image &
+           " elements=" & After.Package_Elements'Image & "/" & Service.Value_Element_Capacity'Image);
+      end;
    end Timed_Module_Startup;
    package Loader is new ACPI_Native_Snapshot_Load.With_Driver
      (Driver, Timed_Module_Startup);
@@ -200,6 +333,7 @@ package body ACPI_Native_Instance is
       procedure Attempt is
       begin
       ACPI_Native_Log.Info ("acpi: stage service-start ok");
+      ACPI_Native_Firmware_Profile.Log_Selected;
       ACPI_Clock_Source.Read (Clock, Available);
       if not Available or else L.R.Tick (Clock) > L.R.Tick'Last - Startup_Timeout_Microseconds then
          ACPI_Native_Log.Warning ("acpi: stage snapshot fail CLOCK_UNAVAILABLE");
@@ -215,6 +349,22 @@ package body ACPI_Native_Instance is
          return;
       end if;
       if Registers.Present then
+         declare
+            Alias_Report : ACPI_Native_PCI_Aliases.Report;
+            use type ACPI_Native_PCI_Aliases.Phase;
+         begin
+            ACPI_Native_PCI_Aliases.Initialize
+              (L.R.Tick (Clock) + Startup_Timeout_Microseconds, Alias_Report);
+            if Alias_Report.Stage = ACPI_Native_PCI_Aliases.Ready then
+               ACPI_Native_Log.Info ("acpi: stage pci-alias-catalog ok bytes=" & Alias_Report.Bytes'Image &
+                 " allocations=" & Alias_Report.Allocations'Image);
+            elsif Alias_Report.Stage = ACPI_Native_PCI_Aliases.Absent then
+               ACPI_Native_Log.Info ("acpi: stage pci-alias-catalog unavailable NO_MCFG");
+            else
+               ACPI_Native_Log.Warning ("acpi: stage pci-alias-catalog fail " & ACPI_Native_PCI_Aliases.Name (Alias_Report.Why) &
+                 " copy=" & Name (Alias_Report.Copy.Copy.Status));
+            end if;
+         end;
          Register_Now := CuBit.Monotonic.Milliseconds;
          if Register_Now >= Unsigned_64'Last - Startup_Timeout_Milliseconds then
             ACPI_Native_Log.Warning ("acpi: stage register-provider fail DEADLINE_OVERFLOW"); return;
@@ -237,6 +387,7 @@ package body ACPI_Native_Instance is
          ACPI_Native_Log.Info ("acpi: stage register-provider unavailable observer-only");
       end if;
       ACPI_Native_Startup_Timing.Enter (ACPI_Native_Startup_Timing.P.Snapshot_Load,Load_Timing);
+      ACPI_Native_Log.Info ("acpi: stage snapshot-start ok");
       Loader.Load (Device_Run, L.R.Tick (Clock) + Startup_Timeout_Microseconds, Owner, Result);
       ACPI_Native_Startup_Timing.Leave (Load_Timing);
       if Result.Startup.Catalog.Ready then

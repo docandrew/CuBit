@@ -66,7 +66,8 @@ is
       Initrd_Parsed,            --  CPIO archive indexed (Modules.setup)
       Device_Manager_Loaded,    --  devmgr.svc loaded and resumed
       Secondary_CPUs_Ready,
-      Scheduler_Started);       --  BSP enters the scheduler
+      Scheduler_Started,        --  BSP enters the scheduler
+      Device_Manager_Roots_Refused); -- complete root inventory exceeds launch block
 
    Stage_Capacity : constant := 16;
    type Stage_Slot is range 0 .. Stage_Capacity - 1;

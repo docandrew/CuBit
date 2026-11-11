@@ -128,6 +128,8 @@ package System_Publications with Pure, SPARK_Mode is
    --  DRIVER_* in CuBit.Messages and by name in CuBit.Service_Names).
    Maximum_Role : constant := 127;
    subtype Service_Role is Unsigned_64 range 0 .. Maximum_Role;
+   --  Named registry ID for devmgr's read-only PCI-window broker.
+   ACPI_PCI_Windows_Role : constant Service_Role := 40;
    type Identity_Table is array (Service_Role) of Unsigned_64;
 
    --  A role with no registered process.
