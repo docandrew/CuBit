@@ -608,3 +608,20 @@ bash tests/headless/run.sh --test startup-health --iommu --accel kvm --timeout 9
 bash tests/headless/run.sh --test generic-launch --iommu --accel kvm
 bash tests/headless/run.sh --test startup-health --accel kvm --timeout 90
 ```
+
+## platform-quirks (ACPI-POOL-001 step 1b)
+
+The IdeaPad's P2SB discovery is classified by the step that failed
+(image 12: `UNHIDE_IGNORED`, step unhide), the quirk table selects the
+sideband source and GPIO controller by typed platform identity, the GPIO
+bootstrap payload round-trips and refuses every malformed field at its
+byte, and the admission decision gives every refusal reason and admits
+the IdeaPad's four GPI0 `_CRS` communities against its memory map. The
+headless platform-pool test drives the admission over the firmware-data
+badge end to end (grant copy, decode, gate, idempotent repeat).
+
+```sh
+bash tests/platform-quirks/run.sh
+make -C kernel world platform-pool-check
+bash tests/headless/run.sh --test platform-pool --accel kvm --timeout 120
+```

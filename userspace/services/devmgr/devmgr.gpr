@@ -46,6 +46,9 @@ project Devmgr is
        "platform_quirks-intel_p2sb.ads", "platform_quirks-intel_p2sb.adb",
        "platform_quirks-intel_gpio_communities.ads", "platform_quirks-intel_gpio_communities.adb",
        "platform_quirks-sideband.ads", "platform_quirks-sideband.adb",
+       --  The GPIO bootstrap admission (ACPI-POOL-001 step 1b).
+       "gpio_bootstrap_payload.ads", "gpio_bootstrap_payload.adb",
+       "platform_quirks-gpio_bootstrap_admission.ads", "platform_quirks-gpio_bootstrap_admission.adb",
        --  The ledgers and records on the heap (LIM-001b), firmware data.
        "devmgr_growable.ads", "devmgr_growable.adb", "devmgr_heap.ads", "devmgr_heap.adb",
        "devmgr_claim_ledgers.ads", "devmgr_claim_ledgers.adb",

@@ -29,13 +29,19 @@ with Devmgr_Growable;
 with Devmgr_Heap;
 with CuBit.Firmware_Data_Exchange;
 with CuBit.Platform_Pool_Exchange;
+with CuBit.GPIO_Bootstrap_Exchange;
+with CuBit.Grant_References;
+with GPIO_Bootstrap_Payload;
+with Platform_Quirks.GPIO_Bootstrap_Admission;
 with CuBit.Handles.Platform_Pools;
 with Devmgr_Platform_Pool;
 with Platform_Identity;
 with Platform_Quirks;
 with Platform_Quirks.Sideband;
+with Platform_Quirks.Intel_P2SB;
 with Platform_Quirks.Intel_GPIO_Communities;
 with Platform_Pool_ABI;
+with Capability_ABI;
 with CuBit.Firmware_Snapshot;
 with CuBit.Disk_Install;
 with CuBit.Block_Devices;
@@ -723,6 +729,13 @@ procedure main is
    PCI_Extents_Short       : Boolean := False;   --  the ledger could not grow
    PCI_Extents_Conflicting : Natural := 0;       --  over an ACPI window
 
+   --  Every extent claimed (pages), for decisions that need the list
+   --  itself (the GPIO bootstrap admission's Overlaps_BAR).
+   package BAR_Extent_Store is new Devmgr_Growable
+     (Devmgr_Data_Windows.Page_Range, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   BAR_Extents_Claimed : BAR_Extent_Store.Store;
+   BAR_Extents_Whole   : Boolean := True;   --  False: the list could not grow
+
    --  What an extent is, for its log lines.
    type Extent_Kind is (BAR_Extent, ROM_Extent, Memory_Window, Prefetch_Window);
    function Extent_Name (Kind : Extent_Kind; Index : Natural) return String is
@@ -815,6 +828,17 @@ procedure main is
          Devmgr_Authority.Claim_Device_Pages (E.First_Page, E.End_Page, Result, Report);
          if Result = Devmgr_Memory_Claims.Granted then
             PCI_Extents_Claimed := PCI_Extents_Claimed + 1;
+            declare
+               Room : BAR_Extent_Store.Capacity_Report;
+               use type BAR_Extent_Store.Growth_Status;
+            begin
+               BAR_Extent_Store.Append
+                 (BAR_Extents_Claimed,
+                  (First_Page => E.First_Page, Pages => E.End_Page - E.First_Page), Room);
+               if Room.Status /= BAR_Extent_Store.Grown then
+                  BAR_Extents_Whole := False;
+               end if;
+            end;
             debugPrint ("devmgr: PCI " & Location_Text (Location) & " " & What & " " &
                         Hex (E.First_Page * BX.Page_Bytes, 16) & " +" &
                         Hex ((E.End_Page - E.First_Page) * BX.Page_Bytes, 16) &
@@ -4265,6 +4289,15 @@ procedure main is
    --  The platform as observed at the pool build, for the quirk table.
    Platform : Platform_Quirks.Observed_Platform;
 
+   --  The members installed (pages), for the GPIO bootstrap admission's
+   --  Overlaps_Pool_Member, and the member room the pool was declared with.
+   Pool_Ranges : Range_Store.Store;
+   Pool_Ranges_Whole : Boolean := True;
+   Pool_Member_Room : Unsigned_64 := 0;
+   --  Room kept for the GPIO bootstrap admission's spans (step 1b): the
+   --  quirk table's community count when the P2SB could not be read.
+   Bootstrap_Room : Natural := 0;
+
    --  The QEMU edu device's BAR0 is 1 MiB (QEMU docs/specs/edu.rst).
    QEMU_Edu_BAR0_Bytes : constant := Devmgr_Platform_Pool.Edu_BAR0_Bytes;
    PCI_Vendor_Offset   : constant := 16#00#;
@@ -4333,6 +4366,17 @@ procedure main is
       Answer := CuBit.Handles.Platform_Pools.Insert (Pool, Source, C.First, C.Bytes, C.Kind);
       if Answer = 0 then
          Pool_Members := Pool_Members + 1;
+         declare
+            Room : Range_Store.Capacity_Report;
+         begin
+            Range_Store.Append
+              (Pool_Ranges,
+               (First_Page => C.First / Devmgr_Platform_Pool.Page_Bytes,
+                Pages => C.Bytes / Devmgr_Platform_Pool.Page_Bytes), Room);
+            if Room.Status /= Range_Store.Grown then
+               Pool_Ranges_Whole := False;
+            end if;
+         end;
          Warnings.Inform ("devmgr: platform pool member " & Hex (C.First) & " +" & Hex (C.Bytes) &
                           " " & Platform_Pool_ABI.Member_Kind_Name (C.Kind) &
                           " owner=" & Owner_Name (C));
@@ -4491,6 +4535,8 @@ procedure main is
       --  The quirk table's answer for this platform (Platform_Quirks).
       Sideband_Source : Platform_Quirks.Sideband_Source;
       use type Platform_Quirks.Sideband_Source;
+      use type Platform_Quirks.GPIO_Controller;
+      use type Platform_Quirks.Community_Layout;
 
       procedure Note (B : PP.Block) is
       begin
@@ -4577,6 +4623,18 @@ procedure main is
             null;
       end case;
       Window := Sideband.Window;
+      --  Step 1b: a P2SB discovery that ran and did not find leaves room
+      --  for the GPIO bootstrap admission's spans, when the quirk table
+      --  names a controller to take them from.
+      if Sideband.Discovery.Ran and then Window.Status /= PP.Found
+        and then Platform_Quirks.Controller_Of (Platform) /= Platform_Quirks.No_Controller
+        and then Platform_Quirks.Communities_Of (Platform) = Platform_Quirks.ADL_N_Communities
+      then
+         Bootstrap_Room := Platform_Quirks.Intel_GPIO_Communities.ADL_N_GPIO_Communities;
+         Warnings.Inform ("devmgr: platform pool: room for" & Natural'Image (Bootstrap_Room) &
+                          " GPIO bootstrap spans (" &
+                          Platform_Quirks.Citation (Platform_Quirks.Intel_ADL_N_GPIO_Bootstrap) & ")");
+      end if;
       if Sideband_Source = Platform_Quirks.P2SB_SBREG and then Window.Status /= PP.Found then
          Warnings.Warn ("devmgr: platform pool: sideband window " &
                         Status_Name (Window.Status) & "; GPIO communities left out");
@@ -4649,12 +4707,13 @@ procedure main is
       end if;
 
       --  Declare the sizes from what was found, then install.
-      if Candidate_Store.Length (Pool_Candidates) /= 0 then
+      if Candidate_Store.Length (Pool_Candidates) + Bootstrap_Room /= 0 then
          declare
             Members : constant Unsigned_64 :=
-              PP.Member_Room (Candidate_Store.Length (Pool_Candidates));
+              PP.Member_Room (Candidate_Store.Length (Pool_Candidates) + Bootstrap_Room);
             Claims  : constant Unsigned_64 :=
-              PP.Claim_Room (Candidate_Store.Length (Pool_Candidates), PCI_Extents_Claimed);
+              PP.Claim_Room (Candidate_Store.Length (Pool_Candidates) + Bootstrap_Room,
+                             PCI_Extents_Claimed);
             Answer  : constant Unsigned_64 := CuBit.Handles.Platform_Pools.Declare_Pool
               (Devmgr_Authority.Platform_Pool_Root, Members, Claims);
          begin
@@ -4662,6 +4721,7 @@ procedure main is
                Warnings.Warn ("devmgr: platform pool: the kernel refused its sizes (" &
                               Unsigned_64'Image (Answer) & "); no members");
             else
+               Pool_Member_Room := Members;
                Warnings.Inform ("devmgr: platform pool declared:" & Unsigned_64'Image (Members) &
                                 " members," & Unsigned_64'Image (Claims) & " claims (" &
                                 Natural'Image (PCI_Extents_Claimed) & " device BAR extents)");
@@ -4720,6 +4780,250 @@ procedure main is
       end if;
       ignore := reply (From, Reply_Message (Answer));
    end Serve_Pool;
+
+   ---------------------------------------------------------------------------
+   --  ACPI-POOL-001 step 1b: the GPIO bootstrap admission
+   --  (CuBit.GPIO_Bootstrap_Exchange). When this boot's P2SB discovery ran
+   --  and failed (Sideband.Discovery), acpi.svc's one pre-_INI observation
+   --  of the GPIO controller the quirk table names supplies its _CRS spans;
+   --  devmgr copies the payload, decodes it (GPIO_Bootstrap_Payload),
+   --  decides (Platform_Quirks.GPIO_Bootstrap_Admission, pure and proved)
+   --  and inserts the spans as Chipset_Shared pool members, logging the
+   --  provenance. Once admitted, never again this boot. The kernel refuses
+   --  inserts once the pool is in use (the first mapping or delegation):
+   --  then the answer is Pool_Sealed.
+   ---------------------------------------------------------------------------
+   type Bootstrap_Answer is record
+      Owner, Request : Unsigned_64 := 0;
+      Answer  : CuBit.GPIO_Bootstrap_Exchange.Disposition :=
+        CuBit.GPIO_Bootstrap_Exchange.Malformed;
+      Detail  : Unsigned_64 := 0;
+   end record;
+   package Bootstrap_Answer_Store is new Devmgr_Growable
+     (Bootstrap_Answer, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   Bootstrap_Answers : Bootstrap_Answer_Store.Store;
+   GPIO_Bootstrap_Admitted : Boolean := False;
+
+   procedure Serve_GPIO_Bootstrap (From : Process_ID; Msg : Message) is
+      package GX renames CuBit.GPIO_Bootstrap_Exchange;
+      package GP renames GPIO_Bootstrap_Payload;
+      package GA renames Platform_Quirks.GPIO_Bootstrap_Admission;
+      use type GX.Disposition;
+      use type GP.Decode_Status;
+      Request : constant Unsigned_64 := Msg.words (GX.Request_Word);
+      Ref_Word : constant Unsigned_64 := Msg.words (GX.Reference_Word);
+      Length  : constant Unsigned_64 := Msg.words (GX.Length_Word);
+      Owner   : constant Unsigned_64 := To_Word (From);
+      A : Bootstrap_Answer := (Owner => Owner, Request => Request, others => <>);
+      ignore : Unsigned_64;
+
+      procedure Answer (Item : Bootstrap_Answer) is
+      begin
+         ignore := reply
+           (From, (tag => (label => GX.Admission_Request, length => GX.Reply_Words,
+                           protocol => 0, ipc => <>, reserved => 0),
+                   authorityTag => 0,
+                   words => [GX.Reply_Request_Word => Item.Request,
+                             GX.Disposition_Word   => GX.Disposition'Enum_Rep (Item.Answer),
+                             GX.Detail_Word        => Item.Detail,
+                             GX.Members_Word       => Unsigned_64 (Pool_Members)]));
+      end Answer;
+
+      procedure Settle (Item : Bootstrap_Answer; Line : String) is
+         Room : Bootstrap_Answer_Store.Capacity_Report;
+         use type Bootstrap_Answer_Store.Growth_Status;
+      begin
+         Bootstrap_Answer_Store.Append (Bootstrap_Answers, Item, Room);
+         if Room.Status /= Bootstrap_Answer_Store.Grown then
+            Warnings.Warn ("devmgr: gpio bootstrap: answer list could not grow; a repeat of request" &
+                           Unsigned_64'Image (Item.Request) & " is decided again");
+         end if;
+         if Item.Answer = GX.Admitted then
+            Warnings.Inform (Line);
+         else
+            Warnings.Warn (Line);
+         end if;
+         Answer (Item);
+      end Settle;
+
+      function Gate_Line (Item : Bootstrap_Answer) return String is
+        ("devmgr: gpio bootstrap: request" & Unsigned_64'Image (Item.Request) & " from " &
+         Hex (Owner) & " " & GX.Name (Item.Answer) & " detail=" & Hex (Item.Detail) &
+         " p2sb=" & (if Sideband.Discovery.Ran
+                     then Platform_Quirks.Intel_P2SB.Outcome_Name (Sideband.Discovery.Outcome)
+                     else "NOT_RUN"));
+   begin
+      --  A repeated request id: the original answer, never a second admission.
+      for K in 1 .. Bootstrap_Answer_Store.Length (Bootstrap_Answers) loop
+         declare
+            Before : constant Bootstrap_Answer := Bootstrap_Answer_Store.Element_At (Bootstrap_Answers, K);
+         begin
+            if Before.Owner = Owner and then Before.Request = Request then
+               Answer (Before);
+               return;
+            end if;
+         end;
+      end loop;
+      if Msg.authorityTag /= FDX.Authority_Tag then
+         A.Answer := GX.Not_Approved;
+         Settle (A, Gate_Line (A) & " (no acpi-firmware-data approval)");
+         return;
+      elsif Request = 0 or else not CuBit.Grant_References.Valid_Wire (Ref_Word)
+        or else Length = 0
+      then
+         A.Answer := GX.Malformed;
+         Settle (A, Gate_Line (A) & " (request words)");
+         return;
+      elsif Length > GP.Max_Payload_Bytes then
+         A.Answer := GX.Capacity;
+         A.Detail := Length;
+         Settle (A, Gate_Line (A) & " (payload over Max_Payload_Bytes)");
+         return;
+      end if;
+      declare
+         Bytes : GP.Byte_Array (0 .. Natural (Length) - 1) := [others => 0];
+         Grant : constant CuBit.Grant_References.Reference := CuBit.Grant_References.Decode (Ref_Word);
+         Address : System.Address;
+         Acquired, Returned : Boolean;
+         R : GP.Request;
+         Decoded : GP.Decode_Result;
+         D : GA.Decision;
+      begin
+         --  Copy before validate: the requester's pages are read once.
+         CuBit.Memory_Grants.Acquire
+           (Grant, From, 0, Length, CuBit.Memory_Grants.Read_Access, Address, Acquired);
+         if not Acquired then
+            A.Answer := GX.Copy_Failed;
+            Settle (A, Gate_Line (A) & " (grant not acquired)");
+            return;
+         end if;
+         declare
+            Shared : constant GP.Byte_Array (Bytes'Range)
+            with Import, Address => Address, Volatile;
+         begin
+            for K in Bytes'Range loop
+               Bytes (K) := Shared (K);
+            end loop;
+         end;
+         CuBit.Memory_Grants.Return_Acquisition (Grant, Returned);
+         if not Returned then
+            A.Answer := GX.Copy_Failed;
+            Settle (A, Gate_Line (A) & " (acquisition not returned)");
+            return;
+         end if;
+         GP.Decode (Bytes, R, Decoded);
+         if Decoded.Status /= GP.Decoded then
+            A.Answer := GX.Malformed;
+            A.Detail := Unsigned_64 (Decoded.Offset);
+            Settle (A, Gate_Line (A) & " (payload byte " & Hex (A.Detail) & ")");
+            return;
+         end if;
+         if not Data_Facts_Read then
+            Read_Data_Facts;
+         end if;
+         if not (Data_Facts_Whole and then BAR_Extents_Whole and then Pool_Ranges_Whole) then
+            A.Answer := GX.Capacity;
+            Settle (A, Gate_Line (A) & " (devmgr's memory facts are incomplete)");
+            return;
+         end if;
+         declare
+            Devices : constant DW.Range_Array (1 .. Range_Store.Length (Device_Ranges))
+            with Import, Address => Range_Store.Block (Device_Ranges);
+            ECAM : constant DW.Range_Array (1 .. Range_Store.Length (ECAM_Ranges))
+            with Import, Address => Range_Store.Block (ECAM_Ranges);
+            BARs : constant DW.Range_Array (1 .. BAR_Extent_Store.Length (BAR_Extents_Claimed))
+            with Import, Address => BAR_Extent_Store.Block (BAR_Extents_Claimed);
+            Members : constant DW.Range_Array (1 .. Range_Store.Length (Pool_Ranges))
+            with Import, Address => Range_Store.Block (Pool_Ranges);
+            --  devmgr holds no RAM map: the device-memory roots never
+            --  contain RAM (GPIO_Bootstrap_Admission's description).
+            View : constant GA.Memory_View :=
+              (Devices => Devices'Length, RAM => 0, BARs => BARs'Length,
+               ECAM => ECAM'Length, Pool => Members'Length,
+               Device_Roots => Devices, RAM_Ranges => [], BAR_Extents => BARs,
+               ECAM_Ranges => ECAM, Pool_Members => Members);
+         begin
+            if not GA.View_Valid (View) then
+               A.Answer := GX.Capacity;
+               Settle (A, Gate_Line (A) & " (a memory fact is not a valid page range)");
+               return;
+            end if;
+            D := GA.Decide
+              ((Discovery_Ran   => Sideband.Discovery.Ran,
+                Discovery_Found => Sideband.Discovery.Outcome in Platform_Quirks.Intel_P2SB.Found_Outcome,
+                Admitted_Before => GPIO_Bootstrap_Admitted),
+               Platform_Quirks.Controller_Of (Platform), R, View);
+         end;
+         A.Answer := D.Answer;
+         A.Detail := (if D.Answer = GX.Malformed then GX.Span_Detail_Base + Unsigned_64 (D.Span)
+                      else Unsigned_64 (D.Span));
+         if D.Answer /= GX.Admitted then
+            Settle (A, Gate_Line (A) & " hid=" & R.HID & " table=" & R.Table & ":" & R.Table_ID);
+            return;
+         end if;
+         if Pool_Member_Room < Unsigned_64 (Pool_Members) + Unsigned_64 (R.Spans) then
+            A.Answer := GX.Capacity;
+            A.Detail := 0;
+            Settle (A, Gate_Line (A) & " (no pool room declared for the spans)");
+            return;
+         end if;
+         --  Admitted: insert each span in _CRS order, with its provenance.
+         for K in 1 .. R.Spans loop
+            declare
+               Span : constant GP.Span := R.Items (K);
+               Pool : constant H.Device_Memory := Devmgr_Authority.Platform_Pool_Root;
+               Source : constant H.Device_Memory := Devmgr_Authority.Covering_Root (Span.Base, Span.Length);
+               Kernel : Unsigned_64;
+               Room : Range_Store.Capacity_Report;
+            begin
+               if not H.Valid (Source) then
+                  A.Answer := GX.Not_Chipset_MMIO;
+                  A.Detail := Unsigned_64 (K);
+               else
+                  Kernel := CuBit.Handles.Platform_Pools.Insert
+                    (Pool, Source, Span.Base, Span.Length, Platform_Pool_ABI.Chipset_Shared);
+                  if Kernel = Capability_ABI.Refusal_Word (Capability_ABI.Sealed) then
+                     A.Answer := GX.Pool_Sealed;
+                     A.Detail := Unsigned_64 (K);
+                  elsif Kernel = Capability_ABI.Refusal_Word (Capability_ABI.Table_Full) then
+                     A.Answer := GX.Capacity;
+                     A.Detail := Unsigned_64 (K);
+                  elsif Kernel /= 0 then
+                     A.Answer := GX.Kernel_Refused;
+                     A.Detail := Unsigned_64 (K);
+                  end if;
+               end if;
+               if A.Answer /= GX.Admitted then
+                  Settle (A, Gate_Line (A) & " (insert of span" & Natural'Image (K) & " " &
+                          Hex (Span.Base) & " +" & Hex (Span.Length) & "; " &
+                          Natural'Image (K - 1) & " inserted before it)");
+                  if K > 1 then
+                     GPIO_Bootstrap_Admitted := True;   --  some spans are members: never again
+                  end if;
+                  return;
+               end if;
+               Pool_Members := Pool_Members + 1;
+               Range_Store.Append
+                 (Pool_Ranges, (First_Page => Span.Base / Devmgr_Platform_Pool.Page_Bytes,
+                                Pages => Span.Length / Devmgr_Platform_Pool.Page_Bytes), Room);
+               if Room.Status /= Range_Store.Grown then
+                  Pool_Ranges_Whole := False;
+               end if;
+               Warnings.Inform ("devmgr: platform pool member " & Hex (Span.Base) & " +" &
+                                Hex (Span.Length) & " CHIPSET_SHARED owner=GPIO bootstrap " &
+                                R.HID & " span" & Natural'Image (K) & " (pre-_INI _CRS, " &
+                                R.Table & ":" & R.Table_ID & " epoch" & Unsigned_64'Image (R.Epoch) & ")");
+            end;
+         end loop;
+         GPIO_Bootstrap_Admitted := True;
+         A.Detail := Unsigned_64 (R.Spans);
+         Settle (A, Gate_Line (A) & " hid=" & R.HID & " path=" & R.Path (1) &
+                 (if R.Segments >= 2 then "." & R.Path (2) else "") &
+                 " table=" & R.Table & ":" & R.Table_ID &
+                 " irq=" & (if R.IRQ.Present then Unsigned_32'Image (R.IRQ.GSI) else " none") &
+                 " (facts only; no interrupt route)");
+      end;
+   end Serve_GPIO_Bootstrap;
 
    ---------------------------------------------------------------------------
    --  ACPI-POOL-001 step 3 (future work: the ACPI service and devmgr): the
@@ -6176,6 +6480,10 @@ begin
                        ipc => Accepting, reserved => 0)
       then
          Serve_Pool (from, msg);
+      elsif msg.tag.label = CuBit.GPIO_Bootstrap_Exchange.Admission_Request
+        and then msg.tag.length = CuBit.GPIO_Bootstrap_Exchange.Request_Words
+      then
+         Serve_GPIO_Bootstrap (from, msg);
       elsif msg.tag = (label => CuBit.Disk_Install.Open_Disk,
                        length => CuBit.Disk_Install.Open_Words, protocol => 0,
                        ipc => Accepting, reserved => 0)

@@ -1,22 +1,34 @@
 --  Hosted tests of devmgr's platform quirks (ACPI-POOL-001): the shared
---  Platform_Identity and quirk-table pattern, the quirk table and the P2SB
---  step classification (with the IdeaPad's image-12 reads).
+--  Platform_Identity and quirk-table pattern, the quirk table, the P2SB
+--  step classification (with the IdeaPad's image-12 reads), the GPIO
+--  bootstrap payload codec and the admission decision (every refusal, and
+--  the IdeaPad's GPI0._CRS spans against its memory map).
 pragma Ada_2022;
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
+with CuBit.GPIO_Bootstrap_Exchange;
 with Devmgr_Platform_Pool;
+with Devmgr_Data_Windows;
 with Platform_Identity;
+with GPIO_Bootstrap_Payload;
 with Platform_Quirks;
 with Platform_Quirks.Intel_P2SB;
 with Platform_Quirks.Intel_GPIO_Communities;
+with Platform_Quirks.GPIO_Bootstrap_Admission;
 
 procedure Main is
    package PP renames Devmgr_Platform_Pool;
+   package DW renames Devmgr_Data_Windows;
    package PI renames Platform_Identity;
+   package GP renames GPIO_Bootstrap_Payload;
+   package GX renames CuBit.GPIO_Bootstrap_Exchange;
    package Q renames Platform_Quirks;
    package P2 renames Platform_Quirks.Intel_P2SB;
    package GC renames Platform_Quirks.Intel_GPIO_Communities;
+   package A renames Platform_Quirks.GPIO_Bootstrap_Admission;
+   use type GX.Disposition;
+   use type GP.Decode_Status;
    use type P2.Outcome;
    use type P2.Step;
    use type P2.P2SB_Action;
@@ -27,6 +39,7 @@ procedure Main is
    use type Q.GPIO_Controller;
    use type PI.Identity;
    use type PP.Bridge_Kind;
+   use type GP.Request;
 
    Checks, Failures : Natural := 0;
 
@@ -39,6 +52,8 @@ procedure Main is
       end if;
    end Check;
 
+   Page : constant := 4096;
+
    ---------------------------------------------------------------------------
    --  The IdeaPad Slim 3i's facts.
    ---------------------------------------------------------------------------
@@ -47,6 +62,71 @@ procedure Main is
      [70, 65, 67, 80, 20, 1, 0, 0, 6, 150, 76, 69, 78, 79, 86, 79, 67, 66, 45, 48, 49, 32, 32, 32,
       1, 0, 0, 0, 65, 67, 80, 73, 0, 0, 4, 0];
 
+   --  SBRG as coreboot alderlake/Kconfig PCR_BASE_ADDRESS (0xFD000000)
+   --  for a non-S PCH; the live value comes from PNVA at run time
+   --  (CAPTURE-FACTS.json: "no live value inferred").
+   Laptop_SBRG : constant := 16#FD00_0000#;
+   Community_Offsets : constant array (1 .. 4) of Unsigned_64 :=
+     [16#6E_0000#, 16#6D_0000#, 16#6A_0000#, 16#69_0000#];   --  GPI0._CRS CML0, 1, 4, 5
+
+   function Name_Seg (S : String) return GP.Name_Segment is (S);
+
+   --  GPI0 as acpi.svc would observe it before _INI: \_SB_.GPI0,
+   --  _HID INTC1057 (PCHS = 3), _STA 0Fh, _CRS: the Extended Interrupt
+   --  (flags 0Dh: consumer, level, active-low, shared; INTL = SGIR, 14 in
+   --  the template) and four Memory32Fixed 64 KiB windows, read-write.
+   function Laptop_GPI0 (SBRG : Unsigned_64 := Laptop_SBRG) return GP.Request is
+      R : GP.Request;
+   begin
+      R.Spans := 4;
+      R.Segments := 2;
+      R.UID_Type := GP.No_UID;
+      R.STA_From := GP.Evaluated_STA;
+      R.HID := "INTC1057";
+      R.STA := 16#0F#;
+      R.IRQ := (Present => True, Mode => GP.Level, Level_Of => GP.Active_Low,
+                Share => GP.Shared, Wakes => GP.Not_Wake_Capable, GSI => 14);
+      R.Table := "DSDT";
+      R.Table_ID := "CB-01   ";
+      R.Epoch := 1;
+      R.Path (1) := Name_Seg ("_SB_");
+      R.Path (2) := Name_Seg ("GPI0");
+      for I in 1 .. 4 loop
+         R.Items (I) := (Base => SBRG + Community_Offsets (I), Length => GC.GPIO_Community_Bytes,
+                         From => GP.Memory32_Fixed, Writable => True);
+      end loop;
+      return R;
+   end Laptop_GPI0;
+
+   function Pages (First, Bytes : Unsigned_64) return DW.Page_Range is
+     ((First_Page => First / Page, Pages => Bytes / Page));
+
+   --  The IdeaPad's memory map as devmgr would hold it, reconstructed from
+   --  the image-12 logs (laptop12-kernel.log: the first usable run;
+   --  laptop12-devmgr.log: the pool members and the GPU's BARs) and the
+   --  saved MCFG (ECAM 0xC0000000, buses 0-255). The kernel log ring kept
+   --  only the first three memory areas, so the device-memory root is the
+   --  32-bit PCI hole as the firmware-reserved members bound it: 0xC0000000
+   --  (ECAM, firmware-reserved MMIO, inside the root) up to the IOAPIC.
+   Laptop_View : constant A.Memory_View :=
+     (Devices => 1, RAM => 1, BARs => 2, ECAM => 1, Pool => 9,
+      Device_Roots => [Pages (16#C000_0000#, 16#3EC0_0000#)],          --  .. 0xFEC00000
+      RAM_Ranges   => [Pages (16#0100_0000#, 16#3A3C_9000# - 16#0100_0000#)],
+      BAR_Extents  => [Pages (16#60_0000_0000#, 16#100_0000#),            --  intel-gpu BAR0
+                       Pages (16#40_0000_0000#, 16#1000_0000#)],          --  intel-gpu BAR2
+      ECAM_Ranges  => [Pages (16#C000_0000#, 16#1000_0000#)],
+      Pool_Members => [Pages (16#FEDC_0000#, 16#2_0000#),                 --  MCHBAR
+                       Pages (16#FE00_0000#, 16#1_0000#),                 --  PMC PWRMBASE
+                       Pages (16#3A3C_9000#, 16#90_0000#),
+                       Pages (16#3CAD_F000#, 16#20A_0000#),
+                       Pages (16#41C0_0000#, 16#640_0000#),
+                       Pages (16#4840_0000#, 16#20_0000#),
+                       Pages (16#4920_0000#, 16#720_0000#),
+                       Pages (16#FED2_0000#, 16#6_0000#),
+                       Pages (16#FF00_0000#, 16#100_0000#)]);
+
+   Failed_P2SB : constant A.Gate :=
+     (Discovery_Ran => True, Discovery_Found => False, Admitted_Before => False);
 
    ---------------------------------------------------------------------------
    procedure Identity_And_Table is
@@ -157,10 +237,164 @@ procedure Main is
       end loop;
    end P2SB_Steps;
 
+   ---------------------------------------------------------------------------
+   procedure Codec is
+      R : constant GP.Request := Laptop_GPI0;
+      Bytes : GP.Byte_Array (0 .. GP.Encoded_Length (R.Spans) - 1);
+      Back : GP.Request;
+      Result : GP.Decode_Result;
+
+      procedure Expect_Malformed (B : GP.Byte_Array; Offset : Natural; What : String) is
+         Out_R : GP.Request;
+         Res : GP.Decode_Result;
+      begin
+         GP.Decode (B, Out_R, Res);
+         Check (Res.Status = GP.Malformed and then Res.Offset = Offset,
+                "malformed payload (" & What & ") at offset" & Natural'Image (Offset) &
+                " (got" & Natural'Image (Res.Offset) & ")");
+      end Expect_Malformed;
+
+      procedure Corrupt (Offset : Natural; Value : Unsigned_8; Expected : Natural; What : String) is
+         B : GP.Byte_Array := Bytes;
+      begin
+         B (Offset) := Value;
+         Expect_Malformed (B, Expected, What);
+      end Corrupt;
+   begin
+      Check (GP.Valid (R), "the laptop's GPI0 observation is a valid request");
+      Check (Bytes'Length = 90 + 4 * 18, "header 90 bytes, four 18-byte spans");
+      GP.Encode (R, Bytes);
+      GP.Decode (Bytes, Back, Result);
+      Check (Result.Status = GP.Decoded and then Back = R, "encode / decode round trip");
+      Check (Bytes (GP.HID_Offset) = Character'Pos ('I') and then Bytes (GP.Path_Offset + 4) = Character'Pos ('G'),
+             "HID and path bytes where the layout says");
+
+      Expect_Malformed (Bytes (0 .. 50), 51, "shorter than the header");
+      Expect_Malformed (Bytes (0 .. Bytes'Last - 1), GP.Span_Count_Offset, "length not header + spans");
+      Corrupt (GP.Version_Offset, 2, GP.Version_Offset, "version 2");
+      Corrupt (GP.Span_Count_Offset, 0, GP.Span_Count_Offset, "no spans");
+      Corrupt (GP.Span_Count_Offset, 17, GP.Span_Count_Offset, "past Max_Spans");
+      Corrupt (GP.Path_Count_Offset, 0, GP.Path_Count_Offset, "empty path");
+      Corrupt (GP.Path_Count_Offset, 9, GP.Path_Count_Offset, "path past its ceiling");
+      Corrupt (GP.UID_Kind_Offset, 3, GP.UID_Kind_Offset, "unknown UID kind");
+      Corrupt (GP.STA_Source_Offset, 0, GP.STA_Source_Offset, "unknown STA source");
+      Corrupt (GP.HID_Offset, 0, GP.HID_Offset, "empty HID");
+      Corrupt (GP.HID_Offset + 3, 0, GP.HID_Offset, "a printable after NUL padding in the HID");
+      Corrupt (GP.UID_Offset, 1, GP.UID_Offset, "a UID value with No_UID");
+      Corrupt (GP.Phase_Offset, 2, GP.Phase_Offset, "an unknown phase (after _INI)");
+      Corrupt (GP.IRQ_Present_Offset, 2, GP.IRQ_Present_Offset, "IRQ present not 0/1");
+      Corrupt (GP.Trigger_Offset, 2, GP.Trigger_Offset, "unknown trigger");
+      Corrupt (GP.Polarity_Offset, 2, GP.Polarity_Offset, "unknown polarity");
+      Corrupt (GP.Sharing_Offset, 2, GP.Sharing_Offset, "unknown sharing");
+      Corrupt (GP.Wake_Offset, 2, GP.Wake_Offset, "unknown wake");
+      Corrupt (GP.Table_Signature_Offset, 0, GP.Table_Signature_Offset, "a NUL in the table signature");
+      Corrupt (GP.Path_Offset, Character'Pos ('1'), GP.Path_Offset, "a NameSeg starting with a digit");
+      Corrupt (GP.Path_Offset + 2 * 4, Character'Pos ('X'), GP.Path_Offset, "an unused path slot not zero");
+      Corrupt (GP.Header_Bytes + GP.Span_Descriptor_Offset, 9,
+               GP.Header_Bytes + GP.Span_Descriptor_Offset, "unknown descriptor");
+      Corrupt (GP.Header_Bytes + 18 + GP.Span_Writable_Offset, 2,
+               GP.Header_Bytes + 18 + GP.Span_Writable_Offset, "writable not 0/1");
+      declare
+         B : GP.Byte_Array := Bytes;
+      begin
+         B (GP.IRQ_Present_Offset) := 0;   --  no IRQ, yet flags and a GSI
+         Expect_Malformed (B, GP.IRQ_Present_Offset, "IRQ fields without an IRQ");
+         B (GP.STA_Source_Offset) := GP.STA_Source'Enum_Rep (GP.Default_STA);
+         B (GP.STA_Offset) := 16#0B#;
+         Expect_Malformed (B, GP.STA_Offset, "Default_STA with a value other than 0Fh");
+      end;
+   end Codec;
+
+   ---------------------------------------------------------------------------
+   procedure Admission is
+      R : GP.Request := Laptop_GPI0;
+      D : A.Decision;
+      Small_View : constant A.Memory_View :=
+        (Devices => 1, RAM => 0, BARs => 0, ECAM => 0, Pool => 0,
+         Device_Roots => Laptop_View.Device_Roots, others => []);
+   begin
+      --  The laptop's real spans against its map: admitted.
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Admitted, "the IdeaPad's four communities at SBRG + 6E/6D/6A/69_0000 are admitted");
+
+      --  The gate.
+      D := A.Decide ((others => False), Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.No_Discovery_Failure, "no P2SB discovery ran: No_Discovery_Failure");
+      D := A.Decide ((Discovery_Ran => True, Discovery_Found => True, Admitted_Before => False),
+                     Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.P2SB_Available, "the P2SB was read: P2SB_Available");
+      D := A.Decide ((Discovery_Ran => True, Discovery_Found => False, Admitted_Before => True),
+                     Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Already_Admitted, "a second admission: Already_Admitted");
+
+      --  The controller.
+      D := A.Decide (Failed_P2SB, Q.No_Controller, R, Laptop_View);
+      Check (D.Answer = GX.Unknown_Controller, "no bootstrap controller for this platform");
+      R.HID := "PNP0C02" & GP.NUL;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Unknown_Controller, "GPI0 hidden by GPHD (_HID PNP0C02): Unknown_Controller");
+      R := Laptop_GPI0;
+      R.STA := 16#08#;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Unknown_Controller, "_STA 08h (GPHD): not present: Unknown_Controller");
+
+      --  Shapes: Malformed with the span ordinal.
+      R := Laptop_GPI0;
+      R.Items (2).Length := 0;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Malformed and then D.Span = 2, "an empty span: Malformed, span 2");
+      R := Laptop_GPI0;
+      R.Items (3).Base := R.Items (3).Base + 16#100#;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Malformed and then D.Span = 3, "a span not on a page: Malformed, span 3");
+      R := Laptop_GPI0;
+      R.Items (4) := R.Items (1);
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Malformed and then D.Span = 4, "two spans overlapping: Malformed, span 4");
+      R := Laptop_GPI0;
+      R.Items (1).Base := 16#FFFF_FFFF_FFFF_0000#;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Malformed and then D.Span = 1, "a span past the physical limit: Malformed");
+
+      --  The memory map.
+      R := Laptop_GPI0 (SBRG => 16#3000_0000#);
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Overlaps_RAM and then D.Span = 1, "spans in usable RAM: Overlaps_RAM");
+      R := Laptop_GPI0;
+      R.Items (2).Base := 16#60_0000_0000#;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Overlaps_BAR and then D.Span = 2, "a span over the GPU's BAR0: Overlaps_BAR");
+      R := Laptop_GPI0 (SBRG => 16#C000_0000#);
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Overlaps_PCI_Config and then D.Span = 1, "spans in ECAM: Overlaps_PCI_Config");
+      R := Laptop_GPI0;
+      R.Items (4).Base := 16#FE00_0000#;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Overlaps_Pool_Member and then D.Span = 4,
+             "a span over the PMC member: Overlaps_Pool_Member");
+      R := Laptop_GPI0;
+      R.Items (1).Base := 16#FEBF_0000#;
+      R.Items (1).Length := 16#2_0000#;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Straddles and then D.Span = 1, "a span across the root's end: Straddles");
+      R := Laptop_GPI0;
+      R.Items (3).Base := 16#FEC0_0000#;
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Laptop_View);
+      Check (D.Answer = GX.Not_Chipset_MMIO and then D.Span = 3,
+             "a span outside every device root (IOAPIC): Not_Chipset_MMIO");
+      --  No RAM list (devmgr's run-time view): RAM is then outside the roots.
+      R := Laptop_GPI0 (SBRG => 16#3000_0000#);
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, R, Small_View);
+      Check (D.Answer = GX.Not_Chipset_MMIO, "without a RAM list, RAM is outside every root: Not_Chipset_MMIO");
+      D := A.Decide (Failed_P2SB, Q.ADL_N_INTC1057, Laptop_GPI0, Small_View);
+      Check (D.Answer = GX.Admitted, "the laptop's spans with the run-time view: admitted");
+   end Admission;
 
 begin
    Identity_And_Table;
    P2SB_Steps;
+   Codec;
+   Admission;
    Put_Line ("platform-quirks:" & Natural'Image (Checks) & " checks," & Natural'Image (Failures) & " failures");
    if Failures /= 0 then
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);

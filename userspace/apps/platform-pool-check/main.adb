@@ -56,6 +56,10 @@ with CuBit.Handles.Platform_Pools;
 with CuBit.ACPI_Memory_Classes;
 with CuBit.Firmware_Data_Exchange;
 with CuBit.Platform_Pool_Exchange;
+with CuBit.GPIO_Bootstrap_Exchange;
+with CuBit.Memory_Grants;
+with CuBit.Grant_References;
+with GPIO_Bootstrap_Payload;
 with CuBit.Deadlines.Clock;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -232,6 +236,73 @@ begin
          end if;
       end;
    end;
+   --  The GPIO bootstrap admission (CuBit.GPIO_Bootstrap_Exchange) over
+   --  the same badge, end to end: the payload lent as a read-only grant,
+   --  copied and decoded by devmgr. A defective payload is MALFORMED at its
+   --  byte; a whole one is NO_DISCOVERY_FAILURE here (the test profile's
+   --  quirk row reads no P2SB, so there is nothing to fall back from), and
+   --  the same request id asked again gets the same answer.
+   declare
+      package GX renames CuBit.GPIO_Bootstrap_Exchange;
+      package GP renames GPIO_Bootstrap_Payload;
+      Page : GP.Byte_Array (0 .. Page_Bytes - 1) := [others => 0]
+      with Alignment => Page_Bytes;
+      R : GP.Request;
+      Length : constant Natural := GP.Encoded_Length (1);
+      Grant : CuBit.Memory_Grants.Grant_Reference;
+      Lent, Revoked : Boolean;
+
+      function Ask (Request : Unsigned_64; Answer : GX.Disposition; Detail : Unsigned_64;
+                    Name : String) return Boolean is
+         Msg : Message := NULL_MESSAGE;
+         Tag : MessageTag;
+      begin
+         Msg.tag := (label => GX.Admission_Request, length => GX.Request_Words,
+                     protocol => 0, ipc => <>, reserved => 0);
+         Msg.words (GX.Request_Word) := Request;
+         Msg.words (GX.Reference_Word) := CuBit.Grant_References.Encode (Grant);
+         Msg.words (GX.Length_Word) := Unsigned_64 (Length);
+         Tag := IPC.Call (Data_Endpoint.Value, Msg,
+                          CuBit.Deadlines.Clock.Now + GX.Admission_Budget_Milliseconds);
+         debugPrint ("platform-pool-check: gpio bootstrap request" & Unsigned_64'Image (Request) &
+                     " disposition" & Unsigned_64'Image (Msg.words (GX.Disposition_Word)) &
+                     " detail" & Unsigned_64'Image (Msg.words (GX.Detail_Word)) & LF);
+         Check (Tag.label = GX.Admission_Request and then Tag.length = GX.Reply_Words
+                and then Msg.words (GX.Reply_Request_Word) = Request
+                and then Msg.words (GX.Disposition_Word) = GX.Disposition'Enum_Rep (Answer)
+                and then Msg.words (GX.Detail_Word) = Detail, Name);
+         return True;
+      end Ask;
+      Ignore : Boolean;
+   begin
+      R.Spans := 1;
+      R.Segments := 2;
+      R.HID := "INTC1057";
+      R.STA := 16#0F#;
+      R.Table := "DSDT";
+      R.Table_ID := "CB-01   ";
+      R.Path (1) := "_SB_";
+      R.Path (2) := "GPI0";
+      R.Items (1) := (Base => 16#FD6E_0000#, Length => 16#1_0000#,
+                      From => GP.Memory32_Fixed, Writable => True);
+      GP.Encode (R, Page (0 .. Length - 1));
+      Page (GP.Version_Offset) := 2;   --  first a defective payload
+      CuBit.Memory_Grants.Create_Via_Capability
+        (Data_Endpoint.Value, Page'Address, 1, False, Grant, Lent);
+      Check (Lent, "the bootstrap payload is lent read-only");
+      if Lent then
+         Ignore := Ask (1, GX.Malformed, GP.Version_Offset,
+                        "gpio bootstrap: a wrong version is MALFORMED at its byte");
+         Page (GP.Version_Offset) := GP.Format_Version;
+         Ignore := Ask (2, GX.No_Discovery_Failure, 0,
+                        "gpio bootstrap: no P2SB discovery here: NO_DISCOVERY_FAILURE");
+         Page (GP.Version_Offset) := 2;   --  a repeat is answered from the record
+         Ignore := Ask (2, GX.No_Discovery_Failure, 0,
+                        "gpio bootstrap: the same request id gets the same answer");
+         CuBit.Memory_Grants.Revoke (Grant, Revoked);
+      end if;
+   end;
+
    Check (Valid (Pool), "the pool capability is carried");
    if Valid (Pool) then
       declare

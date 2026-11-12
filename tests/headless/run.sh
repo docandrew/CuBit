@@ -6346,6 +6346,11 @@ CHIPSET_SHARED owner=test profile: edu BAR0 for a GPIO community
 DEVICE_BAR owner=test profile: edu BAR0 for the sideband window
 platform-pool: member phys=
 platform-pool-check: devmgr grants the pool PASS
+platform-pool-check: the bootstrap payload is lent read-only PASS
+platform-pool-check: gpio bootstrap: a wrong version is MALFORMED at its byte PASS
+platform-pool-check: gpio bootstrap: no P2SB discovery here: NO_DISCOVERY_FAILURE PASS
+platform-pool-check: gpio bootstrap: the same request id gets the same answer PASS
+devmgr: gpio bootstrap: request 2 from
 platform-pool-check: the pool capability is carried PASS
 platform-pool-check: its kernel tag is the platform pool PASS
 platform-pool-check: read-write without grant PASS
