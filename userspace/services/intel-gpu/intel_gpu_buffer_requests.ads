@@ -147,6 +147,12 @@ package Intel_GPU_Buffer_Requests is
    function Pending_For (Object : Service; Session : Unsigned_64) return Boolean;
    procedure Finish_Private
      (Object : in out Service; ID : Ticket; Consumed : out Boolean);
+   -- An application or private allocation is in flight. Handle answers a
+   -- Create found then Unavailable (Application_Pending/Private_Pending), so
+   -- the dispatcher holds such a Create until this is False rather than
+   -- pass it in (Intel_GPU_Allocation_Waiters): never refuse a request for
+   -- this transient state.
+   function Allocation_In_Flight (Object : Service) return Boolean;
    -- Serialized, nonblocking dispatch; at most one allocation is pending.
    -- Request [version, operation, bytes-or-handle, zero]. Create accepts only
    -- whole 4KiB pages. Response [status, version, handle-or-zero, bytes-or-zero].

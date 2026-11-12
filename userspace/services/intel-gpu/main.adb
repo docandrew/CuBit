@@ -177,6 +177,7 @@ with Startup;
 with CuBit.Handles;
 with CuBit.Handles.Devices;
 with Intel_GPU_Replies;
+with Intel_GPU_Allocation_Waiters;
 with Intel_GPU_Supervisor;
 procedure Main is
    package Replies renames Intel_GPU_Replies;
@@ -877,6 +878,91 @@ procedure Main is
    -- The one application request answered later (allocation completion);
    -- keeping a second fails without replacing the first (Replies.Keep).
    Application_Reply : Replies.Owed;
+   -- Creates that arrived while the allocator was busy, with their saved
+   -- replies, served oldest first once it is idle (laptop image 11: a
+   -- second Vulkan client's start refused desktop.svc's allocations).
+   type Allocation_Request is record
+      Sender : Process_ID := No_Process;
+      Request : Message := NULL_MESSAGE;
+   end record;
+   -- A handful of clients allocating at once is the common contention.
+   Allocation_Waiters_Initial : constant := 4;
+   -- Named ceiling: one waiting Create per session the driver can hold.
+   -- Mesa serializes buffer creation per device, so reaching it means a
+   -- client is flooding; the excess is answered Unavailable, as before.
+   Allocation_Waiters_Ceiling : constant := Intel_GPU_Session_Limits.Session_Limit;
+   package Allocation_Waiters is new Intel_GPU_Allocation_Waiters
+     (Allocation_Request, Replies.Owed, Replies.Held, Replies.Move,
+      Initial_Size => Allocation_Waiters_Initial, Ceiling => Allocation_Waiters_Ceiling);
+   Waiting_Allocations : Allocation_Waiters.Queue;
+   -- The request being dispatched is the oldest waiter, taken from the
+   -- queue (Take_Allocation_Waiter); it may pass the waiters behind it.
+   Dispatching_Waiter : Boolean := False;
+   Allocation_Waits_Logged : Allocation_Waiters.Waiter_Count := 0;
+   -- Anything that makes a Create unanswerable now but clears on its own:
+   -- an allocation, private-table allocation, VM update or buffer
+   -- retirement in flight, the deferred-reply slot taken, or the backing
+   -- pool busy. Each finishes without help from a waiting Create.
+   function Allocator_Busy return Boolean is
+     (Application_Buffers.Allocation_In_Flight (Application_Buffer_State) or else
+      Application_Pending /= 0 or else Private_Pending /= 0 or else Update_Pending /= 0 or else
+      Buffer_Retirement_Pending /= 0 or else Replies.Held (Application_Reply) or else
+      Buffer_Memory.Pending (Buffer_Pool));
+   function Allocation_Waiter_Ready return Boolean is
+     (Allocation_Waiters.Ready (Waiting_Allocations, Allocator_Busy));
+   -- The oldest waiting Create, its reply owed again for dispatch.
+   procedure Take_Allocation_Waiter
+     (Sender : out Process_ID; Request : out Message; Found : out Boolean) is
+      Owed : Replies.Owed;
+      Item : Allocation_Request;
+   begin
+      Sender := No_Process; Request := NULL_MESSAGE;
+      Allocation_Waiters.Take (Waiting_Allocations, Item, Owed, Found);
+      if not Found then return; end if;
+      Replies.Dispatch (Owed);
+      Sender := Item.Sender; Request := Item.Request;
+      Dispatching_Waiter := True;
+   end Take_Allocation_Waiter;
+   -- Hold a Create until the allocator is idle. Only when it cannot be held
+   -- (the ceiling, the heap, or no handle for its reply) is it answered
+   -- Unavailable now, with the reason logged: a clean failure for Mesa.
+   procedure Wait_For_Allocator (From : Process_ID; Msg : Message) is
+      Owed : Replies.Owed;
+      Result : Allocation_Waiters.Wait_Result := Allocation_Waiters.No_Memory;
+      Kept, Oldest : Boolean;
+      Reply_Message : Message := NULL_MESSAGE;
+      Ignored : Unsigned_64;
+      pragma Unreferenced (Ignored);
+      use type Allocation_Waiters.Wait_Result;
+   begin
+      Oldest := Dispatching_Waiter;
+      Dispatching_Waiter := False;
+      Kept := Replies.Keep (Owed);
+      if Kept then
+         if Oldest then
+            Allocation_Waiters.Restore (Waiting_Allocations, (From, Msg), Owed, Result);
+         else
+            Allocation_Waiters.Append (Waiting_Allocations, (From, Msg), Owed, Result);
+         end if;
+         if Result = Allocation_Waiters.Waiting then
+            if Allocation_Waiters.Peak (Waiting_Allocations) > Allocation_Waits_Logged then
+               Allocation_Waits_Logged := Allocation_Waiters.Peak (Waiting_Allocations);
+               Publish_Snapshot ("intel-gpu: allocation waits for the allocator waiting=" &
+                 Allocation_Waiters.Waiter_Count'Image (Allocation_Waiters.Length (Waiting_Allocations)));
+            end if;
+            return;
+         end if;
+      end if;
+      Publish_Snapshot ("intel-gpu: allocation unavailable reason=" &
+        (if not Kept then "REPLY_CAP_UNAVAILABLE"
+         elsif Result = Allocation_Waiters.At_Ceiling then "WAITERS_AT_CEILING"
+         else "WAITERS_NO_MEMORY"));
+      Reply_Message.tag := (label => Application_Buffers.Label, length => 4,
+                            protocol => 0, ipc => <>, reserved => 0);
+      Reply_Message.words := [Application_Buffers.Unavailable, Application_Buffers.Version, 0, 0];
+      Ignored := (if Kept then Replies.Answer (Owed, Reply_Message)
+                  else Replies.Respond (From, Reply_Message));
+   end Wait_For_Allocator;
    procedure Submit_Budget_Query is
       Token : Unsigned_64;
       Outgoing : Message := NULL_MESSAGE;
@@ -953,6 +1039,15 @@ procedure Main is
       Ignored : Unsigned_64;
       pragma Unreferenced (Ignored);
    begin
+      -- One allocation at a time: a Create waits its turn instead of being
+      -- refused (Application_Pending), and waits behind older waiters.
+      if Msg.words (1) = Application_Buffers.Create and then
+        Allocation_Waiters.Must_Wait (Waiting_Allocations, Allocator_Busy, Dispatching_Waiter)
+      then
+         Wait_For_Allocator (From, Msg);
+         return;
+      end if;
+      Dispatching_Waiter := False;
       if Buffer_Retirement_Pending /= 0 then
          Publish_Snapshot ("intel-gpu: allocation unavailable reason=RETIREMENT_PENDING");
          Reply_Message.tag := (label => Application_Buffers.Label, length => 4,
@@ -9876,9 +9971,11 @@ begin
                   Set_Aside (Sender, Request);
                end if;
             end if;
+            -- A waiting Create the allocator could take also drains the GPU,
+            -- as a deferred request does, so steady rendering cannot starve it.
             Queue_Service.Set_Quiesce
-              (Queue_State, Deferred_Pending or else Background_Wanted or else
-                            Background_Due (DC_Now_Us));
+              (Queue_State, Deferred_Pending or else Allocation_Waiter_Ready or else
+                            Background_Wanted or else Background_Due (DC_Now_Us));
             Sleep_While_GPU_Busy;
          end;
       else
@@ -10013,7 +10110,11 @@ begin
             begin
                Note_Request_Gate (Open, Now);
                if Open then
-                  if Deferred_Pending then
+                  if Allocation_Waiter_Ready then
+                     -- The allocator went idle: the oldest waiting Create
+                     -- goes before anything newer.
+                     Take_Allocation_Waiter (Sender, Request, Found);
+                  elsif Deferred_Pending then
                      -- Oldest first; its reply capability is current again.
                      Take_Deferred (Sender, Request, Found);
                   else
@@ -10039,6 +10140,7 @@ begin
                   Queue_Service.Set_Quiesce (Queue_State, not Safe_While_Busy (Request.tag.label));
                   Dispatch_Started := DC_Now_Us;
                   Dispatch_Request (Sender, Request, False, Defer);
+                  Dispatching_Waiter := False;
                   -- A set-aside request's reply its handler left: answered
                   -- as failed, never dropped.
                   Replies.Settle (NULL_MESSAGE);
@@ -10050,6 +10152,8 @@ begin
               and then not Cleanup_Work_Ready
               and then (Directory_Update in No_Directory_Update | Allocate_Directories)
               and then not Buffer_Memory.Local_Work_Pending (Buffer_Pool)
+              -- A waiting Create the allocator can take now goes next turn.
+              and then not Allocation_Waiter_Ready
               -- Retirement and table recycling advance one step per turn; a
               -- 10 ms sleep between steps made one retirement take seconds
               -- (12.25 s for four buffers on the NUC). Sleep only while the

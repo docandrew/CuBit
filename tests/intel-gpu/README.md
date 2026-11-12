@@ -1684,3 +1684,33 @@ line after 20 ms, progress at most every 500 ms, at most 16 lines per wait).
 replaces the stale `diagnostics.gpr`, whose fixture no longer matched the
 unit. `wait-fixture/` holds no-op bodies for unit tests of adapters that now
 pulse the heartbeat (`ggtt_mapping`, `native_dc`, `native_pipe`).
+
+## Concurrent allocations wait for the allocator (regression, laptop image 11)
+
+`allocation_waiters_tests.adb` (`allocation_waiters.gpr`) is the permanent
+regression test for desktop.svc exiting when teapots.app started on the
+IdeaPad: intel-gpu answered a Create that met another allocation in flight
+`Unavailable` (`APPLICATION_PENDING`). It drives the real buffer-request
+service through the driver's dispatch rule (`Intel_GPU_Allocation_Waiters`
+`Must_Wait`/`Ready`/`Take`/`Restore`, as in `main.adb`) with modeled reply
+tokens: eight concurrent Creates from two sessions all succeed, once each, in
+arrival order; a newcomer never passes older waiters; a waiter whose client
+left is still answered (Denied); and the queue matches a reference model
+through growth, wrap-around, head restore and its ceiling.
+
+```sh
+gprbuild -p -P tests/intel-gpu/allocation_waiters.gpr
+tests/intel-gpu/build-allocation-waiters/allocation_waiters_tests
+# Before the fix's dispatch rule (every Create straight to the service): fails.
+tests/intel-gpu/build-allocation-waiters/allocation_waiters_tests --without-waiters
+```
+
+The ring arithmetic (`intel_gpu_waiter_ring.ads`) is proved:
+
+```sh
+gnatprove -P tests/intel-gpu/allocation_waiters.gpr --subdirs=proof-waiter-ring \
+  -u intel_gpu_waiter_ring.ads --level=2 --report=all --checks-as-errors=on -j2
+```
+
+Not covered here: the driver's loop itself (main.adb), devmgr backing, and
+Mesa; those need the laptop (QEMU has no Intel GPU).

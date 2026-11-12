@@ -35,6 +35,13 @@ package body Intel_GPU_Replies is
       return Kept;
    end Keep;
 
+   procedure Move (From, Into : in out Owed) is
+   begin
+      if Valid (Into.Handle) then return; end if;
+      Into.Handle := From.Handle;
+      From.Handle := No_Reply;
+   end Move;
+
    function Answer (Item : in out Owed; Msg : Message) return Unsigned_64 is
       Delivered : Unsigned_64 := 0;
    begin

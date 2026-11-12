@@ -22,6 +22,12 @@ package Intel_GPU_Replies is
    procedure Keep (Item : in out Owed; Kept : out Boolean);
    function Keep (Item : in out Owed) return Boolean;
 
+   -- Hand the reply From holds to Into, which must be empty; From is empty
+   -- afterwards. A reply is moved, never copied (Intel_GPU_Allocation_Waiters
+   -- keeps waiting requests' replies this way). Into already holding one is
+   -- a caller bug: nothing changes, so neither reply is lost.
+   procedure Move (From, Into : in out Owed);
+
    -- Answer the reply Item holds and empty it: 1 when delivered, 0 when not
    -- (also when Item is empty). The saved reply is used up either way.
    function Answer (Item : in out Owed; Msg : Message) return Unsigned_64;

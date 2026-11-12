@@ -136,6 +136,8 @@ package body Intel_GPU_Buffer_Requests is
      (if ID = 0 or else Ticket_Slot (ID) > Committed_Slots (Object) or else
        Records.Get (Object.Items, Ticket_Slot (ID)).Identity /= ID then 0
       else Records.Get (Object.Items, Ticket_Slot (ID)).Owner);
+   function Allocation_In_Flight (Object : Service) return Boolean is
+     (Object.Pending /= 0 or else Object.Private_Pending /= 0);
    function Pending_For (Object : Service; Session : Unsigned_64) return Boolean is
      (Session /= 0 and then
        ((Object.Pending /= 0 and then Ticket_Session (Object, Object.Pending) = Session)
