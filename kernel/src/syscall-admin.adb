@@ -814,11 +814,14 @@ package body Syscall.Admin is
         elsif source.capType = Capabilities.CAP_DEVICE_MEM
           and then source.authorityTag = Capabilities.PLATFORM_POOL_TAG
         then
-            -- The declaration: the pool names itself.
-            if not given.Narrow or else given.Set_Tag then
+            -- The declaration: the pool names itself. With Set_Tag, the Tag
+            -- word is the late room (Platform_Pool_ABI.Declaration words).
+            if not given.Narrow then
                 return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
             end if;
-            return Platform_Pool.Declare_Pool (callerPID, given.Base, given.Length);
+            return Platform_Pool.Declare_Pool
+              (callerPID, given.Base, given.Length,
+               (if given.Set_Tag then Unsigned_64 (given.Tag) else 0));
         elsif source.capType /= Capabilities.CAP_DEVICE_MEM
           or else source.authorityTag /= Capabilities.NO_AUTHORITY_TAG
         then

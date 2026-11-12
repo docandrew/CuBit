@@ -4290,12 +4290,13 @@ procedure main is
    Platform : Platform_Quirks.Observed_Platform;
 
    --  The members installed (pages), for the GPIO bootstrap admission's
-   --  Overlaps_Pool_Member, and the member room the pool was declared with.
+   --  Overlaps_Pool_Member.
    Pool_Ranges : Range_Store.Store;
    Pool_Ranges_Whole : Boolean := True;
-   Pool_Member_Room : Unsigned_64 := 0;
    --  Room kept for the GPIO bootstrap admission's spans (step 1b): the
-   --  quirk table's community count when the P2SB could not be read.
+   --  quirk table's community count when the P2SB could not be read. It is
+   --  declared as the pool's late room: the kernel admits Chipset_Shared
+   --  members into it even after the pool is in use.
    Bootstrap_Room : Natural := 0;
 
    --  The QEMU edu device's BAR0 is 1 MiB (QEMU docs/specs/edu.rst).
@@ -4714,14 +4715,15 @@ procedure main is
             Claims  : constant Unsigned_64 :=
               PP.Claim_Room (Candidate_Store.Length (Pool_Candidates) + Bootstrap_Room,
                              PCI_Extents_Claimed);
+            --  The bootstrap room is the pool's late room: the kernel keeps
+            --  it for late Chipset_Shared inserts only (step 1b).
             Answer  : constant Unsigned_64 := CuBit.Handles.Platform_Pools.Declare_Pool
-              (Devmgr_Authority.Platform_Pool_Root, Members, Claims);
+              (Devmgr_Authority.Platform_Pool_Root, Members, Claims, Unsigned_64 (Bootstrap_Room));
          begin
             if Answer /= 0 then
                Warnings.Warn ("devmgr: platform pool: the kernel refused its sizes (" &
                               Unsigned_64'Image (Answer) & "); no members");
             else
-               Pool_Member_Room := Members;
                Warnings.Inform ("devmgr: platform pool declared:" & Unsigned_64'Image (Members) &
                                 " members," & Unsigned_64'Image (Claims) & " claims (" &
                                 Natural'Image (PCI_Extents_Claimed) & " device BAR extents)");
@@ -4961,10 +4963,11 @@ procedure main is
             Settle (A, Gate_Line (A) & " hid=" & R.HID & " table=" & R.Table & ":" & R.Table_ID);
             return;
          end if;
-         if Pool_Member_Room < Unsigned_64 (Pool_Members) + Unsigned_64 (R.Spans) then
+         if Natural (R.Spans) > Bootstrap_Room then
             A.Answer := GX.Capacity;
             A.Detail := 0;
-            Settle (A, Gate_Line (A) & " (no pool room declared for the spans)");
+            Settle (A, Gate_Line (A) & " (late room" & Natural'Image (Bootstrap_Room) &
+                    " is smaller than the" & Natural'Image (R.Spans) & " spans)");
             return;
          end if;
          --  Admitted: insert each span in _CRS order, with its provenance.

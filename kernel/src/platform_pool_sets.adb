@@ -47,23 +47,33 @@ package body Platform_Pool_Sets with SPARK_Mode is
       return 0;
    end First_Overlap;
 
-   procedure Insert (S : in out State; Item : Member; Status : out Insert_Status) is
+   -- Place Item among the members, in order: the members are then the old
+   -- ones and Item, still sorted and disjoint; nothing else changes.
+   procedure Place_Member (S : in out State; Item : Member)
+   with Pre  => Bounded (S) and then Sorted_Disjoint (S) and then Claims_Valid (S)
+                and then Valid (Item.Pages)
+                and then First_Overlap (S, Item.Pages) = 0
+                and then S.Member_Total < S.Members_Room,
+        Post => Bounded (S) and then Sorted_Disjoint (S) and then Claims_Valid (S)
+                and then S.Claims = S.Claims'Old
+                and then S.Claim_Total = S.Claim_Total'Old
+                and then S.Late_Room = S.Late_Room'Old
+                and then S.Late_Used = S.Late_Used'Old
+                and then S.Member_Total = S.Member_Total'Old + 1
+                and then (for some I in 1 .. S.Member_Total => S.Members (I) = Item)
+                and then (for all J in 1 .. S.Member_Total'Old =>
+                            (for some I in 1 .. S.Member_Total =>
+                               S.Members (I) = S.Members'Old (J)))
+                and then (for all I in 1 .. S.Member_Total =>
+                            S.Members (I) = Item
+                            or else (for some J in 1 .. S.Member_Total'Old =>
+                                       S.Members (I) = S.Members'Old (J)))
+   is
       --  In place: the kernel's frames are small (no copies of the table).
       Old   : constant Member_Array := S.Members with Ghost;
       Total : constant Member_Count := S.Member_Total;
       Place : Positive;
    begin
-      if not Valid (Item.Pages) then
-         Status := Invalid_Interval;
-         return;
-      elsif First_Overlap (S, Item.Pages) /= 0 then
-         Status := Overlaps_Member;
-         return;
-      elsif Total = S.Members_Room then
-         Status := Members_Full;
-         return;
-      end if;
-
       Lemma_Ascending (S);
       -- Place: the first member beginning after Item ends (Total + 1 when
       -- none does). Members before it end before Item begins.
@@ -96,7 +106,6 @@ package body Platform_Pool_Sets with SPARK_Mode is
                             elsif J = Place then Item
                             else Old (J - 1)));
       S.Member_Total := Total + 1;
-      Status := Inserted;
 
       pragma Assert (for all I in 1 .. S.Member_Total => Valid (S.Members (I).Pages));
       pragma Assert
@@ -110,7 +119,69 @@ package body Platform_Pool_Sets with SPARK_Mode is
         (for all I in 1 .. S.Member_Total =>
            S.Members (I) = Item
            or else S.Members (I) = Old (if I < Place then I else I - 1));
+   end Place_Member;
+
+   procedure Insert (S : in out State; Item : Member; Status : out Insert_Status) is
+   begin
+      if not Valid (Item.Pages) then
+         Status := Invalid_Interval;
+         return;
+      elsif First_Overlap (S, Item.Pages) /= 0 then
+         Status := Overlaps_Member;
+         return;
+      elsif not Ordinary_Room (S) then
+         Status := Members_Full;
+         return;
+      end if;
+      Place_Member (S, Item);
+      Status := Inserted;
    end Insert;
+
+   -- The first claim overlapping Request, or 0.
+   function First_Claimed (S : State; Request : Interval) return Claim_Count
+   with Pre  => Bounded (S),
+        Post => (if First_Claimed'Result = 0 then not Claimed_Pages (S, Request)
+                 else Claimed_Pages (S, Request))
+   is
+   begin
+      for K in 1 .. S.Claim_Total loop
+         if Overlaps (S.Claims (K).Pages, Request) then
+            return K;
+         end if;
+         pragma Loop_Invariant
+           (for all J in 1 .. K => not Overlaps (S.Claims (J).Pages, Request));
+      end loop;
+      return 0;
+   end First_Claimed;
+
+   procedure Insert_Late (S : in out State; Item : Member; Status : out Late_Status) is
+   begin
+      if Item.Kind /= Chipset_Shared then
+         Status := Late_Wrong_Kind;
+         return;
+      elsif S.Late_Room = 0 then
+         Status := Late_Not_Declared;
+         return;
+      elsif S.Late_Used = S.Late_Room then
+         Status := Late_Room_Full;
+         return;
+      elsif not Valid (Item.Pages) then
+         Status := Late_Invalid_Interval;
+         return;
+      elsif First_Overlap (S, Item.Pages) /= 0 then
+         Status := Late_Overlaps_Member;
+         return;
+      elsif First_Claimed (S, Item.Pages) /= 0 then
+         Status := Late_Overlaps_Claim;
+         return;
+      end if;
+      --  Late_Fits: ordinary members stay within the ordinary room, so a
+      --  late slot is free in the declared room.
+      pragma Assert (S.Member_Total < S.Members_Room);
+      Place_Member (S, Item);
+      S.Late_Used := S.Late_Used + 1;
+      Status := Late_Inserted;
+   end Insert_Late;
 
    function Decide (S : State; Holder : Identity; Request : Interval) return Decision is
       Member : Member_Count;

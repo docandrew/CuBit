@@ -49,7 +49,10 @@
 --   * Insert: devmgr adds a member of a typed kind; the syscall layer has
 --     already checked the pages against one of its device-memory roots.
 --     Both are refused once the pool is in use (sealed: the first mapping
---     or the first delegation of device memory to another process).
+--     or the first delegation of device memory to another process), except
+--     the late insert: a Chipset_Shared member into the late room devmgr
+--     declared, overlapping no member and no claim (step 1b, the GPIO
+--     bootstrap admission when the P2SB could not be read).
 --   * Map: checked once; the holder's mapping table grows on demand,
 --     charged to the holder.
 --   * Delegating / Mapping_Into: the claim of step 4, recorded before the
@@ -74,16 +77,27 @@ is
     procedure Set_Owner (Owner : Unsigned_64);
 
     -- Size the pool for Members members and Claims claims (Caller is the
-    -- owner, whose quota pays for the tables). 0, or a Capability_ABI
-    -- refusal word: Invalid_Argument (a count of zero or past its
-    -- ceiling, or declared already), Sealed, Out_Of_Memory.
+    -- owner, whose quota pays for the tables), Late_Room of the members
+    -- reserved for late Chipset_Shared inserts (Sets.Insert_Late; 0 for
+    -- none). 0, or a Capability_ABI refusal word: Invalid_Argument (a count
+    -- of zero or past its ceiling, a late room past the members, or
+    -- declared already), Sealed, Out_Of_Memory.
     function Declare_Pool
-      (Caller : Process.ProcessID; Members, Claims : Unsigned_64) return Unsigned_64;
+      (Caller : Process.ProcessID; Members, Claims, Late_Room : Unsigned_64) return Unsigned_64;
 
     -- Add [Base, Base + Bytes) (whole pages) as a pool member of Kind. 0,
     -- or a Capability_ABI refusal word: Invalid_Argument (not declared,
     -- malformed, overlapping a member), Sealed, Table_Full (the declared
     -- member count).
+    -- Before the seal a member takes the ordinary room (Sets.Insert); a
+    -- Chipset_Shared member that finds it full takes the late room. After
+    -- the seal only the late insert remains (ACPI-POOL-001 step 1b, user
+    -- 2026-11-12): Chipset_Shared, into the declared late room, overlapping
+    -- no member and no recorded claim (Sets.Insert_Late), behind the
+    -- syscall layer's device-memory-root check. After the seal its
+    -- refusals are: Sealed (not Chipset_Shared, or no late room declared),
+    -- Table_Full (the late room used up), Invalid_Argument (malformed,
+    -- overlapping a member), Not_Permitted (overlapping a claim).
     function Insert
       (Base, Bytes : Unsigned_64; Kind : Sets.Pool_Member_Kind) return Unsigned_64;
 

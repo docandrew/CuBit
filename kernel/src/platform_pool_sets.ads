@@ -117,9 +117,17 @@ package Platform_Pool_Sets with SPARK_Mode, Pure is
    end record;
    type Mapping_Array is array (Mapping_Room range <>) of Mapping;
 
+   -- Late_Room: of Members_Room, the members devmgr reserved at the
+   -- declaration for Chipset_Shared blocks it can learn only after the pool
+   -- is in use (ACPI-POOL-001 step 1b: the GPIO bootstrap admission, when
+   -- the P2SB could not be read). Ordinary inserts never take it; only
+   -- Insert_Late does, Late_Used counting what it took. 0 for a pool
+   -- declared without one.
    type State (Members_Room : Member_Room; Claims_Room : Claim_Room) is record
       Member_Total : Member_Count := 0;
       Claim_Total  : Claim_Count := 0;
+      Late_Room    : Member_Count := 0;
+      Late_Used    : Member_Count := 0;
       Members      : Member_Array (1 .. Members_Room);
       Claims       : Claim_Array (1 .. Claims_Room);
    end record;
@@ -150,8 +158,27 @@ package Platform_Pool_Sets with SPARK_Mode, Pure is
      (for all K in 1 .. S.Claim_Total => Valid (S.Claims (K).Pages))
    with Pre => Bounded (S);
 
+   -- The late room lies inside the declared room, Insert_Late took no more
+   -- than it, and ordinary members never reach into it.
+   function Late_Fits (S : State) return Boolean is
+     (S.Late_Room <= S.Members_Room
+      and then S.Late_Used <= S.Late_Room
+      and then S.Late_Used <= S.Member_Total
+      and then S.Member_Total - S.Late_Used <= S.Members_Room - S.Late_Room);
+
+   -- Room for one more ordinary member.
+   function Ordinary_Room (S : State) return Boolean is
+     (S.Member_Total - S.Late_Used < S.Members_Room - S.Late_Room)
+   with Pre => Late_Fits (S);
+
    function Well_Formed (S : State) return Boolean is
-     (Bounded (S) and then Sorted_Disjoint (S) and then Claims_Valid (S));
+     (Bounded (S) and then Sorted_Disjoint (S) and then Claims_Valid (S)
+      and then Late_Fits (S));
+
+   -- Some claim overlaps Request.
+   function Claimed_Pages (S : State; Request : Interval) return Boolean is
+     (for some K in 1 .. S.Claim_Total => Overlaps (S.Claims (K).Pages, Request))
+   with Pre => Bounded (S);
 
    function Table_Well_Formed (T : Mapping_Table) return Boolean is
      (Bounded (T) and then (for all K in 1 .. T.Total => Valid (T.Items (K).Pages)));
@@ -206,14 +233,16 @@ package Platform_Pool_Sets with SPARK_Mode, Pure is
    type Insert_Status is (Inserted, Invalid_Interval, Overlaps_Member, Members_Full);
 
    -- Add Item as a member. Refused (nothing changes) when Item's pages are
-   -- not a valid interval, overlap a member, or the declared room is full.
-   -- Inserted: the members are the old ones and Item, still sorted and
-   -- disjoint.
+   -- not a valid interval, overlap a member, or the ordinary room (the
+   -- declared room less the late room) is full. Inserted: the members are
+   -- the old ones and Item, still sorted and disjoint.
    procedure Insert (S : in out State; Item : Member; Status : out Insert_Status)
    with Pre  => Well_Formed (S),
         Post => Well_Formed (S)
                 and then S.Claims = S.Claims'Old
                 and then S.Claim_Total = S.Claim_Total'Old
+                and then S.Late_Room = S.Late_Room'Old
+                and then S.Late_Used = S.Late_Used'Old
                 and then (if Status = Inserted then
                             Valid (Item.Pages)
                             and then S.Member_Total = S.Member_Total'Old + 1
@@ -230,12 +259,56 @@ package Platform_Pool_Sets with SPARK_Mode, Pure is
                 and then (Status = Invalid_Interval) = not Valid (Item.Pages)
                 and then (if Status = Overlaps_Member then
                             First_Overlap (S, Item.Pages) /= 0)
-                and then (if Status = Members_Full then
-                            S.Member_Total = S.Members_Room)
+                and then (if Status = Members_Full then not Ordinary_Room (S))
                 and then (if Valid (Item.Pages)
                              and then First_Overlap (S'Old, Item.Pages) = 0
-                             and then S.Member_Total'Old < S.Members_Room
+                             and then Ordinary_Room (S'Old)
                           then Status = Inserted);
+
+   -- The late insert (ACPI-POOL-001 step 1b): a member added after the
+   -- pool is in use. Admitted only when ALL of these hold: Item is
+   -- Chipset_Shared; a late room was declared and is not used up; its
+   -- pages are a valid interval overlapping no member and no claim. (The
+   -- syscall layer has already checked them against one of devmgr's
+   -- device-memory roots.) Refused, nothing changes.
+   type Late_Status is
+     (Late_Inserted,
+      Late_Invalid_Interval,   -- not a valid interval
+      Late_Wrong_Kind,         -- not Chipset_Shared: a device BAR is never late
+      Late_Not_Declared,       -- the pool was declared with no late room
+      Late_Room_Full,          -- the late room is used up
+      Late_Overlaps_Member,    -- overlaps a member
+      Late_Overlaps_Claim);    -- overlaps a claim: device memory already delegated
+
+   procedure Insert_Late (S : in out State; Item : Member; Status : out Late_Status)
+   with Pre  => Well_Formed (S),
+        Post => Well_Formed (S)
+                and then S.Claims = S.Claims'Old
+                and then S.Claim_Total = S.Claim_Total'Old
+                and then S.Late_Room = S.Late_Room'Old
+                and then (if Status = Late_Inserted then
+                            Item.Kind = Chipset_Shared
+                            and then Valid (Item.Pages)
+                            and then S.Late_Used'Old < S.Late_Room
+                            and then S.Late_Used = S.Late_Used'Old + 1
+                            and then First_Overlap (S'Old, Item.Pages) = 0
+                            and then not Claimed_Pages (S'Old, Item.Pages)
+                            and then S.Member_Total = S.Member_Total'Old + 1
+                            and then (for some I in 1 .. S.Member_Total =>
+                                        S.Members (I) = Item)
+                            and then (for all J in 1 .. S.Member_Total'Old =>
+                                        (for some I in 1 .. S.Member_Total =>
+                                           S.Members (I) = S.Members'Old (J)))
+                            and then (for all I in 1 .. S.Member_Total =>
+                                        S.Members (I) = Item
+                                        or else (for some J in 1 .. S.Member_Total'Old =>
+                                                   S.Members (I) = S.Members'Old (J)))
+                          else S = S'Old)
+                and then (Status = Late_Wrong_Kind) = (Item.Kind /= Chipset_Shared)
+                and then (if Status = Late_Not_Declared then S.Late_Room = 0)
+                and then (if Status = Late_Room_Full then S.Late_Used = S.Late_Room)
+                and then (if Status = Late_Overlaps_Member then First_Overlap (S, Item.Pages) /= 0)
+                and then (if Status = Late_Overlaps_Claim then Claimed_Pages (S, Item.Pages));
 
    ---------------------------------------------------------------------------
    -- Admission

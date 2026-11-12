@@ -620,8 +620,13 @@ the IdeaPad's four GPI0 `_CRS` communities against its memory map. The
 headless platform-pool test drives the admission over the firmware-data
 badge end to end (grant copy, decode, gate, idempotent repeat).
 
+The kernel's late insert (the approved post-seal rule) refuses a wrong
+kind, an undeclared or used-up late room, and an overlap with a member or
+a recorded claim (tests/platform-pool `Late_Room`).
+
 ```sh
 bash tests/platform-quirks/run.sh
+bash tests/platform-pool/run.sh
 make -C kernel world platform-pool-check
 bash tests/headless/run.sh --test platform-pool --accel kvm --timeout 120
 ```

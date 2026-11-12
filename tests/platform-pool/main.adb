@@ -558,6 +558,68 @@ procedure Main is
              "after the GPIO driver exits community 4 is unshared");
    end Laptop_Pool;
 
+   --  The late room (ACPI-POOL-001 step 1b, user 2026-11-12): members devmgr
+   --  reserved at the declaration for Chipset_Shared blocks learned after
+   --  the pool is in use (the GPIO bootstrap admission). Ordinary inserts
+   --  never take it; Insert_Late takes it only for a Chipset_Shared member
+   --  overlapping no member and no claim; every refusal changes nothing.
+   procedure Late_Room is
+      S  : State (Members_Room => 4, Claims_Room => 4);
+      No_Late : State (Members_Room => 2, Claims_Room => 2);
+      St : Insert_Status;
+      L  : Late_Status;
+      C  : Claim_Status;
+      D  : Decision;
+      Before : State (Members_Room => 4, Claims_Room => 4);
+   begin
+      S.Late_Room := 2;   --  declared: 4 members, 2 of them late
+      Check (Well_Formed (S), "a declared late room inside the members is well formed");
+      Insert (S, Bar (0, 99), St);
+      Check (St = Inserted, "an ordinary member takes the ordinary room");
+      Insert (S, Shared (200, 299), St);
+      Check (St = Inserted, "a second ordinary member fills it");
+      Insert (S, Shared (300, 309), St);
+      Check (St = Members_Full and then S.Member_Total = 2,
+             "an ordinary insert never reaches into the late room (Members_Full)");
+      --  The pool is in use: a driver's claim over its device BAR.
+      Add_Claim (S, I (10, 19), Driver, C);
+      Check (C = Recorded, "a driver's claim recorded");
+
+      Before := S;
+      Insert_Late (S, Bar (500, 509), L);
+      Check (L = Late_Wrong_Kind and then S = Before, "late: a Device_BAR is refused (wrong kind)");
+      Insert_Late (S, Shared (250, 259), L);
+      Check (L = Late_Overlaps_Member and then S = Before, "late: overlapping a member is refused");
+      Insert_Late (S, Shared (5, 15), L);
+      Check (L = Late_Overlaps_Member and then S = Before,
+             "late: overlapping a member under a claim is refused as a member overlap first");
+      Insert_Late (S, Shared (600, 600), L);
+      Check (L = Late_Inserted and then S.Late_Used = 1 and then S.Member_Total = 3,
+             "late: a Chipset_Shared block outside every member and claim is admitted");
+      D := Decide (S, ACPI, I (600, 600));
+      Check (D.Kind = Admitted, "the late member admits mappings like any other");
+      --  A claim reaching past a member (device memory delegated over a
+      --  member's end): a late member over its outside part is refused.
+      Add_Claim (S, I (290, 320), Driver, C);
+      Check (C = Recorded, "a claim over a member's end recorded");
+      Before := S;
+      Insert_Late (S, Shared (310, 311), L);
+      Check (L = Late_Overlaps_Claim and then S = Before,
+             "late: overlapping a recorded claim is refused");
+      Insert_Late (S, Shared (800, 801), L);
+      Check (L = Late_Inserted and then S.Late_Used = 2, "late: the second late slot");
+      Before := S;
+      Insert_Late (S, Shared (900, 901), L);
+      Check (L = Late_Room_Full and then S = Before, "late: the room exhausted is refused");
+      Check (Well_Formed (S) and then S.Member_Total = 4, "still well formed, four members");
+
+      Insert_Late (No_Late, Shared (10, 11), L);
+      Check (L = Late_Not_Declared and then No_Late.Member_Total = 0,
+             "late: a pool declared without a late room refuses (not declared)");
+      No_Late.Late_Room := 1;
+      Insert_Late (No_Late, (I (20, 10), Chipset_Shared), L);
+      Check (L = Late_Invalid_Interval, "late: an invalid interval is refused");
+   end Late_Room;
 
 begin
    Members_And_Admission;
@@ -567,6 +629,7 @@ begin
    Discovery;
    Platform_Blocks;
    Laptop_Pool;
+   Late_Room;
    Put_Line ("platform-pool:" & Natural'Image (Checks) & " checks," &
              Natural'Image (Failures) & " failures");
    if Failures /= 0 then

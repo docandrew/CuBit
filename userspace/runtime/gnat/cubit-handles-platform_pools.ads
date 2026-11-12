@@ -22,8 +22,11 @@ package CuBit.Handles.Platform_Pools is
 
    --  Size the pool (devmgr's root, with grant) for Members members and
    --  Claims claims, derived from what devmgr discovered; once, before the
-   --  first member. 0, or a Refusal word.
-   function Declare_Pool (Pool : Device_Memory; Members, Claims : Unsigned_64) return Unsigned_64;
+   --  first member. Late_Room of the members are reserved for late
+   --  Chipset_Shared inserts (the GPIO bootstrap admission; 0 for none,
+   --  spelled out). 0, or a Refusal word.
+   function Declare_Pool
+     (Pool : Device_Memory; Members, Claims, Late_Room : Unsigned_64) return Unsigned_64;
 
    --  Add [Physical, Physical + Bytes) (whole pages) to the pool Pool
    --  (devmgr's root, with grant) as a member of Kind, on the authority of

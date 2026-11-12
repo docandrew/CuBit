@@ -32,13 +32,16 @@ package body CuBit.Handles.Platform_Pools is
       return Answer;
    end Map;
 
-   function Declare_Pool (Pool : Device_Memory; Members, Claims : Unsigned_64) return Unsigned_64 is
+   function Declare_Pool
+     (Pool : Device_Memory; Members, Claims, Late_Room : Unsigned_64) return Unsigned_64
+   is
       Words : aliased ABI.Derivation := [others => 0];
    begin
       Words (ABI.Source) := K.Word (Pool);
-      Words (ABI.Flags) := ABI.Narrow;
+      Words (ABI.Flags) := (if Late_Room = 0 then ABI.Narrow else ABI.Narrow or ABI.Set_Tag);
       Words (ABI.Base) := Members;
       Words (ABI.Length) := Claims;
+      Words (ABI.Tag) := Late_Room;
       return K.Call (K.Install_Capability, K.Word (Pool), Address_Word (Words'Address));
    end Declare_Pool;
 

@@ -19,6 +19,9 @@
 --       Length = how many claims the kernel keeps, both derived from what
 --       devmgr discovered (each 1 .. its Maximum_*). The kernel sizes the
 --       pool's tables from them and charges them to devmgr's memory quota.
+--       With Set_Tag, Tag = the late room: how many of the members are
+--       reserved for late Chipset_Shared inserts (at most Base; without
+--       Set_Tag, none).
 --    2. Install each member: Source is one of devmgr's untagged
 --       device-memory roots, narrowed (Narrow) to the member's whole pages,
 --       with Set_Tag and Tag = Member_Kind_Word (its kind): Device_BAR for
@@ -29,7 +32,11 @@
 --  Both are refused (Capability_ABI.Sealed) once the pool is in use: after
 --  the first pool mapping or the first delegation of device memory to
 --  another process, the members are fixed. A full member table is
---  Capability_ABI.Table_Full.
+--  Capability_ABI.Table_Full. The one exception is the late insert
+--  (ACPI-POOL-001 step 1b, the GPIO bootstrap admission): a Chipset_Shared
+--  member into the declared late room, overlapping no member and no
+--  recorded claim (Platform_Pool_Sets.Insert_Late); the late room used up
+--  is Table_Full, a claim overlapped Not_Permitted.
 --
 --  A copy without Grant maps:
 --

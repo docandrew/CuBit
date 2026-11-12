@@ -242,7 +242,7 @@ is
     end Set_Owner;
 
     function Declare_Pool
-      (Caller : Process.ProcessID; Members, Claims : Unsigned_64) return Unsigned_64
+      (Caller : Process.ProcessID; Members, Claims, Late_Room : Unsigned_64) return Unsigned_64
     is
         Bytes  : Storage_Count;
         Answer : Unsigned_64 := 0;
@@ -250,6 +250,7 @@ is
     begin
         if Members not in 1 .. Sets.Member_Ceiling
           or else Claims not in 1 .. Sets.Claim_Ceiling
+          or else Late_Room > Members
         then
             return CA.Refusal_Word (CA.Invalid_Argument);
         end if;
@@ -265,6 +266,7 @@ is
                 Answer := CA.Refusal_Word (CA.Out_Of_Memory);
             else
                 Pool := New_State (Pool_Storage, Positive (Members), Positive (Claims));
+                Pool.Late_Room := Sets.Member_Count (Late_Room);
             end if;
         end if;
         Spinlocks.exitCriticalSection (Lock);
@@ -272,6 +274,8 @@ is
         print (Members);
         print (" claims=");
         print (Claims);
+        print (" late=");
+        print (Late_Room);
         print (" bytes=");
         print (Unsigned_64 (Bytes));
         println (if Answer = 0 then " status=DECLARED" else " status=REFUSED");
@@ -281,9 +285,15 @@ is
     function Insert
       (Base, Bytes : Unsigned_64; Kind : Sets.Pool_Member_Kind) return Unsigned_64
     is
+        use type Sets.Pool_Member_Kind;
         Pages  : Sets.Interval;
         Valid  : Boolean;
         Status : Sets.Insert_Status := Sets.Invalid_Interval;
+        Late   : Sets.Late_Status := Sets.Late_Not_Declared;
+        -- Which rule decided: none (undeclared), the ordinary insert, or
+        -- the late insert (after the seal, or the ordinary room full).
+        type Path is (Undeclared, Ordinary, Late_Room);
+        Took   : Path := Undeclared;
         Answer : Unsigned_64;
     begin
         Pages_Of (Base, Bytes, Pages, Valid);
@@ -293,27 +303,62 @@ is
         Spinlocks.enterCriticalSection (Lock);
         if Pool = null then
             Answer := CA.Refusal_Word (CA.Invalid_Argument);
-        elsif Sealed then
-            Answer := CA.Refusal_Word (CA.Sealed);
         else
-            Sets.Insert (Pool.all, (Pages => Pages, Kind => Kind), Status);
-            Answer := (case Status is
-                         when Sets.Inserted     => 0,
-                         when Sets.Members_Full => CA.Refusal_Word (CA.Table_Full),
-                         when Sets.Overlaps_Member | Sets.Invalid_Interval =>
-                           CA.Refusal_Word (CA.Invalid_Argument));
+            if not Sealed then
+                Took := Ordinary;
+                Sets.Insert (Pool.all, (Pages => Pages, Kind => Kind), Status);
+            end if;
+            if Sealed or else (Status = Sets.Members_Full and then Kind = Sets.Chipset_Shared) then
+                Took := Late_Room;
+                Sets.Insert_Late (Pool.all, (Pages => Pages, Kind => Kind), Late);
+            end if;
+            Answer :=
+              (case Took is
+                 when Undeclared => CA.Refusal_Word (CA.Invalid_Argument),
+                 when Ordinary =>
+                   (case Status is
+                      when Sets.Inserted     => 0,
+                      when Sets.Members_Full => CA.Refusal_Word (CA.Table_Full),
+                      when Sets.Overlaps_Member | Sets.Invalid_Interval =>
+                        CA.Refusal_Word (CA.Invalid_Argument)),
+                 when Late_Room =>
+                   (case Late is
+                      when Sets.Late_Inserted       => 0,
+                      when Sets.Late_Wrong_Kind     =>
+                        (if Sealed then CA.Refusal_Word (CA.Sealed)
+                         else CA.Refusal_Word (CA.Table_Full)),
+                      when Sets.Late_Not_Declared   =>
+                        (if Sealed then CA.Refusal_Word (CA.Sealed)
+                         else CA.Refusal_Word (CA.Table_Full)),
+                      when Sets.Late_Room_Full      => CA.Refusal_Word (CA.Table_Full),
+                      when Sets.Late_Overlaps_Claim => CA.Refusal_Word (CA.Not_Permitted),
+                      when Sets.Late_Invalid_Interval | Sets.Late_Overlaps_Member =>
+                        CA.Refusal_Word (CA.Invalid_Argument)));
         end if;
         Spinlocks.exitCriticalSection (Lock);
         Put_Pages ("platform-pool: member phys=", Pages);
         print (" kind=");
         print (Kind_Name (Kind));
-        println (if Answer = CA.Refusal_Word (CA.Sealed) then " status=SEALED"
-                 elsif Answer /= 0 and then Status = Sets.Invalid_Interval then " status=UNDECLARED"
-                 else (case Status is
-                         when Sets.Inserted         => " status=INSERTED",
-                         when Sets.Invalid_Interval => " status=INVALID",
-                         when Sets.Overlaps_Member  => " status=OVERLAPS_MEMBER",
-                         when Sets.Members_Full     => " status=CAPACITY"));
+        println
+          (case Took is
+             when Undeclared => " status=UNDECLARED",
+             when Ordinary =>
+               (case Status is
+                  when Sets.Inserted         => " status=INSERTED",
+                  when Sets.Invalid_Interval => " status=INVALID",
+                  when Sets.Overlaps_Member  => " status=OVERLAPS_MEMBER",
+                  when Sets.Members_Full     => " status=CAPACITY"),
+             when Late_Room =>
+               (case Late is
+                  when Sets.Late_Inserted         => " status=INSERTED_LATE",
+                  when Sets.Late_Wrong_Kind       => " status=SEALED (late: not CHIPSET_SHARED)",
+                  when Sets.Late_Not_Declared     =>
+                    (if Sealed then " status=SEALED (no late room declared)"
+                     else " status=CAPACITY"),
+                  when Sets.Late_Room_Full        => " status=CAPACITY (late room used up)",
+                  when Sets.Late_Invalid_Interval => " status=INVALID",
+                  when Sets.Late_Overlaps_Member  => " status=OVERLAPS_MEMBER",
+                  when Sets.Late_Overlaps_Claim   => " status=OVERLAPS_CLAIM"));
         return Answer;
     end Insert;
 
