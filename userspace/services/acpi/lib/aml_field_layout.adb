@@ -12,7 +12,7 @@ package body AML_Field_Layout with SPARK_Mode is
    Dword_Access_Code : constant AML_Decode.Byte := 3;
    Qword_Access_Code : constant AML_Decode.Byte := 4;
    function Admitted (Field : Field_Geometry; Register : Register_Geometry;
-      Allow_Locked_Read : Boolean := False)
+      Allow_Locked_Read : Boolean := False; Allow_Locked_Fields : Boolean := False)
       return Boolean is
       Size : constant AML_Decode.Integer_Value :=
          AML_Decode.Integer_Value (ACPI_FADT.Transactions.Octets (Register.Width));
@@ -36,7 +36,7 @@ package body AML_Field_Layout with SPARK_Mode is
       then return False; end if;
       if (Field.Flags and Reserved_Mask) /= 0
         or else ((Field.Flags and Lock_Mask) /= 0 and then
-          (not Allow_Locked_Read or else Field.Region.Space /= Memory_Space))
+          (not Allow_Locked_Fields and then (not Allow_Locked_Read or else Field.Region.Space /= Memory_Space)))
         or else (Field.Flags and Update_Mask) = Reserved_Update
         or else (Field.Flags and Access_Mask) > Last_Defined_Access
         or else Field.Attribute /= 0 or else Field.Access_Length /= 0

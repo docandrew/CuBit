@@ -121,21 +121,30 @@ package body ACPI_Backend_Catalog is
       and then P.Active (State.Items (I).Region)
       and then P.Active (State.Items (State.Items (I).Root).Region)
       and then Bindings.Describe (State.Windows, State.Items (I).Window).Allowed);
-   procedure Dispatch
-     (State : in out Context; Stamp : Unsigned_64; Item : Wire.Packet; Reply : out Wire.Packet)
+   procedure Execute_Register
+     (State : in out Context; Scope : Unsigned_64; Item : Register_Request;
+      Reply : out Register_Response)
    is
       I : Slot_Count := 0;
-      Ticket : Unsigned_64;
+      -- Capture only this checked scalar access view before borrowing Region.
+      -- Transact must not read the enclosing State while its region is in out.
+      View : Bindings.Access_View;
+      Expected_Window : W.Window_ID := W.No_Window;
+      Expected_Space : P.Address_Space := P.Memory_Space;
+      Expected_Address : Unsigned_64 := 0;
+      Expected_Width : P.Access_Width := W.T.Byte_Access;
+      Expected_Write : Boolean := False;
       procedure Transact
         (Window : in out W.Window_ID; Space : P.Address_Space; Address : Unsigned_64;
          Width : P.Access_Width; For_Write : Boolean; Input : Unsigned_64;
          Output : out Unsigned_64; Completed : out Boolean)
       is
-         View : constant Bindings.Access_View := Bindings.Select_Access
-           (State.Windows, Window, Space, Address, Width, For_Write);
       begin
          Output := 0; Completed := False;
-         if not View.Allowed then return; end if;
+         if not View.Allowed or else Window /= Expected_Window
+           or else Space /= Expected_Space or else Address /= Expected_Address
+           or else Width /= Expected_Width or else For_Write /= Expected_Write
+         then return; end if;
          case View.Space is
             when P.Memory_Space => Transfer_Memory (View.Virtual_Address, Width, For_Write, Input, Output, Completed);
             when P.IO_Space => Transfer_Ports (View.Ports, View.Port, Width, For_Write, Input, Output, Completed);
@@ -143,6 +152,53 @@ package body ACPI_Backend_Catalog is
       end Transact;
       package IO is new ACPI_Region_IO (W.Window_ID, Transact);
       Window : W.Window_ID;
+      Result : IO.Response;
+      Request : IO.Request;
+      use type IO.Outcome;
+   begin
+      Reply := (others => <>);
+      if State.Working or else not State.Sealed or else State.Quarantined
+        or else not Has_Scope (State, Scope) then return; end if;
+      if not Item.For_Write and then Item.Value /= 0 then
+         Reply.Status := Wire.Malformed; return;
+      end if;
+      for J in Slot_Index loop
+         if J <= State.Count then
+            declare C : constant P.Configuration := P.Policy (State.Items (J).Region); begin
+               if C.Tag = Scope and then C.Register_Authority.Resource_ID = Unsigned_64 (Item.Resource)
+               then I := J; exit; end if;
+            end;
+         end if;
+      end loop;
+      if I = 0 or else not Live (State, I) then return; end if;
+      declare C : constant P.Configuration := P.Policy (State.Items (I).Region); begin
+         if not Hardware_Authority.Permits
+           (C.Register_Authority, Unsigned_64 (Item.Resource), Item.For_Write, Item.Value)
+         then return; end if;
+         Request := (Token => Unsigned_64 (Item.Epoch), Offset => C.Register_Offset,
+                     Width => C.Register_Width, For_Write => Item.For_Write, Value => Item.Value);
+         if C.Register_Offset > Unsigned_64'Last - C.Base then return; end if;
+         Expected_Window := State.Items (I).Window;
+         Expected_Space := C.Space; Expected_Address := C.Base + C.Register_Offset;
+         Expected_Width := C.Register_Width; Expected_Write := Item.For_Write;
+         View := Bindings.Select_Access
+           (State.Windows, Expected_Window, Expected_Space, Expected_Address,
+            Expected_Width, Expected_Write);
+      end;
+      State.Working := True; Window := State.Items (I).Window;
+      IO.Execute (State.Items (I).Region, Window, Scope, Request, Result);
+      Reply := (Wire.Outcome (Result.Status), Result.Value, Result.Pending_Ticket);
+      pragma Assert (Result.Pending_Ticket = 0 or else (P.Busy (State.Items (I).Region)
+        and then Result.Pending_Ticket = P.Receipt (State.Items (I).Region)));
+      if Reply.Status in Wire.Indeterminate | Wire.Backend_Fault then
+         Quarantine (State); Changed (State);
+      end if;
+      State.Working := False;
+   end Execute_Register;
+   procedure Dispatch
+     (State : in out Context; Stamp : Unsigned_64; Item : Wire.Packet; Reply : out Wire.Packet)
+   is
+      Result : Register_Response;
    begin
       Reply := (Label => Wire.Operation_Reply, Data => [Wire.Outcome'Pos (Wire.Denied), 0, 0, 0], others => <>);
       if State.Working or else not State.Sealed or else State.Quarantined
@@ -152,22 +208,11 @@ package body ACPI_Backend_Catalog is
         or else Item.Data (3) /= 0
         or else (Item.Label = Wire.Read_Operation and then Item.Data (2) /= 0)
       then Reply.Data (0) := Wire.Outcome'Pos (Wire.Malformed); return; end if;
-      for J in Slot_Index loop
-         if J <= State.Count then
-            declare C : constant P.Configuration := P.Policy (State.Items (J).Region); begin
-               if C.Tag = Stamp and then C.Register_Authority.Resource_ID = Item.Data (1) then I := J; exit; end if;
-            end;
-         end if;
-      end loop;
-      if I = 0 or else not Live (State, I) then return; end if;
-      State.Working := True; Window := State.Items (I).Window;
-      IO.Dispatch (State.Items (I).Region, Window, Stamp, Item, Reply, Ticket);
-      pragma Assert (Ticket = 0 or else (P.Busy (State.Items (I).Region)
-        and then Ticket = P.Receipt (State.Items (I).Region)));
-      if Reply.Data (0) in Wire.Outcome'Pos (Wire.Indeterminate) | Wire.Outcome'Pos (Wire.Backend_Fault) then
-         Quarantine (State); Changed (State);
-      end if;
-      State.Working := False;
+      Execute_Register (State, Stamp,
+        (Register_ID (Item.Data (1)), Record_Epoch (Item.Data (0)),
+         Item.Label = Wire.Write_Operation, Item.Data (2)), Result);
+      Reply.Data := [Wire.Outcome'Pos (Result.Status), Result.Value and 16#FFFF_FFFF#,
+                     Shift_Right (Result.Value, 32), 0];
    end Dispatch;
    function Header (State : Context; Stamp : Unsigned_64) return Inventory is
       Count : Natural := 0;

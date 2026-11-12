@@ -29,9 +29,9 @@ package body AML_Register_Views with SPARK_Mode is
       end;
    end Rebase;
    function Admitted (Field : L.Field_Geometry; Canonical : L.Register_Geometry;
-      Allow_Locked_Read : Boolean := False) return Boolean is
+      Allow_Locked_Read : Boolean := False; Allow_Locked_Fields : Boolean := False) return Boolean is
       Local : constant View := Rebase (Canonical, Field.Region);
    begin
-      return Local.Allowed and then L.Admitted (Field, Local.Value, Allow_Locked_Read);
+      return Local.Allowed and then L.Admitted (Field, Local.Value, Allow_Locked_Read, Allow_Locked_Fields);
    end Admitted;
 end AML_Register_Views;

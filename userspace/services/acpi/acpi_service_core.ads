@@ -423,6 +423,9 @@ package ACPI_Service_Core with SPARK_Mode is
         (IO : in out IO_Context; Declaration : Namespace.Operation_Region_Attributes;
          Geometry : AML_Field_Layout.Register_Geometry;
          Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+      -- Explicit whole-Field lock provider, with per-datum admission.
+      -- Separate from the existing read-only named-NVS policy.
+      Allow_Locked_Fields : Boolean := False;
    package Field_IO is
       pragma Unevaluated_Use_Of_Old (Allow);
       type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
@@ -570,7 +573,7 @@ package ACPI_Service_Core with SPARK_Mode is
       package Adapter is new Values.Field_IO
         (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed, Maximum_Bindings,
          Authorize_Target, Maximum_Requests, Maximum_Work, Resolve_Module_Target, Begin_Field, End_Field, Allow_Locked_NVS_Reads,
-         Enable_Startup_Firmware_Resolution, Resolve_Startup_Firmware_Target);
+         Enable_Startup_Firmware_Resolution, Resolve_Startup_Firmware_Target, Allow_Locked_Fields);
       type Binding is record
          Inner : Adapter.Binding := Adapter.No_Binding;
       end record;

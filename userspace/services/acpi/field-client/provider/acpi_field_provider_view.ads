@@ -37,8 +37,10 @@ generic
    with procedure End_Transaction
      (IO : in out Provider_Context; Accepted : in out Boolean) is null;
    Locked_NVS_Reads : Boolean := False;
+   Allow_Locked_Fields : Boolean := False;
 package ACPI_Field_Provider_View is
    Supports_Locked_NVS_Reads : constant Boolean := Locked_NVS_Reads;
+   Supports_Whole_Field_Locks : constant Boolean := Allow_Locked_Fields;
    subtype Context is Provider_Context;
    function Ready (IO : Context) return Boolean renames Is_Ready;
    function Identity (IO : Context) return AML_Identity.Identity renames Provider_Identity;

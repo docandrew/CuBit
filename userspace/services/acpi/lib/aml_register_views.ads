@@ -66,7 +66,7 @@ package AML_Register_Views with SPARK_Mode, Pure is
    -- Preserve the existing field form/access/flags policy, using a verified
    -- metadata view instead of requiring identical enclosing region extents.
    function Admitted (Field : L.Field_Geometry; Canonical : L.Register_Geometry;
-      Allow_Locked_Read : Boolean := False) return Boolean
+      Allow_Locked_Read : Boolean := False; Allow_Locked_Fields : Boolean := False) return Boolean
      with Post => (if Admitted'Result then
        Field.Form = L.Ordinary_Field and then not Field.Has_Connection
        and then Field.Bit_Offset mod L.Bits_Per_Byte = 0

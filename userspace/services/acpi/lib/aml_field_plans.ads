@@ -20,7 +20,7 @@ package AML_Field_Plans with SPARK_Mode, Pure is
    function Valid (Item : Plan) return Boolean;
    function Count (Item : Plan) return Datum_Count;
    function Prepare (Field : AML_Field_Layout.Field_Geometry;
-      Allow_Locked_Read : Boolean := False) return Plan
+      Allow_Locked_Read : Boolean := False; Allow_Locked_Fields : Boolean := False) return Plan
       with Post => (if Count (Prepare'Result) > 0 then Valid (Prepare'Result));
    function Rule (Item : Plan) return AML_Field_Datums.Update_Rule;
    function Datum_At (Item : Plan; Position : Datum_Position)

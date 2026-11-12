@@ -41,7 +41,7 @@ package AML_Field_Layout with SPARK_Mode, Pure is
    end record;
    -- Total decision. Never returns an address, register ID or capability.
    function Admitted (Field : Field_Geometry; Register : Register_Geometry;
-      Allow_Locked_Read : Boolean := False)
+      Allow_Locked_Read : Boolean := False; Allow_Locked_Fields : Boolean := False)
       return Boolean with Global => null,
       Post => (if Admitted'Result then
          Field.Form = Ordinary_Field and then not Field.Has_Connection

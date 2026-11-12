@@ -12267,7 +12267,7 @@ package body Owned with SPARK_Mode is
             if E.Field_Uncertain.Present or else Pending (IO)
               or else not Key_Matches (E, Key) then return; end if;
             Describe_Target (IO, Target, Geometry, Allowed);
-            if not Allowed or else not AML_Register_Views.Admitted (Geometry_Of (E, Key), Geometry, Allow_Locked_NVS_Reads)
+            if not Allowed or else not AML_Register_Views.Admitted (Geometry_Of (E, Key), Geometry, Allow_Locked_NVS_Reads, Allow_Locked_Fields)
             then return; end if;
             Item := (Field => Key.Field, Region => Key.Region, Target => Target,
                      Geometry => Geometry, others => <>);
@@ -12276,7 +12276,7 @@ package body Owned with SPARK_Mode is
                -- result required when this field exceeds the AML integer width.
                declare
                   Field : constant AML_Field_Layout.Field_Geometry := Geometry_Of (E, Key);
-                  Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads);
+                  Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads, Allow_Locked_Fields);
                   First : constant AML_Field_Plans.Datum_Position := AML_Field_Plans.Datum_Position'First;
                begin
                   if not AML_Field_Plans.Valid (Plan) or else AML_Field_Plans.Count (Plan) /= 1
@@ -12400,7 +12400,7 @@ package body Owned with SPARK_Mode is
                if Items.Entries (I).Field = Key.Field then return; end if;
             end loop;
             Field := Geometry_Of (A.Inner.all, Key);
-            Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads);
+            Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads, Allow_Locked_Fields);
             if not AML_Field_Plans.Valid (Plan) or else AML_Field_Plans.Count (Plan) /= Count
             then return; end if;
             for Position in AML_Field_Plans.Datum_Position loop
@@ -12436,7 +12436,7 @@ package body Owned with SPARK_Mode is
             Status := Invalid_Value;
             declare
                Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare
-                 (Candidate.Entries (Candidate.Count).Read_Field);
+                 (Candidate.Entries (Candidate.Count).Read_Field, Allow_Locked_Fields => Allow_Locked_Fields);
             begin
                if not AML_Field_Plans.Valid (Plan) then return; end if;
                for Position in AML_Field_Plans.Datum_Position range 1 .. Count loop
@@ -12482,7 +12482,7 @@ package body Owned with SPARK_Mode is
                Current : AML_Field_Layout.Register_Geometry;
                Allowed : Boolean;
                Field_Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare
-                 (Item.Read_Field, Allow_Locked_NVS_Reads and then not Writing);
+                 (Item.Read_Field, Allow_Locked_NVS_Reads and then not Writing, Allow_Locked_Fields);
                procedure Check_Target (Target : AML_Field_Access.Target;
                  Expected : AML_Field_Layout.Register_Geometry; Write_Access : Boolean) is
                begin
@@ -12496,7 +12496,7 @@ package body Owned with SPARK_Mode is
                if Item.Read_Count = 0 then
                   Check_Target (Item.Target, Item.Geometry, Writing);
                   return Allowed and then AML_Register_Views.Admitted (Geometry_Of (E, Key_Of (Item)), Current,
-                    Allow_Locked_NVS_Reads and then not Writing);
+                    Allow_Locked_NVS_Reads and then not Writing, Allow_Locked_Fields);
                end if;
                if (Writing and then not Item.Writes_Enabled)
                  or else Geometry_Of (E, Key_Of (Item)) /= Item.Read_Field
@@ -12559,7 +12559,7 @@ package body Owned with SPARK_Mode is
                  or else Geometry_Of (E, Key_Of (Item)) /= Item.Read_Field then return; end if;
                declare
                   Plan : constant AML_Field_Plans.Plan := AML_Field_Plans.Prepare
-                    (Item.Read_Field, Allow_Locked_NVS_Reads and then not For_Write);
+                    (Item.Read_Field, Allow_Locked_NVS_Reads and then not For_Write, Allow_Locked_Fields);
                   Accumulator : AML_Decode.Integer_Value := 0;
                   procedure Read_Datums is
                   begin
@@ -12732,7 +12732,7 @@ package body Owned with SPARK_Mode is
             Describe_Target (Context, Item.Target, Current, Allowed);
             if not Allowed or else Current /= Item.Geometry
               or else not AML_Register_Views.Admitted (Geometry_Of (E, Key_Of (Item)), Current,
-                Allow_Locked_NVS_Reads and then not For_Write)
+                Allow_Locked_NVS_Reads and then not For_Write, Allow_Locked_Fields)
               -- Qword bindings must use the planned path above, including its
               -- allocation-before-effects and width-dependent result handling.
               or else Current.Width = ACPI_FADT.Transactions.Qword_Access
@@ -12874,7 +12874,8 @@ package body Owned with SPARK_Mode is
             Top : Frame_Count := 0;
             Work : AML_Execution_Limits.Field_Work_Count := Work_Allowance;
             Last_Scalar, Input : AML_Decode.Integer_Value := 0;
-            NoLock_And_Reserved_Mask : constant AML_Decode.Byte := 16#90#;
+            Reserved_Flags_Mask : constant AML_Decode.Byte := 16#80#;
+            Lock_Flags_Mask : constant AML_Decode.Byte := 16#10#;
             Update_Rule_Unit : constant AML_Decode.Byte := 32;
             Raw_Access_Mask : constant AML_Decode.Byte := 16#0F#;
             Last_Defined_Access : constant AML_Decode.Byte := 5;
@@ -12980,7 +12981,8 @@ package body Owned with SPARK_Mode is
                if F.Info.Bits = 0 or else F.Info.Bits > Maximum_Field_Bits
                  or else (F.Info.Bits > Scalar_Bits and then F.Identity /= Ref and then not Writing) then return; end if;
                if F.Info.Organization = Indexed_Register_Field then
-                  if (F.Info.Raw_Flags and NoLock_And_Reserved_Mask) /= 0
+                  if (F.Info.Raw_Flags and Reserved_Flags_Mask) /= 0
+                    or else ((F.Info.Raw_Flags and Lock_Flags_Mask) /= 0 and then not Allow_Locked_Fields)
                     or else (F.Info.Raw_Flags and Raw_Access_Mask) > Last_Defined_Access
                     or else F.Info.Raw_Flags / Update_Rule_Unit > AML_Decode.Byte
                       (AML_Field_Datums.Update_Rule'Pos (AML_Field_Datums.Update_Rule'Last))
@@ -13044,7 +13046,7 @@ package body Owned with SPARK_Mode is
                   Plan : AML_Field_Plans.Plan;
                begin
                   Probe.Bit_Length := AML_Decode.Integer_Value'Min (Geometry.Bit_Length, AML_Field_Plans.Maximum_Bits);
-                  Plan := AML_Field_Plans.Prepare (Probe);
+                  Plan := AML_Field_Plans.Prepare (Probe, Allow_Locked_Fields => Allow_Locked_Fields);
                   if not AML_Field_Plans.Valid (Plan) then return; end if;
                   F.Rule := AML_Field_Plans.Rule (Plan);
                   Access_Width := AML_Field_Plans.Datum_At (Plan, AML_Field_Plans.Datum_Position'First).Access_Width;
@@ -13514,7 +13516,7 @@ package body Owned with SPARK_Mode is
                   end if;
                end;
             end if;
-            if Requires_Lock and then (For_Write or else not Allow_Locked_NVS_Reads) then
+            if Requires_Lock and then not Allow_Locked_Fields and then (For_Write or else not Allow_Locked_NVS_Reads) then
                Status := AML_Execute.Unsupported_Value; return;
             end if;
             Accepted := not Requires_Lock;
@@ -13639,7 +13641,7 @@ package body Owned with SPARK_Mode is
                   end if;
                end loop;
                if not Found then
-                  Field := Geometry_Of (E, Key); Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads);
+                  Field := Geometry_Of (E, Key); Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads, Allow_Locked_Fields);
                   if not AML_Field_Plans.Valid (Plan) then return; end if;
                   Selected := No_Binding;
                   Selected.Field := Key.Field; Selected.Region := Key.Region;
@@ -13703,7 +13705,7 @@ package body Owned with SPARK_Mode is
                end;
                Probe := Geometry;
                Probe.Bit_Length := AML_Decode.Integer_Value'Min (Probe.Bit_Length, AML_Field_Plans.Maximum_Bits);
-               Access_Plan := AML_Field_Plans.Prepare (Probe);
+               Access_Plan := AML_Field_Plans.Prepare (Probe, Allow_Locked_Fields => Allow_Locked_Fields);
                if not AML_Field_Plans.Valid (Access_Plan) then return; end if;
                Plan := AML_Field_Datums.Prepare (Geometry.Region.Base, Geometry.Region.Length,
                   AML_Field_Datums.Bit_Position (Geometry.Bit_Offset), AML_Field_Datums.Bit_Length (Geometry.Bit_Length),

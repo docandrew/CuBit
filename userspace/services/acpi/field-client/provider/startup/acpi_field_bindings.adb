@@ -121,7 +121,7 @@ package body ACPI_Field_Bindings is
                      Bit_Length => AML_Decode.Integer_Value (Field.Field.Bits),
                      Flags => Field.Field.Raw_Flags, Effective_Access => Field.Field.Access_Type,
                      Attribute => Field.Field.Attribute, Access_Length => Field.Field.Access_Length, others => <>);
-                  Plan : constant Plans.Plan := Plans.Prepare (Meta, Provider.Supports_Locked_NVS_Reads);
+                  Plan : constant Plans.Plan := Plans.Prepare (Meta, Provider.Supports_Locked_NVS_Reads, Provider.Supports_Whole_Field_Locks);
                   Read_Targets, Write_Targets : AML_Field_Targets.Vector;
                   Can_Read, Can_Write, Any_Readable : Boolean;
                begin

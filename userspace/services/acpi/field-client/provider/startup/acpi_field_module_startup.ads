@@ -22,7 +22,8 @@ package ACPI_Field_Module_Startup is
       Begin_Field => Provider.Begin_Field, End_Field => Provider.End_Field,
       Allow_Locked_NVS_Reads => Provider.Supports_Locked_NVS_Reads,
       Enable_Startup_Firmware_Resolution => Enable_Startup_Firmware_Resolution,
-      Resolve_Startup_Firmware_Target => Resolve_Startup_Firmware_Target);
+      Resolve_Startup_Firmware_Target => Resolve_Startup_Firmware_Target,
+      Allow_Locked_Fields => Provider.Supports_Whole_Field_Locks);
    -- Trusted startup callback bridge. Provision Provider before this call;
    -- the outer snapshot/controller owns the one-attempt startup latch.
    -- Never serve or retry after module effects/failure/uncertainty. Preserve

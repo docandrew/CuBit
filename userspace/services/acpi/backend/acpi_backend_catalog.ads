@@ -91,6 +91,25 @@ package ACPI_Backend_Catalog is
    -- scalar protocol contains epoch/ID/value/zero, never address/offset/width.
    -- Pending completion correlation remains private; uncertainty stops all
    -- hardware dispatch across scopes/aliases without releasing any backing.
+   -- Trusted local owner API: resource identity and epoch only. Geometry and
+   -- authority come from the sealed catalog, never a caller address/width.
+   -- Scope must be bound by the local startup constructor; this API neither
+   -- authenticates external callers nor creates hardware rights.
+   type Register_ID is new Unsigned_64;
+   type Record_Epoch is new Unsigned_64;
+   type Register_Request is record
+      Resource : Register_ID := 0;
+      Epoch : Record_Epoch := 0;
+      For_Write : Boolean := False;
+      Value : Unsigned_64 := 0;
+   end record;
+   type Register_Response is record
+      Status : Wire.Outcome := Wire.Denied;
+      Value, Pending_Ticket : Unsigned_64 := 0;
+   end record;
+   procedure Execute_Register
+     (State : in out Context; Scope : Unsigned_64; Item : Register_Request;
+      Reply : out Register_Response);
    procedure Dispatch
      (State : in out Context; Stamp : Unsigned_64;
       Item : Wire.Packet; Reply : out Wire.Packet);

@@ -1870,6 +1870,9 @@ package Owned with SPARK_Mode is
         (IO : in out IO_Context; Declaration : Operation_Region_Attributes;
          Geometry : AML_Field_Layout.Register_Geometry;
          Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+      -- Explicit whole-Field lock provider, with per-datum admission.
+      -- Separate from the existing read-only named-NVS policy.
+      Allow_Locked_Fields : Boolean := False;
       package Field_IO is
          pragma Unevaluated_Use_Of_Old (Allow);
          type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
