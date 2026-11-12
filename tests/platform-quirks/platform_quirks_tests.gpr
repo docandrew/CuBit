@@ -1,0 +1,27 @@
+--  Hosted tests and proofs of devmgr's platform quirks (ACPI-POOL-001):
+--  the shared platform identity and quirk-table pattern (shared/platform),
+--  the quirk table and the P2SB step classification (run.sh).
+project Platform_Quirks_Tests is
+   for Source_Dirs use (".", "../../userspace/services/devmgr",
+     "../../userspace/services/devmgr/platform_quirks", "../../shared/platform",
+     "../../shared/capabilities");
+   for Source_Files use
+     ("main.adb",
+      "platform_pool_abi.ads",
+      "devmgr_platform_pool.ads", "devmgr_platform_pool.adb",
+      "platform_identity.ads", "platform_identity.adb", "platform_quirk_tables.ads",
+      "platform_quirks.ads", "platform_quirks.adb",
+      "platform_quirks-intel_p2sb.ads", "platform_quirks-intel_p2sb.adb",
+      "platform_quirks-intel_gpio_communities.ads", "platform_quirks-intel_gpio_communities.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use
+        ("--level=1", "--prover=cvc5,z3", "--checks-as-errors=on", "--report=fail", "-j2");
+   end Prove;
+end Platform_Quirks_Tests;

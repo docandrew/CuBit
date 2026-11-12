@@ -31,8 +31,10 @@ with CuBit.Firmware_Data_Exchange;
 with CuBit.Platform_Pool_Exchange;
 with CuBit.Handles.Platform_Pools;
 with Devmgr_Platform_Pool;
-with Devmgr_Sideband;
-with Devmgr_Sideband_Layout;
+with Platform_Identity;
+with Platform_Quirks;
+with Platform_Quirks.Sideband;
+with Platform_Quirks.Intel_GPIO_Communities;
 with Platform_Pool_ABI;
 with CuBit.Firmware_Snapshot;
 with CuBit.Disk_Install;
@@ -4260,6 +4262,9 @@ procedure main is
    ---------------------------------------------------------------------------
    Pool_Members : Natural := 0;
 
+   --  The platform as observed at the pool build, for the quirk table.
+   Platform : Platform_Quirks.Observed_Platform;
+
    --  The QEMU edu device's BAR0 is 1 MiB (QEMU docs/specs/edu.rst).
    QEMU_Edu_BAR0_Bytes : constant := Devmgr_Platform_Pool.Edu_BAR0_Bytes;
    PCI_Vendor_Offset   : constant := 16#00#;
@@ -4268,7 +4273,7 @@ procedure main is
    PCI_Memory_BAR_Mask : constant Unsigned_32 := 16#FFFF_FFF0#;
 
    --  The sideband subsystem: the only code that touches the P2SB.
-   package Sideband is new Devmgr_Sideband
+   package Sideband is new Platform_Quirks.Sideband
      (Read_Config_16 => pciReadConfig16, Read_Config_32 => pciReadConfig32,
       Write_Config_32 => pciWriteConfig32, Inform => Warnings.Inform, Warn => Warnings.Warn,
       Hex => Hex);
@@ -4418,6 +4423,51 @@ procedure main is
       return 0;
    end LPIT_Counter;
 
+   --  The firmware's identity (Platform_Identity): the sealed FADT's
+   --  header, read once; No_Identity without an FADT.
+   function Firmware_Identity return Platform_Identity.Identity is
+      package FS renames CuBit.Firmware_Snapshot;
+      package PI renames Platform_Identity;
+      use type FS.Outcome, FS.Byte_Count;
+      Tables : constant FS.Authority := FS.Held (Root.Firmware_Snapshot_Root);
+      Catalog : FS.Catalog_Info;
+      D : FS.Table_Description;
+      Status : FS.Outcome;
+   begin
+      FS.Info (Tables, Catalog, Status);
+      if Status /= FS.Ok then
+         return PI.No_Identity;
+      end if;
+      for T in 1 .. FS.Table_ID (Catalog.Table_Count) loop
+         FS.Describe (Tables, T, D, Status);
+         if Status = FS.Ok
+           and then D.Extent >= PI.Header_Bytes
+           and then (for all I in FS.Signature_Index =>
+                       D.Signature (I) =
+                         Character'Pos (PI.FADT_Signature (PI.FADT_Signature'First + I - 1)))
+         then
+            declare
+               Bytes : FS.Byte_Array (1 .. PI.Header_Bytes);
+               Copied : FS.Byte_Count;
+            begin
+               FS.Copy_Part (Tables, T, 0, Bytes, Copied, Status);
+               if Status = FS.Ok and then Copied = PI.Header_Bytes then
+                  declare
+                     Header : PI.Byte_Array (0 .. PI.Header_Bytes - 1);
+                  begin
+                     for K in Header'Range loop
+                        Header (K) := Bytes (K + 1);
+                     end loop;
+                     return PI.From_Header (Header);
+                  end;
+               end if;
+            end;
+            return PI.No_Identity;
+         end if;
+      end loop;
+      return PI.No_Identity;
+   end Firmware_Identity;
+
    procedure Build_Platform_Pool is
       package PP renames Devmgr_Platform_Pool;
       package PA renames Platform_Pool_ABI;
@@ -4438,6 +4488,9 @@ procedure main is
       Found_Count : Natural := 0;
       Window : PP.Block := (Status => PP.No_Source, Base => 0, Bytes => 0);
       Test : Boolean;
+      --  The quirk table's answer for this platform (Platform_Quirks).
+      Sideband_Source : Platform_Quirks.Sideband_Source;
+      use type Platform_Quirks.Sideband_Source;
 
       procedure Note (B : PP.Block) is
       begin
@@ -4470,6 +4523,8 @@ procedure main is
       end loop;
       Kind := PP.Bridge_Of (Vendor, Device, Test_Profile => Edu /= 0);
       Test := Kind = PP.QEMU_Q35_Test;
+      Platform := (Bridge => Kind, Firmware => Firmware_Identity);
+      Sideband_Source := Platform_Quirks.Sideband_Of (Platform);
       if Test then
          Edu_Base := Unsigned_64 (pciReadConfig32
            (inventory (Edu).location.bus, inventory (Edu).location.slot,
@@ -4495,8 +4550,7 @@ procedure main is
                            Status_Name (Block.Status) & ")");
       end case;
 
-      --  The PMC, and the sideband window from the sideband subsystem
-      --  (Alder Lake-N), or the test profile's stand-in.
+      --  The PMC (Alder Lake-N).
       if Kind = PP.Alder_Lake_N then
          declare
             Counter : constant Unsigned_64 := LPIT_Counter;
@@ -4510,12 +4564,20 @@ procedure main is
                               " (LPIT counter " & Hex (Counter) & "); left out");
             end if;
          end;
-         Sideband.Discover_Before_ACPI;
-      elsif Test and then Block.Status = PP.Found then
-         Sideband.Adopt_Test_Window (Edu_Base);
       end if;
+      --  The sideband window: where the quirk table says it comes from.
+      case Sideband_Source is
+         when Platform_Quirks.P2SB_SBREG =>
+            Sideband.Discover_Before_ACPI;
+         when Platform_Quirks.Test_Stand_In =>
+            if Block.Status = PP.Found then
+               Sideband.Adopt_Test_Window (Edu_Base);
+            end if;
+         when Platform_Quirks.No_Sideband =>
+            null;
+      end case;
       Window := Sideband.Window;
-      if Kind = PP.Alder_Lake_N and then Window.Status /= PP.Found then
+      if Sideband_Source = Platform_Quirks.P2SB_SBREG and then Window.Status /= PP.Found then
          Warnings.Warn ("devmgr: platform pool: sideband window " &
                         Status_Name (Window.Status) & "; GPIO communities left out");
       end if;
@@ -4535,8 +4597,9 @@ procedure main is
                   Propose ((if Test then Test_Community else GPIO_Community), PA.Chipset_Shared,
                            B.Base, B.Bytes,
                            (if Test then 0
-                            else Devmgr_Sideband_Layout.ADL_N_GPIO_Ports
-                                   (Devmgr_Sideband_Layout.ADL_N_GPIO_Ports'First + C - 1)));
+                            else Platform_Quirks.Intel_GPIO_Communities.ADL_N_GPIO_Ports
+                                   (Platform_Quirks.Intel_GPIO_Communities.ADL_N_GPIO_Ports'First
+                                    + C - 1)));
                end;
             end loop;
             --  The rest of the window, between the communities.

@@ -18,28 +18,30 @@
 --       platform pool; nobody maps them here. It has to be before ACPI:
 --       _INI methods touch these registers (the IdeaPad's TPD0/TPL1._INI
 --       read GPIO PDW registers through SystemMemory).
+--    1b. When the P2SB could not be read (Discovery, a typed Outcome that
+--       is not Found), the GPIO bootstrap admission is the fallback:
+--       acpi.svc observes the identified GPIO controller's _HID/_STA/_CRS
+--       once, before any device _INI, and devmgr admits those exact spans
+--       (Platform_Quirks.GPIO_Bootstrap_Admission, gated on Discovery).
 --    2. The ACPI backend then maps the pieces AML touches (kernel-checked
 --       once per mapping).
 --    3. After _INI the ACPI service reports the platform devices' _CRS
---       resources (GPIO controller ranges, I2C controllers, the touchpad's
---       address and GpioInt pin), Windows-style. devmgr cross-checks
---       Community_Range against that report (a mismatch is logged) and
---       binds drivers from it. Future work: the hand-off point is marked
---       "ACPI-POOL-001 step 3" in devmgr's main.
+--       resources (Report_Platform_Device: facts only, never mapping
+--       authority). devmgr cross-checks Community_Range against that report
+--       (a mismatch is logged) and binds drivers from it. Future work: the
+--       hand-off point is marked "ACPI-POOL-001 step 3" in devmgr's main.
 --    4. A GPIO driver's claim of a community is SHARED with firmware (AML
 --       keeps its mappings, the kernel logs the overlap); only PCI device
 --       BARs are revoked from ACPI when a driver binds.
 --
---  Sources of the window (Window_Source):
---    * P2SB_BAR: Discover_Before_ACPI, Linux p2sb.c's protocol (see
---      Devmgr_Sideband_Layout), once, before any other process can reach
---      PCI configuration, and checked hidden afterwards.
---    * Test_Profile: the headless test profile's stand-in in edu's BAR0.
+--  Sources of the window (Platform_Quirks.Sideband_Source, chosen by the
+--  quirk table, never by the caller):
+--    * P2SB_SBREG: Discover_Before_ACPI, Linux p2sb.c's protocol (see
+--      Platform_Quirks.Intel_P2SB), once, before any other process can
+--      reach PCI configuration, and checked hidden afterwards.
+--    * Test_Stand_In: the headless test profile's stand-in in edu's BAR0.
 --  The pool never sees how the window was found: it asks for Window,
---  Port_Block and the community ranges. If the step-3 _CRS report proves
---  reliable, a source fed from it (Windows-style: the GPIO device's _CRS
---  ranges) could replace the unhide behind this interface without a change
---  to the callers.
+--  Port_Block and the community ranges.
 --
 --  PCI configuration access is devmgr's (the formal subprograms), so the
 --  P2SB writes go through the same port and the same freeze rules as
@@ -48,7 +50,8 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with Devmgr_Platform_Pool;
-with Devmgr_Sideband_Layout;
+with Platform_Quirks.Intel_P2SB;
+with Platform_Quirks.Intel_GPIO_Communities;
 
 generic
    with function Read_Config_16 (Bus, Slot, Func, Offset : Unsigned_8) return Unsigned_16;
@@ -57,31 +60,41 @@ generic
    with procedure Inform (Text : String);
    with procedure Warn (Text : String);
    with function Hex (Value : Unsigned_64) return String;
-package Devmgr_Sideband is
+package Platform_Quirks.Sideband is
    package PP renames Devmgr_Platform_Pool;
-   package SL renames Devmgr_Sideband_Layout;
+   package P2SB renames Platform_Quirks.Intel_P2SB;
+   package GC renames Platform_Quirks.Intel_GPIO_Communities;
 
    type Window_Source is
      (No_Window,      --  not found (yet): every port block is Not_Placed
       P2SB_BAR,       --  the P2SB's SBREG_BAR (Discover_Before_ACPI)
       Test_Profile);  --  the headless test profile's stand-in
 
+   --  What this boot's P2SB discovery reported: whether it ran (the quirk
+   --  table selected P2SB_SBREG) and its typed outcome. The GPIO bootstrap
+   --  admission is open only after a discovery that ran and did not find.
+   type Discovery_Report is record
+      Ran     : Boolean := False;
+      Outcome : P2SB.Outcome := P2SB.Absent;
+   end record;
+
    --  Step 1, Alder Lake-N: the P2SB's window and the four GPIO community
    --  ranges, read before any ACPI program starts. A window not found
-   --  leaves No_Window, with the reason logged.
+   --  leaves No_Window, and Discovery says which step failed (one line).
    procedure Discover_Before_ACPI;
 
    --  The test profile (edu's BAR0 at BAR_Base): its window and its one
-   --  community (Devmgr_Sideband_Layout.Test_Window, Test_Community).
+   --  community (Intel_GPIO_Communities.Test_Window, Test_Community).
    procedure Adopt_Test_Window (BAR_Base : Unsigned_64);
 
    function Source return Window_Source;
+   function Discovery return Discovery_Report;
 
    --  The whole window (Status Found only with a source).
    function Window return PP.Block;
 
    --  A port's PCR block: Not_Placed without a P2SB_BAR window.
-   function Port_Block (Port : SL.Port_ID) return PP.Block;
+   function Port_Block (Port : GC.Port_ID) return PP.Block;
 
    --  The GPIO community ranges in the window, each a Found block (none
    --  without a window): what the pool builder adds as Chipset_Shared
@@ -90,4 +103,4 @@ package Devmgr_Sideband is
    function Community_Range (Index : Positive) return PP.Block
    with Pre => Index <= Community_Range_Count;
 
-end Devmgr_Sideband;
+end Platform_Quirks.Sideband;

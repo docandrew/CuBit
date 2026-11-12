@@ -64,9 +64,9 @@
 --      Linux falls back to a fixed 0xFE000000 without an LPIT; devmgr
 --      does not guess (No_Source, logged).
 --    * The P2SB sideband window and its GPIO communities: devmgr's
---      sideband subsystem (Devmgr_Sideband, layout in
---      Devmgr_Sideband_Layout), which owns P2SB (00:1F.1); the pool asks
---      it for the window and the communities.
+--      sideband subsystem (Platform_Quirks.Sideband, registers in
+--      Platform_Quirks.Intel_P2SB and Intel_GPIO_Communities), which owns
+--      P2SB (00:1F.1); the pool asks it for the window and the communities.
 --  Member kinds (Platform_Pool_ABI.Pool_Member_Kind): every chipset block above
 --  is Chipset_Shared (a driver's claim is shared: AML keeps its mappings);
 --  a firmware-reserved piece is Chipset_Shared unless a PCI device's BAR

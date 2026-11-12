@@ -4,7 +4,8 @@ project Devmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display", "../../lib/logging", "../../../shared/acpi", "../../../shared/firmware");
+    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display", "../../lib/logging", "../../../shared/acpi", "../../../shared/firmware",
+       "platform_quirks", "../../../shared/platform");
 
     for Main use ("main.adb");
 
@@ -37,9 +38,14 @@ project Devmgr is
        "devmgr_memory_claims.ads", "devmgr_memory_claims.adb",
        --  The platform-register pool's discovery (ACPI-POOL-001).
        "devmgr_platform_pool.ads", "devmgr_platform_pool.adb",
-       --  The sideband subsystem (P2SB, its window and port blocks).
-       "devmgr_sideband_layout.ads", "devmgr_sideband_layout.adb",
-       "devmgr_sideband.ads", "devmgr_sideband.adb",
+       --  Platform quirks (hardware discovery): the table, the P2SB and
+       --  its sideband window, GPIO communities (platform_quirks/), on the
+       --  shared identity and table pattern (shared/platform).
+       "platform_identity.ads", "platform_identity.adb", "platform_quirk_tables.ads",
+       "platform_quirks.ads", "platform_quirks.adb",
+       "platform_quirks-intel_p2sb.ads", "platform_quirks-intel_p2sb.adb",
+       "platform_quirks-intel_gpio_communities.ads", "platform_quirks-intel_gpio_communities.adb",
+       "platform_quirks-sideband.ads", "platform_quirks-sideband.adb",
        --  The ledgers and records on the heap (LIM-001b), firmware data.
        "devmgr_growable.ads", "devmgr_growable.adb", "devmgr_heap.ads", "devmgr_heap.adb",
        "devmgr_claim_ledgers.ads", "devmgr_claim_ledgers.adb",

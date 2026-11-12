@@ -2,7 +2,7 @@
 --  tables and admission (kernel Platform_Pool_Sets), sized from discovery,
 --  with exclusive (Device_BAR) and shared (Chipset_Shared) members, against
 --  a page-level oracle too; devmgr's discovery (Devmgr_Platform_Pool) and
---  its sideband layout (Devmgr_Sideband_Layout).
+--  its sideband layout (Platform_Quirks.Intel_P2SB, Intel_GPIO_Communities).
 pragma Ada_2022;
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
@@ -10,7 +10,8 @@ with Interfaces; use Interfaces;
 with Platform_Pool_Sets; use Platform_Pool_Sets;
 with Platform_Pool_ABI;
 with Devmgr_Platform_Pool;
-with Devmgr_Sideband_Layout;
+with Platform_Quirks.Intel_P2SB;
+with Platform_Quirks.Intel_GPIO_Communities;
 
 procedure Main is
    Failures : Natural := 0;
@@ -399,7 +400,8 @@ procedure Main is
 
    procedure Platform_Blocks is
       package P renames Devmgr_Platform_Pool;
-      package L renames Devmgr_Sideband_Layout;
+      package L renames Platform_Quirks.Intel_P2SB;
+      package G renames Platform_Quirks.Intel_GPIO_Communities;
       use type P.Block_Status;
       use type L.P2SB_Action;
       B, W : P.Block;
@@ -448,19 +450,19 @@ procedure Main is
       Check (L.Decode_SBREG (16#0000_0004#, 16#0001_0000#).Status = P.Beyond_Limit,
              "an SBREG beyond the physical limit is refused");
       --  The laptop's DSDT GPI0._CRS: CML0 = SBRG + 0x6E0000 ...
-      Check (L.Port_Block (W, 16#6E#).Base = 16#FD6E_0000#
-             and then L.Port_Block (W, 16#6D#).Base = 16#FD6D_0000#
-             and then L.Port_Block (W, 16#6A#).Base = 16#FD6A_0000#
-             and then L.Port_Block (W, 16#69#).Base = 16#FD69_0000#
-             and then L.Port_Block (W, 16#69#).Bytes = 16#1_0000#,
+      Check (G.Port_Block (W, 16#6E#).Base = 16#FD6E_0000#
+             and then G.Port_Block (W, 16#6D#).Base = 16#FD6D_0000#
+             and then G.Port_Block (W, 16#6A#).Base = 16#FD6A_0000#
+             and then G.Port_Block (W, 16#69#).Base = 16#FD69_0000#
+             and then G.Port_Block (W, 16#69#).Bytes = 16#1_0000#,
              "ADL-N GPIO communities 0, 1, 4, 5 at SBREG + port << 16, 64 KiB each");
-      Check (L.ADL_N_GPIO_Ports'Length = 4, "four communities on Alder Lake-N (Linux adln_communities)");
+      Check (G.ADL_N_GPIO_Ports'Length = 4, "four communities on Alder Lake-N (Linux adln_communities)");
 
       --  The test profile's stand-ins.
-      B := L.Test_Window (16#FEA0_0000#);
+      B := G.Test_Window (16#FEA0_0000#);
       Check (B.Status = P.Found and then B.Base = 16#FEA2_0000# and then B.Bytes = 16#E_0000#,
              "test sideband window: edu BAR0 past its first 128 KiB");
-      B := L.Test_Community (16#FEA0_0000#);
+      B := G.Test_Community (16#FEA0_0000#);
       Check (B.Status = P.Found and then B.Base = 16#FEAC_0000# and then B.Bytes = 16#1_0000#,
              "test community: 64 KiB at edu BAR0 + 0xC0000");
    end Platform_Blocks;
@@ -471,7 +473,8 @@ procedure Main is
    --  firmware's PDRC reserves, inside the 128 KiB window).
    procedure Laptop_Pool is
       package P renames Devmgr_Platform_Pool;
-      package L renames Devmgr_Sideband_Layout;
+      package L renames Platform_Quirks.Intel_P2SB;
+      package G renames Platform_Quirks.Intel_GPIO_Communities;
       Members : constant := 9;
       S  : State (Members_Room => Natural (P.Member_Room (Members)),
                   Claims_Room  => Natural (P.Claim_Room (Members, 40)));
@@ -493,7 +496,7 @@ procedure Main is
       function Chip (B : P.Block) return Member is ((Pages (B), Chipset_Shared));
       function Chip (First, Bytes : Unsigned_64) return Member is
         ((Pages (First, Bytes), Chipset_Shared));
-      Community_4 : constant P.Block := L.Port_Block (SBREG, 16#6A#);
+      Community_4 : constant P.Block := G.Port_Block (SBREG, 16#6A#);
       GPIO_Driver : constant Identity := 16#0000_0003_0000_0011#;
       MBAR : constant Unsigned_64 := 16#FEDC_7110#;
       MBAR_Bytes : constant := 16#1000#;
@@ -505,8 +508,8 @@ procedure Main is
       Insert (S, Chip (PMC), St);
       Check (St = Inserted, "laptop: PMC member (shared)");
       --  The sideband window: communities, then what lies between them.
-      for Port of L.ADL_N_GPIO_Ports loop
-         Insert (S, Chip (L.Port_Block (SBREG, Port)), St);
+      for Port of G.ADL_N_GPIO_Ports loop
+         Insert (S, Chip (G.Port_Block (SBREG, Port)), St);
          Check (St = Inserted, "laptop: GPIO community member (shared)");
       end loop;
       Insert (S, Chip (16#FD00_0000#, 16#69_0000#), St);
@@ -554,6 +557,7 @@ procedure Main is
       Check (D.Kind = Admitted and then D.Claim = 0,
              "after the GPIO driver exits community 4 is unshared");
    end Laptop_Pool;
+
 
 begin
    Members_And_Admission;
