@@ -168,19 +168,59 @@ package body AML_Namespace with SPARK_Mode is
      (Left.Object_Capacity = Right.Object_Capacity and then Left.Byte_Capacity = Right.Byte_Capacity
       and then Left.Element_Capacity = Right.Element_Capacity);
 
+   function Name_Bucket (Scope : Node_ID; Part : AML_Names.Segment) return Child_Bucket is
+   begin
+      return Child_Indices.Bucket (Scope, Part);
+   end Name_Bucket;
+   function Indexed (Items : Entries; Used : Node_ID) return Child_Index is
+      Result : Child_Index;
+      Bucket : Child_Bucket;
+   begin
+      for I in 1 .. Used loop
+         if Items (I).Alive then
+            Bucket := Name_Bucket (Items (I).Up, Items (I).Part);
+            Child_Indices.Prepend (Result, I, Bucket);
+         end if;
+      end loop;
+      return Result;
+   end Indexed;
+   procedure Index_Insert (Tree : in out State; Node : Node_ID)
+     with Pre => Node > Root and then Node = Tree.Used
+       and then Tree.Items (Node).Alive
+       and then Tree.Child_Names = Indexed (Tree.Items, Tree.Used - 1),
+       Post => Tree.Child_Names = Indexed (Tree.Items, Tree.Used)
+   is
+      Bucket : constant Child_Bucket :=
+        Name_Bucket (Tree.Items (Node).Up, Tree.Items (Node).Part);
+   begin
+      Child_Indices.Prepend (Tree.Child_Names, Node, Bucket);
+   end Index_Insert;
+   procedure Index_Remove (Tree : in out State; Node : Node_ID)
+     with Pre => Node > Root and then Node <= Tree.Used
+   is
+      Bucket : constant Child_Bucket :=
+        Name_Bucket (Tree.Items (Node).Up, Tree.Items (Node).Part);
+   begin
+      if not Tree.Items (Node).Alive then return; end if;
+      Child_Indices.Unlink (Tree.Child_Names, Node, Bucket);
+   end Index_Remove;
    function Child
      (Tree : State; Scope : Node_ID; Part : AML_Names.Segment) return Node_ID
    is
+      Cursor : Node_ID := Tree.Child_Names.Heads (Name_Bucket (Scope, Part));
+      Chosen : Node_ID := Root;
    begin
-      for I in 1 .. Tree.Used loop
-         pragma Loop_Invariant
-           (for all J in 1 .. I - 1 =>
-              not Tree.Items (J).Alive or else Tree.Items (J).Up /= Scope or else Tree.Items (J).Part /= Part);
-         if Tree.Items (I).Alive and then Tree.Items (I).Up = Scope and then Tree.Items (I).Part = Part then
-            return I;
-         end if;
+      -- Descending chains are scanned to completion. Preserve the old flat
+      -- reader's lowest matching node even if a private fixture has duplicate
+      -- live names; public insertion still rejects duplicate names.
+      while Cursor /= Root loop
+         pragma Loop_Invariant (Cursor <= Tree.Used);
+         pragma Loop_Variant (Decreases => Cursor);
+         if Tree.Items (Cursor).Alive and then Tree.Items (Cursor).Up = Scope
+           and then Tree.Items (Cursor).Part = Part then Chosen := Cursor; end if;
+         Cursor := Tree.Child_Names.Following (Cursor);
       end loop;
-      return Root;
+      return Chosen;
    end Child;
 
    function Canonical_Node (Tree : State; Node : Node_ID) return Lookup_Result is
@@ -316,6 +356,7 @@ package body AML_Namespace with SPARK_Mode is
          Tree.Used := Tree.Used + 1;
          Tree.Last_Stamp := Tree.Last_Stamp + 1;
          Tree.Items (Tree.Used) := Item;
+         Index_Insert (Tree, Tree.Used);
          Node := Tree.Used;
          end;
       end if;
@@ -405,7 +446,8 @@ package body AML_Namespace with SPARK_Mode is
    end Buffer_Data;
 
    function Valid_Context (Tree : State) return Boolean is
-     ((Tree.Root_Value = 0 or else
+     (Tree.Child_Names = Indexed (Tree.Items, Tree.Used) and then
+      (Tree.Root_Value = 0 or else
           (AML_Objects.Is_Live (Tree.Values, Tree.Root_Value) and then
            AML_Objects.Kind (Tree.Values, Tree.Root_Value) in
              AML_Objects.Integer_Object | AML_Objects.String_Object |
@@ -473,13 +515,21 @@ package body AML_Namespace with SPARK_Mode is
       Tree : State (Object_Capacity, Byte_Capacity, Element_Capacity);
       Scope : Node_ID;
    end record;
-   -- Both values are independent copies. The limited owner only changes
+   -- Runtime parsing borrows the unchanged prior tree through nested read-only
+   -- callbacks; its pending-member journal is independent of that tree. Do not
+   -- clone a capacity-sized namespace merely to read a package count. The
+   -- remaining candidate clone is an explicit later undo-log migration.
+   type Runtime_Count_Context is record
+      Scope : Node_ID := Root;
+      Journal : Pending.State := Pending.Empty;
+   end record;
+   -- The candidate is an independent copy. The limited owner only changes
    -- their storage placement; package-count callbacks still see the original
    -- namespace and their own pending-member journal until commit.
    type Namespace_Transaction
      (Object_Capacity, Byte_Capacity, Element_Capacity : AML_Objects.Storage_Capacity) is limited record
       Candidate : State (Object_Capacity, Byte_Capacity, Element_Capacity);
-      Environment : Count_Context (Object_Capacity, Byte_Capacity, Element_Capacity);
+      Environment : Runtime_Count_Context;
    end record;
    type Namespace_Transaction_Owner is access Namespace_Transaction;
    procedure Free_Namespace_Transaction is new Ada.Unchecked_Deallocation
@@ -495,7 +545,7 @@ package body AML_Namespace with SPARK_Mode is
          Byte_Capacity => Tree.Byte_Capacity,
          Element_Capacity => Tree.Element_Capacity,
          Candidate => Tree,
-         Environment => (Tree.Object_Capacity, Tree.Byte_Capacity, Tree.Element_Capacity, Tree, Root));
+         Environment => (Scope => Root, Journal => Tree.Journal));
 
    end Clone_Namespace_Transaction;
    function Read_Package_Count
@@ -600,21 +650,75 @@ package body AML_Namespace with SPARK_Mode is
    procedure Load_Bound_Data is new AML_Data.Load_Bound_From_Source
      (Count_Context, Read_Package_Count, Defer_Package_Member);
 
-   function Read_Binding
+   procedure Load_Runtime_Data_With_Prior_View
+     (View : State; Store : in out AML_Objects.State; Data : AML_Decode.Bytes;
+      Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
+      Width : AML_Decode.Integer_Width; Environment : in out Runtime_Count_Context;
+      ID : out AML_Objects.Object_ID; Consumed : out Natural; Status : out AML_Decode.Status)
+     with Pre => Valid_Context (View) and then AML_Objects.Valid (Store),
+       Post => AML_Objects.Valid (Store)
+   is
+      -- View and Store must belong to the distinct original/candidate owners.
+      -- No unchecked access, reentry, allocation into View or delayed reads.
+   function Read_Prior_Count
+     (Environment : Runtime_Count_Context; Data : AML_Decode.Bytes;
+      Width : AML_Decode.Integer_Width) return AML_Data.Count_Result
+     with Post => (if AML_Decode."=" (Read_Prior_Count'Result.Kind, AML_Decode.Accepted) then
+       Read_Prior_Count'Result.Consumed <= Data'Length)
+   is
+      use type AML_Decode.Status;
+      Literal : constant AML_Decode.Integer_Result := AML_Decode.Read_Integer (Data, Width);
+      Path : AML_Names.Name_Result;
+      Located : Lookup_Result;
+   begin
+      if Literal.Kind = AML_Decode.Accepted then
+         return (AML_Decode.Accepted, Literal.Value, Literal.Consumed);
+      elsif Literal.Kind /= AML_Decode.Unsupported then
+         return (Kind => Literal.Kind, others => <>);
+      end if;
+      if not Valid_Context (View) or else Environment.Scope > View.Used then
+         return (Kind => AML_Decode.Unsupported, others => <>);
+      end if;
+      Path := AML_Names.Read_Name (Data);
+      if Path.Kind /= AML_Names.Accepted then return (Kind => AML_Decode.Unsupported, others => <>); end if;
+      Located := Resolve_Object (View, Environment.Scope, Path);
+      if Located.Status /= Found or else Located.Node = Root or else not Has_Integer (View, Located.Node) then
+         return (Kind => AML_Decode.Unsupported, others => <>);
+      end if;
+      return (AML_Decode.Accepted, Integer_Data (View, Located.Node), Path.Consumed);
+   end Read_Prior_Count;
+      procedure Defer_Member
+        (Environment : in out Runtime_Count_Context; Package_ID : AML_Objects.Object_ID;
+         Element : Natural; Data : AML_Decode.Bytes; Result : out AML_Data.Member_Result) is
+         Path : constant AML_Names.Name_Result := AML_Names.Read_Name (Data);
+         Appended : Pending.Append_Status;
+         use type Pending.Append_Status;
+      begin
+         Pending.Append (Environment.Journal,Package_ID,Element,Environment.Scope,Path,Appended);
+         if Appended = Pending.Appended then
+            Result := (AML_Decode.Accepted,AML_Data.Deferred_Member,0,Path.Consumed);
+         elsif Appended in Pending.Member_Limit | Pending.Segment_Limit then
+            Result := (Kind => AML_Decode.Limit_Exceeded,others => <>);
+         else Result := (Kind => AML_Decode.Malformed,others => <>);
+         end if;
+      end Defer_Member;
+      procedure Read_And_Load is new AML_Data.Load_Bound_From_Source
+        (Runtime_Count_Context,Read_Prior_Count,Defer_Member);
+   begin
+      Read_And_Load (Store,Data,Source,Source_First,Width,Environment,ID,Consumed,Status);
+   end Load_Runtime_Data_With_Prior_View;
+
+   function Read_Valid_Binding
      (Tree : State; Scope : Natural; Path : AML_Names.Name_Result;
       Width : AML_Decode.Integer_Width)
       return AML_Execute.Binding_Result
+     with Pre => Valid_Context (Tree)
    is
       use type AML_Decode.Byte;
       Located : Lookup_Result;
       Conversion_32, Conversion_64 : AML_Coercions.Result;
       pragma Unreferenced (Width);
    begin
-      --  The generic callback boundary does not carry State's private type
-      --  invariant. Check it explicitly before using namespace operations.
-      if not Valid_Context (Tree) then
-         return (Status => AML_Execute.Missing_Binding);
-      end if;
       if Scope > Count (Tree) then
          return (Status => AML_Execute.Missing_Binding);
       end if;
@@ -667,12 +771,26 @@ package body AML_Namespace with SPARK_Mode is
       return (Status => AML_Execute.Integer_Binding,
               Value => Integer_Data (Tree, Located.Node),
               Origin => AML_Objects.Origin_Of (Tree.Values, Tree.Items (Located.Node).Object_Ref));
-   end Read_Binding;
-   function Read_Method (Tree : State; ID : Natural)
-      return AML_Execute.Method_Definition
+   end Read_Valid_Binding;
+   function Read_Binding
+     (Tree : State; Scope : Natural; Path : AML_Names.Name_Result;
+      Width : AML_Decode.Integer_Width)
+      return AML_Execute.Binding_Result
    is
    begin
-      if not Valid_Context (Tree) or else ID > Tree.Used then
+      -- Generic callback contexts do not carry the namespace invariant.
+      -- Keep the full validation at that boundary.
+      if not Valid_Context (Tree) then
+         return (Status => AML_Execute.Missing_Binding);
+      end if;
+      return Read_Valid_Binding (Tree, Scope, Path, Width);
+   end Read_Binding;
+   function Read_Valid_Method (Tree : State; ID : Natural)
+      return AML_Execute.Method_Definition
+     with Pre => Valid_Context (Tree)
+   is
+   begin
+      if ID > Tree.Used then
          return (Exists => False, Length => 0);
       end if;
       if not Present (Tree, Node_ID (ID)) or else Kind (Tree, Node_ID (ID)) /= Method_Object then
@@ -689,6 +807,16 @@ package body AML_Namespace with SPARK_Mode is
               Length => Tree.Items (ID).Method_Size,
               Width => Tree.Items (ID).Method_Width,
               Flags => Tree.Items (ID).Method_Flags, Scope => ID);
+   end Read_Valid_Method;
+   function Read_Method (Tree : State; ID : Natural)
+      return AML_Execute.Method_Definition
+   is
+   begin
+      -- Generic readers retain admission of the complete namespace state.
+      if not Valid_Context (Tree) then
+         return (Exists => False, Length => 0);
+      end if;
+      return Read_Valid_Method (Tree, ID);
    end Read_Method;
 
    procedure Write_Binding
@@ -765,6 +893,7 @@ package body AML_Namespace with SPARK_Mode is
            (Tree.Items (I).Owner = Scope or else Tree.Items (I).Up = Scope or else
             (Tree.Items (I).Up /= Root and then not Tree.Items (Tree.Items (I).Up).Alive))
          then
+            Index_Remove (Tree, I);
             Tree.Items (I) := Retired_Entry (Tree.Items (I));
          end if;
       end loop;
@@ -915,16 +1044,14 @@ package body AML_Namespace with SPARK_Mode is
                end loop;
             else
                declare
-                  Candidate : AML_Objects.State := AML_Objects.Empty_Like (Tree.Values);
-                  Copied : AML_Objects.Clone_Status;
                   Result_ID : AML_Objects.Object_ID;
                   Allocated : AML_Objects.Allocation_Status;
                begin
-                  AML_Objects.Clone (Tree.Values, Candidate, Copied);
-                  if Copied /= AML_Objects.Cloned then Status := AML_Execute.Value_Limit; return; end if;
-                  AML_Objects.New_Bytes (Candidate, AML_Objects.Buffer_Object, Data, Result_ID, Allocated);
+                  -- New_Bytes preflights slot and byte quota before its first
+                  -- write and leaves the store unchanged on refusal. There is
+                  -- no later fallible operation in this capture to roll back.
+                  AML_Objects.New_Bytes (Tree.Values, AML_Objects.Buffer_Object, Data, Result_ID, Allocated);
                   if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
-                  AML_Objects.Transfer (Candidate, Tree.Values);
                   Result := (Buffer_Field, Result_ID);
                end;
             end if;
@@ -1028,9 +1155,52 @@ package body AML_Namespace with SPARK_Mode is
              and then Tree.Items (Tree.Used).Alive)
    is
       Workspace : Namespace_Transaction_Owner := null;
+      procedure Try_Integer_Name (Handled : out Boolean) is
+         Literal : constant AML_Decode.Integer_Result := AML_Decode.Read_Integer (Data, Width);
+         Base : Node_ID;
+         Added : Insert_Status;
+         ID : AML_Objects.Object_ID;
+         Allocation : AML_Objects.Allocation_Status;
+         use type AML_Decode.Status, AML_Objects.Allocation_Status;
+      begin
+         Handled := Literal.Kind = AML_Decode.Accepted;
+         if not Handled then return; end if;
+         Name_Target (Tree, Scope, Lifetime_Owner, Path, Base, Status, Module_Declaration);
+         if Status /= AML_Execute.Returned then return; end if;
+         Added := Insertion_Admission (Tree, Base, Path.Parts (Path.Count));
+         case Added is
+            when Duplicate => Status := AML_Execute.Duplicate_Name; return;
+            when Full => Status := AML_Execute.Namespace_Limit; return;
+            when Invalid_Name => Status := AML_Execute.Bad_Name; return;
+            when Inserted => null;
+         end case;
+         if not AML_Byte_Sources.Corresponds (Source, Source_First, Data) then
+            Status := AML_Execute.Unsupported_Value; return;
+         end if;
+         declare
+            Item : Entry_Record := Next_Entry (Tree, Base, Path.Parts (Path.Count));
+         begin
+            -- Integer parsing has no count/member callbacks. All name/source
+            -- admission precedes this failure-atomic allocation. No fallible
+            -- binding, journal append or callback remains after allocation.
+            AML_Objects.New_Integer (Tree.Values, Literal.Value, ID, Allocation,
+              AML_Decode.Literal_Origin (Data (Data'First)));
+            if Allocation /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
+            Item.Object_Type := Integer_Object;
+            Item.Object_Ref := ID;
+            Item.Owner := Node_ID (Lifetime_Owner);
+            Tree.Used := Tree.Used + 1;
+            Tree.Last_Stamp := Tree.Last_Stamp + 1;
+            Tree.Items (Tree.Used) := Item;
+         Index_Insert (Tree, Tree.Used);
+            Consumed := Literal.Consumed;
+            Status := AML_Execute.Returned;
+         end;
+      end Try_Integer_Name;
+      Handled : Boolean;
       procedure Run_With_Transaction (Scratch : in out Namespace_Transaction) is
          Candidate : State renames Scratch.Candidate;
-         Environment : Count_Context renames Scratch.Environment;
+         Environment : Runtime_Count_Context renames Scratch.Environment;
          Base, Node : Node_ID;
          Added : Insert_Status;
          ID : AML_Objects.Object_ID;
@@ -1051,8 +1221,8 @@ package body AML_Namespace with SPARK_Mode is
             when Inserted => null;
          end case;
          Environment.Scope := Node_ID (Scope);
-         if not Module_Declaration then Environment.Tree.Journal := Pending.Empty; end if;
-         Load_Bound_Data (Candidate.Values, Data, Source, Source_First, Width, Environment, ID, Used, Parsed);
+         if not Module_Declaration then Environment.Journal := Pending.Empty; end if;
+         Load_Runtime_Data_With_Prior_View (Tree,Candidate.Values,Data,Source,Source_First,Width,Environment,ID,Used,Parsed);
          if Parsed /= AML_Decode.Accepted then
             Status := (case Parsed is
               when AML_Decode.Truncated => AML_Execute.Truncated,
@@ -1082,16 +1252,20 @@ package body AML_Namespace with SPARK_Mode is
          -- Bind deferred package paths after attaching the completed root object,
          -- allowing a package to refer to itself without publishing partial state.
          if Module_Declaration then
-            Candidate.Journal := Environment.Tree.Journal;
+            Candidate.Journal := Environment.Journal;
          else
             Bind_Runtime_Package_Members
-              (Candidate, Tree.Values, Environment.Tree.Journal, Owner, Width,
+              (Candidate, Tree.Values, Environment.Journal, Owner, Width,
                Node, False, Status);
             if Status /= AML_Execute.Returned then return; end if;
          end if;
          Tree := Candidate; Consumed := Used; Status := AML_Execute.Returned;
       end Run_With_Transaction;
    begin
+      Consumed := 0;
+      Status := AML_Execute.Unsupported_Value;
+      Try_Integer_Name (Handled);
+      if Handled then return; end if;
       Workspace := Clone_Namespace_Transaction (Tree);
       if Workspace = null then
          Consumed := 0; Status := AML_Execute.Value_Limit; return;
@@ -1525,6 +1699,7 @@ package body AML_Namespace with SPARK_Mode is
               (Incarnation => Tree.Last_Stamp, Definition => Tree.Current_Definition, Up => Scope, Owner => Lifetime_Owner,
                Part => Pending (I).Name, Object_Type => Region_Field_Object,
                Region_Field_Info => Pending (I).Info, others => <>);
+            Index_Insert (Tree, Tree.Used);
          end if;
       end loop;
       Status := AML_Execute.Returned;
@@ -1638,6 +1813,7 @@ package body AML_Namespace with SPARK_Mode is
             Object_Type => Table_Field_Object,
             Table_Binding => (Region => Binding, Offset => Pending (I).Offset,
                               Bits => Pending (I).Bits), others => <>);
+         Index_Insert (Tree, Tree.Used);
       end loop;
       Status := AML_Execute.Returned;
    end Define_Fields_For_Context;
@@ -1720,15 +1896,15 @@ package body AML_Namespace with SPARK_Mode is
                Bound : AML_Execute.Execution_Status;
                Loaded : AML_Decode.Status;
                Consumed : Natural;
-               Environment : Count_Context renames Scratch.Environment;
+               Environment : Runtime_Count_Context renames Scratch.Environment;
                use type AML_Decode.Status;
             begin
                Binding := (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Unsupported_Value);
                if Data'Length = 0 or else Data (Data'First) not in 16#12# | 16#13# then return; end if;
                if Scope > Tree.Used then return; end if;
                Environment.Scope := Node_ID (Scope);
-               Environment.Tree.Journal := Pending.Empty;
-               Load_Bound_Data (Candidate.Values, Data, Source, Source_First, Width, Environment, ID, Consumed, Loaded);
+               Environment.Journal := Pending.Empty;
+               Load_Runtime_Data_With_Prior_View (Tree,Candidate.Values,Data,Source,Source_First,Width,Environment,ID,Consumed,Loaded);
                if Loaded /= AML_Decode.Accepted then
                   if Loaded = AML_Decode.Limit_Exceeded then
                      Binding := (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Value_Limit);
@@ -1737,7 +1913,7 @@ package body AML_Namespace with SPARK_Mode is
                end if;
                if Consumed /= Data'Length or else AML_Objects.Kind (Candidate.Values, ID) /= AML_Objects.Package_Object then return; end if;
                Bind_Runtime_Package_Members
-                 (Candidate, Tree.Values, Environment.Tree.Journal, Owner, Width,
+                 (Candidate, Tree.Values, Environment.Journal, Owner, Width,
                   Root, True, Bound);
                if Bound /= AML_Execute.Returned then
                   Binding := (Status => AML_Execute.Failed_Binding, Failure => Bound);
@@ -2006,7 +2182,9 @@ package body AML_Namespace with SPARK_Mode is
          if Purpose = AML_Execute.Namespace_Identity then
             Binding := (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Unsupported_Value); return;
          end if;
-         Binding := Read_Binding (Tree, Scope, Path, Width);
+         -- This procedure already requires Valid_Context (Tree). Rechecking
+         -- every arena cell here would turn each lookup into a full scan.
+         Binding := Read_Valid_Binding (Tree, Scope, Path, Width);
          if Scope > Tree.Used then return; end if;
          Located := Resolve_Object (Tree, Node_ID (Scope), Path);
          if Located.Status = Found and then Located.Node /= Root
@@ -4090,7 +4268,7 @@ package body Owned with SPARK_Mode is
       Always_Buffer : Boolean) return Boolean is
      (Node = Prior.Used + 1 and then Tree.Used = Node
       and then Tree = (Prior with delta Items => Tree.Items, Used => Tree.Used,
-        Last_Stamp => Tree.Last_Stamp)
+        Last_Stamp => Tree.Last_Stamp, Child_Names => Tree.Child_Names)
       and then (for all I in 1 .. Prior.Used => Tree.Items (I) = Prior.Items (I))
       and then Tree.Items (Node).Alive and then not Tree.Items (Node).Initializing
       and then Tree.Items (Node).Object_Type = Buffer_Field_Object
@@ -6455,7 +6633,8 @@ package body Owned with SPARK_Mode is
    end Complete_Runtime_Buffer;
    function Abort_Frame (Tree, Prior : State; Node : Node_ID) return Boolean is
      (Node > Root and then Node <= Prior.Used and then Tree.Used <= Prior.Used
-      and then Tree = (Prior with delta Used => Tree.Used, Items => Tree.Items)
+      and then Tree = (Prior with delta Used => Tree.Used, Items => Tree.Items,
+        Child_Names => Tree.Child_Names)
       and then (for all I in 1 .. Tree.Used =>
         (if I = Node then Tree.Items (I) =
            Retired_Entry (Prior.Items (I))
@@ -6472,6 +6651,7 @@ package body Owned with SPARK_Mode is
       Status := AML_Execute.Unsupported_Value;
       if not Reservation_Matches (A, Token) then return; end if;
       Node := Node_ID (AML_References.Named_Node (Token.Ref));
+      Index_Remove (A.Tree.all, Node);
       A.Tree.Items (Node) := Retired_Entry (A.Tree.Items (Node));
       while A.Tree.Used > Root and then not A.Tree.Items (A.Tree.Used).Alive loop
          A.Tree.Items (A.Tree.Used) := (Up => Root, Part => "____", others => <>);
@@ -7182,8 +7362,15 @@ package body Owned with SPARK_Mode is
          Profiled_Work;
          Observe_Work (AML_Work_Kinds.Namespace_Lookup,False);
       end Lookup;
-      function Method (E : Arena; ID : Natural) return AML_Execute.Method_Definition is
-        (Read_Method (E.Tree.all, ID));
+      -- Execute_From_Source maintains Context_Valid across its callbacks.
+      -- This owner-local reader borrows that contract; general readers above
+      -- continue to validate the whole namespace.
+      function Method (E : Arena; ID : Natural) return AML_Execute.Method_Definition
+        with Pre => Context_Valid (E)
+      is
+      begin
+         return Read_Valid_Method (E.Tree.all, ID);
+      end Method;
       procedure Buffer_Literal
         (E : in out Arena; Scope : Natural; Length : AML_Buffer_Layouts.Buffer_Length;
          Initializer : AML_Decode.Bytes; Binding : out AML_Execute.Binding_Result)
@@ -7655,16 +7842,34 @@ package body Owned with SPARK_Mode is
       procedure Publish_Expression
         (E : in out Arena; Frame : AML_Frame_Handles.Frame_Handle;
          Values : AML_Execute.Expression_Values) is
-         Roots : AML_Objects.Root_Snapshots.Snapshot := AML_Objects.Root_Snapshots.Empty (E.Object_Capacity);
-         Built : Snapshot_Build_Status;
+         package R renames AML_Objects.Root_Snapshots;
+         package IDs renames AML_Object_Identifiers;
+         -- Only scalar metadata uses a one-slot temporary. The resolved
+         -- addresses are bounded by the producer's actual live-value count.
+         Roots : R.Snapshot := R.Empty (1);
+         Addresses : Frame_Pins.Address_List (1 .. Values'Length);
+         Used : Natural := 0;
+         Address : IDs.Object_Address;
+         Accepted : Boolean;
+         Census_Status : R.Result_Status;
          Updated : Frame_Pins.Result_Status;
-         use type Frame_Pins.Result_Status;
+         use type Frame_Pins.Result_Status, R.Result_Status;
       begin
-         Build_Expression_Snapshot (E, Values, Roots, Built);
-         if Built /= Snapshot_Built then AML_Objects.Root_Snapshots.Reject (Roots); end if;
+         R.Begin_Build (Roots,E.Token,Census_Status);
+         if not Initialized (E) then R.Reject (Roots);
+         else
+            for Value of Values loop
+               Value_Root (E,Value,Address,Accepted);
+               if not Accepted then R.Reject (Roots); exit; end if;
+               if IDs.Present (Address) then
+                  Used := Used+1; Addresses (Used) := Address;
+               end if;
+            end loop;
+            if R.Phase (Roots) = R.Building then R.Finish (Roots,E.Token,Census_Status); end if;
+         end if;
          -- Preserve rejected snapshots as well: a failed census must never
          -- silently reuse earlier roots or become a valid empty root set.
-         Frame_Pins.Update_Snapshot (E.Frame_Roots, Frame, Roots, Updated);
+         Frame_Pins.Replace_Expression_Roots (E.Frame_Roots, Frame, R.Header_Of (Roots), Addresses (1 .. Used), Updated);
          if Updated /= Frame_Pins.Ready then raise Program_Error with "expression frame invariant"; end if;
       end Publish_Expression;
       procedure Close_Root (E : in out Arena; Frame : AML_Frame_Handles.Frame_Handle) is
@@ -8237,6 +8442,7 @@ package body Owned with SPARK_Mode is
             for I in 1 .. Environment.Tree.Used loop
                if Environment.Tree.Items (I).Initializing and then Environment.Tree.Items (I).Owner = Root
                  and then Environment.Tree.Items (I).Initializer_Frame = AML_Declaration_Contexts.Frame_Of (Lease) then
+                  Index_Remove (Environment.Tree.all, I);
                   Environment.Tree.Items (I) := Retired_Entry (Environment.Tree.Items (I));
                end if;
             end loop;
@@ -8810,17 +9016,15 @@ package body Owned with SPARK_Mode is
         of Builder_Group := [others => <>];
       Group_Depth : Builder_Group_Depth := 0;
       procedure Restore_Builder_Journal (Checkpoint : Pending.Member_Count) is
-         Prefix : Pending.State := Pending.Empty;
-         Added : Pending.Append_Status;
+         Status : Pending.Truncate_Status;
+         use type Pending.Truncate_Status;
       begin
-         for I in 1 .. Checkpoint loop
-            declare M : constant Pending.Member_Result := Pending.Item (Builder_Journal, I); begin
-               pragma Assert (M.Found);
-               Pending.Append (Prefix, M.Package_ID, M.Element, M.Scope, M.Path, Added);
-               pragma Assert (Added = Pending.Appended);
-            end;
-         end loop;
-         Builder_Journal := Prefix;
+         Pending.Truncate(Builder_Journal,Checkpoint,Status);
+         if Status/=Pending.Truncated then
+            -- Internal group checkpoints are issued from this journal's own
+            -- live prefix. Never continue with inconsistent group metadata.
+            raise Program_Error with "invalid runtime builder prefix";
+         end if;
       end Restore_Builder_Journal;
       type Completed_Child_State is record
          Parent : Builder_Position := 0;

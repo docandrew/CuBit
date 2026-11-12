@@ -142,7 +142,60 @@ package body AML_Objects with SPARK_Mode is
       and then Elements'First = 1 and then Elements_Used <= Elements'Last
       and then (for all I in Objects'Range =>
        Valid_Item (Used, Generation_Limit, Bytes_Used, Elements_Used, Present, Elements, Objects (I), I)))
-     with Annotate => (GNATprove, Inline_For_Proof);
+     ;
+   function Exact_Buffer_Metadata
+     (Current, Prior : Object_Array; ID : Object_ID; Start, Size : Natural) return Boolean is
+     (Current'First = Prior'First and then Current'Last = Prior'Last
+      and then ID in Current'Range
+      and then (for all I in Current'Range =>
+        Current (I) = (if I = ID then
+          (Prior (I) with delta First => Start, Size => Size) else Prior (I))))
+     with Ghost;
+   procedure Buffer_Metadata_Equivalent
+     (Current, Prior : Object_Array; ID : Object_ID; Start, Size : Natural)
+     with Ghost,
+       Pre => Current'First = Prior'First and then Current'Last = Prior'Last
+         and then ID in Current'Range,
+       Post => Exact_Buffer_Metadata (Current, Prior, ID, Start, Size) =
+         (Current = (Prior with delta ID =>
+           (Prior (ID) with delta First => Start, Size => Size)))
+   is
+   begin
+      null;
+   end Buffer_Metadata_Equivalent;
+   procedure Seal_Buffer_Metadata
+     (Current, Prior : Object_Array; ID : Object_ID; Resize : Boolean; Start, Size : Natural)
+     with Ghost,
+       Pre => Current'First = Prior'First and then Current'Last = Prior'Last
+         and then ID in Current'Range
+         and then (for all I in Current'Range =>
+           Current (I) = (if Resize and then I = ID then
+             (Prior (I) with delta First => Start, Size => Size) else Prior (I))),
+       Post => (if Resize then Exact_Buffer_Metadata (Current, Prior, ID, Start, Size)
+         else Current = Prior)
+   is
+   begin
+      if Resize then
+         Buffer_Metadata_Equivalent (Current, Prior, ID, Start, Size);
+      end if;
+   end Seal_Buffer_Metadata;
+   procedure Expand_Records
+     (Used : Object_ID; Generation_Limit : AML_Object_Identifiers.Incarnation_Budget;
+      Bytes_Used : Byte_Usage; Elements_Used : Element_Usage;
+      Present : Occupancy_Array; Elements : Element_Array; Objects : Object_Array)
+     with Ghost,
+       Pre => Valid_Records (Used, Generation_Limit, Bytes_Used, Elements_Used,
+         Present, Elements, Objects),
+       Post => Objects'First = 1 and then Present'First = 1
+         and then Objects'Last = Present'Last and then Used <= Objects'Last
+         and then Elements'First = 1 and then Elements_Used <= Elements'Last
+         and then (for all I in Objects'Range =>
+           Valid_Item (Used, Generation_Limit, Bytes_Used, Elements_Used,
+             Present, Elements, Objects (I), I))
+   is
+   begin
+      null;
+   end Expand_Records;
    procedure Extend_Records (Used : Object_ID;
      Generation_Limit : AML_Object_Identifiers.Incarnation_Budget;
      Prior_Bytes, Bytes_Used : Byte_Usage; Elements_Used : Element_Usage;
@@ -186,6 +239,31 @@ package body AML_Objects with SPARK_Mode is
      (Store.Bytes_Used <= Store.Byte_Capacity and then Store.Elements_Used <= Store.Element_Capacity
       and then Valid_Metadata (Store.Used, Store.Live_Used, Store.Generation_Limit,
        Store.Bytes_Used, Store.Elements_Used, Store.Objects, Store.Elements, Occupancy_Map (Store.Objects)));
+   -- Transport record validity across equal element snapshots explicitly.
+   -- The source snapshots and scalar context stay immutable during resizing.
+   procedure Transfer_Element_View
+     (Used : Object_ID; Generation_Limit : AML_Object_Identifiers.Incarnation_Budget;
+      Bytes_Used : Byte_Usage; Elements_Used : Element_Usage;
+      Present : Occupancy_Array; From_Elements, To_Elements : Element_Array;
+      Objects : Object_Array)
+     with Ghost,
+       Pre => Equal_Elements (From_Elements, To_Elements)
+         and then Valid_Records (Used, Generation_Limit, Bytes_Used, Elements_Used,
+           Present, From_Elements, Objects),
+       Post => Valid_Records (Used, Generation_Limit, Bytes_Used, Elements_Used,
+           Present, To_Elements, Objects)
+   is
+   begin
+      for I in Objects'Range loop
+         pragma Assert (Valid_Item (Used, Generation_Limit, Bytes_Used, Elements_Used,
+           Present, From_Elements, Objects (I), I));
+         pragma Assert (Valid_Item (Used, Generation_Limit, Bytes_Used, Elements_Used,
+           Present, To_Elements, Objects (I), I));
+         pragma Loop_Invariant (for all J in Objects'First .. I =>
+           Valid_Item (Used, Generation_Limit, Bytes_Used, Elements_Used,
+             Present, To_Elements, Objects (J), J));
+      end loop;
+   end Transfer_Element_View;
    procedure Unpack_Valid (Store : State; Present : Occupancy_Array;
      Objects : Object_Array; Elements : Element_Array)
      with Ghost,
@@ -194,16 +272,28 @@ package body AML_Objects with SPARK_Mode is
          and then Equal_Elements (Store.Elements, Elements),
        Post => Valid_Records (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
          Store.Elements_Used, Present, Elements, Objects)
+         and then Valid_Records (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
+           Store.Elements_Used, Present, Store.Elements, Objects)
+         and then Store.Bytes_Used <= Store.Byte_Capacity
+         and then Store.Elements_Used <= Store.Element_Capacity
+         and then Occupied_Total (Present) = Store.Live_Used
    is
+      pragma Annotate (GNATprove, Hide_Info, "Expression_Function_Body", Valid_Records);
    begin
-      null;
+      pragma Assert (Store.Objects = Objects);
+      pragma Assert (Store.Elements = Elements);
+      pragma Assert (Occupancy_Map (Store.Objects) = Present);
+      Expand_Records (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
+        Store.Elements_Used, Present, Elements, Objects);
    end Unpack_Valid;
    procedure Reassemble_Valid (Store : State; Present : Occupancy_Array)
      with Ghost,
-       Pre => Equal_Occupancy (Occupancy_Map (Store.Objects), Present)
-         and then Occupied_Total (Present) = Store.Live_Used
+       Pre => Store.Bytes_Used <= Store.Byte_Capacity
+         and then Store.Elements_Used <= Store.Element_Capacity
+         and then Equal_Occupancy (Occupancy_Map (Store.Objects), Present)
          and then Valid_Records (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
-           Store.Elements_Used, Present, Store.Elements, Store.Objects),
+           Store.Elements_Used, Present, Store.Elements, Store.Objects)
+         and then Occupied_Total (Present) = Store.Live_Used,
        Post => Valid (Store)
    is
    begin
@@ -211,7 +301,8 @@ package body AML_Objects with SPARK_Mode is
    end Reassemble_Valid;
    procedure Preserve_Valid_Bytes (Prior, Store : State)
      with Ghost,
-       Pre => Valid (Prior) and then Prior.Used = Store.Used
+       Pre => Valid (Prior) and then Same_Capacities (Prior, Store)
+         and then Prior.Used = Store.Used
          and then Prior.Live_Used = Store.Live_Used and then Prior.Generation_Limit = Store.Generation_Limit
          and then Prior.Bytes_Used = Store.Bytes_Used and then Prior.Elements_Used = Store.Elements_Used
          and then Equal_Objects (Prior.Objects, Store.Objects)
@@ -353,6 +444,26 @@ package body AML_Objects with SPARK_Mode is
      with Ghost, Pre => Current'First = 1 and then Prior'First = 1
        and then Current'Last = Prior'Last and then Start <= Current'Last
        and then Size <= Current'Last - Start;
+   -- This bounded byte primitive contains the original slice assignments.
+   -- Its contract keeps byte-content reasoning out of the metadata proof.
+   procedure Write_Buffer_Bytes
+     (Bytes : in out Storage_Bytes; Data : AML_Decode.Bytes; Start, Size : Natural)
+     with Pre => Bytes'First = 1 and then Start <= Bytes'Last
+         and then Size <= Bytes'Last - Start,
+       Post => Stored_Bytes_Equal (Bytes, Bytes'Old, Data, Start, Size)
+   is
+   begin
+      if Size > 0 then
+         if Data'Length >= Size then
+            Bytes (Start + 1 .. Start + Size) := Data (Data'First .. Data'First + (Size - 1));
+         else
+            if Data'Length > 0 then
+               Bytes (Start + 1 .. Start + Data'Length) := Data;
+            end if;
+            Bytes (Start + Data'Length + 1 .. Start + Size) := [others => 0];
+         end if;
+      end if;
+   end Write_Buffer_Bytes;
    function Buffer_Stored
      (Store, Prior : State; ID : Object_ID; Data : AML_Decode.Bytes)
       return Boolean is
@@ -362,22 +473,48 @@ package body AML_Objects with SPARK_Mode is
       and then (if Prior.Objects (ID).Size = 0 then
           Data'Length <= Store.Byte_Capacity - Prior.Bytes_Used
           and then Store.Bytes_Used = Prior.Bytes_Used + Data'Length
-          and then Store.Objects = (Prior.Objects with delta ID =>
-            (Prior.Objects (ID) with delta First => Prior.Bytes_Used, Size => Data'Length))
+          and then Exact_Buffer_Metadata (Store.Objects, Prior.Objects, ID, Prior.Bytes_Used, Data'Length)
           and then Stored_Bytes_Equal (Store.Bytes, Prior.Bytes, Data, Prior.Bytes_Used, Data'Length)
         else Store.Bytes_Used = Prior.Bytes_Used and then Store.Objects = Prior.Objects
           and then Stored_Bytes_Equal (Store.Bytes, Prior.Bytes, Data,
             Prior.Objects (ID).First, Prior.Objects (ID).Size)));
 
+   procedure Record_Buffer_Result
+     (Store, Prior : State; ID : Object_ID; Data : AML_Decode.Bytes)
+     with Ghost,
+       Pre => Valid (Prior) and then Is_Live (Prior, ID)
+         and then Kind (Prior, ID) = Buffer_Object and then
+         (Same_Capacities (Store, Prior) and then Store.Used = Prior.Used and then Store.Live_Used = Prior.Live_Used
+      and then Store.Generation_Limit = Prior.Generation_Limit
+      and then Store.Elements_Used = Prior.Elements_Used and then Store.Elements = Prior.Elements
+      and then (if Prior.Objects (ID).Size = 0 then
+          Data'Length <= Store.Byte_Capacity - Prior.Bytes_Used
+          and then Store.Bytes_Used = Prior.Bytes_Used + Data'Length
+          and then Exact_Buffer_Metadata (Store.Objects, Prior.Objects, ID, Prior.Bytes_Used, Data'Length)
+          and then Stored_Bytes_Equal (Store.Bytes, Prior.Bytes, Data, Prior.Bytes_Used, Data'Length)
+        else Store.Bytes_Used = Prior.Bytes_Used and then Store.Objects = Prior.Objects
+          and then Stored_Bytes_Equal (Store.Bytes, Prior.Bytes, Data,
+            Prior.Objects (ID).First, Prior.Objects (ID).Size))),
+       Post => Buffer_Stored (Store, Prior, ID, Data)
+   is
+   begin
+      null;
+   end Record_Buffer_Result;
    procedure Store_Buffer
      (Store : in out State; ID : Object_ID; Data : AML_Decode.Bytes;
       Status : out Buffer_Update_Status)
    is
+      pragma Annotate (GNATprove, Hide_Info, "Expression_Function_Body", Valid_Records);
+      pragma Annotate (GNATprove, Hide_Info, "Expression_Function_Body", Exact_Buffer_Metadata);
       Start, Size : Natural;
       Initial_Occupancy : constant Occupancy_Array := Occupancy_Map (Store.Objects) with Ghost;
       Initial_Objects : constant Object_Array := Store.Objects with Ghost;
       Initial_Elements : constant Element_Array := Store.Elements with Ghost;
       Initial_Byte_Count : constant Byte_Usage := Store.Bytes_Used with Ghost;
+      Initial_Store : constant State := Store with Ghost;
+      Initial_Used : constant Object_ID := Store.Used with Ghost;
+      Initial_Generation : constant AML_Object_Identifiers.Incarnation_Budget := Store.Generation_Limit with Ghost;
+      Initial_Element_Count : constant Element_Usage := Store.Elements_Used with Ghost;
    begin
       if not Is_Live (Store, ID) then
          Status := Invalid_Buffer_ID; return;
@@ -392,21 +529,29 @@ package body AML_Objects with SPARK_Mode is
       Unpack_Valid (Store, Initial_Occupancy, Initial_Objects, Initial_Elements);
       pragma Assert (Valid_Records (Store.Used, Store.Generation_Limit, Initial_Byte_Count,
         Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects));
+      Expand_Records (Store.Used, Store.Generation_Limit, Initial_Byte_Count,
+        Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects);
       pragma Assert (for all I in 1 .. Store.Object_Capacity =>
         Valid_Item (Store.Used, Store.Generation_Limit, Initial_Byte_Count,
           Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects (I), I));
       pragma Assert (Valid_Records (Store.Used, Store.Generation_Limit, Initial_Byte_Count,
         Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects));
+      pragma Assert (Valid_Records (Initial_Used, Initial_Generation, Initial_Byte_Count,
+        Initial_Element_Count, Initial_Occupancy, Initial_Elements, Initial_Objects));
       if Size = 0 then
          if Data'Length > Store.Byte_Capacity - Store.Bytes_Used then
             Status := Buffer_Byte_Limit; return;
          end if;
          Start := Store.Bytes_Used; Size := Data'Length;
-         Store.Objects (ID).First := Start;
-         Store.Objects (ID).Size := Size;
+         Store.Objects (ID) := (Store.Objects (ID) with delta First => Start, Size => Size);
          Store.Bytes_Used := Start + Size;
       end if;
       pragma Assert (Equal_Occupancy (Occupancy_Map (Store.Objects), Initial_Occupancy));
+      pragma Assert (Equal_Objects (Initial_Store.Objects, Initial_Objects));
+      Seal_Buffer_Metadata (Store.Objects, Initial_Store.Objects, ID,
+        Initial_Store.Objects (ID).Size = 0, Initial_Store.Bytes_Used, Data'Length);
+      pragma Assert (if Initial_Store.Objects (ID).Size = 0 then
+        Exact_Buffer_Metadata (Store.Objects, Initial_Store.Objects, ID, Initial_Store.Bytes_Used, Data'Length));
       pragma Assert (Occupied_Total (Initial_Occupancy) = Store.Live_Used);
       pragma Assert (Store.Bytes_Used >= Initial_Byte_Count);
       pragma Assert (Equal_Elements (Store.Elements, Initial_Elements));
@@ -414,15 +559,21 @@ package body AML_Objects with SPARK_Mode is
         (if I /= ID then Store.Objects (I) = Initial_Objects (I)));
       pragma Assert (Valid_Item (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
         Store.Elements_Used, Initial_Occupancy, Store.Elements, Store.Objects (ID), Positive (ID)));
+      Transfer_Element_View (Initial_Used, Initial_Generation, Initial_Byte_Count,
+        Initial_Element_Count, Initial_Occupancy, Initial_Elements, Store.Elements, Initial_Objects);
       pragma Assert (Valid_Records (Store.Used, Store.Generation_Limit, Initial_Byte_Count,
         Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects));
       Extend_Records (Store.Used, Store.Generation_Limit, Initial_Byte_Count,
         Store.Bytes_Used, Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects);
+      Expand_Records (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
+        Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects);
       pragma Assert (for all I in 1 .. Store.Object_Capacity =>
         (if I /= ID then Valid_Item (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
           Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects (I), I)));
       Replace_Record (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
         Store.Elements_Used, Initial_Occupancy, Store.Elements, Initial_Objects, Store.Objects, ID);
+      Expand_Records (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
+        Store.Elements_Used, Initial_Occupancy, Store.Elements, Store.Objects);
       pragma Assert (for all I in 1 .. Store.Object_Capacity =>
         Valid_Item (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
           Store.Elements_Used, Initial_Occupancy, Store.Elements, Store.Objects (I), I));
@@ -431,18 +582,30 @@ package body AML_Objects with SPARK_Mode is
       Reassemble_Valid (Store, Initial_Occupancy);
       pragma Assert (Valid (Store));
       declare Before_Bytes : constant State := Store with Ghost; begin
-      if Size > 0 then
-         if Data'Length >= Size then
-            Store.Bytes (Start + 1 .. Start + Size) := Data (Data'First .. Data'First + (Size - 1));
-         else
-            if Data'Length > 0 then
-               Store.Bytes (Start + 1 .. Start + Data'Length) := Data;
-            end if;
-            Store.Bytes (Start + Data'Length + 1 .. Start + Size) := [others => 0];
-         end if;
-      end if;
+      pragma Assert (Store.Bytes = Initial_Store.Bytes);
+      Write_Buffer_Bytes (Store.Bytes, Data, Start, Size);
       Preserve_Valid_Bytes (Before_Bytes, Store);
       end;
+      -- Keep the content/frame subclaims explicit instead of asking the
+      -- solver to reconstruct the entire public relation at the return.
+      pragma Assert (Same_Capacities (Store, Initial_Store));
+      pragma Assert (Store.Used = Initial_Store.Used and then Store.Live_Used = Initial_Store.Live_Used
+        and then Store.Generation_Limit = Initial_Store.Generation_Limit);
+      pragma Assert (Store.Elements_Used = Initial_Store.Elements_Used
+        and then Store.Elements = Initial_Store.Elements);
+      pragma Assert (Start = (if Initial_Store.Objects (ID).Size = 0 then
+        Initial_Store.Bytes_Used else Initial_Store.Objects (ID).First));
+      pragma Assert (Size = (if Initial_Store.Objects (ID).Size = 0 then
+        Data'Length else Initial_Store.Objects (ID).Size));
+      pragma Assert
+        (if Initial_Store.Objects (ID).Size = 0 then
+           Data'Length <= Store.Byte_Capacity - Initial_Store.Bytes_Used
+           and then Store.Bytes_Used = Initial_Store.Bytes_Used + Data'Length
+           and then Exact_Buffer_Metadata (Store.Objects, Initial_Store.Objects, ID,
+             Initial_Store.Bytes_Used, Data'Length)
+         else Store.Bytes_Used = Initial_Store.Bytes_Used and then Store.Objects = Initial_Store.Objects);
+      pragma Assert (Stored_Bytes_Equal (Store.Bytes, Initial_Store.Bytes, Data, Start, Size));
+      Record_Buffer_Result (Store, Initial_Store, ID, Data);
       Status := Buffer_Updated;
    end Store_Buffer;
 

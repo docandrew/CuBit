@@ -14,6 +14,8 @@ package body AML_Data with SPARK_Mode is
       Width : Integer_Width; Environment : in out Context; ID : out Object_ID;
       Consumed : out Natural; Status : out AML_Decode.Status)
    is
+      -- Keep the capacity-sized transaction frame off the integer-only path.
+      procedure Load_Transactional is
       Candidate : AML_Objects.State := AML_Objects.Empty_Like (Store);
       Snapshot_Status : AML_Objects.Clone_Status;
       function Copied_Context (Item : Context) return Context is (Item);
@@ -165,6 +167,34 @@ package body AML_Data with SPARK_Mode is
    begin
       Execute_Transaction;
       AML_Objects.Discard (Candidate);
+      end Load_Transactional;
+      pragma No_Inline (Load_Transactional);
+      Literal : Integer_Result;
+      Item : Object_ID;
+      Allocation : Allocation_Status;
+   begin
+      ID := No_Object;
+      Consumed := 0;
+      Status := Malformed;
+      Literal := Read_Integer (Data, Width);
+      if Literal.Kind = Accepted then
+         -- Preserve the original source-correspondence admission rule, including
+         -- trailing bytes. Do not allocate before it succeeds.
+         if not AML_Byte_Sources.Corresponds (Source, Source_First, Data) then return; end if;
+         New_Integer (Store, Literal.Value, Item, Allocation,
+           Literal_Origin (Data (Data'First)));
+         if Allocation = Allocated then
+            ID := Item;
+            Consumed := Literal.Consumed;
+            Status := Accepted;
+         else
+            Status := Limit_Exceeded;
+         end if;
+      else
+         -- Composite values and malformed/truncated encodings retain the
+         -- existing parser and its complete rollback/status behavior.
+         Load_Transactional;
+      end if;
    end Load_Bound_From_Source;
    procedure Load_Bound
      (Store : in out AML_Objects.State; Data : Bytes;

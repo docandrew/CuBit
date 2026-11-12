@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with AML_Profile_Events;
+with AML_Child_Indices;
 with AML_Work_Kinds;
 with AML_Field_Access;
 with AML_Field_Layout;
@@ -2252,6 +2253,14 @@ private
       Method_Width : AML_Decode.Integer_Width := AML_Decode.Bits_64;
    end record;
    type Entries is array (Positive range 1 .. Capacity) of Entry_Record;
+   package Child_Indices is new AML_Child_Indices (Capacity);
+   subtype Child_Bucket is Child_Indices.Bucket_Index;
+   subtype Child_Index is Child_Indices.State;
+   use type Child_Indices.State;
+   -- Derived lookup state belongs to the namespace: snapshots and rollbacks
+   -- copy it with Items; there is no independent cache lifetime or authority.
+   function Indexed (Items : Entries; Used : Node_ID) return Child_Index;
+
    -- Shared by the public-boundary invariant and the evaluator's validity
    -- predicate. Indexed fields bind earlier field incarnations; they do not
    -- masquerade as an operation-region binding.
@@ -2299,6 +2308,7 @@ private
       Last_Stamp : AML_References.Node_Incarnation := 0;
       Current_Definition : Definition_Identity := No_Definition;
       Items : Entries;
+      Child_Names : Child_Index;
       -- Root is a physical scope; this optional semantic payload is never an Items index.
       Root_Value : AML_Objects.Object_ID := 0;
       Values : AML_Objects.State (Object_Capacity, Byte_Capacity, Element_Capacity) := AML_Objects.Empty
@@ -2307,6 +2317,7 @@ private
       Code_Used : Aggregate_Method_Count := 0;
    end record
      with Type_Invariant =>
+       State.Child_Names = Indexed (State.Items, State.Used) and then
        AML_Module_Frames.Valid (State.Module_Frames) and then
        Pending.Valid (State.Journal) and then
        AML_Objects.Valid (State.Values) and then

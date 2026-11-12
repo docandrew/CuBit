@@ -20,9 +20,11 @@ package AML_Pending_Members with SPARK_Mode is
    function Valid_Path (Path : AML_Names.Name_Result) return Boolean;
    -- Consumed is reconstructed using the shortest legal NameString encoding;
    -- unused Parts are canonical "____", rather than retaining caller padding.
+   function Canonical_Matches(Path,Result : AML_Names.Name_Result) return Boolean
+     with Ghost, Pre => Valid_Path(Path), Annotate => (GNATprove, Inline_For_Proof);
    function Canonical (Path : AML_Names.Name_Result) return AML_Names.Name_Result
      with Pre => Valid_Path (Path),
-          Post => Valid_Path (Canonical'Result);
+          Post => Valid_Path (Canonical'Result) and then Canonical_Matches(Path,Canonical'Result);
    type Member_Result (Found : Boolean := False) is record
       case Found is
          when True =>
@@ -33,9 +35,12 @@ package AML_Pending_Members with SPARK_Mode is
          when False => null;
       end case;
    end record;
+   function Item_Matches(Journal : State; Index : Natural; Result : Member_Result) return Boolean
+     with Ghost, Pre => Valid(Journal), Annotate => (GNATprove, Inline_For_Proof);
    function Item (Journal : State; Index : Natural) return Member_Result
      with Pre => Valid (Journal),
-          Post => Item'Result.Found = (Index in 1 .. Count (Journal));
+          Post => Item'Result.Found = (Index in 1 .. Count (Journal))
+            and then Item_Matches(Journal,Index,Item'Result);
    type Append_Status is (Appended, Invalid_Input, Member_Limit, Segment_Limit);
    procedure Append
      (Journal : in out State; Package_ID : AML_Objects.Object_ID;
@@ -51,9 +56,31 @@ package AML_Pending_Members with SPARK_Mode is
                  Member_Result'(True, Package_ID, Element, Scope, Canonical (Path))
                and then (for all I in 1 .. Count (Journal'Old) =>
                  Item (Journal, I) = Item (Journal'Old, I)));
+   type Truncate_Status is (Truncated, Invalid_Prefix);
+   function Truncated_Prefix(After,Before : State; Keep : Member_Count) return Boolean
+     with Ghost, Pre => Valid(Before) and then Keep <= Count(Before),
+       Annotate => (GNATprove, Inline_For_Proof);
+   -- Retire a suffix without clearing or copying backing storage. This is not
+   -- Clear's equality-to-Empty operation; retained entries and all cells stay.
+   procedure Truncate(Journal : in out State; Keep : Member_Count; Status : out Truncate_Status)
+     with Pre => Valid(Journal),
+       Post => Valid(Journal) and then
+         (if Status=Truncated then Count(Journal)=Keep
+            and then Truncated_Prefix(Journal,Journal'Old,Keep)
+          else Journal=Journal'Old);
    procedure Clear (Journal : out State)
      with Post => Valid (Journal) and then Journal = Empty;
 private
+   function Admission
+     (Journal : State; Package_ID : AML_Objects.Object_ID; Element : Natural;
+      Path : AML_Names.Name_Result) return Append_Status
+     with Pre => Valid(Journal),
+       Post => Admission'Result =
+         (if Package_ID=0 or else Element>Element_Index'Last or else not Valid_Path(Path)
+          then Invalid_Input
+          elsif Count(Journal)=Max_Members then Member_Limit
+          elsif Path.Count>Max_Segments-Segments_Used(Journal) then Segment_Limit
+          else Appended);
    subtype Path_Count is Natural range 0 .. AML_Names.Segment_Array'Length;
    type Member is record
       Package_ID : AML_Objects.Object_ID := 0;

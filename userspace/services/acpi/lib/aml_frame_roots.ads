@@ -18,8 +18,27 @@ package AML_Frame_Roots with SPARK_Mode, Pure is
       Value : Value_Type := Empty_Value;
    end record;
    function Valid (Store : State) return Boolean;
+   -- Coherence is an inductive proof obligation, never a per-operation heap scan.
+   function Coherent (Store : State) return Boolean with Ghost;
+   type Address_List is array (Positive range <>) of AML_Object_Identifiers.Object_Address;
+   -- Resolve reference targets before calling. This copies only the listed
+   -- roots and clears only the previous roots. Full seed expansion is delayed
+   -- until collection; owner/incarnation and rejected census metadata persist.
+   function Expression_Replaced
+     (After, Before : State; Frame : AML_Frame_Handles.Frame_Handle;
+      Metadata : AML_Objects.Root_Snapshots.Header; Addresses : Address_List)
+      return Boolean with Ghost;
+   procedure Replace_Expression_Roots
+     (Store : in out State; Frame : AML_Frame_Handles.Frame_Handle;
+      Metadata : AML_Objects.Root_Snapshots.Header; Addresses : Address_List;
+      Status : out Result_Status)
+     with Pre => Valid (Store) and then Coherent (Store),
+       Post => Valid (Store) and then Coherent (Store)
+         and then (if Status = Ready then
+           Expression_Replaced (Store, Store'Old, Frame, Metadata, Addresses)
+           else Store = Store'Old);
    function Count (Store : State) return Root_Count;
-   function Empty (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects) return State with Post => Valid (Empty'Result) and then Count (Empty'Result) = 0;
+   function Empty (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects) return State with Post => Valid (Empty'Result) and then Coherent (Empty'Result) and then Count (Empty'Result) = 0;
    -- Trusted owner admits actual live frames. Full handles, including domain,
    -- are keys; this ledger neither mints nor independently authenticates them.
    function Reserved_Frame (After, Before : State; Frame : AML_Frame_Handles.Frame_Handle)
@@ -30,35 +49,35 @@ package AML_Frame_Roots with SPARK_Mode, Pure is
    function Released_Frame (After, Before : State; Frame : AML_Frame_Handles.Frame_Handle)
       return Boolean with Ghost;
    procedure Reserve (Store : in out State; Frame : AML_Frame_Handles.Frame_Handle;
-      Status : out Result_Status) with Pre => Valid (Store),
-      Post => Valid (Store) and then (if Status = Ready then Reserved_Frame (Store, Store'Old, Frame)
+      Status : out Result_Status) with Pre => Valid (Store) and then Coherent (Store),
+      Post => Valid (Store) and then Coherent (Store) and then (if Status = Ready then Reserved_Frame (Store, Store'Old, Frame)
         else Store = Store'Old);
    procedure Update (Store : in out State; Frame : AML_Frame_Handles.Frame_Handle;
       Cell : AML_Frame_Handles.Cell_ID; Initialized : Boolean; Value : Value_Type;
-      Status : out Result_Status) with Pre => Valid (Store),
-      Post => Valid (Store) and then (if Status = Ready then
+      Status : out Result_Status) with Pre => Valid (Store) and then Coherent (Store),
+      Post => Valid (Store) and then Coherent (Store) and then (if Status = Ready then
         Updated_Cell (Store, Store'Old, Frame, Cell, Initialized, Value) else Store = Store'Old);
    procedure Release (Store : in out State; Frame : AML_Frame_Handles.Frame_Handle;
-      Status : out Result_Status) with Pre => Valid (Store),
-      Post => Valid (Store) and then (if Status = Ready then Released_Frame (Store, Store'Old, Frame)
+      Status : out Result_Status) with Pre => Valid (Store) and then Coherent (Store),
+      Post => Valid (Store) and then Coherent (Store) and then (if Status = Ready then Released_Frame (Store, Store'Old, Frame)
         else Store = Store'Old);
    function Updated_Held (After, Before : State; Frame : AML_Frame_Handles.Frame_Handle;
       Root : AML_Root_Slots.Held_Root; Initialized : Boolean; Value : Value_Type)
       return Boolean with Ghost;
    procedure Update_Held (Store : in out State; Frame : AML_Frame_Handles.Frame_Handle;
       Root : AML_Root_Slots.Held_Root; Initialized : Boolean; Value : Value_Type;
-      Status : out Result_Status) with Pre => Valid (Store),
-      Post => Valid (Store) and then (if Status = Ready then
+      Status : out Result_Status) with Pre => Valid (Store) and then Coherent (Store),
+      Post => Valid (Store) and then Coherent (Store) and then (if Status = Ready then
         Updated_Held (Store, Store'Old, Frame, Root, Initialized, Value) else Store = Store'Old);
    function Held_Read (Store : State; Index : Root_Index; Root : AML_Root_Slots.Held_Root;
       Result : Read_Result) return Boolean with Ghost;
    function Read_Held (Store : State; Index : Root_Index; Root : AML_Root_Slots.Held_Root)
-      return Read_Result with Pre => Valid (Store),
+      return Read_Result with Pre => Valid (Store) and then Coherent (Store),
       Post => Held_Read (Store, Index, Root, Read_Held'Result);
    function Cell_Read (Store : State; Index : Root_Index; Cell : AML_Frame_Handles.Cell_ID;
       Result : Read_Result) return Boolean with Ghost;
    function Read_Cell (Store : State; Index : Root_Index; Cell : AML_Frame_Handles.Cell_ID)
-      return Read_Result with Pre => Valid (Store),
+      return Read_Result with Pre => Valid (Store) and then Coherent (Store),
       Post => Cell_Read (Store, Index, Cell, Read_Cell'Result);
    -- Snapshots are store-local metadata. The owner authenticates addresses;
    -- this ledger preserves all phases, including poisoned/incomplete snapshots,
@@ -67,13 +86,13 @@ package AML_Frame_Roots with SPARK_Mode, Pure is
       Roots : AML_Objects.Root_Snapshots.Snapshot) return Boolean with Ghost;
    procedure Update_Snapshot (Store : in out State; Frame : AML_Frame_Handles.Frame_Handle;
       Roots : AML_Objects.Root_Snapshots.Snapshot; Status : out Result_Status)
-      with Pre => Valid (Store), Post => Valid (Store) and then
+      with Pre => Valid (Store) and then Coherent (Store), Post => Valid (Store) and then Coherent (Store) and then
         (if Status = Ready then Updated_Snapshot (Store, Store'Old, Frame, Roots)
          else Store = Store'Old);
    function Snapshot_Read (Store : State; Index : Root_Index;
       Roots : AML_Objects.Root_Snapshots.Snapshot) return Boolean with Ghost;
    function Read_Snapshot (Store : State; Index : Root_Index)
-      return AML_Objects.Root_Snapshots.Snapshot with Pre => Valid (Store),
+      return AML_Objects.Root_Snapshots.Snapshot with Pre => Valid (Store) and then Coherent (Store),
       Post => Snapshot_Read (Store, Index, Read_Snapshot'Result);
 private
    type Cell_Values is array (AML_Frame_Handles.Cell_ID) of Value_Type;
@@ -91,7 +110,12 @@ private
    type Entry_Array is array (Root_Index) of Entry_Data;
    type Stamp_Matrix is array (Root_Index range <>, Positive range <>)
       of AML_Object_Identifiers.Slot_Incarnation;
+   type Slot_Matrix is array (Root_Index range <>, Positive range <>)
+      of AML_Object_Identifiers.Object_ID;
+   type Census_Counts is array (Root_Index) of Natural;
    type State (Object_Capacity : AML_Objects.Storage_Capacity) is record
+      Touched : Slot_Matrix (1 .. Capacity, 1 .. Object_Capacity) := [others => [others => 0]];
+      Touched_Count : Census_Counts := [others => 0];
       Stamps : Stamp_Matrix (1 .. Capacity, 1 .. Object_Capacity) :=
         [others => [others => AML_Object_Identifiers.No_Incarnation]];
       Used : Root_Count := 0;

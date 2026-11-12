@@ -13,15 +13,40 @@ package body AML_Frame_Roots with SPARK_Mode is
       end loop;
       return 0;
    end Find;
+   -- Runtime checks scale with frame count and current roots, not heap capacity.
+   -- The private dense mask is related to the touched list by Coherent.
+   function Coherent (Store : State) return Boolean is
+     (for all I in Root_Index => Store.Touched_Count (I) <= Store.Object_Capacity
+       and then (for all J in 1 .. Store.Object_Capacity =>
+         (Store.Stamps (I,J) /= AML_Object_Identifiers.No_Incarnation) =
+           (for some K in 1 .. Store.Touched_Count (I) => Store.Touched (I,K) = J))
+       and then (for all K in 1 .. Store.Touched_Count (I) =>
+         Store.Touched (I,K) in 1 .. Store.Object_Capacity
+         and then (for all L in 1 .. K-1 => Store.Touched (I,L) /= Store.Touched (I,K))));
+   procedure Clear_Census (Store : in out State; Slot : Root_Index) is
+   begin
+      -- No per-operation work proportional to store capacity: only roots
+      -- previously published by this frame are cleared. Addresses remain
+      -- resolved at publication, so later namespace mutation cannot retarget them.
+      for K in 1 .. Store.Touched_Count (Slot) loop
+         Store.Stamps (Slot,Store.Touched (Slot,K)) := AML_Object_Identifiers.No_Incarnation;
+         Store.Touched (Slot,K) := 0;
+      end loop;
+      Store.Touched_Count (Slot) := 0;
+   end Clear_Census;
    function Valid (Store : State) return Boolean is
       Found : Root_Count := 0;
    begin
       for I in Root_Index loop
+         if Store.Touched_Count (I) > Store.Object_Capacity then return False; end if;
+         for K in 1 .. Store.Touched_Count (I) loop
+            if Store.Touched (I,K) not in 1 .. Store.Object_Capacity
+              or else Store.Stamps (I,Store.Touched (I,K)) = AML_Object_Identifiers.No_Incarnation
+            then return False; end if;
+         end loop;
          if Store.Entries (I).Frame = FH.No_Frame then
             if Store.Entries (I) /= Entry_Data'(others => <>) then return False; end if;
-            for J in 1 .. Store.Object_Capacity loop
-               if Store.Stamps (I, J) /= AML_Object_Identifiers.No_Incarnation then return False; end if;
-            end loop;
+            if Store.Touched_Count (I) /= 0 then return False; end if;
          else
             if not FH.Present (Store.Entries (I).Frame) then return False; end if;
             for J in Root_Index'First .. I - 1 loop
@@ -97,9 +122,7 @@ package body AML_Frame_Roots with SPARK_Mode is
    begin
       if Slot = 0 then Status := Invalid_Frame; return; end if;
       Store.Entries (Slot) := (others => <>);
-      for J in 1 .. Store.Object_Capacity loop
-         Store.Stamps (Slot, J) := AML_Object_Identifiers.No_Incarnation;
-      end loop;
+      Clear_Census (Store, Slot);
       Store.Used := Store.Used - 1;
       Status := Ready;
    end Release;
@@ -156,12 +179,93 @@ package body AML_Frame_Roots with SPARK_Mode is
    begin
       if Slot = 0 then Status := Invalid_Frame; return; end if;
       if Roots.Object_Capacity /= Store.Object_Capacity then Status := Invalid_Shape; return; end if;
+      Clear_Census (Store, Slot);
       Store.Entries (Slot).Snapshot_Header := R.Header_Of (Roots);
+      -- Compatibility import of an already dense snapshot. Interpreter
+      -- publication uses Replace_Expression_Roots and never takes this scan.
       for J in 1 .. Store.Object_Capacity loop
-         Store.Stamps (Slot, J) := R.Stamp_At (Roots, J);
+         declare Stamp : constant AML_Object_Identifiers.Slot_Incarnation := R.Stamp_At (Roots,J); begin
+            if Stamp /= AML_Object_Identifiers.No_Incarnation then
+               Store.Stamps (Slot,J) := Stamp;
+               Store.Touched_Count (Slot) := Store.Touched_Count (Slot)+1;
+               Store.Touched (Slot,Store.Touched_Count (Slot)) := J;
+            end if;
+         end;
       end loop;
       Status := Ready;
    end Update_Snapshot;
+   -- Dense logical reference model. This is ghost-only: the running
+   -- interpreter never materializes this capacity-sized array per operation.
+   function Expected_Census
+     (Object_Capacity : AML_Objects.Storage_Capacity;
+      Metadata : R.Header; Addresses : Address_List) return R.Snapshot with Ghost
+   is
+      package IDs renames AML_Object_Identifiers;
+      Stamps : R.Stamp_Vector (1 .. Object_Capacity) := [others => IDs.No_Incarnation];
+      Header_Copy : R.Snapshot := R.From_Parts (Metadata,[1 => IDs.No_Incarnation]);
+   begin
+      for Address of Addresses loop
+         if not IDs.Present (Address) or else IDs.Slot_Of (Address) not in Stamps'Range then
+            R.Reject (Header_Copy); exit;
+         end if;
+         declare
+            Slot : constant Positive := IDs.Slot_Of (Address);
+            Stamp : constant IDs.Slot_Incarnation := IDs.Incarnation_Of (Address);
+         begin
+            if Stamps (Slot) = IDs.No_Incarnation then Stamps (Slot) := Stamp;
+            elsif Stamps (Slot) /= Stamp then R.Reject (Header_Copy); exit;
+            end if;
+         end;
+      end loop;
+      return R.From_Parts (R.Header_Of (Header_Copy),Stamps);
+   end Expected_Census;
+   function Expression_Replaced
+     (After, Before : State; Frame : FH.Frame_Handle; Metadata : R.Header;
+      Addresses : Address_List) return Boolean is
+      Slot : constant Root_Count := Find (Before,Frame);
+      Expected : constant R.Snapshot := Expected_Census (Before.Object_Capacity,Metadata,Addresses);
+   begin
+      return After.Object_Capacity = Before.Object_Capacity and then Slot /= 0
+        and then After.Used = Before.Used
+        and then After.Entries = (Before.Entries with delta Slot =>
+          (Before.Entries (Slot) with delta Snapshot_Header => R.Header_Of (Expected)))
+        and then (for all I in Root_Index =>
+          (for all J in 1 .. Before.Object_Capacity => After.Stamps (I,J) =
+            (if I = Slot then R.Stamp_At (Expected,J) else Before.Stamps (I,J))))
+        and then (for all I in Root_Index => (if I /= Slot then
+          After.Touched_Count (I) = Before.Touched_Count (I)
+          and then (for all J in 1 .. Before.Object_Capacity =>
+            After.Touched (I,J) = Before.Touched (I,J))));
+   end Expression_Replaced;
+   procedure Replace_Expression_Roots
+     (Store : in out State; Frame : FH.Frame_Handle; Metadata : R.Header;
+      Addresses : Address_List; Status : out Result_Status) is
+      package IDs renames AML_Object_Identifiers;
+      Slot : constant Root_Count := Find (Store, Frame);
+      Header_Copy : R.Snapshot := R.From_Parts (Metadata, [1 => IDs.No_Incarnation]);
+   begin
+      if Slot = 0 then Status := Invalid_Frame; return; end if;
+      Clear_Census (Store,Slot);
+      for Address of Addresses loop
+         if not IDs.Present (Address) or else IDs.Slot_Of (Address) not in 1 .. Store.Object_Capacity then
+            R.Reject (Header_Copy); exit;
+         end if;
+         declare
+            Object : constant Positive := IDs.Slot_Of (Address);
+            Stamp : constant IDs.Slot_Incarnation := IDs.Incarnation_Of (Address);
+            Prior : constant IDs.Slot_Incarnation := Store.Stamps (Slot,Object);
+         begin
+            if Prior = IDs.No_Incarnation then
+               Store.Touched_Count (Slot) := Store.Touched_Count (Slot)+1;
+               Store.Touched (Slot,Store.Touched_Count (Slot)) := Object;
+               Store.Stamps (Slot,Object) := Stamp;
+            elsif Prior /= Stamp then R.Reject (Header_Copy); exit;
+            end if;
+         end;
+      end loop;
+      Store.Entries (Slot).Snapshot_Header := R.Header_Of (Header_Copy);
+      Status := Ready;
+   end Replace_Expression_Roots;
    function Snapshot_Read (Store : State; Index : Root_Index;
       Roots : AML_Objects.Root_Snapshots.Snapshot) return Boolean is
      (Roots.Object_Capacity = Store.Object_Capacity

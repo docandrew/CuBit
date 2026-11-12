@@ -484,4 +484,7 @@ private
       Bytes : AML_Decode.Bytes (1 .. Byte_Capacity) := [others => 0];
       Elements : Element_Array (1 .. Element_Capacity) := [others => 0];
    end record;
+   -- Shared private allocation plan: transaction record-before-write uses
+   -- the exact allocator selector, never an independently guessed free slot.
+   procedure Select_Slot (Store : State; ID : out Object_ID; Status : out Allocation_Status);
 end AML_Objects;
