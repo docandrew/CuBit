@@ -4854,6 +4854,11 @@ procedure main is
          " p2sb=" & (if Sideband.Discovery.Ran
                      then Platform_Quirks.Intel_P2SB.Outcome_Name (Sideband.Discovery.Outcome)
                      else "NOT_RUN"));
+      --  acpi.svc's initializer history at the observation (payload v2):
+      --  diagnostic provenance only, never admission authority.
+      function History_Note (Item : GP.Request) return String is
+        (" initializers=" & Unsigned_32'Image (Item.Initializer_Invocations) &
+         " history=" & Hex (Item.Initializer_Ordered_Digest));
    begin
       --  A repeated request id: the original answer, never a second admission.
       for K in 1 .. Bootstrap_Answer_Store.Length (Bootstrap_Answers) loop
@@ -4960,7 +4965,8 @@ procedure main is
          A.Detail := (if D.Answer = GX.Malformed then GX.Span_Detail_Base + Unsigned_64 (D.Span)
                       else Unsigned_64 (D.Span));
          if D.Answer /= GX.Admitted then
-            Settle (A, Gate_Line (A) & " hid=" & R.HID & " table=" & R.Table & ":" & R.Table_ID);
+            Settle (A, Gate_Line (A) & " hid=" & R.HID & " table=" & R.Table & ":" & R.Table_ID &
+                    History_Note (R));
             return;
          end if;
          if Natural (R.Spans) > Bootstrap_Room then
@@ -5014,7 +5020,7 @@ procedure main is
                end if;
                Warnings.Inform ("devmgr: platform pool member " & Hex (Span.Base) & " +" &
                                 Hex (Span.Length) & " CHIPSET_SHARED owner=GPIO bootstrap " &
-                                R.HID & " span" & Natural'Image (K) & " (pre-_INI _CRS, " &
+                                R.HID & " span" & Natural'Image (K) & " (_CRS before GPIO-consumer initialization, " &
                                 R.Table & ":" & R.Table_ID & " epoch" & Unsigned_64'Image (R.Epoch) & ")");
             end;
          end loop;
@@ -5024,7 +5030,7 @@ procedure main is
                  (if R.Segments >= 2 then "." & R.Path (2) else "") &
                  " table=" & R.Table & ":" & R.Table_ID &
                  " irq=" & (if R.IRQ.Present then Unsigned_32'Image (R.IRQ.GSI) else " none") &
-                 " (facts only; no interrupt route)");
+                 History_Note (R) & " (facts only; no interrupt route)");
       end;
    end Serve_GPIO_Bootstrap;
 

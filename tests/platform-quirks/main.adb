@@ -262,7 +262,7 @@ procedure Main is
       end Corrupt;
    begin
       Check (GP.Valid (R), "the laptop's GPI0 observation is a valid request");
-      Check (Bytes'Length = 90 + 4 * 18, "header 90 bytes, four 18-byte spans");
+      Check (Bytes'Length = 102 + 4 * 18, "header 102 bytes (v2), four 18-byte spans");
       GP.Encode (R, Bytes);
       GP.Decode (Bytes, Back, Result);
       Check (Result.Status = GP.Decoded and then Back = R, "encode / decode round trip");
@@ -271,7 +271,7 @@ procedure Main is
 
       Expect_Malformed (Bytes (0 .. 50), 51, "shorter than the header");
       Expect_Malformed (Bytes (0 .. Bytes'Last - 1), GP.Span_Count_Offset, "length not header + spans");
-      Corrupt (GP.Version_Offset, 2, GP.Version_Offset, "version 2");
+      Corrupt (GP.Version_Offset, GP.Format_Version + 1, GP.Version_Offset, "a version after Format_Version");
       Corrupt (GP.Span_Count_Offset, 0, GP.Span_Count_Offset, "no spans");
       Corrupt (GP.Span_Count_Offset, 17, GP.Span_Count_Offset, "past Max_Spans");
       Corrupt (GP.Path_Count_Offset, 0, GP.Path_Count_Offset, "empty path");
@@ -281,7 +281,7 @@ procedure Main is
       Corrupt (GP.HID_Offset, 0, GP.HID_Offset, "empty HID");
       Corrupt (GP.HID_Offset + 3, 0, GP.HID_Offset, "a printable after NUL padding in the HID");
       Corrupt (GP.UID_Offset, 1, GP.UID_Offset, "a UID value with No_UID");
-      Corrupt (GP.Phase_Offset, 2, GP.Phase_Offset, "an unknown phase (after _INI)");
+      Corrupt (GP.Phase_Offset, 3, GP.Phase_Offset, "an unknown phase (after GPIO-consumer initialization)");
       Corrupt (GP.IRQ_Present_Offset, 2, GP.IRQ_Present_Offset, "IRQ present not 0/1");
       Corrupt (GP.Trigger_Offset, 2, GP.Trigger_Offset, "unknown trigger");
       Corrupt (GP.Polarity_Offset, 2, GP.Polarity_Offset, "unknown polarity");

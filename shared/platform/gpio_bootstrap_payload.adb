@@ -118,11 +118,11 @@ package body GPIO_Bootstrap_Payload with SPARK_Mode is
          Fail (STA_Offset);
          return;
       end if;
-      if Get (Bytes, Phase_Offset, 1) /= Phase'Enum_Rep (Before_Device_INI) then
+      if Get (Bytes, Phase_Offset, 1) /= Phase'Enum_Rep (Before_GPIO_Consumer_Initialization) then
          Fail (Phase_Offset);
          return;
       end if;
-      R.Observed := Before_Device_INI;
+      R.Observed := Before_GPIO_Consumer_Initialization;
 
       --  The interrupt.
       Word := Get (Bytes, IRQ_Present_Offset, 1);
@@ -184,6 +184,11 @@ package body GPIO_Bootstrap_Payload with SPARK_Mode is
          Fail (Path_Offset);
          return;
       end if;
+
+      -- Diagnostic initializer provenance. The phase owner establishes the
+      -- ordering and complete history; this codec only preserves copied facts.
+      R.Initializer_Invocations := Get_32 (Bytes, Initializer_Count_Offset);
+      R.Initializer_Ordered_Digest := Get (Bytes, Initializer_Digest_Offset, Initializer_Digest_Bytes);
 
       --  The spans, in _CRS order.
       for I in 1 .. R.Spans loop
@@ -260,6 +265,8 @@ package body GPIO_Bootstrap_Payload with SPARK_Mode is
             Bytes (Path_Offset + (S - 1) * Name_Segment_Bytes + C - 1) := Byte (R.Path (S) (C));
          end loop;
       end loop;
+      Put (Bytes, Initializer_Count_Offset, Initializer_Count_Bytes, Unsigned_64 (R.Initializer_Invocations));
+      Put (Bytes, Initializer_Digest_Offset, Initializer_Digest_Bytes, R.Initializer_Ordered_Digest);
       for I in 1 .. R.Spans loop
          declare
             At_Span : constant Natural := Header_Bytes + (I - 1) * Span_Bytes;

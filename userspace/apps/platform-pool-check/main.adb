@@ -286,7 +286,7 @@ begin
       R.Items (1) := (Base => 16#FD6E_0000#, Length => 16#1_0000#,
                       From => GP.Memory32_Fixed, Writable => True);
       GP.Encode (R, Page (0 .. Length - 1));
-      Page (GP.Version_Offset) := 2;   --  first a defective payload
+      Page (GP.Version_Offset) := GP.Format_Version + 1;   --  first a defective payload
       CuBit.Memory_Grants.Create_Via_Capability
         (Data_Endpoint.Value, Page'Address, 1, False, Grant, Lent);
       Check (Lent, "the bootstrap payload is lent read-only");
@@ -296,7 +296,7 @@ begin
          Page (GP.Version_Offset) := GP.Format_Version;
          Ignore := Ask (2, GX.No_Discovery_Failure, 0,
                         "gpio bootstrap: no P2SB discovery here: NO_DISCOVERY_FAILURE");
-         Page (GP.Version_Offset) := 2;   --  a repeat is answered from the record
+         Page (GP.Version_Offset) := GP.Format_Version + 1;   --  a repeat is answered from the record
          Ignore := Ask (2, GX.No_Discovery_Failure, 0,
                         "gpio bootstrap: the same request id gets the same answer");
          CuBit.Memory_Grants.Revoke (Grant, Revoked);

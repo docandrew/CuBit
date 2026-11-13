@@ -5,7 +5,9 @@
 --  @summary
 --  The payload of a GPIO bootstrap admission request (ACPI-POOL-001, the
 --  fallback when devmgr could not read the Intel P2SB): what acpi.svc
---  observed of the identified GPIO controller before any device _INI ran,
+--  observed of the identified GPIO controller before GPIO-consuming or
+--  GPIO-touching initializers ran; ancestor/provider initializers may
+--  already have run,
 --  as one fixed-layout little-endian byte string, and its codec.
 --
 --  @description
@@ -31,7 +33,7 @@
 --        16      8  UID: the integer (Integer_UID), up to 8 ASCII bytes
 --                   NUL-padded (String_UID), or zero (No_UID)
 --        24      4  STA: the _STA value (Evaluated_STA) or 0Fh (Default_STA)
---        28      1  Phase'Enum_Rep (Before_Device_INI only)
+--        28      1  Phase'Enum_Rep (Before_GPIO_Consumer_Initialization only)
 --        29      1  IRQ present: 0 or 1
 --        30      1  Trigger'Enum_Rep      } zero when no IRQ
 --        31      1  Polarity'Enum_Rep     }
@@ -43,20 +45,22 @@
 --        50      8  catalog epoch of the namespace observed
 --        58     32  namespace path: Max_Path_Segments 4-byte NameSegs from
 --                   the root ("_SB_", "GPI0"); unused slots zero
---        90  18 x N  spans, in _CRS order: base (8), length (8),
+--        90      4  automatic initializer evaluator invocation count
+--        94      8  ordered initializer-history fingerprint (diagnostic only)
+--       102  18 x N  spans, in _CRS order: base (8), length (8),
 --                   Descriptor'Enum_Rep (1), writable (1: 0 or 1)
 --  Length = Header_Bytes + Span_Bytes * Span_Count exactly.
 --
 --  The IRQ is facts only: no interrupt route is granted by admission (the
 --  GPIO driver stays polling-only until a parent-interrupt route exists).
---  Pure and proved (tests/platform-quirks): ZFP-compatible.
+--  Pure, SPARK-compatible codec. Verification scope is recorded in tests.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 
 package GPIO_Bootstrap_Payload with Pure, SPARK_Mode is
 
-   Format_Version : constant := 1;
+   Format_Version : constant := 2;
 
    --  Named ceilings: the most memory descriptors one controller's _CRS
    --  may carry here, and the deepest namespace path.
@@ -93,7 +97,14 @@ package GPIO_Bootstrap_Payload with Pure, SPARK_Mode is
    Epoch_Offset      : constant := 50;
    Path_Offset       : constant := 58;
    Name_Segment_Bytes : constant := 4;
-   Header_Bytes      : constant := Path_Offset + Max_Path_Segments * Name_Segment_Bytes;   --  90
+   Initializer_Count_Offset : constant := Path_Offset + Max_Path_Segments * Name_Segment_Bytes;
+   Initializer_Count_Bytes : constant := 4;
+   Initializer_Digest_Offset : constant := Initializer_Count_Offset + Initializer_Count_Bytes;
+   Initializer_Digest_Bytes : constant := 8;
+   Header_Bytes : constant := Initializer_Digest_Offset + Initializer_Digest_Bytes; -- 102
+   -- Canonical initializer-history encoding v1, FNV-1a64 empty prefix.
+   -- Diagnostic provenance only; no digest value authorizes hardware access.
+   Empty_Initializer_Digest : constant Unsigned_64 := 16#CBF2_9CE4_8422_2325#;
    Span_Base_Offset  : constant := 0;
    Span_Length_Offset : constant := 8;
    Span_Descriptor_Offset : constant := 16;
@@ -119,9 +130,9 @@ package GPIO_Bootstrap_Payload with Pure, SPARK_Mode is
    for STA_Source use (Evaluated_STA => 1, Default_STA => 2);
    Default_STA_Value : constant := 16#0F#;
 
-   --  When the observation was made. Only before any device _INI.
-   type Phase is (Before_Device_INI);
-   for Phase use (Before_Device_INI => 1);
+   --  When the observation was made. Ancestor/provider initializers may already have run.
+   type Phase is (Before_GPIO_Consumer_Initialization);
+   for Phase use (Before_GPIO_Consumer_Initialization => 2);
 
    --  ACPI 6.5 section 6.4.3.6 Extended Interrupt Descriptor, byte 3
    --  ("Interrupt Vector Flags"): bit 1 mode, bit 2 polarity, bit 3
@@ -173,7 +184,9 @@ package GPIO_Bootstrap_Payload with Pure, SPARK_Mode is
       HID          : HID_Text := [others => NUL];
       UID          : Unsigned_64 := 0;
       STA          : Unsigned_32 := 0;
-      Observed     : Phase := Before_Device_INI;
+      Observed     : Phase := Before_GPIO_Consumer_Initialization;
+      Initializer_Invocations : Unsigned_32 := 0;
+      Initializer_Ordered_Digest : Unsigned_64 := Empty_Initializer_Digest;
       IRQ          : Interrupt;
       Table        : Table_Signature_Text := [others => NUL];
       Table_ID     : Table_ID_Text := [others => NUL];
