@@ -4314,7 +4314,7 @@ procedure main is
 
    --  Who a member is, for its log line (Detail: a port or a counter).
    type Member_Owner is
-     (Host_Bridge_MCHBAR, PMC_PWRMBASE, GPIO_Community, Sideband_Window, Firmware_Reserved,
+     (Host_Bridge_MCHBAR, PMC_PWRMBASE, LPC_LGMR, GPIO_Community, Sideband_Window, Firmware_Reserved,
       Test_MCHBAR, Test_Community, Test_Window);
 
    type Pool_Candidate is record
@@ -4333,6 +4333,7 @@ procedure main is
      (case C.Owner is
         when Host_Bridge_MCHBAR => "host-bridge MCHBAR",
         when PMC_PWRMBASE       => "PMC PWRMBASE (LPIT residency counter " & Hex (C.Detail) & ")",
+        when LPC_LGMR           => "LPC/eSPI generic memory range (LGMR " & Hex (C.Detail) & ")",
         when GPIO_Community     => "P2SB GPIO community port " & Hex (C.Detail),
         when Sideband_Window    => "P2SB sideband window",
         when Firmware_Reserved  => "firmware-reserved span",
@@ -4528,7 +4529,7 @@ procedure main is
       --  What devmgr found, each excluded from the firmware-reserved spans
       --  below: the register block, the PMC, the sideband window (whole),
       --  then each community.
-      Max_Found : constant := 3;
+      Max_Found : constant := 4;
       Found : Span_List (1 .. Max_Found) := [others => (First => 0, Bytes => 0)];
       Found_Count : Natural := 0;
       Window : PP.Block := (Status => PP.No_Source, Base => 0, Bytes => 0);
@@ -4609,6 +4610,35 @@ procedure main is
             else
                Warnings.Warn ("devmgr: platform pool: PMC PWRMBASE " & Status_Name (PMC.Status) &
                               " (LPIT counter " & Hex (Counter) & "); left out");
+            end if;
+         end;
+      end if;
+      --  The LPC/eSPI bridge's generic memory range (Alder Lake-N): the
+      --  window firmware routes to the embedded controller. Read only.
+      if Kind = PP.Alder_Lake_N then
+         declare
+            LPC_Vendor : constant Unsigned_16 :=
+              pciReadConfig16 (0, PP.LPC_Bridge_Slot, PP.LPC_Bridge_Function, PCI_Vendor_Offset);
+            LPC_Class : constant Unsigned_16 :=
+              pciReadConfig16 (0, PP.LPC_Bridge_Slot, PP.LPC_Bridge_Function, PP.PCI_Class_Offset);
+         begin
+            if LPC_Vendor /= PP.Intel_Vendor or else LPC_Class /= PP.LPC_Bridge_Class then
+               Warnings.Warn ("devmgr: platform pool: 00:1F.0 is " & Hex (Unsigned_64 (LPC_Vendor)) &
+                              " class " & Hex (Unsigned_64 (LPC_Class)) &
+                              ", not an Intel LPC/eSPI bridge; LGMR not read");
+            else
+               declare
+                  Raw : constant Unsigned_32 :=
+                    pciReadConfig32 (0, PP.LPC_Bridge_Slot, PP.LPC_Bridge_Function, PP.LGMR_Offset);
+                  LGMR : constant PP.Block := PP.LGMR_Block (Raw);
+               begin
+                  Warnings.Inform ("devmgr: platform pool: LPC LGMR raw " & Hex (Unsigned_64 (Raw)) &
+                                   " (" & Status_Name (LGMR.Status) & ")");
+                  if LGMR.Status = PP.Found then
+                     Propose (LPC_LGMR, PA.Chipset_Shared, LGMR.Base, LGMR.Bytes, Unsigned_64 (Raw));
+                     Note (LGMR);
+                  end if;
+               end;
             end if;
          end;
       end if;

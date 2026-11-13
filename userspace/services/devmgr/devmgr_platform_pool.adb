@@ -99,6 +99,16 @@ package body Devmgr_Platform_Pool with SPARK_Mode is
       return (Status => Found, Base => Counter - PMC_SLP_S0_Counter_Offset, Bytes => PWRM_Bytes);
    end PWRM_Block;
 
+   function LGMR_Block (Raw : Unsigned_32) return Block is
+   begin
+      if (Raw and LGMR_Enable) = 0 then
+         return (Status => Disabled, Base => 0, Bytes => 0);
+      elsif (Raw and LGMR_Base_Mask) = 0 then
+         return (Status => Not_Placed, Base => 0, Bytes => 0);
+      end if;
+      return (Status => Found, Base => Unsigned_64 (Raw and LGMR_Base_Mask), Bytes => LGMR_Bytes);
+   end LGMR_Block;
+
    function Discover
      (Kind : Bridge_Kind; MCHBAR_Low, MCHBAR_High : Unsigned_32;
       Test_BAR_Base, Test_BAR_Bytes : Unsigned_64) return Block is

@@ -225,6 +225,32 @@ package Devmgr_Platform_Pool with Pure, SPARK_Mode is
                 and then (if Counter = 0 then PWRM_Block'Result.Status = No_Source);
 
    ---------------------------------------------------------------------------
+   --  The LPC/eSPI bridge's generic memory range (Intel PCH 00:1F.0, LGMR):
+   --  a 64 KiB window the bridge forwards to the LPC/eSPI bus. Lenovo
+   --  firmware maps the embedded controller's memory there (the IdeaPad's
+   --  EC0.ERAX OperationRegion at 0xFE0B0400). Firmware programs it at
+   --  boot; devmgr only reads it (never writes) and admits the window it
+   --  decodes, so the ACPI service's SystemMemory fields there are backed.
+   ---------------------------------------------------------------------------
+   LPC_Bridge_Slot     : constant := 16#1F#;
+   LPC_Bridge_Function : constant := 0;
+   PCI_Class_Offset    : constant := 16#0A#;   --  sub-class (low), base class (high)
+   LPC_Bridge_Class    : constant Unsigned_16 := 16#0601#;   --  bridge, ISA (LPC/eSPI)
+   LGMR_Offset         : constant := 16#98#;
+   LGMR_Enable         : constant Unsigned_32 := 2 ** 0;
+   LGMR_Base_Mask      : constant Unsigned_32 := 16#FFFF_0000#;
+   LGMR_Bytes          : constant := 16#1_0000#;   --  64 KiB
+
+   --  The window from LGMR's raw dword: Found when enabled with a nonzero
+   --  base; Disabled when the enable bit is clear; Not_Placed for base 0.
+   function LGMR_Block (Raw : Unsigned_32) return Block
+   with Post => (if LGMR_Block'Result.Status = Found then
+                   Whole_Pages (LGMR_Block'Result)
+                   and then LGMR_Block'Result.Bytes = LGMR_Bytes
+                   and then LGMR_Block'Result.Base = Unsigned_64 (Raw and LGMR_Base_Mask))
+                and then (if (Raw and LGMR_Enable) = 0 then LGMR_Block'Result.Status = Disabled);
+
+   ---------------------------------------------------------------------------
    --  The pool's declared sizes (Platform_Pool_ABI): members as found (at
    --  most the ceiling), and a claim for every member and every PCI BAR
    --  extent devmgr claimed for devices (each a device a driver may bind),

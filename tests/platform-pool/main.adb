@@ -419,6 +419,14 @@ procedure Main is
       Check (P.PWRM_Block (16#FE00_1000#).Status = P.Not_Placed,
              "a counter not at 0x193C into an aligned window is refused");
       Check (P.PWRM_Block (16#100#).Status = P.Not_Placed, "a counter below the offset is refused");
+      --  The LPC/eSPI bridge's LGMR window (00:1F.0 offset 0x98).
+      B := P.LGMR_Block (16#FE0B_0001#);
+      Check (B.Status = P.Found and then B.Base = 16#FE0B_0000# and then B.Bytes = 16#1_0000#,
+             "LGMR 0xFE0B0001: the 64 KiB window at 0xFE0B0000 (covers EC0.ERAX 0xFE0B0400)");
+      Check (P.LGMR_Block (16#FE0B_0000#).Status = P.Disabled, "LGMR with the enable bit clear: no window");
+      Check (P.LGMR_Block (16#0000_0001#).Status = P.Not_Placed, "LGMR enabled at base 0: refused");
+      Check (P.LGMR_Block (16#FE0B_FFFF#).Base = 16#FE0B_0000#,
+             "LGMR's reserved low bits never move the window");
       Short (4) := 100;
       Check (P.LPIT_Memory_Counter (Short) = 0, "a truncated LPIT names no counter");
       Zero_Length (16#24# + 4) := 0;
