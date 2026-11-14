@@ -28,6 +28,57 @@ package body Compositor_Latency with SPARK_Mode is
       Item := (if By > Unsigned_64'Last - Item then Unsigned_64'Last else Item + By);
    end Raise_By;
 
+   procedure Observe
+     (L : in out Ledger; Kind : Observation_Kind; Value : Unsigned_64; Time : Time_Us;
+      Of_Stage : Stage := Stage'First; Path : Render_Path := CPU);
+   procedure Observe
+     (L : in out Ledger; Kind : Observation_Kind; Value : Unsigned_64; Time : Time_Us;
+      Of_Stage : Stage := Stage'First; Path : Render_Path := CPU) is
+   begin
+      if L.Queued < Observation_Capacity then
+         L.Queued := L.Queued + 1;
+         L.Queue (L.Queued) := (Kind => Kind, Of_Stage => Of_Stage, Path => Path, Value => Value, Time => Time);
+      else
+         declare
+            R : Lost_Record renames L.Lost (Kind, Of_Stage, Path);
+         begin
+            if R.Count = 0 then
+               R := (Count => 1, First_Us => Time, Last_Us => Time);
+            else
+               Bump (R.Count);
+               R.First_Us := Unsigned_64'Min (R.First_Us, Time);
+               R.Last_Us := Unsigned_64'Max (R.Last_Us, Time);
+            end if;
+         end;
+      end if;
+   end Observe;
+
+   procedure Tick_Clock (L : in out Ledger; Now : Time_Us);
+   procedure Tick_Clock (L : in out Ledger; Now : Time_Us) is
+   begin
+      if Now /= Unavailable and then Now > L.Clock then
+         L.Clock := Now;
+      end if;
+   end Tick_Clock;
+
+   procedure Drain_Observations (L : in out Ledger) is
+   begin
+      for I in 1 .. L.Queued loop
+         Each (L.Queue (I));
+      end loop;
+      L.Queued := 0;
+      for K in Observation_Kind loop
+         for St in Stage loop
+            for P in Render_Path loop
+               if L.Lost (K, St, P).Count > 0 then
+                  Lost (K, St, P, L.Lost (K, St, P).Count, L.Lost (K, St, P).First_Us, L.Lost (K, St, P).Last_Us);
+                  L.Lost (K, St, P) := (others => 0);
+               end if;
+            end loop;
+         end loop;
+      end loop;
+   end Drain_Observations;
+
    function Grid_At_Or_After (Time, Anchor, Period : Time_Us) return Time_Us is
    begin
       if Time <= Anchor then
@@ -50,6 +101,8 @@ package body Compositor_Latency with SPARK_Mode is
    begin
       Item := No_Slot;
       Bump (L.Taken);
+      Tick_Clock (L, Now);
+      Observe (L, Input_Taken, 1, Now);
       for I in Live_Slot loop
          if L.Inputs (I).State = Free then
             Item := I;
@@ -62,6 +115,7 @@ package body Compositor_Latency with SPARK_Mode is
       if Item = No_Slot then
          Item := Oldest;
          Bump (L.Evicted);
+         Observe (L, Input_Evicted, 1, Now);
       end if;
       L.Inputs (Item) := (State => Routing, Source_Sequence => Source_Sequence,
                           Origin => Origin, Intake => Now, others => <>);
@@ -160,6 +214,7 @@ package body Compositor_Latency with SPARK_Mode is
          if L.Sent (O).Used and then L.Sent (O).Token = Token then
             L.Sent (O).Used := False;
             Bump (S.Dropped_Frames);
+            Observe (L, Frame_Dropped, 1, L.Clock);
          end if;
       end loop;
       for R of L.Inputs loop
@@ -189,7 +244,16 @@ package body Compositor_Latency with SPARK_Mode is
         (if not Timed then Unavailable elsif Hardware then Timing.Latched_Us
          else Grid_At_Or_After (Timing.Latched_Us, 0, Virtual_Period_Us));
       Frame_Found : Boolean := False;
+      --  A stage's time: in the interval's histogram and as an observation.
+      procedure Stage_Time (St : Stage; First, Last : Time_Us) is
+      begin
+         if Known (First, Last) then
+            TH.Add (S.Stages (St), Last - First);
+            Observe (L, Stage_Sample, Last - First, Now, Of_Stage => St);
+         end if;
+      end Stage_Time;
    begin
+      Tick_Clock (L, Now);
       for O in Output_Number loop
          if L.Sent (O).Used and then L.Sent (O).Token = Token then
             declare
@@ -200,10 +264,24 @@ package body Compositor_Latency with SPARK_Mode is
                Bump (P.Frames);
                Raise_By (P.Pixels, F.Pixels);
                Raise_By (P.Rectangles, F.Rectangles);
+               Observe (L, Damage_Pixels, F.Pixels, Now, Path => F.Path);
+               Observe (L, Damage_Rectangles, F.Rectangles, Now, Path => F.Path);
                if Known (F.Started, F.Ready_At) then
                   TH.Add (P.Render, Elapsed (F.Started, F.Ready_At) + F.Draw_Us);
+                  Observe (L, Render_Cost, Elapsed (F.Started, F.Ready_At) + F.Draw_Us, Now, Path => F.Path);
                end if;
                Add (P.Submit_To_Ready, F.Submitted_At, Ready_Us);
+               if Known (F.Submitted_At, Ready_Us) then
+                  Observe (L, Path_Submit_To_Ready, Ready_Us - F.Submitted_At, Now, Path => F.Path);
+               end if;
+               if Timed and then Latch_Us /= Unavailable then
+                  --  Frames against refreshes: how many vblanks since this
+                  --  output's previous timed frame (1: every refresh).
+                  if L.Last_Latch (O) /= Unavailable and then Latch_Us > L.Last_Latch (O) then
+                     Observe (L, Frame_Vblanks, (Latch_Us - L.Last_Latch (O) + Period / 2) / Period, Now);
+                  end if;
+                  L.Last_Latch (O) := Latch_Us;
+               end if;
             end;
             L.Sent (O).Used := False;
          end if;
@@ -219,19 +297,20 @@ package body Compositor_Latency with SPARK_Mode is
       for R of L.Inputs loop
          if R.State = Sent and then R.Token = Token then
             Bump (S.Shown);
-            Add (S.Stages (Driver_To_Intake), R.Origin, R.Intake);
-            Add (S.Stages (Intake_To_Delivery), R.Intake, R.Delivered_At);
-            Add (S.Stages (Delivery_To_Publish), R.Delivered_At, R.Published_At);
-            Add (S.Stages (Publish_To_Compose), R.Published_At, R.Composed_At);
-            Add (S.Stages (Compose_To_Submit), R.Composed_At, R.Submitted_At);
+            Observe (L, Input_Shown, 1, Now);
+            Stage_Time (Driver_To_Intake, R.Origin, R.Intake);
+            Stage_Time (Intake_To_Delivery, R.Intake, R.Delivered_At);
+            Stage_Time (Delivery_To_Publish, R.Delivered_At, R.Published_At);
+            Stage_Time (Publish_To_Compose, R.Published_At, R.Composed_At);
+            Stage_Time (Compose_To_Submit, R.Composed_At, R.Submitted_At);
             if Timed then
-               Add (S.Stages (Submit_To_Ready), R.Submitted_At, Ready_Us);
-               Add (S.Stages (Ready_To_Latch), Ready_Us, Latch_Us);
+               Stage_Time (Submit_To_Ready, R.Submitted_At, Ready_Us);
+               Stage_Time (Ready_To_Latch, Ready_Us, Latch_Us);
                if Hardware then
-                  Add (S.Stages (Latch_To_Observed), Timing.Latched_Us, Timing.Observed_Us);
+                  Stage_Time (Latch_To_Observed, Timing.Latched_Us, Timing.Observed_Us);
                end if;
-               Add (S.Stages (Input_To_Ready), R.Origin, Ready_Us);
-               Add (S.Stages (Input_To_Latch), R.Origin, Latch_Us);
+               Stage_Time (Input_To_Ready, R.Origin, Ready_Us);
+               Stage_Time (Input_To_Latch, R.Origin, Latch_Us);
                if R.Origin /= Unavailable and then R.Origin <= Unavailable / 2 then
                   declare
                      Late : constant Late_Bucket := Bucket (Refreshes_Late (R.Origin, Latch_Us, Period));
@@ -239,10 +318,12 @@ package body Compositor_Latency with SPARK_Mode is
                   begin
                      Bump (S.Late (Late));
                      Bump (S.By_Phase (When_In) (Late));
+                     Observe (L, Late_Sample, Refreshes_Late (R.Origin, Latch_Us, Period), Now);
                   end;
                end if;
             else
                Bump (S.Untimed);
+               Observe (L, Input_Untimed, 1, Now);
             end if;
             R := (others => <>);
          end if;
@@ -255,6 +336,7 @@ package body Compositor_Latency with SPARK_Mode is
          if R.State /= Free and then Known (R.Intake, Now) and then Now - R.Intake > Expiry_Us
          then
             Bump (S.Unshown);
+            Observe (L, Input_Unshown, 1, Now);
             R := (others => <>);
          end if;
       end loop;

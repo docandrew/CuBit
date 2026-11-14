@@ -10,8 +10,6 @@
   (config-scope (rights read write) "desktop.appearance.")
   # The Apps menu entries (Desktop_Launch).
   (config-scope (rights read) "desktop.launch.")
-  # Opt-in detailed tracing; Desktop only reads this operator setting.
-  (config-scope (rights read) "desktop.metrics.")
   # Keyboard settings (desktop.input.key-repeat: Desktop_Key_Repeat_Settings).
   (config-scope (rights read) "desktop.input.")
   # Settings > Date & Time (Desktop_Time_Zone_Setting).

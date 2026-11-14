@@ -141,9 +141,70 @@ procedure Latency_Tests is
              S.Paths (GPU).Frames = 0 and then TH.Count (S.Stages (Input_To_Ready)) = 0 and then
              S.Late = [0, 0, 0, 0, 0], "reset in place");
    end Lifecycle_Cases;
+   --  MET-002: every sample the ledger takes is queued as an observation,
+   --  each stage's value equal to its histogram's; past the queue's
+   --  capacity, observations are counted as lost with their time range.
+   procedure Observation_Cases is
+      L : Ledger;
+      S : Stats;
+      Vblank : constant Time_Us := 1_000_000;
+      type Stage_Values is array (Stage) of Unsigned_64;
+      Seen : Stage_Values := [others => 0];
+      Kinds : array (Observation_Kind) of Natural := [others => 0];
+      Lost_Count : Unsigned_64 := 0;
+      Lost_First, Lost_Last : Unsigned_64 := 0;
+      procedure Each (Item : Observation) is
+      begin
+         Kinds (Item.Kind) := Kinds (Item.Kind) + 1;
+         if Item.Kind = Stage_Sample then
+            Seen (Item.Of_Stage) := Item.Value;
+         end if;
+      end Each;
+      procedure Lost (Kind : Observation_Kind; Of_Stage : Stage; Path : Render_Path;
+                      Count, First_Us, Last_Us : Unsigned_64) is
+         pragma Unreferenced (Of_Stage, Path);
+      begin
+         if Kind = Input_Taken then
+            Lost_Count := Lost_Count + Count;
+            Lost_First := First_Us;
+            Lost_Last := Last_Us;
+         end if;
+      end Lost;
+      procedure Drain is new Drain_Observations (Each, Lost);
+      Item : Slot;
+   begin
+      One (L, S, Vblank - 1_000, 1, 11,
+           (PT.Hardware_Latch, Vblank - 780, Vblank, Vblank + 300, Period));
+      Drain (L);
+      Check (Seen (Input_To_Ready) = 220 and then Seen (Ready_To_Latch) = 780 and then
+             Seen (Latch_To_Observed) = 300 and then Seen (Driver_To_Intake) = 20,
+             "observations carry each stage's time");
+      Check (Kinds (Stage_Sample) = 10 and then Kinds (Late_Sample) = 1 and then Kinds (Input_Taken) = 1 and then
+             Kinds (Input_Shown) = 1 and then Kinds (Damage_Pixels) = 1 and then Kinds (Render_Cost) = 1,
+             "one observation per sample");
+      Kinds := [others => 0];
+      Drain (L);
+      Check (Kinds = [Observation_Kind => 0], "a drain empties the queue");
+      --  The next timed frame, one refresh later: one vblank per frame.
+      One (L, S, Vblank + 1_000, 2, 12,
+           (PT.Hardware_Latch, Vblank + Period - 500, Vblank + Period, Vblank + Period + 10, Period));
+      Drain (L);
+      Check (Kinds (Frame_Vblanks) = 1, "frames against vblanks");
+      --  Past the queue's capacity: counted, never dropped silently.
+      for I in 1 .. Observation_Capacity + 7 loop
+         Intake (L, Time_Us (I), Time_Us (I), Unsigned_64 (I), Item);
+         Forget_Unrouted (L, Item);
+      end loop;
+      Kinds := [others => 0];
+      Drain (L);
+      Check (Kinds (Input_Taken) = Observation_Capacity and then Lost_Count = 7 and then
+             Lost_First = Observation_Capacity + 1 and then Lost_Last = Observation_Capacity + 7,
+             "overflow counted with its time range");
+   end Observation_Cases;
 begin
    Hop_Cases;
    Virtual_Cases;
    Lifecycle_Cases;
+   Observation_Cases;
    Ada.Text_IO.Put_Line ("compositor-latency: PASS checks=" & Checks'Image);
 end Latency_Tests;

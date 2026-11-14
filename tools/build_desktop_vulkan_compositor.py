@@ -106,7 +106,6 @@ def main():
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument("--input-overlay", choices=("off", "on"), default="off")
     parser.add_argument("--timing", choices=("off", "on"), default="off")
-    parser.add_argument("--metrics", choices=("off", "on"), default="off")
     parser.add_argument('--software-mesa-build', type=Path, help='verified combined softpipe/ANV native build')
     parser.add_argument('--software-fault', choices=('none', 'init', 'draw', 'text-partial'), default='none',
                         help='test-only failure injection into the compositor Mesa bridge')
@@ -165,7 +164,7 @@ def main():
     env = {**os.environ, 'CUBIT_STACK_SIZE': '16777216', 'NIX_HARDENING_ENABLE': ''}
     # Keep a single declared build variant regardless of ambient scenarios.
     env.update(CUBIT_COMPOSITOR='vulkan', CUBIT_COMPOSITOR_TIMING=args.timing,
-               CUBIT_COMPOSITOR_METRICS=args.metrics, CUBIT_COMPOSITOR_STORAGE='production',
+               CUBIT_COMPOSITOR_STORAGE='production',
                CUBIT_DISPLAY_TEST_MODE='production', CUBIT_INPUT_OVERLAY=args.input_overlay,
                CUBIT_DESKTOP_FAULT=desktop_fault)
 
@@ -215,25 +214,16 @@ def main():
         desktop = out / 'userspace/services/desktop'
         if 'Configure_Renderer' not in (out / 'userspace/services/desktop/backend-vulkan/desktop_compositor.ads').read_text():
             raise ValueError('Selected source lacks runtime backend dispatch')
-        metadata = desktop / ('build-metrics-manifest' if args.metrics == 'on' else 'build')
+        metadata = desktop / 'build'
         generated = metadata / 'generated'
         generated.mkdir(parents=True, exist_ok=True)
         selected_manifest = desktop / 'manifest.ccl'
-        if args.metrics == 'on':
-            base = selected_manifest.read_text().rstrip()
-            if not base.startswith('#') and not base.startswith('(executable-manifest v1'):
-                raise ValueError('Metrics overlay requires a reviewed keyword Desktop manifest')
-            if '(executable-manifest v1' not in base or not base.endswith(')') or '(request-service metrics ' in base:
-                raise ValueError('Unexpected Desktop manifest; review metrics overlay')
-            selected_manifest = metadata / 'manifest.ccl'
-            selected_manifest.write_text(base[:-1] + '\n  (request-service metrics read-write metrics))\n')
         with (metadata / 'manifest.S').open('w') as assembly:
             run([compiler, catalog, selected_manifest, '--schema', schema,
                  '--startup-output', generated / 'startup.ads'], stdout=assembly)
         run([*c_prefix, '-c', metadata / 'manifest.S', '-o', metadata / 'manifest.o'])
         run(['alr', 'exec', '--', 'gprbuild', *os.environ['CUBIT_NATIVE_GPRBUILD_CONFIG'].split(), '-q', '-p', '-c', '-b', '-P',
-             desktop / 'desktop.gpr', '-XCUBIT_COMPOSITOR=vulkan',
-             '-XCUBIT_COMPOSITOR_METRICS=' + args.metrics], toolchain / 'kernel')
+             desktop / 'desktop.gpr', '-XCUBIT_COMPOSITOR=vulkan'], toolchain / 'kernel')
         shader_out = out / 'generated'
         run(['python3', out / shader_script, shader_out])
         # All C bridge objects are rebuilt, not inherited from a previous test.
@@ -251,7 +241,7 @@ def main():
             obj = out / 'softpipe.o'
             run([*software[0], *fault_flags, '-c', out / 'userspace/lib/compositor/softpipe.c', '-o', obj], software[1])
             objects.append(obj)
-        directory = desktop / ('build-vulkan' + ('-input-overlay' if args.input_overlay == 'on' else '') + ('-timing' if args.timing == 'on' else '') + ('-metrics' if args.metrics == 'on' else '') + ('-fault-exit-once' if desktop_fault == 'exit-once' else ''))
+        directory = desktop / ('build-vulkan' + ('-input-overlay' if args.input_overlay == 'on' else '') + ('-timing' if args.timing == 'on' else '') + ('-fault-exit-once' if desktop_fault == 'exit-once' else ''))
         exchange = (directory / 'main.bexch').read_text()
         bound = exchange.split('[BOUND OBJECT FILES]\n', 1)[1].split('\n[', 1)[0].splitlines()
         binary = out / 'desktop-vulkan-compositor.svc'
@@ -279,7 +269,7 @@ def main():
                       binary_sha256=digest(binary), source_manifest=manifest.name,
                       source_manifest_sha256=digest(manifest), software_fallback=True,
                       gpu_drawing_enabled_meaning='Runtime capability, not hardware validation',
-                      build_variant={'software_fault': args.software_fault, 'input_overlay': args.input_overlay, 'timing': args.timing, 'metrics': args.metrics, 'storage': 'production', 'desktop_fault': desktop_fault})
+                      build_variant={'software_fault': args.software_fault, 'input_overlay': args.input_overlay, 'timing': args.timing, 'storage': 'production', 'desktop_fault': desktop_fault})
         print(binary, flush=True)
     finally:
         (out / 'build-inputs.json').write_text(json.dumps(inputs, indent=2) + '\n')

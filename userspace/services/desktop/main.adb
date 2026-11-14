@@ -35,9 +35,7 @@ with Compositor_Workspace;
 ------------------------------------------------------------------------------
 with Desktop_Timing_Policy;
 with Desktop_Metrics;
-with Compositor_Trace_Wire;
 with Desktop_Logs;
-with Compositor_Metric_Batch_Policy;
 with Desktop_Storage_Policy;
 with Compositor_Text;
 with Client_Glyph_Blend;
@@ -342,7 +340,6 @@ procedure main is
    use type BP.Ticket;
    use type CP.Phase;
    requestSequence : Unsigned_64 := 0;
-   metricsStoppedAnnounced : Boolean := False;
    asyncAnnounced, releaseAnnounced : Boolean := False;
    --  Desktop_Fault_Policy: this desktop leased the display from an owner
    --  that ended (it is a restart), so it does not fail on purpose.
@@ -1561,26 +1558,8 @@ procedure main is
    inputDequeueTrace : IT.State;
    package RT renames Compositor_Render_Trace;
    renderTrace : RT.State;
-   package TW renames Compositor_Trace_Wire;
-   Trace_Metrics_Enabled : Boolean := False;
-   function Trace_Enabled return Boolean is
-     (Desktop_Timing_Policy.Enabled or else Trace_Metrics_Enabled);
+   function Trace_Enabled return Boolean is (Desktop_Timing_Policy.Enabled);
 
-   procedure Read_Trace_Configuration is
-      use all type CuBit.Settings.Outcome;
-   begin
-      Trace_Metrics_Enabled := False;
-      if not DM.Enabled then return; end if;
-      declare
-         Stored : constant Startup.Settings.Desktop_Metrics_Trace.Reading :=
-           Startup.Settings.Desktop_Metrics_Trace.Read;
-      begin
-         Trace_Metrics_Enabled := Stored.Kind = Present and then CuBit.Settings.Image (Stored.Item) = "true";
-      end;
-      if Trace_Metrics_Enabled then
-         debugPrint ("desktop: detailed trace metrics enabled" & LF);
-      end if;
-   end Read_Trace_Configuration;
 
    --  desktop.input.key-repeat (Desktop_Key_Repeat_Settings). Absent keeps
    --  the defaults; an invalid value is reported and keeps them too. The
@@ -1681,27 +1660,22 @@ procedure main is
    procedure recordFrameTrace (Value : FT.Record_Value) is
    begin
       if Desktop_Timing_Policy.Enabled then FT.Add (frameTrace, Value); end if;
-      if Trace_Metrics_Enabled then DM.Record_Trace ((TW.Frame_Event, 0, Value)); end if;
    end recordFrameTrace;
    procedure recordSourceTrace (Value : ST.Record_Value) is
    begin
       if Desktop_Timing_Policy.Enabled then ST.Add (sourceTrace, Value); end if;
-      if Trace_Metrics_Enabled then DM.Record_Trace ((TW.Source_Event, 0, Value)); end if;
    end recordSourceTrace;
    procedure recordInputTrace (Value : IT.Record_Value) is
    begin
       if Desktop_Timing_Policy.Enabled then IT.Add (inputDequeueTrace, Value); end if;
-      if Trace_Metrics_Enabled then DM.Record_Trace ((TW.Input_Event, 0, Value)); end if;
    end recordInputTrace;
    procedure recordRenderTrace (Value : RT.Record_Value) is
    begin
       if Desktop_Timing_Policy.Enabled then RT.Add (renderTrace, Value); end if;
-      if Trace_Metrics_Enabled then DM.Record_Trace ((TW.Render_Event, 0, Value)); end if;
    end recordRenderTrace;
    procedure recordUnsupportedTrace is
    begin
       if Desktop_Timing_Policy.Enabled then RT.Note_Unsupported (renderTrace); end if;
-      if Trace_Metrics_Enabled then DM.Record_Unsupported_Trace; end if;
    end recordUnsupportedTrace;
 
    package TH renames CuBit.Timing_Histograms;
@@ -2244,9 +2218,6 @@ procedure main is
          DM.Record_Work (Compositor_Work_Metrics.Scene_Pixels, statsScenePixels, now * 1000);
          DM.Record_Work (Compositor_Work_Metrics.Repair_Pixels, statsRepairPixels, now * 1000);
       end if;
-      if Trace_Metrics_Enabled and then not DM.Disabled and then
-        now < Unsigned_64'Last / 1000
-      then DM.Record_Trace_Status (now * 1000); end if;
       statsStartMs := now;
       statsEvents := 0;
       statsKeyboardEvents := 0;
@@ -3489,12 +3460,9 @@ procedure main is
             return;
          end if;
          DB.Charge_Completion (Batch);
-         if not (DM.Enabled and then DM.Matches (completion.token)) then
-            Non_Metric_Work := True;
-         end if;
-         if DM.Enabled and then DM.Matches (completion.token) then
-            DM.Collect (completion);
-         elsif CR.Token (launchRequest) /= 0 and then completion.token = CR.Token (launchRequest) then
+         --  Metrics take no completions (their outlet ring needs none).
+         Non_Metric_Work := True;
+         if CR.Token (launchRequest) /= 0 and then completion.token = CR.Token (launchRequest) then
             collectLaunch (completion);
          elsif Desktop_Launch_Refresh.Token /= 0 and then
            completion.token = Desktop_Launch_Refresh.Token
@@ -14121,7 +14089,6 @@ begin
    Read_Appearance;
    Desktop_Wallpaper_Assets.Prepare (appearance);
    Desktop_Icon_Assets.Load;
-   Read_Trace_Configuration;
    Load_Launch_Menu;
    Load_Key_Repeat;
    Load_GPU_Power;
@@ -14189,7 +14156,6 @@ begin
          eventPublisher : Process_ID := No_Process;
          eventFound : Boolean := False;
          activity : Activity_Result;
-         metricsDelayUs : Unsigned_64 := Unsigned_64'Last;
          inputBatch : DB.Input_Batch := DB.New_Input;
          procedure Drain_Events is
          begin
@@ -14243,6 +14209,9 @@ begin
          turnWork := (statsEvents, statsRequests, statsPresentOps);
          collectPresentations;
          Desktop_Latency_Report.Tick (latencyLedger, latencyStats, CuBit.Monotonic.Microseconds);
+         --  LAT-002's samples to the series store (MET-002): copies into
+         --  the outlet ring, no system call.
+         DM.Publish_Latency (latencyLedger);
          if outputChangeNoticed and then not outputDrainRequested and then
            not outputReopenPending and then not shutdownRequested
          then
@@ -14329,12 +14298,6 @@ begin
          pumpPresentation;
          pumpSourceRetirements;
          recordTransferWork;
-         if DM.Enabled and then DM.Pending then DM.Pump (requestSequence, dispatchNow); end if;
-         if DM.Enabled and then DM.Disabled and then not metricsStoppedAnnounced then
-            metricsStoppedAnnounced := True;
-            debugPrint ("desktop: metrics quarantined dropped=" & Decimal (DM.Dropped) &
-              " invalid=" & Decimal (DM.Invalid) & " rejected=" & Decimal (DM.Rejected) & LF);
-         end if;
          expireInputWaiters;
          tickTip (nowMs);
          --  Secrets are wiped at their deadline, not only on the next paste.
@@ -14360,7 +14323,6 @@ begin
          then
             DM.Record_Stage (Compositor_Stage_Metrics.Loop_Turn, turnStartedUs, dispatchNow);
          end if;
-         if DM.Enabled and then DM.Pending then metricsDelayUs := DM.Delay_Us (dispatchNow); end if;
 
          if not eventFound and then not found and then
            (running or else outputDrainRequested or else sourceRetirementPending) then
@@ -14376,7 +14338,7 @@ begin
               TTP.Next_Deadline (tipState) = TTP.NEVER and then
               modeTrial.Current = Desktop_Mode_Trial.Idle and then
               not KR.Armed (keyRepeat) and then
-              metricsDelayUs = Unsigned_64'Last and then not renderingPending and then
+              not renderingPending and then
               not sourceRetirementPending and then not outputDrainRequested and then not outputReopenPending
             then
                --  Input, requests and frame completions all wake the same
@@ -14432,15 +14394,6 @@ begin
                   if KR.Armed (keyRepeat) and then
                     (nextDueMs = 0 or else KR.Next_Due (keyRepeat) < nextDueMs)
                   then nextDueMs := KR.Next_Due (keyRepeat); end if;
-                  if metricsDelayUs = 0 then
-                     mayWait := False;
-                  elsif mayWait and then metricsDelayUs /= Unsigned_64'Last then
-                     declare Deadline : constant Unsigned_64 :=
-                       Compositor_Metric_Batch_Policy.Wake_At_Ms (now, metricsDelayUs);
-                     begin
-                        if nextDueMs = 0 or else Deadline < nextDueMs then nextDueMs := Deadline; end if;
-                     end;
-                  end if;
                   -- GPU work in flight: sleep on its completion event when the
                   -- glue can arm one (Desktop_GPU_Wake), else the 1 ms timer.
                   Desktop_GPU_Wake.Prepare_Wait (renderingPending, requestSequence, now, gpuWaitMode);

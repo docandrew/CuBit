@@ -48,7 +48,6 @@ def main():
                         default=Path(os.environ["CUBIT_MESA_SOURCE"]) if os.environ.get("CUBIT_MESA_SOURCE") else None)
     parser.add_argument("--timing", choices=("off", "on"),
                         default=os.environ.get("CUBIT_COMPOSITOR_TIMING", "off"))
-    parser.add_argument("--metrics", choices=("off", "on"), required=True)
     parser.add_argument("--input-overlay", choices=("off", "on"),
                         default=os.environ.get("CUBIT_INPUT_OVERLAY", "off"))
     parser.add_argument("--source-root", type=Path, default=root)
@@ -77,7 +76,7 @@ def main():
         if args.software_mesa_build is not None and args.software_mesa_build.resolve() != dependency / "native":
             parser.error("Explicit CUBIT_MESA_BUILD conflicts with automatic combined Mesa selection")
         args.software_mesa_build = dependency / "native"
-    variant = directory(args.metrics, scenario)
+    variant = directory(scenario)
     native = software_build(args.bundle.resolve(), args.mesa_source.resolve(), args.software_mesa_build)
     # Keep the clean build outside the input tree. Failed artifacts retain their
     # provenance; only a fully verified binary replaces the scenario output.
@@ -90,13 +89,13 @@ def main():
         "--manifest-compiler", str(args.manifest_compiler.resolve()),
         "--schema", str(args.schema.resolve()), "--catalog",
         str(root / "userspace/ccl/catalogs/native-runtime-services.ccl"),
-        "--output", str(artifact), "--metrics", args.metrics, "--timing", args.timing,
+        "--output", str(artifact), "--timing", args.timing,
         "--input-overlay", args.input_overlay], check=True)
     binary = verify(artifact)
     record = json.loads((artifact / "compositor-result.json").read_text())
     if record.get("software_renderer") != "mesa-softpipe":
         raise ValueError("Normal Desktop build must include software Mesa")
-    if record.get("build_variant") != {"software_fault": "none", "input_overlay": args.input_overlay, "timing": args.timing, "metrics": args.metrics,
+    if record.get("build_variant") != {"software_fault": "none", "input_overlay": args.input_overlay, "timing": args.timing,
                                      "storage": "production",
                                      "desktop_fault": scenario.get("CUBIT_DESKTOP_FAULT", "off")}:
         raise ValueError("Built variant does not match requested output")

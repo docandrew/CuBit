@@ -1,5 +1,14 @@
 with System.Storage_Elements; use System.Storage_Elements;
+with CuBit.Metrics;
 package body Intel_GPU_Primary_Flip is
+   --  Each latch's slack (armed to latched: the frame waited for its vblank)
+   --  and lag (latched to seen here: this driver's polling), as metric
+   --  series (MET-002) beside the per-second log line's averages: a copy
+   --  into the outlet ring, no system call.
+   Slack_Series : constant CuBit.Metrics.Series :=
+     CuBit.Metrics.Series_Named ("intel-gpu.flip.slack_us", CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds);
+   Lag_Series : constant CuBit.Metrics.Series :=
+     CuBit.Metrics.Series_Named ("intel-gpu.flip.lag_us", CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds);
    package VC renames Intel_GPU_Vblank_Clock;
    use type FS.Source;
 
@@ -219,6 +228,8 @@ package body Intel_GPU_Primary_Flip is
       Stats.Slack_Max_Us := Unsigned_64'Max (Stats.Slack_Max_Us, Latched_Us - Armed_Us);
       Stats.Lag_Total_Us := Stats.Lag_Total_Us + (Now - Latched_Us);
       Stats.Lag_Max_Us := Unsigned_64'Max (Stats.Lag_Max_Us, Now - Latched_Us);
+      CuBit.Metrics.Observe_At (Slack_Series, Latched_Us - Armed_Us, Now);
+      CuBit.Metrics.Observe_At (Lag_Series, Now - Latched_Us, Now);
    end Time_Latch;
 
    --  Observe PLANE_SURFLIVE once; Latched when the owed frame is live.

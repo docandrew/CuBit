@@ -9,13 +9,12 @@ root=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('mesa', type=Path)
 parser.add_argument('fault', nargs='?', default='none', choices=('none','init','draw','text'))
-parser.add_argument('--metrics', choices=('off','on'), default='off')
 parser.add_argument('--scenario-output', action='store_true')
 args=parser.parse_args()
 mesa=args.mesa.resolve()
 fault=args.fault
 scenario={**os.environ, 'CUBIT_COMPOSITOR':'mesa'}
-build_directory=directory(args.metrics, scenario)
+build_directory=directory(scenario)
 if args.scenario_output and (fault!='none' or os.environ.get('CUBIT_COMPOSITOR_ALLOC_TRACE')=='1'):
     raise SystemExit('fault/allocator instrumentation cannot replace a production scenario')
 if not (mesa/'compile_commands.json').is_file():
@@ -39,7 +38,7 @@ if trace:
     trace_args = [trace_obj, *(f'-Wl,--wrap={name}' for name in
                   ('malloc','calloc','realloc','aligned_alloc','posix_memalign'))]
 run(['alr','exec','--','gprbuild', *os.environ['CUBIT_NATIVE_GPRBUILD_CONFIG'].split(),'-p','-c','-b','-P',desktop/'desktop.gpr',
-     '-XCUBIT_COMPOSITOR=mesa', '-XCUBIT_COMPOSITOR_METRICS='+args.metrics],root/'kernel')
+     '-XCUBIT_COMPOSITOR=mesa'],root/'kernel')
 d=desktop/build_directory
 bexch=(d/'main.bexch').read_text()
 objects=bexch.split('[BOUND OBJECT FILES]\n')[1].split('\n[')[0].splitlines()
@@ -48,10 +47,10 @@ libs=['src/gallium/drivers/softpipe/libsoftpipe.a','src/gallium/auxiliary/libgal
       'src/util/blake3/libblake3.a','src/util/libmesa_util_clflush.a',
       'src/util/libmesa_util_clflushopt.a','src/util/libmesa_util_simd.a',
       'src/c11/impl/libmesa_util_c11.a']
-result=out/('desktop-mesa-'+fault+('-metrics' if args.metrics=='on' else '')+('-trace' if trace else '')+'.svc')
+result=out/('desktop-mesa-'+fault+('-trace' if trace else '')+'.svc')
 if args.scenario_output:
     result=d/'desktop.svc'
-manifest=desktop/('build-metrics-manifest' if args.metrics=='on' else 'build')/'manifest.o'
+manifest=desktop/'build'/'manifest.o'
 temporary=result.with_suffix('.svc.pending')
 run([root/'userspace/libc/cubit-c++',d/'b__main.o',*objects,obj,*trace_args,
      root/'userspace/rust/build/font-native/libcubit_fonts.a','-Wl,--start-group',

@@ -190,6 +190,41 @@ package Compositor_Latency with SPARK_Mode is
    function In_Flight (L : Ledger) return Natural;
 
    ---------------------------------------------------------------------------
+   --  Observations (MET-002): every sample the ledger takes, queued for its
+   --  owner to publish as metric series (Desktop: CuBit.Metrics, so the
+   --  store computes any window's percentiles itself). The histograms above
+   --  stay the report interval's human summary. Past Observation_Capacity
+   --  between two drains, an observation is not queued but counted, with
+   --  its time range, under its kind, stage and path (Lost).
+   ---------------------------------------------------------------------------
+   type Observation_Kind is
+     (Stage_Sample,          --  one input's time in Of_Stage
+      Late_Sample,           --  one input's refreshes late
+      Damage_Pixels,         --  a shown frame's damage on Path
+      Damage_Rectangles,
+      Render_Cost,           --  composition start to ready, drawing included
+      Path_Submit_To_Ready,  --  a frame's submit to the backend's arm
+      Frame_Vblanks,         --  refreshes since the output's previous timed frame
+      Input_Taken, Input_Shown, Input_Unshown, Input_Evicted, Input_Untimed, Frame_Dropped);
+   subtype Path_Kind is Observation_Kind range Damage_Pixels .. Path_Submit_To_Ready;
+   subtype Count_Kind is Observation_Kind range Input_Taken .. Frame_Dropped;
+   type Observation is record
+      Kind : Observation_Kind := Stage_Sample;
+      Of_Stage : Stage := Stage'First;
+      Path : Render_Path := CPU;
+      Value : Unsigned_64 := 0;
+      Time : Time_Us := 0;
+   end record;
+   Observation_Capacity : constant := 1_024;
+   generic
+      with procedure Each (Item : Observation);
+      --  Count observations of Kind (Of_Stage, Path) were not queued, the
+      --  first at First_Us and the last at Last_Us.
+      with procedure Lost (Kind : Observation_Kind; Of_Stage : Stage; Path : Render_Path;
+                           Count, First_Us, Last_Us : Unsigned_64);
+   procedure Drain_Observations (L : in out Ledger);
+
+   ---------------------------------------------------------------------------
    --  Pure arithmetic, exposed for tests.
    ---------------------------------------------------------------------------
    --  The first vblank at or after Time on a grid of Period through Anchor.
@@ -232,11 +267,24 @@ private
       Frame : Frame_Record;
    end record;
    type Sent_Table is array (Output_Number) of Sent_Frame;
+   subtype Observation_Count is Natural range 0 .. Observation_Capacity;
+   type Observation_Queue is array (1 .. Observation_Capacity) of Observation;
+   type Lost_Record is record
+      Count, First_Us, Last_Us : Unsigned_64 := 0;
+   end record;
+   type Lost_Table is array (Observation_Kind, Stage, Render_Path) of Lost_Record;
+   type Latch_Table is array (Output_Number) of Time_Us;
    type Ledger is record
       Inputs : Input_Table;
       Frames : Frame_Table;
       Sent : Sent_Table;
       Pending_Draw_Us : Unsigned_64 := 0;
       Taken, Evicted : Unsigned_64 := 0;
+      Queue : Observation_Queue;
+      Queued : Observation_Count := 0;
+      Lost : Lost_Table;
+      --  The latest time any hop passed in, and each output's last latch.
+      Clock : Time_Us := 0;
+      Last_Latch : Latch_Table := [others => Unavailable];
    end record;
 end Compositor_Latency;

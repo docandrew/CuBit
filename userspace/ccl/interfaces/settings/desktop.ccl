@@ -9,7 +9,6 @@
   (Setting "desktop.launch." Shape.Family
     (Value.Typed (CCL_Type "CCL.Interfaces.Desktop_Launch.TYPE_SOURCE" "Launch_Entry"))
     Class.Declaration_Managed "Desktop_Launch")
-  (Setting "desktop.metrics.trace" Shape.Key Value.Text Class.Declaration_Managed "")
   (Setting "desktop.input.key-repeat" Shape.Key
     (Value.Typed (CCL_Type "CCL.Interfaces.Desktop_Input.TYPE_SOURCE" "Key_Repeat"))
     Class.Declaration_Managed "Desktop_Key_Repeat_Settings")

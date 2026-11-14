@@ -2321,27 +2321,21 @@ stack-probe: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/stack-probe/component.ccl
 	cp ../userspace/apps/stack-probe/build/stack-probe.app isodir/boot/stack-probe.app
 
-# Standard desktop-session build: nonblocking typed metrics, with a matching
-# startup collector. Keep bare `desktop` for profiles without metrics.svc.
-.PHONY : desktop-metrics
-desktop-metrics: desktop metricsvc
-	cd .. && bash tools/build_desktop_metrics.sh --stage
-
 # Build the userspace desktop compositor/session service prototype
 .PHONY : desktop
 desktop: user_runtime ccl-manifest ui-fonts-native time-zones
 	mkdir -p ../userspace/services/desktop/build
 	$(call compile_ccl_manifest,../userspace/services/desktop)
-	@python3 ../tools/desktop_build_variant.py --metrics off >/dev/null
+	@python3 ../tools/desktop_build_variant.py >/dev/null
 	@if [ "$(CUBIT_COMPOSITOR)" = mesa ]; then \
 	  test -n "$(CUBIT_MESA_BUILD)" || { echo 'Set CUBIT_MESA_BUILD to the existing native Mesa build' >&2; exit 2; }; \
-	  python3 ../tools/build_mesa_desktop.py "$(abspath $(CUBIT_MESA_BUILD))" --metrics off --scenario-output; \
+	  python3 ../tools/build_mesa_desktop.py "$(abspath $(CUBIT_MESA_BUILD))" --scenario-output; \
 	elif [ "$(CUBIT_COMPOSITOR)" = vulkan ]; then \
-	  python3 ../tools/build_vulkan_desktop.py --metrics off; \
+	  python3 ../tools/build_vulkan_desktop.py; \
 	else \
-	  $(NATIVE_GPRBUILD) -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_COMPOSITOR_METRICS=off -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE); \
+	  $(NATIVE_GPRBUILD) -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE); \
 	fi
-	cp ../userspace/services/desktop/$$(python3 ../tools/desktop_build_variant.py --metrics off)/desktop.svc isodir/boot/desktop.svc
+	cp ../userspace/services/desktop/$$(python3 ../tools/desktop_build_variant.py)/desktop.svc isodir/boot/desktop.svc
 
 # Read-only asset packages (docs/assets.md): Assets/<name>/<version>/ on each
 # image's system volume. ASSET_ROOT is the one place the root is spelled for
@@ -2544,7 +2538,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # staging target so run-desktop can build/copy them into isodir first, then
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
-desktop-session-content: $(INITRD_SERVICES) desktop-metrics display logstore \
+desktop-session-content: $(INITRD_SERVICES) desktop metricsvc display logstore \
 	desktop-shell devices files text calculator config-inspector ccl-workbench ccl-console logs trace-viewer config-storage clock timesync tls doom sameboy \
 	lexicon dictionary bible
 
