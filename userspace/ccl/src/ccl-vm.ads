@@ -20,7 +20,9 @@ is
    use type CCL.Types.Shape;
    use type CCL.Resources.Reference;
 
-   MAX_INSTRUCTIONS : constant := 256;
+   --  Stopgap (MET-002): 512, so the CCL hosts' manifests fit with their
+   --  metrics grants; drop when programs are sized by their input.
+   MAX_INSTRUCTIONS : constant := 512;
    --  Functions per program ("Functions" below).
    MAX_FUNCTIONS    : constant := 16;
    MAX_STACK_DEPTH  : constant := 64;

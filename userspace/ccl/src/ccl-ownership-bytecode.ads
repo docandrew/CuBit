@@ -2,7 +2,8 @@ with CCL.Types;
 package CCL.Ownership.Bytecode with
    SPARK_Mode => On
 is
-   MAX_CODE : constant := 256;
+   --  CCL.VM.MAX_INSTRUCTIONS (stopgap 512: drop with sized programs).
+   MAX_CODE : constant := 512;
    type Code_Index is mod MAX_CODE;
    subtype Code_Length is Natural range 0 .. MAX_CODE;
    subtype Binding_Count is Natural range 0 .. MAX_BINDINGS;
