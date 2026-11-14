@@ -212,7 +212,7 @@ package body CCL_Metric_Bindings is
                      Base : constant Natural := Pages.Range_Gaps_At + G * Pages.Gap_Row_Words;
                   begin
                      M.Add_Gap (Image, Answer (Base), Answer (Base + 1), Answer (Base + 2),
-                                (if Answer (Base + 3) = 2 then M.Refused_By_Store else M.Shed_By_Producer),
+                                (if Answer (Base + 3) = 2 then M.Store_Refused else M.Producer_Shed),
                                 Added);
                   end;
                end loop;

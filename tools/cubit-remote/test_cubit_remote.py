@@ -526,13 +526,13 @@ class MetricsCommands(Commands):
     def test_range_shows_points_rollups_and_gaps(self):
         expression = cr.range_expression("desktop.latency.input_to_ready", "", 1, 2, 0)
         self.device.lists[expression] = ("List<Metric_Item>", [
-            "(Metric_Item.Gap (Metric_Gap 1000000 1500000 4 Metric_Gap_Cause.Shed_By_Producer))",
+            "(Metric_Item.Gap (Metric_Gap 1000000 1500000 4 Metric_Gap_Cause.Producer_Shed))",
             "(Metric_Item.Point (Metric_Point 2000000 250))",
             "(Metric_Item.Rollup (Metric_Rollup 3000000 5 1000 100 400 200 190 400))"], False)
         code, out = self.run_cli("metrics", "range", "desktop.latency.input_to_ready", "--from", "1", "--to", "2")
         self.assertEqual(code, 0)
         lines = out.splitlines()
-        self.assertIn("4 samples shed by producer between 1.000000 and 1.500000", lines[0])
+        self.assertIn("4 samples shed by the producer (its ring was full) between 1.000000 and 1.500000", lines[0])
         self.assertEqual(lines[1].split(), ["2.000000", "250"])
         self.assertIn("n=5 sum=1000 min=100 max=400 last=200 p50=190 p99=400", lines[2])
 

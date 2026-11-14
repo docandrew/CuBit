@@ -1,0 +1,26 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+with "../../userspace/lib/tls/sparktls_host.gpr";
+with "../../userspace/ccl/cubit_shared.gpr";
+--  Linux-hosted tests of metrics.* in CCL (CCL.Interfaces.Metrics,
+--  CCL_Metric_Bindings) over the whole host environment the console uses,
+--  with a scripted CCL_Metric_IO in place of metrics.svc
+--  (fake_ccl_metric_io.adb). Not CuBit: the headless metrics-latency test
+--  runs the real path.
+project CCL_Metrics_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/lexicon", "../../userspace/lib/bible", "../../userspace/ccl/src",
+                        "../../userspace/lib/agent",
+                        "../../userspace/ccl/tools/ccl-ui-preview",
+                        "../../userspace/ccl/tools/ccl-ui-preview/host",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme", "../../userspace/lib/calc",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display");
+   for Excluded_Source_Files use ("cubit.ads", "ccl_metric_io.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("ccl_metrics_main.adb");
+   package Naming is
+      for Body ("CCL_Metric_IO") use "fake_ccl_metric_io.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end CCL_Metrics_Tests;

@@ -996,6 +996,9 @@ def window_expression(series, source, start, end):
             % (metric_text(series), metric_text(source), start, end))
 
 
+GAP_CAUSES = {"Producer_Shed": "shed by the producer (its ring was full)",
+              "Store_Refused": "refused by the store (a ceiling)",
+              "Not_Shown": "not shown (one result holds no more; move --from on)"}
 SERIES_FIELDS = ("id", "name", "source", "program", "instance", "kind", "unit", "published",
                  "retained", "shed", "evicted", "first", "last", "last_value")
 STATS_FIELDS = ("series", "count", "sum", "min", "max", "last", "p50", "p90", "p99", "p999",
@@ -1040,7 +1043,7 @@ def render_range(text):
         else:
             first, last, count, cause = payload
             lines.append("\u2026 %d samples %s between %.6f and %.6f \u2026"
-                         % (count, member(cause).replace("_", " ").lower(),
+                         % (count, GAP_CAUSES.get(member(cause), member(cause)),
                             first / MICROSECONDS_PER_SECOND, last / MICROSECONDS_PER_SECOND))
     return "\n".join(lines) if lines else "(no samples in the range)"
 
@@ -1079,7 +1082,7 @@ def command_metrics(args):
         raise SystemExit("cubit-remote: name the series")
     start, end = metric_times(args)
     if args.what == "range":
-        ok, text = evaluate(host, range_expression(args.name, args.source, start, end, args.step))
+        ok, text = evaluate_whole(host, range_expression(args.name, args.source, start, end, args.step))
         print(text if args.literal or not ok else render_range(text))
         return 0 if ok else 1
     if args.what == "window":

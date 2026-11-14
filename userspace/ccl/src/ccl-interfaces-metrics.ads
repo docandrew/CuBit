@@ -13,7 +13,7 @@ with CCL.Types;
 --    (metrics.range (Metric_Range series => "desktop.latency.input_to_ready"
 --                    source => "" from => -10000000 to => 0 step => 0))
 --      one series' samples in from .. to as List<Metric_Item>: its gaps
---      first (shed by the producer, refused by the store), then the raw
+--      first (Producer_Shed, Store_Refused), then the raw
 --      points (step 0) or the windows of the coarsest tier no wider than
 --      step (Rollup: count, sum, min, max, last, p50, p99), then, when the
 --      result is full, a Not_Shown gap saying where to go on from.
@@ -50,7 +50,7 @@ package CCL.Interfaces.Metrics with SPARK_Mode is
      "(kind Metric_Kind) (unit Metric_Unit) (published Integer) (retained Integer) (shed Integer) (evicted Integer) " &
      "(first Integer) (last Integer) (last_value Integer))) " &
      "(type Metric_Range (record (series String) (source String) (from Integer) (to Integer) (step Integer))) " &
-     "(type Metric_Gap_Cause (enum Shed_By_Producer Refused_By_Store Not_Shown)) " &
+     "(type Metric_Gap_Cause (enum Producer_Shed Store_Refused Not_Shown)) " &
      "(type Metric_Gap (record (first Integer) (last Integer) (count Integer) (cause Metric_Gap_Cause))) " &
      "(type Metric_Point (record (time Integer) (value Integer))) " &
      "(type Metric_Rollup (record (start Integer) (count Integer) (sum Integer) (min Integer) (max Integer) " &
@@ -61,40 +61,40 @@ package CCL.Interfaces.Metrics with SPARK_Mode is
      "(last Integer) (p50 Integer) (p90 Integer) (p99 Integer) (p999 Integer) (rate_milli Integer) " &
      "(missing Integer) (resolution Integer) (error_permille Integer)))";
    DIGEST : constant CCL.Catalog.Descriptor_Digest :=
-     [16#90F2_A0AB_E64D_E50A#,
-      16#F4BA_8F06_13C9_8343#,
-      16#8222_5EE4_F088_74F8#,
-      16#6E51_1180_FF83_1356#];
+     [16#4E0E_5D9F_01F4_4AA3#,
+      16#F5A2_F786_896C_215B#,
+      16#732F_35F8_37F1_18D7#,
+      16#58D3_C325_A918_7512#];
    SERIES_KEY : constant CCL.Objects.Schema_Key :=
-     [16#479A_EBFF_B7BE_68FC#,
-      16#1391_8449_D468_B1C4#,
-      16#3E01_46B9_631D_0D71#,
-      16#9A00_0E5C_2F53_933D#];
+     [16#C9FB_9D09_2DC0_6C41#,
+      16#B4B5_BC8A_5164_D2F7#,
+      16#B170_75D2_577C_B1EF#,
+      16#D543_4E39_5C19_8E71#];
    ITEMS_KEY : constant CCL.Objects.Schema_Key :=
-     [16#B79E_E4FA_B030_1853#,
-      16#07D8_A520_7425_B25A#,
-      16#40A8_048A_5063_A512#,
-      16#1DF1_3EB0_7B0C_C70E#];
+     [16#80A9_A3C9_D32E_AFFB#,
+      16#3813_6F80_D19D_38B3#,
+      16#D88E_0A7D_83AC_7013#,
+      16#6F4E_0B62_1689_B1B7#];
    SELECTOR_KEY : constant CCL.Objects.Schema_Key :=
-     [16#378D_347D_A42E_DA54#,
-      16#91BA_9D81_67B4_575C#,
-      16#9261_7A67_4C92_0C37#,
-      16#CE20_B50A_DD31_60B8#];
+     [16#EF01_EBE1_36D3_CC87#,
+      16#0F44_AB3D_F4BF_D39D#,
+      16#1FAE_C516_C622_8BF9#,
+      16#40FB_02FE_8EE8_E93D#];
    RANGE_KEY : constant CCL.Objects.Schema_Key :=
-     [16#0799_82E5_C926_267B#,
-      16#1363_B480_B049_1257#,
-      16#F51E_B079_84AA_BE7D#,
-      16#0110_A70D_66B9_EFCC#];
+     [16#7384_C941_0AB4_50A9#,
+      16#D6E6_4D2A_F0E0_E5C2#,
+      16#0D42_CEDB_EB79_F3C1#,
+      16#4998_9C39_6157_4234#];
    WINDOW_KEY : constant CCL.Objects.Schema_Key :=
-     [16#7F0E_458C_5D43_2536#,
-      16#65BB_A65F_F0AC_D34E#,
-      16#73C1_0288_786F_C15C#,
-      16#B21E_8ED3_F6EB_9A10#];
+     [16#5B5B_0EE6_34AA_A0E5#,
+      16#7811_7A1E_63B7_BCB8#,
+      16#D6CE_1C3F_3751_C3B5#,
+      16#F0A8_A2B6_C2EC_ABE6#];
    STATS_KEY : constant CCL.Objects.Schema_Key :=
-     [16#8BC6_72D1_EC8C_3FEA#,
-      16#F559_5C80_CC23_43AD#,
-      16#BE1D_61BB_0649_B7AB#,
-      16#6F1C_59B4_C8C5_D098#];
+     [16#81B2_9588_3465_9A3B#,
+      16#29A8_F350_BC0D_7064#,
+      16#2B9F_E56C_44DA_F5AA#,
+      16#77DA_9BD3_B933_2DF9#];
 
    type Operation is (Series, Range_Of, Window);
    function Name (Op : Operation) return String is
@@ -107,8 +107,9 @@ package CCL.Interfaces.Metrics with SPARK_Mode is
    type Range_Field is (Range_Series, Range_Source, Range_From, Range_To, Range_Step);
    type Window_Field is (Window_Series, Window_Source, Window_From, Window_To);
 
-   --  Metric_Gap_Cause's members, in order.
-   type Gap_Cause is (Shed_By_Producer, Refused_By_Store, Not_Shown);
+   --  Metric_Gap_Cause's members, in order (a qualified member name such as
+   --  Metric_Gap_Cause.Producer_Shed stays within CCL's 32 characters).
+   type Gap_Cause is (Producer_Shed, Store_Refused, Not_Shown);
    --  Metric_Kind's and Metric_Unit's members are CuBit.Metric_Outlet's, in
    --  its order; given here as positions.
    subtype Kind_Position is Natural range 0 .. 2;
