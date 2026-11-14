@@ -500,6 +500,16 @@ begin
              and then not LT.Scope_Covered (2, 1, "example.org:443", 2, 1,
                                             "example.org:4433"),
              "child scopes must be covered by the launcher's");
+      --  Metrics read scopes (MET-002): every series covers any prefix; a
+      --  prefix covers the names under it, never a broader one.
+      Check (LT.Scope_Covered (LT.Metrics_Service, 1, "", LT.Metrics_Service, 1, "desktop.")
+             and then LT.Scope_Covered (LT.Metrics_Service, 1, "desktop.", LT.Metrics_Service, 1,
+                                        "desktop.latency.")
+             and then not LT.Scope_Covered (LT.Metrics_Service, 1, "desktop.latency.", LT.Metrics_Service, 1,
+                                            "desktop.")
+             and then not LT.Scope_Covered (LT.Metrics_Service, 1, "desktop.", LT.Metrics_Service, 1, "")
+             and then not LT.Scope_Covered (LT.Metrics_Service, 1, "desktop.", LT.Metrics_Service, 1, "display."),
+             "metrics scopes are covered by prefix");
    end;
 
    --  Launch failure codes: every reason round-trips through its reply

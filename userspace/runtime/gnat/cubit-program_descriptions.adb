@@ -186,7 +186,8 @@ package body CuBit.Program_Descriptions with SPARK_Mode is
                when Element_Kind'Enum_Rep (Text_Lines) => Text_Lines,
                when Element_Kind'Enum_Rep (Raw_Bytes) => Raw_Bytes,
                when Element_Kind'Enum_Rep (Integers) => Integers,
-               when others => Log_Records);
+               when Element_Kind'Enum_Rep (Log_Records) => Log_Records,
+               when others => Metric_Records);
          S.Connectors (P).Signal :=
            (case Item (Position + 2) is
                when Signal_Kind'Enum_Rep (Stream) => Stream,

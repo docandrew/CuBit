@@ -587,7 +587,9 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
             elsif Is_Text (Name, "create") then Right := Create_File;
             else Fail (Invalid_Access_Rights, Cursor); return;
             end if;
-            if Domain = Config_Domain and then Right in Execute_File | Create_File then
+            if (Domain = Config_Domain and then Right in Execute_File | Create_File)
+              or else (Domain = Metrics_Domain and then Right /= Read_File)
+            then
                Fail (Invalid_Access_Rights, Cursor);
             end if;
             if Item.Rights (Right) then Fail (Invalid_Access_Rights, Cursor); end if;
@@ -611,7 +613,10 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
             Item.Path.Data (1 .. Item.Path.Length) := Value.Result_Text.Data (1 .. Item.Path.Length);
          end if;
          -- Preserve exact path bytes; never normalize an authority scope.
-         if not Valid_Scope_Path (Item.Path.Data (1 .. Item.Path.Length)) and then Item.Path.Length > 0 then
+         if Item.Path.Length > 0 and then
+           (if Domain = Metrics_Domain then not Valid_Metric_Prefix (Item.Path.Data (1 .. Item.Path.Length))
+            else not Valid_Scope_Path (Item.Path.Data (1 .. Item.Path.Length)))
+         then
             Fail (Invalid_Path, Cursor);
          end if;
          for Existing of Scopes (1 .. Scope_Count) loop
@@ -815,6 +820,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          elsif Is_Text (Name, "request-publication-optional") then Add_Publication (True);
          elsif Is_Text (Name, "filesystem-scope") then Add_Scope (Filesystem_Domain);
          elsif Is_Text (Name, "config-scope") then Add_Scope (Config_Domain);
+         elsif Is_Text (Name, "metrics-scope") then Add_Scope (Metrics_Domain);
          elsif Is_Text (Name, "tls-scope") then Add_TLS_Scope;
          elsif Is_Text (Name, "match-pci-class") then Add_Match (PCI_Class_Form);
          elsif Is_Text (Name, "match-pci-id") then Add_Match (PCI_ID_Form);

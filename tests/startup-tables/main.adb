@@ -455,6 +455,7 @@ procedure Main is
 
    Self_Word         : constant Unsigned_64 := 16#1_0000_0000#;
    Self_Process_Word : constant Unsigned_64 := 16#1_0000_0001#;
+   Outlet_Word       : constant Unsigned_64 := 16#1_0000_0002#;
 
    --  The fixture manifest's declaration (its .cubit.startup section).
    function Fixture_Declaration return Table is
@@ -480,14 +481,25 @@ procedure Main is
       begin
          Build_Startup (Source, Declared, Self_Word, Self_Process_Word, Built, Result);
          Check (Result = (Status => Ready, Index => 0, Why => Granted), "all granted");
-         Check (Built.Count = 7 and then Complete (Built) and then Follows (Declared, Built), "built table");
+         Check (Built.Count = 8 and then Complete (Built) and then Follows (Declared, Built), "built table");
          Check (Source.Minted = 5 and then Source.Reports = 5, "one mint and one report each");
          Check (Find (Built, To_Name (Self_Text)) = 6 and then Built.Entries (6).Handle = Self_Word,
                 "self entry");
          Check (Built.Entries (7).Handle = Self_Process_Word, "self-process entry");
+         Check (Find (Built, To_Name (Metric_Outlet_Text)) = 8 and then Built.Entries (8).State = Absent
+                and then Built.Entries (8).Requirement = Optional, "no metrics.svc: the outlet is absent");
          Check (Built.Entries (4).State = Granted, "optional granted");
          Check (Built.Limit = (Kind => At_Most, Count => 512), "limit kept");
-         Check (Encoded (Built)'Length = Header_Bytes + 7 * Entry_Bytes, "built table encodes");
+         Check (Encoded (Built)'Length = Header_Bytes + 8 * Entry_Bytes, "built table encodes");
+      end;
+      --  The launcher wired the metric outlet (MET-002).
+      declare
+         Source : Scripted;
+      begin
+         Build_Startup (Source, Declared, Self_Word, Self_Process_Word, Built, Result, Outlet_Word);
+         Check (Result.Status = Ready and then Follows (Declared, Built), "outlet built");
+         Check (Built.Entries (8).State = Granted and then Built.Entries (8).Handle = Outlet_Word
+                and then Built.Entries (8).Kind = Endpoint, "outlet entry granted");
       end;
       --  The optional entry refused: Absent, launch goes on.
       for Why in Mint_Refusal loop
@@ -546,14 +558,19 @@ procedure Main is
          Bad.Entries (2).Label := To_Name (Self_Process_Text);
          Build_Startup (Source, Bad, Self_Word, Self_Process_Word, Built, Result);
          Check (Result.Status = Reserved_Name_Declared and then Source.Minted = 0, "reserved name");
+         Bad := Declared;
+         Bad.Entries (3).Label := To_Name (Metric_Outlet_Text);
+         Build_Startup (Source, Bad, Self_Word, Self_Process_Word, Built, Result);
+         Check (Result.Status = Reserved_Name_Declared and then Source.Minted = 0,
+                "the metric outlet's name is reserved");
          Bad := Empty_Table;
-         Bad.Count := Maximum_Entries - 1;
+         Bad.Count := Maximum_Entries - Launcher_Entries + 1;
          for I in 1 .. Bad.Count loop
             Bad.Entries (I) := Entry_Of ("e" & Ada.Strings.Fixed.Trim (I'Image, Ada.Strings.Left));
          end loop;
          Build_Startup (Source, Bad, Self_Word, Self_Process_Word, Built, Result);
          Check (Result.Status = Too_Many_Entries and then Source.Minted = 0, "too many entries");
-         Bad.Count := Maximum_Entries - 2;
+         Bad.Count := Maximum_Entries - Launcher_Entries;
          Build_Startup (Source, Bad, Self_Word, Self_Process_Word, Built, Result);
          Check (Result.Status = Ready and then Built.Count = Maximum_Entries, "full table builds");
       end;
@@ -565,7 +582,7 @@ procedure Main is
             T : Table := Empty_Table;
             Refused_Required : Entry_Count := 0;
          begin
-            T.Count := Draw (0, Maximum_Entries - 2);
+            T.Count := Draw (0, Maximum_Entries - Launcher_Entries);
             for I in 1 .. T.Count loop
                T.Entries (I) := Entry_Of ("c" & Ada.Strings.Fixed.Trim (I'Image, Ada.Strings.Left),
                                           Process, (if Draw (0, 1) = 0 then Required else Optional));

@@ -105,9 +105,13 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    type Access_Rights is array (Access_Right) of Boolean;
    --  Tls_Domain entries carry a CuBit.TLS_Scopes pattern ("host:port")
    --  with the Read_File bit meaning "connect"; see Add_TLS_Scope.
-   type Access_Domain is (Filesystem_Domain, Config_Domain, Tls_Domain);
+   --  Metrics_Domain entries name the series a reader may read from
+   --  metrics.svc (MET-002): a series-name prefix (CuBit.Metric_Outlet's
+   --  charset), or every series (empty path, spelled out as all /
+   --  Scope_Place.Everything); Read_File is the only right.
+   type Access_Domain is (Filesystem_Domain, Config_Domain, Tls_Domain, Metrics_Domain);
    for Access_Domain use
-     (Filesystem_Domain => 0, Config_Domain => 1, Tls_Domain => 2);
+     (Filesystem_Domain => 0, Config_Domain => 1, Tls_Domain => 2, Metrics_Domain => 3);
    type Scope is record
       Domain : Access_Domain := Filesystem_Domain;
       Path : Metadata_Text;
@@ -192,4 +196,8 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    --  An authority scope's exact bytes: 1 .. 64 printable ASCII, no
    --  wildcards or backslash, no "." or ".." components, no "//".
    function Valid_Scope_Path (Path : String) return Boolean;
+   --  A metrics scope's series-name prefix.
+   function Valid_Metric_Prefix (Path : String) return Boolean is
+     (Path'Length in 1 .. Binding_Name_Length'Last
+      and then (for all C of Path => C in 'a' .. 'z' | '0' .. '9' | '.' | '_' | '-'));
 end CCL.Manifests.Model;

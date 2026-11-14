@@ -1,215 +1,348 @@
 pragma Ada_2022;
+with System;
+with System.Storage_Elements;
+with CuBit.Channels;
+with CuBit.Channel_Protocol;
+with CuBit.Handles;
+with CuBit.Handles.Startup;
+with CuBit.Messages;
+with CuBit.Monotonic;
+
 package body CuBit.Metrics is
+   use type Outlet.Series_Kind;
+   use type Outlet.Unit;
+   package Channels renames CuBit.Channels;
+   use type Channels.Put_Result;
+   use type Channels.Open_Result;
 
-   procedure Bind (Item : in out Publisher; Target : CuBit.Handles.Endpoint) is
+   --  The one bounded call that opens the ring: metrics.svc answers at once
+   --  or the outlet counts as unwired, never stalling the first sample.
+   Open_Wait_Ms : constant := 200;
+
+   --  The series table: Capacity entries on the process heap, grown by
+   --  doubling from Initial_Series.
+   Initial_Series : constant := 16;
+   type Series_State is record
+      Name : Outlet.Name_Text := [others => ' '];
+      Length : Outlet.Name_Length := 0;
+      Kind : Series_Kind := Counter;
+      Measure : Unit := Count;
+      --  Its Describe is in the ring.
+      Described : Boolean := False;
+      --  Samples shed since the last Loss element went out, and when.
+      Pending : Unsigned_64 := 0;
+      Pending_First, Pending_Last : Unsigned_64 := 0;
+      Lost : Unsigned_64 := 0;
+   end record;
+   type Series_Table is array (Outlet.Series_Key range <>) of Series_State;
+
+   Table_Base : System.Address := System.Null_Address;
+   Capacity : Outlet.Series_Count := 0;
+   Used : Outlet.Series_Count := 0;
+
+   Link : Channels.Channel;
+   Current : Outlet_State := Not_Opened;
+   Total_Lost, Total_Refused : Unsigned_64 := 0;
+   --  Some series holds a loss not yet reported.
+   Losses_Pending : Boolean := False;
+
+   function CuAlloc_Allocate (Size, Alignment : Unsigned_64) return Unsigned_64
+   with Import, Convention => C, External_Name => "cualloc_allocate";
+   procedure CuAlloc_Free (Block : Unsigned_64)
+   with Import, Convention => C, External_Name => "cualloc_free";
+   No_Block : constant Unsigned_64 := 0;
+
+   function Add (A, B : Unsigned_64) return Unsigned_64 is
+     (if B > Unsigned_64'Last - A then Unsigned_64'Last else A + B);
+
+   procedure Grow (Grown : out Boolean);
+   procedure Grow (Grown : out Boolean) is
+      use System.Storage_Elements;
+      Wanted : constant Outlet.Series_Count :=
+        (if Capacity = 0 then Initial_Series
+         elsif Capacity > Outlet.Maximum_Series_Per_Source / 2 then Outlet.Maximum_Series_Per_Source
+         else 2 * Capacity);
+      Entry_Bytes : constant Unsigned_64 := Series_Table'Component_Size / System.Storage_Unit;
+      Raw : Unsigned_64;
    begin
-      Item.Slot := Target;
-   end Bind;
-
-   procedure Bind (Item : in out Observer; Target : CuBit.Handles.Endpoint) is
-   begin
-      Item.Slot := Target;
-   end Bind;
-   use CuBit.Messages;
-   use type Protocol.Status;
-   package Batches renames CuBit.Metric_Batches;
-   package Grants renames CuBit.Memory_Grants;
-
-   One_Page : constant := 1;
-
-   function Request (Op : Protocol.Operation) return Message;
-   function Reply_Status (Value : Message) return Protocol.Status;
-   function Add (Left, Right : Unsigned_64) return Unsigned_64;
-
-   function Request (Op : Protocol.Operation) return Message is
-      Value : Message := NULL_MESSAGE;
-   begin
-      Value.tag := (label => Protocol.Operation'Enum_Rep (Op),
-                    length => Protocol.Message_Words, protocol => 0, ipc => <>,
-                    reserved => 0);
-      return Value;
-   end Request;
-
-   function Reply_Status (Value : Message) return Protocol.Status is
-   begin
-      if Value.tag.length = Protocol.Message_Words and
-        Value.tag.protocol = 0 and Value.tag.reserved = 0
-      then
-         for Candidate in Protocol.Status loop
-            if Value.tag.label = Protocol.Status'Enum_Rep (Candidate) then
-               return Candidate;
-            end if;
+      Grown := False;
+      if Wanted <= Capacity then
+         return;
+      end if;
+      Raw := CuAlloc_Allocate (Unsigned_64 (Wanted) * Entry_Bytes, Series_State'Alignment);
+      if Raw = No_Block then
+         return;
+      end if;
+      declare
+         Fresh : Series_Table (1 .. Wanted)
+           with Import, Address => To_Address (Integer_Address (Raw));
+      begin
+         for I in Fresh'Range loop
+            Fresh (I) := (others => <>);
          end loop;
+         if Capacity > 0 then
+            declare
+               Old : constant Series_Table (1 .. Capacity) with Import, Address => Table_Base;
+            begin
+               Fresh (1 .. Capacity) := Old;
+            end;
+            CuAlloc_Free (Unsigned_64 (To_Integer (Table_Base)));
+         end if;
+      end;
+      Table_Base := To_Address (Integer_Address (Raw));
+      Capacity := Wanted;
+      Grown := True;
+   end Grow;
+
+   function Series_Named (Name : String; Kind : Series_Kind; Measure : Unit) return Series is
+      Grown : Boolean;
+   begin
+      if not Outlet.Valid_Name (Name) then
+         Total_Refused := Add (Total_Refused, 1);
+         return No_Series;
       end if;
-      return Protocol.Unavailable;
-   end Reply_Status;
+      if Capacity > 0 then
+         declare
+            Table : constant Series_Table (1 .. Capacity) with Import, Address => Table_Base;
+         begin
+            for Key in 1 .. Used loop
+               if Table (Key).Name (1 .. Table (Key).Length) = Name then
+                  if Table (Key).Kind = Kind and then Table (Key).Measure = Measure then
+                     return (Key => Key);
+                  end if;
+                  Total_Refused := Add (Total_Refused, 1);
+                  return No_Series;
+               end if;
+            end loop;
+         end;
+      end if;
+      if Used = Capacity then
+         Grow (Grown);
+         if not Grown then
+            Total_Refused := Add (Total_Refused, 1);
+            return No_Series;
+         end if;
+      end if;
+      Used := Used + 1;
+      declare
+         Table : Series_Table (1 .. Capacity) with Import, Address => Table_Base;
+      begin
+         Table (Used).Name (1 .. Name'Length) := Name;
+         Table (Used).Length := Name'Length;
+         Table (Used).Kind := Kind;
+         Table (Used).Measure := Measure;
+      end;
+      return (Key => Used);
+   end Series_Named;
 
-   function Add (Left, Right : Unsigned_64) return Unsigned_64 is
-     (if Right > Unsigned_64'Last - Left then Unsigned_64'Last
-      else Left + Right);
-
-   function Dropped (Item : Publisher) return Unsigned_64 is
-     (Batches.Dropped (Item.State));
-   function Rejected (Item : Publisher) return Unsigned_64 is
-     (Item.Refused);
-   function Disabled (Item : Publisher) return Boolean is (Item.Off);
-   function Has_Room (Item : Publisher) return Boolean is
-     (Batches.Has_Room (Item.State));
-
-   procedure Put
-     (Item : in out Publisher; Value : Records.Metric_Record;
-      Accepted : out Boolean) is
+   --  Open the ring to metrics.svc, once: through the launcher's stdmetric
+   --  entry, or Unwired when there is none or metrics.svc refuses.
+   procedure Open_Outlet;
+   procedure Open_Outlet is
+      Target : constant CuBit.Handles.Startup.Optional_Endpoint :=
+        CuBit.Handles.Startup.Optional_Endpoint_Named (Outlet.Startup_Binding);
+      Result : Channels.Open_Result;
+      Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
    begin
-      Batches.Append (Item.State, Item.Pages, Value, Accepted);
-   end Put;
-
-   function Has_Group_Room (Item : Publisher) return Boolean is
-     (not Item.Off and then Batches.Has_Group_Room (Item.State));
-
-   procedure Put_Group
-     (Item : in out Publisher; Values : Records.Trace_Group;
-      Accepted : out Boolean) is
-   begin
-      if Item.Off then
-         Item.Refused := Add (Item.Refused, 4);
-         Accepted := False;
+      Current := Unwired;
+      if not Target.Present then
          return;
       end if;
-      Batches.Append_Group (Item.State, Item.Pages, Values, Accepted);
-   end Put_Group;
+      Channels.Open (Target.Value, Outlet.CONTRACT, Channels.Producing, Link, Result, Ignore_Refusal,
+                     Deadline => CuBit.Messages.Deadline_After (Open_Wait_Ms));
+      if Result = Channels.Opened then
+         Current := Open;
+      end if;
+   end Open_Outlet;
 
-   procedure Flush
-     (Item : in out Publisher; Token : Unsigned_64; Submitted : out Boolean)
-   is
-      Sealed, Created : Boolean;
-      Page : Batches.Page_Id;
-      Bytes : Unsigned_64;
-      Msg : Message := Request (Protocol.Publish_Batch);
+   --  Put one element; Placed False when the ring shed it or is closed.
+   procedure Put_Element (Item : Outlet.Element; Placed : out Boolean);
+   procedure Put_Element (Item : Outlet.Element; Placed : out Boolean) is
+      Bytes : Outlet.Element_Buffer;
+      Length : Outlet.Element_Length;
+      Result : Channels.Put_Result;
    begin
-      Submitted := False;
-      if Item.Off then
+      Outlet.Encode (Item, Bytes, Length);
+      Channels.Put (Link, Bytes'Address, Length, Result);
+      Placed := Result = Channels.Put;
+      if Result = Channels.Closed then
+         --  metrics.svc ended: what follows is counted, never sent.
+         Current := Unwired;
+      end if;
+   end Put_Element;
+
+   --  The series' Describe and its pending Loss, if they are not in the
+   --  ring yet. Ready False: one did not fit (the caller sheds).
+   procedure Catch_Up (S : in out Series_State; Key : Outlet.Series_Key; Ready : out Boolean);
+   procedure Catch_Up (S : in out Series_State; Key : Outlet.Series_Key; Ready : out Boolean) is
+   begin
+      Ready := True;
+      if not S.Described then
+         declare
+            Describe : Outlet.Element (Outlet.Describe);
+         begin
+            Describe.Key := Key;
+            Describe.Series := S.Kind;
+            Describe.Measure := S.Measure;
+            Describe.Length := S.Length;
+            Describe.Name := S.Name;
+            Put_Element (Describe, Ready);
+         end;
+         if not Ready then
+            return;
+         end if;
+         S.Described := True;
+      end if;
+      if S.Pending > 0 then
+         Put_Element ((Kind => Outlet.Loss, Key => Key, Shed => S.Pending,
+                       First_Us => S.Pending_First, Last_Us => S.Pending_Last), Ready);
+         if Ready then
+            S.Pending := 0;
+         end if;
+      end if;
+   end Catch_Up;
+
+   procedure Shed (S : in out Series_State; Time_Us : Unsigned_64; Reported : Boolean);
+   procedure Shed (S : in out Series_State; Time_Us : Unsigned_64; Reported : Boolean) is
+   begin
+      S.Lost := Add (S.Lost, 1);
+      Total_Lost := Add (Total_Lost, 1);
+      --  Only a wired outlet can report the loss; an unwired one counts it.
+      if not Reported then
          return;
       end if;
-      Batches.Seal (Item.State, Item.Pages, Sealed, Page, Bytes);
-      if not Sealed then
-         return;
-      end if;
-      if not Item.Has_Grant (Page) then
-         Grants.Create_Via_Capability
-           (Item.Slot, Item.Pages (Page)'Address, One_Page, False,
-            Item.Grants (Page), Created);
-         Item.Has_Grant (Page) := Created;
-      end if;
-      if Item.Has_Grant (Page) then
-         Msg.words := [Item.Grants (Page).slot, Item.Grants (Page).generation,
-                       Bytes, 0];
-         Submitted := capSubmit (Item.Slot, Msg, Token);
-      end if;
-      if Submitted then
-         Item.Tokens (Page) := Token;
+      if S.Pending = 0 then
+         S.Pending_First := Time_Us;
+         S.Pending_Last := Time_Us;
       else
-         --  Never submitted: the page is ours again, but stop publishing.
-         Item.Refused := Add (Item.Refused,
-           Unsigned_64 (Batches.Used (Item.State, Page)));
-         Batches.Complete (Item.State, Page);
-         Item.Off := True;
+         S.Pending_First := Unsigned_64'Min (S.Pending_First, Time_Us);
+         S.Pending_Last := Unsigned_64'Max (S.Pending_Last, Time_Us);
       end if;
-   end Flush;
+      S.Pending := Add (S.Pending, 1);
+      Losses_Pending := True;
+   end Shed;
 
-   procedure Complete
-     (Item : in out Publisher; Completion : CompletionEntry;
-      Handled : out Boolean)
-   is
-      Result : Protocol.Status;
+   procedure Observe_At (Item : Series; Value : Unsigned_64; Time_Us : Unsigned_64) is
+      Ready, Placed : Boolean;
    begin
-      Handled := False;
-      for Page in Batches.Page_Id loop
-         if Batches.In_Flight (Item.State, Page) and then
-           Item.Tokens (Page) = Completion.token
-         then
-            Handled := True;
-            Result := Reply_Status (Completion.msg);
-            if Completion.status /= COMPLETION_OK or else
-              Result = Protocol.Unavailable
-            then
-               --  Ambiguous: the page may still be acquired. Never reuse it.
-               Item.Off := True;
-               return;
-            end if;
-            if Result = Protocol.OK then
-               Item.Refused := Add (Item.Refused, Completion.msg.words (1));
-            else
-               --  Definite refusal; the service returned any acquisition
-               --  before replying.
-               Item.Refused := Add (Item.Refused,
-                 Unsigned_64 (Batches.Used (Item.State, Page)));
-               if Result = Protocol.Denied then
-                  Item.Off := True;
+      if Item.Key = 0 or else Item.Key > Used then
+         return;
+      end if;
+      if Current = Not_Opened then
+         Open_Outlet;
+      end if;
+      declare
+         Table : Series_Table (1 .. Capacity) with Import, Address => Table_Base;
+         S : Series_State renames Table (Item.Key);
+      begin
+         if Current /= Open then
+            Shed (S, Time_Us, Reported => False);
+            return;
+         end if;
+         Catch_Up (S, Item.Key, Ready);
+         if not Ready then
+            Shed (S, Time_Us, Reported => Current = Open);
+            return;
+         end if;
+         Put_Element ((Kind => Outlet.Sample, Key => Item.Key, Time_Us => Time_Us, Value => Value), Placed);
+         if not Placed then
+            Shed (S, Time_Us, Reported => Current = Open);
+         end if;
+      end;
+   end Observe_At;
+
+   procedure Note_Lost (Item : Series; Count, First_Us, Last_Us : Unsigned_64) is
+   begin
+      if Item.Key = 0 or else Item.Key > Used or else Count = 0 then
+         return;
+      end if;
+      if Current = Not_Opened then
+         Open_Outlet;
+      end if;
+      declare
+         Table : Series_Table (1 .. Capacity) with Import, Address => Table_Base;
+         S : Series_State renames Table (Item.Key);
+      begin
+         S.Lost := Add (S.Lost, Count);
+         Total_Lost := Add (Total_Lost, Count);
+         if Current /= Open then
+            return;
+         end if;
+         if S.Pending = 0 then
+            S.Pending_First := First_Us;
+            S.Pending_Last := Last_Us;
+         else
+            S.Pending_First := Unsigned_64'Min (S.Pending_First, First_Us);
+            S.Pending_Last := Unsigned_64'Max (S.Pending_Last, Last_Us);
+         end if;
+         S.Pending := Add (S.Pending, Count);
+         Losses_Pending := True;
+      end;
+   end Note_Lost;
+
+   procedure Observe (Item : Series; Value : Unsigned_64) is
+   begin
+      Observe_At (Item, Value, CuBit.Monotonic.Microseconds);
+   end Observe;
+
+   function Lost (Item : Series) return Unsigned_64 is
+   begin
+      if Item.Key = 0 or else Item.Key > Used then
+         return 0;
+      end if;
+      declare
+         Table : constant Series_Table (1 .. Capacity) with Import, Address => Table_Base;
+      begin
+         return Table (Item.Key).Lost;
+      end;
+   end Lost;
+
+   function Lost return Unsigned_64 is (Total_Lost);
+   function Refused return Unsigned_64 is (Total_Refused);
+   function State return Outlet_State is (Current);
+
+   procedure Report_Losses is
+      Ready : Boolean;
+   begin
+      if not Losses_Pending or else Current /= Open or else Capacity = 0 then
+         return;
+      end if;
+      Losses_Pending := False;
+      declare
+         Table : Series_Table (1 .. Capacity) with Import, Address => Table_Base;
+      begin
+         for Key in 1 .. Used loop
+            if Table (Key).Pending > 0 then
+               Catch_Up (Table (Key), Key, Ready);
+               if Table (Key).Pending > 0 then
+                  Losses_Pending := True;
                end if;
             end if;
-            Batches.Complete (Item.State, Page);
-            return;
-         end if;
-      end loop;
-   end Complete;
+         end loop;
+      end;
+   end Report_Losses;
 
-   procedure Disconnect (Item : in out Publisher; Done : out Boolean) is
-      Accepted : Boolean;
+   procedure Flush (Drained : out Boolean; Wait_Ms : Natural := Default_Flush_Wait_Ms) is
+      Waited : Natural := 0;
+      Ignore : Unsigned_64;
    begin
-      Item.Off := True;
-      for Page in Batches.Page_Id loop
-         if Item.Has_Grant (Page) then
-            Grants.Revoke (Item.Grants (Page), Accepted);
-            if Grants.Retirement_Confirmed (Item.Grants (Page)) then
-               Item.Has_Grant (Page) := False;
-            end if;
-         end if;
-      end loop;
-      Done := True;
-      for Page in Batches.Page_Id loop
-         if Item.Has_Grant (Page) or else Batches.In_Flight (Item.State, Page)
-         then
-            Done := False;
-         end if;
-      end loop;
-   end Disconnect;
-
-   procedure Query
-     (Item : in out Observer; Cursor : Unsigned_64;
-      Rows : out Protocol.Summary_Page; Written : out Protocol.Row_Count;
-      Next : out Unsigned_64; Result : out Protocol.Status)
-   is
-      Msg : Message := Request (Protocol.Query_Summaries);
-      Tag : MessageTag;
-   begin
-      Rows := [others => [others => 0]];
-      Written := 0;
-      Next := Cursor;
-      Result := Protocol.Unavailable;
-      if not Item.Has_Grant then
-         Grants.Create_Via_Capability
-           (Item.Slot, Item.Page'Address, One_Page, True, Item.Grant,
-            Item.Has_Grant);
-         if not Item.Has_Grant then
-            return;
-         end if;
-      end if;
-      Msg.words := [Cursor, Item.Grant.slot, Item.Grant.generation,
-                    Records.Page_Bytes];
-      Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
-      Result := (if Ending_Of (Tag) /= Call_Answered then Protocol.Unavailable
-                 else Reply_Status (Msg));
-      if Result /= Protocol.OK then
+      Drained := False;
+      if Current /= Open then
          return;
       end if;
-      if Msg.words (0) > Protocol.Rows_Per_Page or else
-        Msg.words (1) < Cursor or else Msg.words (3) /= 0
-      then
-         Result := Protocol.Invalid_Request;
+      Report_Losses;
+      if Channels.All_Taken (Link) then
+         Drained := True;
          return;
       end if;
-      Written := Protocol.Row_Count (Msg.words (0));
-      Next := Msg.words (1);
-      Rows := Protocol.Summary_Page (Item.Page);
-   end Query;
+      Channels.Kick (Link);
+      while Waited < Wait_Ms loop
+         if Channels.All_Taken (Link) then
+            Drained := True;
+            return;
+         end if;
+         Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, 1);
+         Waited := Waited + 1;
+      end loop;
+   end Flush;
 end CuBit.Metrics;

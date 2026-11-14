@@ -198,6 +198,41 @@ class Manifests(unittest.TestCase):
         self.assertIn('the manifest is not an Executable_Manifest', result.stderr)
         self.assertIn('cannot be compiled to bytecode', result.stderr)
 
+    def test_metrics_scopes_and_the_metric_outlet(self):
+        """MET-002: a metrics read scope is (Scope.Metrics place), read
+        only, a series-name prefix or every series (domain 3 in
+        .cubit.access); com.cubit-os.stdmetric is an outlet streaming
+        Metric_Records, and Metric_Records travel on nothing else."""
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        source = self.TLS_TYPED.replace('(config [File_Right.Read] "tls.")',
+                                        '(config [File_Right.Read] "tls.")\n    '
+                                        '(Scope.Metrics (Scope_Place.Under "desktop.latency."))\n    '
+                                        '(Scope.Metrics Scope_Place.Everything)')
+        result = self.compile(source, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = self.sections(result.stdout)['.cubit.access']
+        entries = [data[16 + 80 * i:16 + 80 * (i + 1)] for i in range(struct.unpack_from('<H', data, 6)[0])]
+        metrics = [(e[0], e[1], e[2], e[8:8 + e[1]]) for e in entries if e[2] == 3]
+        self.assertEqual(metrics, [(1, 16, 3, b'desktop.latency.'), (1, 0, 3, b'')])
+        failed = self.compile(source.replace('"desktop.latency."', '"Desktop/latency"'), catalog)
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn('INVALID_PATH', failed.stderr)
+        outlet = self.TLS_TYPED.replace('  scopes =>', '  outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)]\n  scopes =>')
+        result = self.compile(outlet, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for old, new, message in [
+                ('Element.Metric_Records)', 'Element.Text)', 'com.cubit-os.stdmetric is a CuBit contract'),
+                ('"com.cubit-os.stdmetric"', '"com.example.metrics"', 'Metric_Records travel only on')]:
+            with self.subTest(new=new):
+                failed = self.compile(outlet.replace(old, new, 1), catalog)
+                self.assertEqual(failed.returncode, 1)
+                self.assertIn(message, failed.stderr)
+        # The launcher's stdmetric entry is reserved: no manifest declares it.
+        reserved = self.TLS_TYPED.replace('"clock" "clock"', '"clock" "stdmetric"')
+        failed = self.compile(reserved, catalog)
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn('RESERVED_BINDING_NAME', failed.stderr)
+
     def test_typed_may_launch_matches_launch_authority_layout(self):
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
         names = ['logstore.svc', 'spawn-child.app']

@@ -5,7 +5,7 @@
 --  A periodic stall shows as p99/maximum growth (docs/compositor-backends.md).
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Metrics;
+with CuBit.Metric_Pages;
 with CuBit.Metric_Protocol;
 with Compositor_Stage_Metrics;
 with Startup;
@@ -14,7 +14,7 @@ procedure Main is
    package SM renames Compositor_Stage_Metrics;
    use type P.Status;
    Report_Interval_Ms : constant := 5_000;
-   Watcher : CuBit.Metrics.Observer;
+   Watcher : CuBit.Metric_Pages.Observer;
    Rows : P.Summary_Page;
    Written : P.Row_Count;
    Next, Ignore : Unsigned_64 := 0;
@@ -28,11 +28,11 @@ procedure Main is
       elsif Key = Unsigned_64 (SM.Key (SM.Input_To_Present)) then "input_to_present"
       else "input_source_age");
 begin
-   CuBit.Metrics.Bind (Watcher, Startup.Metrics_Observer);
+   CuBit.Metric_Pages.Bind (Watcher, Startup.Metrics_Observer);
    loop
       Next := 0;
       loop
-         CuBit.Metrics.Query (Watcher, Next, Rows, Written, Next, Result);
+         CuBit.Metric_Pages.Query (Watcher, Next, Rows, Written, Next, Result);
          exit when Result /= P.OK;
          for I in 0 .. Written - 1 loop
             if Rows (I) (P.Row_Source) = To_Word (Registered_Driver (DRIVER_DESKTOP))

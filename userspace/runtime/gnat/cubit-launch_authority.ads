@@ -148,6 +148,8 @@ package CuBit.Launch_Authority with SPARK_Mode is
    --  prefix exactly.
    ---------------------------------------------------------------------------
    Filesystem_Service : constant Unsigned_8 := 0;
+   --  A metrics read scope (MET-002): a series-name prefix, empty for all.
+   Metrics_Service : constant Unsigned_8 := 3;
    Maximum_Prefix_Bytes : constant := 256;   --  CuBit.File_Access
 
    function Rights_Within (Held, Requested : Unsigned_8) return Boolean is

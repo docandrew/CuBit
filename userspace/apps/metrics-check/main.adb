@@ -3,7 +3,7 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Records;
 with CuBit.Metric_Protocol;
-with CuBit.Metrics;
+with CuBit.Metric_Pages;
 with CuBit.Metric_Raw_Observer;
 with CuBit.Handles;
 with Startup;
@@ -23,8 +23,8 @@ procedure Main is
 
    Publisher_Slot : constant CuBit.Handles.Endpoint := Startup.Metrics;
    Observer_Slot : constant CuBit.Handles.Endpoint := Startup.Metrics_Observer;
-   Writer : CuBit.Metrics.Publisher;
-   Watcher : CuBit.Metrics.Observer;
+   Writer : CuBit.Metric_Pages.Publisher;
+   Watcher : CuBit.Metric_Pages.Observer;
 
    Latency_Key : constant R.Metric_Key := 1;
    Frames_Key : constant R.Metric_Key := 2;
@@ -60,11 +60,11 @@ procedure Main is
       Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + Wait_Ms;
       Activity : Activity_Result;
    begin
-      CuBit.Metrics.Flush (Writer, Token, Submitted);
+      CuBit.Metric_Pages.Flush (Writer, Token, Submitted);
       Check (Submitted, "batch submitted");
       loop
          if Poll_Completion (Completion'Address) = 1 then
-            CuBit.Metrics.Complete (Writer, Completion, Handled);
+            CuBit.Metric_Pages.Complete (Writer, Completion, Handled);
             Check (Handled, "completion correlation");
             Check (Completion.msg.tag.label = P.Status'Enum_Rep (P.OK),
                    "batch accepted");
@@ -81,10 +81,10 @@ procedure Main is
    procedure Put (Value : R.Metric_Record) is
       Accepted : Boolean;
    begin
-      if not CuBit.Metrics.Has_Room (Writer) then
+      if not CuBit.Metric_Pages.Has_Room (Writer) then
          Flush_And_Wait;
       end if;
-      CuBit.Metrics.Put (Writer, Value, Accepted);
+      CuBit.Metric_Pages.Put (Writer, Value, Accepted);
       Check (Accepted, "append");
    end Put;
 
@@ -122,8 +122,8 @@ procedure Main is
    Msg : Message;
    Tag : MessageTag;
 begin
-   CuBit.Metrics.Bind (Writer, Publisher_Slot);
-   CuBit.Metrics.Bind (Watcher, Observer_Slot);
+   CuBit.Metric_Pages.Bind (Writer, Publisher_Slot);
+   CuBit.Metric_Pages.Bind (Watcher, Observer_Slot);
    Put ((Kind => R.Describe, Key => Latency_Key, Declared => R.Latency,
          Measure => R.Microseconds,
          Name => R.To_Name ("check.frame.latency")));
@@ -142,10 +142,10 @@ begin
          End_Us => Span_Start_Us + Span_Length_Us, Span_Correlation => 7));
    Flush_And_Wait;
    Check (Accepted_Records = Samples + 5, "every record accepted");
-   Check (CuBit.Metrics.Dropped (Writer) = 0, "no local drops");
-   Check (CuBit.Metrics.Rejected (Writer) = 0, "no service rejections");
+   Check (CuBit.Metric_Pages.Dropped (Writer) = 0, "no local drops");
+   Check (CuBit.Metric_Pages.Rejected (Writer) = 0, "no service rejections");
 
-   CuBit.Metrics.Query (Watcher, 0, Rows, Written, Next, Result);
+   CuBit.Metric_Pages.Query (Watcher, 0, Rows, Written, Next, Result);
    Check (Result = P.OK, "observer query");
    Check (Written = 3, "three series visible");
    Row := Row_For (Rows, Written, Latency_Key);
@@ -293,8 +293,8 @@ begin
       end Expected_Event;
       procedure Put_Event (Index : Natural) is
       begin
-         if not CuBit.Metrics.Has_Group_Room (Writer) then Flush_And_Wait; end if;
-         CuBit.Metrics.Put_Group (Writer, TM.Fragment (Expected_Event (Index)), Accepted);
+         if not CuBit.Metric_Pages.Has_Group_Room (Writer) then Flush_And_Wait; end if;
+         CuBit.Metric_Pages.Put_Group (Writer, TM.Fragment (Expected_Event (Index)), Accepted);
          Check (Accepted, "complete trace event accepted");
       end Put_Event;
    begin
@@ -303,25 +303,25 @@ begin
       --  Do not dispatch either completion yet: both SDK pages stay busy.
       for Page_Index in 0 .. 1 loop
          for I in 1 .. 15 loop
-            CuBit.Metrics.Put_Group
+            CuBit.Metric_Pages.Put_Group
               (Writer, TM.Fragment (Expected_Event (101 + Page_Index * 15 + I - 1)), Accepted);
             Check (Accepted, "fill retained trace page");
          end loop;
-         CuBit.Metrics.Flush (Writer, Token, Submitted);
+         CuBit.Metric_Pages.Flush (Writer, Token, Submitted);
          Check (Submitted, "two trace pages submitted");
          Token := Token + 1;
       end loop;
-      Check (not CuBit.Metrics.Has_Group_Room (Writer), "both trace pages held");
+      Check (not CuBit.Metric_Pages.Has_Group_Room (Writer), "both trace pages held");
       for I in 1 .. 100 loop
-         CuBit.Metrics.Put_Group (Writer, TM.Fragment (Expected_Event (999)), Accepted);
+         CuBit.Metric_Pages.Put_Group (Writer, TM.Fragment (Expected_Event (999)), Accepted);
          Check (not Accepted, "overload refuses complete event");
       end loop;
-      Check (CuBit.Metrics.Dropped (Writer) = 400, "four fragments counted per drop");
+      Check (CuBit.Metric_Pages.Dropped (Writer) = 400, "four fragments counted per drop");
       Deadline := syscall (SYSCALL_GETTIME) + Wait_Ms;
       for I in 1 .. 2 loop
          loop
             if Poll_Completion (Completion'Address) = 1 then
-               CuBit.Metrics.Complete (Writer, Completion, Handled);
+               CuBit.Metric_Pages.Complete (Writer, Completion, Handled);
                Check (Handled and Completion.status = COMPLETION_OK and
                  Completion.msg.tag.label = P.Status'Enum_Rep (P.OK) and
                  Completion.msg.words (0) = 60 and Completion.msg.words (1) = 0,
@@ -337,7 +337,7 @@ begin
       Put_Event (131); Flush_And_Wait;
       --  One ordinary metric shifts retained history to trace fragment 1.
       Put ((R.Counter, Frames_Key, 1, 0, 0)); Flush_And_Wait;
-      Check (Accepted_Records = 1530 and CuBit.Metrics.Rejected (Writer) = 0,
+      Check (Accepted_Records = 1530 and CuBit.Metric_Pages.Rejected (Writer) = 0,
         "all admitted fragments accepted");
       loop
          CuBit.Metric_Raw_Observer.Query
@@ -371,7 +371,7 @@ begin
         TS.Counts (Collector).Rejected_Rows = 3 and
         TS.Counts (Collector).Emitted_Events = 63 and
         TS.Counts (Collector).Abandoned_Events = 0, "partial history and page recovery");
-      CuBit.Metrics.Query (Watcher, 0, Rows, Written, Next, Result);
+      CuBit.Metric_Pages.Query (Watcher, 0, Rows, Written, Next, Result);
       Row := Row_For (Rows, Written, Latency_Key);
       Check (Result = P.OK and then Written = 3 and then Row >= 0 and then
         Rows (Row) (P.Row_Count_Word) = Samples, "trace leaves metric summaries unchanged");
@@ -384,7 +384,7 @@ begin
       end loop;
       Deadline := syscall (SYSCALL_GETTIME) + Wait_Ms;
       loop
-         CuBit.Metrics.Disconnect (Writer, Done);
+         CuBit.Metric_Pages.Disconnect (Writer, Done);
          exit when Done;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "trace publisher grant retirement");
          Ignore := syscall (SYSCALL_SLEEP, 1);

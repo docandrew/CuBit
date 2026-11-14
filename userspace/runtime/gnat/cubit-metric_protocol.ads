@@ -27,13 +27,27 @@ package CuBit.Metric_Protocol with Pure, SPARK_Mode is
      ((Tag and Family_Mask) = Observer_Tag_Base and then
       (Tag and Issuance_Mask) /= 0);
 
-   type Operation is (Publish_Batch, Query_Summaries, Query_Raw);
-   for Operation use (Publish_Batch => 16#0D00#, Query_Summaries => 16#0D01#, Query_Raw => 16#0D02#);
+   --  procmgr's own badge on metrics.svc: it installs and revokes each
+   --  process's read scopes (Set_Scopes, Revoke_Scopes), like tls.svc's.
+   Policy_Tag : constant Unsigned_64 := 16#4D45_5300_0000_0001#;
 
-   type Status is (OK, Denied, Invalid_Request, Exhausted, Unavailable);
+   --  List_Series, Read_Range and Read_Window (MET-002) read the series
+   --  store through one page the reader lends, writable (CuBit.Metric_Query_Pages).
+   type Operation is
+     (Publish_Batch, Query_Summaries, Query_Raw, List_Series, Read_Range, Read_Window,
+      Set_Scopes, Revoke_Scopes);
+   for Operation use
+     (Publish_Batch => 16#0D00#, Query_Summaries => 16#0D01#, Query_Raw => 16#0D02#,
+      List_Series => 16#0D03#, Read_Range => 16#0D04#, Read_Window => 16#0D05#,
+      Set_Scopes => 16#0D10#, Revoke_Scopes => 16#0D11#);
+
+   --  Out_Of_Scope: an observer asked for series outside the read scopes
+   --  its manifest declared (metrics-scope); Not_Found: no such series.
+   type Status is (OK, Denied, Invalid_Request, Exhausted, Not_Found, Unavailable, Out_Of_Scope);
    for Status use
      (OK => 16#F000#, Denied => 16#F002#, Invalid_Request => 16#F003#,
-      Exhausted => 16#F004#, Unavailable => 16#F007#);
+      Exhausted => 16#F004#, Not_Found => 16#F005#, Unavailable => 16#F007#,
+      Out_Of_Scope => 16#F008#);
 
    --  Every request and reply has four words, zero flags and reserved.
    Message_Words : constant := 4;
@@ -48,7 +62,17 @@ package CuBit.Metric_Protocol with Pure, SPARK_Mode is
    function May_Invoke (Tag : Unsigned_64; Op : Operation) return Boolean is
      (case Op is
          when Publish_Batch => Is_Publisher (Tag),
-         when Query_Summaries | Query_Raw => Is_Observer (Tag));
+         when Query_Summaries | Query_Raw | List_Series | Read_Range | Read_Window => Is_Observer (Tag),
+         when Set_Scopes | Revoke_Scopes => Tag = Policy_Tag);
+
+   --  Set_Scopes: [process, count, grant slot, generation]: count entries of
+   --  Scope_Entry_Bytes in procmgr's lent page (rights, prefix length,
+   --  reserved, the prefix at Scope_Prefix_At; an empty prefix is every
+   --  series), replacing the process's scopes. Revoke_Scopes: [process].
+   Scope_Entry_Bytes : constant := 72;
+   Scope_Prefix_At : constant := 8;
+   Maximum_Scopes : constant := 16;
+   Read_Right : constant := 1;
 
    --  Raw query is observer-only. Same grant layout as Query_Summaries:
    --  request [next desired sequence, slot, generation, 4096]. Cursor starts1.

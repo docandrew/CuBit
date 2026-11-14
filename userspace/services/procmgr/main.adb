@@ -134,10 +134,17 @@ procedure main is
    --  records keep their name after it exits.
    package Sources is new Source_Notices
      (Issuance => CuBit.Log_Sources.Process_Manager_Issuance, Collector => Logstore_Collector);
+   --  The same notices for metrics.svc (MET-002): a series is labelled with
+   --  its program's identity and name, which only its launcher can say.
+   function Metrics_Collector return CuBit.Handles.Endpoint;
+   package Metric_Sources is new Source_Notices
+     (Issuance => CuBit.Log_Sources.Process_Manager_Issuance, Collector => Metrics_Collector);
    use ASCII;
    --  Never reuse issuance identities within this bootstrap issuer lifetime.
    --  Independent procmgr restart requires an epoch protocol, not yet supported.
    Next_Log_Issuance : Unsigned_32 := 1;
+   --  metrics.svc's package identity (MET-002): it alone registers the role.
+   Metrics_Identity : constant String := "com.cubit.metrics";
    --  Same rule for metrics.svc publisher/observer tags; zero = exhausted.
    Next_Metric_Issuance : Unsigned_32 := 1;
    package GPU_Grants renames CuBit.Capability_Grants;
@@ -225,6 +232,10 @@ procedure main is
    FS_PREFIX_AT   : constant := CuBit.File_Access.Wire_Header_Bytes;
    SERVICE_CONFIG : constant Unsigned_8 := 1;
    SERVICE_TLS    : constant Unsigned_8 := 2;
+   --  A metrics read scope (MET-002): a series-name prefix procmgr installs
+   --  in metrics.svc (CuBit.Metric_Protocol.Set_Scopes), as TLS scopes in
+   --  tls.svc.
+   SERVICE_METRICS : constant Unsigned_8 := CuBit.Launch_Authority.Metrics_Service;
 
    --  ELF buffer (also serves as grant buffer to FS for zero-copy reads)
    elfBuf : System.Address := System.Null_Address;
@@ -245,6 +256,11 @@ procedure main is
    TLS_Policy_PID : Process_ID := No_Process;
    TLS_Grant : CuBit.Memory_Grants.Grant_Reference;
    TLS_Policy_Ready : Boolean := False;
+   --  The same for metrics.svc's read scopes (MET-002).
+   Metrics_Policy : CuBit.Handles.Endpoint := H.No_Endpoint;
+   Metrics_Policy_PID : Process_ID := No_Process;
+   Metrics_Grant : CuBit.Memory_Grants.Grant_Reference;
+   Metrics_Policy_Ready : Boolean := False;
 
    --  OP_LAUNCH: the validated launch block of the request being served
    --  (procmgr's own copy, never the requester's grant), installed into
@@ -614,6 +630,8 @@ procedure main is
 
    function Logstore_Collector return CuBit.Handles.Endpoint is
      (mailboxOf (Registered_Driver (DRIVER_LOGSTORE)));
+   function Metrics_Collector return CuBit.Handles.Endpoint is
+     (mailboxOf (Registered_Driver (CuBit.Metric_Protocol.Publisher_Service_Role)));
 
    --  List: the kernel's table joined with Records, written into one
    --  page the caller lends, from the process at First on (PO.List_Label's
@@ -1944,7 +1962,7 @@ procedure main is
          --  An impostor TLS service would see every client's plaintext.
          return systemStartup and then Identity = "com.cubit.tls";
       elsif Role = CuBit.Metric_Protocol.Publisher_Service_Role then
-         return systemStartup and then Identity = "com.cubit.metrics";
+         return systemStartup and then Identity = Metrics_Identity;
       elsif Role = DRIVER_LEXICON then
          --  An impostor would read every text its clients spell-check.
          return systemStartup and then Identity = "com.cubit.lexicon";
@@ -2024,6 +2042,40 @@ procedure main is
       end if;
       return TLS_Policy_Ready;
    end ensureTLSPolicy;
+
+   ---------------------------------------------------------------------------
+   --  ensureMetricsPolicy: as ensureTLSPolicy, for metrics.svc's read scopes
+   --  (MET-002). False while metrics.svc is absent: a reader's scopes are then
+   --  not installed, so it is refused, never broadened.
+   ---------------------------------------------------------------------------
+   function ensureMetricsPolicy return Boolean is
+      Metrics_PID : constant Process_ID :=
+        Registered_Driver (CuBit.Metric_Protocol.Publisher_Service_Role);
+      Service : CuBit.Handles.Endpoint;
+   begin
+      if Metrics_Policy_Ready then
+         return Metrics_PID = Metrics_Policy_PID;
+      end if;
+      if Metrics_PID = No_Process then
+         return False;
+      end if;
+      Service := mailboxOf (Metrics_PID);
+      if Valid (Service) and then not Valid (Metrics_Policy) then
+         Metrics_Policy := HC.Derive (Badged (Service, H.Read_Write, CuBit.Metric_Protocol.Policy_Tag));
+      end if;
+      if not Valid (Metrics_Policy) then
+         debugPrint ("procmgr: metrics policy endpoint unavailable" & LF);
+         return False;
+      end if;
+      CuBit.Memory_Grants.Create_Via_Capability
+        (Metrics_Policy, elfBuf, INITIAL_BUF_PAGES, False, Metrics_Grant, Metrics_Policy_Ready);
+      if Metrics_Policy_Ready then
+         Metrics_Policy_PID := Metrics_PID;
+      else
+         debugPrint ("procmgr: metrics policy grant failed" & LF);
+      end if;
+      return Metrics_Policy_Ready;
+   end ensureMetricsPolicy;
 
    ---------------------------------------------------------------------------
    --  Delegated places (CuBit.Launch_Grants): how many the launch carries,
@@ -2282,6 +2334,7 @@ procedure main is
                         fsCount     : Natural := 0;
                         configCount : Natural := 0;
                         tlsCount    : Natural := 0;
+                        metricsCount : Natural := 0;
                      begin
                         for j in 0 .. Natural (count) - 1 loop
                            entBase := sh_offset + 16 +
@@ -2297,7 +2350,7 @@ procedure main is
                               goto No_Access_Policy;
                            end if;
                            if locals (j).service not in
-                             SERVICE_FS | SERVICE_CONFIG | SERVICE_TLS
+                             SERVICE_FS | SERVICE_CONFIG | SERVICE_TLS | SERVICE_METRICS
                            then
                               goto No_Access_Policy;
                            end if;
@@ -2311,6 +2364,13 @@ procedure main is
                              (not CuBit.File_Access.Valid_Rights (locals (j).rights)
                               or else not CuBit.File_Access.Valid_Path
                                 (locals (j).prefix (1 .. pLen)))
+                           then
+                              goto No_Access_Policy;
+                           end if;
+                           if locals (j).service = SERVICE_METRICS and then
+                             (locals (j).rights /= CuBit.Metric_Protocol.Read_Right or else
+                              (for some c in 1 .. pLen =>
+                                 locals (j).prefix (c) not in 'a' .. 'z' | '0' .. '9' | '.' | '_' | '-'))
                            then
                               goto No_Access_Policy;
                            end if;
@@ -2408,6 +2468,8 @@ procedure main is
                               configCount := configCount + 1;
                            elsif locals (j).service = SERVICE_TLS then
                               tlsCount := tlsCount + 1;
+                           elsif locals (j).service = SERVICE_METRICS then
+                              metricsCount := metricsCount + 1;
                            else
                               fsCount := fsCount + 1;
                            end if;
@@ -2585,6 +2647,54 @@ procedure main is
                                  tlsTag := capCall (TLS_Policy, tlsMsg, CuBit.Messages.Wait_Forever);
                                  if tlsTag.label /= REPLY_OK then
                                     debugPrint ("procmgr: tls scopes rejected" & LF);
+                                 end if;
+                              end;
+                           end if;
+                        end if;
+
+                        --  Pass 4: metrics read scopes to metrics.svc, if it is
+                        --  running (MET-002). The observer badge alone reads
+                        --  nothing: these name what the reader may read.
+                        if metricsCount > 0 then
+                           if not ensureMetricsPolicy then
+                              debugPrint ("procmgr: metrics.svc unavailable; " &
+                                          "metrics scopes not installed" & LF);
+                           else
+                              declare
+                                 grantBuf : array
+                                    (0 .. metricsCount *
+                                       CuBit.Metric_Protocol.Scope_Entry_Bytes - 1)
+                                    of Unsigned_8 with
+                                    Import, Address => elfBuf;
+                                 base : Natural;
+                                 idx  : Natural := 0;
+                                 scopeMsg : Message := NULL_MESSAGE;
+                                 scopeTag : MessageTag;
+                              begin
+                                 grantBuf := [others => 0];
+                                 for j in 0 .. Natural (count) - 1 loop
+                                    if locals (j).service = SERVICE_METRICS then
+                                       base := idx * CuBit.Metric_Protocol.Scope_Entry_Bytes;
+                                       grantBuf (base) := locals (j).rights;
+                                       grantBuf (base + 1) := locals (j).prefixLen;
+                                       for c in 0 .. Natural (locals (j).prefixLen) - 1 loop
+                                          grantBuf (base + CuBit.Metric_Protocol.Scope_Prefix_At + c) :=
+                                             Unsigned_8 (Character'Pos (locals (j).prefix (1 + c)));
+                                       end loop;
+                                       idx := idx + 1;
+                                    end if;
+                                 end loop;
+                                 scopeMsg.tag :=
+                                   (label => CuBit.Metric_Protocol.Operation'Enum_Rep
+                                               (CuBit.Metric_Protocol.Set_Scopes),
+                                    length => CuBit.Metric_Protocol.Message_Words,
+                                    protocol => 0, ipc => <>, reserved => 0);
+                                 scopeMsg.words :=
+                                   [To_Word (childPID), Unsigned_64 (metricsCount),
+                                    Metrics_Grant.slot, Metrics_Grant.generation];
+                                 scopeTag := capCall (Metrics_Policy, scopeMsg, CuBit.Messages.Wait_Forever);
+                                 if scopeTag.label /= REPLY_OK then
+                                    debugPrint ("procmgr: metrics scopes rejected" & LF);
                                  end if;
                               end;
                            end if;
@@ -3373,6 +3483,35 @@ procedure main is
          end if;
       end Mint_Service;
 
+      --  Every program's metric outlet (MET-002, CuBit.Metric_Outlet: the
+      --  startup entry "stdmetric", which no manifest declares): metrics.svc's
+      --  endpoint badged with a fresh publisher tag, Read_Write and no Grant,
+      --  so the program can open its outlet ring and nothing else. No_Handle
+      --  (the entry is Absent) while metrics.svc is not registered, for
+      --  metrics.svc itself, at the issuance's end, or when the child's handle
+      --  limit is reached. Publishing needs no approval: it reveals nothing.
+      procedure Mint_Metric_Outlet (Handle : out Unsigned_64) is
+         Service : CuBit.Handles.Endpoint;
+         Outcome : SB.Mint_Outcome;
+      begin
+         Handle := ST.No_Handle;
+         if pkgId (1 .. pkgIdLen) = Metrics_Identity or else Next_Metric_Issuance = 0 then
+            return;
+         end if;
+         Service := providerFor (CuBit.Metric_Protocol.Publisher_Service_Role);
+         if not Valid (Service) then
+            return;
+         end if;
+         Install (Badged (Service, H.Read_Write,
+                          CuBit.Metric_Protocol.Publisher_Tag (Unsigned_64 (Next_Metric_Issuance))),
+                  Handle, Outcome);
+         Next_Metric_Issuance :=
+           (if Next_Metric_Issuance = Unsigned_32'Last then 0 else Next_Metric_Issuance + 1);
+         if Outcome /= SB.Granted then
+            Handle := ST.No_Handle;
+         end if;
+      end Mint_Metric_Outlet;
+
       --  A notification over one role: input publishers and focus consumers,
       --  and the registrations procmgr's policy approves for this identity.
       procedure Mint_Notification
@@ -3549,7 +3688,7 @@ procedure main is
             Data_Entries : constant Natural := (if ACPI_Data_Word /= ST.No_Handle then 1 else 0);
          begin
             ACPI_SCI_Asked := True;
-            if View.Declared.Count + SB.Self_Entries + ACPI_Window_Total + ACPI_Memory_Total
+            if View.Declared.Count + ST.Launcher_Entries + ACPI_Window_Total + ACPI_Memory_Total
                  + Data_Entries + 1 > ST.Maximum_Entries
             then
                Warnings.Warn ("procmgr: ACPI SCI refused for " & name &
@@ -3638,7 +3777,7 @@ procedure main is
          else
             Windows := acpiWindows;
             if Windows.Count > AHA.Maximum_IO_Windows
-              or else View.Declared.Count + SB.Self_Entries + Windows.Count > ST.Maximum_Entries
+              or else View.Declared.Count + ST.Launcher_Entries + Windows.Count > ST.Maximum_Entries
             then
                Outcome := SB.Limit_Reached;
                Warnings.Warn ("procmgr: ACPI hardware refused: " & name &
@@ -3718,7 +3857,7 @@ procedure main is
                               -- independently approved PCI-window endpoint.
                               Placed := SB.Not_Available;
                               Warnings.Warn ("procmgr: stage acpi-startup-memory fail PCI_PREGRANT_REFUSED");
-                           elsif View.Declared.Count + SB.Self_Entries + ACPI_Window_Total
+                           elsif View.Declared.Count + ST.Launcher_Entries + ACPI_Window_Total
                                    + ACPI_Memory_Total + 1 > ST.Maximum_Entries
                            then
                               Placed := SB.Limit_Reached;
@@ -3754,7 +3893,7 @@ procedure main is
                   declare
                      Placed : SB.Mint_Outcome := SB.Not_Available;
                   begin
-                     if View.Declared.Count + SB.Self_Entries + ACPI_Window_Total
+                     if View.Declared.Count + ST.Launcher_Entries + ACPI_Window_Total
                           + ACPI_Memory_Total + 1 > ST.Maximum_Entries
                      then
                         Placed := SB.Limit_Reached;
@@ -4301,6 +4440,7 @@ procedure main is
       --  The package identity (.cubit.id) was parsed before the waits.
       noteProcess (newPID, requester, pkgId (1 .. pkgIdLen), Child.Control, Child.Mailbox);
       Sources.Started (newPID, pkgId (1 .. pkgIdLen), name);
+      Metric_Sources.Started (newPID, pkgId (1 .. pkgIdLen), name);
       Recorded := Records.Find (newPID) /= 0;
 
       --  A launched child asks only for services its launcher holds; note a
@@ -4374,6 +4514,23 @@ procedure main is
                resetTag := capCall (PH.Config, Config_Reset, CuBit.Messages.Wait_Forever);
                if resetTag.label /= CuBit.Filesystems.REPLY_OK then
                   debugPrint ("procmgr: config policy reset failed" & LF);
+                  Stop_Suspended_Child;
+                  return No_Process;
+               end if;
+            end;
+         end if;
+         --  Metrics scopes likewise (MET-002).
+         if ensureMetricsPolicy then
+            declare
+               Metrics_Reset : Message := NULL_MESSAGE;
+            begin
+               Metrics_Reset.tag :=
+                 (label => CuBit.Metric_Protocol.Operation'Enum_Rep (CuBit.Metric_Protocol.Revoke_Scopes),
+                  length => CuBit.Metric_Protocol.Message_Words, protocol => 0, ipc => <>, reserved => 0);
+               Metrics_Reset.words (0) := To_Word (newPID);
+               resetTag := capCall (Metrics_Policy, Metrics_Reset, CuBit.Messages.Wait_Forever);
+               if resetTag.label /= REPLY_OK then
+                  debugPrint ("procmgr: metrics policy reset failed" & LF);
                   Stop_Suspended_Child;
                   return No_Process;
                end if;
@@ -4588,11 +4745,13 @@ procedure main is
          Encoded_Length : ST.Table_Length;
          Envelope_Length : LE.Block_Length := Block_Length;
          Fits : Boolean;
+         Outlet_Handle : Unsigned_64;
          use type SB.Build_Status;
       begin
+         Mint_Metric_Outlet (Outlet_Handle);
          Build (Context, View.Declared,
                 HC.Table_Word (Child.Child_Self), HC.Table_Word (Child.Child_Self_Process),
-                Built, Result);
+                Built, Result, Metric_Outlet_Handle => Outlet_Handle);
          if Result.Status /= SB.Ready then
             Warnings.Warn
               ("procmgr: launch of " & name & " refused: startup table " &
@@ -7721,6 +7880,7 @@ begin
       end if;
       Warnings.Pump;
       Sources.Pump;
+      Metric_Sources.Pump;
 
       if received then
          case msg.tag.label is
@@ -7810,6 +7970,7 @@ begin
                        (Exited, Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0);
                      if Known /= 0 then
                         Sources.Exited (Exited);
+                        Metric_Sources.Exited (Exited);
                      end if;
                      for Registrant of Registrants loop
                         if Registrant = Exited then

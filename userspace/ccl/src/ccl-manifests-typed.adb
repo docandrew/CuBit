@@ -717,6 +717,18 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                if not Valid then Fail (Invalid_Path); return; end if;
                Set_Text (Item.Path, Pattern);
             end;
+         elsif Kind = "Metrics" then
+            --  Read only; a series-name prefix, or every series.
+            Item.Domain := Metrics_Domain;
+            Item.Rights (Read_File) := True;
+            if Alt (Body_Cursor) = "Under" then
+               declare
+                  Prefix : constant String := Text (Views.Payload (Object, Body_Cursor));
+               begin
+                  if not Valid_Metric_Prefix (Prefix) then Fail (Invalid_Path); return; end if;
+                  Set_Text (Item.Path, Prefix);
+               end;
+            end if;
          else
             Item.Domain := (if Kind = "Filesystem" then Filesystem_Domain else Config_Domain);
             declare
@@ -780,7 +792,8 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             Element : constant PP.Element_Kind :=
               (if Element_Name = "Text" then PP.Text_Lines
                elsif Element_Name = "Raw_Bytes" then PP.Raw_Bytes
-               elsif Element_Name = "Integers" then PP.Integers else PP.Log_Records);
+               elsif Element_Name = "Integers" then PP.Integers
+               elsif Element_Name = "Metric_Records" then PP.Metric_Records else PP.Log_Records);
             Signal : constant PP.Signal_Kind :=
               PP.Signal_Kind'Value (Alt (Named (At_Cursor, "signal")));
             Pages : constant Integer_64 := Number (Named (At_Cursor, "pages"));
@@ -810,6 +823,17 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                         or else Signal /= PP.Stream)
             then
                Fail (Invalid_Connector, Name & " is a CuBit contract: an outlet streaming Log_Records");
+               return;
+            elsif Is_Contract (PP.Metric_Outlet_Name)
+              and then (Direction /= PP.Outlet or else Element /= PP.Metric_Records
+                        or else Signal /= PP.Stream)
+            then
+               Fail (Invalid_Connector, Name & " is a CuBit contract: an outlet streaming Metric_Records",
+                     "every program has it; declare it only to list it in the description");
+               return;
+            elsif Element = PP.Metric_Records and then not Is_Contract (PP.Metric_Outlet_Name) then
+               Fail (Invalid_Connector, "Metric_Records travel only on " & PP.Metric_Outlet_Name,
+                     "publish through CuBit.Metrics");
                return;
             elsif Is_Contract ("unix.stdin") and then Direction /= PP.Inlet then
                Fail (Invalid_Connector, "unix.stdin is an inlet");

@@ -81,9 +81,12 @@ package CuBit.Program_Descriptions with Pure, SPARK_Mode is
    for Connector_Direction use (Inlet => 1, Outlet => 2);
    --  An element's type. Text: one element per line; Bytes: raw chunks;
    --  Log_Record: CuBit's structured log record (docs/typed-logging.md).
-   type Element_Kind is (Text_Lines, Raw_Bytes, Integers, Log_Records);
+   --  Metric_Record: a metric element (CuBit.Metric_Outlet), on the
+   --  outlet every program has, Metric_Outlet_Name, only.
+   Metric_Outlet_Name : constant String := "com.cubit-os.stdmetric";
+   type Element_Kind is (Text_Lines, Raw_Bytes, Integers, Log_Records, Metric_Records);
    for Element_Kind use
-     (Text_Lines => 1, Raw_Bytes => 2, Integers => 3, Log_Records => 4);
+     (Text_Lines => 1, Raw_Bytes => 2, Integers => 3, Log_Records => 4, Metric_Records => 5);
    --  How values arrive: a sequence of elements; a current state
    --  (intermediate values may be coalesced); discrete transitions, never
    --  coalesced. A single value is not a connector: a run's outcome is a

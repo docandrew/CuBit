@@ -34,13 +34,17 @@
 (type File_Right (enum Read Write Execute Create))
 (type Scope_Place (variant (Everything) (Under String)))
 (type Access_Scope (record (rights (List File_Right)) (place Scope_Place)))
-(type Scope (variant (Filesystem Access_Scope) (Config Access_Scope) (TLS String)))
+# Metrics: the series a reader may read from metrics.svc (MET-002), read
+# only, by name prefix, (Scope.Metrics (Scope_Place.Under "desktop.")), or
+# all of them, (Scope.Metrics Scope_Place.Everything).
+(type Scope (variant (Filesystem Access_Scope) (Config Access_Scope) (TLS String) (Metrics Scope_Place)))
 # A program's inlets and outlets (docs/ccl-launch-parameters.md, "Inlets and
 # outlets, not stdio"): any number, each with a fully qualified name
 # (unix.stderr, com.cubit.stdlog), an element type, a signal kind and its
 # ring's size. A ported Unix program maps its file descriptors onto them
-# (porting glue).
-(type Element (enum Text Raw_Bytes Integers Log_Records))
+# (porting glue). Every program has com.cubit-os.stdmetric (Metric_Records),
+# wired by its launcher; declaring it only lists it.
+(type Element (enum Text Raw_Bytes Integers Log_Records Metric_Records))
 (type Signal (enum Stream Level Edge))
 (type Outlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
 (type Inlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
@@ -129,4 +133,5 @@
 (define (config-all (rights (List File_Right))) Scope
   (Scope.Config (Access_Scope rights Scope_Place.Everything)))
 (define (tls (pattern String)) Scope (Scope.TLS pattern))
+
 

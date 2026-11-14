@@ -23,7 +23,10 @@
 --  * An optional entry Mint refuses is recorded Absent.
 --  * A Granted answer with a zero handle is a launcher bug: Minter_Fault.
 --  * The kernel's two self capabilities are appended as "self" and
---    "self-process"; a declaration may not use those names.
+--    "self-process", then the program's metric outlet as "stdmetric"
+--    (CuBit.Metric_Outlet): optional, Granted with the launcher's handle to
+--    metrics.svc, Absent when it has none. A declaration may not use those
+--    names.
 --
 --  Build is proved: when it answers Built, the table is valid and complete,
 --  keeps the declaration's limit, names, kinds and needs in order, and
@@ -44,7 +47,7 @@ package CuBit.Startup_Builder with Pure, SPARK_Mode is
      (Ready,
       Not_A_Declaration,       --  an entry is not Unassigned
       Too_Many_Entries,        --  no room for the two self entries
-      Reserved_Name_Declared,  --  "self" or "self-process" declared
+      Reserved_Name_Declared,  --  "self", "self-process" or "stdmetric" declared
       Bad_Self_Handle,         --  a self handle is zero
       Required_Refused,        --  a required capability was refused
       Minter_Fault);           --  Granted with a zero handle
@@ -55,14 +58,15 @@ package CuBit.Startup_Builder with Pure, SPARK_Mode is
       Why    : Mint_Outcome := Granted;   --  Mint's answer for Index
    end record;
 
-   --  Room for the self entries after the declared ones.
-   Self_Entries : constant := 2;
+   --  Room for the launcher's entries after the declared ones:
+   --  CuBit.Startup_Tables.Launcher_Entries.
 
    --  Built carries Declared's limit and, in order, its names, kinds and
-   --  needs; every required one is Granted; then the two self entries.
+   --  needs; every required one is Granted; then the two self entries and
+   --  the metric outlet.
    function Follows (Declared, Built : Table) return Boolean is
-     (Declared.Count <= Maximum_Entries - Self_Entries
-      and then Built.Count = Declared.Count + Self_Entries
+     (Declared.Count <= Maximum_Entries - Launcher_Entries
+      and then Built.Count = Declared.Count + Launcher_Entries
       and then Built.Limit = Declared.Limit
       and then (for all I in 1 .. Declared.Count =>
                   Built.Entries (I).Label = Declared.Entries (I).Label
@@ -73,7 +77,10 @@ package CuBit.Startup_Builder with Pure, SPARK_Mode is
       and then Built.Entries (Declared.Count + 1).Label = To_Name (Self_Text)
       and then Built.Entries (Declared.Count + 1).Kind = Endpoint
       and then Built.Entries (Declared.Count + 2).Label = To_Name (Self_Process_Text)
-      and then Built.Entries (Declared.Count + 2).Kind = Process);
+      and then Built.Entries (Declared.Count + 2).Kind = Process
+      and then Built.Entries (Declared.Count + 3).Label = To_Name (Metric_Outlet_Text)
+      and then Built.Entries (Declared.Count + 3).Kind = Endpoint
+      and then Built.Entries (Declared.Count + 3).Requirement = Optional);
 
    generic
       type Context is limited private;
@@ -83,10 +90,13 @@ package CuBit.Startup_Builder with Pure, SPARK_Mode is
       with procedure Report
         (Into : in out Context; Item : Startup_Entry; Index : Entry_Index;
          Outcome : Mint_Outcome);
+   --  Metric_Outlet_Handle: the child's endpoint to metrics.svc, already
+   --  placed, or No_Handle (the entry is then Absent).
    procedure Build
      (Into : in out Context; Declared : Table;
       Self_Handle, Self_Process_Handle : Unsigned_64;
-      Built : out Table; Result : out Build_Result)
+      Built : out Table; Result : out Build_Result;
+      Metric_Outlet_Handle : Unsigned_64 := No_Handle)
    with Pre  => Valid_Table (Declared),
         Post => (if Result.Status = Ready
                  then Valid_Table (Built) and then Complete (Built)

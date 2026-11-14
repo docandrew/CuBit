@@ -10,10 +10,11 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
    use Model;
    package ST renames CuBit.Startup_Tables;
 
-   --  The startup table holds every request plus the launcher's two self
-   --  entries, in a section of the usual size.
+   --  The startup table holds every request plus the launcher's entries
+   --  (the two self entries and the metric outlet), in a section of the
+   --  usual size.
    pragma Compile_Time_Error
-     (MAX_REQUESTS + 2 > ST.Maximum_Entries or else MAX_NAME_TEXT > ST.Maximum_Name_Bytes
+     (MAX_REQUESTS + ST.Launcher_Entries > ST.Maximum_Entries or else MAX_NAME_TEXT > ST.Maximum_Name_Bytes
       or else ST.Maximum_Table_Bytes > MAX_SECTION_BYTES,
       "a manifest's startup table must fit CuBit.Startup_Tables and a section");
 
@@ -231,7 +232,8 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
             declare
                Name : constant String := Requests (Index).Name.Data (1 .. Requests (Index).Name.Length);
             begin
-               if Name = ST.Self_Text or else Name = ST.Self_Process_Text then
+               --  The launcher's own entries (self, self-process, stdmetric).
+               if Name'Length <= ST.Maximum_Name_Bytes and then ST.Reserved_Name (ST.To_Name (Name)) then
                   Fail (Reserved_Binding_Name, Cursor);
                   return;
                end if;

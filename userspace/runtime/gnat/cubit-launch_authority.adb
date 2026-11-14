@@ -165,6 +165,11 @@ package body CuBit.Launch_Authority with SPARK_Mode is
          return False;
       elsif Service = Filesystem_Service then
          return CuBit.File_Access.Scope_Matches (Held_Prefix, Prefix);
+      elsif Service = Metrics_Service then
+         --  Every series, or the series under the held prefix.
+         return Held_Prefix'Length <= Prefix'Length
+           and then (for all I in 0 .. Held_Prefix'Length - 1 =>
+                       Prefix (Prefix'First + I) = Held_Prefix (Held_Prefix'First + I));
       else
          return Held_Prefix = Prefix;
       end if;

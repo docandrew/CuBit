@@ -4,13 +4,15 @@ package body CuBit.Startup_Builder with SPARK_Mode is
    procedure Build
      (Into : in out Context; Declared : Table;
       Self_Handle, Self_Process_Handle : Unsigned_64;
-      Built : out Table; Result : out Build_Result)
+      Built : out Table; Result : out Build_Result;
+      Metric_Outlet_Handle : Unsigned_64 := No_Handle)
    is
       Work : Table := Empty_Table;
       Handle : Unsigned_64;
       Outcome : Mint_Outcome;
       Self_Name : constant Name := To_Name (Self_Text);
       Self_Process_Name : constant Name := To_Name (Self_Process_Text);
+      Outlet_Name : constant Name := To_Name (Metric_Outlet_Text);
    begin
       Built := Empty_Table;
       Result := (Status => Not_A_Declaration, Index => 0, Why => Granted);
@@ -18,11 +20,13 @@ package body CuBit.Startup_Builder with SPARK_Mode is
       if not Declaration (Declared) then
          return;
       end if;
-      if Declared.Count > Maximum_Entries - Self_Entries then
+      if Declared.Count > Maximum_Entries - Launcher_Entries then
          Result.Status := Too_Many_Entries;
          return;
       end if;
-      if Find (Declared, Self_Name) /= 0 or else Find (Declared, Self_Process_Name) /= 0 then
+      if Find (Declared, Self_Name) /= 0 or else Find (Declared, Self_Process_Name) /= 0
+        or else Find (Declared, Outlet_Name) /= 0
+      then
          Result.Status := Reserved_Name_Declared;
          return;
       end if;
@@ -30,7 +34,8 @@ package body CuBit.Startup_Builder with SPARK_Mode is
          Result.Status := Bad_Self_Handle;
          return;
       end if;
-      pragma Assert (Valid_Name (Self_Name) and then Valid_Name (Self_Process_Name));
+      pragma Assert (Valid_Name (Self_Name) and then Valid_Name (Self_Process_Name)
+                     and then Valid_Name (Outlet_Name));
 
       Work.Limit := Declared.Limit;
       for I in 1 .. Declared.Count loop
@@ -72,14 +77,20 @@ package body CuBit.Startup_Builder with SPARK_Mode is
       Work.Entries (Declared.Count + 2) :=
         (Label => Self_Process_Name, Kind => Process, Requirement => Required, State => Granted,
          Handle => Self_Process_Handle);
-      Work.Count := Declared.Count + Self_Entries;
+      Work.Entries (Declared.Count + 3) :=
+        (Label => Outlet_Name, Kind => Endpoint, Requirement => Optional,
+         State => (if Metric_Outlet_Handle = No_Handle then Absent else Granted),
+         Handle => Metric_Outlet_Handle);
+      Work.Count := Declared.Count + Launcher_Entries;
 
-      --  Names stay distinct: the declared ones are, and neither self name
+      --  Names stay distinct: the declared ones are, and no launcher name
       --  is among them.
       pragma Assert
         (for all K in 1 .. Declared.Count =>
-           Work.Entries (K).Label /= Self_Name and then Work.Entries (K).Label /= Self_Process_Name);
-      pragma Assert (Self_Name /= Self_Process_Name);
+           Work.Entries (K).Label /= Self_Name and then Work.Entries (K).Label /= Self_Process_Name
+           and then Work.Entries (K).Label /= Outlet_Name);
+      pragma Assert (Self_Name /= Self_Process_Name and then Self_Name /= Outlet_Name
+                     and then Self_Process_Name /= Outlet_Name);
       pragma Assert (Distinct_Names (Work));
 
       Built := Work;
