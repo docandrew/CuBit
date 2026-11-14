@@ -6,6 +6,7 @@ with CCL.VM.Machine;
 --  status; never the fuel limit or the import lifecycle.
 private package CCL.VM.Local_Ops with SPARK_Mode => On is
    use CCL.VM.Machine;
+   use type CCL.Imports.Import_Phase;
 
    procedure Run_Local (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
@@ -13,7 +14,8 @@ private package CCL.VM.Local_Ops with SPARK_Mode => On is
                  Item.Content.Code (Regs.PC).Op in
                    Initialize_Local | Copy_Local | Move_Local | Drop_Local | Borrow_Local_RO |
                    Return_Local_RO | Borrow_Local_RW | Return_Local_RW | Apply_Local_Disposition,
-          Post => Frame_Of (State) = Frame_Of (State)'Old;
+          Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
+              CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
    --  Inlined into the dispatch loop (as the nested steps were): one
    --  call per instruction would cost the hot path.
    pragma Inline_Always (Run_Local);

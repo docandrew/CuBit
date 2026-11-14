@@ -417,6 +417,9 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
    end Run_List_Builtin;
 
    procedure Run_List (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
+      --  The frame at entry: each region update below keeps it (asserted
+      --  after each, so each step is its own small proof).
+      Before : constant Frame_Mark := Frame_Of (State) with Ghost;
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Left_Value, Right_Value, Joined : Value;
       Stack_Result : Runtime_Stacks.Operation_Result := Runtime_Stacks.Stack_Ok;
@@ -429,6 +432,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                Trap (Regs, State, Invalid_Bytecode);
             else
                List_Regions.Reserve (State.Lists, Natural (Ins.Immediate), Joined.Items, List_Status);
+               pragma Assert (Same_Frame (Before, State));
                if List_Status /= List_Regions.Operation_Ok then
                   Trap (Regs, State, List_Storage_Exhausted);
                else
@@ -436,6 +440,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                end if;
             end if;
 
+         pragma Assert (Same_Frame (Before, State));
          when Fill_List =>
             Runtime_Stacks.Pop (Regs.Stack, Right_Value, Stack_Result);
             if Stack_Result = Runtime_Stacks.Stack_Ok then
@@ -454,6 +459,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                List_Regions.Write
                  (State.Lists, Left_Value.Items, List_Regions.Array_Index (Ins.Immediate),
                   To_Element (Right_Value), List_Status);
+               pragma Assert (Same_Frame (Before, State));
                if List_Status /= List_Regions.Operation_Ok then
                   Trap (Regs, State, Invalid_Bytecode);
                else
@@ -461,6 +467,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                end if;
             end if;
 
+         pragma Assert (Same_Frame (Before, State));
          when Length_List =>
             Runtime_Stacks.Pop (Regs.Stack, Left_Value, Stack_Result);
             if Stack_Result /= Runtime_Stacks.Stack_Ok or else Left_Value.Kind /= List_Value then
@@ -469,6 +476,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                Push_Next (Item, Regs, State, Integer_Constant (Integer_64 (List_Regions.Length (Left_Value.Items))));
             end if;
 
+         pragma Assert (Same_Frame (Before, State));
          when List_At =>
             Runtime_Stacks.Pop (Regs.Stack, Right_Value, Stack_Result);
             if Stack_Result = Runtime_Stacks.Stack_Ok then
@@ -500,6 +508,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                end;
             end if;
 
+         pragma Assert (Same_Frame (Before, State));
          when List_Builtin =>
             declare
                Operation : L.Operation;
@@ -549,6 +558,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                      Run_List_Builtin
                        (State.Lists, State.Text, State.Execution_Budget, State.Arena, Item.Content.Data_Types,
                         Operation, Ins.Data_Type, Subject, A, B, Answer, Outcome);
+                     pragma Assert (Same_Frame (Before, State));
                      if Outcome /= Completed then
                         Trap (Regs, State, Outcome);
                      else
@@ -558,6 +568,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                end if;
             end;
 
+         pragma Assert (Same_Frame (Before, State));
          when Make_Node =>
             declare
                D : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, Ins.Data_Type);
@@ -588,6 +599,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                else
                   Allocate_Node (State.Arena, Item.Content.Data_Types, Ins.Data_Type, Ins.Alternative,
                                  Parts, Count, Built, Good);
+                  pragma Assert (Same_Frame (Before, State));
                   if Good then
                      Push_Next (Item, Regs, State, Built);
                   else
@@ -596,6 +608,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                end if;
             end;
 
+         pragma Assert (Same_Frame (Before, State));
          when Check_Range =>
             Runtime_Stacks.Pop (Regs.Stack, Right_Value, Stack_Result);
             if Stack_Result /= Runtime_Stacks.Stack_Ok or else Right_Value.Kind /= Integer_Value or else
@@ -610,7 +623,9 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                Push_Next (Item, Regs, State, Right_Value);
             end if;
 
+         pragma Assert (Same_Frame (Before, State));
          when others => null;
+         pragma Assert (Same_Frame (Before, State));
       end case;
    end Run_List;
 end CCL.VM.List_Ops;

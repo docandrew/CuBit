@@ -1,3 +1,4 @@
+with CCL.Objects.Holders;
 with Config_Object_Outcomes;
 with CCL.Host_Values;
 package body Config_Object_Client.VM.Calls is
@@ -72,7 +73,7 @@ package body Config_Object_Client.VM.Calls is
          if not N.Accepts_Object_Result (Item, Machine, Contract) then return; end if;
          Config_Object_Outcomes.To_Host (Object.Output.Valid, Object.Output.Code, Object.Output.Revision, Reply);
          if not Reply.Success or else Reply.Value.Kind /= CCL.Host_Values.Object_Value then return; end if;
-         Value := Reply.Value.Object;
+         Value := CCL.Objects.Holders.Page (Reply.Value.Object);
       end if;
       Consume_Result (Object);
       N.Complete_Object (Item, Machine, Contract, Value, True);

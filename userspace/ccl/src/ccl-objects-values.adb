@@ -25,7 +25,7 @@ package body CCL.Objects.Values with SPARK_Mode is
          when CCL.Host_Values.Object_Value =>
             if not Holders.Validate (Value.Object, Contract) then return; end if;
             Object := Holders.Page (Value.Object);
-            Accepted := True;
+            Accepted := Validate (Object, Contract);
             return;
       end case;
       Accepted := Result = Added and then Validate (Object, Contract);

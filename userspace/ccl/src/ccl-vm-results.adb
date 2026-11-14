@@ -262,7 +262,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
          declare
             Printed : Boolean := True;
             Too_Long : Boolean := False;
-            Counting : String (1 .. 0);
+            Counting : String (1 .. 0) := "";
             Length : Literal_Length := 0;
          begin
             --  The first pass counts; Print_Literal writes.
@@ -288,6 +288,8 @@ package body CCL.VM.Results with SPARK_Mode => On is
       elsif State.Has_Value and then State.Result_Value.Kind = List_Value then
          Export_List (State.Lists, State.Text, State.Arena, Item.Content.Data_Types, State.Result_Value, Result);
       end if;
+      --  The slice's steps, whatever the result carried.
+      Result.Steps := CCL.Execution_Budgets.Steps (State.Execution_Budget);
    end Report;
 
    procedure Print_Literal

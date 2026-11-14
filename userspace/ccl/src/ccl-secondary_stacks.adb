@@ -1,7 +1,7 @@
 package body CCL.Secondary_Stacks with
    SPARK_Mode => On
 is
-   procedure Initialize (Item : out Stack) is
+   procedure Initialize (Item : in out Stack) is
    begin
       --  Element by element, in place: a region may be large.
       for Position in Item.Data'Range loop

@@ -114,10 +114,14 @@ package body CCL.Objects with SPARK_Mode is
         Object.Used_Cells > Unsigned_32 (Object.Cell_Room) or else
         Object.Used_Bytes > Unsigned_32 (Object.Text_Room)
       then Result := Invalid_Image;
-      elsif Object.Used_Cells = Unsigned_32 (Object.Cell_Room) then Result := Full;
+      elsif Natural (Object.Used_Cells) >= Object.Cell_Room then Result := Full;
       else
-         Object.Used_Cells := Object.Used_Cells + 1;
-         Object.Cells (Positive (Object.Used_Cells)) := Value;
+         declare
+            Next : constant Positive := Natural (Object.Used_Cells) + 1;
+         begin
+            Object.Cells (Next) := Value;
+            Object.Used_Cells := Unsigned_32 (Next);
+         end;
          Result := Added;
       end if;
    end Append;
@@ -131,12 +135,15 @@ package body CCL.Objects with SPARK_Mode is
         Object.Used_Bytes > Unsigned_32 (Object.Text_Room)
       then Result := Invalid_Image; return; end if;
       Offset := Natural (Object.Used_Bytes);
-      if Object.Used_Cells = Unsigned_32 (Object.Cell_Room) or else
-        Value'Length > Object.Text_Room - Offset
+      if Natural (Object.Used_Cells) >= Object.Cell_Room or else
+        Offset > Object.Text_Room or else Value'Length > Object.Text_Room - Offset
       then Result := Full; return; end if;
-      Object.Used_Cells := Object.Used_Cells + 1;
-      Object.Cells (Positive (Object.Used_Cells)) :=
-        (Unsigned_64 (Offset), Unsigned_64 (Value'Length));
+      declare
+         Next : constant Positive := Natural (Object.Used_Cells) + 1;
+      begin
+         Object.Cells (Next) := (Unsigned_64 (Offset), Unsigned_64 (Value'Length));
+         Object.Used_Cells := Unsigned_32 (Next);
+      end;
       Object.Text (Offset + 1 .. Offset + Value'Length) := Value;
       Object.Used_Bytes := Object.Used_Bytes + Unsigned_32 (Value'Length);
       Result := Added;
@@ -228,10 +235,11 @@ package body CCL.Objects with SPARK_Mode is
    begin
       if not Contract.Bound or else Schema /= Contract.Key or else
         Version /= Format_Version or else Reserved /= 0 or else
-        Used_Cells < 1 or else Used_Cells > Unsigned_32 (Cell_Room) or else
-        Used_Bytes > Unsigned_32 (Text_Room)
+        Used_Cells < 1 or else Used_Cells > Unsigned_32 (VALUE_CELL_CEILING) or else
+        Used_Bytes > Unsigned_32 (VALUE_TEXT_CEILING)
       then return False; end if;
       Used := Natural (Used_Cells);
+      if Used > Cell_Room or else Natural (Used_Bytes) > Text_Room then return False; end if;
       Work_Stacks.Initialize (Work);
       Work_Stacks.Push (Work, (Contract.Root, 1), Status);
       if Status /= Work_Stacks.Stack_Ok then return False; end if;

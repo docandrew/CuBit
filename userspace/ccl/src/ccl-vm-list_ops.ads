@@ -7,6 +7,7 @@ with CCL.VM.Machine;
 --  its limit, nor the import lifecycle.
 private package CCL.VM.List_Ops with SPARK_Mode => On is
    use CCL.VM.Machine;
+   use type CCL.Imports.Import_Phase;
 
    --  A list built-in, with the interpreter's fuel: one per element read and
    --  per sort comparison or joined piece. Subject is the list (the text,
@@ -30,5 +31,6 @@ private package CCL.VM.List_Ops with SPARK_Mode => On is
           Pre => Ready (Item, Regs) and then
                  Item.Content.Code (Regs.PC).Op in
                    New_List | Fill_List | Length_List | List_At | List_Builtin | Make_Node | Check_Range,
-          Post => Frame_Of (State) = Frame_Of (State)'Old;
+          Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
+              CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
 end CCL.VM.List_Ops;

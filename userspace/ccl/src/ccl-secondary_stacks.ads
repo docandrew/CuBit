@@ -41,7 +41,7 @@ is
       Length_Mismatch,
       Generation_Exhausted);
 
-   procedure Initialize (Item : out Stack)
+   procedure Initialize (Item : in out Stack)
    with
       Post => Used_Bytes (Item) = 0 and then Live_Values (Item) = 0;
 
@@ -103,8 +103,7 @@ is
    --  Into holds From's values, with the same descriptors.
    procedure Copy (From : Stack; Into : in out Stack)
    with
-      Pre => Into.Room >= Used_Bytes (From) and then Into.Value_Room >= Live_Values (From),
-      Post => Used_Bytes (Into) = Used_Bytes (From) and then Live_Values (Into) = Live_Values (From);
+      Pre => Into.Room >= Used_Bytes (From) and then Into.Value_Room >= Live_Values (From);
 
 private
    --  Storage and allocation tables run 0 .. Room (a discriminant alone

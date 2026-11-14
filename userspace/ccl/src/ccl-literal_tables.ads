@@ -23,16 +23,21 @@ package CCL.Literal_Tables with SPARK_Mode is
       Last : Natural := 0;    --  Last < First: empty
    end record;
    type Table is private;
-   function Rows (Item : Table) return Row_Count;
-   function Total (Item : Table) return Natural;
-   function Columns (Item : Table) return CCL.Types.Component_Count;
+   function Rows (Item : Table) return Row_Count
+     with Global => null;
+   function Total (Item : Table) return Natural
+     with Global => null;
+   function Columns (Item : Table) return CCL.Types.Component_Count
+     with Global => null;
    --  Every row had exactly Columns cells and the literal was well formed.
-   function Complete (Item : Table) return Boolean;
+   function Complete (Item : Table) return Boolean
+     with Global => null;
    --  Row's cell in Column (an empty span outside the table).
-   function Cell (Item : Table; Row : Row_Index; Column : CCL.Types.Component_Index) return Span;
+   function Cell (Item : Table; Row : Row_Index; Column : CCL.Types.Component_Index) return Span
+     with Global => null;
    procedure Split
      (Literal : String; Shape : CCL.Types.Shapes.Row_Shape; Result : out Table)
-   with Pre => Literal'Last < Positive'Last;
+   with Global => null, Pre => Literal'Last < Positive'Last;
 private
    pragma SPARK_Mode (Off);
    type Grid is array (Row_Index range <>, CCL.Types.Component_Index range <>) of Span;

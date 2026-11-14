@@ -516,6 +516,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    begin
       Fits := True;
       if not Ready_For_Completion (Item, State) then return; end if;
+      pragma Assert (Is_Well_Formed (Item, State.Core));
       Good := Accepted and then Accepts_Object_Result (Item, State, Contract) and then
         CCL.Objects.Views.Cells_Used (View) > 0;
       if Good and then State.Core.Waiting_Result_Kind not in Object_Value | List_Value then
@@ -535,6 +536,8 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
          Load (View, CCL.Objects.Views.Root (View), Item.Content.Data_Types,
                Item.Content.Imports (State.Core.Waiting_Import).Result_Data_Type,
                State.Core.Arena, State.Core.Text, State.Core.Lists, Result, Good);
+         --  Loading changed the regions only, not the call's lifecycle.
+         pragma Assert (Is_Well_Formed (Item, State.Core));
       end if;
       Complete_Checked_Host_Call (Item, State.Core, Result, Good, True);
    end Complete_Captured;

@@ -55,13 +55,16 @@ package body CCL.Objects.Views with SPARK_Mode is
       Clear (Object); Accepted := False;
       if Object.Epoch = Unsigned_64'Last then return; end if;
       Object.Epoch := Object.Epoch + 1;
-      if Value.Used_Cells not in 1 .. Unsigned_32 (Natural'Min (Object.Cell_Room, Value.Cell_Room)) or else
-        Value.Used_Bytes > Unsigned_32 (Natural'Min (Object.Text_Room, Value.Text_Room))
+      if Value.Used_Cells not in 1 .. Unsigned_32 (VALUE_CELL_CEILING) or else
+        Value.Used_Bytes > Unsigned_32 (VALUE_TEXT_CEILING)
       then return; end if;
       declare
          Cells : constant Positive := Positive (Value.Used_Cells);
          Bytes : constant Natural := Natural (Value.Used_Bytes);
       begin
+         if Cells > Object.Cell_Room or else Cells > Value.Cell_Room or else
+           Bytes > Object.Text_Room or else Bytes > Value.Text_Room
+         then return; end if;
          Object.Value.Schema := Value.Schema;
          Object.Value.Version := Value.Version;
          Object.Value.Used_Cells := Value.Used_Cells;
@@ -104,7 +107,9 @@ package body CCL.Objects.Views with SPARK_Mode is
                   declare
                      Raw_Length : constant Unsigned_64 := Object.Value.Cells (Seen).Second;
                   begin
-                     if Raw_Length > Unsigned_64 (Object.Text_Room) then return; end if;
+                     if Raw_Length > Unsigned_64 (VALUE_TEXT_CEILING) or else
+                       Raw_Length > Unsigned_64 (Object.Text_Room)
+                     then return; end if;
                      declare
                         Length : constant Natural range 0 .. VALUE_TEXT_CEILING := Natural (Raw_Length);
                      begin
@@ -191,11 +196,16 @@ package body CCL.Objects.Views with SPARK_Mode is
       Capture (Object, Local_Contract, Value, Accepted);
    end Capture_Local;
 
+   --  (Capture keeps Used within the rooms and every entry's subtree and
+   --  text within them; these cheap checks let each reader rely on it.)
    function Is_Valid (Object : Sized_Snapshot; Position : Cursor) return Boolean is
      (Object.Ready and then Position.Epoch = Object.Epoch and then
+      Object.Used <= Object.Cell_Room and then
       Position.Position in 1 .. Object.Used and then
       Object.Entries (Position.Position).Kind /= Invalid_Type and then
-      Object.Entries (Position.Position).Last >= Position.Position);
+      Object.Entries (Position.Position).Last >= Position.Position and then
+      Object.Entries (Position.Position).Last <= Object.Used and then
+      Object.Entries (Position.Position).Text_Last <= Object.Text_Room);
    function Root (Object : Sized_Snapshot) return Cursor is
      (if Object.Ready then (Object.Epoch, 1) else No_Value);
    function Cells_Used (Object : Sized_Snapshot) return Cell_Room_Count is
@@ -221,7 +231,9 @@ package body CCL.Objects.Views with SPARK_Mode is
          return No_Value;
       end if;
       for P in 1 .. Index loop
-         if Previous >= Object.Entries (Position.Position).Last then return No_Value; end if;
+         if Previous >= Object.Entries (Position.Position).Last or else Previous >= Object.Used then
+            return No_Value;
+         end if;
          if P = Index then return (Object.Epoch, Previous + 1); end if;
          Previous := Object.Entries (Previous + 1).Last;
       end loop;
@@ -249,7 +261,9 @@ package body CCL.Objects.Views with SPARK_Mode is
       end if;
       --  Like Field: step over the earlier elements' subtrees.
       for E in 1 .. Index loop
-         if Previous >= Object.Entries (Position.Position).Last then return No_Value; end if;
+         if Previous >= Object.Entries (Position.Position).Last or else Previous >= Object.Used then
+            return No_Value;
+         end if;
          if E = Index then return (Object.Epoch, Previous + 1); end if;
          Previous := Object.Entries (Previous + 1).Last;
       end loop;
@@ -274,7 +288,10 @@ package body CCL.Objects.Views with SPARK_Mode is
       Result := Invalid_Image;
       if not Is_Valid (Object, Position) then return; end if;
       for I in Position.Position .. Object.Entries (Position.Position).Last loop
-         if Object.Entries (I).Kind = String_Type then
+         if Object.Entries (I).Text_Last > Object.Text_Room then
+            Result := Invalid_Image;
+            return;
+         elsif Object.Entries (I).Kind = String_Type then
             Append_Text (Value,
               Object.Value.Text (Object.Entries (I).Text_First .. Object.Entries (I).Text_Last), Result);
          else
@@ -292,7 +309,10 @@ package body CCL.Objects.Views with SPARK_Mode is
       Result := Invalid_Image;
       if not Is_Valid (Object, Position) then return; end if;
       for I in Position.Position .. Object.Entries (Position.Position).Last loop
-         if Object.Entries (I).Kind = String_Type then
+         if Object.Entries (I).Text_Last > Object.Text_Room then
+            Result := Invalid_Image;
+            return;
+         elsif Object.Entries (I).Kind = String_Type then
             Append_Text (Value,
               Object.Value.Text (Object.Entries (I).Text_First .. Object.Entries (I).Text_Last), Result);
          else

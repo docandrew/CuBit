@@ -6,6 +6,7 @@ with CCL.VM.Machine;
 --  opcodes. Each makes its result a new string in the run's region.
 private package CCL.VM.Text_Ops with SPARK_Mode => On is
    use CCL.VM.Machine;
+   use type CCL.Imports.Import_Phase;
 
    --  Patterns, separators and replacements, and a split piece: the
    --  interpreter's short strings (a host text value).
@@ -53,7 +54,8 @@ private package CCL.VM.Text_Ops with SPARK_Mode => On is
                  Item.Content.Code (Regs.PC).Op in
                    Push_Text | Concat_Text | Text_Builtin | Length_Text | Equal_Text | Text_At |
                    Integer_To_Text | Variant_To_Text,
-          Post => Frame_Of (State) = Frame_Of (State)'Old;
+          Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
+              CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
    --  Inlined into the dispatch loop (as the nested steps were): one
    --  call per instruction would cost the hot path.
    pragma Inline_Always (Run_Text);

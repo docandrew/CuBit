@@ -1,3 +1,4 @@
+with CCL.Objects.Holders;
 with CCL.Host_Values;
 with Config_Object_Outcomes;
 
@@ -106,7 +107,7 @@ package body Config_Object_Client.Resources.Calls is
          Config_Object_Outcomes.To_Host (Object.Backend.Output.Valid, Object.Backend.Output.Code,
            Object.Backend.Output.Revision, Reply);
          if not Reply.Success or else Reply.Value.Kind /= CCL.Host_Values.Object_Value then return; end if;
-         Value := Reply.Value.Object;
+         Value := CCL.Objects.Holders.Page (Reply.Value.Object);
       end if;
       Take_Result (Object, Owner, Answer, Taken);
       if not Taken then return; end if;

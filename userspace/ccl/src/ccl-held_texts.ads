@@ -8,18 +8,22 @@ with Ada.Finalization;
 package CCL.Held_Texts with SPARK_Mode is
    type Text is private;
    function Empty return Text
-     with Post => Length (Empty'Result) = 0;
+     with Global => null, Post => Length (Empty'Result) = 0;
    function To_Text (Item : String) return Text
-     with Post => Length (To_Text'Result) = Item'Length;
-   function Length (Item : Text) return Natural;
+     with Global => null, Post => Length (To_Text'Result) = Item'Length;
+   function Length (Item : Text) return Natural
+     with Global => null;
    --  The whole text, 1-based.
    function Image (Item : Text) return String
-     with Post => Image'Result'First = 1 and then Image'Result'Length = Length (Item);
+     with Global => null, Post => Image'Result'First = 1 and then Image'Result'Length = Length (Item);
    --  Characters First .. Last ("" when they are not all in the text).
-   function Slice (Item : Text; First, Last : Natural) return String;
+   function Slice (Item : Text; First, Last : Natural) return String
+     with Global => null;
    --  Character Index (NUL outside the text).
-   function Element (Item : Text; Index : Positive) return Character;
-   function "=" (Left, Right : Text) return Boolean;
+   function Element (Item : Text; Index : Positive) return Character
+     with Global => null;
+   function "=" (Left, Right : Text) return Boolean
+     with Global => null;
 private
    pragma SPARK_Mode (Off);
    type String_Access is access String;

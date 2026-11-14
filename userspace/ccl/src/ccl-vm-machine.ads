@@ -27,6 +27,9 @@ private package CCL.VM.Machine with SPARK_Mode => On is
    end record;
    function Frame_Of (State : Sized_Machine_State) return Frame_Mark is
      ((Fuel => Fuel_Limit (State), Phase => CCL.Imports.Phase (State.Import_Lifecycle)));
+   --  The state after a step keeps Before's frame.
+   function Same_Frame (Before : Frame_Mark; After : Sized_Machine_State) return Boolean is
+     (Fuel_Limit (After) = Before.Fuel and then CCL.Imports.Phase (After.Import_Lifecycle) = Before.Phase);
 
    --  Where a step may start: a valid program, an instruction inside it,
    --  and a slice still running.
@@ -36,17 +39,21 @@ private package CCL.VM.Machine with SPARK_Mode => On is
    --  Stop the run with Code. Only the terminal status changes.
    procedure Trap (Regs : in out Registers; State : in out Sized_Machine_State; Code : Execution_Status)
      with Global => null,
-          Post => Frame_Of (State) = Frame_Of (State)'Old and then Regs.Done and then Regs.Status = Code and then
+          Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
+                   CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old)
+                  and then Regs.Done and then Regs.Status = Code and then
                   State.Terminal and then State.Terminal_Status = Code;
 
    --  Push Value and step to the next instruction, or trap.
    procedure Push_Next
      (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State; Value : CCL.VM.Value)
-     with Global => null, Post => Frame_Of (State) = Frame_Of (State)'Old;
+     with Global => null, Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
+         CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
 
    --  Pop a text operand, or trap.
    procedure Pop_Text (Regs : in out Registers; State : in out Sized_Machine_State; Value : out CCL.VM.Value)
-     with Global => null, Post => Frame_Of (State) = Frame_Of (State)'Old;
+     with Global => null, Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
+         CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
 
    --  Enter the function value Callee: its captures, then Arity arguments,
    --  as the callee's frame; Return_PC is where its result comes back to.
@@ -54,7 +61,8 @@ private package CCL.VM.Machine with SPARK_Mode => On is
      (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State;
       Callee : Value; Arguments : Component_Values; Arity : CCL.Types.Component_Count;
       Return_PC : Instruction_Index; Good : out Boolean)
-     with Global => null, Post => Frame_Of (State) = Frame_Of (State)'Old;
+     with Global => null, Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
+         CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
    --  Small enough to inline into every step.
    pragma Inline_Always (Trap);
    pragma Inline_Always (Push_Next);

@@ -1,6 +1,13 @@
 with Ada.Unchecked_Deallocation;
+with Interfaces;
 
 package body CCL.Objects.Holders with SPARK_Mode => Off is
+   --  The header's counters' operators, named (the native runtime's
+   --  visibility of the parent's use clause differs from the host's).
+   function "=" (Left, Right : Standard.Interfaces.Unsigned_32) return Boolean
+     renames Standard.Interfaces."=";
+   function ">" (Left, Right : Standard.Interfaces.Unsigned_32) return Boolean
+     renames Standard.Interfaces.">";
    procedure Free is new Ada.Unchecked_Deallocation (Sized_Image, Image_Access);
 
    --  The rooms a builder starts with: a page's.
@@ -17,8 +24,8 @@ package body CCL.Objects.Holders with SPARK_Mode => Off is
    begin
       Result.Schema := Object.Schema;
       Result.Version := Object.Version;
-      Result.Used_Cells := Unsigned_32 (Natural'Min (Cells, Cell_Room));
-      Result.Used_Bytes := Unsigned_32 (Natural'Min (Bytes, Text_Room));
+      Result.Used_Cells := Standard.Interfaces.Unsigned_32 (Natural'Min (Cells, Cell_Room));
+      Result.Used_Bytes := Standard.Interfaces.Unsigned_32 (Natural'Min (Bytes, Text_Room));
       Result.Reserved := Object.Reserved;
       Result.Cells (1 .. Natural (Result.Used_Cells)) := Object.Cells (1 .. Natural (Result.Used_Cells));
       Result.Text (1 .. Natural (Result.Used_Bytes)) := Object.Text (1 .. Natural (Result.Used_Bytes));
@@ -84,8 +91,8 @@ package body CCL.Objects.Holders with SPARK_Mode => Off is
       Grown : Image_Access;
    begin
       Made := False;
-      if Object = null or else Object.Used_Cells > Unsigned_32 (Object.Cell_Room) or else
-        Object.Used_Bytes > Unsigned_32 (Object.Text_Room)
+      if Object = null or else Object.Used_Cells > Standard.Interfaces.Unsigned_32 (Object.Cell_Room) or else
+        Object.Used_Bytes > Standard.Interfaces.Unsigned_32 (Object.Text_Room)
       then
          return;
       end if;

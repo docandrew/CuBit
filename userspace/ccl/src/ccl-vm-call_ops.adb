@@ -7,7 +7,6 @@ package body CCL.VM.Call_Ops with SPARK_Mode => On is
    use type Runtime_Stacks.Operation_Result;
    use type List_Regions.Operation_Result;
    use type CCL.Execution_Budgets.Consume_Result;
-   use type CCL.Imports.Import_Phase;
 
    --  sort-by's last step: the elements in It.Built ordered by their keys
    --  (Integer or String), one fuel per comparison as in sort: counted
@@ -91,7 +90,8 @@ package body CCL.VM.Call_Ops with SPARK_Mode => On is
    procedure Run_Apply (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs),
-          Post => Frame_Of (State) = Frame_Of (State)'Old;
+          Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
+              CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
    procedure Run_Apply (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Types : constant CCL.Types.Registry := Item.Content.Data_Types;
