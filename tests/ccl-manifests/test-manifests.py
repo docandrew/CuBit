@@ -185,6 +185,19 @@ class Manifests(unittest.TestCase):
                 self.assertEqual(result.stdout, '')
                 self.assertIn(message, result.stderr)
 
+    def test_a_failure_at_no_position_is_explained(self):
+        """A program the bytecode cannot hold fails at no source position:
+        the tool says so (once it said NO_ERROR / NO_DIAGNOSTIC, the
+        explanation itself raising a range check on position 0)."""
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        big = self.TLS_TYPED.replace('  scopes =>', '  optional => [' + ' '.join(['"tcp"'] * 200) + ']\n  scopes =>')
+        result = self.compile(big, catalog)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, '')
+        self.assertNotIn('NO_ERROR', result.stderr)
+        self.assertIn('the manifest is not an Executable_Manifest', result.stderr)
+        self.assertIn('cannot be compiled to bytecode', result.stderr)
+
     def test_typed_may_launch_matches_launch_authority_layout(self):
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
         names = ['logstore.svc', 'spawn-child.app']

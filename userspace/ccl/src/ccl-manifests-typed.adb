@@ -1329,7 +1329,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             Fail (Invalid_Expression,
                   (if Position > 0 then "line" & Positive'Image (Line) & ", column" & Positive'Image (Column) & ": "
                    else "the manifest is not an Executable_Manifest: ") & Message,
-                  Members_Of (Name_At (Source, Position)));
+                  (if Position > 0 then Members_Of (Name_At (Source, Position)) else ""));
          end if;
          Result.Expression_Diagnostic := Diagnostic;
          Result.Position := Position;
