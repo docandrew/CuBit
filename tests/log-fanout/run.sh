@@ -14,7 +14,7 @@ cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-process_i
    ../userspace/runtime/gnat/cubit-log_streams.ads ../userspace/runtime/gnat/cubit-log_streams.adb \
    ../userspace/runtime/gnat/cubit-log_sources.ads ../userspace/runtime/gnat/cubit-log_sources.adb \
    ../userspace/services/logstore/source_identities.ads ../userspace/services/logstore/source_identities.adb \
-   ../userspace/services/logstore/heap_arrays.ads ../userspace/services/logstore/heap_arrays.adb \
+   ../userspace/lib/heap/heap_arrays.ads ../userspace/lib/heap/heap_arrays.adb \
    ../userspace/services/logstore/log_fanout.ads ../userspace/services/logstore/log_fanout.adb \
    ../userspace/services/logstore/log_budgets.ads ../userspace/services/logstore/log_budgets.adb \
    ../tests/log-fanout/build/source/

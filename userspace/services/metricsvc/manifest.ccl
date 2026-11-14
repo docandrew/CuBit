@@ -2,4 +2,7 @@
 (executable-manifest v1
   (identity "com.cubit.metrics")
   (version "1.0.0")
+  # Its own records: startup, accounting, refusals (CuBit.Log). Optional:
+  # a profile may start metrics.svc before logstore.
+  (request-service-optional logstore read-write logstore)
   (request-notification metrics manage registration))

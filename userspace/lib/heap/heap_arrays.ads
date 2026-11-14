@@ -3,7 +3,8 @@ private with System;
 
 --  An array of Element on the process heap (CuAlloc, userspace/allocator:
 --  cualloc_allocate and cualloc_free; the C heap in the hosted tests), for
---  logstore's growable stores (LOG-005: the per-source histories).
+--  growable service stores: logstore (LOG-005: the per-source histories) and
+--  metrics.svc (MET-002: the series store).
 --
 --  The spec is SPARK, so proved callers index the array through Capacity's
 --  bounds; the body is the trusted glue that overlays the block. A Block is
