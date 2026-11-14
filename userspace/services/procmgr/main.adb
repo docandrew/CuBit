@@ -4080,6 +4080,20 @@ procedure main is
                end;
             end if;
          end loop;
+         --  The metric outlet every launch gets (Mint_Metric_Outlet): when
+         --  procmgr has started metrics.svc and it has not registered yet,
+         --  wait for it like an optional entry, so the program is wired.
+         if mayWait and then Count < Found'Last and then pkgId (1 .. pkgIdLen) /= Metrics_Identity then
+            classifyProvider (CuBit.Metric_Protocol.Publisher_Service_Role, Now, State, Provider, Deadline);
+            if State = Provider_Starting and then Provider /= No_Process then
+               Count := Count + 1;
+               Found (Count) :=
+                 (Label => ST.To_Name (ST.Metric_Outlet_Text), Role => CuBit.Metric_Protocol.Publisher_Service_Role,
+                  Provider => Provider, Deadline => Deadline, Required => False, Resolved => False);
+               debugPrint ("procmgr: launch of " & name & " waits for metrics.svc to register (its " &
+                           ST.Metric_Outlet_Text & " outlet)" & LF);
+            end if;
+         end if;
          if Count > 0 then
             Waits := new Awaited_Services'(Found (1 .. Count));
          end if;

@@ -151,8 +151,7 @@ package body Metric_Outlets is
       Pending : Boolean := False;
    begin
       --  What a program wrote just before it ended is kept: no identity
-      --  wait now.
-      O.Opened_Ms := 0;
+      --  wait now (the end of time is past every wait).
       Drain_One (T, O, Store, Sources, Unsigned_64'Last, Pending);
       pragma Unreferenced (Now_Ms);
       Channels.Close (O.Link);
