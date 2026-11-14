@@ -178,8 +178,10 @@ begin
    end;
    Decode_Header (Header (0, 0, 0, Counting), H, Result);
    Check (Result = Malformed, "operation 0");
+   Decode_Header (Header (20, 0, 0, Counting), H, Result);
+   Check (Result = Malformed, "operation 20");
    Decode_Header (Header (19, 0, 0, Counting), H, Result);
-   Check (Result = Malformed, "operation 19");
+   Check (Result = OK and then H.Op = Read_Result, "operation 19: read result");
    Decode_Header (Header (16, 1, 0, Counting), H, Result);
    Check (Result = OK and then H.Op = System_Activate and then H.Where = Workspace,
           "operation 16: system activate");
@@ -374,6 +376,17 @@ begin
    Check (Result = Malformed, "system rollback needs both deadlines");
    Decode (System_Generations, None, [1 .. 0 => 0], Item, Result);
    Check (Result = OK, "system generations");
+   --  Read_Result: the offset into the session's last result, read like
+   --  any Diagnose operation.
+   Decode (Read_Result, None, [0, 0, 0, 0, 0, 0, 16#80#, 16#00#], Item, Result);
+   Check (Result = OK and then Item.Offset = 32_768, "read result at an offset");
+   Decode (Read_Result, None, [0, 0, 0, 0], Item, Result);
+   Check (Result = Malformed, "read result needs its offset");
+   Decode (Read_Result, None, [16#FF#, 0, 0, 0, 0, 0, 0, 0], Item, Result);
+   Check (Result = Malformed, "read result's offset is bounded");
+   Check (Admits ([Diagnose => True, others => False], Read_Result, None)
+          and then not Admits ([Diagnose => True, others => False], Read_Result, Workspace)
+          and then not Writes (Read_Result), "read result is diagnosis");
    Check (Admits ([Diagnose | Builds => True, others => False], System_Activate, Workspace)
           and then not Admits ([Diagnose | Files => True, others => False], System_Activate, Workspace)
           and then Admits ([Diagnose => True, others => False], System_Generations, None)

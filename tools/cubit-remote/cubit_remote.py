@@ -77,11 +77,12 @@ window, so it is shown whatever the outcome):
 Pairing tokens are stored in ~/.config/cubit-remote/hosts.json (0600, the
 directory 0700) and never printed. Python 3 standard library only.
 
-A list result longer than one response carries (the device says "too large
-to show whole", or ends a list with "... N more") is fetched whole, in
-slices: (length E), then (last k (first i E)) for consecutive ranges, k
-halved while a slice is still too large. Slices are separate evaluations,
-so a list that changes meanwhile (new log records) may shift between them.
+A result is as long as its value (a whole log history, for example): the
+evaluate reply carries its length and first chunk and read_result the rest,
+so one evaluation is read whole. A list of scalars the device still shows
+in part (it ends with "... N more") is fetched in slices: (length E), then
+(last k (first i E)) for consecutive ranges; slices are separate
+evaluations, so a list that changes meanwhile may shift between them.
 """
 
 import argparse
@@ -108,6 +109,8 @@ MAXIMUM_NAME_BYTES = 240
 MAXIMUM_SOURCE_BYTES = 4_096
 MAXIMUM_FILE_BYTES = 268_435_456
 MAXIMUM_RESPONSE_BODY = 65_536
+# An Evaluate reply's fixed fields: ok (1), the whole text's length (8).
+EVALUATE_FIXED_BYTES = 9
 STAGING_SUFFIX = ".cubit-remote-part"
 DEFAULT_PORT = 8445
 
@@ -116,6 +119,7 @@ OPERATIONS = {
     "commit": 7, "remove": 8, "build_start": 9, "build_poll": 10, "build_cancel": 11,
     "capture": 12, "app_replace": 13, "app_rollback": 14, "app_status": 15,
     "system_activate": 16, "system_rollback": 17, "system_generations": 18,
+    "read_result": 19,
 }
 PLACES = {"none": 0, "workspace": 1, "to-device": 2, "to-host": 3, "captures": 4}
 STATUSES = [
@@ -369,11 +373,22 @@ def hello(host):
 
 
 def evaluate(host, source):
+    """(ok, text): the whole result. The reply carries its length and first
+    chunk; the device keeps the rest for read_result, chunk by chunk."""
     raw = source.encode("ascii")
     if not 1 <= len(raw) <= MAXIMUM_SOURCE_BYTES:
         raise SystemExit("cubit-remote: CCL source must be 1..%d ASCII bytes" % MAXIMUM_SOURCE_BYTES)
     body = host.call("evaluate", "none", raw)
-    return body[0] == 1, body[1:].decode("ascii", "replace")
+    if len(body) < EVALUATE_FIXED_BYTES:
+        raise RemoteError(1, "an evaluate reply shorter than its fixed fields")
+    total = struct.unpack(">Q", body[1:EVALUATE_FIXED_BYTES])[0]
+    text = bytearray(body[EVALUATE_FIXED_BYTES:])
+    while len(text) < total:
+        part = host.call("read_result", "none", struct.pack(">Q", len(text)))
+        if len(part) < 8 or struct.unpack(">Q", part[:8])[0] != total or len(part) == 8:
+            raise RemoteError(1, "the device's result changed or ended while it was read")
+        text += part[8:]
+    return body[0] == 1, bytes(text[:total]).decode("ascii", "replace")
 
 
 def split_elements(body):
@@ -818,7 +833,7 @@ LOG_TALLY_FIELDS = re.compile(r'\A(-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+
 GAP_WORDS = {
     "Not_Retained": "not retained (logstore's history for it was at its ceiling, logs.retention)",
     "Lost": "lost before delivery",
-    "Not_Shown": "retained but not shown (one result holds no more)",
+    "Not_Shown": "retained but not shown (past the items one result holds; narrow it with --from/--to)",
 }
 
 

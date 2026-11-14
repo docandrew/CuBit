@@ -93,7 +93,7 @@ package body Control_Presentation is
             when CCL.Presentations.Gallery =>
                --  [total, [[width, height, imageId]...]]
                Put (Encoding.Encode_Array (2));
-               Number (Interfaces.Unsigned_64 (Shown.Cells.Total));
+               Number (Interfaces.Unsigned_64 (CCL.Literal_Tables.Total (Shown.Cells)));
                Put (Encoding.Encode_Array (UInt64 (Shown.Picture_Count)));
                for K in 1 .. Shown.Picture_Count loop
                   Put (Encoding.Encode_Array (3));
@@ -110,7 +110,7 @@ package body Control_Presentation is
                Put (Encoding.Encode_Array (5));
                Text (CCL.Types.Image (Shown.Shape.Row_Type));
                Flag (Shown.Shape.Many);
-               Number (Interfaces.Unsigned_64 (Shown.Cells.Total));
+               Number (Interfaces.Unsigned_64 (CCL.Literal_Tables.Total (Shown.Cells)));
                Put (Encoding.Encode_Array (UInt64 (Shown.Shape.Count)));
                for F in 1 .. Shown.Shape.Count loop
                   Put (Encoding.Encode_Array (3));
@@ -133,7 +133,7 @@ package body Control_Presentation is
                   Room : Natural := (if Data.Length + 9 + Reserve < Max_Response
                                      then Max_Response - Data.Length - 9 - Reserve else 0);
                begin
-                  while Fitting < Shown.Cells.Rows and then Row_Bytes (Fitting + 1) <= Room loop
+                  while Fitting < CCL.Literal_Tables.Rows (Shown.Cells) and then Row_Bytes (Fitting + 1) <= Room loop
                      Room := Room - Row_Bytes (Fitting + 1);
                      Fitting := Fitting + 1;
                   end loop;

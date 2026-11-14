@@ -28,7 +28,7 @@ package Agent_Results with SPARK_Mode is
    --  length the whole rendering has (Last < Total: it was cut, and the
    --  label says so).
    procedure Render
-     (Object : CCL.Objects.Views.Snapshot; Into : out String; Last : out Natural; Total : out Natural)
+     (Object : CCL.Objects.Views.Sized_Snapshot; Into : out String; Last : out Natural; Total : out Natural)
    with Pre => Into'First = 1 and then Into'Length >= 64 and then Into'Last < Positive'Last / 2,
         Post => Last <= Into'Last;
 

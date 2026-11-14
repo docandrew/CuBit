@@ -134,67 +134,75 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
       if Found then Level := Severity'Val (Choice - 1); end if;
    end Severity_Of;
 
-   procedure Start (Contract : CCL.Objects.Binding; Image : out CCL.Objects.Image) is
+   package Holders renames CCL.Objects.Holders;
+
+   procedure Start (Contract : CCL.Objects.Binding; Result : out Holders.Holder) is
       Built : CCL.Objects.Build_Result;
    begin
-      Image := CCL.Objects.Empty (Contract);
-      CCL.Objects.Append (Image, CCL.Objects.Sequence_Cell (0), Built);
+      Holders.Start (Result, Contract);
+      Holders.Append (Result, CCL.Objects.Sequence_Cell (0), Built);
    end Start;
 
    --  An unsigned host quantity as a CCL Integer, saturating.
    function As_Integer (Value : Unsigned_64) return Integer_64 is
      (if Value > Unsigned_64 (Integer_64'Last) then Integer_64'Last else Integer_64 (Value));
 
-   --  Room for an item of Cells cells and Text_Bytes of text, and for one
-   --  more list element.
-   function Room (Image : CCL.Objects.Image; Cells, Text_Bytes : Natural) return Boolean is
-     (Image.Used_Cells >= 1 and then
-      Unsigned_32 (CCL.Objects.Maximum_Cells) - Image.Used_Cells >= Unsigned_32 (Cells) and then
-      Text_Bytes <= CCL.Objects.Maximum_Text_Bytes and then
-      Unsigned_32 (Text_Bytes) <= Unsigned_32 (CCL.Objects.Maximum_Text_Bytes) - Image.Used_Bytes and then
-      Image.Cells (1).First < Unsigned_64 (MAX_ITEMS));
+   --  Room for an item of Cells cells and Text_Bytes of text within the
+   --  ceilings, and for one more list element.
+   function Room (Result : Holders.Holder; Cells, Text_Bytes : Natural) return Boolean is
+     (Holders.Cells_Of (Result) >= 1 and then
+      Cells <= CCL.Objects.VALUE_CELL_CEILING - Holders.Cells_Of (Result) and then
+      Text_Bytes <= CCL.Objects.VALUE_TEXT_CEILING - Holders.Bytes_Of (Result) and then
+      Holders.Cell_At (Result, 1).First < Unsigned_64 (CCL.Objects.VALUE_CELL_CEILING));
 
    --  One more element in the list's count cell.
-   procedure Count_One (Image : in out CCL.Objects.Image) is
+   procedure Count_One (Result : in out Holders.Holder) is
    begin
-      Image.Cells (1) := CCL.Objects.Sequence_Cell (Natural (Image.Cells (1).First) + 1);
+      Holders.Replace_Cell
+        (Result, 1, CCL.Objects.Sequence_Cell (Natural (Holders.Cell_At (Result, 1).First) + 1));
    end Count_One;
 
-   procedure Append_Count
-     (Image : in out CCL.Objects.Image; Value : Unsigned_64; Built : in out CCL.Objects.Build_Result) is
+   procedure Append (Result : in out Holders.Holder; Value : CCL.Objects.Cell;
+                     Built : in out CCL.Objects.Build_Result) is
    begin
       if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Integer_Cell (As_Integer (Value)), Built);
+         Holders.Append (Result, Value, Built);
       end if;
+   end Append;
+
+   procedure Append_Count
+     (Result : in out Holders.Holder; Value : Unsigned_64; Built : in out CCL.Objects.Build_Result) is
+   begin
+      Append (Result, CCL.Objects.Integer_Cell (As_Integer (Value)), Built);
    end Append_Count;
 
+   procedure Append_Text
+     (Result : in out Holders.Holder; Value : String; Built : in out CCL.Objects.Build_Result) is
+   begin
+      if Built = CCL.Objects.Added then
+         Holders.Append_Text (Result, Value, Built);
+      end if;
+   end Append_Text;
+
    procedure Add
-     (Image : in out CCL.Objects.Image; Time : Unsigned_64; Level : Severity;
+     (Result : in out Holders.Holder; Time : Unsigned_64; Level : Severity;
       Source : Unsigned_64; Message : String; Added : out Boolean)
    is
       Built : CCL.Objects.Build_Result := CCL.Objects.Added;
    begin
       --  Only a whole entry: room for its cells and its text, or nothing.
-      Added := Room (Image, ENTRY_CELLS, Message'Length);
+      Added := Room (Result, ENTRY_CELLS, Message'Length);
       if not Added then return; end if;
-      CCL.Objects.Append (Image, Member_Cell (Logged), Built);
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Product_Cell (ENTRY_FIELDS), Built);
-      end if;
-      Append_Count (Image, Time, Built);
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Variant_Cell (Severity'Pos (Level) + 1), Built);
-      end if;
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Unit_Cell, Built);
-      end if;
-      Append_Count (Image, Source, Built);
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append_Text (Image, Message, Built);
-      end if;
+      Append (Result, Member_Cell (Logged), Built);
+      Append (Result, CCL.Objects.Product_Cell (ENTRY_FIELDS), Built);
+      Append_Count (Result, Time, Built);
+      Append (Result, CCL.Objects.Variant_Cell (Severity'Pos (Level) + 1), Built);
+      Append (Result, CCL.Objects.Unit_Cell, Built);
+      Append_Count (Result, Source, Built);
+      Append_Text (Result, Message, Built);
       Added := Built = CCL.Objects.Added;
       if Added then
-         Count_One (Image);
+         Count_One (Result);
       end if;
    end Add;
 
@@ -209,7 +217,8 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
       (case Reason is
           when Not_Retained => "not retained",
           when Lost => "lost before delivery",
-          when Not_Shown => "not shown (this result holds no more)") & " ...");
+          when Not_Shown => "not shown (past the" & Natural'Image (RESULT_ITEM_CEILING) &
+                            " items one result holds)") & " ...");
 
    function Tally_Message
      (Published, Retained, Not_Retained, Over_Budget, Publisher_Full : Unsigned_64) return String is
@@ -218,38 +227,30 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
       Decimal (Publisher_Full) & " by the publisher");
 
    procedure Add_Gap
-     (Image : in out CCL.Objects.Image; Time, Source, Count : Unsigned_64; Reason : Gap_Reason;
+     (Result : in out Holders.Holder; Time, Source, Count : Unsigned_64; Reason : Gap_Reason;
       Added : out Boolean)
    is
       Message : constant String := Gap_Message (Count, Reason);
       Built : CCL.Objects.Build_Result := CCL.Objects.Added;
    begin
-      Added := Room (Image, GAP_CELLS, Message'Length);
+      Added := Room (Result, GAP_CELLS, Message'Length);
       if not Added then return; end if;
-      CCL.Objects.Append (Image, Member_Cell (Gap), Built);
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Product_Cell (GAP_FIELDS), Built);
-      end if;
-      Append_Count (Image, Time, Built);
-      Append_Count (Image, Source, Built);
-      Append_Count (Image, Count, Built);
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Variant_Cell (Gap_Reason'Pos (Reason) + 1), Built);
-      end if;
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Unit_Cell, Built);
-      end if;
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append_Text (Image, Message, Built);
-      end if;
+      Append (Result, Member_Cell (Gap), Built);
+      Append (Result, CCL.Objects.Product_Cell (GAP_FIELDS), Built);
+      Append_Count (Result, Time, Built);
+      Append_Count (Result, Source, Built);
+      Append_Count (Result, Count, Built);
+      Append (Result, CCL.Objects.Variant_Cell (Gap_Reason'Pos (Reason) + 1), Built);
+      Append (Result, CCL.Objects.Unit_Cell, Built);
+      Append_Text (Result, Message, Built);
       Added := Built = CCL.Objects.Added;
       if Added then
-         Count_One (Image);
+         Count_One (Result);
       end if;
    end Add_Gap;
 
    procedure Add_Tally
-     (Image : in out CCL.Objects.Image;
+     (Result : in out Holders.Holder;
       Source, Published, Retained, Not_Retained, Over_Budget, Publisher_Full : Unsigned_64;
       Added : out Boolean)
    is
@@ -257,24 +258,20 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
         Tally_Message (Published, Retained, Not_Retained, Over_Budget, Publisher_Full);
       Built : CCL.Objects.Build_Result := CCL.Objects.Added;
    begin
-      Added := Room (Image, TALLY_CELLS, Message'Length);
+      Added := Room (Result, TALLY_CELLS, Message'Length);
       if not Added then return; end if;
-      CCL.Objects.Append (Image, Member_Cell (Tally), Built);
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Product_Cell (TALLY_FIELDS), Built);
-      end if;
-      Append_Count (Image, Source, Built);
-      Append_Count (Image, Published, Built);
-      Append_Count (Image, Retained, Built);
-      Append_Count (Image, Not_Retained, Built);
-      Append_Count (Image, Over_Budget, Built);
-      Append_Count (Image, Publisher_Full, Built);
-      if Built = CCL.Objects.Added then
-         CCL.Objects.Append_Text (Image, Message, Built);
-      end if;
+      Append (Result, Member_Cell (Tally), Built);
+      Append (Result, CCL.Objects.Product_Cell (TALLY_FIELDS), Built);
+      Append_Count (Result, Source, Built);
+      Append_Count (Result, Published, Built);
+      Append_Count (Result, Retained, Built);
+      Append_Count (Result, Not_Retained, Built);
+      Append_Count (Result, Over_Budget, Built);
+      Append_Count (Result, Publisher_Full, Built);
+      Append_Text (Result, Message, Built);
       Added := Built = CCL.Objects.Added;
       if Added then
-         Count_One (Image);
+         Count_One (Result);
       end if;
    end Add_Tally;
 end CCL.Interfaces.Logs;

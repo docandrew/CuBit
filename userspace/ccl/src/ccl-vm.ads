@@ -62,35 +62,44 @@ is
    --  The value arena (docs/ccl-bytecode-format.md, step 4): the records and
    --  payload variants a run builds or copies in from the host. An
    --  Object_Value holds a node index (0 for a payload variant's unit
-   --  alternative). The interpreter's bounds (CCL.Language uses these).
-   MAX_VALUE_NODES : constant := 512;
-   MAX_VALUE_SLOTS : constant := 2_048;
-   type Node_Count is range 0 .. MAX_VALUE_NODES;
-   subtype Node_Index is Node_Count range 1 .. MAX_VALUE_NODES;
+   --  alternative).
+   --  A machine's storage is sized by what it holds (Sized_Machine_State's
+   --  rooms): it starts at the DEFAULT_ rooms (Machine_State) and a host
+   --  that admits a larger value grows it by copying
+   --  (CCL.VM.Native_Objects.Grow), up to the named ceilings (CAPACITY).
+   DEFAULT_VALUE_NODES : constant := 512;
+   DEFAULT_VALUE_SLOTS : constant := 2_048;
+   NODE_CEILING : constant := 2 ** 21;
+   SLOT_CEILING : constant := 2 ** 23;
+   type Node_Count is range 0 .. NODE_CEILING;
+   subtype Node_Index is Node_Count range 1 .. NODE_CEILING;
+   subtype Node_Room_Count is Node_Count range 1 .. NODE_CEILING;
    --  Slot positions run one past the last slot: a node's First when it
    --  ends the arena.
-   type Slot_Position is range 0 .. MAX_VALUE_SLOTS + 1;
-   subtype Slot_Count is Slot_Position range 0 .. MAX_VALUE_SLOTS;
-   subtype Slot_Index is Slot_Position range 1 .. MAX_VALUE_SLOTS;
+   type Slot_Position is range 0 .. SLOT_CEILING + 1;
+   subtype Slot_Count is Slot_Position range 0 .. SLOT_CEILING;
+   subtype Slot_Index is Slot_Position range 1 .. SLOT_CEILING;
+   subtype Slot_Room_Count is Slot_Position range 1 .. SLOT_CEILING;
 
    --  Text (docs/ccl-bytecode-format.md, "Version 8 plan", step 2): a run's
    --  strings live in a bounded region of its machine state; a Text_Value
    --  holds a checked descriptor into it, never a pointer, so the state
    --  stays serializable. Literals come from the program's constant pool.
-   --  The interpreter's bounds (CCL.Language), so a program fails at the
-   --  same point in both: a string holds at most 8 KiB (the interpreter
-   --  keeps longer-than-1-KiB strings in object images of that size), a
-   --  host-owned text value (CCL.Host_Values.Text), and so a result's text,
-   --  at most 1 KiB, and as many live strings as a program has syntax nodes.
+   --  A string holds at most 8 KiB (a page image's text), a host-owned
+   --  text value (CCL.Host_Values.Text), and so a result's text, at most
+   --  1 KiB. The text region starts at DEFAULT_TEXT_BYTES in
+   --  DEFAULT_TEXT_VALUES strings and grows with the machine.
    MAX_STRING_BYTES   : constant := CCL.Objects.Maximum_Text_Bytes;
    MAX_HOST_TEXT      : constant := 1_024;
-   MAX_TEXT_BYTES     : constant := 65_536;
-   MAX_TEXT_VALUES    : constant := 512;
+   DEFAULT_TEXT_BYTES  : constant := 65_536;
+   DEFAULT_TEXT_VALUES : constant := 512;
+   TEXT_BYTE_CEILING   : constant := 2 ** 26;
+   TEXT_VALUE_CEILING  : constant := 2 ** 21;
    MAX_RESULT_TEXT    : constant := MAX_HOST_TEXT;
    MAX_CONSTANTS      : constant := 32;
    MAX_CONSTANT_BYTES : constant := 4_096;
    package Text_Regions is new CCL.Secondary_Stacks
-     (Capacity => MAX_TEXT_BYTES, Max_Values => MAX_TEXT_VALUES,
+     (Capacity => TEXT_BYTE_CEILING, Max_Values => TEXT_VALUE_CEILING,
       Max_String_Length => MAX_STRING_BYTES);
    type Constant_Count is range 0 .. MAX_CONSTANTS;
    subtype Constant_Index is Constant_Count range 0 .. MAX_CONSTANTS - 1;
@@ -121,14 +130,11 @@ is
       Length : Import_Text_Length := 0;
       Data   : String (1 .. MAX_STRING_BYTES) := [others => ' '];
    end record;
-   --  A record or list result's printed literal: room for a whole table,
-   --  as the console shows it.
-   MAX_LITERAL_TEXT : constant := 4_096;
-   type Literal_Length is range 0 .. MAX_LITERAL_TEXT;
-   type Literal_Text is record
-      Length : Literal_Length := 0;
-      Data   : String (1 .. MAX_LITERAL_TEXT) := [others => ' '];
-   end record;
+   --  A record or list result's printed literal is as long as the value
+   --  (Native_Objects.Result_Literal prints it into a string of exactly
+   --  its length), up to LITERAL_CEILING (CAPACITY: Result_Too_Large).
+   LITERAL_CEILING : constant := 2 ** 27;
+   type Literal_Length is range 0 .. LITERAL_CEILING;
    --  The characters each text record holds, and how many.
    function Length_Of (Item : Result_Text) return Natural is (Natural (Item.Length))
      with Post => Length_Of'Result <= MAX_RESULT_TEXT;
@@ -136,20 +142,19 @@ is
    function Length_Of (Item : Import_Text) return Natural is (Natural (Item.Length))
      with Post => Length_Of'Result <= MAX_STRING_BYTES;
    function Image (Item : Import_Text) return String is (Item.Data (1 .. Length_Of (Item)));
-   function Length_Of (Item : Literal_Text) return Natural is (Natural (Item.Length))
-     with Post => Length_Of'Result <= MAX_LITERAL_TEXT;
-   function Image (Item : Literal_Text) return String is (Item.Data (1 .. Length_Of (Item)));
    --  Whether Count bytes fit an import text limit.
    function Within (Count : Natural; Limit : Import_Text_Length) return Boolean is
      (Count <= Natural (Limit));
 
    --  Lists (step 3): a run's lists live in a bounded region of its machine
    --  state, as strings do; a List_Value holds a checked descriptor and
-   --  names its List<T> type in Data_Type. The interpreter's bounds
-   --  (CCL.Language uses these): elements across all lists of a run, live
-   --  lists, and elements a result carries out.
-   MAX_LIST_ELEMENTS : constant := 4_096;
-   MAX_LIST_VALUES   : constant := 512;
+   --  names its List<T> type in Data_Type. Elements across all lists of a
+   --  run and live lists start at the DEFAULT_ rooms and grow with the
+   --  machine; MAX_LIST_RESULT elements of a scalar list are carried out.
+   DEFAULT_LIST_ELEMENTS : constant := 4_096;
+   DEFAULT_LIST_VALUES   : constant := 512;
+   LIST_ELEMENT_CEILING  : constant := 2 ** 22;
+   LIST_VALUE_CEILING    : constant := 2 ** 21;
    MAX_LIST_RESULT   : constant := 64;
    --  One element: a value's scalar fields, read back by the element type.
    --  Integer holds an Integer, a Character's code or a scalar variant's
@@ -167,7 +172,7 @@ is
    package List_Regions is new CCL.Secondary_Arrays
      (Element_Type => List_Element, Null_Element => Null_List_Element,
       Element_Array => List_Element_Array,
-      Capacity => MAX_LIST_ELEMENTS, Max_Values => MAX_LIST_VALUES);
+      Capacity => LIST_ELEMENT_CEILING, Max_Values => LIST_VALUE_CEILING);
 
    type Value is record
       Kind    : Value_Kind := Integer_Value;
@@ -196,7 +201,7 @@ is
      (Text.Data (Natural (if I = List_Result_Index'First then 0 else Ends (I - 1)) + 1 ..
                  Natural (Ends (I))));
    --  Elements across all lists of a run (a list's length, a position in it).
-   type List_Element_Count is range 0 .. MAX_LIST_ELEMENTS;
+   type List_Element_Count is range 0 .. LIST_ELEMENT_CEILING;
    function Element_Count (Items : List_Regions.Array_Value) return List_Element_Count is
      (List_Element_Count (List_Regions.Length (Items)));
    --  How many of Total a list result carries out.
@@ -723,11 +728,12 @@ is
       List_Values : List_Result_Values := [others => (others => <>)];
       List_Text : Result_Text := (others => <>);
       List_Text_Ends : List_Result_Ends := [others => 0];
-      --  A record or payload variant, or a list of them: its canonical CCL
-      --  literal, as the interpreter prints it, when it has one that fits.
+      --  A record or payload variant, or a list of them: it has a canonical
+      --  CCL literal, as the interpreter prints it, of Literal_Length
+      --  characters (Native_Objects.Result_Literal prints it).
       Has_Literal : Boolean := False;
-      Literal : Literal_Text := (others => <>);
-      --  Without one: because it is longer than MAX_LITERAL_TEXT (a list's
+      Literal_Length : CCL.VM.Literal_Length := 0;
+      --  Without one: because it is longer than LITERAL_CEILING (a list's
       --  length is then in List_Total), not because a part has no literal.
       Literal_Too_Long : Boolean := False;
       --  Its rows' record type and fields, for a table (Count = 0: none).
@@ -741,17 +747,40 @@ is
       Stream_Request : CCL.Streams.View_Request := (others => <>);
    end record;
 
-   type Machine_State is private;
+   --  A machine whose value arena holds Node_Room nodes in Slot_Room slots,
+   --  its text region Text_Room bytes in String_Room strings, and its list
+   --  region Element_Room elements in List_Room lists. Machine_State is the
+   --  default room; Rooms names a machine's rooms.
+   type Sized_Machine_State
+     (Node_Room : Node_Room_Count; Slot_Room : Slot_Room_Count;
+      Text_Room : Text_Regions.Byte_Room; String_Room : Text_Regions.Value_Room_Count;
+      Element_Room : List_Regions.Element_Room; List_Room : List_Regions.Value_Room_Count) is private;
+   subtype Machine_State is Sized_Machine_State
+     (Node_Room => DEFAULT_VALUE_NODES, Slot_Room => DEFAULT_VALUE_SLOTS,
+      Text_Room => DEFAULT_TEXT_BYTES, String_Room => DEFAULT_TEXT_VALUES,
+      Element_Room => DEFAULT_LIST_ELEMENTS, List_Room => DEFAULT_LIST_VALUES);
+   type Rooms is record
+      Nodes : Node_Room_Count := DEFAULT_VALUE_NODES;
+      Slots : Slot_Room_Count := DEFAULT_VALUE_SLOTS;
+      Text : Text_Regions.Byte_Room := DEFAULT_TEXT_BYTES;
+      Strings : Text_Regions.Value_Room_Count := DEFAULT_TEXT_VALUES;
+      Elements : List_Regions.Element_Room := DEFAULT_LIST_ELEMENTS;
+      Lists : List_Regions.Value_Room_Count := DEFAULT_LIST_VALUES;
+   end record;
+   DEFAULT_ROOMS : constant Rooms := (others => <>);
+   function Rooms_Of (State : Sized_Machine_State) return Rooms is
+     ((State.Node_Room, State.Slot_Room, State.Text_Room, State.String_Room, State.Element_Room,
+       State.List_Room));
 
    function Is_Well_Formed
-     (Item : Validated_Program; State : Machine_State) return Boolean;
+     (Item : Validated_Program; State : Sized_Machine_State) return Boolean;
 
-   function Fuel_Limit (State : Machine_State) return Unsigned_32;
+   function Fuel_Limit (State : Sized_Machine_State) return Unsigned_32;
 
    procedure Initialize
      (Item  : Validated_Program;
       Fuel  : Natural;
-      State : out Machine_State)
+      State : out Sized_Machine_State)
    with
      Pre => Is_Valid (Item),
      Post => Is_Well_Formed (Item, State) and then
@@ -762,7 +791,7 @@ is
       Fuel     : Natural;
       Values   : Local_Value_Array;
       Count    : Local_Count;
-      State    : out Machine_State;
+      State    : out Sized_Machine_State;
       Accepted : out Boolean)
    with
      Pre => Is_Valid (Item),
@@ -773,23 +802,23 @@ is
 
    procedure Continue_Execution
      (Item   : Validated_Program;
-      State  : in out Machine_State;
+      State  : in out Sized_Machine_State;
       Result : out Execution_Result)
    with
      Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
-     Post => Is_Well_Formed (Item, State) and then
-       Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+     Post => Fuel_Limit (State) = Fuel_Limit (State)'Old and then
+       Is_Well_Formed (Item, State) and then
        Result.Steps <= Fuel_Limit (State);
 
    procedure Continue_Execution_For
      (Item         : Validated_Program;
-      State        : in out Machine_State;
+      State        : in out Sized_Machine_State;
       Instructions : Natural;
       Result       : out Execution_Result)
    with
      Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
-     Post => Is_Well_Formed (Item, State) and then
-       Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+     Post => Fuel_Limit (State) = Fuel_Limit (State)'Old and then
+       Is_Well_Formed (Item, State) and then
        Result.Steps <= Fuel_Limit (State);
 
    type Machine_Snapshot is record
@@ -801,7 +830,7 @@ is
       Status : Execution_Status := No_Result;
    end record;
 
-   function Snapshot (State : Machine_State) return Machine_Snapshot;
+   function Snapshot (State : Sized_Machine_State) return Machine_Snapshot;
 
    type Stack_Snapshot_Array is array (Stack_Index) of Value;
    --  The depth of a stack whose deepest value is at Position.
@@ -839,16 +868,16 @@ is
 
    procedure Inspect
      (Item   : Validated_Program;
-      State  : Machine_State;
+      State  : Sized_Machine_State;
       Result : out Inspection_Snapshot)
    with
       Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State);
 
-   procedure Stop (State : in out Machine_State);
+   procedure Stop (State : in out Sized_Machine_State);
 
    procedure Complete_Host_Call
      (Item     : Validated_Program;
-      State    : in out Machine_State;
+      State    : in out Sized_Machine_State;
       Response : Value;
       Accepted : Boolean)
    with
@@ -859,7 +888,7 @@ is
    --  Rejection preserves ownership; acceptance activates move/borrow state.
    procedure Acknowledge_Host_Submission
      (Item     : Validated_Program;
-      State    : in out Machine_State;
+      State    : in out Sized_Machine_State;
       Accepted : Boolean)
    with
      Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
@@ -885,19 +914,27 @@ private
    type Arena_Node is record
       Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
       Alternative : CCL.Types.Component_Count := 0;
-      First : Slot_Position range 1 .. MAX_VALUE_SLOTS + 1 := 1;
+      First : Slot_Position range 1 .. SLOT_CEILING + 1 := 1;
       Count : CCL.Types.Component_Count := 0;
    end record;
    --  A node's component count as arena slots.
    function Slots_For (Count : CCL.Types.Component_Count) return Slot_Count is (Slot_Count (Count));
-   type Node_Array is array (Node_Index) of Arena_Node;
-   type Slot_Array is array (Slot_Index) of Slot;
-   type Value_Arena is record
-      Nodes : Node_Array := [others => (others => <>)];
-      Slots : Slot_Array := [others => (others => <>)];
+   type Node_Array is array (Node_Index range <>) of Arena_Node;
+   type Slot_Array is array (Slot_Index range <>) of Slot;
+   --  Nodes_Used <= Node_Room and Slots_Used <= Slot_Room: Allocate_Node
+   --  keeps it; readers check a node against both (Holds).
+   type Value_Arena (Node_Room : Node_Room_Count; Slot_Room : Slot_Room_Count) is record
+      Nodes : Node_Array (1 .. Node_Room) := [others => (others => <>)];
+      Slots : Slot_Array (1 .. Slot_Room) := [others => (others => <>)];
       Nodes_Used : Node_Count := 0;
       Slots_Used : Slot_Count := 0;
    end record;
+   --  Whether Node is one of the arena's nodes.
+   function Holds (Arena : Value_Arena; Node : Node_Count) return Boolean is
+     (Node in 1 .. Arena.Nodes_Used and then Node <= Arena.Node_Room);
+   --  Copy From's nodes and slots into Into (as large or larger).
+   procedure Copy_Arena (From : Value_Arena; Into : in out Value_Arena)
+     with Pre => Into.Node_Room >= From.Nodes_Used and then Into.Slot_Room >= From.Slots_Used;
    type Component_Values is array (CCL.Types.Component_Index) of Value;
 
    --  Live calls: frames on the call table, at most one per function.
@@ -959,12 +996,12 @@ private
    --  Answer a stream view: push Response (already of Stream_Result_Type)
    --  and continue, or stop the run with Failure.
    procedure Complete_Stream_Call
-     (Item : Validated_Program; State : in out Machine_State;
+     (Item : Validated_Program; State : in out Sized_Machine_State;
       Response : Value; Failure : Execution_Status)
      with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
        Post => Is_Well_Formed (Item, State);
    procedure Complete_Checked_Host_Call
-     (Item : Validated_Program; State : in out Machine_State;
+     (Item : Validated_Program; State : in out Sized_Machine_State;
       Host_Response : Value; Accepted : Boolean; Native_Response : Boolean;
       Resource_Response : Boolean := False)
      with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
@@ -987,7 +1024,12 @@ private
    end record;
    type Call_Frames is array (Frame_Index) of Call_Frame;
 
-   type Machine_State is record
+   type Sized_Machine_State
+     (Node_Room : Node_Room_Count; Slot_Room : Slot_Room_Count;
+      Text_Room : Text_Regions.Byte_Room; String_Room : Text_Regions.Value_Room_Count;
+      Element_Room : List_Regions.Element_Room; List_Room : List_Regions.Value_Room_Count) is
+   record
+      --  Copy_State copies every field: a new one goes there too.
       Stack               : Runtime_Stacks.Stack;
       PC                  : Instruction_Index := 0;
       Execution_Budget    : CCL.Execution_Budgets.Budget;
@@ -1006,9 +1048,9 @@ private
       Locals              : Local_Value_Array := [others => (others => <>)];
       Frames              : Call_Frames := [others => (others => <>)];
       Frame_Count         : Call_Depth := 0;
-      Text                : Text_Regions.Stack;
-      Lists               : List_Regions.Stack;
-      Arena               : Value_Arena;
+      Text                : Text_Regions.Stack (Text_Room, String_Room);
+      Lists               : List_Regions.Stack (Element_Room, List_Room);
+      Arena               : Value_Arena (Node_Room, Slot_Room);
       Iterations          : Iteration_Array := [others => (others => <>)];
       Iteration_Depth     : Iteration_Count := 0;
       --  Suspended on a stream view (separate from import waits): the
@@ -1018,15 +1060,27 @@ private
       Stream_Result_Type  : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
    end record;
 
+   --  Whether Into's rooms hold everything From holds now.
+   function Holds_All (From, Into : Sized_Machine_State) return Boolean is
+     (Into.Node_Room >= From.Arena.Nodes_Used and then Into.Slot_Room >= From.Arena.Slots_Used and then
+      Into.Text_Room >= Text_Regions.Used_Bytes (From.Text) and then
+      Into.String_Room >= Text_Regions.Live_Values (From.Text) and then
+      Into.Element_Room >= List_Regions.Used_Bytes (From.Lists) and then
+      Into.List_Room >= List_Regions.Live_Values (From.Lists));
+   --  Into becomes From in rooms at least as large: every value, descriptor
+   --  and position the same (a machine grows by copying itself).
+   procedure Copy_State (From : Sized_Machine_State; Into : in out Sized_Machine_State)
+     with Pre => Holds_All (From, Into);
+
    function Is_Valid (Item : Validated_Program) return Boolean is
      (Item.Checked and then Item.Content.Length > 0 and then
       Item.Content.Dynamic_Locals_Length <= Item.Content.Locals_Length);
 
-   function Fuel_Limit (State : Machine_State) return Unsigned_32 is
+   function Fuel_Limit (State : Sized_Machine_State) return Unsigned_32 is
      (CCL.Execution_Budgets.Limit (State.Execution_Budget));
 
    function Is_Well_Formed
-     (Item : Validated_Program; State : Machine_State) return Boolean is
+     (Item : Validated_Program; State : Sized_Machine_State) return Boolean is
      ((not State.Waiting or else
        State.Waiting_Import < Item.Content.Imports_Length) and then
       (not State.Waiting_Owned or else

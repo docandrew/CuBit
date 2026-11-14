@@ -11,7 +11,7 @@ procedure Main is
       if Condition then Put_Line ("PASS " & Name);
       else Put_Line ("FAIL " & Name); Failures := Failures + 1; end if;
    end Check;
-   S : Stack;
+   S : Stack (16, 4);
    A, B, C, D : Array_Value;
    R : Operation_Result;
    E : Integer_64;

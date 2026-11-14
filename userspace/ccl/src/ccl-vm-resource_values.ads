@@ -6,7 +6,7 @@ with CCL.Resources;
 -- any rejected/late resource for cleanup. Type agreement is not authorization.
 package CCL.VM.Resource_Values with SPARK_Mode is
    procedure Complete
-     (Item : Validated_Program; State : in out Machine_State;
+     (Item : Validated_Program; State : in out Sized_Machine_State;
       Owner : CCL.Resources.Registry; Resource : CCL.Resources.Reference;
       Accepted : out Boolean)
      with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),

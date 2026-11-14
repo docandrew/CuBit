@@ -4,24 +4,8 @@ with CCL.Types.Correspondence;
 package body CCL.Objects with SPARK_Mode is
    use CCL.Types;
 
-   --  Read-only comparison targets, not per-validation temporary buffers.
-   --  Array equality lets the target runtime compare blocks efficiently while
-   --  retaining Ada/SPARK semantics (including an empty tail at full capacity).
-   Zero_Text : constant String (1 .. Maximum_Text_Bytes) := [others => Character'Val (0)];
+   --  A page's padding is zero (a read-only comparison target).
    Zero_Padding : constant Padding_Bytes := [others => 0];
-   subtype Text_Buffer is String (1 .. Maximum_Text_Bytes);
-   subtype Text_Length is Natural range 0 .. Maximum_Text_Bytes;
-
-   function Canonical_Bytes
-     (Text : Text_Buffer; Used : Text_Length; Padding : Padding_Bytes) return Boolean
-     with Post => Canonical_Bytes'Result =
-       ((for all I in Used + 1 .. Maximum_Text_Bytes => Text (I) = Character'Val (0)) and
-        (for all B of Padding => B = 0));
-
-   function Canonical_Bytes
-     (Text : Text_Buffer; Used : Text_Length; Padding : Padding_Bytes) return Boolean is
-     (Text (Used + 1 .. Maximum_Text_Bytes) = Zero_Text (Used + 1 .. Maximum_Text_Bytes) and then
-      Padding = Zero_Padding);
 
    function Same_Schema (Left, Right : Binding) return Boolean is
      (Left.Bound and then Right.Bound and then Left.Key = Right.Key and then
@@ -100,6 +84,64 @@ package body CCL.Objects with SPARK_Mode is
    function Empty (Contract : Binding) return Image is
      ((Schema => Contract.Key, others => <>));
 
+   function Empty
+     (Contract : Binding; Cell_Room : Cell_Room_Count; Text_Room : Text_Room_Count) return Sized_Image is
+     ((Cell_Room => Cell_Room, Text_Room => Text_Room, Schema => Contract.Key, others => <>));
+
+   function To_Sized (Object : Image) return Sized_Image is
+      Cells : constant Cell_Room_Count := Cells_Held (Object);
+      Bytes : constant Text_Room_Count := Bytes_Held (Object);
+   begin
+      return (Cell_Room => Cells, Text_Room => Bytes, Schema => Object.Schema, Version => Object.Version,
+              Used_Cells => Object.Used_Cells, Used_Bytes => Object.Used_Bytes, Reserved => Object.Reserved,
+              Cells => Object.Cells (1 .. Cells), Text => Object.Text (1 .. Bytes));
+   end To_Sized;
+
+   function To_Page (Object : Sized_Image) return Image is
+      Cells : constant Natural := Natural (Object.Used_Cells);
+      Bytes : constant Natural := Natural (Object.Used_Bytes);
+      Page : Image := (Schema => Object.Schema, Version => Object.Version, Used_Cells => Object.Used_Cells,
+                       Used_Bytes => Object.Used_Bytes, Reserved => Object.Reserved, others => <>);
+   begin
+      Page.Cells (1 .. Cells) := Object.Cells (1 .. Cells);
+      Page.Text (1 .. Bytes) := Object.Text (1 .. Bytes);
+      return Page;
+   end To_Page;
+
+   procedure Append (Object : in out Sized_Image; Value : Cell; Result : out Build_Result) is
+   begin
+      if Object.Version /= Format_Version or else Object.Reserved /= 0 or else
+        Object.Used_Cells > Unsigned_32 (Object.Cell_Room) or else
+        Object.Used_Bytes > Unsigned_32 (Object.Text_Room)
+      then Result := Invalid_Image;
+      elsif Object.Used_Cells = Unsigned_32 (Object.Cell_Room) then Result := Full;
+      else
+         Object.Used_Cells := Object.Used_Cells + 1;
+         Object.Cells (Positive (Object.Used_Cells)) := Value;
+         Result := Added;
+      end if;
+   end Append;
+
+   procedure Append_Text
+     (Object : in out Sized_Image; Value : String; Result : out Build_Result) is
+      Offset : Natural;
+   begin
+      if Object.Version /= Format_Version or else Object.Reserved /= 0 or else
+        Object.Used_Cells > Unsigned_32 (Object.Cell_Room) or else
+        Object.Used_Bytes > Unsigned_32 (Object.Text_Room)
+      then Result := Invalid_Image; return; end if;
+      Offset := Natural (Object.Used_Bytes);
+      if Object.Used_Cells = Unsigned_32 (Object.Cell_Room) or else
+        Value'Length > Object.Text_Room - Offset
+      then Result := Full; return; end if;
+      Object.Used_Cells := Object.Used_Cells + 1;
+      Object.Cells (Positive (Object.Used_Cells)) :=
+        (Unsigned_64 (Offset), Unsigned_64 (Value'Length));
+      Object.Text (Offset + 1 .. Offset + Value'Length) := Value;
+      Object.Used_Bytes := Object.Used_Bytes + Unsigned_32 (Value'Length);
+      Result := Added;
+   end Append_Text;
+
    procedure Append (Object : in out Image; Value : Cell; Result : out Build_Result) is
    begin
       if Object.Version /= Format_Version or else Object.Reserved /= 0 or else
@@ -148,40 +190,72 @@ package body CCL.Objects with SPARK_Mode is
       end if;
    end Integer_Of;
 
-   type Work_Index is mod Maximum_Cells;
-   package Work_Stacks is new CCL.Bounded_Stacks (Work_Index, Type_Reference, Invalid_Type);
+   --  The work stack holds what is still expected: a type, and how many
+   --  values of it in a row (a list's elements are one entry). A product
+   --  replaces itself by its fields, a value of a persistable type holds
+   --  only earlier types, so the stack is never deeper than a type's
+   --  nesting times its fields: never anywhere near the cells.
+   type Expected_Run is record
+      Kind : Type_Reference := Invalid_Type;
+      Count : Unsigned_64 := 0;
+   end record;
+   WORK_DEPTH : constant := 2 ** 12;
+   type Work_Index is mod WORK_DEPTH;
+   package Work_Stacks is new CCL.Bounded_Stacks (Work_Index, Expected_Run, (others => <>));
    use type Work_Stacks.Operation_Result;
 
-   function Validate (Object : Image; Contract : Binding) return Boolean is
+   --  Validation of any room: a header, Cells (its first Cell_Room) and
+   --  Text (its first Text_Room bytes).
+   function Valid_Layout
+     (Schema : Schema_Key; Version, Used_Cells, Used_Bytes, Reserved : Unsigned_32;
+      Cells : Cell_Sequence; Text : String; Contract : Binding) return Boolean
+     with Pre => Cells'First = 1 and then Text'First = 1 and then
+                 Cells'Last <= VALUE_CELL_CEILING and then Text'Last <= VALUE_TEXT_CEILING;
+
+   function Valid_Layout
+     (Schema : Schema_Key; Version, Used_Cells, Used_Bytes, Reserved : Unsigned_32;
+      Cells : Cell_Sequence; Text : String; Contract : Binding) return Boolean
+   is
+      Cell_Room : constant Natural := Cells'Length;
+      Text_Room : constant Natural := Text'Length;
       Work : Work_Stacks.Stack;
       Status : Work_Stacks.Operation_Result;
+      Next : Expected_Run;
       Expected : Type_Reference;
       D : Description;
-      Text_End : Natural range 0 .. Maximum_Text_Bytes := 0;
+      Text_End : Natural range 0 .. VALUE_TEXT_CEILING := 0;
+      Used : Natural;
    begin
-      if not Contract.Bound or else Object.Schema /= Contract.Key or else
-        Object.Version /= Format_Version or else Object.Reserved /= 0 or else
-        Object.Used_Cells not in 1 .. Maximum_Cells or else
-        Object.Used_Bytes > Maximum_Text_Bytes
+      if not Contract.Bound or else Schema /= Contract.Key or else
+        Version /= Format_Version or else Reserved /= 0 or else
+        Used_Cells < 1 or else Used_Cells > Unsigned_32 (Cell_Room) or else
+        Used_Bytes > Unsigned_32 (Text_Room)
       then return False; end if;
-      Work_Stacks.Push (Work, Contract.Root, Status);
+      Used := Natural (Used_Cells);
+      Work_Stacks.Initialize (Work);
+      Work_Stacks.Push (Work, (Contract.Root, 1), Status);
       if Status /= Work_Stacks.Stack_Ok then return False; end if;
-      for I in 1 .. Natural (Object.Used_Cells) loop
-         Work_Stacks.Pop (Work, Expected, Status);
-         if Status /= Work_Stacks.Stack_Ok then return False; end if;
+      for I in 1 .. Used loop
+         Work_Stacks.Pop (Work, Next, Status);
+         if Status /= Work_Stacks.Stack_Ok or else Next.Count = 0 then return False; end if;
+         Expected := Next.Kind;
+         if Next.Count > 1 then
+            Work_Stacks.Push (Work, (Next.Kind, Next.Count - 1), Status);
+            if Status /= Work_Stacks.Stack_Ok then return False; end if;
+         end if;
          declare
-            C : constant Cell := Object.Cells (I);
+            C : constant Cell := Cells (I);
          begin
             if Expected = String_Type then
                if C.First /= Unsigned_64 (Text_End) or else
-                 C.Second > Maximum_Text_Bytes
+                 C.Second > Unsigned_64 (Text_Room)
                then return False; end if;
                declare
                   --  Narrow the wire length once, then use bounded native
                   --  arithmetic for cursor accounting (not modular addition).
-                  Length : constant Natural range 0 .. Maximum_Text_Bytes := Natural (C.Second);
+                  Length : constant Natural range 0 .. VALUE_TEXT_CEILING := Natural (C.Second);
                begin
-                  if Length > Maximum_Text_Bytes - Text_End then return False; end if;
+                  if Length > Text_Room - Text_End then return False; end if;
                   Text_End := Text_End + Length;
                end;
             else
@@ -202,25 +276,24 @@ package body CCL.Objects with SPARK_Mode is
                         when Primitive | Resource | Callable | Stream | Async => return False;
                         when Sequence =>
                            --  Each element takes at least one cell, so a count
-                           --  past the cells left is malformed (and the work
-                           --  stack never holds more than the cells left).
-                           if D.Count /= 1 or else
-                             C.First > Unsigned_64 (Natural (Object.Used_Cells) - I)
-                           then return False; end if;
-                           for E in 1 .. Natural (C.First) loop
-                              Work_Stacks.Push (Work, D.Parts (1).Payload, Status);
+                           --  past the cells left is malformed.
+                           if D.Count /= 1 or else C.First > Unsigned_64 (Used - I) then
+                              return False;
+                           end if;
+                           if C.First > 0 then
+                              Work_Stacks.Push (Work, (D.Parts (1).Payload, C.First), Status);
                               if Status /= Work_Stacks.Stack_Ok then return False; end if;
-                           end loop;
+                           end if;
                         when Product =>
                            if C.First /= Unsigned_64 (D.Count) then return False; end if;
                            for P in reverse 1 .. D.Count loop
-                              Work_Stacks.Push (Work, D.Parts (P).Payload, Status);
+                              Work_Stacks.Push (Work, (D.Parts (P).Payload, 1), Status);
                               if Status /= Work_Stacks.Stack_Ok then return False; end if;
                            end loop;
                         when Sum =>
                            if C.First not in 1 .. Unsigned_64 (D.Count) then return False; end if;
                            Work_Stacks.Push
-                             (Work, D.Parts (Component_Index (C.First)).Payload, Status);
+                             (Work, (D.Parts (Component_Index (C.First)).Payload, 1), Status);
                            if Status /= Work_Stacks.Stack_Ok then return False; end if;
                      end case;
                   when others => return False;
@@ -228,15 +301,27 @@ package body CCL.Objects with SPARK_Mode is
             end if;
          end;
       end loop;
-      Work_Stacks.Pop (Work, Expected, Status);
-      if Status /= Work_Stacks.Stack_Empty or else Unsigned_32 (Text_End) /= Object.Used_Bytes then
+      Work_Stacks.Pop (Work, Next, Status);
+      if Status /= Work_Stacks.Stack_Empty or else Unsigned_32 (Text_End) /= Used_Bytes then
          return False;
       end if;
-      --  Canonical unused storage prevents an accepted whole-page object from
-      --  carrying unrelated bytes to another authorized reader.
-      for I in Natural (Object.Used_Cells) + 1 .. Maximum_Cells loop
-         if Object.Cells (I) /= Unit_Cell then return False; end if;
+      --  Canonical unused storage prevents an accepted object from carrying
+      --  unrelated bytes to another authorized reader.
+      for I in Used + 1 .. Cell_Room loop
+         if Cells (I) /= Unit_Cell then return False; end if;
       end loop;
-      return Canonical_Bytes (Object.Text, Text_End, Object.Padding);
-   end Validate;
+      for I in Text_End + 1 .. Text_Room loop
+         if Text (I) /= Character'Val (0) then return False; end if;
+      end loop;
+      return True;
+   end Valid_Layout;
+
+   function Validate (Object : Image; Contract : Binding) return Boolean is
+     (Valid_Layout (Object.Schema, Object.Version, Object.Used_Cells, Object.Used_Bytes, Object.Reserved,
+                    Object.Cells, Object.Text, Contract) and then
+      Object.Padding = Zero_Padding);
+
+   function Validate (Object : Sized_Image; Contract : Binding) return Boolean is
+     (Valid_Layout (Object.Schema, Object.Version, Object.Used_Cells, Object.Used_Bytes, Object.Reserved,
+                    Object.Cells, Object.Text, Contract));
 end CCL.Objects;

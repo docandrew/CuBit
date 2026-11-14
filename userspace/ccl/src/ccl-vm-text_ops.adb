@@ -195,7 +195,7 @@ package body CCL.VM.Text_Ops with SPARK_Mode => On is
       end case;
    end Run_Text_Builtin;
 
-   procedure Run_Text (Item : Validated_Program; State : in out Machine_State; Regs : in out Registers) is
+   procedure Run_Text (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Left_Value, Right_Value, Joined : Value;
       Popped : Runtime_Stacks.Operation_Result;

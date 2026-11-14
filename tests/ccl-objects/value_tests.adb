@@ -1,3 +1,4 @@
+with CCL.Objects.Holders;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types; use CCL.Types;
@@ -155,12 +156,19 @@ begin
          Check (CCL.Host_Values.Matches (Restored.Value, Contract));
          CCL.Objects.Values.From_Host (Contract, Restored.Value, Copy, Ok);
          Check (Ok and Copy = Object);
+         --  A held value carries only its cells and text: a damaged cell or
+         --  another schema is refused.
          Host := Restored.Value;
-         Host.Object.Padding (1) := 1;
+         CCL.Objects.Holders.Replace_Cell (Host.Object, 1, (First => 1, Second => 0));
          CCL.Objects.Values.From_Host (Contract, Host, Copy, Ok); Check (not Ok);
-         Host := Restored.Value;
-         Host.Object.Schema (0) := Host.Object.Schema (0) + 1;
+         Copy := Object;
+         Copy.Schema (0) := Copy.Schema (0) + 1;
+         Host := CCL.Host_Values.Object_Constant (Copy);
          CCL.Objects.Values.From_Host (Contract, Host, Copy, Ok); Check (not Ok);
+         --  A page's padding is part of the page, not of the value it holds.
+         Copy := Object;
+         Copy.Padding (1) := 1;
+         Check (not Validate (Copy, Contract));
       end;
    end;
    Ada.Text_IO.Put_Line ("CCL VM/host -> native object -> Config -> value: PASS" & Checks'Image & " checks");

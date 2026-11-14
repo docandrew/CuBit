@@ -190,11 +190,13 @@ package body CCL_Lexicon_Bindings is
    --  A misspelling: its product, word, offset and suggestions' count.
    MISSPELLING_CELLS : constant := 1 + 1 + 1 + 1;
 
-   --  A result shown in the console is written out as its CCL literal
-   --  (CCL.VM.MAX_LITERAL_TEXT), so that is budgeted too, generously: a
-   --  string is its text, quotes, a separator and escapes; a list at least
-   --  "(list-of String) "; a group its constructor and part names.
-   MAX_LITERAL : constant := CCL.VM.MAX_LITERAL_TEXT;
+   --  A result shown in the console is written out as its CCL literal, so
+   --  one page of entries is budgeted by it too, generously: a string is
+   --  its text, quotes, a separator and escapes; a list at least
+   --  "(list-of String) "; a group its constructor and part names. (A
+   --  literal is no longer cut, CCL.VM.LITERAL_CEILING; the lexicon's
+   --  results move to sized values as a follow-up.)
+   MAX_LITERAL : constant := 4_096;
    LIST_LITERAL : constant := 18;
    GROUP_LITERAL : constant := 48 + 4 * LIST_LITERAL;
    ENTRY_LITERAL : constant := 64 + 2 * LIST_LITERAL;

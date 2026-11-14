@@ -6,12 +6,13 @@ package body CCL_Log_IO is
    procedure Note (Text : String) is null;
    procedure Recent
      (Service : String; Contract : CCL.Objects.Binding;
-      Image : out CCL.Objects.Image; Success : out Boolean;
+      Image : out CCL.Objects.Holders.Holder; Success : out Boolean;
       Why : out CuBit.Failures.Failure)
    is
       pragma Unreferenced (Service);
+      pragma Unreferenced (Contract);
    begin
-      Image := CCL.Objects.Empty (Contract);
+      Image := CCL.Objects.Holders.No_Value;
       Success := False;
       Why := CuBit.Failures.Failed
         (CuBit.Failures.Unavailable, "the hosted preview has no log store");
@@ -19,7 +20,7 @@ package body CCL_Log_IO is
 
    procedure Between
      (Service : String; Within : CCL.Interfaces.Logs.Log_Window; Contract : CCL.Objects.Binding;
-      Image : out CCL.Objects.Image; Success : out Boolean;
+      Image : out CCL.Objects.Holders.Holder; Success : out Boolean;
       Why : out CuBit.Failures.Failure)
    is
       pragma Unreferenced (Within);

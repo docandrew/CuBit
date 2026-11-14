@@ -3,7 +3,7 @@ package body CCL.VM.Local_Ops with SPARK_Mode => On is
    use type CCL.Ownership.Ownership_Error;
    use type CCL.Ownership.Ownership_Mode;
 
-   procedure Run_Local (Item : Validated_Program; State : in out Machine_State; Regs : in out Registers) is
+   procedure Run_Local (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Right_Value : Value;
       Stack_Result : Runtime_Stacks.Operation_Result;

@@ -204,7 +204,7 @@ is
            Item.Target = 0 and then Item.Import = 0 and then Item.Local = 0 and then
            Item.Verb = 0 and then Item.Alternative = 0,
          when New_List | Fill_List =>
-           Item.Immediate in (if Item.Op = New_List then 0 else 1) .. MAX_LIST_ELEMENTS and then
+           Item.Immediate in (if Item.Op = New_List then 0 else 1) .. DEFAULT_LIST_ELEMENTS and then
            Item.Target = 0 and then Item.Import = 0 and then Item.Local = 0 and then
            Item.Verb = 0 and then Item.Alternative = 0,
          when Length_List | List_At | Make_Variant | Equal_Variant | Variant_To_Text =>

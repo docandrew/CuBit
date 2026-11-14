@@ -452,6 +452,15 @@ package body Remote_Wire with SPARK_Mode is
                end;
             end if;
 
+         when Read_Result =>
+            if Length = Offset_Bytes then
+               Value := Get_U64 (Data, 1);
+               if Value <= Maximum_File_Bytes then
+                  Item.Offset := Value;
+                  Result := OK;
+               end if;
+            end if;
+
          when System_Rollback =>
             if Length = Grace_Bytes + Health_Bytes then
                Item.Grace := Get_U32 (Data, 1);

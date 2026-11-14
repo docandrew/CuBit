@@ -66,7 +66,7 @@ package body Agent_Results with SPARK_Mode is
    end Put_String;
 
    procedure Value
-     (Object : Views.Snapshot; At_Cursor : Views.Cursor; Depth : Natural; Into : in out String;
+     (Object : Views.Sized_Snapshot; At_Cursor : Views.Cursor; Depth : Natural; Into : in out String;
       W : in out Writer)
    with Pre => Depth <= Maximum_Depth and then Into'First = 1 and then W.Room <= Into'Last and then
                W.Last <= W.Room,
@@ -153,7 +153,7 @@ package body Agent_Results with SPARK_Mode is
    end Finish;
 
    procedure Render
-     (Object : CCL.Objects.Views.Snapshot; Into : out String; Last : out Natural; Total : out Natural)
+     (Object : CCL.Objects.Views.Sized_Snapshot; Into : out String; Last : out Natural; Total : out Natural)
    is
       W : Writer := (Last => 0, Room => Into'Length - Label_Room, Total => 0);
    begin

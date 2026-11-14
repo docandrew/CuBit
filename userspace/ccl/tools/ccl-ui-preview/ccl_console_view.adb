@@ -1,3 +1,4 @@
+with CCL.Held_Texts;
 with CCL.Completions;
 with CuBit.UI_Metrics;
 with CCL_Wifi;
@@ -1129,15 +1130,15 @@ package body CCL_Console_View is
                            end if;
                         when Cell_Hit =>
                            CCL.Sessions.Recall (State.Session, H.Item, Entry_Value, Found);
-                           if Found and then H.Last <= Entry_Value.Outcome.Literal.Length then
+                           if Found and then H.Last <= CCL.Held_Texts.Length (Entry_Value.Outcome.Literal) then
                               if Event.Control and then H.Column > 0 then
                                  --  Drill down: keep the rows whose field equals this cell.
                                  Set_Input (State, Row_Query
                                    ("where", Entry_Value,
                                     "(= " & Field_Access (Entry_Value, H.Column) & " " &
-                                    Entry_Value.Outcome.Literal.Data (H.First .. H.Last) & ")"));
+                                    CCL.Held_Texts.Slice (Entry_Value.Outcome.Literal, H.First, H.Last) & ")"));
                               else
-                                 Edit.Insert (State.Input, Entry_Value.Outcome.Literal.Data (H.First .. H.Last), Changed);
+                                 Edit.Insert (State.Input, CCL.Held_Texts.Slice (Entry_Value.Outcome.Literal, H.First, H.Last), Changed);
                               end if;
                            end if;
                         when Header_Hit =>
@@ -1286,7 +1287,6 @@ package body CCL_Console_View is
    ---------------------------------------------------------------------------
    --  Tables: a record, or a list of them, laid out under its field names.
    ---------------------------------------------------------------------------
-   MAXIMUM_TABLE_ROWS : constant := 20;   --  rows a card shows
    COLUMN_GAP : constant := 2;            --  characters between columns
    MINIMUM_COLUMN : constant := 4;
    type Width_Array is array (CCL.Types.Component_Index) of Natural;
@@ -1304,13 +1304,14 @@ package body CCL_Console_View is
      (Outcome : CCL.Language.Interpretation_Result; View : Table_View; Row, Column : Positive)
       return String
    is
-      Cell : constant CCL.Literal_Tables.Span := View.Cells.Cells (Row, Column);
-      Literal : constant String := Outcome.Literal.Data (1 .. Outcome.Literal.Length);
+      Cell : constant CCL.Literal_Tables.Span := CCL.Literal_Tables.Cell (View.Cells, Row, Column);
+      Length : constant Natural := CCL.Held_Texts.Length (Outcome.Literal);
    begin
-      if Cell.First not in Literal'Range or else Cell.Last not in Literal'Range then return ""; end if;
+      if Cell.First not in 1 .. Length or else Cell.Last not in 1 .. Length then return ""; end if;
+      --  Only the cell's characters, never a copy of the whole literal.
       return CCL.Units.Humanize
         (CCL.Units.Unit_Of (CCL.Types.Image (View.Shape.Fields (Column).Type_Name)),
-         Literal (Cell.First .. Cell.Last));
+         CCL.Held_Texts.Slice (Outcome.Literal, Cell.First, Cell.Last));
    end Cell_Text;
 
    procedure Tabulate
@@ -1326,7 +1327,8 @@ package body CCL_Console_View is
       if not Found then return; end if;
       View.Shape := Shown.Shape;
       View.Cells := Shown.Cells;
-      View.Shown := Natural'Min (View.Cells.Rows, MAXIMUM_TABLE_ROWS);
+      --  A card shows every row: a result is as long as its value.
+      View.Shown := CCL.Literal_Tables.Rows (View.Cells);
       for C in 1 .. View.Shape.Count loop
          View.Widths (C) := Natural'Max (MINIMUM_COLUMN, View.Shape.Fields (C).Identifier.Length);
          for R in 1 .. View.Shown loop
@@ -1423,7 +1425,7 @@ package body CCL_Console_View is
       end if;
       Tabulate (Outcome, Columns, View, Found);
       if Found then
-         return 1 + View.Shown + (if View.Cells.Total > View.Shown then 1 else 0);
+         return 1 + View.Shown + (if CCL.Literal_Tables.Total (View.Cells) > View.Shown then 1 else 0);
       end if;
       return Row_Count (CCL.Sessions.Result_Value_Image (Outcome), Columns);
    end Result_Rows;
@@ -1579,7 +1581,7 @@ package body CCL_Console_View is
                      end if;
                      for K in 1 .. View.Shape.Count loop
                         declare
-                           Cell : constant CCL.Literal_Tables.Span := View.Cells.Cells (R, K);
+                           Cell : constant CCL.Literal_Tables.Span := CCL.Literal_Tables.Cell (View.Cells, R, K);
                            Human : constant String := Cell_Text (Outcome, View, R, K);
                            Length : constant Natural := Human'Length;
                            Fits : constant Boolean := Length <= View.Widths (K);
@@ -1601,9 +1603,9 @@ package body CCL_Console_View is
                   end if;
                end;
             end loop;
-            if View.Cells.Total > View.Shown and then Visible (Y + (View.Shown + 1) * LH) then
+            if CCL.Literal_Tables.Total (View.Cells) > View.Shown and then Visible (Y + (View.Shown + 1) * LH) then
                Draw_UI_Text_Transparent (C, X, Natural (Y + (View.Shown + 1) * LH) + 1,
-                 "+" & Image (View.Cells.Total - View.Shown) & " more rows", MUTED);
+                 "+" & Image (CCL.Literal_Tables.Total (View.Cells) - View.Shown) & " more rows", MUTED);
             end if;
          end Draw_Table;
 
@@ -1759,8 +1761,8 @@ package body CCL_Console_View is
                      --  field to after its last. Column 0: an element, not a field.
                      Add_Hit (State, (Cell_Hit, (Box_X, Natural (Box_Y), THUMB_WIDTH, THUMB_HEIGHT),
                                       Entry_Index,
-                                      Natural'Max (1, Item.Cells.Cells (K, 1).First - (Item.Shape.Row_Type.Length + 2)),
-                                      Item.Cells.Cells (K, Item.Shape.Count).Last + 1, 0));
+                                      Natural'Max (1, CCL.Literal_Tables.Cell (Item.Cells, K, 1).First - (Item.Shape.Row_Type.Length + 2)),
+                                      CCL.Literal_Tables.Cell (Item.Cells, K, Item.Shape.Count).Last + 1, 0));
                   end if;
                end;
             end loop;
@@ -1876,8 +1878,8 @@ package body CCL_Console_View is
                         Badge_W : constant Natural := Pill_Width (Type_Label);
                         Meta : constant String :=
                           (if Tabular and then Table.Shape.Many
-                           then Grouped (Table.Cells.Total) &
-                                (if Table.Cells.Total = 1 then " row  " else " rows  ")
+                           then Grouped (CCL.Literal_Tables.Total (Table.Cells)) &
+                                (if CCL.Literal_Tables.Total (Table.Cells) = 1 then " row  " else " rows  ")
                            else "") & Cost;
                         Meta_W : constant Natural := UI_Text_Width (Meta);
                         Used_Columns : Natural := 0;
@@ -2192,12 +2194,12 @@ package body CCL_Console_View is
                Maximum_Value : constant := 72;
             begin
                if not Found or else H.Column not in 1 .. Shape.Count or else
-                 H.Last > Entry_Value.Outcome.Literal.Length
+                 H.Last > CCL.Held_Texts.Length (Entry_Value.Outcome.Literal)
                then
                   return "";
                end if;
                declare
-                  Value : constant String := Entry_Value.Outcome.Literal.Data (H.First .. H.Last);
+                  Value : constant String := CCL.Held_Texts.Slice (Entry_Value.Outcome.Literal, H.First, H.Last);
                begin
                   return CCL.Types.Image (Shape.Fields (H.Column).Identifier) & " : " &
                     CCL.Types.Image (Shape.Fields (H.Column).Type_Name) & " = " &

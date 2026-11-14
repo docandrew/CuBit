@@ -7,6 +7,7 @@ with CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Interfaces.Clock;
 with CCL.Interfaces.Logs;
+with CCL.Held_Texts;
 with CCL.Language;
 with CCL.Sessions;
 with CCL_Config_Bindings;
@@ -36,6 +37,8 @@ package body Remote_Host is
    Ready : Boolean := False;
    --  (display.capture): only with the display-capture grant.
    Display_Ready : Boolean := False;
+   --  The last evaluation's result text, whole (Read_Result reads it).
+   Last_Result : CCL.Held_Texts.Text;
 
    procedure Read_Clock (Available : out Boolean; Value : out Unsigned_64) is
       Request : Message := NULL_MESSAGE;
@@ -132,29 +135,22 @@ package body Remote_Host is
       Ready := True;
    end Initialize;
 
-   procedure Evaluate
-     (Source : String; Succeeded : out Boolean; Text : out String; Length : out Natural)
-   is
+   procedure Evaluate (Source : String; Succeeded : out Boolean) is
       Outcome : CCL.Language.Interpretation_Result;
    begin
-      Text := [others => ' '];
       if not Ready then
          Succeeded := False;
-         declare
-            Why : constant String := "the remote session's CCL environment did not start";
-         begin
-            Length := Natural'Min (Why'Length, Text'Length);
-            Text (1 .. Length) := Why (Why'First .. Why'First + Length - 1);
-         end;
+         Last_Result := CCL.Held_Texts.To_Text ("the remote session's CCL environment did not start");
          return;
       end if;
       Submit (Session, Source, CCL.Sessions.Default_Fuel, Grants, Context, Outcome);
       Succeeded := Outcome.Status = CCL.Language.Succeeded;
-      declare
-         Image : constant String := CCL.Sessions.Result_Image (Outcome);
-      begin
-         Length := Natural'Min (Image'Length, Text'Length);
-         Text (1 .. Length) := Image (Image'First .. Image'First + Length - 1);
-      end;
+      Last_Result := CCL.Held_Texts.To_Text (CCL.Sessions.Result_Image (Outcome));
    end Evaluate;
+
+   function Result_Length return Natural is (CCL.Held_Texts.Length (Last_Result));
+
+   function Result_Part (Offset, Count : Natural) return String is
+     (if Offset >= Result_Length or else Count = 0 then ""
+      else CCL.Held_Texts.Slice (Last_Result, Offset + 1, Offset + Natural'Min (Count, Result_Length - Offset)));
 end Remote_Host;

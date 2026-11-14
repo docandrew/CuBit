@@ -1,3 +1,4 @@
+with CCL.Held_Texts;
 with CCL.Evaluation;
 with CCL.List_Operations;
 with Ada.Text_IO; use Ada.Text_IO;
@@ -644,10 +645,10 @@ procedure Main is
          begin
             CCL.Evaluation.Evaluate (Types_Source & Program, 100_000, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
-                   Outcome.Literal.Data (1 .. Outcome.Literal.Length) = Expected, Name);
+                   CCL.Held_Texts.Image (Outcome.Literal) = Expected, Name);
             CCL.Evaluation.Evaluate (Types_Source & Expected, 100_000, Again);
             Check (Again.Status = CCL.Language.Succeeded and then Again.Has_Literal and then
-                   Again.Literal.Data (1 .. Again.Literal.Length) = Expected, Name & " reads back");
+                   CCL.Held_Texts.Image (Again.Literal) = Expected, Name & " reads back");
          end Literal;
          procedure Count (Program : String; Expected : Integer_64; Name : String) is
          begin
@@ -687,10 +688,10 @@ procedure Main is
             begin
                CCL.Evaluation.Evaluate (Types & Program, 100_000, Outcome);
                Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
-                      Outcome.Literal.Data (1 .. Outcome.Literal.Length) = Expected, Name);
+                      CCL.Held_Texts.Image (Outcome.Literal) = Expected, Name);
                CCL.Evaluation.Evaluate (Types & Expected, 100_000, Again);
                Check (Again.Status = CCL.Language.Succeeded and then Again.Has_Literal and then
-                      Again.Literal.Data (1 .. Again.Literal.Length) = Expected, Name & " reads back");
+                      CCL.Held_Texts.Image (Again.Literal) = Expected, Name & " reads back");
             end Recursive;
          begin
             Recursive (Launch_Type,
@@ -747,11 +748,11 @@ procedure Main is
             begin
                CCL.Evaluation.Evaluate (Decls & "(L ""a"" (+ 3 4))", 100_000, Outcome);
                Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
-                      Outcome.Literal.Data (1 .. Outcome.Literal.Length) = "(L ""a"" 7)",
+                      CCL.Held_Texts.Image (Outcome.Literal) = "(L ""a"" 7)",
                       "a record with a range field");
                CCL.Evaluation.Evaluate (Decls & "(L ""a"" 7)", 100_000, Outcome);
                Check (Outcome.Status = CCL.Language.Succeeded and then
-                      Outcome.Literal.Data (1 .. Outcome.Literal.Length) = "(L ""a"" 7)",
+                      CCL.Held_Texts.Image (Outcome.Literal) = "(L ""a"" 7)",
                       "a record with a range field reads back");
             end;
             CCL.Evaluation.Evaluate ("(type Bad (range 5 1)) 1", 1024, Outcome);
@@ -1460,8 +1461,8 @@ procedure Main is
                Check (False, Label & " (execute)");
             elsif Outcome.Has_Literal or else Interpreted.Has_Literal then
                Check (Outcome.Has_Literal and then Interpreted.Has_Literal and then
-                      CCL.VM.Image (Outcome.Literal) =
-                        Interpreted.Literal.Data (1 .. Interpreted.Literal.Length), Label);
+                      Natural (Outcome.Literal_Length) =
+                        CCL.Held_Texts.Length (Interpreted.Literal), Label);
             elsif Outcome.Result_Value.Kind = Integer_Value then
                Check (Outcome.Result_Value.Integer = Interpreted.Result_Value.Integer, Label);
             elsif Outcome.Result_Value.Kind = Function_Value then
@@ -2051,7 +2052,7 @@ procedure Main is
          Tamper (List_At, 0, CCL.Types.String_Type);
          Verify (Tampered, Checked, Error);
          Check (Error = Invalid_Data_Type, "reject at on a type that is no list");
-         Tamper (New_List, Integer_64 (MAX_LIST_ELEMENTS) + 1, List_Type);
+         Tamper (New_List, Integer_64 (DEFAULT_LIST_ELEMENTS) + 1, List_Type);
          Verify (Tampered, Checked, Error);
          Check (Error = Invalid_Data_Type, "reject a list longer than the region");
          Tamper (Fill_List, 0, List_Type);
@@ -2141,7 +2142,7 @@ procedure Main is
          if Format_Status = CCL.Format.Format_Valid then
             Execute (Decoded, 64, Outcome);
             Check (Outcome.Status = Completed and then Outcome.Has_Literal and then
-                   CCL.VM.Image (Outcome.Literal) = "(K.Boxed (L ""m"" 5))",
+                   Natural (Outcome.Literal_Length) = String\'("(K.Boxed (L ""m"" 5))")\'Length,
                    "run records decoded from a module");
          end if;
       end;

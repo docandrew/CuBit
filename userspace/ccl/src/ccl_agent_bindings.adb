@@ -1,6 +1,7 @@
 with Ada.Unchecked_Deallocation;
 with CCL.Interfaces.Agent;
 with CCL.Objects;
+with CCL.Objects.Holders;
 with CCL.Objects.Views;
 with CCL.Streams;
 with CCL.Types;
@@ -71,6 +72,8 @@ package body CCL_Agent_Bindings is
 
    type Text_Access is access String;
    procedure Free is new Ada.Unchecked_Deallocation (String, Text_Access);
+   type Snapshot_Access is access CCL.Objects.Views.Sized_Snapshot;
+   procedure Free is new Ada.Unchecked_Deallocation (CCL.Objects.Views.Sized_Snapshot, Snapshot_Access);
 
    type Place_Text is record
       Data : String (1 .. MAXIMUM_PLACE) := [others => ' '];
@@ -1043,7 +1046,13 @@ package body CCL_Agent_Bindings is
                elsif Reply.Value.Kind = CCL.Host_Values.Object_Value then
                   declare
                      Contract : CCL.Objects.Binding;
-                     Object : Views.Snapshot;
+                     --  As large as the result (a whole log history), on
+                     --  the heap.
+                     View : Snapshot_Access :=
+                       new Views.Sized_Snapshot
+                         (CCL.Objects.Holders.Cells_Of (Reply.Value.Object),
+                          CCL.Objects.Holders.Bytes_Of (Reply.Value.Object));
+                     Object : Views.Sized_Snapshot renames View.all;
                      Captured : Boolean;
                      Total : Natural;
                   begin
@@ -1060,6 +1069,7 @@ package body CCL_Agent_Bindings is
                                    Natural'Image (Views.Length (Object, Views.Root (Object))) & " items,");
                         end if;
                      end if;
+                     Free (View);
                   end;
                elsif Reply.Value.Kind = CCL.Host_Values.Integer_Value then
                   Agent_Results.Render_Text (Integer_64'Image (Reply.Value.Integer), Result_Text, Result_Last);

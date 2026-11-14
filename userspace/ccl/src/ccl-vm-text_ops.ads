@@ -47,13 +47,13 @@ private package CCL.VM.Text_Ops with SPARK_Mode => On is
      with Global => null;
 
    --  The text opcodes.
-   procedure Run_Text (Item : Validated_Program; State : in out Machine_State; Regs : in out Registers)
+   procedure Run_Text (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs) and then
                  Item.Content.Code (Regs.PC).Op in
                    Push_Text | Concat_Text | Text_Builtin | Length_Text | Equal_Text | Text_At |
                    Integer_To_Text | Variant_To_Text,
-          Post => Same_Frame (State'Old, State);
+          Post => Frame_Of (State) = Frame_Of (State)'Old;
    --  Inlined into the dispatch loop (as the nested steps were): one
    --  call per instruction would cost the hot path.
    pragma Inline_Always (Run_Text);

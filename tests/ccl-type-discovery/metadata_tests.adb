@@ -1,3 +1,4 @@
+with CCL.Held_Texts;
 with CCL.Evaluation;
 with Ada.Text_IO;
 with CCL.Types; use CCL.Types;
@@ -48,7 +49,7 @@ begin
    CCL.Evaluation.Evaluate ("MaybeDocument.Missing", 4096, Catalog, Interpreted);
    -- A general aggregate result comes out as its canonical literal.
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Literal and
-          Interpreted.Literal.Data (1 .. Interpreted.Literal.Length) = "MaybeDocument.Missing");
+          CCL.Held_Texts.Image (Interpreted.Literal) = "MaybeDocument.Missing");
    --  Compiled code builds the same value in its arena and prints the same
    --  literal (docs/ccl-bytecode-format.md, step 4).
    CCL.Language.Analyze ("MaybeDocument.Missing", Catalog, Analysis);
@@ -57,7 +58,7 @@ begin
    CCL.VM.Verify (Compiled.Program, Program, Valid); Check (Valid = CCL.VM.Valid);
    CCL.VM.Execute (Program, 4096, Executed);
    Check (Executed.Status = CCL.VM.Completed and Executed.Has_Literal and
-          CCL.VM.Image (Executed.Literal) = "MaybeDocument.Missing");
+          Natural (Executed.Literal_Length) = String'("MaybeDocument.Missing")'Length);
    Define (Source, (Identifier => Named ("TextReading"), Form => Sum, Count => 1,
      Parts => [1 => (Named ("Value"), String_Type), others => <>]), Ref, Defined_As);
    Check (Defined_As = Defined);
@@ -69,13 +70,13 @@ begin
    end;
    CCL.Evaluation.Evaluate ("(TextReading.Value ""hello"")", 4096, Catalog, Interpreted);
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Literal and
-          Interpreted.Literal.Data (1 .. Interpreted.Literal.Length) = "(TextReading.Value ""hello"")");
+          CCL.Held_Texts.Image (Interpreted.Literal) = "(TextReading.Value ""hello"")");
    CCL.Language.Analyze ("(TextReading.Value ""hello"")", Catalog, Analysis);
    CCL.Compiler.Compile (Analysis, Compiled); Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded);
    CCL.VM.Verify (Compiled.Program, Program, Valid); Check (Valid = CCL.VM.Valid);
    CCL.VM.Execute (Program, 4096, Executed);
    Check (Executed.Status = CCL.VM.Completed and Executed.Has_Literal and
-          CCL.VM.Image (Executed.Literal) = "(TextReading.Value ""hello"")");
+          Natural (Executed.Literal_Length) = String'("(TextReading.Value ""hello"")")'Length);
    CCL.Evaluation.Evaluate
      ("(match (TextReading.Value ""hello"") ((TextReading.Value text) (length text)))", 4096, Catalog, Interpreted);
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Result_Value = CCL.VM.Integer_Constant (5));

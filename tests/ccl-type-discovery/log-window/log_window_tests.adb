@@ -1,3 +1,6 @@
+with CCL.Literal_Tables;
+with CCL.Presentations;
+with CCL.Held_Texts;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -50,7 +53,7 @@ procedure Log_Window_Tests is
    begin
       Run (Source, FUEL, Catalog, Grants, Context, Outcome);
    end Evaluate;
-   function Literal return String is (Outcome.Literal.Data (1 .. Outcome.Literal.Length));
+   function Literal return String is (CCL.Held_Texts.Image (Outcome.Literal));
    function Integer_Of (Source : String) return Integer_64 is
    begin
       Evaluate (Source);
@@ -91,15 +94,13 @@ procedure Log_Window_Tests is
 
    function Between (Service : String; From, To : String) return String is
      ("(logs.between (LogWindow """ & Service & """ " & From & " " & To & "))");
-   --  How many records a result shows, and how many of the window's its
-   --  Not_Shown gaps count.
+   --  How many records a result shows, and how many Not_Shown gaps it has.
    function Shown_Records (List : String) return Integer_64 is
      (Integer_Of ("(length (where (fn ((i LogItem)) (match i ((LogItem.Logged e) true) ((LogItem.Gap g) false) " &
                   "((LogItem.Tally t) false))) " & List & "))"));
-   function Not_Shown (List : String) return Integer_64 is
-     (Integer_Of ("(match (at (where (fn ((i LogItem)) (match i ((LogItem.Gap g) (= (field g reason) " &
-                  "GapReason.Not_Shown)) ((LogItem.Logged e) false) ((LogItem.Tally t) false))) " & List &
-                  ") 1) ((LogItem.Gap g) (field g count)) ((LogItem.Logged e) -1) ((LogItem.Tally t) -1))"));
+   function Not_Shown_Gaps (List : String) return Integer_64 is
+     (Integer_Of ("(length (where (fn ((i LogItem)) (match i ((LogItem.Gap g) (= (field g reason) " &
+                  "GapReason.Not_Shown)) ((LogItem.Logged e) false) ((LogItem.Tally t) false))) " & List & "))"));
    procedure Refused (Source : String; Why : CuBit.Failures.Reason; Because : String) is
       Asked : constant Natural := Log_Window_Script.Calls;
    begin
@@ -139,28 +140,51 @@ begin
    Check (Literal_Of (Between ("acpi", "2501", LATEST)) = "[" & ACPI_TALLY & "]", "after the last: " & Literal);
    Check (Integer_Of ("(length " & Between ("acpi", "0", "999") & ")") = 1, "an empty window holds the tally");
 
-   --  A window larger than one result: its first and newest, and a typed
-   --  Not_Shown gap counting exactly the window's records left out.
+   --  A result is as large as its history (LOG-005 with CCL values sized
+   --  by their content): the whole acpi history, all 151 records, and no
+   --  Not_Shown gap; a window, its records only.
    declare
       Whole : constant String := Between ("acpi", "0", LATEST);
       Part : constant String := Between ("acpi", "1000", "2000");
       Records_In_Part : constant := 101;
    begin
-      Check (Shown_Records (Whole) > 0 and then Not_Shown (Whole) > 0, "a whole history is left out in part");
-      Check (Shown_Records (Whole) + Not_Shown (Whole) = Integer_64 (151),
-             "shown and not shown are the history's 151 records");
-      Check (Shown_Records (Part) + Not_Shown (Part) = Integer_64 (Records_In_Part),
-             "shown and not shown are the window's records only");
-      Check (Integer_Of ("(match (at (where (fn ((i LogItem)) (match i ((LogItem.Gap g) (= (field g reason) " &
-                         "GapReason.Not_Shown)) ((LogItem.Logged e) false) ((LogItem.Tally t) false))) " & Part &
-                         ") 1) ((LogItem.Gap g) (field g source)) ((LogItem.Logged e) -1) ((LogItem.Tally t) -1))")
-             = 7, "the Not_Shown gap is the instance's");
+      Check (Shown_Records (Whole) = Integer_64 (151), "the whole history is shown: all 151 records");
+      Check (Not_Shown_Gaps (Whole) = 0, "and nothing is left out");
+      Check (Shown_Records (Part) = Integer_64 (Records_In_Part), "a window shows its records only");
+      Check (Not_Shown_Gaps (Part) = 0, "and none is left out");
       --  The not-retained records inside the window are still accounted.
       Evaluate (Part);
       Check (Outcome.Status = Succeeded and then
              Ada.Strings.Fixed.Index (Literal, " 7 5 GapReason.Not_Retained ") > 0,
              "the window's not-retained gap is kept: " & Literal);
    end;
+   --  A whole retention plan's history (4096 records): every record, the
+   --  first and the last, and the tally; far past a 16 KiB page.
+   Check (Integer_Of ("(length (logs.recent ""busy""))") = 4_097, "4096 records and the tally");
+   Evaluate ("(logs.recent ""busy"")");
+   Check (Outcome.Status = Succeeded and then Outcome.Has_Literal, "busy's literal");
+   Check (Ada.Strings.Fixed.Index (Literal, "busy: step 0""") > 0 and then
+          Ada.Strings.Fixed.Index (Literal, "busy: step 4095""") > 0 and then
+          Ada.Strings.Fixed.Index (Literal, "Not_Shown") = 0, "busy: first and last record, nothing left out");
+   --  And a table of every row, as the console and the Workbench show it.
+   declare
+      Shown : CCL.Presentations.Presentation;
+      use type CCL.Presentations.Form;
+   begin
+      CCL.Presentations.Describe (Outcome, Shown);
+      Check (Shown.Kind = CCL.Presentations.Table and then CCL.Literal_Tables.Rows (Shown.Cells) = 4_097 and then
+             CCL.Presentations.Cell_Text (Outcome, Shown, 4_096, 4) = """busy: step 4095""",
+             "busy: a table of all 4097 rows");
+   end;
+   --  Past the named ceiling only: the first records and the newest, and
+   --  one typed Not_Shown gap counting exactly what was left out.
+   Check (Integer_Of ("(length (logs.recent ""flood""))") = Integer_64 (Logs.RESULT_ITEM_CEILING + 2),
+          "the ceiling's items, the Not_Shown gap and the tally");
+   Evaluate ("(logs.recent ""flood"")");
+   Check (Outcome.Status = Succeeded and then
+          Ada.Strings.Fixed.Index
+            (Literal, " 22" & Natural'Image (Log_Window_Script.FLOOD_OVER) & " GapReason.Not_Shown ") > 0,
+          "flood: the records past the ceiling are one Not_Shown gap");
 
    --  logs.recent is logs.between over the whole history.
    Check (Literal_Of ("(logs.recent ""acpi"")") = Literal_Of (Between ("acpi", "0", LATEST)), "recent = whole acpi");

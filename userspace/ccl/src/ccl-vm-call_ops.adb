@@ -88,11 +88,11 @@ package body CCL.VM.Call_Ops with SPARK_Mode => On is
 
    --  List_Apply at PC: start an iteration, or resume it with the result
    --  of its last call; then call for the next element or finish.
-   procedure Run_Apply (Item : Validated_Program; State : in out Machine_State; Regs : in out Registers)
+   procedure Run_Apply (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs),
-          Post => Same_Frame (State'Old, State);
-   procedure Run_Apply (Item : Validated_Program; State : in out Machine_State; Regs : in out Registers) is
+          Post => Frame_Of (State) = Frame_Of (State)'Old;
+   procedure Run_Apply (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Types : constant CCL.Types.Registry := Item.Content.Data_Types;
       Good : Boolean := True;
@@ -132,7 +132,7 @@ package body CCL.VM.Call_Ops with SPARK_Mode => On is
                      if Answer.Boolean then
                         List_Regions.Read (State.Lists, It.Subject.Items, List_Regions.Array_Index (It.Position),
                                            Element, Read);
-                        Good := Read = List_Regions.Operation_Ok and then It.Kept < MAX_LIST_ELEMENTS;
+                        Good := Read = List_Regions.Operation_Ok and then It.Kept < List_Element_Count'Last;
                         if Good then
                            It.Kept := It.Kept + 1;
                            List_Regions.Write (State.Lists, It.Built.Items, List_Regions.Array_Index (It.Kept),
@@ -208,7 +208,7 @@ package body CCL.VM.Call_Ops with SPARK_Mode => On is
                      Good := Written = List_Regions.Operation_Ok;
                      --  The elements, in order, to be sorted with their keys.
                      for I in 1 .. Length loop
-                        pragma Loop_Invariant (Fuel_Limit (State) = Fuel_Limit (State'Loop_Entry));
+                        pragma Loop_Invariant (Fuel_Limit (State) = Fuel_Limit (State)'Loop_Entry);
                         pragma Loop_Invariant
                           (CCL.Imports.Phase (State.Import_Lifecycle) =
                              CCL.Imports.Phase (State.Import_Lifecycle'Loop_Entry));
@@ -308,7 +308,7 @@ package body CCL.VM.Call_Ops with SPARK_Mode => On is
       end;
    end Run_Apply;
 
-   procedure Run_Call (Item : Validated_Program; State : in out Machine_State; Regs : in out Registers) is
+   procedure Run_Call (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Stack_Result : Runtime_Stacks.Operation_Result;
       List_Status : List_Regions.Operation_Result;

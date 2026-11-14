@@ -19,9 +19,14 @@ private package CCL.VM.Machine with SPARK_Mode => On is
 
    --  What every opcode step keeps: the fuel limit and the import
    --  lifecycle's phase (the executor's loop invariants rest on these).
-   function Same_Frame (Before, After : Machine_State) return Boolean is
-     (Fuel_Limit (After) = Fuel_Limit (Before) and then
-      CCL.Imports.Phase (After.Import_Lifecycle) = CCL.Imports.Phase (Before.Import_Lifecycle));
+   --  A step's contract compares Frame_Of before and after, never a copy of
+   --  the whole machine (which may be large).
+   type Frame_Mark is record
+      Fuel : Unsigned_32 := 0;
+      Phase : CCL.Imports.Import_Phase := CCL.Imports.Import_Idle;
+   end record;
+   function Frame_Of (State : Sized_Machine_State) return Frame_Mark is
+     ((Fuel => Fuel_Limit (State), Phase => CCL.Imports.Phase (State.Import_Lifecycle)));
 
    --  Where a step may start: a valid program, an instruction inside it,
    --  and a slice still running.
@@ -29,27 +34,27 @@ private package CCL.VM.Machine with SPARK_Mode => On is
      (Is_Valid (Item) and then Program_Length (Regs.PC) < Item.Content.Length and then not Regs.Done);
 
    --  Stop the run with Code. Only the terminal status changes.
-   procedure Trap (Regs : in out Registers; State : in out Machine_State; Code : Execution_Status)
+   procedure Trap (Regs : in out Registers; State : in out Sized_Machine_State; Code : Execution_Status)
      with Global => null,
-          Post => Regs.Done and then Regs.Status = Code and then State.Terminal and then
-                  State.Terminal_Status = Code and then Same_Frame (State'Old, State);
+          Post => Frame_Of (State) = Frame_Of (State)'Old and then Regs.Done and then Regs.Status = Code and then
+                  State.Terminal and then State.Terminal_Status = Code;
 
    --  Push Value and step to the next instruction, or trap.
    procedure Push_Next
-     (Item : Validated_Program; Regs : in out Registers; State : in out Machine_State; Value : CCL.VM.Value)
-     with Global => null, Post => Same_Frame (State'Old, State);
+     (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State; Value : CCL.VM.Value)
+     with Global => null, Post => Frame_Of (State) = Frame_Of (State)'Old;
 
    --  Pop a text operand, or trap.
-   procedure Pop_Text (Regs : in out Registers; State : in out Machine_State; Value : out CCL.VM.Value)
-     with Global => null, Post => Same_Frame (State'Old, State);
+   procedure Pop_Text (Regs : in out Registers; State : in out Sized_Machine_State; Value : out CCL.VM.Value)
+     with Global => null, Post => Frame_Of (State) = Frame_Of (State)'Old;
 
    --  Enter the function value Callee: its captures, then Arity arguments,
    --  as the callee's frame; Return_PC is where its result comes back to.
    procedure Enter_Call
-     (Item : Validated_Program; Regs : in out Registers; State : in out Machine_State;
+     (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State;
       Callee : Value; Arguments : Component_Values; Arity : CCL.Types.Component_Count;
       Return_PC : Instruction_Index; Good : out Boolean)
-     with Global => null, Post => Same_Frame (State'Old, State);
+     with Global => null, Post => Frame_Of (State) = Frame_Of (State)'Old;
    --  Small enough to inline into every step.
    pragma Inline_Always (Trap);
    pragma Inline_Always (Push_Next);

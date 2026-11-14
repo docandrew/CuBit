@@ -1,6 +1,6 @@
 with CCL.Objects.Values;
-with CCL.Objects.Views;
 with CCL.VM.Resource_Values;
+with CCL.VM.Results;
 
 package body CCL.VM.Native_Objects with SPARK_Mode is
    use type CCL.Imports.Import_Phase;
@@ -17,9 +17,9 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       Strings : Natural := 0;
       Elements : Natural := 0;
    end record;
-   --  An image holds at most Maximum_Cells cells, and every node, slot,
+   --  A page holds at most Maximum_Cells cells, and every node, slot,
    --  string and list element takes at least one: a type with a list needs
-   --  at most that many of each.
+   --  at most that many of each in a machine that does not grow.
    Image_Bound : constant Arena_Need :=
      (CCL.Objects.Maximum_Cells, CCL.Objects.Maximum_Cells, CCL.Objects.Maximum_Cells, CCL.Objects.Maximum_Cells);
    function Need_Of (Types : CCL.Types.Registry; Root : CCL.Types.Type_Reference) return Arena_Need is
@@ -68,24 +68,24 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Need_Of;
 
    --  Whether the arena and text region can hold any value of type Root.
-   function Room_For (Types : CCL.Types.Registry; State : Machine_State; Root : CCL.Types.Type_Reference)
+   function Room_For (Types : CCL.Types.Registry; State : Sized_Machine_State; Root : CCL.Types.Type_Reference)
       return Boolean is
       Need : constant Arena_Need := Need_Of (Types, Root);
    begin
-      return Need.Elements <= MAX_LIST_ELEMENTS - List_Regions.Used_Bytes (State.Lists) and then
-        (Need.Elements = 0 or else List_Regions.Live_Values (State.Lists) < MAX_LIST_VALUES) and then
-        Need.Nodes <= MAX_VALUE_NODES - Natural (State.Arena.Nodes_Used) and then
-        Need.Slots <= MAX_VALUE_SLOTS - Natural (State.Arena.Slots_Used) and then
-        Need.Strings <= MAX_TEXT_VALUES - Text_Regions.Live_Values (State.Text) and then
+      return Need.Elements <= Natural (State.Element_Room) - List_Regions.Used_Bytes (State.Lists) and then
+        (Need.Elements = 0 or else List_Regions.Live_Values (State.Lists) < Natural (State.List_Room)) and then
+        Need.Nodes <= Natural (State.Node_Room) - Natural (State.Arena.Nodes_Used) and then
+        Need.Slots <= Natural (State.Slot_Room) - Natural (State.Arena.Slots_Used) and then
+        Need.Strings <= Natural (State.String_Room) - Text_Regions.Live_Values (State.Text) and then
         (Need.Strings = 0 or else
-         CCL.Objects.Maximum_Text_Bytes <= MAX_TEXT_BYTES - Text_Regions.Used_Bytes (State.Text));
+         CCL.Objects.Maximum_Text_Bytes <= Natural (State.Text_Room) - Text_Regions.Used_Bytes (State.Text));
    end Room_For;
 
    --  Copy-in: the value at Position of a captured image, as a value of the
    --  local type Ref in State's arena. Components are loaded (and their
    --  nodes allocated) before their owner's node, so nodes point backwards.
    procedure Load
-     (Image : CCL.Objects.Views.Snapshot; Position : CCL.Objects.Views.Cursor;
+     (Image : CCL.Objects.Views.Sized_Snapshot; Position : CCL.Objects.Views.Cursor;
       Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference;
       Arena : in out Value_Arena; Texts : in out Text_Regions.Stack; Lists : in out List_Regions.Stack;
       Result : out Value; Good : out Boolean)
@@ -110,15 +110,15 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
             Good := Cell.First <= MAX_CHARACTER_CODE;
             if Good then Result := Character_Constant (Character'Val (Cell.First)); end if;
          when Text_Value =>
+            --  A string longer than one the machine holds is refused
+            --  (MAX_STRING_BYTES, CAPACITY).
             declare
-               Length : constant CCL.Objects.Views.Text_Size := CCL.Objects.Views.Text_Length (Image, Position);
-               Buffer : String (1 .. CCL.Objects.Maximum_Text_Bytes) := [others => ' '];
                Stored : Text_Regions.Operation_Result;
             begin
-               CCL.Objects.Views.Copy_Text (Image, Position, Buffer (1 .. Length), Good);
+               Good := CCL.Objects.Views.Text_Length (Image, Position) <= MAX_STRING_BYTES;
                if Good then
                   Result := (Kind => Text_Value, others => <>);
-                  Text_Regions.Allocate_String (Texts, Buffer (1 .. Length), Result.Text, Stored);
+                  Text_Regions.Allocate_String (Texts, CCL.Objects.Views.Text (Image, Position), Result.Text, Stored);
                   Good := Stored = Text_Regions.Operation_Ok;
                end if;
             end;
@@ -165,29 +165,32 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
                Allocate_Node (Arena, Types, Ref, Choice, Parts, Count, Result, Good);
             end if;
          when List_Value =>
-            --  The elements in order (each loaded before the list exists),
-            --  then one list value in the region.
+            --  The list's storage in the region, then its elements in order,
+            --  each loaded and written in place (nothing of its size on the
+            --  stack).
             declare
                Count : constant CCL.Objects.Views.Element_Count := CCL.Objects.Views.Length (Image, Position);
-               Items : List_Element_Array (1 .. CCL.Objects.Maximum_Cells) := [others => Null_List_Element];
                Element_Type : constant CCL.Types.Type_Reference := CCL.Types.Element_Of (Types, Ref);
                Item : Value;
+               At_Element : CCL.Objects.Views.Cursor := CCL.Objects.Views.First_Element (Image, Position);
                Stored : List_Regions.Operation_Result;
             begin
                --  Element types are earlier than their list's (Persistable).
                Good := Element_Type < Ref;
-               if Element_Type < Ref then
-                  for E in 1 .. Count loop
-                     Load (Image, CCL.Objects.Views.Element (Image, Position, E), Types, Element_Type,
-                           Arena, Texts, Lists, Item, Good);
-                     exit when not Good;
-                     Items (E) := To_Element (Item);
-                  end loop;
-               end if;
                if Good then
                   Result := (Kind => List_Value, Data_Type => Ref, others => <>);
-                  List_Regions.Allocate (Lists, Items (1 .. Count), Result.Items, Stored);
+                  List_Regions.Reserve (Lists, Count, Result.Items, Stored);
                   Good := Stored = List_Regions.Operation_Ok;
+               end if;
+               if Good and then Element_Type < Ref then
+                  for E in 1 .. Count loop
+                     Load (Image, At_Element, Types, Element_Type, Arena, Texts, Lists, Item, Good);
+                     exit when not Good;
+                     List_Regions.Write (Lists, Result.Items, List_Regions.Array_Index (E), To_Element (Item), Stored);
+                     Good := Stored = List_Regions.Operation_Ok;
+                     exit when not Good;
+                     At_Element := CCL.Objects.Views.Next_Element (Image, Position, At_Element);
+                  end loop;
                end if;
             end;
          when Resource_Value | Function_Value => Good := False;
@@ -201,7 +204,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    --  the native layout: a product's field count or a variant's member, then
    --  its components depth first.
    procedure Store
-     (State : Machine_State; Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference;
+     (State : Sized_Machine_State; Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference;
       Item : Value; Image : in out CCL.Objects.Image; Good : in out Boolean)
      with Subprogram_Variant => (Decreases => Ref)
    is
@@ -305,17 +308,19 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       Good := Good and then Built = CCL.Objects.Added;
    end Store;
 
-   procedure Initialize (Item : Validated_Program; Fuel : Natural; State : in out Machine) is
+   procedure Initialize
+     (Item : Validated_Program; Fuel : Natural; State : in out Sized_Machine; Growable : Boolean := False) is
    begin
       CCL.VM.Initialize (Item, Fuel, State.Core);
       State.Initialized := True;
+      State.Growable := Growable;
    end Initialize;
 
-   function Snapshot (State : Machine) return Machine_Snapshot is
+   function Snapshot (State : Sized_Machine) return Machine_Snapshot is
      (CCL.VM.Snapshot (State.Core));
 
    procedure Inspect
-     (Item : Validated_Program; State : Machine;
+     (Item : Validated_Program; State : Sized_Machine;
       Result : out Inspection_Snapshot) is
    begin
       Result := (others => <>);
@@ -326,7 +331,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Inspect;
 
    procedure Continue_Execution_For
-     (Item : Validated_Program; State : in out Machine;
+     (Item : Validated_Program; State : in out Sized_Machine;
       Instructions : Natural; Result : out Execution_Result) is
    begin
       Result := (others => <>);
@@ -336,7 +341,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       CCL.VM.Continue_Execution_For (Item, State.Core, Instructions, Result);
       -- Admission before the host effect, not only when its reply arrives:
       -- the arena must hold any value of the import's result type.
-      if Result.Status = Waiting_For_Host and then
+      if Result.Status = Waiting_For_Host and then not State.Growable and then
         State.Core.Waiting_Result_Kind in Object_Value | List_Value and then
         not Room_For (Item.Content.Data_Types, State.Core,
                       Item.Content.Imports (State.Core.Waiting_Import).Result_Data_Type)
@@ -355,7 +360,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       end if;
    end Continue_Execution_For;
 
-   function Pending_Call (Item : Validated_Program; State : Machine)
+   function Pending_Call (Item : Validated_Program; State : Sized_Machine)
      return Execution_Result is
       Position : constant Machine_Snapshot := Snapshot (State.Core);
    begin
@@ -373,14 +378,14 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
         others => <>);
    end Pending_Call;
 
-   function Ready_For_Completion (Item : Validated_Program; State : Machine) return Boolean is
+   function Ready_For_Completion (Item : Validated_Program; State : Sized_Machine) return Boolean is
      (State.Initialized and then Is_Well_Formed (Item, State.Core) and then
       State.Core.Waiting and then not State.Core.Terminal and then
       (not State.Core.Waiting_Owned or else
        CCL.Imports.Phase (State.Core.Import_Lifecycle) = CCL.Imports.Import_Accepted));
 
    function Accepts_Object_Result
-     (Item : Validated_Program; State : Machine; Contract : CCL.Objects.Binding)
+     (Item : Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding)
       return Boolean is
      (Pending_Call (Item, State).Status = Waiting_For_Host and then
       CCL.Objects.Matches_Type (Contract, Item.Content.Data_Types,
@@ -391,12 +396,162 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
             Item.Content.Imports (State.Core.Waiting_Import).Result_Data_Type,
           when Resource_Value | Text_Value | Character_Value | Function_Value =>
             CCL.Types.Invalid_Type)) and then
-      (State.Core.Waiting_Result_Kind not in Object_Value | List_Value or else
+      (State.Core.Waiting_Result_Kind not in Object_Value | List_Value or else State.Growable or else
        Room_For (Item.Content.Data_Types, State.Core,
                  Item.Content.Imports (State.Core.Waiting_Import).Result_Data_Type)));
 
+   --  What admitting View's value takes in a machine: nodes, slots,
+   --  strings and their bytes, list elements and lists (an upper bound:
+   --  every record and payload variant a node, every list its elements).
+   type Value_Need is record
+      Nodes, Slots, Strings, Bytes, Elements, Lists : Natural := 0;
+   end record;
+   function Need_Of_Value (View : CCL.Objects.Views.Sized_Snapshot) return Value_Need is
+      Need : Value_Need;
+      At_Cell : CCL.Objects.Views.Cursor;
+      D : CCL.Types.Description;
+      function Plus (A, B : Natural) return Natural is
+        (if A > Natural'Last - B then Natural'Last else A + B);
+   begin
+      for P in 1 .. CCL.Objects.Views.Cells_Used (View) loop
+         At_Cell := CCL.Objects.Views.At_Cell (View, P);
+         if CCL.Objects.Views.Type_Of (View, At_Cell) = CCL.Types.String_Type then
+            Need.Strings := Plus (Need.Strings, 1);
+            Need.Bytes := Plus (Need.Bytes, CCL.Objects.Views.Text_Length (View, At_Cell));
+         elsif CCL.Objects.Views.Type_Of (View, At_Cell) in CCL.Types.Declared_Type then
+            D := CCL.Objects.Views.Describe (View, At_Cell);
+            case D.Form is
+               when CCL.Types.Product =>
+                  Need.Nodes := Plus (Need.Nodes, 1);
+                  Need.Slots := Plus (Need.Slots, D.Count);
+               when CCL.Types.Sum =>
+                  Need.Nodes := Plus (Need.Nodes, 1);
+                  Need.Slots := Plus (Need.Slots, 1);
+               when CCL.Types.Sequence =>
+                  Need.Lists := Plus (Need.Lists, 1);
+                  Need.Elements := Plus (Need.Elements, CCL.Objects.Views.Length (View, At_Cell));
+               when others => null;
+            end case;
+         end if;
+      end loop;
+      return Need;
+   end Need_Of_Value;
+
+   --  Whether State's rooms hold Need beside what they hold.
+   function Has_Room (State : Sized_Machine_State; Need : Value_Need) return Boolean is
+     (Need.Nodes <= Natural (State.Node_Room) - Natural (State.Arena.Nodes_Used) and then
+      Need.Slots <= Natural (State.Slot_Room) - Natural (State.Arena.Slots_Used) and then
+      Need.Strings <= Natural (State.String_Room) - Text_Regions.Live_Values (State.Text) and then
+      Need.Bytes <= Natural (State.Text_Room) - Text_Regions.Used_Bytes (State.Text) and then
+      Need.Elements <= Natural (State.Element_Room) - List_Regions.Used_Bytes (State.Lists) and then
+      Need.Lists <= Natural (State.List_Room) - List_Regions.Live_Values (State.Lists));
+
+   procedure Needed_Rooms
+     (Item : Validated_Program; State : Sized_Machine; View : CCL.Objects.Views.Sized_Snapshot;
+      Wanted : out Rooms; Possible : out Boolean)
+   is
+      pragma Unreferenced (Item);
+      Need : constant Value_Need := Need_Of_Value (View);
+      --  Used + Need, doubled for what the run builds next, at least the
+      --  room it has, at most Ceiling; Fits False past the ceiling.
+      procedure Room
+        (Room_Now, Used, Wanted_More, Ceiling : Natural; Result : out Positive; Fits : in out Boolean)
+      is
+         Total : constant Natural := (if Wanted_More > Ceiling - Natural'Min (Used, Ceiling) then Ceiling + 1
+                                      else Used + Wanted_More);
+      begin
+         if Total > Ceiling then
+            Fits := False;
+            Result := Ceiling;
+         else
+            Result := Natural'Max (1, Natural'Max (Room_Now, (if Total > Ceiling / 2 then Ceiling else 2 * Total)));
+         end if;
+      end Room;
+      Nodes, Slots, Text, Strings, Elements, Lists : Positive;
+   begin
+      Possible := True;
+      Room (Natural (State.Node_Room), Natural (State.Core.Arena.Nodes_Used), Need.Nodes, NODE_CEILING,
+            Nodes, Possible);
+      Room (Natural (State.Slot_Room), Natural (State.Core.Arena.Slots_Used), Need.Slots, SLOT_CEILING,
+            Slots, Possible);
+      Room (Natural (State.Text_Room), Text_Regions.Used_Bytes (State.Core.Text), Need.Bytes, TEXT_BYTE_CEILING,
+            Text, Possible);
+      Room (Natural (State.String_Room), Text_Regions.Live_Values (State.Core.Text), Need.Strings,
+            TEXT_VALUE_CEILING, Strings, Possible);
+      Room (Natural (State.Element_Room), List_Regions.Used_Bytes (State.Core.Lists), Need.Elements,
+            LIST_ELEMENT_CEILING, Elements, Possible);
+      Room (Natural (State.List_Room), List_Regions.Live_Values (State.Core.Lists), Need.Lists,
+            LIST_VALUE_CEILING, Lists, Possible);
+      Wanted := (Nodes => Node_Room_Count (Nodes), Slots => Slot_Room_Count (Slots), Text => Text,
+                 Strings => Strings, Elements => Elements, Lists => Lists);
+   end Needed_Rooms;
+
+   procedure Stop_Exhausted (State : in out Sized_Machine) is
+   begin
+      if State.Initialized and then State.Core.Waiting and then not State.Core.Terminal and then
+        not State.Core.Waiting_Owned
+      then
+         State.Core.Waiting := False;
+         State.Core.Terminal := True;
+         State.Core.Terminal_Status := Object_Storage_Exhausted;
+      end if;
+   end Stop_Exhausted;
+
+   function Can_Hold (From, Into : Sized_Machine) return Boolean is (Holds_All (From.Core, Into.Core));
+
+   procedure Grow (From : Sized_Machine; Into : in out Sized_Machine) is
+   begin
+      Copy_State (From.Core, Into.Core);
+      Into.Initialized := From.Initialized;
+      Into.Growable := From.Growable;
+   end Grow;
+
+   procedure Complete_Captured
+     (Item : Validated_Program; State : in out Sized_Machine;
+      Contract : CCL.Objects.Binding; View : CCL.Objects.Views.Sized_Snapshot; Accepted : Boolean;
+      Fits : out Boolean)
+   is
+      Good : Boolean;
+      Result : CCL.VM.Value;
+   begin
+      Fits := True;
+      if not Ready_For_Completion (Item, State) then return; end if;
+      Good := Accepted and then Accepts_Object_Result (Item, State, Contract) and then
+        CCL.Objects.Views.Cells_Used (View) > 0;
+      if Good and then State.Core.Waiting_Result_Kind not in Object_Value | List_Value then
+         --  A scalar or a scalar variant: a cell or two, unboxed.
+         declare
+            Page : CCL.Objects.Image;
+         begin
+            CCL.Objects.Views.Copy_Value (View, CCL.Objects.Views.Root (View), Contract, Page, Good);
+            if Good then
+               CCL.Objects.Values.To_VM (Contract, Item.Content.Data_Types, Page, Result, Good);
+            end if;
+         end;
+      elsif Good and then not Has_Room (State.Core, Need_Of_Value (View)) then
+         Fits := False;
+         return;
+      elsif Good then
+         Load (View, CCL.Objects.Views.Root (View), Item.Content.Data_Types,
+               Item.Content.Imports (State.Core.Waiting_Import).Result_Data_Type,
+               State.Core.Arena, State.Core.Text, State.Core.Lists, Result, Good);
+      end if;
+      Complete_Checked_Host_Call (Item, State.Core, Result, Good, True);
+   end Complete_Captured;
+
+   procedure Result_Literal
+     (Item : Validated_Program; State : Sized_Machine; Output : out String; Printed : out Boolean) is
+   begin
+      Output := [others => ' '];
+      Printed := State.Initialized and then State.Core.Terminal and then
+        State.Core.Terminal_Status = Completed;
+      if Printed then
+         CCL.VM.Results.Print_Literal (Item, State.Core, Output, Printed);
+      end if;
+   end Result_Literal;
+
    procedure Complete_Object
-     (Item : Validated_Program; State : in out Machine;
+     (Item : Validated_Program; State : in out Sized_Machine;
       Contract : CCL.Objects.Binding; Response : CCL.Objects.Image; Accepted : Boolean)
    is
       Good : Boolean;
@@ -407,12 +562,20 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       if Good and then State.Core.Waiting_Result_Kind in Object_Value | List_Value then
          declare
             Image : CCL.Objects.Views.Snapshot;
+            Room : Boolean;
          begin
             CCL.Objects.Views.Capture (Image, Contract, Response, Good);
             if Good then
-               Load (Image, CCL.Objects.Views.Root (Image), Item.Content.Data_Types,
-                     Item.Content.Imports (State.Core.Waiting_Import).Result_Data_Type,
-                     State.Core.Arena, State.Core.Text, State.Core.Lists, Result, Good);
+               Complete_Captured (Item, State, Contract, Image, True, Room);
+               if not Room then
+                  --  A machine's full rooms end the run, as Room_For would
+                  --  have before the effect.
+                  State.Core.Waiting := False;
+                  State.Core.Terminal := True;
+                  State.Core.Terminal_Status := Object_Storage_Exhausted;
+               end if;
+               CCL.Objects.Views.Clear (Image);
+               return;
             end if;
             CCL.Objects.Views.Clear (Image);
          end;
@@ -423,7 +586,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Object;
 
    procedure Complete_Text
-     (Item : Validated_Program; State : in out Machine; Response : String; Accepted : Boolean)
+     (Item : Validated_Program; State : in out Sized_Machine; Response : String; Accepted : Boolean)
    is
       Good : Boolean;
       Result : CCL.VM.Value := (Kind => Text_Value, others => <>);
@@ -445,7 +608,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Text;
 
    procedure Complete_Stream_View
-     (Item : Validated_Program; State : in out Machine; Reply : CCL.Streams.View_Reply)
+     (Item : Validated_Program; State : in out Sized_Machine; Reply : CCL.Streams.View_Reply)
    is
       Good : Boolean := False;
       Result : CCL.VM.Value := (others => <>);
@@ -484,7 +647,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Stream_View;
 
    procedure Complete_Scalar
-     (Item : Validated_Program; State : in out Machine; Response : Value; Accepted : Boolean) is
+     (Item : Validated_Program; State : in out Sized_Machine; Response : Value; Accepted : Boolean) is
    begin
       if State.Initialized and then Is_Well_Formed (Item, State.Core) then
          CCL.VM.Complete_Host_Call (Item, State.Core, Response, Accepted);
@@ -492,7 +655,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Scalar;
 
    procedure Complete_Resource
-     (Item : Validated_Program; State : in out Machine;
+     (Item : Validated_Program; State : in out Sized_Machine;
       Owner : CCL.Resources.Registry; Resource : CCL.Resources.Reference;
       Accepted : out Boolean) is
    begin
@@ -503,7 +666,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Resource;
 
    procedure Acknowledge_Host_Submission
-     (Item : Validated_Program; State : in out Machine; Accepted : Boolean) is
+     (Item : Validated_Program; State : in out Sized_Machine; Accepted : Boolean) is
    begin
       if State.Initialized and then Is_Well_Formed (Item, State.Core) then
          CCL.VM.Acknowledge_Host_Submission (Item, State.Core, Accepted);
@@ -511,7 +674,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Acknowledge_Host_Submission;
 
    procedure Export_Value
-     (Item : Validated_Program; State : Machine; Source : CCL.VM.Value;
+     (Item : Validated_Program; State : Sized_Machine; Source : CCL.VM.Value;
       Contract : CCL.Objects.Binding; Value : out CCL.Objects.Image; Accepted : out Boolean) is
    begin
       Value := CCL.Objects.Empty (Contract); Accepted := False;
@@ -542,7 +705,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Export_Value;
 
    procedure Export_Argument
-     (Item : Validated_Program; State : Machine; Contract : CCL.Objects.Binding;
+     (Item : Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding;
       Value : out CCL.Objects.Image; Accepted : out Boolean) is
    begin
       Value := CCL.Objects.Empty (Contract); Accepted := False;
@@ -552,7 +715,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Export_Argument;
 
    procedure Export_Result
-     (Item : Validated_Program; State : Machine; Contract : CCL.Objects.Binding;
+     (Item : Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding;
       Value : out CCL.Objects.Image; Accepted : out Boolean) is
    begin
       Value := CCL.Objects.Empty (Contract); Accepted := False;
@@ -561,7 +724,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       then Export_Value (Item, State, State.Core.Result_Value, Contract, Value, Accepted); end if;
    end Export_Result;
 
-   procedure Stop (State : in out Machine) is
+   procedure Stop (State : in out Sized_Machine) is
    begin
       CCL.VM.Stop (State.Core);
       State.Initialized := False;

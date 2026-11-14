@@ -3,7 +3,7 @@ with CCL.VM.Operations;
 package body CCL.VM.Machine with SPARK_Mode => On is
    use type List_Regions.Operation_Result;
 
-   procedure Trap (Regs : in out Registers; State : in out Machine_State; Code : Execution_Status) is
+   procedure Trap (Regs : in out Registers; State : in out Sized_Machine_State; Code : Execution_Status) is
    begin
       Regs.Status := Code;
       State.Terminal := True;
@@ -12,7 +12,7 @@ package body CCL.VM.Machine with SPARK_Mode => On is
    end Trap;
 
    procedure Push_Next
-     (Item : Validated_Program; Regs : in out Registers; State : in out Machine_State; Value : CCL.VM.Value)
+     (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State; Value : CCL.VM.Value)
    is
       Pushed : Runtime_Stacks.Operation_Result;
    begin
@@ -28,7 +28,7 @@ package body CCL.VM.Machine with SPARK_Mode => On is
       end if;
    end Push_Next;
 
-   procedure Pop_Text (Regs : in out Registers; State : in out Machine_State; Value : out CCL.VM.Value) is
+   procedure Pop_Text (Regs : in out Registers; State : in out Sized_Machine_State; Value : out CCL.VM.Value) is
       Popped : Runtime_Stacks.Operation_Result;
    begin
       Runtime_Stacks.Pop (Regs.Stack, Value, Popped);
@@ -38,7 +38,7 @@ package body CCL.VM.Machine with SPARK_Mode => On is
    end Pop_Text;
 
    procedure Enter_Call
-     (Item : Validated_Program; Regs : in out Registers; State : in out Machine_State;
+     (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State;
       Callee : Value; Arguments : Component_Values; Arity : CCL.Types.Component_Count;
       Return_PC : Instruction_Index; Good : out Boolean)
    is

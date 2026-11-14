@@ -41,6 +41,8 @@ package Log_Window_Script is
    function Step_Of (Instance : Scripted_Instance; Index : Positive) return Scripted_Step
      with Pre => Index <= Instance.Records;
 
+   --  The records "flood" has past what one result shows.
+   FLOOD_OVER : constant := 100;
    --  How many times the stand-in was asked (a refused window never is).
    Calls : Natural := 0;
 end Log_Window_Script;

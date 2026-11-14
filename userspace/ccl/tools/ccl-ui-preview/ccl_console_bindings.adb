@@ -1,3 +1,4 @@
+with CCL.Objects.Holders;
 with CCL.Objects;
 
 package body CCL_Console_Bindings is
@@ -58,7 +59,7 @@ package body CCL_Console_Bindings is
             end if;
          when Console.Set_Notation =>
             if Argument.Kind = CCL.Host_Values.Object_Value then
-               Console.Member_Of (Contracts.Notation, Argument.Object,
+               Console.Member_Of (Contracts.Notation, CCL.Objects.Holders.Page (Argument.Object),
                                   Console.Notation'Pos (Console.Notation'Last) + 1, Member, Found);
                if Found then
                   Set_Notation (Console.Notation'Val (Member - 1));
@@ -70,7 +71,7 @@ package body CCL_Console_Bindings is
             end if;
          when Console.Set_Theme =>
             if Argument.Kind = CCL.Host_Values.Object_Value then
-               Console.Member_Of (Contracts.Theme, Argument.Object,
+               Console.Member_Of (Contracts.Theme, CCL.Objects.Holders.Page (Argument.Object),
                                   Console.Theme'Pos (Console.Theme'Last) + 1, Member, Found);
                if Found then
                   Set_Theme (Console.Theme'Val (Member - 1));

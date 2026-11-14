@@ -826,13 +826,13 @@ is
                declare
                   Chunk : CCL.Language.Node_Reference := Index;
                   Part : CCL.Language.Node;
-                  Total : Natural range 0 .. CCL.VM.MAX_LIST_ELEMENTS := 0;
+                  Total : Natural range 0 .. CCL.VM.DEFAULT_LIST_ELEMENTS := 0;
                begin
                   for Step in 0 .. CCL.Language.MAX_AST_NODES loop
                      exit when Chunk = CCL.Language.NO_NODE;
                      Read_Node (Chunk, Part);
                      if Part.Kind /= CCL.Language.List_Construct or else
-                       Part.Element_Count > CCL.VM.MAX_LIST_ELEMENTS - Total
+                       Part.Element_Count > CCL.VM.DEFAULT_LIST_ELEMENTS - Total
                      then
                         Fail (Malformed_Typed_Tree, Index, Item.Source_Position); return;
                      end if;
@@ -846,9 +846,9 @@ is
                      exit when Chunk = CCL.Language.NO_NODE or else Status /= Compilation_Succeeded;
                      Read_Node (Chunk, Part);
                      for P in 1 .. Part.Element_Count loop
-                        pragma Loop_Invariant (Total <= CCL.VM.MAX_LIST_ELEMENTS);
+                        pragma Loop_Invariant (Total <= CCL.VM.DEFAULT_LIST_ELEMENTS);
                         --  The first pass bounded the total; checked again.
-                        if Total = CCL.VM.MAX_LIST_ELEMENTS then
+                        if Total = CCL.VM.DEFAULT_LIST_ELEMENTS then
                            Fail (Malformed_Typed_Tree, Index, Item.Source_Position); return;
                         end if;
                         Total := Total + 1;

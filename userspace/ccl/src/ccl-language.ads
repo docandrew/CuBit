@@ -1,3 +1,4 @@
+with CCL.Held_Texts;
 with CCL.Streams;
 with CuBit.Failures;
 with CCL.Text_Operations;
@@ -31,12 +32,9 @@ is
    --  Records and variants with payloads that one evaluation builds live in
    --  a bounded arena: nodes whose components are stored values, never
    --  pointers (docs/ccl-driver-manifests.md, "Value model").
-   MAX_VALUE_NODES : constant := CCL.VM.MAX_VALUE_NODES;
-   MAX_VALUE_SLOTS : constant := CCL.VM.MAX_VALUE_SLOTS;
-   --  Lists (docs/ccl-repl.md, "Lists"): elements across all lists of one
-   --  evaluation, and elements a result can carry out. Shared with compiled
-   --  code, so both fail at the same point.
-   MAX_LIST_ELEMENTS : constant := CCL.VM.MAX_LIST_ELEMENTS;
+   --  (CCL.VM's rooms: a run starts at CCL.VM.DEFAULT_VALUE_NODES and a
+   --  host's large value grows it.) Lists (docs/ccl-repl.md, "Lists"):
+   --  elements a scalar list result carries out.
    MAX_LIST_RESULT   : constant := CCL.VM.MAX_LIST_RESULT;
 
    --  Shared, bounded frontend representation.  Both direct interpretation
@@ -364,7 +362,7 @@ is
       --  a form without bytecode yet). Diagnostic_Subject names the reason.
       Not_Compiled,
       --  A record or list whose literal is longer than a result carries
-      --  (CCL.VM.MAX_LITERAL_TEXT); a list's length is in List_Total. The
+      --  (CCL.VM.LITERAL_CEILING); a list's length is in List_Total. The
       --  value was computed: take it in parts, (first k x) (last k x).
       Result_Too_Large);
 
@@ -447,12 +445,9 @@ is
         [others => Character'Val (0)];
    end record;
    --  A result's CCL literal ((Process 1 "init" ...) and lists of them):
-   --  larger than a host text value, so a full table fits one result.
-   MAX_LITERAL_BYTES : constant := 4_096;
-   type Literal_Text is record
-      Length : Natural range 0 .. MAX_LITERAL_BYTES := 0;
-      Data   : String (1 .. MAX_LITERAL_BYTES) := [others => Character'Val (0)];
-   end record;
+   --  as long as the value, held on the heap (CCL.Held_Texts), up to
+   --  CCL.VM.LITERAL_CEILING.
+   subtype Literal_Text is CCL.Held_Texts.Text;
 
    --  A type as source writes it: Integer, P, (List P).
    MAX_TYPE_TEXT : constant := 128;
@@ -554,7 +549,7 @@ is
       List_Length : List_Result_Count := 0;
       --  The list's full length; List_Length elements (a prefix) are carried
       --  out, so a result never fails just for being long.
-      List_Total : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+      List_Total : Natural range 0 .. CCL.VM.LIST_ELEMENT_CEILING := 0;
       List_Values : List_Result_Values := [others => (others => <>)];
       List_Text : Text_Result := (others => <>);
       List_Text_Ends : List_Result_Ends := [others => 0];
@@ -563,7 +558,7 @@ is
       Has_Literal : Boolean := False;
       Literal_Type : Static_Type := Invalid_Type;
       Literal_Type_Name : Name;
-      Literal : Literal_Text := (others => <>);
+      Literal : Literal_Text := CCL.Held_Texts.Empty;
       --  Its rows' record type and fields, for a table (Count = 0: none).
       Literal_Shape : CCL.Types.Shapes.Row_Shape := (others => <>);
       --  A stream the session holds: its handle, and its element type as
@@ -578,7 +573,7 @@ is
       --  Running, or Done with its result's literal in Task_Value (Erlang
       --  style: look at a run without blocking on it).
       Task_Done : Boolean := False;
-      Task_Value : Literal_Text := (others => <>);
+      Task_Value : Literal_Text := CCL.Held_Texts.Empty;
       --  Waiting_On_Task: the task the evaluation waits for.
       Waited_On : CCL.Streams.Handle := CCL.Streams.No_Handle;
       --  A service call that produced no value (Host_Call_Failed,

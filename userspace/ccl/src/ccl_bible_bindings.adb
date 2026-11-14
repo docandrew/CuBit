@@ -165,7 +165,10 @@ package body CCL_Bible_Bindings is
    ---------------------------------------------------------------------------
    MAX_CELLS : constant := Objects.Maximum_Cells;
    MAX_TEXT  : constant := Objects.Maximum_Text_Bytes;
-   MAX_LITERAL : constant := CCL.VM.MAX_LITERAL_TEXT;
+   --  A result's literal budget: one page of verses, as the page image
+   --  holds them (a literal is no longer cut, CCL.VM.LITERAL_CEILING; the
+   --  Bible's results move to sized values as a follow-up).
+   MAX_LITERAL : constant := 4_096;
    --  A verse in a list: its product, its reference (product, book,
    --  chapter, verse) and its text; and its literal's constructors.
    VERSE_CELLS : constant := 1 + 4 + 1;

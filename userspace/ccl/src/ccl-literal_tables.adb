@@ -1,4 +1,53 @@
-package body CCL.Literal_Tables with SPARK_Mode is
+with Ada.Unchecked_Deallocation;
+
+package body CCL.Literal_Tables with SPARK_Mode => Off is
+   procedure Free is new Ada.Unchecked_Deallocation (Grid, Grid_Access);
+   --  The rows a table starts with room for; it doubles from there.
+   FIRST_ROWS : constant := 64;
+
+   function Rows (Item : Table) return Row_Count is (Item.Rows);
+   function Total (Item : Table) return Natural is (Item.Total);
+   function Columns (Item : Table) return CCL.Types.Component_Count is (Item.Columns);
+   function Complete (Item : Table) return Boolean is (Item.Complete);
+   function Cell (Item : Table; Row : Row_Index; Column : CCL.Types.Component_Index) return Span is
+     (if Item.Cells = null or else Row > Item.Rows or else Row > Item.Cells'Last (1) then (others => <>)
+      else Item.Cells (Row, Column));
+
+   --  Row's cell in Column becomes Value, the grid grown to hold it.
+   procedure Set_Cell (Item : in out Table; Row : Row_Index; Column : CCL.Types.Component_Index; Value : Span) is
+      Room : Natural := (if Item.Cells = null then FIRST_ROWS else Item.Cells'Length (1));
+      Grown : Grid_Access;
+   begin
+      if Item.Cells = null or else Row > Item.Cells'Last (1) then
+         while Room < Row loop
+            Room := Natural'Min (2 * Room, ROW_CEILING);
+         end loop;
+         Grown := new Grid (1 .. Room, CCL.Types.Component_Index);
+         if Item.Cells /= null then
+            for Row in Item.Cells'Range (1) loop
+               for Column in Item.Cells'Range (2) loop
+                  Grown (Row, Column) := Item.Cells (Row, Column);
+               end loop;
+            end loop;
+            Free (Item.Cells);
+         end if;
+         Item.Cells := Grown;
+      end if;
+      Item.Cells (Row, Column) := Value;
+   end Set_Cell;
+
+   overriding procedure Adjust (Item : in out Table) is
+   begin
+      if Item.Cells /= null then
+         Item.Cells := new Grid'(Item.Cells.all);
+      end if;
+   end Adjust;
+
+   overriding procedure Finalize (Item : in out Table) is
+   begin
+      Free (Item.Cells);
+   end Finalize;
+
    function Space (C : Character) return Boolean is (C in ' ' | ASCII.HT | ASCII.LF | ASCII.CR);
 
    procedure Split
@@ -61,7 +110,7 @@ package body CCL.Literal_Tables with SPARK_Mode is
       end Skip_Spaces;
 
       --  One "(Type field ...)" at Position, its fields into row Row (when
-      --  Row > 0; rows past Maximum_Rows are only counted).
+      --  Row > 0; rows past ROW_CEILING are only counted).
       procedure Read_Row (Row : Row_Count) is
          Column : CCL.Types.Component_Count := 0;
          First : Positive;
@@ -104,7 +153,7 @@ package body CCL.Literal_Tables with SPARK_Mode is
             end if;
             Column := Column + 1;
             if Row > 0 then
-               Result.Cells (Row, Column) := (First, Position - 1);
+               Set_Cell (Result, Row, Column, (First, Position - 1));
             end if;
             exit when Position = First;  --  no progress: malformed
          end loop;
@@ -187,7 +236,7 @@ package body CCL.Literal_Tables with SPARK_Mode is
                Field := Field + 1;
                Column := (if Member = 1 then Field else Shape.Members (Member).Column_Of (Field));
                if Row > 0 and then Column in 1 .. Columns then
-                  Result.Cells (Row, Column) := (First, Position - 1);
+                  Set_Cell (Result, Row, Column, (First, Position - 1));
                end if;
             end loop;
             Position := Position + 1;
@@ -200,7 +249,11 @@ package body CCL.Literal_Tables with SPARK_Mode is
          end if;
       end Read_Member_Row;
    begin
-      Result := (Columns => Columns, others => <>);
+      Free (Result.Cells);
+      Result.Rows := 0;
+      Result.Total := 0;
+      Result.Complete := False;
+      Result.Columns := Columns;
       if Columns = 0 then return; end if;
       Skip_Spaces;
       if not Many then
@@ -217,13 +270,13 @@ package body CCL.Literal_Tables with SPARK_Mode is
                Before : constant Positive := Position;
             begin
                if Shape.Variant_Rows then
-                  Read_Member_Row (if Result.Rows < Maximum_Rows then Result.Rows + 1 else 0);
+                  Read_Member_Row (if Result.Rows < ROW_CEILING then Result.Rows + 1 else 0);
                else
-                  Read_Row (if Result.Rows < Maximum_Rows then Result.Rows + 1 else 0);
+                  Read_Row (if Result.Rows < ROW_CEILING then Result.Rows + 1 else 0);
                end if;
                exit when not Good or else Position <= Before;
             end;
-            if Result.Rows < Maximum_Rows then Result.Rows := Result.Rows + 1; end if;
+            if Result.Rows < ROW_CEILING then Result.Rows := Result.Rows + 1; end if;
             if Result.Total < Natural'Last then Result.Total := Result.Total + 1; end if;
          end loop;
          Good := Good and then Position <= Literal'Last and then Literal (Position) = ']';

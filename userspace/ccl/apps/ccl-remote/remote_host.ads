@@ -21,9 +21,13 @@ pragma Ada_2022;
 
 package Remote_Host is
    procedure Initialize (Success : out Boolean);
-   --  Source's result as the console shows it ("Type: value"), or the
-   --  diagnostic; Text (1 .. Length) holds as much as fits.
-   procedure Evaluate
-     (Source : String; Succeeded : out Boolean; Text : out String; Length : out Natural)
-     with Pre => Text'First = 1;
+   --  Evaluate Source: its result as the console shows it ("Type: value"),
+   --  or the diagnostic, is kept whole (on the heap, as long as it is)
+   --  until the next evaluation, and read in parts (Remote_Wire's
+   --  Read_Result).
+   procedure Evaluate (Source : String; Succeeded : out Boolean);
+   --  The kept result's length, and up to Count of its characters from
+   --  Offset (0-based; "" at or past its end).
+   function Result_Length return Natural;
+   function Result_Part (Offset, Count : Natural) return String;
 end Remote_Host;

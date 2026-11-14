@@ -64,6 +64,8 @@ package Remote_Wire with SPARK_Mode is
    Maximum_Source_Bytes : constant := 4_096;
    Maximum_File_Bytes   : constant := 268_435_456;   --  256 MiB
    Digest_Bytes         : constant := 32;            --  SHA-256
+   --  An Evaluate response's fixed fields: ok, and the whole text's length.
+   Evaluate_Fixed_Bytes : constant := 1 + 8;
 
    Name_Length_Bytes : constant := 2;
    Offset_Bytes      : constant := 8;
@@ -91,8 +93,14 @@ package Remote_Wire with SPARK_Mode is
    ---------------------------------------------------------------------------
    --  Hello         body: empty. Response: grants (1), chunk limit (4),
    --                then the endpoint's own name text.
-   --  Evaluate      body: CCL source. Response: ok (1), then the result's
-   --                "Type: value" text (or the diagnostic).
+   --  Evaluate      body: CCL source. Response: ok (1), the whole text's
+   --                length (8), then the result's "Type: value" text (or
+   --                the diagnostic) from its start, at most one chunk. The
+   --                session keeps the whole text for Read_Result.
+   --  Read_Result   body: offset (8). Response: the whole text's length
+   --                (8), then the session's last result text from offset,
+   --                at most one chunk (empty at its end): a result as long
+   --                as its value, read in chunks.
    --  List          body: name (may be empty: the place itself). Response:
    --                one line per entry: "kind size name".
    --  Stat          body: name. Response: size (8), SHA-256 (32).
@@ -141,12 +149,12 @@ package Remote_Wire with SPARK_Mode is
      (Hello, Evaluate, List, Stat, Get, Put, Commit, Remove,
       Build_Start, Build_Poll, Build_Cancel, Capture,
       App_Replace, App_Rollback, App_Status,
-      System_Activate, System_Rollback, System_Generations);
+      System_Activate, System_Rollback, System_Generations, Read_Result);
    for Operation use
      (Hello => 1, Evaluate => 2, List => 3, Stat => 4, Get => 5, Put => 6,
       Commit => 7, Remove => 8, Build_Start => 9, Build_Poll => 10, Build_Cancel => 11,
       Capture => 12, App_Replace => 13, App_Rollback => 14, App_Status => 15,
-      System_Activate => 16, System_Rollback => 17, System_Generations => 18);
+      System_Activate => 16, System_Rollback => 17, System_Generations => 18, Read_Result => 19);
 
    --  Where a file operation acts. None for the others. Captures holds the
    --  device's screenshots (read-only to the host).
@@ -316,7 +324,7 @@ package Remote_Wire with SPARK_Mode is
    --  Desktop's switch).
    function Admits (Grants : Grant_Set; Op : Operation; Where : Place) return Boolean is
      (case Op is
-         when Hello | Evaluate => Grants (Diagnose) and then Where = None,
+         when Hello | Evaluate | Read_Result => Grants (Diagnose) and then Where = None,
          when List | Stat | Get =>
            (case Where is
                when Workspace => Grants (Diagnose),
@@ -402,7 +410,7 @@ package Remote_Wire with SPARK_Mode is
       Where  : Place := None;
       Name   : String (1 .. Maximum_Name_Bytes) := [others => ' '];
       Name_Last : Name_Length := 0;
-      Offset : File_Offset := 0;     --  Get, Put; Build_Poll's output offset
+      Offset : File_Offset := 0;     --  Get, Put; Build_Poll's output offset; Read_Result's
       Size   : File_Offset := 0;     --  Commit
       Hash   : Digest := [others => 0];
       Job    : Unsigned_32 := 0;

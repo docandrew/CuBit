@@ -92,6 +92,14 @@ procedure Native_Object_Tests is
    end Compile;
    procedure Advance is
    begin N.Continue_Execution_For (Checked, Machine, 256, Outcome); end Advance;
+   --  The completed result's literal, as the machine prints it.
+   function Printed return String is
+      Text : String (1 .. Natural (Outcome.Literal_Length));
+      Done : Boolean;
+   begin
+      N.Result_Literal (Checked, Machine, Text, Done);
+      return (if Done then Text else "");
+   end Printed;
 begin
    Define (Types, (Identifier => Named ("Settings"), Form => Product, Count => 2,
      Parts => [1 => (Named ("title"), CCL.Types.String_Type),
@@ -185,7 +193,7 @@ begin
       function Echoes (Count : Natural) return String is
         (if Count = 0 then "(objects.get)" else "(objects.echo " & Echoes (Count - 1) & ")");
       Calls : Natural := 0;
-      Fitting : constant := MAX_TEXT_BYTES / Maximum_Text_Bytes;
+      Fitting : constant := DEFAULT_TEXT_BYTES / Maximum_Text_Bytes;
    begin
       Compile (Echoes (Fitting));
       N.Initialize (Checked, 256, Machine);
@@ -352,7 +360,7 @@ begin
       N.Initialize (Checked, 64, Machine); Advance;
       N.Complete_Object (Checked, Machine, Entries, Recent, True); Advance;
       Check (Outcome.Status = Completed and Outcome.Has_Literal and
-             CCL.VM.Image (Outcome.Literal) =
+             Printed =
                "[(Entry ""boot"" 1) (Entry ""link up"" 2) (Entry ""ready"" 1)]");
       N.Export_Result (Checked, Machine, Entries, Output, Good);
       Check (Good and Output = Recent);

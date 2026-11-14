@@ -5,6 +5,7 @@ with CCL.Imports;
 with CCL.Ownership;
 with CCL.Handler_References;
 with CCL.Objects;
+with CCL.Objects.Holders;
 with CCL.Types;
 with CCL.Resources;
 
@@ -47,7 +48,8 @@ package CCL.Host_Values with SPARK_Mode => On is
          when Boolean_Value => Boolean : Standard.Boolean := False;
          when Text_Value => Content : Text;
          when Handler_Value => Action : CCL.Handler_References.Reference;
-         when Object_Value => Object : CCL.Objects.Image;
+         --  A value of any size, held on the heap (CCL.Objects.Holders).
+         when Object_Value => Object : CCL.Objects.Holders.Holder;
          when Resource_Value => Resource : CCL.Resources.Reference;
       end case;
    end record;
@@ -69,6 +71,8 @@ package CCL.Host_Values with SPARK_Mode => On is
    function Handler_Constant (Item : CCL.Handler_References.Reference) return Value is
      ((Kind => Handler_Value, Action => Item));
    function Object_Constant (Item : CCL.Objects.Image) return Value is
+     ((Kind => Object_Value, Object => CCL.Objects.Holders.Hold (Item)));
+   function Object_Constant (Item : CCL.Objects.Holders.Holder) return Value is
      ((Kind => Object_Value, Object => Item));
    function Resource_Constant (Item : CCL.Resources.Reference) return Value is
      ((Kind => Resource_Value, Resource => Item));
@@ -186,5 +190,5 @@ package CCL.Host_Values with SPARK_Mode => On is
    -- An object's self-asserted schema key alone never admits it. The host must
    -- supply the independently approved binding and validate the complete image.
    function Matches (Item : Value; Contract : CCL.Objects.Binding) return Boolean is
-     (Item.Kind = Object_Value and then CCL.Objects.Validate (Item.Object, Contract));
+     (Item.Kind = Object_Value and then CCL.Objects.Holders.Validate (Item.Object, Contract));
 end CCL.Host_Values;

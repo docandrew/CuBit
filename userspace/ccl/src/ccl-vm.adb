@@ -105,13 +105,16 @@ is
    procedure Initialize
      (Item  : Validated_Program;
       Fuel  : Natural;
-      State : out Machine_State)
+      State : out Sized_Machine_State)
    is
       Initial_Locals_Length : constant Local_Count :=
         Item.Content.Locals_Length - Item.Content.Dynamic_Locals_Length;
    begin
       pragma Assert (Is_Valid (Item));
-      State := (others => <>);
+      State :=
+        (Node_Room => State.Node_Room, Slot_Room => State.Slot_Room, Text_Room => State.Text_Room,
+         String_Room => State.String_Room, Element_Room => State.Element_Room, List_Room => State.List_Room,
+         others => <>);
       CCL.Execution_Budgets.Initialize (State.Execution_Budget, Fuel);
       CCL.Ownership.Initialize (State.Ownership);
       CCL.Imports.Initialize (State.Import_Lifecycle);
@@ -128,7 +131,7 @@ is
       Fuel     : Natural;
       Values   : Local_Value_Array;
       Count    : Local_Count;
-      State    : out Machine_State;
+      State    : out Sized_Machine_State;
       Accepted : out Boolean)
    is
       Error : CCL.Ownership.Ownership_Error;
@@ -136,7 +139,10 @@ is
         Item.Content.Locals_Length - Item.Content.Dynamic_Locals_Length;
    begin
       pragma Assert (Is_Valid (Item));
-      State := (others => <>);
+      State :=
+        (Node_Room => State.Node_Room, Slot_Room => State.Slot_Room, Text_Room => State.Text_Room,
+         String_Room => State.String_Room, Element_Room => State.Element_Room, List_Room => State.List_Room,
+         others => <>);
       CCL.Execution_Budgets.Initialize (State.Execution_Budget, Fuel);
       CCL.Ownership.Initialize (State.Ownership);
       CCL.Imports.Initialize (State.Import_Lifecycle);
@@ -215,7 +221,7 @@ is
                  D.Parts (Item.Element.Alternative).Payload = CCL.Types.Unit_Type;
                if Good then Result.Alternative := Item.Element.Alternative; end if;
             else
-               Good := Item.Element.Node <= Arena.Nodes_Used and then
+               Good := Holds (Arena, Item.Element.Node) and then
                  Arena.Nodes (Item.Element.Node).Data_Type = Ref;
                if Good then
                   Result.Node := Item.Element.Node;
@@ -277,7 +283,9 @@ is
          Result := (Kind => Object_Value, Data_Type => Data_Type,
                     Alternative => (if Alternative in CCL.Types.Component_Index then Alternative else 1),
                     others => <>);
-      elsif Arena.Nodes_Used = Node_Count'Last or else Slot_Count'Last - Arena.Slots_Used < Slots_For (Count) then
+      elsif Arena.Nodes_Used >= Arena.Node_Room or else Arena.Slots_Used > Arena.Slot_Room or else
+        Arena.Slot_Room - Arena.Slots_Used < Slots_For (Count)
+      then
          Good := False;
       else
          for P in 1 .. Count loop
@@ -301,10 +309,10 @@ is
       D : constant CCL.Types.Description := CCL.Types.Describe (Types, Owner.Data_Type);
    begin
       Result := (others => <>);
-      Good := Owner.Kind = Object_Value and then Owner.Node in 1 .. Arena.Nodes_Used and then
+      Good := Owner.Kind = Object_Value and then Holds (Arena, Owner.Node) and then
         Arena.Nodes (Owner.Node).Data_Type = Owner.Data_Type and then
         P <= Arena.Nodes (Owner.Node).Count and then
-        Arena.Nodes (Owner.Node).First <= Slot_Count'Last - Slots_For (P - 1) and then
+        Arena.Nodes (Owner.Node).First <= Arena.Slot_Room - Slots_For (P - 1) and then
         (D.Form = CCL.Types.Product or else Arena.Nodes (Owner.Node).Alternative in CCL.Types.Component_Index);
       if Good then
          declare
@@ -316,6 +324,55 @@ is
          end;
       end if;
    end Component;
+
+   procedure Copy_Arena (From : Value_Arena; Into : in out Value_Arena) is
+   begin
+      --  Element by element, in place: an arena may be large.
+      for N in Into.Nodes'Range loop
+         Into.Nodes (N) := (others => <>);
+      end loop;
+      for S in Into.Slots'Range loop
+         Into.Slots (S) := (others => <>);
+      end loop;
+      if From.Nodes_Used > 0 and then From.Nodes_Used <= From.Node_Room then
+         Into.Nodes (1 .. From.Nodes_Used) := From.Nodes (1 .. From.Nodes_Used);
+      end if;
+      if From.Slots_Used > 0 and then From.Slots_Used <= From.Slot_Room then
+         Into.Slots (1 .. From.Slots_Used) := From.Slots (1 .. From.Slots_Used);
+      end if;
+      Into.Nodes_Used := Node_Count'Min (From.Nodes_Used, From.Node_Room);
+      Into.Slots_Used := Slot_Count'Min (From.Slots_Used, From.Slot_Room);
+   end Copy_Arena;
+
+   procedure Copy_State (From : Sized_Machine_State; Into : in out Sized_Machine_State) is
+   begin
+      Into.Stack := From.Stack;
+      Into.PC := From.PC;
+      Into.Execution_Budget := From.Execution_Budget;
+      Into.Waiting := From.Waiting;
+      Into.Waiting_Import := From.Waiting_Import;
+      Into.Waiting_Result_Kind := From.Waiting_Result_Kind;
+      Into.Waiting_Argument := From.Waiting_Argument;
+      Into.Waiting_Receiver := From.Waiting_Receiver;
+      Into.Waiting_Owned := From.Waiting_Owned;
+      Into.Import_Lifecycle := From.Import_Lifecycle;
+      Into.Terminal := From.Terminal;
+      Into.Terminal_Status := From.Terminal_Status;
+      Into.Has_Value := From.Has_Value;
+      Into.Result_Value := From.Result_Value;
+      Into.Ownership := From.Ownership;
+      Into.Locals := From.Locals;
+      Into.Frames := From.Frames;
+      Into.Frame_Count := From.Frame_Count;
+      Text_Regions.Copy (From.Text, Into.Text);
+      List_Regions.Copy (From.Lists, Into.Lists);
+      Copy_Arena (From.Arena, Into.Arena);
+      Into.Iterations := From.Iterations;
+      Into.Iteration_Depth := From.Iteration_Depth;
+      Into.Waiting_Stream := From.Waiting_Stream;
+      Into.Stream_Request := From.Stream_Request;
+      Into.Stream_Result_Type := From.Stream_Result_Type;
+   end Copy_State;
 
    --  A list element and the value it stands for.
    function To_Element (Item : Value) return List_Element is (To_Slot (Item).Element);
@@ -329,15 +386,15 @@ is
 
    procedure Run
      (Item   : Validated_Program;
-      State  : in out Machine_State;
+      State  : in out Sized_Machine_State;
       Instructions : Natural;
       Result : out Execution_Result)
      with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
-       Post => Is_Well_Formed (Item, State) and then
-         Fuel_Limit (State) = Fuel_Limit (State'Old) and then Result.Steps <= Fuel_Limit (State);
+       Post => Fuel_Limit (State) = Fuel_Limit (State)'Old and then
+         Is_Well_Formed (Item, State) and then Result.Steps <= Fuel_Limit (State);
    procedure Run
      (Item   : Validated_Program;
-      State  : in out Machine_State;
+      State  : in out Sized_Machine_State;
       Instructions : Natural;
       Result : out Execution_Result)
    is
@@ -378,7 +435,7 @@ is
             CCL.Imports.Phase (State.Import_Lifecycle) not in
               CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
          pragma Loop_Invariant
-           (Fuel_Limit (State) = Fuel_Limit (State'Loop_Entry));
+           (Fuel_Limit (State) = Fuel_Limit (State)'Loop_Entry);
          exit when Regs.Done or else
            Slice_Remaining = 0 or else
            not CCL.Execution_Budgets.Has_Fuel (State.Execution_Budget);
@@ -670,7 +727,7 @@ is
    end Run;
 
    procedure Continue_Execution_For
-     (Item : Validated_Program; State : in out Machine_State;
+     (Item : Validated_Program; State : in out Sized_Machine_State;
       Instructions : Natural; Result : out Execution_Result) is
    begin
       Run (Item, State, Instructions, Result);
@@ -678,7 +735,7 @@ is
 
    procedure Continue_Execution
      (Item   : Validated_Program;
-      State  : in out Machine_State;
+      State  : in out Sized_Machine_State;
       Result : out Execution_Result)
    is
    begin
@@ -688,7 +745,7 @@ is
          Result);
    end Continue_Execution;
 
-   function Snapshot (State : Machine_State) return Machine_Snapshot is
+   function Snapshot (State : Sized_Machine_State) return Machine_Snapshot is
      ((Instruction => State.PC,
        Fuel_Remaining =>
          CCL.Execution_Budgets.Remaining (State.Execution_Budget),
@@ -699,7 +756,7 @@ is
 
    procedure Inspect
      (Item   : Validated_Program;
-      State  : Machine_State;
+      State  : Sized_Machine_State;
       Result : out Inspection_Snapshot)
    is
       Stack_Copy : Runtime_Stacks.Stack := State.Stack;
@@ -744,7 +801,7 @@ is
       end if;
    end Inspect;
 
-   procedure Stop (State : in out Machine_State) is
+   procedure Stop (State : in out Sized_Machine_State) is
    begin
       if not State.Terminal then
          State.Terminal := True;
@@ -753,7 +810,7 @@ is
    end Stop;
 
    procedure Complete_Stream_Call
-     (Item : Validated_Program; State : in out Machine_State;
+     (Item : Validated_Program; State : in out Sized_Machine_State;
       Response : Value; Failure : Execution_Status)
    is
       Stack_Result : Runtime_Stacks.Operation_Result;
@@ -788,7 +845,7 @@ is
 
    procedure Complete_Checked_Host_Call
      (Item     : Validated_Program;
-      State    : in out Machine_State;
+      State    : in out Sized_Machine_State;
       Host_Response : Value;
       Accepted : Boolean;
       Native_Response : Boolean;
@@ -859,7 +916,7 @@ is
    end Complete_Checked_Host_Call;
 
    procedure Complete_Host_Call
-     (Item : Validated_Program; State : in out Machine_State;
+     (Item : Validated_Program; State : in out Sized_Machine_State;
       Response : Value; Accepted : Boolean) is
    begin
       Complete_Checked_Host_Call (Item, State, Response, Accepted, False);
@@ -867,7 +924,7 @@ is
 
    procedure Acknowledge_Host_Submission
      (Item     : Validated_Program;
-      State    : in out Machine_State;
+      State    : in out Sized_Machine_State;
       Accepted : Boolean)
    is
       Import_Error : CCL.Imports.Import_Error;

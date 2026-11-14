@@ -57,23 +57,33 @@ package body CCL.VM.Results with SPARK_Mode => On is
    --  A node's components are older nodes, so Bound (the node being
    --  printed) decreases; a list's elements print at Level 0, which has no
    --  lists of its own.
-   type Print_Bound is range 0 .. MAX_VALUE_NODES + 1;
+   type Print_Bound is range 0 .. NODE_CEILING + 1;
    subtype Print_Level is Natural range 0 .. 1;
    --  Printing a node's components: they are older nodes, below it.
    function Below (Node : Node_Count) return Print_Bound is (Print_Bound (Node));
-   --  Too_Long: printing stopped because the literal outgrew
-   --  MAX_LITERAL_TEXT (not because a part has no literal).
+   --  Printing counts the literal's characters in Used and, when Output
+   --  is not empty (the second pass), writes them there. Too_Long:
+   --  printing stopped because the literal outgrew LITERAL_CEILING (not
+   --  because a part has no literal).
    procedure Print_Value
      (Arena : Value_Arena; Texts : Text_Regions.Stack; Lists : List_Regions.Stack;
       Types : CCL.Types.Registry; Item : Value; Bound : Print_Bound; Level : Print_Level;
-      Output : in out Literal_Text; Good, Too_Long : in out Boolean)
-     with Subprogram_Variant => (Decreases => Bound, Decreases => Level)
+      Output : in out String; Used : in out Literal_Length; Good, Too_Long : in out Boolean)
+     with Subprogram_Variant => (Decreases => Bound, Decreases => Level),
+          Pre => Output'First = 1
    is
       procedure Add (Text : String) is
       begin
-         if Good and then Text'Length <= MAX_LITERAL_TEXT - Length_Of (Output) then
-            Output.Data (Length_Of (Output) + 1 .. Length_Of (Output) + Text'Length) := Text;
-            Output.Length := Output.Length + Literal_Length (Text'Length);
+         if Good and then Text'Length <= LITERAL_CEILING - Natural (Used) then
+            if Output'Length > 0 then
+               if Text'Length <= Output'Length - Natural (Used) then
+                  Output (Natural (Used) + 1 .. Natural (Used) + Text'Length) := Text;
+               else
+                  Good := False;
+                  return;
+               end if;
+            end if;
+            Used := Used + Literal_Length (Text'Length);
          else
             Too_Long := Too_Long or else Good;
             Good := False;
@@ -130,7 +140,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
                   end if;
                   if I > 1 then Add (" "); end if;
                   if Good then
-                     Print_Value (Arena, Texts, Lists, Types, Part, Bound, 0, Output, Good, Too_Long);
+                     Print_Value (Arena, Texts, Lists, Types, Part, Bound, 0, Output, Used, Good, Too_Long);
                   end if;
                end loop;
                Add ("]");
@@ -143,7 +153,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
                   Component (Arena, Types, Item, P, Part, Good);
                   exit when not Good;
                   Add (" ");
-                  Print_Value (Arena, Texts, Lists, Types, Part, Below (Item.Node), 1, Output, Good, Too_Long);
+                  Print_Value (Arena, Texts, Lists, Types, Part, Below (Item.Node), 1, Output, Used, Good, Too_Long);
                end loop;
                Add (")");
             elsif D.Form = CCL.Types.Sum and then Item.Alternative <= D.Count then
@@ -155,7 +165,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
                   if Item.Node /= 0 then
                      Component (Arena, Types, Item, 1, Part, Good);
                      if Good then
-                        Print_Value (Arena, Texts, Lists, Types, Part, Below (Item.Node), 1, Output, Good, Too_Long);
+                        Print_Value (Arena, Texts, Lists, Types, Part, Below (Item.Node), 1, Output, Used, Good, Too_Long);
                      end if;
                   else
                      --  A scalar payload carried inline: no node to decrease.
@@ -212,7 +222,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
    end Result_Text_Of;
 
    procedure Report
-     (Item : Validated_Program; State : Machine_State; Status : Execution_Status;
+     (Item : Validated_Program; State : Sized_Machine_State; Status : Execution_Status;
       Waiting, Waiting_Owned : Boolean; Result : out Execution_Result) is
    begin
       Result :=
@@ -252,18 +262,21 @@ package body CCL.VM.Results with SPARK_Mode => On is
          declare
             Printed : Boolean := True;
             Too_Long : Boolean := False;
+            Counting : String (1 .. 0);
+            Length : Literal_Length := 0;
          begin
+            --  The first pass counts; Print_Literal writes.
             Print_Value (State.Arena, State.Text, State.Lists, Item.Content.Data_Types, State.Result_Value,
-                         Print_Bound'Last, 1, Result.Literal, Printed, Too_Long);
+                         Print_Bound'Last, 1, Counting, Length, Printed, Too_Long);
             --  The literal is for display; a value without one (a Character
             --  field, or longer than a result carries) still completes, and a
             --  host takes it through Native_Objects.Export_Result.
             if Printed then
                Result.Has_Literal := True;
+               Result.Literal_Length := Length;
                Result.Literal_Shape := CCL.Types.Shapes.Shape_Of
                  (Item.Content.Data_Types, State.Result_Value.Data_Type);
             else
-               Result.Literal := (others => <>);
                --  Say why, and how long a list is, so a host can tell the
                --  reader (and take it in parts).
                Result.Literal_Too_Long := Too_Long;
@@ -276,4 +289,19 @@ package body CCL.VM.Results with SPARK_Mode => On is
          Export_List (State.Lists, State.Text, State.Arena, Item.Content.Data_Types, State.Result_Value, Result);
       end if;
    end Report;
+
+   procedure Print_Literal
+     (Item : Validated_Program; State : Sized_Machine_State; Output : out String; Printed : out Boolean)
+   is
+      Too_Long : Boolean := False;
+      Length : Literal_Length := 0;
+   begin
+      Output := [others => ' '];
+      Printed := State.Has_Value and then Output'Length > 0;
+      if Printed then
+         Print_Value (State.Arena, State.Text, State.Lists, Item.Content.Data_Types, State.Result_Value,
+                      Print_Bound'Last, 1, Output, Length, Printed, Too_Long);
+         Printed := Printed and then Natural (Length) = Output'Length;
+      end if;
+   end Print_Literal;
 end CCL.VM.Results;

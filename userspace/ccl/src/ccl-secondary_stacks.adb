@@ -3,14 +3,40 @@ package body CCL.Secondary_Stacks with
 is
    procedure Initialize (Item : out Stack) is
    begin
-      Item := (others => <>);
+      --  Element by element, in place: a region may be large.
+      for Position in Item.Data'Range loop
+         Item.Data (Position) := Character'Val (0);
+      end loop;
+      for Slot in Item.Allocations'Range loop
+         Item.Allocations (Slot) := (others => <>);
+      end loop;
+      Item.Used := 0;
+      Item.Count := 0;
+      Item.Next_Generation := 1;
    end Initialize;
+
+   procedure Copy (From : Stack; Into : in out Stack) is
+   begin
+      Initialize (Into);
+      if not Sound (From) then
+         return;
+      end if;
+      if From.Used > 0 then
+         Into.Data (0 .. From.Used - 1) := From.Data (0 .. From.Used - 1);
+      end if;
+      if From.Count > 0 then
+         Into.Allocations (0 .. From.Count - 1) := From.Allocations (0 .. From.Count - 1);
+      end if;
+      Into.Used := From.Used;
+      Into.Count := From.Count;
+      Into.Next_Generation := From.Next_Generation;
+   end Copy;
 
    function Mark (Item : Stack) return Stack_Mark is
      ((Bytes => Item.Used,
        Values => Item.Count,
        Boundary_Generation =>
-         (if Item.Count = 0 then 0
+         (if Item.Count = 0 or else not Sound (Item) then 0
           else Item.Allocations (Item.Count - 1).Generation_Number)));
 
    procedure Allocate_String
@@ -26,11 +52,13 @@ is
       Offset      : Storage_Offset := 0;
    begin
       Value := (others => <>);
-      if Text_Length > Max_String_Length or else
-        Text_Length > Capacity or else Text_Length > Capacity - Item.Used
+      if not Sound (Item) then
+         Result := Invalid_Value;
+      elsif Text_Length > Max_String_Length or else
+        Text_Length > Item.Room or else Text_Length > Item.Room - Item.Used
       then
          Result := Storage_Full;
-      elsif Item.Count = Max_Values then
+      elsif Item.Count = Item.Value_Room then
          Result := Value_Table_Full;
       elsif Item.Next_Generation = Generation'Last then
          Result := Generation_Exhausted;
@@ -63,7 +91,7 @@ is
 
    function Boundary_Is_Valid
      (Item : Stack; Boundary : Stack_Mark) return Boolean is
-     (Boundary.Values <= Item.Count and then Boundary.Bytes <= Item.Used and then
+     (Sound (Item) and then Boundary.Values <= Item.Count and then Boundary.Bytes <= Item.Used and then
       (if Boundary.Values = 0 then
           Boundary.Bytes = 0 and then Boundary.Boundary_Generation = 0
        else
@@ -115,13 +143,13 @@ is
 
    procedure Clear (Item : in out Stack) is
    begin
-      if Item.Used > 0 then
-         for Position in 0 .. Item.Used - 1 loop
+      if Natural'Min (Item.Used, Item.Room) > 0 then
+         for Position in 0 .. Natural'Min (Item.Used, Item.Room) - 1 loop
             Item.Data (Position) := Character'Val (0);
          end loop;
       end if;
-      if Item.Count > 0 then
-         for Slot in 0 .. Item.Count - 1 loop
+      if Natural'Min (Item.Count, Item.Value_Room) > 0 then
+         for Slot in 0 .. Natural'Min (Item.Count, Item.Value_Room) - 1 loop
             Item.Allocations (Slot).Active := False;
          end loop;
       end if;

@@ -18,7 +18,7 @@ procedure Secondary_Stacks_Test is
       end if;
    end Check;
 
-   Region   : Stack;
+   Region   : Stack (32, 4);
    Boundary : Stack_Mark;
    Original : String_Value;
    Empty    : String_Value;
@@ -89,7 +89,7 @@ begin
       package Small_Values is new CCL.Secondary_Stacks
         (Capacity => 32, Max_Values => 4, Max_String_Length => 4);
       use Small_Values;
-      Storage : Small_Values.Stack;
+      Storage : Small_Values.Stack (32, 4);
       Value : Small_Values.String_Value;
       Status : Small_Values.Operation_Result;
    begin

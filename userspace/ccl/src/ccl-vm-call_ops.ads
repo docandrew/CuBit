@@ -9,11 +9,11 @@ with CCL.VM.Machine;
 private package CCL.VM.Call_Ops with SPARK_Mode => On is
    use CCL.VM.Machine;
 
-   procedure Run_Call (Item : Validated_Program; State : in out Machine_State; Regs : in out Registers)
+   procedure Run_Call (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs) and then
                  Item.Content.Code (Regs.PC).Op in Make_Closure | Call_Value | List_Apply,
-          Post => Same_Frame (State'Old, State);
+          Post => Frame_Of (State) = Frame_Of (State)'Old;
    --  Inlined into the dispatch loop (as the nested steps were): one
    --  call per instruction would cost the hot path.
    pragma Inline_Always (Run_Call);

@@ -1,15 +1,19 @@
+with Ada.Finalization;
 with Interfaces; use Interfaces;
 with CCL.Objects;
+with CCL.Objects.Holders;
 with CCL.Interfaces.Logs;
 
 --  Which of a service's records one List<LogItem> result shows
 --  (logs.recent, logs.between): a host replays each instance of the name,
 --  newest instance first, through to its tally, and this keeps the records
 --  in the window (CCL.Interfaces.Logs.Log_Window) and the gaps that touch
---  it. When the window holds more than one result carries, the first
---  records (an instance's boot, a Head_Share of the room) and then the
---  newest are shown; what lies between is counted in a typed Not_Shown gap
---  where it was, so the caller narrows the window. Records outside the
+--  it. A result holds every record in the window, as large as they are;
+--  only past its ceiling (Logs.RESULT_ITEM_CEILING) the first records (an
+--  instance's boot, a Head_Share of the room) and then the newest are
+--  shown, and what lies between is counted in a typed Not_Shown gap where
+--  it was, so the caller narrows the window. Items are kept on the heap,
+--  grown as the replay gives them. Records outside the
 --  window are not counted: they are simply not asked for. Platform-neutral
 --  (no logstore here), so the Linux-hosted tests run the same selection as
 --  CuBit's ccl_log_io.
@@ -50,9 +54,10 @@ package CCL_Log_Selection is
    --  The instance's replay is over.
    procedure End_Instance (Item : in out Selection);
 
-   --  The result: oldest first across instances, fitting one image of
-   --  Contract and one result's literal (CCL.Language.MAX_LITERAL_BYTES).
-   procedure Build (Item : in out Selection; Contract : CCL.Objects.Binding; Image : out CCL.Objects.Image);
+   --  The result: oldest first across instances, a value of Contract as
+   --  large as the items.
+   procedure Build
+     (Item : in out Selection; Contract : CCL.Objects.Binding; Result : out CCL.Objects.Holders.Holder);
 
 private
    --  Of a result's room, the part for the first records (an instance's
@@ -77,10 +82,10 @@ private
       --  follows.
       Head : Boolean := False;
    end record;
-   subtype Item_Count is Natural range 0 .. Logs.MAX_ITEMS;
-   subtype Item_Index is Positive range 1 .. Logs.MAX_ITEMS;
-   type Pending_Items is array (Item_Index) of Pending;
-   type Item_Order is array (Item_Index) of Item_Index;
+   subtype Item_Count is Logs.Item_Count;
+   subtype Item_Index is Positive range 1 .. Logs.RESULT_ITEM_CEILING;
+   type Pending_Items is array (Item_Index range <>) of Pending;
+   type Pending_Access is access Pending_Items;
 
    --  What a shown instance's items leave out, before the first shown:
    --  records in the window (Not_Shown), and the counts of the gaps among
@@ -92,11 +97,11 @@ private
    end record;
    type Accounts is array (Shown_Instance) of Account;
 
-   type Selection is limited record
+   type Selection is new Ada.Finalization.Limited_Controlled with record
       Within : Logs.Log_Window := Logs.WHOLE_HISTORY;
-      Items : Pending_Items;
+      --  Items (1 .. Used) are the result's; storage grows by doubling.
+      Items : Pending_Access;
       Used : Item_Count := 0;
-      Order : Item_Order := [others => 1];
       Instances : Natural := 0;
       Shown : Shown_Count := 0;
       Kept : Accounts;
@@ -115,5 +120,6 @@ private
       Last : Logs.Boot_Milliseconds := 0;
    end record;
 
+   overriding procedure Finalize (Item : in out Selection);
    function Last_Time (Item : Selection) return Logs.Boot_Milliseconds is (Item.Last);
 end CCL_Log_Selection;

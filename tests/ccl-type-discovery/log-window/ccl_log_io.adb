@@ -20,7 +20,7 @@ package body CCL_Log_IO is
 
    procedure Between
      (Service : String; Within : Logs.Log_Window; Contract : CCL.Objects.Binding;
-      Image : out CCL.Objects.Image; Success : out Boolean;
+      Image : out CCL.Objects.Holders.Holder; Success : out Boolean;
       Why : out CuBit.Failures.Failure)
    is
       Chosen : Selections.Selection;
@@ -57,7 +57,7 @@ package body CCL_Log_IO is
 
    procedure Recent
      (Service : String; Contract : CCL.Objects.Binding;
-      Image : out CCL.Objects.Image; Success : out Boolean;
+      Image : out CCL.Objects.Holders.Holder; Success : out Boolean;
       Why : out CuBit.Failures.Failure) is
    begin
       Between (Service, Logs.WHOLE_HISTORY, Contract, Image, Success, Why);

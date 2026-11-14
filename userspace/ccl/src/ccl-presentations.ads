@@ -18,8 +18,8 @@ with CCL.Types.Shapes;
 --    whose words link to their own entries (docs/lexicon.md).
 package CCL.Presentations is
    type Form is (Failure, Text, Table, Picture, Gallery, Article);
-   --  A gallery shows at most the rows a table does.
-   Maximum_Gallery : constant := CCL.Literal_Tables.Maximum_Rows;
+   --  The pictures a gallery shows; Cells' Total counts them all.
+   Maximum_Gallery : constant := 64;
    subtype Gallery_Count is Natural range 0 .. Maximum_Gallery;
    type Picture_Entry is record
       Image : CCL.Image_Store.Image_Id := CCL.Image_Store.No_Image;

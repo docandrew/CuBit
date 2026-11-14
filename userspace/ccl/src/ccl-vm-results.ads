@@ -6,10 +6,17 @@ private package CCL.VM.Results with SPARK_Mode => On is
    --  The Execution_Result of a slice that ended with Status; Waiting and
    --  Waiting_Owned are the slice's own import wait.
    procedure Report
-     (Item : Validated_Program; State : Machine_State; Status : Execution_Status;
+     (Item : Validated_Program; State : Sized_Machine_State; Status : Execution_Status;
       Waiting, Waiting_Owned : Boolean; Result : out Execution_Result)
      with Global => null,
           Pre => Is_Valid (Item) and then
                  (not Waiting or else State.Waiting_Import < Item.Content.Imports_Length),
           Post => Result.Steps = CCL.Execution_Budgets.Steps (State.Execution_Budget);
+
+   --  The result's literal, Report's Literal_Length long, into Output of
+   --  that length; Printed False when it is not (the value changed).
+   procedure Print_Literal
+     (Item : Validated_Program; State : Sized_Machine_State; Output : out String; Printed : out Boolean)
+     with Global => null,
+          Pre => Is_Valid (Item) and then Output'First = 1;
 end CCL.VM.Results;

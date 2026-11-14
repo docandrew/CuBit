@@ -1,3 +1,4 @@
+with CCL.Held_Texts;
 with CCL.Evaluation;
 with CCL.Diagnostics;
 with CCL.Types;
@@ -309,7 +310,7 @@ package body CCL.Sessions with SPARK_Mode is
               CCL.Streams.Handle'Image (Outcome.Stream) & ")");
       elsif Outcome.Has_Literal then
          --  Already the canonical literal the reader accepts.
-         Add (Outcome.Literal.Data (1 .. Outcome.Literal.Length));
+         Add (CCL.Held_Texts.Image (Outcome.Literal));
       elsif Outcome.Has_Text then
          Add_Quoted (Outcome.Result_Text.Data (1 .. Outcome.Result_Text.Length));
       elsif Outcome.Has_Function or else Outcome.Has_Character then
@@ -1169,7 +1170,7 @@ package body CCL.Sessions with SPARK_Mode is
       elsif Outcome.Has_Stream and then Outcome.Is_Task then
          --  Its state when the entry ran (or last re-ran, as a live card).
          return (if Outcome.Task_Done
-                 then "Done " & Outcome.Task_Value.Data (1 .. Outcome.Task_Value.Length)
+                 then "Done " & CCL.Held_Texts.Image (Outcome.Task_Value)
                  else "Running");
       elsif Outcome.Has_Stream then
          --  A description, never a literal: # starts a comment, so it
@@ -1190,7 +1191,7 @@ package body CCL.Sessions with SPARK_Mode is
       elsif Outcome.Has_Function then
          return CCL.Types.Image (Outcome.Function_Name);
       elsif Outcome.Has_Literal then
-         return Outcome.Literal.Data (1 .. Outcome.Literal.Length);
+         return CCL.Held_Texts.Image (Outcome.Literal);
       end if;
       case Result_Type (Outcome) is
          when CCL.Language.Integer_Type => return Trimmed_Image (Outcome.Result_Value.Integer);

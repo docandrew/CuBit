@@ -1,3 +1,4 @@
+with CCL.Objects.Holders;
 with GNAT.Source_Info;
 with CCL.Evaluation;
 with Ada.Text_IO;
@@ -49,13 +50,21 @@ procedure Host_Object_Tests is
       State.Calls := State.Calls + 1;
       if Binding = 1 then
          Check (CCL.Host_Values.Matches (Argument, Contract));
-         State.Stored := Argument.Object;
+         State.Stored := CCL.Objects.Holders.Page (Argument.Object);
       else Check (Binding = 2); end if;
-      Reply := (Value => CCL.Host_Values.Object_Constant (State.Stored), Success => True, Why => <>);
+      declare
+         Sent : CCL.Objects.Image := State.Stored;
+      begin
+         case State.Mode is
+            when Wrong_Key => Sent.Schema := Other_Key;
+            --  A held value has no padding: a damaged cell instead.
+            when Bad_Padding => Sent.Cells (1) := (First => Unsigned_64'Last, Second => 7);
+            when others => null;
+         end case;
+         Reply := (Value => CCL.Host_Values.Object_Constant (Sent), Success => True, Why => <>);
+      end;
       case State.Mode is
-         when None => null;
-         when Wrong_Key => Reply.Value.Object.Schema := Other_Key;
-         when Bad_Padding => Reply.Value.Object.Padding (1) := 1;
+         when None | Wrong_Key | Bad_Padding => null;
          when Wrong_Kind => Reply.Value := CCL.Host_Values.Integer_Constant (42);
          when Failed => Reply.Success := False;
       end case;

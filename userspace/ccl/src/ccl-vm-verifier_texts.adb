@@ -122,8 +122,8 @@ package body CCL.VM.Verifier_Texts with SPARK_Mode => On is
       elsif not Supported_List (Types, Ins.Data_Type) or else
         Ins.Alternative /= 0 or else
         (case Ins.Op is
-            when New_List => Ins.Immediate not in 0 .. MAX_LIST_ELEMENTS,
-            when Fill_List => Ins.Immediate not in 1 .. MAX_LIST_ELEMENTS,
+            when New_List => Ins.Immediate not in 0 .. DEFAULT_LIST_ELEMENTS,
+            when Fill_List => Ins.Immediate not in 1 .. DEFAULT_LIST_ELEMENTS,
             when others => Ins.Immediate /= 0)
       then Error := Invalid_Data_Type;
       else

@@ -179,7 +179,7 @@ package body CCL_Log_IO is
    --  chosen by CCL_Log_Selection.
    procedure Select_Records
      (Service : String; Within : Logs.Log_Window; Contract : CCL.Objects.Binding;
-      Image : out CCL.Objects.Image; Success : out Boolean;
+      Image : out CCL.Objects.Holders.Holder; Success : out Boolean;
       Why : out CuBit.Failures.Failure)
      with Pre => Logs.Valid (Within)
    is
@@ -192,9 +192,9 @@ package body CCL_Log_IO is
       --  process that carried the name during this boot, live or exited,
       --  as logstore's launchers recorded them, then a running process the
       --  name resolves to now.
-      Instances : CuBit.Logging.Source_Entries (1 .. Logs.MAX_ENTRIES);
-      Sources : array (1 .. Logs.MAX_ENTRIES) of Unsigned_64 := [others => 0];
-      Source_Count : Natural range 0 .. Logs.MAX_ENTRIES := 0;
+      Instances : CuBit.Logging.Source_Entries (1 .. Logs.MAX_NAMED_SOURCES);
+      Sources : array (1 .. Logs.MAX_NAMED_SOURCES) of Unsigned_64 := [others => 0];
+      Source_Count : Natural range 0 .. Logs.MAX_NAMED_SOURCES := 0;
       Found : Natural;
       Process : CuBit.Messages.Process_ID;
       Is_Number : Boolean;
@@ -205,7 +205,7 @@ package body CCL_Log_IO is
 
       procedure Add_Source (Source : Unsigned_64) is
       begin
-         if Source /= 0 and then Source_Count < Logs.MAX_ENTRIES
+         if Source /= 0 and then Source_Count < Logs.MAX_NAMED_SOURCES
            and then (for all K in 1 .. Source_Count => Sources (K) /= Source)
          then
             Source_Count := Source_Count + 1;
@@ -298,7 +298,7 @@ package body CCL_Log_IO is
 
    procedure Recent
      (Service : String; Contract : CCL.Objects.Binding;
-      Image : out CCL.Objects.Image; Success : out Boolean;
+      Image : out CCL.Objects.Holders.Holder; Success : out Boolean;
       Why : out CuBit.Failures.Failure) is
    begin
       Select_Records (Service, Logs.WHOLE_HISTORY, Contract, Image, Success, Why);
@@ -306,7 +306,7 @@ package body CCL_Log_IO is
 
    procedure Between
      (Service : String; Within : Logs.Log_Window; Contract : CCL.Objects.Binding;
-      Image : out CCL.Objects.Image; Success : out Boolean;
+      Image : out CCL.Objects.Holders.Holder; Success : out Boolean;
       Why : out CuBit.Failures.Failure) is
    begin
       Select_Records (Service, Within, Contract, Image, Success, Why);

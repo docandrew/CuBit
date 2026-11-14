@@ -1,3 +1,4 @@
+with CCL.Held_Texts;
 package body CCL.Presentations is
    use type CCL.Language.Interpretation_Status;
 
@@ -14,12 +15,12 @@ package body CCL.Presentations is
      (Outcome : CCL.Language.Interpretation_Result; Item : Presentation;
       Row : CCL.Literal_Tables.Row_Index; Column : CCL.Types.Component_Index) return String
    is
-      Span : constant CCL.Literal_Tables.Span := Item.Cells.Cells (Row, Column);
+      Span : constant CCL.Literal_Tables.Span := CCL.Literal_Tables.Cell (Item.Cells, Row, Column);
    begin
-      if Span.Last < Span.First or else Span.Last > Outcome.Literal.Length then
+      if Span.Last < Span.First or else Span.Last > CCL.Held_Texts.Length (Outcome.Literal) then
          return "";
       end if;
-      return Outcome.Literal.Data (Span.First .. Span.Last);
+      return CCL.Held_Texts.Slice (Outcome.Literal, Span.First, Span.Last);
    end Cell_Text;
 
    --  A canonical Integer literal's value (0 if it is not one). No 'Value:
@@ -50,8 +51,8 @@ package body CCL.Presentations is
         (Value, CCL.Image_Store.Maximum_Side))));
 
    function Span_Text (Outcome : CCL.Language.Interpretation_Result; Span : Literal_Span) return String is
-     (if Span.Last < Span.First or else Span.Last > Outcome.Literal.Length then ""
-      else Outcome.Literal.Data (Span.First .. Span.Last));
+     (if Span.Last < Span.First or else Span.Last > CCL.Held_Texts.Length (Outcome.Literal) then ""
+      else CCL.Held_Texts.Slice (Outcome.Literal, Span.First, Span.Last));
 
    --  A lexicon entry's literal (CCL.Interfaces.Lexicon) as an article. The
    --  literal is the canonical one the VM wrote; anything else (a type of
@@ -59,14 +60,14 @@ package body CCL.Presentations is
    procedure Describe_Article
      (Outcome : CCL.Language.Interpretation_Result; Page : out Article_View; Found : out Boolean)
    is
-      Length : constant Natural := Outcome.Literal.Length;
+      Length : constant Natural := CCL.Held_Texts.Length (Outcome.Literal);
       P : Positive := 1;
       Ok : Boolean := True;
       Last_Part : Part_Name := Noun;
       Any_Part : Boolean := False;
 
       function At_End return Boolean is (P > Length);
-      function Peek return Character is (if At_End then ASCII.NUL else Outcome.Literal.Data (P));
+      function Peek return Character is (if At_End then ASCII.NUL else CCL.Held_Texts.Element (Outcome.Literal, P));
       procedure Skip_Space is
       begin
          while not At_End and then Peek = ' ' loop P := P + 1; end loop;
@@ -320,19 +321,19 @@ package body CCL.Presentations is
       end if;
       Result.Shape := Outcome.Literal_Shape;
       CCL.Literal_Tables.Split
-        (Outcome.Literal.Data (1 .. Outcome.Literal.Length), Result.Shape, Result.Cells);
-      if not Result.Cells.Complete then
+        (CCL.Held_Texts.Image (Outcome.Literal), Result.Shape, Result.Cells);
+      if not CCL.Literal_Tables.Complete (Result.Cells) then
          return;
       end if;
       Result.Kind := Table;
       if Image_Rows (Result.Shape) then
-         for Row in 1 .. Result.Cells.Rows loop
+         for Row in 1 .. Natural'Min (CCL.Literal_Tables.Rows (Result.Cells), Maximum_Gallery) loop
             Result.Pictures (Row) :=
               (Image => CCL.Image_Store.Image_Id (Number (Cell_Text (Outcome, Result, Row, 3))),
                Width => Side (Number (Cell_Text (Outcome, Result, Row, 1))),
                Height => Side (Number (Cell_Text (Outcome, Result, Row, 2))));
          end loop;
-         Result.Picture_Count := Result.Cells.Rows;
+         Result.Picture_Count := Natural'Min (CCL.Literal_Tables.Rows (Result.Cells), Maximum_Gallery);
          if Result.Shape.Many then
             Result.Kind := Gallery;
          elsif Result.Picture_Count = 1 then

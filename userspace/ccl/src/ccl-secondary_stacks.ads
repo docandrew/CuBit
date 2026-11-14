@@ -9,6 +9,10 @@ is
    --  their actual bounds; the region owns their bytes.  This mirrors Ada's
    --  constrained-by-initial-value semantics without exposing native pointers
    --  or depending on the GNAT secondary stack.
+   --  A region holds Room bytes in Value_Room values, its discriminants;
+   --  Capacity and Max_Values are the ceilings of any region (CAPACITY).
+   --  Copy moves a region's values into a larger one: every descriptor
+   --  stays valid there, so a machine grows by copying its regions.
 
    subtype Storage_Count is Natural range 0 .. Capacity;
    --  Region capacity and per-value capacity are separate budgets.
@@ -21,7 +25,9 @@ is
    subtype String_Index is
      Positive range 1 .. Positive'Last - Capacity + 1;
 
-   type Stack is private;
+   subtype Byte_Room is Positive range 1 .. Capacity;
+   subtype Value_Room_Count is Positive range 1 .. Max_Values;
+   type Stack (Room : Byte_Room; Value_Room : Value_Room_Count) is private;
    type Stack_Mark is private;
    type String_Value is private;
 
@@ -94,9 +100,17 @@ is
    function Used_Bytes (Item : Stack) return Storage_Count;
    function Live_Values (Item : Stack) return Value_Count;
 
+   --  Into holds From's values, with the same descriptors.
+   procedure Copy (From : Stack; Into : in out Stack)
+   with
+      Pre => Into.Room >= Used_Bytes (From) and then Into.Value_Room >= Live_Values (From),
+      Post => Used_Bytes (Into) = Used_Bytes (From) and then Live_Values (Into) = Live_Values (From);
+
 private
-   subtype Storage_Offset is Natural range 0 .. Capacity - 1;
-   subtype Value_Slot is Natural range 0 .. Max_Values - 1;
+   --  Storage and allocation tables run 0 .. Room (a discriminant alone
+   --  bounds them): the last position is never used.
+   subtype Storage_Offset is Natural range 0 .. Capacity;
+   subtype Value_Slot is Natural range 0 .. Max_Values;
    subtype Generation is Natural range 0 .. Natural'Last;
 
    type String_Value is record
@@ -120,12 +134,14 @@ private
       Active      : Boolean := False;
    end record;
 
-   type Allocation_Table is array (Value_Slot) of Allocation;
-   type Storage_Array is array (Storage_Offset) of Character;
+   type Allocation_Table is array (Value_Slot range <>) of Allocation;
+   type Storage_Array is array (Storage_Offset range <>) of Character;
 
-   type Stack is record
-      Data            : Storage_Array := [others => Character'Val (0)];
-      Allocations     : Allocation_Table := [others => (others => <>)];
+   --  Used <= Room and Count <= Value_Room: every operation keeps it, and
+   --  Sound checks it where an index depends on it.
+   type Stack (Room : Byte_Room; Value_Room : Value_Room_Count) is record
+      Data            : Storage_Array (0 .. Room) := [others => Character'Val (0)];
+      Allocations     : Allocation_Table (0 .. Value_Room) := [others => (others => <>)];
       Used            : Storage_Count := 0;
       Count           : Value_Count := 0;
       Next_Generation : Generation := 1;
@@ -144,9 +160,12 @@ private
    function Length (Value : String_Value) return String_Length is
      (Value.Count);
 
+   function Sound (Item : Stack) return Boolean is
+     (Item.Used <= Item.Room and then Item.Count <= Item.Value_Room);
+
    function Is_Valid
      (Item : Stack; Value : String_Value) return Boolean is
-     (Natural (Value.Slot) < Item.Count and then
+     (Sound (Item) and then Natural (Value.Slot) < Item.Count and then
       Item.Allocations (Value.Slot).Active and then
       Item.Allocations (Value.Slot).Generation_Number =
         Value.Generation_Number and then

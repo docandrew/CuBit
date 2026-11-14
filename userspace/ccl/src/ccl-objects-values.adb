@@ -1,3 +1,4 @@
+with CCL.Objects.Holders;
 with CCL.Types.Correspondence;
 
 package body CCL.Objects.Values with SPARK_Mode is
@@ -22,8 +23,8 @@ package body CCL.Objects.Values with SPARK_Mode is
             Append_Text (Object, Value.Content.Data (1 .. Value.Content.Length), Result);
          when CCL.Host_Values.Handler_Value | CCL.Host_Values.Resource_Value => return;
          when CCL.Host_Values.Object_Value =>
-            if not Validate (Value.Object, Contract) then return; end if;
-            Object := Value.Object;
+            if not Holders.Validate (Value.Object, Contract) then return; end if;
+            Object := Holders.Page (Value.Object);
             Accepted := True;
             return;
       end case;

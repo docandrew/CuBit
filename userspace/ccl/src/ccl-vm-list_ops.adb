@@ -327,7 +327,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                Next : Integer_64;
                Overflowed : Boolean;
             begin
-               L.Range_Length (A.Integer, B.Integer, MAX_LIST_ELEMENTS, Size, Fits);
+               L.Range_Length (A.Integer, B.Integer, Natural (Lists.Room), Size, Fits);
                if not Fits then
                   Fail (List_Storage_Exhausted);
                else
@@ -354,8 +354,8 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                Separator_Length : constant Natural range 0 .. Text_Ops.MAX_PATTERN_BYTES :=
                  Natural'Min (Text_Regions.Length (A.Text), Text_Ops.MAX_PATTERN_BYTES);
                Copied : Text_Regions.Operation_Result;
-               Capacity : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
-               Count : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+               Capacity : Natural range 0 .. LIST_ELEMENT_CEILING := 0;
+               Count : Natural range 0 .. LIST_ELEMENT_CEILING := 0;
                Position : Positive := 1;
                Finished : Boolean := False;
                Low : Positive;
@@ -375,7 +375,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                   if Copied /= Text_Regions.Operation_Ok then
                      Fail (Operations.Text_Failure (Copied));
                   end if;
-                  Capacity := Natural'Min (Text_Length + 1, MAX_LIST_ELEMENTS);
+                  Capacity := Natural'Min (Text_Length + 1, Natural (Lists.Room));
                end if;
                if Good then
                   Reserve (Capacity);
@@ -416,7 +416,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
       end if;
    end Run_List_Builtin;
 
-   procedure Run_List (Item : Validated_Program; State : in out Machine_State; Regs : in out Registers) is
+   procedure Run_List (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Left_Value, Right_Value, Joined : Value;
       Stack_Result : Runtime_Stacks.Operation_Result := Runtime_Stacks.Stack_Ok;
@@ -425,7 +425,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
       case Ins.Op is
          when New_List =>
             Joined := (Kind => List_Value, Data_Type => Ins.Data_Type, others => <>);
-            if Ins.Immediate not in 0 .. MAX_LIST_ELEMENTS then
+            if Ins.Immediate not in 0 .. DEFAULT_LIST_ELEMENTS then
                Trap (Regs, State, Invalid_Bytecode);
             else
                List_Regions.Reserve (State.Lists, Natural (Ins.Immediate), Joined.Items, List_Status);
@@ -580,8 +580,9 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
                if not Good then
                   Trap (Regs, State, Invalid_Bytecode);
                elsif (D.Form = CCL.Types.Product or else Count > 0) and then
-                 (State.Arena.Nodes_Used = Node_Count'Last or else
-                  Slot_Count'Last - State.Arena.Slots_Used < Slot_Count (Count))
+                 (State.Arena.Nodes_Used >= State.Arena.Node_Room or else
+                  State.Arena.Slots_Used > State.Arena.Slot_Room or else
+                  State.Arena.Slot_Room - State.Arena.Slots_Used < Slot_Count (Count))
                then
                   Trap (Regs, State, Object_Storage_Exhausted);
                else

@@ -26,7 +26,13 @@ is
    subtype Array_Index is
      Positive range 1 .. Positive'Last - Capacity + 1;
 
-   type Stack is private;
+   --  A region holds Room elements in Value_Room arrays, its
+   --  discriminants; Capacity and Max_Values are the ceilings of any
+   --  region (CAPACITY). Copy moves a region's arrays into a larger one
+   --  with the same descriptors, so a machine grows by copying it.
+   subtype Element_Room is Positive range 1 .. Capacity;
+   subtype Value_Room_Count is Positive range 1 .. Max_Values;
+   type Stack (Room : Element_Room; Value_Room : Value_Room_Count) is private;
    type Stack_Mark is private;
    type Array_Value is private;
 
@@ -82,9 +88,9 @@ is
       Element : Element_Type;
       Result  : out Operation_Result)
    with
-      Post => Used_Bytes (Item) = Used_Bytes (Item'Old) and then
-              Live_Values (Item) = Live_Values (Item'Old) and then
-              (if Is_Valid (Item'Old, Value) then Is_Valid (Item, Value));
+      Post => Used_Bytes (Item) = Used_Bytes (Item)'Old and
+              Live_Values (Item) = Live_Values (Item)'Old and
+              (if Is_Valid (Item, Value)'Old then Is_Valid (Item, Value));
 
    --  Keeps the first Count elements.  The newest value shrinks in place;
    --  an older one (something was allocated after it) is copied into a new
@@ -139,9 +145,17 @@ is
    function Used_Bytes (Item : Stack) return Storage_Count;
    function Live_Values (Item : Stack) return Value_Count;
 
+   --  Into holds From's arrays, with the same descriptors.
+   procedure Copy (From : Stack; Into : in out Stack)
+   with
+      Pre => Into.Room >= Used_Bytes (From) and then Into.Value_Room >= Live_Values (From),
+      Post => Used_Bytes (Into) = Used_Bytes (From) and then Live_Values (Into) = Live_Values (From);
+
 private
-   subtype Storage_Offset is Natural range 0 .. Capacity - 1;
-   subtype Value_Slot is Natural range 0 .. Max_Values - 1;
+   --  Storage and allocation tables run 0 .. Room (a discriminant alone
+   --  bounds them): the last position is never used.
+   subtype Storage_Offset is Natural range 0 .. Capacity;
+   subtype Value_Slot is Natural range 0 .. Max_Values;
    subtype Generation is Natural range 0 .. Natural'Last;
 
    type Array_Value is record
@@ -165,12 +179,14 @@ private
       Active      : Boolean := False;
    end record;
 
-   type Allocation_Table is array (Value_Slot) of Allocation;
-   type Storage_Array is array (Storage_Offset) of Element_Type;
+   type Allocation_Table is array (Value_Slot range <>) of Allocation;
+   type Storage_Array is array (Storage_Offset range <>) of Element_Type;
 
-   type Stack is record
-      Data            : Storage_Array := [others => Null_Element];
-      Allocations     : Allocation_Table := [others => (others => <>)];
+   --  Used <= Room and Count <= Value_Room: every operation keeps it, and
+   --  Sound checks it where an index depends on it.
+   type Stack (Room : Element_Room; Value_Room : Value_Room_Count) is record
+      Data            : Storage_Array (0 .. Room) := [others => Null_Element];
+      Allocations     : Allocation_Table (0 .. Value_Room) := [others => (others => <>)];
       Used            : Storage_Count := 0;
       Count           : Value_Count := 0;
       Next_Generation : Generation := 1;
@@ -189,9 +205,12 @@ private
    function Length (Value : Array_Value) return Array_Length is
      (Value.Count);
 
+   function Sound (Item : Stack) return Boolean is
+     (Item.Used <= Item.Room and then Item.Count <= Item.Value_Room);
+
    function Is_Valid
      (Item : Stack; Value : Array_Value) return Boolean is
-     (Natural (Value.Slot) < Item.Count and then
+     (Sound (Item) and then Natural (Value.Slot) < Item.Count and then
       Item.Allocations (Value.Slot).Active and then
       Item.Allocations (Value.Slot).Generation_Number =
         Value.Generation_Number and then

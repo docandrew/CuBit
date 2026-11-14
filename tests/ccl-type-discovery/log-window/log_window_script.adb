@@ -23,13 +23,23 @@ package body Log_Window_Script is
    MANY : constant Instance_List :=
      [for J in 1 .. MANY_INSTANCES =>
         Instance (Unsigned_64 (40 - J + 1), "many", 2, Logs.Boot_Milliseconds (1_000 * (MANY_INSTANCES - J + 1)), 1)];
+   --  busy: one instance holding a whole retention plan's history (4096
+   --  records, the laptop's logs.retention per source). flood: more records
+   --  than one result shows (CCL.Interfaces.Logs.RESULT_ITEM_CEILING) by
+   --  FLOOD_OVER.
+   BUSY_RECORDS : constant := 4_096;
+   BUSY : constant Instance_List := [1 => Instance (21, "busy", BUSY_RECORDS, 10_000, 1)];
+   FLOOD : constant Instance_List :=
+     [1 => Instance (22, "flood", Logs.RESULT_ITEM_CEILING + FLOOD_OVER, 100_000, 1)];
    NONE : constant Instance_List (1 .. 0) := [others => <>];
 
    function Known (Service : String) return Boolean is
-     (Service = "acpi" or else Service = "wifi" or else Service = "many");
+     (Service = "acpi" or else Service = "wifi" or else Service = "many" or else Service = "busy" or else
+      Service = "flood");
 
    function Instances_Of (Service : String) return Instance_List is
-     (if Service = "acpi" then ACPI elsif Service = "wifi" then WIFI elsif Service = "many" then MANY else NONE);
+     (if Service = "acpi" then ACPI elsif Service = "wifi" then WIFI elsif Service = "many" then MANY
+      elsif Service = "busy" then BUSY elsif Service = "flood" then FLOOD else NONE);
 
    function Step_Of (Instance : Scripted_Instance; Index : Positive) return Scripted_Step is
       Image : constant String := Positive'Image (Index - 1);

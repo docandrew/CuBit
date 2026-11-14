@@ -112,7 +112,8 @@ procedure Main is
          when W.Build_Cancel => "build cancel", when W.Capture => "capture",
          when W.App_Replace => "replace", when W.App_Rollback => "rollback",
          when W.App_Status => "status", when W.System_Activate => "system activate",
-         when W.System_Rollback => "system rollback", when W.System_Generations => "system generations");
+         when W.System_Rollback => "system rollback", when W.System_Generations => "system generations",
+         when W.Read_Result => "read result");
    function Place_Name (Where : W.Place) return String is
      (case Where is
          when W.None => "", when W.Workspace => "workspace",
@@ -123,7 +124,7 @@ procedure Main is
      (if Where in W.Mail_To_Device | W.Mail_To_Host and then Op in W.List .. W.Remove
       then Remote_Activity.Mail
       else (case Op is
-               when W.Hello => Remote_Activity.Hello, when W.Evaluate => Remote_Activity.Evaluate,
+               when W.Hello => Remote_Activity.Hello, when W.Evaluate | W.Read_Result => Remote_Activity.Evaluate,
                when W.List => Remote_Activity.List, when W.Stat => Remote_Activity.Stat,
                when W.Get => Remote_Activity.Get, when W.Put | W.Commit => Remote_Activity.Put,
                when W.Remove => Remote_Activity.Remove,
@@ -280,22 +281,29 @@ procedure Main is
                   Note (Item.Op, Item.Where, "", Remote_Activity.OK);
 
                when W.Evaluate =>
+                  --  The whole result is kept; the reply carries its length
+                  --  and its first chunk, Read_Result the rest.
                   declare
                      Source : String (1 .. Item.Data_Length);
-                     Text : String (1 .. W.Maximum_Response_Body - 1);
-                     Text_Length : Natural;
                      Succeeded : Boolean;
                   begin
                      for I in Source'Range loop
                         Source (I) := Character'Val (Data (Item.Data_First + I - 1));
                      end loop;
-                     Remote_Host.Evaluate (Source, Succeeded, Text, Text_Length);
+                     Remote_Host.Evaluate (Source, Succeeded);
                      Note (Item.Op, Item.Where, Source,
                            (if Succeeded then Remote_Activity.OK else Remote_Activity.Failed));
                      Reply (1) := (if Succeeded then 1 else 0);
-                     Put_Text (Text (1 .. Text_Length), 2, Length);
-                     Length := Length + 1;
+                     W.Put_U64 (Reply, 2, Unsigned_64 (Remote_Host.Result_Length));
+                     Put_Text (Remote_Host.Result_Part (0, W.Maximum_Chunk_Bytes), W.Evaluate_Fixed_Bytes + 1, Length);
+                     Length := Length + W.Evaluate_Fixed_Bytes;
                   end;
+
+               when W.Read_Result =>
+                  W.Put_U64 (Reply, 1, Unsigned_64 (Remote_Host.Result_Length));
+                  Put_Text (Remote_Host.Result_Part (Natural (Item.Offset), W.Maximum_Chunk_Bytes),
+                            W.Offset_Bytes + 1, Length);
+                  Length := Length + W.Offset_Bytes;
 
                when W.List =>
                   Remote_Files.List (Item.Where, Name, Reply, Length, Result);

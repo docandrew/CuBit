@@ -1,7 +1,10 @@
+with CCL.Literal_Tables;
+with CCL.Held_Texts;
 with CCL.Evaluation;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Objects; use CCL.Objects;
+with CCL.Objects.Holders;
 with CCL.Catalog; use CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Language; use CCL.Language;
@@ -39,7 +42,7 @@ procedure Log_View_Tests is
      (State : in out Host; Binding : Unsigned_32; Argument : CCL.Host_Values.Value;
       Reply : out CCL.Host_Values.Call_Result)
    is
-      Image : CCL.Objects.Image;
+      Image : CCL.Objects.Holders.Holder;
       Added : Boolean;
    begin
       State.Calls := State.Calls + 1;
@@ -68,7 +71,7 @@ procedure Log_View_Tests is
    Resolved : Resolved_Operation;
    Found : Boolean;
    Granted : Grant_Result;
-   Full : CCL.Objects.Image;
+   Full : CCL.Objects.Holders.Holder;
    Added : Boolean := True;
    Count : Natural := 0;
 begin
@@ -82,14 +85,14 @@ begin
 
    Evaluate ("(logs.recent ""netstack"")");
    Check (Outcome.Status = Succeeded and then Outcome.Has_Literal and then
-          Outcome.Literal.Data (1 .. Outcome.Literal.Length) =
+          CCL.Held_Texts.Image (Outcome.Literal) =
             "[(LogItem.Logged (LogEntry 10 Severity.Information 7 ""boot"")) " &
             "(LogItem.Gap (LogGap 20 7 40 GapReason.Not_Retained ""... 40 records not retained ..."")) " &
             "(LogItem.Logged (LogEntry 20 Severity.Error 7 ""link down"")) " &
             "(LogItem.Logged (LogEntry 30 Severity.Information 7 ""link up"")) " &
             "(LogItem.Tally (LogTally 7 43 3 40 2 1 ""43 published, 3 retained, 40 not retained; " &
             "shed 2 over budget, 1 by the publisher""))]", "the list's literal: " &
-          Outcome.Literal.Data (1 .. Outcome.Literal.Length));
+          CCL.Held_Texts.Image (Outcome.Literal));
    Check (Context.Asked (1 .. Context.Asked_Length) = "netstack", "the service asked for");
    --  As a table (the console, the Workbench, the Observatory): LogEntry's
    --  columns; the gap's and the tally's rows fill time, source and
@@ -101,7 +104,7 @@ begin
         (CCL.Presentations.Cell_Text (Outcome, Shown, Row, Column));
    begin
       CCL.Presentations.Describe (Outcome, Shown);
-      Check (Shown.Kind = CCL.Presentations.Table and then Shown.Cells.Rows = 5 and then Shown.Shape.Count = 4,
+      Check (Shown.Kind = CCL.Presentations.Table and then CCL.Literal_Tables.Rows (Shown.Cells) = 5 and then Shown.Shape.Count = 4,
              "logs.recent is a table of five rows");
       Check (Cell (1, 4) = """boot""" and then Cell (1, 1) = "10", "a record's row: " & Cell (1, 4));
       Check (Cell (2, 1) = "20" and then Cell (2, 2) = "" and then Cell (2, 3) = "7" and then
@@ -130,23 +133,26 @@ begin
    Evaluate ("(length (logs.recent ""nobody""))");
    Check (Outcome.Status = Succeeded and then Outcome.Result_Value.Integer = 0, "an unknown service has none");
 
-   --  The builder adds only whole entries and stops at the image's bound.
+   --  The builder adds only whole entries, as many as there are: past a
+   --  page's room, and up to a value's ceiling, where it refuses.
    Logs.Start (Contract, Full);
    while Added loop
       Logs.Add (Full, 1, Logs.Debug, 2, "x", Added);
       if Added then Count := Count + 1; end if;
    end loop;
-   Check (Count = Logs.MAX_ENTRIES, "a full result holds MAX_ENTRIES");
-   Check (Validate (Full, Contract), "a full result is a valid image");
-   --  And whole gaps only, up to MAX_ITEMS.
+   Check (Count = (CCL.Objects.VALUE_CELL_CEILING - 1) / Logs.ENTRY_CELLS,
+          "a result holds entries up to the value ceiling:" & Count'Image);
+   Check (CCL.Objects.Holders.Validate (Full, Contract), "a full result is a valid value");
+   --  And whole gaps only.
    Logs.Start (Contract, Full);
    Count := 0;
    Added := True;
-   while Added loop
+   while Added and then Count < 10_000 loop
       Logs.Add_Gap (Full, 1, 1, 2, Logs.Not_Shown, Added);
       if Added then Count := Count + 1; end if;
    end loop;
-   Check (Count = (CCL.Objects.Maximum_Cells - 1) / Logs.GAP_CELLS, "a result of gaps holds what its cells do");
-   Check (Validate (Full, Contract), "a result of gaps is a valid image");
+   Check (Count = 10_000, "a result of gaps holds what it is given");
+   Check (CCL.Objects.Holders.Validate (Full, Contract), "a result of gaps is a valid value");
+   Check (CCL.Objects.Holders.Cells_Of (Full) = 1 + 10_000 * Logs.GAP_CELLS, "and is as large as its gaps");
    Ada.Text_IO.Put_Line ("Log view: PASS" & Checks'Image & " checks");
 end Log_View_Tests;

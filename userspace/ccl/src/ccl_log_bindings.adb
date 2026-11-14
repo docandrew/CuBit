@@ -1,6 +1,7 @@
 with CCL.Interfaces.Logs;
 with CCL.Binding_Blocks;
 with CCL.Objects;
+with CCL.Objects.Holders;
 with CCL.Objects.Views;
 with CCL_Log_IO;
 with CuBit.Failures;
@@ -58,7 +59,7 @@ package body CCL_Log_Bindings is
       use type Interfaces.Integer_64;
       Object : Views.Snapshot;
       Captured : Boolean := False;
-      Image : CCL.Objects.Image;
+      Image : CCL.Objects.Holders.Holder;
    begin
       if Argument.Kind = CCL.Host_Values.Object_Value then
          Views.Capture (Object, Window_Contract, Argument.Object, Captured);
@@ -103,6 +104,7 @@ package body CCL_Log_Bindings is
       Reply : out CCL.Host_Values.Call_Result)
    is
       Image : CCL.Objects.Image;
+      Held : CCL.Objects.Holders.Holder;
       Level, Previous : Logs.Severity;
       Found, Built : Boolean;
       --  A Severity result, or the failure to build one.
@@ -120,10 +122,10 @@ package body CCL_Log_Bindings is
       case Logs.Operation'Val (Binding - FIRST_BINDING) is
          when Logs.Recent =>
             if Argument.Kind /= CCL.Host_Values.Text_Value then return; end if;
-            CCL_Log_IO.Recent (Argument.Content.Data (1 .. Argument.Content.Length), Contract, Image, Reply.Success,
+            CCL_Log_IO.Recent (Argument.Content.Data (1 .. Argument.Content.Length), Contract, Held, Reply.Success,
                                Reply.Why);
             if Reply.Success then
-               Reply.Value := CCL.Host_Values.Object_Constant (Image);
+               Reply.Value := CCL.Host_Values.Object_Constant (Held);
             end if;
          when Logs.Between =>
             Between (Argument, Reply);
@@ -132,7 +134,7 @@ package body CCL_Log_Bindings is
             Answer (Level);
          when Logs.Set_Minimum =>
             if Argument.Kind /= CCL.Host_Values.Object_Value then return; end if;
-            Logs.Severity_Of (Severity_Contract, Argument.Object, Level, Found);
+            Logs.Severity_Of (Severity_Contract, CCL.Objects.Holders.Page (Argument.Object), Level, Found);
             if not Found then return; end if;
             CCL_Log_IO.Set_Minimum (Level, Previous, Reply.Success, Reply.Why);
             Answer (Previous);

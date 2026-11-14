@@ -1,3 +1,4 @@
+with CCL.Held_Texts;
 with CuBit.Handles.Fixture;
 with GNAT.Source_Info;
 with CCL.Evaluation;
@@ -240,10 +241,10 @@ begin
       begin
          CCL.Evaluation.Evaluate (Program, 4096, Result);
          Check (Result.Status = L.Succeeded and Result.Has_Literal and
-                Result.Literal.Data (1 .. Result.Literal.Length) = Expected);
+                CCL.Held_Texts.Image (Result.Literal) = Expected);
          CCL.Evaluation.Evaluate (Program (Program'First .. Program'Last - Expected'Length) & Expected, 4096, Again);
          Check (Again.Status = L.Succeeded and Again.Has_Literal and
-                Again.Literal.Data (1 .. Again.Literal.Length) = Expected);
+                CCL.Held_Texts.Image (Again.Literal) = Expected);
       end Literal;
       Types_Source : constant String :=
         "(type C (record (a Integer) (b Boolean))) " &
@@ -260,17 +261,17 @@ begin
       Check (Result.Status = L.Host_Contract_Unsupported and not Result.Has_Literal);
    end;
    declare
-      -- Each record is an arena node; more than MAX_VALUE_NODES of them in
+      -- Each record is an arena node; more than DEFAULT_VALUE_NODES of them in
       -- one evaluation is a typed exhaustion, never an overwrite.
       function Boxes (N : Positive) return String is
         ("(type Box (record (x Integer))) " &
          "(length (each (fn ((n Integer)) (field (Box n) x)) (range 1" & N'Image & ")))");
    begin
-      CCL.Evaluation.Evaluate (Boxes (L.MAX_VALUE_NODES + 1), 1_000_000, Result);
+      CCL.Evaluation.Evaluate (Boxes (CCL.VM.DEFAULT_VALUE_NODES + 1), 1_000_000, Result);
       Check (Result.Status = L.Evaluation_Object_Storage_Exhausted and not Result.Has_Value);
-      CCL.Evaluation.Evaluate (Boxes (L.MAX_VALUE_NODES), 1_000_000, Result);
+      CCL.Evaluation.Evaluate (Boxes (CCL.VM.DEFAULT_VALUE_NODES), 1_000_000, Result);
       Check (Result.Status = L.Succeeded and
-             Result.Result_Value = CCL.VM.Integer_Constant (Integer_64 (L.MAX_VALUE_NODES)));
+             Result.Result_Value = CCL.VM.Integer_Constant (Integer_64 (CCL.VM.DEFAULT_VALUE_NODES)));
    end;
    Define (Types, (Identifier => Named ("Reading"), Form => Sum, Count => 2,
      Parts => [1 => (Named ("Text"), String_Type), 2 => (Named ("Absent"), Unit_Type), others => <>]),

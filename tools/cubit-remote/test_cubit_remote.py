@@ -108,11 +108,12 @@ class StandIn:
         self.files = {}
         self.jobs = {}
         # Lists the stand-in's "CCL" knows: expression -> (type, elements,
-        # scalar). A result's literal over literal_limit is refused as the
-        # device refuses it (too_large_text); a scalar list carries at most
-        # scalar_carry elements and says "... N more".
+        # scalar). A result is as long as its value, as the device's is; a
+        # literal over literal_limit (the device's LITERAL_CEILING when a
+        # test sets one) is refused (too_large_text); a scalar list carries
+        # at most scalar_carry elements and says "... N more".
         self.lists = {}
-        self.literal_limit = 4096
+        self.literal_limit = 1 << 27
         self.scalar_carry = 3
         self.too_large_text = cr.TOO_LARGE_TEXT + ": %d elements"
         self.evaluations = []
@@ -133,6 +134,9 @@ class StandIn:
         self.generations = {0: ({}, 0)}
         self.current = 0
         self.activations = []
+        # The last evaluation's text, kept for read_result, and its reads.
+        self.last_result = b""
+        self.result_reads = 0
         self.server = socket.socket()
         self.server.bind(("127.0.0.1", 0))
         self.server.listen(8)
@@ -161,7 +165,17 @@ class StandIn:
         if op == 1:
             return 0, bytes([self.grants]) + struct.pack(">I", cr.MAXIMUM_CHUNK_BYTES) + b"stand-in"
         if op == 2:
-            return 0, self.evaluate(body.decode())
+            # As the device: ok, the whole text's length, its first chunk;
+            # the rest is kept for read_result (op 19).
+            answered = self.evaluate(body.decode())
+            self.last_result = answered[1:]
+            return 0, (answered[:1] + struct.pack(">Q", len(self.last_result))
+                       + self.last_result[:cr.MAXIMUM_CHUNK_BYTES])
+        if op == 19:
+            offset = struct.unpack(">Q", body)[0]
+            self.result_reads += 1
+            return 0, (struct.pack(">Q", len(self.last_result))
+                       + self.last_result[offset:offset + cr.MAXIMUM_CHUNK_BYTES])
         if op == 3:
             lines = "".join("file %d %s\n" % (len(v), k[1]) for k, v in sorted(self.files.items()) if k[0] == place)
             return 0, lines.encode()
@@ -335,17 +349,32 @@ class Commands(unittest.TestCase):
                 % (i, i, i, 4096 * i, 1000 * i) for i in range(1, count + 1)]
 
     def test_ps_whole_list(self):
-        """Regression: a list too large for one result (a busy machine's
-        proc.list) is fetched whole, in slices, not reported as a failure."""
+        """A busy machine's proc.list is one result, read whole."""
         elements = self.processes(70)
         self.device.lists["(proc.list)"] = ("List<Process>", elements, False)
         code, out = self.run_cli("ps")
         self.assertEqual(code, 0)
         kind, shown, more = cr.parse_list(out.strip())
         self.assertEqual((kind, shown, more), ("List<Process>", elements, 0))
-        self.assertIn("(length (proc.list))", self.device.evaluations)
+        self.assertEqual(self.device.evaluations, ["(proc.list)"])
+
+    def test_long_result_read_in_chunks(self):
+        """Regression (logs.recent showed 13 of 151 records): a result longer
+        than one reply, a whole log history, arrives whole from one
+        evaluation, its chunks read with read_result."""
+        elements = ['(LogItem.Logged (LogEntry %d Severity.Information 7 "%s"))' % (i, "m" * 300)
+                    for i in range(4096)]
+        self.device.lists['(logs.recent "acpi")'] = ("List<LogItem>", elements, False)
+        code, out = self.run_cli("logs", "acpi", "--literal")
+        self.assertEqual(code, 0)
+        self.assertEqual(cr.parse_list(out.strip())[1], elements)
+        self.assertEqual(self.device.evaluations, ['(logs.recent "acpi")'])
+        self.assertGreater(self.device.result_reads, 30)
 
     def test_slices_shrink_until_they_fit(self):
+        """Past the device's literal ceiling, a list is still read whole, in
+        slices that halve until they fit."""
+        self.device.literal_limit = 4096
         elements = ['(LogItem.Logged (LogEntry %d Severity.Information 7 "%s"))' % (i, "m" * 300)
                     for i in range(40)]
         self.device.lists['(logs.recent "desktop")'] = ("List<LogItem>", elements, False)
@@ -370,13 +399,15 @@ class Commands(unittest.TestCase):
             '       1.500  Information  7         acpi: phase "tables"',
             "\u2026 300 records of source 7 not retained (logstore's history for it was at its ceiling, "
             "logs.retention) \u2026",
-            "\u2026 12 records of source 7 retained but not shown (one result holds no more) \u2026",
+            "\u2026 12 records of source 7 retained but not shown (past the items one result holds; "
+            "narrow it with --from/--to) \u2026",
             "       2.250  Error        7         acpi: node failed",
             "source 7: 1336 published, 1024 retained, 312 not retained; shed before publication: "
             "5 over logstore's budget, 2 by the publisher (ring full)"])
 
     def test_endpoint_before_result_too_large(self):
         """The endpoint's older words for the same refusal are understood."""
+        self.device.literal_limit = 4096
         self.device.too_large_text = ("This interpreter host does not support the operation's value or "
                                       "lifecycle contract%.0d")
         elements = self.processes(60)

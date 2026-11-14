@@ -1,6 +1,7 @@
 with Interfaces;
 with CCL.Catalog;
 with CCL.Objects;
+with CCL.Objects.Holders;
 with CCL.Types;
 
 --  The logs interface: (logs.recent "service") returns the recent records of
@@ -102,11 +103,17 @@ package CCL.Interfaces.Logs with SPARK_Mode is
    ENTRY_CELLS : constant := 7;
    GAP_CELLS : constant := 8;
    TALLY_CELLS : constant := 9;
-   --  The records one result can carry: the list's count cell, then items.
-   MAX_ENTRIES : constant := (CCL.Objects.Maximum_Cells - 1) / ENTRY_CELLS;
-   subtype Entry_Count is Natural range 0 .. MAX_ENTRIES;
-   --  The items one result can carry, at the fewest cells an item takes.
-   MAX_ITEMS : constant := (CCL.Objects.Maximum_Cells - 1) / ENTRY_CELLS;
+   --  The records and gaps one result shows (CAPACITY): a result is as
+   --  large as the history it holds, up to this; past it the middle of the
+   --  history is one Not_Shown gap. Every item at the most cells one takes
+   --  fits one value's cell ceiling.
+   RESULT_ITEM_CEILING : constant := 65_536;
+   pragma Compile_Time_Error
+     (1 + (RESULT_ITEM_CEILING + 16) * TALLY_CELLS > CCL.Objects.VALUE_CELL_CEILING,
+      "a result's items must fit one value's cells");
+   subtype Item_Count is Natural range 0 .. RESULT_ITEM_CEILING;
+   --  The sources (instances) one service name may have had this boot.
+   MAX_NAMED_SOURCES : constant := 64;
    --  A gap's and a tally's message, as Add_Gap and Add_Tally write them.
    function Gap_Message (Count : Unsigned_64; Reason : Gap_Reason) return String;
    function Tally_Message
@@ -141,22 +148,23 @@ package CCL.Interfaces.Logs with SPARK_Mode is
      (Contract : CCL.Objects.Binding; Value : CCL.Objects.Image; Level : out Severity; Found : out Boolean);
 
    --  Building a result: Start an empty list, Add items while Added, the
-   --  image is then complete and valid for the contract. Each adds a whole
-   --  item or nothing: Added False when the image has no room for it.
-   procedure Start (Contract : CCL.Objects.Binding; Image : out CCL.Objects.Image);
+   --  value is then complete and valid for the contract, as large as its
+   --  items. Each adds a whole item or nothing: Added False only when the
+   --  item would take the value past its ceilings.
+   procedure Start (Contract : CCL.Objects.Binding; Result : out CCL.Objects.Holders.Holder);
    --  A record: (LogItem.Logged (LogEntry time severity source message)).
    procedure Add
-     (Image : in out CCL.Objects.Image; Time : Unsigned_64; Level : Severity;
+     (Result : in out CCL.Objects.Holders.Holder; Time : Unsigned_64; Level : Severity;
       Source : Unsigned_64; Message : String; Added : out Boolean);
    --  A gap: (LogItem.Gap (LogGap time source count reason message)),
    --  Time where it falls (the record's just before it).
    procedure Add_Gap
-     (Image : in out CCL.Objects.Image; Time, Source, Count : Unsigned_64; Reason : Gap_Reason;
+     (Result : in out CCL.Objects.Holders.Holder; Time, Source, Count : Unsigned_64; Reason : Gap_Reason;
       Added : out Boolean);
    --  An instance's accounting: (LogItem.Tally (LogTally source published
    --  retained not_retained over_budget publisher_full message)).
    procedure Add_Tally
-     (Image : in out CCL.Objects.Image;
+     (Result : in out CCL.Objects.Holders.Holder;
       Source, Published, Retained, Not_Retained, Over_Budget, Publisher_Full : Unsigned_64;
       Added : out Boolean);
 end CCL.Interfaces.Logs;
