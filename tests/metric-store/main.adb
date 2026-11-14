@@ -12,6 +12,10 @@ with Metric_Codecs;
 with Metric_Sketches;
 with Metric_Strings;
 with Metric_Series;
+with Metric_Scopes;
+with Metric_Reads;
+with CuBit.Metric_Protocol;
+with CuBit.Metric_Query_Pages;
 
 procedure Main is
    package Codecs renames Metric_Codecs;
@@ -352,6 +356,113 @@ procedure Main is
       Check (Series.Series_Refused (S) > 0 or else L2.Instance = Metric_Strings.No_String,
              "a refused growth is counted");
    end Test_Store;
+   --  The query path metrics.svc answers readers with (Metric_Reads over
+   --  the store and the read scopes, CuBit.Metric_Query_Pages): listing,
+   --  raw and stepped ranges, merged windows, and Out_Of_Scope refusals.
+   procedure Test_Reads;
+   procedure Test_Reads is
+      package Pages renames CuBit.Metric_Query_Pages;
+      package Protocol renames CuBit.Metric_Protocol;
+      use type Protocol.Status;
+      S : Series.Store;
+      Scopes : Metric_Scopes.Table;
+      Reader : constant Unsigned_64 := 41;
+      Blind : constant Unsigned_64 := 42;
+      Narrow : constant Unsigned_64 := 43;
+      Page : Pages.Page;
+      Rows, Total, Gaps, Resolution, Merged : Unsigned_64;
+      Result : Protocol.Status;
+      Accepted : Boolean;
+      Desktop, Calculator : Series.Series_Count;
+      Same : Boolean;
+      function Labelled (Name, Source, Instance : String) return Series.Labels is
+         L : Series.Labels;
+      begin
+         Series.Intern (S, Name, L.Name);
+         Series.Intern (S, Source, L.Source);
+         Series.Intern (S, "app", L.Program);
+         Series.Intern (S, Instance, L.Instance);
+         Series.Intern (S, "local", L.Node);
+         return L;
+      end Labelled;
+      procedure Select_Into (Match : Unsigned_64; Name, Source : String) is
+      begin
+         Page := [others => 0];
+         Page (Pages.Select_Match) := Match;
+         Pages.Put_Text (Page, Pages.Select_Name, Name, Pages.Text_Bytes);
+         Pages.Put_Text (Page, Pages.Select_Source, Source, Pages.Text_Bytes);
+      end Select_Into;
+      Every : Metric_Scopes.Prefix_List (1 .. 1);
+      Latency_Only : Metric_Scopes.Prefix_List (1 .. 1);
+      Exact : constant := 1;
+      Prefix : constant := 2;
+   begin
+      Series.Find_Or_Add (S, Labelled ("desktop.latency.input_to_ready", "com.cubit.desktop", "10"),
+                          Outlet.Distribution, Outlet.Microseconds, Desktop, Same);
+      Series.Find_Or_Add (S, Labelled ("desktop.latency.input_to_ready", "com.cubit.calculator", "11"),
+                          Outlet.Distribution, Outlet.Microseconds, Calculator, Same);
+      for I in 1 .. 1_000 loop
+         Series.Append (S, Desktop, 1_000_000 + Unsigned_64 (I) * 1_000, Unsigned_64 (I));
+         Series.Append (S, Calculator, 1_000_000 + Unsigned_64 (I) * 1_000, 2_000 + Unsigned_64 (I));
+      end loop;
+      Series.Note_Shed (S, Desktop, 3, 1_100_000, 1_200_000);
+      Metric_Scopes.Set (Scopes, Reader, Every, Accepted);
+      Check (Accepted, "every series: the empty prefix");
+      Latency_Only (1).Text (1 .. 8) := "display.";
+      Latency_Only (1).Length := 8;
+      Metric_Scopes.Set (Scopes, Narrow, Latency_Only, Accepted);
+      --  A listing by name prefix, from every source.
+      Select_Into (Prefix, "desktop.latency.", "");
+      Metric_Reads.List (S, Scopes, Reader, 0, Page, Rows, Total, Result);
+      Check (Result = Protocol.OK and then Rows = 2 and then Total = 2, "list by prefix");
+      Check (Pages.Get_Text (Page, Pages.Row_Source, Pages.Text_Bytes) = "com.cubit.desktop" and then
+             Page (Pages.Row_Published) = 1_000 and then Page (Pages.Row_Shed) = 3, "a listed row");
+      --  Raw range, paged by skip, with the producer's gap first.
+      Page := [others => 0];
+      Page (Pages.Range_Skip) := 10;
+      Metric_Reads.Read_Range (S, Scopes, Reader, Series.Info (S, Desktop).Id, 1_000_000, 2_000_000, Page,
+                               Rows, Total, Gaps, Resolution, Result);
+      Check (Result = Protocol.OK and then Total = 1_000 and then Rows = Pages.Raw_Rows and then Gaps = 1,
+             "raw range: a page past the skip, and the gap");
+      Check (Page (Pages.Range_Rows_At) = 1_011_000 and then Page (Pages.Range_Rows_At + 1) = 11,
+             "the first row after the skip");
+      Check (Page (Pages.Range_Gaps_At + 2) = 3 and then
+             Page (Pages.Range_Gaps_At + 3) = Series.Gap_Reason'Enum_Rep (Series.Shed_By_Producer),
+             "the gap's count and reason");
+      --  Stepped range: 1 s windows.
+      Page := [others => 0];
+      Page (Pages.Range_Step) := 1_000_000;
+      Metric_Reads.Read_Range (S, Scopes, Reader, Series.Info (S, Desktop).Id, 0, Unsigned_64'Last, Page,
+                               Rows, Total, Gaps, Resolution, Result);
+      Check (Result = Protocol.OK and then Resolution = 1_000_000 and then Rows = 2 and then
+             Page (Pages.Range_Rows_At + 1) + Page (Pages.Range_Rows_At + Pages.Window_Row_Words + 1) = 1_000,
+             "stepped range: the second's windows hold every sample");
+      --  A window merged over both instances: their sketches add.
+      Select_Into (Exact, "desktop.latency.input_to_ready", "");
+      Metric_Reads.Read_Window (S, Scopes, Reader, 0, 0, Unsigned_64'Last, Page, Merged, Result);
+      Check (Result = Protocol.OK and then Merged = 2 and then Page (Pages.Stat_Count) = 2_000 and then
+             Page (Pages.Stat_Minimum) = 1 and then Page (Pages.Stat_Maximum) = 3_000 and then
+             Page (Pages.Stat_Missing) = 3, "merged window");
+      Check (Page (Pages.Stat_P50) in 1_000 .. 1_000 + 1_000 / 32 + 1, "merged p50 lies between the two");
+      --  Readers outside their scopes are refused, typed.
+      Select_Into (Prefix, "desktop.", "");
+      Metric_Reads.List (S, Scopes, Blind, 0, Page, Rows, Total, Result);
+      Check (Result = Protocol.Out_Of_Scope, "no scope at all: refused");
+      Page := [others => 0];
+      Metric_Reads.Read_Range (S, Scopes, Narrow, Series.Info (S, Desktop).Id, 0, 1, Page,
+                               Rows, Total, Gaps, Resolution, Result);
+      Check (Result = Protocol.Out_Of_Scope, "a series outside the scope: refused");
+      Select_Into (Prefix, "desktop.", "");
+      Metric_Reads.List (S, Scopes, Narrow, 0, Page, Rows, Total, Result);
+      Check (Result = Protocol.OK and then Rows = 0, "a broader listing leaves out what is not in scope");
+      Metric_Scopes.Revoke (Scopes, Reader);
+      Select_Into (Prefix, "desktop.", "");
+      Metric_Reads.List (S, Scopes, Reader, 0, Page, Rows, Total, Result);
+      Check (Result = Protocol.Out_Of_Scope, "revoked: refused");
+      Page := [others => 0];
+      Metric_Reads.Read_Range (S, Scopes, Narrow, 12345, 0, 1, Page, Rows, Total, Gaps, Resolution, Result);
+      Check (Result = Protocol.Not_Found, "an unknown series is Not_Found");
+   end Test_Reads;
 begin
    Random_Words.Reset (Generator, 20261114);
    Test_Codecs;
@@ -359,6 +470,7 @@ begin
    Test_Sketches;
    Test_Strings;
    Test_Store;
+   Test_Reads;
    Ada.Text_IO.Put_Line ("metric-store:" & Checks'Image & " checks," & Failures'Image & " failures");
    if Failures > 0 then
       raise Program_Error;

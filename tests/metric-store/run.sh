@@ -10,6 +10,10 @@ cp "$root"/userspace/services/metricsvc/metric_codecs.ad? \
    "$root"/userspace/services/metricsvc/metric_sketches.ad? \
    "$root"/userspace/services/metricsvc/metric_strings.ad? \
    "$root"/userspace/services/metricsvc/metric_series.ad? \
+   "$root"/userspace/services/metricsvc/metric_scopes.ad? "$root"/userspace/services/metricsvc/metric_reads.ad? \
+   "$root"/userspace/runtime/gnat/cubit-metric_protocol.ads \
+   "$root"/userspace/runtime/gnat/cubit-metric_records.ad? \
+   "$root"/userspace/runtime/gnat/cubit-metric_query_pages.ad? \
    "$root"/userspace/lib/heap/heap_arrays.ad? "$root"/userspace/lib/heap/heap_growth.ad? \
    "$root"/userspace/runtime/gnat/cubit.ads \
    "$root"/userspace/runtime/gnat/cubit-metric_outlet.ad? \
