@@ -17,49 +17,54 @@
 #   mail     the host may use the mailbox
 (type Remote_Listen (enum Off LAN))
 (type Pairing_Display (enum Window Kernel_Console))
-# Compact: line breaks and indentation count against the CCL source limit,
-# which the manifest schema mostly fills (comments' text does not).
+# Compact: line breaks and indentation (comments' too) count against the
+# CCL source limit, which the manifest schema mostly fills; comments' text
+# does not. Hence no indentation below.
 (type Remote_Parameters (record (listen Remote_Listen) (display Pairing_Display)
 (work String) (files Boolean) (builds Boolean) (mail Boolean)))
 (Executable_Manifest
-  identity => "com.cubit.ccl-remote"
-  version => "0.1.0"
-  requests => [
-    # "started", "a host paired", refusals: never the token or contents.
-    (service "logstore" "logstore")
-    (service "clock" "clock")
-    # (logs.recent "service"), (logs.minimum): read-only log observation.
-    (service "log-observer" "log-observer")
-    # (proc.list), through procmgr's observer role.
-    (service "process-observer" "process-observer")
-    # Global non-secret Config read, never write/admin.
-    (service "config" "config")
-    (service "filesystem" "filesystem")
-    # Which addresses netstack's interfaces hold (inspection only).
-    (service "network-stack" "network-stack")
-    # Port 8445 on this machine's addresses (a listen scope is one port):
-    # one listener per interface (at most four) and its connection.
-    (network Network_Action.TCP_Listen "0.0.0.0" 0 8445 8445 false 8 "network")
-    # Builds: ccl-build.app, below.
-    (service "process-manager" "process-manager")
-    # The pairing window (display => Window).
-    (service "desktop" "desktop")
-    # Screenshots: only with (display-capture approve-declared) and the
-    # Deskbar's "Allow screen capture" on (its Remote access section).
-    (service "display-capture" "display-capture")]
-  optional => ["log-observer" "process-observer" "process-manager" "desktop" "display-capture"]
-  scopes => [
-    (config-all [File_Right.Read])
-    # The workspace and the mailbox, under the work root.
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@ufs:0/work")
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")
-    # What builds delegate to ccl-build (D2) and its manifest names.
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
-    (filesystem [File_Right.Read] "@system/toolchain")
-    (filesystem [File_Right.Read] "@system/tools")
-    (filesystem [File_Right.Read] "@system/cubit-src")]
-  # Builds; apps built here (procmgr asks "Allow app replacement").
-  may_launch => [(Launch "ccl-build.app") (Launch "@system/work/generations/")]
-  parameters => (Parameter_Signature.Declared "Remote_Parameters"))
+identity => "com.cubit.ccl-remote"
+version => "0.1.0"
+requests => [
+# "started", "a host paired", refusals: never the token or contents.
+(service "logstore" "logstore")
+(service "clock" "clock")
+# (logs.recent "service"), (logs.minimum): read-only log observation.
+(service "log-observer" "log-observer")
+# metrics.*: the series store (MET-002), in the scope below.
+(service "metrics-observer" "series")
+# (proc.list), through procmgr's observer role.
+(service "process-observer" "process-observer")
+# Global non-secret Config read, never write/admin.
+(service "config" "config")
+(service "filesystem" "filesystem")
+# Which addresses netstack's interfaces hold (inspection only).
+(service "network-stack" "network-stack")
+# Port 8445 on this machine's addresses (a listen scope is one port):
+# one listener per interface (at most four) and its connection.
+(network Network_Action.TCP_Listen "0.0.0.0" 0 8445 8445 false 8 "network")
+# Builds: ccl-build.app, below.
+(service "process-manager" "process-manager")
+# The pairing window (display => Window).
+(service "desktop" "desktop")
+# Screenshots: only with (display-capture approve-declared) and the
+# Deskbar's "Allow screen capture" on (its Remote access section).
+(service "display-capture" "display-capture")]
+optional => ["series" "log-observer" "process-observer" "process-manager" "desktop" "display-capture"]
+scopes => [
+(config-all [File_Right.Read])
+# Every series, read only.
+(Scope.Metrics Scope_Place.Everything)
+# The workspace and the mailbox, under the work root.
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@ufs:0/work")
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")
+# What builds delegate to ccl-build (D2) and its manifest names.
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
+(filesystem [File_Right.Read] "@system/toolchain")
+(filesystem [File_Right.Read] "@system/tools")
+(filesystem [File_Right.Read] "@system/cubit-src")]
+# Builds; apps built here (procmgr asks "Allow app replacement").
+may_launch => [(Launch "ccl-build.app") (Launch "@system/work/generations/")]
+parameters => (Parameter_Signature.Declared "Remote_Parameters"))

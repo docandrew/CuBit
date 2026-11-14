@@ -47,6 +47,10 @@ CHECKS = [
       'PASSAGE_KEY': 'Passage', 'VERSE_QUERY_KEY': 'Verse_Query', 'PASSAGE_QUERY_KEY': 'Passage_Query',
       'SEARCH_QUERY_KEY': 'Search_Query'}),
     (SRC / 'ccl-interfaces-machine.ads', {'DIGEST': None, 'ANSWER_KEY': 'Power_Answer'}),
+    (SRC / 'ccl-interfaces-metrics.ads',
+     {'DIGEST': None, 'SERIES_KEY': 'List-Metric_Series', 'ITEMS_KEY': 'List-Metric_Item',
+      'SELECTOR_KEY': 'Metric_Selector', 'RANGE_KEY': 'Metric_Range', 'WINDOW_KEY': 'Metric_Window',
+      'STATS_KEY': 'Metric_Stats'}),
     (SRC / 'ccl-interfaces-agent.ads',
      {'DIGEST': None, 'REQUEST_KEY': 'Agent_Request', 'SESSION_KEY': 'Agent_Session',
       'REPLY_KEY': 'Agent_Reply'})]

@@ -22,6 +22,7 @@ with CCL.Interfaces.Llm;
 with CCL.Interfaces.Secrets;
 with CCL.Interfaces.Machine;
 with CCL.Interfaces.Agent;
+with CCL.Interfaces.Metrics;
 with CCL_Execution;
 
 --  Every system interface a CCL front end offers (the Workbench, the console,
@@ -51,7 +52,8 @@ package CCL_Host_Environment is
      CCL.Interfaces.Console.PUBLISHED_INTERFACES +
      CCL.Interfaces.Llm.PUBLISHED_INTERFACES + CCL.Interfaces.Secrets.PUBLISHED_INTERFACES +
      CCL.Interfaces.Machine.PUBLISHED_INTERFACES +
-     CCL.Interfaces.Agent.PUBLISHED_INTERFACES;
+     CCL.Interfaces.Agent.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Metrics.PUBLISHED_INTERFACES;
    MOST_SCHEMAS : constant :=
      CCL.Interfaces.Config.PUBLISHED_SCHEMAS + CCL_Execution.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Logs.PUBLISHED_SCHEMAS + CCL.Interfaces.Images.PUBLISHED_SCHEMAS +
@@ -66,7 +68,8 @@ package CCL_Host_Environment is
      CCL.Interfaces.Console.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Llm.PUBLISHED_SCHEMAS + CCL.Interfaces.Secrets.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Machine.PUBLISHED_SCHEMAS +
-     CCL.Interfaces.Agent.PUBLISHED_SCHEMAS;
+     CCL.Interfaces.Agent.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Metrics.PUBLISHED_SCHEMAS;
    MOST_TYPES : constant :=
      CCL.Interfaces.Config.PUBLISHED_TYPES + CCL_Execution.PUBLISHED_TYPES +
      CCL.Interfaces.Logs.PUBLISHED_TYPES + CCL.Interfaces.Images.PUBLISHED_TYPES +
@@ -81,7 +84,8 @@ package CCL_Host_Environment is
      CCL.Interfaces.Console.PUBLISHED_TYPES +
      CCL.Interfaces.Llm.PUBLISHED_TYPES + CCL.Interfaces.Secrets.PUBLISHED_TYPES +
      CCL.Interfaces.Machine.PUBLISHED_TYPES +
-     CCL.Interfaces.Agent.PUBLISHED_TYPES;
+     CCL.Interfaces.Agent.PUBLISHED_TYPES +
+     CCL.Interfaces.Metrics.PUBLISHED_TYPES;
    --  Room a session keeps in its copy of the registry for its own type
    --  declarations and the Task, Stream and List types its calls need
    --  (system.install's Task<Install_Report>, a timer's Stream<Integer>).

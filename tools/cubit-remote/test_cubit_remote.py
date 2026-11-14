@@ -113,6 +113,8 @@ class StandIn:
         # test sets one) is refused (too_large_text); a scalar list carries
         # at most scalar_carry elements and says "... N more".
         self.lists = {}
+        # Results that are not lists (a record), by expression.
+        self.values = {}
         self.literal_limit = 1 << 27
         self.scalar_carry = 3
         self.too_large_text = cr.TOO_LARGE_TEXT + ": %d elements"
@@ -283,6 +285,8 @@ class StandIn:
             return self.list_result(kind, first[max(0, len(first) - int(sliced.group(1))):], scalar)
         if source in self.lists:
             return self.list_result(*self.lists[source])
+        if source in self.values:
+            return b"\x01" + self.values[source].encode()
         return b"\x01Integer: 2"
 
     def list_result(self, kind, elements, scalar):
@@ -492,6 +496,56 @@ class Commands(unittest.TestCase):
         with open(os.path.join("inbox", "reply.txt"), "rb") as f:
             self.assertEqual(f.read(), b"hello host")
         self.assertNotIn((3, "reply.txt"), self.device.files)
+
+
+class MetricsCommands(Commands):
+    """MET-002: cubit-remote metrics series/range/window/latency send the
+    typed CCL operations and render their typed results."""
+    SERIES = ('(Metric_Series 7 "desktop.latency.input_to_ready" "com.cubit.desktop" "desktop" "12" '
+              'Metric_Kind.Distribution Metric_Unit.Microseconds 96 96 0 0 1000 2000 300)')
+    STATS = 'Metric_Stats: (Metric_Stats 1 96 28800 120 900 300 280 410 880 900 1500 2 0 32)'
+
+    def test_series(self):
+        self.device.lists[cr.series_expression("desktop.latency.*", "")] = ("List<Metric_Series>", [self.SERIES], False)
+        code, out = self.run_cli("metrics", "series", "desktop.latency.*")
+        self.assertEqual(code, 0)
+        self.assertIn("desktop.latency.input_to_ready", out)
+        self.assertRegex(out, r"com\.cubit\.desktop +12 +Distribution +Microseconds +96 +0 +0")
+
+    def test_window_and_relative_times(self):
+        expression = cr.window_expression("desktop.latency.input_to_ready", "", -30000000, 0)
+        self.assertEqual(expression, '(metrics.window (Metric_Window series => "desktop.latency.input_to_ready" '
+                                     'source => "" from => -30000000 to => 0))')
+        self.device.values[expression] = self.STATS
+        code, out = self.run_cli("metrics", "window", "desktop.latency.input_to_ready", "--last", "30")
+        self.assertEqual(code, 0)
+        self.assertIn("n=96", out)
+        self.assertIn("p99=880 p999=900 rate=1.500/s missing=2", out)
+        self.assertIn("error<=3.2%", out)
+
+    def test_range_shows_points_rollups_and_gaps(self):
+        expression = cr.range_expression("desktop.latency.input_to_ready", "", 1, 2, 0)
+        self.device.lists[expression] = ("List<Metric_Item>", [
+            "(Metric_Item.Gap (Metric_Gap 1000000 1500000 4 Metric_Gap_Cause.Shed_By_Producer))",
+            "(Metric_Item.Point (Metric_Point 2000000 250))",
+            "(Metric_Item.Rollup (Metric_Rollup 3000000 5 1000 100 400 200 190 400))"], False)
+        code, out = self.run_cli("metrics", "range", "desktop.latency.input_to_ready", "--from", "1", "--to", "2")
+        self.assertEqual(code, 0)
+        lines = out.splitlines()
+        self.assertIn("4 samples shed by producer between 1.000000 and 1.500000", lines[0])
+        self.assertEqual(lines[1].split(), ["2.000000", "250"])
+        self.assertIn("n=5 sum=1000 min=100 max=400 last=200 p50=190 p99=400", lines[2])
+
+    def test_names_are_quoted_as_ccl_text(self):
+        self.assertEqual(cr.metric_text('a"b\\c'), '"a\\"b\\\\c"')
+
+    def test_latency_reads_every_stage_window(self):
+        self.device.lists[cr.series_expression("desktop.latency.*", "")] = ("List<Metric_Series>", [self.SERIES], False)
+        self.device.lists[cr.series_expression("desktop.frames.*", "")] = ("List<Metric_Series>", [], False)
+        self.device.values[cr.window_expression("desktop.latency.input_to_ready", "", -60000000, 0)] = self.STATS
+        code, out = self.run_cli("metrics", "latency")
+        self.assertEqual(code, 0)
+        self.assertRegex(out, r"desktop\.latency\.input_to_ready +series=1 n=96")
 
 
 class AppCommands(Commands):

@@ -19,6 +19,17 @@ connection: a 28-byte header carrying the pairing token, then a body.
                                                 "desktop: latency" report lines, and the
                                                 display path's per-second lines
                                                 (intel-gpu flips, display.svc stats)
+  cubit-remote metrics series [NAME] [--source S]
+                                                metrics.svc's series (MET-002): NAME exact, a
+                                                trailing * a prefix, none every series
+  cubit-remote metrics range SERIES [--last S | --from US --to US] [--step US] [--source S]
+                                                one series' samples (or, with --step, its
+                                                windows) and its gaps: metrics.range
+  cubit-remote metrics window SERIES [--last S | --from US --to US] [--source S]
+                                                count, rate, p50/p90/p99/p999 over a window,
+                                                merged over every series SERIES selects
+  cubit-remote metrics latency [--last S]       LAT-002 from the store: every desktop.latency
+                                                stage and the frame series over the window
   cubit-remote ls [PATH] [--place P]            list the workspace (or mail)
   cubit-remote put LOCAL [REMOTE] [-r]          upload into the workspace
   cubit-remote get REMOTE [LOCAL]               download (SHA-256 checked)
@@ -930,6 +941,171 @@ def command_latency(args):
     return status
 
 
+# MET-002: metrics.svc's series store through metrics.series, metrics.range
+# and metrics.window (CCL.Interfaces.Metrics). Times are microseconds of the
+# device's monotonic clock; 0 or less is that long before now.
+MICROSECONDS_PER_SECOND = 1000000
+
+
+def parse_fields(text):
+    """A record or variant literal as (name, fields): fields are ints, str,
+    enum member names (Type.Member), or nested (name, fields)."""
+    text = text.strip()
+    if not (text.startswith("(") and text.endswith(")")):
+        raise ValueError("not a record literal: %r" % text[:60])
+    inner = text[1:-1]
+    parts = split_elements(inner)
+    if not parts:
+        raise ValueError("an empty literal")
+    head, fields = parts[0], []
+    for part in parts[1:]:
+        if part.startswith("("):
+            fields.append(parse_fields(part))
+        elif part.startswith('"'):
+            fields.append(unescape(part[1:-1]))
+        elif re.fullmatch(r"-?\d+", part):
+            fields.append(int(part))
+        else:
+            fields.append(part)
+    return head, fields
+
+
+def metric_text(value):
+    return '"%s"' % value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def metric_times(args):
+    if args.start is not None or args.end is not None:
+        if args.start is None or args.end is None:
+            raise SystemExit("cubit-remote: give both --from and --to (microseconds since boot), or --last")
+        return args.start, args.end
+    return -int(args.last * MICROSECONDS_PER_SECOND), 0
+
+
+def series_expression(name, source):
+    return "(metrics.series (Metric_Selector name => %s source => %s))" % (metric_text(name), metric_text(source))
+
+
+def range_expression(series, source, start, end, step):
+    return ("(metrics.range (Metric_Range series => %s source => %s from => %d to => %d step => %d))"
+            % (metric_text(series), metric_text(source), start, end, step))
+
+
+def window_expression(series, source, start, end):
+    return ("(metrics.window (Metric_Window series => %s source => %s from => %d to => %d))"
+            % (metric_text(series), metric_text(source), start, end))
+
+
+SERIES_FIELDS = ("id", "name", "source", "program", "instance", "kind", "unit", "published",
+                 "retained", "shed", "evicted", "first", "last", "last_value")
+STATS_FIELDS = ("series", "count", "sum", "min", "max", "last", "p50", "p90", "p99", "p999",
+                "rate_milli", "missing", "resolution", "error_permille")
+
+
+def member(value):
+    return value.split(".", 1)[1] if isinstance(value, str) and "." in value else value
+
+
+def render_series(text):
+    shown = parse_list(text)
+    if shown is None or shown[0] != "List<Metric_Series>":
+        return text
+    if not shown[1]:
+        return "(no series)"
+    lines = ["%-44s %-26s %-8s %-12s %-12s %10s %8s %8s"
+             % ("name", "source", "instance", "kind", "unit", "samples", "shed", "evicted")]
+    for element in shown[1]:
+        _, fields = parse_fields(element)
+        row = dict(zip(SERIES_FIELDS, fields))
+        lines.append("%-44s %-26s %-8s %-12s %-12s %10d %8d %8d"
+                     % (row["name"], row["source"], row["instance"], member(row["kind"]),
+                        member(row["unit"]), row["published"], row["shed"], row["evicted"]))
+    return "\n".join(lines)
+
+
+def render_range(text):
+    shown = parse_list(text)
+    if shown is None or shown[0] != "List<Metric_Item>":
+        return text
+    lines = []
+    for element in shown[1]:
+        name, fields = parse_fields(element)
+        _, payload = fields[0]
+        if name.endswith(".Point"):
+            lines.append("%14.6f  %d" % (payload[0] / MICROSECONDS_PER_SECOND, payload[1]))
+        elif name.endswith(".Rollup"):
+            start, count, total, low, high, last, p50, p99 = payload
+            lines.append("%14.6f  n=%d sum=%d min=%d max=%d last=%d p50=%d p99=%d"
+                         % (start / MICROSECONDS_PER_SECOND, count, total, low, high, last, p50, p99))
+        else:
+            first, last, count, cause = payload
+            lines.append("\u2026 %d samples %s between %.6f and %.6f \u2026"
+                         % (count, member(cause).replace("_", " ").lower(),
+                            first / MICROSECONDS_PER_SECOND, last / MICROSECONDS_PER_SECOND))
+    return "\n".join(lines) if lines else "(no samples in the range)"
+
+
+def window_stats(text):
+    """A metrics.window result ("Metric_Stats: (Metric_Stats ...)") as a
+    dict, or None."""
+    typed = re.match(r"\AMetric_Stats: (\(.*\))\Z", text, re.S)
+    try:
+        name, fields = parse_fields(typed.group(1) if typed else text)
+    except ValueError:
+        return None
+    if name != "Metric_Stats" or len(fields) != len(STATS_FIELDS):
+        return None
+    return dict(zip(STATS_FIELDS, fields))
+
+
+def render_window(text):
+    stats = window_stats(text)
+    if stats is None:
+        return text
+    return ("series=%(series)d n=%(count)d sum=%(sum)d min=%(min)d max=%(max)d last=%(last)d "
+            "p50=%(p50)d p90=%(p90)d p99=%(p99)d p999=%(p999)d rate=%(rate)s/s missing=%(missing)d "
+            "resolution_us=%(resolution)d error<=%(error)s%%"
+            % dict(stats, rate="%.3f" % (stats["rate_milli"] / 1000.0),
+                   error="%.1f" % (stats["error_permille"] / 10.0)))
+
+
+def command_metrics(args):
+    host = selected_host(args)
+    if args.what == "series":
+        ok, text = evaluate_whole(host, series_expression(args.name or "", args.source))
+        print(text if args.literal or not ok else render_series(text))
+        return 0 if ok else 1
+    if args.what in ("range", "window") and not args.name:
+        raise SystemExit("cubit-remote: name the series")
+    start, end = metric_times(args)
+    if args.what == "range":
+        ok, text = evaluate(host, range_expression(args.name, args.source, start, end, args.step))
+        print(text if args.literal or not ok else render_range(text))
+        return 0 if ok else 1
+    if args.what == "window":
+        ok, text = evaluate(host, window_expression(args.name, args.source, start, end))
+        print(text if args.literal or not ok else render_window(text))
+        return 0 if ok else 1
+    # latency: every LAT-002 series over the window, from the store.
+    ok, text = evaluate_whole(host, series_expression("desktop.latency.*", ""))
+    shown = parse_list(text) if ok else None
+    if shown is None:
+        print(text)
+        return 1
+    names = sorted({dict(zip(SERIES_FIELDS, parse_fields(e)[1]))["name"] for e in shown[1]})
+    frames_ok, frames = evaluate_whole(host, series_expression("desktop.frames.*", ""))
+    frame_list = parse_list(frames) if frames_ok else None
+    if frame_list:
+        names += sorted({dict(zip(SERIES_FIELDS, parse_fields(e)[1]))["name"] for e in frame_list[1]})
+    status = 0
+    for name in names:
+        ok, text = evaluate(host, window_expression(name, "", start, end))
+        if not ok:
+            status = 1
+        print("%-44s %s" % (name, render_window(text) if ok else text))
+    return status
+
+
 def command_ps(args):
     ok, text = evaluate_whole(selected_host(args), "(proc.list)")
     print(text)
@@ -1132,6 +1308,19 @@ def parser():
     s.set_defaults(run=command_logs)
     s = sub.add_parser("ps", help="the processes")
     s.set_defaults(run=command_ps)
+    s = sub.add_parser("metrics", help="metrics.svc's series (MET-002)")
+    s.add_argument("what", choices=("series", "range", "window", "latency"))
+    s.add_argument("name", nargs="?", help="a series name (series: a trailing * is a prefix)")
+    s.add_argument("--source", default="", help="only this source (a program identity)")
+    s.add_argument("--last", type=float, default=60.0, metavar="S",
+                   help="the window: the last S seconds (default 60)")
+    s.add_argument("--from", dest="start", type=int, metavar="US",
+                   help="the window's first microsecond since boot (with --to; 0 or less: before now)")
+    s.add_argument("--to", dest="end", type=int, metavar="US", help="the window's last microsecond (with --from)")
+    s.add_argument("--step", type=int, default=0, metavar="US",
+                   help="range: windows no wider than US instead of raw samples")
+    s.add_argument("--literal", action="store_true", help="print the typed CCL result")
+    s.set_defaults(run=command_metrics)
     s = sub.add_parser("latency", help="input-to-photon report lines (LAT-002)")
     s.add_argument("--from", dest="start", type=int, metavar="MS",
                    help="the window's first millisecond since boot (with --to)")
