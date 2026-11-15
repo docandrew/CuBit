@@ -98,7 +98,9 @@ is
    TEXT_BYTE_CEILING   : constant := 2 ** 26;
    TEXT_VALUE_CEILING  : constant := 2 ** 21;
    MAX_RESULT_TEXT    : constant := MAX_HOST_TEXT;
-   MAX_CONSTANTS      : constant := 32;
+   --  Stopgap (MET-002): 64, so Desktop's typed manifest (with its metric
+   --  outlet) fits; drop when programs are sized by their input.
+   MAX_CONSTANTS      : constant := 64;
    MAX_CONSTANT_BYTES : constant := 4_096;
    package Text_Regions is new CCL.Secondary_Stacks
      (Capacity => TEXT_BYTE_CEILING, Max_Values => TEXT_VALUE_CEILING,
