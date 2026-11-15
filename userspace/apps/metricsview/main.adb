@@ -73,6 +73,34 @@ procedure Main is
    KEY_Z : constant Unsigned_64 := 16#2C#;
    KEY_INSERT : constant Unsigned_64 := 16#52#;
    KEY_DELETE : constant Unsigned_64 := 16#53#;
+   --  Either Alt key (the right one arrives with the extended flag).
+   KEY_ALT : constant Unsigned_64 := 16#38#;
+   KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
+   KEY_ENTER : constant Unsigned_64 := 16#1C#;
+   KEY_SPACE : constant Unsigned_64 := 16#39#;
+   KEY_F10 : constant Unsigned_64 := 16#44#;
+   KEY_PAGE_UP : constant Unsigned_64 := 16#49#;
+   KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
+   KEY_A : constant Unsigned_64 := 16#1E#;
+   KEY_N : constant Unsigned_64 := 16#31#;
+   KEY_O : constant Unsigned_64 := 16#18#;
+   KEY_S : constant Unsigned_64 := 16#1F#;
+   --  Letters and digits by set-1 code, in the keyboard's rows (menu
+   --  mnemonics and the picker's type-ahead).
+   type Letter_Row is array (Natural range <>) of Character;
+   TOP_ROW_FIRST : constant Unsigned_64 := 16#10#;
+   TOP_ROW : constant Letter_Row := "qwertyuiop";
+   HOME_ROW_FIRST : constant Unsigned_64 := 16#1E#;
+   HOME_ROW : constant Letter_Row := "asdfghjkl";
+   BOTTOM_ROW_FIRST : constant Unsigned_64 := 16#2C#;
+   BOTTOM_ROW : constant Letter_Row := "zxcvbnm";
+   DIGIT_ROW_FIRST : constant Unsigned_64 := 16#02#;
+   DIGIT_ROW : constant Letter_Row := "1234567890";
+   --  A text event's code point, and the printable ASCII the file
+   --  dialog's name field takes.
+   CODE_POINT_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
+   FIRST_PRINTABLE : constant := 16#20#;
+   LAST_PRINTABLE : constant := 16#7E#;
 
    Input_To_Render : constant CuBit.Metrics.Series :=
      CuBit.Metrics.Series_Named ("metricsview.input_to_render_us", CuBit.Metrics.Distribution,
@@ -92,17 +120,19 @@ procedure Main is
      CuBit.Metrics.Series_Named ("metricsview.handle_us", CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds);
    --  Per kind of input (edit, zoom, hover, pan, other): its cost and its
    --  input-to-rendered, so each can be held to the budget on its own.
-   type Input_Kind is (Edit_Input, Zoom_Input, Hover_Input, Pan_Input, Other_Input);
+   type Input_Kind is (Edit_Input, Zoom_Input, Hover_Input, Pan_Input, Menu_Input, Picker_Input, Other_Input);
    type Kind_Series is array (Input_Kind) of CuBit.Metrics.Series;
    function Named (Name : String) return CuBit.Metrics.Series is
      (CuBit.Metrics.Series_Named (Name, CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds));
    Cost_By_Kind : constant Kind_Series :=
      [Named ("metricsview.input_cost_edit_us"), Named ("metricsview.input_cost_zoom_us"),
       Named ("metricsview.input_cost_hover_us"), Named ("metricsview.input_cost_pan_us"),
+      Named ("metricsview.input_cost_menu_us"), Named ("metricsview.input_cost_picker_us"),
       Named ("metricsview.input_cost_other_us")];
    Render_By_Kind : constant Kind_Series :=
      [Named ("metricsview.input_to_render_edit_us"), Named ("metricsview.input_to_render_zoom_us"),
       Named ("metricsview.input_to_render_hover_us"), Named ("metricsview.input_to_render_pan_us"),
+      Named ("metricsview.input_to_render_menu_us"), Named ("metricsview.input_to_render_picker_us"),
       Named ("metricsview.input_to_render_other_us")];
    --  The copy of the toolkit's one damage rectangle out of the retained
    --  frame, and its pixels against the pixels that changed.
@@ -143,6 +173,32 @@ procedure Main is
    function Now_Us return Unsigned_64 is (CuBit.Monotonic.Microseconds);
    function Now_Ms return Unsigned_64 is (syscall (SYSCALL_GETTIME));
    function Decimal (V : Unsigned_64) return String renames Charts_Format.Decimal;
+
+   --  Visibility (tests/headless): each new status-bar notice (opened,
+   --  saved as, refused and why) with a hash of the dashboard shown then,
+   --  and each panel the picker changed as its CCL.
+   FNV_OFFSET : constant Unsigned_64 := 16#CBF2_9CE4_8422_2325#;
+   FNV_PRIME : constant Unsigned_64 := 16#0000_0100_0000_01B3#;
+   function Source_Hash (S : String) return Unsigned_64 is
+      H : Unsigned_64 := FNV_OFFSET;
+   begin
+      for C of S loop
+         H := (H xor Character'Pos (C)) * FNV_PRIME;
+      end loop;
+      return H;
+   end Source_Hash;
+   Shown_Notice : String (1 .. 256) := [others => ' '];
+   Shown_Notice_Length : Natural := 0;
+   procedure Report_Notice is
+      N : constant String := Dash_View.Notice (View);
+   begin
+      if N'Length > 0 and then N /= Shown_Notice (1 .. Shown_Notice_Length) then
+         Shown_Notice_Length := Natural'Min (N'Length, Shown_Notice'Length);
+         Shown_Notice (1 .. Shown_Notice_Length) := N (N'First .. N'First + Shown_Notice_Length - 1);
+         debugPrint ("metricsview: notice: " & N & " | file=" & Dash_View.Current_File (View) & " source_fnv="
+                     & Decimal (Source_Hash (Dash_View.Dashboard_Source (View))) & ASCII.LF);
+      end if;
+   end Report_Notice;
 
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
       Started : constant Unsigned_64 := Now_Us;
@@ -192,9 +248,23 @@ procedure Main is
       Dash_View.Set_Bounds (View, CuBit.UI.App.Full_Rect (Win), C.densityNumerator, C.densityDenominator);
    end Set_Bounds;
 
-   --  Ctrl chords (no other modifier matters to them).
-   function Control_Key_Of (Code : Unsigned_64) return Dash_View.Key is
-     (if Code = KEY_Z then Dash_View.Undo elsif Code = KEY_Y then Dash_View.Redo else Dash_View.No_Key);
+   --  Ctrl chords (Shift matters to Save As only).
+   function Control_Key_Of (Code : Unsigned_64; Shift : Boolean) return Dash_View.Key is
+     (if Code = KEY_Z then Dash_View.Undo elsif Code = KEY_Y then Dash_View.Redo
+      elsif Code = KEY_N then Dash_View.New_Dashboard elsif Code = KEY_O then Dash_View.Open_Dashboard
+      elsif Code = KEY_S and then Shift then Dash_View.Save_As
+      elsif Code = KEY_A then Dash_View.Select_All else Dash_View.No_Key);
+
+   function In_Row (Code, First : Unsigned_64; Row : Letter_Row) return Boolean is
+     (Code >= First and then Code - First < Unsigned_64 (Row'Length));
+   --  A key's letter or digit (' ': none).
+   function Letter_Of (Code : Unsigned_64) return Character is
+     (if In_Row (Code, TOP_ROW_FIRST, TOP_ROW) then TOP_ROW (TOP_ROW'First + Natural (Code - TOP_ROW_FIRST))
+      elsif In_Row (Code, HOME_ROW_FIRST, HOME_ROW) then HOME_ROW (HOME_ROW'First + Natural (Code - HOME_ROW_FIRST))
+      elsif In_Row (Code, BOTTOM_ROW_FIRST, BOTTOM_ROW)
+      then BOTTOM_ROW (BOTTOM_ROW'First + Natural (Code - BOTTOM_ROW_FIRST))
+      elsif In_Row (Code, DIGIT_ROW_FIRST, DIGIT_ROW) then DIGIT_ROW (DIGIT_ROW'First + Natural (Code - DIGIT_ROW_FIRST))
+      else ' ');
 
    function Key_Of (Code : Unsigned_64) return Dash_View.Key is
      (if Code = KEY_LEFT then Dash_View.Left elsif Code = KEY_RIGHT then Dash_View.Right
@@ -205,6 +275,10 @@ procedure Main is
       elsif Code in KEY_SLASH | KEY_F1 then Dash_View.Show_Keys
       elsif Code = KEY_HOME then Dash_View.Home elsif Code = KEY_END then Dash_View.End_Key
       elsif Code = KEY_ESCAPE then Dash_View.Escape elsif Code = KEY_EQUALS then Dash_View.Zoom_In
+      elsif Code = KEY_F10 then Dash_View.Menu_Bar elsif Code = KEY_ENTER then Dash_View.Enter
+      elsif Code = KEY_SPACE then Dash_View.Space elsif Code = KEY_BACKSPACE then Dash_View.Backspace
+      elsif Code = KEY_PAGE_UP then Dash_View.Page_Up elsif Code = KEY_PAGE_DOWN then Dash_View.Page_Down
+      elsif Code = KEY_A then Dash_View.Add_Panel
       elsif Code = KEY_MINUS then Dash_View.Zoom_Out elsif Code = KEY_L then Dash_View.Live
       elsif Code in KEY_DIGIT_1 .. KEY_DIGIT_6
       then Dash_View.Key'Val (Dash_View.Key'Pos (Dash_View.Range_1) + Natural (Code - KEY_DIGIT_1))
@@ -220,7 +294,11 @@ procedure Main is
       Shift : constant Boolean :=
         (I.Pointer_Modifiers (Event) and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
       Was_Editing : constant Boolean := Dash_View.Editing (View);
+      --  The menu bar or the picker open before: the input is theirs.
+      Was_Menu : constant Boolean := Dash_View.Open_Menu (View) /= 0;
+      Was_Picker : constant Boolean := Dash_View.Picker_Panel (View) /= 0;
       Kind : Input_Kind := Other_Input;
+      Edits_Before : constant Natural := Dash_View.Edits (View);
    begin
       if Event.kind = I.INPUT_CLOSE_REQUEST then
          Running := False;
@@ -229,8 +307,25 @@ procedure Main is
          --  A new size, density or colour scheme: everything again.
          Set_Bounds (Win);
          Dirty := CuBit.UI.App.Full_Rect (Win);
+      elsif Event.kind in I.INPUT_KEY_DOWN | I.INPUT_KEY_UP and then Event.payload0 = KEY_ALT then
+         --  Alt alone: the menu bar's keyboard cues show while it is held.
+         Kind := Menu_Input;
+         Dash_View.Handle
+           (View, (Kind => Dash_View.Modifier_Change,
+                   Alt => (I.Key_Modifiers (Event) and CuBit.UI.App.KEYMOD_ALT) /= 0, others => <>), Dirty);
+      elsif Event.kind = I.INPUT_TEXT then
+         declare
+            Code : constant Unsigned_64 := Event.payload0 and CODE_POINT_MASK;
+         begin
+            if Dash_View.Dialog_Open (View) and then Code in FIRST_PRINTABLE .. LAST_PRINTABLE then
+               Dash_View.Handle
+                 (View, (Kind => Dash_View.Text_Input, Character_Value => Character'Val (Code), others => <>), Dirty);
+            end if;
+         end;
       elsif Event.kind = I.INPUT_KEY_DOWN then
-         if CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1) = Clipboard_Chords.Copy_Command then
+         if CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1) = Clipboard_Chords.Copy_Command
+           and then not Dash_View.Dialog_Open (View)
+         then
             declare
                --  Editing or showing the CCL: the dashboard; else the
                --  drill-down's expression.
@@ -249,13 +344,25 @@ procedure Main is
             declare
                Modifiers : constant Unsigned_64 := Event.payload1 and KEY_MODIFIER_MASK;
                Control : constant Boolean := (Modifiers and CuBit.UI.App.KEYMOD_CTRL) /= 0;
+               Shift_Held : constant Boolean := (Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
+               Alt : constant Boolean := (Modifiers and CuBit.UI.App.KEYMOD_ALT) /= 0;
+               Letter : constant Character := Letter_Of (Event.payload0);
+               Mapped : constant Dash_View.Key :=
+                 (if Control then Control_Key_Of (Event.payload0, Shift_Held)
+                  elsif Alt then Dash_View.No_Key else Key_Of (Event.payload0));
+               --  A letter with no command of its own still goes in (menu
+               --  mnemonics, Alt+letter, the picker's type-ahead).
                Pressed : constant Dash_View.Key :=
-                 (if Control then Control_Key_Of (Event.payload0) else Key_Of (Event.payload0));
+                 (if Mapped = Dash_View.No_Key and then Letter /= ' ' and then not Control then Dash_View.Letter_Key
+                  elsif Alt and then Event.payload0 in KEY_UP | KEY_DOWN then Key_Of (Event.payload0)
+                  else Mapped);
             begin
                --  The CCL and keys overlays are not edits (they draw a page
                --  of text once): Other.
                Kind :=
-                 (if Pressed in Dash_View.Show_Source | Dash_View.Show_Keys then Other_Input
+                 (if Was_Menu or else Pressed = Dash_View.Menu_Bar or else (Alt and then Letter /= ' ') then Menu_Input
+                  elsif Was_Picker or else Pressed in Dash_View.Panel_Source | Dash_View.Add_Panel then Picker_Input
+                  elsif Pressed in Dash_View.Show_Source | Dash_View.Show_Keys then Other_Input
                   elsif Was_Editing or else Pressed in Dash_View.Edit .. Dash_View.Redo then Edit_Input
                   elsif Pressed in Dash_View.Zoom_In | Dash_View.Zoom_Out | Dash_View.Range_1 .. Dash_View.Range_6
                   then Zoom_Input
@@ -265,13 +372,15 @@ procedure Main is
                   else Other_Input);
                if Pressed /= Dash_View.No_Key then
                   Dash_View.Handle
-                    (View, (Kind => Dash_View.Key_Press, Pressed => Pressed,
-                            Shift => (Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0, others => <>), Dirty);
+                    (View, (Kind => Dash_View.Key_Press, Pressed => Pressed, Shift => Shift_Held, Control => Control,
+                            Alt => Alt, Letter => Letter, others => <>), Dirty);
                end if;
             end;
          end if;
       elsif Event.kind in I.INPUT_POINTER_MOVE | I.INPUT_POINTER_DOWN | I.INPUT_POINTER_UP then
-         Kind := (if Was_Editing then Edit_Input
+         Kind := (if Was_Menu or else Dash_View.Open_Menu (View) /= 0 then Menu_Input
+                  elsif Was_Picker then Picker_Input
+                  elsif Was_Editing then Edit_Input
                   elsif Event.kind = I.INPUT_POINTER_MOVE and then I.Pointer_Buttons (Event) = 0 then Hover_Input
                   elsif Event.kind = I.INPUT_POINTER_MOVE then Pan_Input
                   else Other_Input);
@@ -279,11 +388,40 @@ procedure Main is
            (View, (Kind => (if Event.kind = I.INPUT_POINTER_DOWN then Dash_View.Pointer_Press
                             elsif Event.kind = I.INPUT_POINTER_UP then Dash_View.Pointer_Release
                             else Dash_View.Pointer_Move),
-                   X => I.Pointer_X (Event), Y => I.Pointer_Y (Event), Shift => Shift, others => <>), Dirty);
+                   X => I.Pointer_X (Event), Y => I.Pointer_Y (Event), Shift => Shift,
+                   Control => (I.Pointer_Modifiers (Event) and CuBit.UI.App.KEYMOD_CTRL) /= 0,
+                   Alt => (I.Pointer_Modifiers (Event) and CuBit.UI.App.KEYMOD_ALT) /= 0, others => <>), Dirty);
+         --  A press that opened the picker or a menu counts as theirs.
+         if Kind = Other_Input and then Dash_View.Picker_Panel (View) /= 0 then
+            Kind := Picker_Input;
+         end if;
       elsif Event.kind = I.INPUT_POINTER_WHEEL then
          Kind := Zoom_Input;
          Dash_View.Handle (View, (Kind => Dash_View.Wheel, X => I.Pointer_X (Event), Y => I.Pointer_Y (Event),
                                   Steps => I.Pointer_Wheel_Delta (Event), others => <>), Dirty);
+      end if;
+      if Dash_View.Edits (View) /= Edits_Before and then Dash_View.Picker_Panel (View) /= 0 then
+         debugPrint ("metricsview: panel" & Natural'Image (Dash_View.Picker_Panel (View)) & " now "
+                     & Dash_View.Panel_Source (View, Dash_View.Picker_Panel (View)) & ASCII.LF);
+      end if;
+      Report_Notice;
+      --  Copy as CCL (the Edit menu's).
+      if Dash_View.Take_Copy_Request (View) then
+         declare
+            Expression : constant String := Dash_View.Dashboard_Source (View);
+            Result : CuBit.UI.Clipboard.Outcome;
+         begin
+            CuBit.UI.Clipboard.Copy_Text (CuBit.UI.App.Surface_ID (Win), Expression, CuBit.UI.Clipboard.Ordinary,
+                                          Result);
+            debugPrint ("metricsview: copied the dashboard (" & Decimal (Unsigned_64 (Expression'Length)) & " bytes)"
+                        & ASCII.LF);
+         end;
+      end if;
+      --  A file command or the picker: the data thread at once.
+      if Threaded and then (Dash_View.Picker_Panel (View) /= 0 or else Dash_View.Dialog_Open (View)
+                            or else Event.kind = I.INPUT_TEXT)
+      then
+         Dash_Runner.Wake;
       end if;
       --  A new viewport: the data thread fetches for it now, not at its poll.
       if Threaded and then Event.kind in I.INPUT_KEY_DOWN | I.INPUT_POINTER_WHEEL | I.INPUT_POINTER_UP
@@ -305,6 +443,7 @@ procedure Main is
    end Handle_Event;
 
    function Deadline return Unsigned_64 is (Due_Ms);
+
 
 
    procedure Report;
@@ -384,6 +523,7 @@ procedure Main is
          end if;
          Dash_View.Refresh (View, Dirty);
          Last_Update_Us := Now_Us - Started;
+         Report_Notice;
          Worst_Update_Us := Unsigned_64'Max (Worst_Update_Us, Last_Update_Us);
          Updates := Updates + 1;
          Dash_Runner.Observe (Update_Cost, Last_Update_Us);

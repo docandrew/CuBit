@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
+with CuBit.Directory_Pages;
 with CuBit.Filesystem_Queues;
 with CuBit.Filesystem_Sessions;
 with CuBit.Filesystems;
@@ -142,6 +143,100 @@ package body Dash_Files is
       end loop;
       Close_Handle (Handle, Deadline_Ms, Closed);
    end Load;
+
+   procedure Exists (Name : String; Deadline_Ms : Unsigned_64; Found : out Boolean; Result : out Outcome) is
+      Status : Unsigned_32;
+      Handle : Unsigned_64;
+      Closed : Outcome;
+   begin
+      Found := False;
+      if Name'Length = 0 or else Name'Length > Maximum_Path then
+         Result := Failed;
+         return;
+      end if;
+      Put (Path_At, Name);
+      Call ((Operation => FQ.Queue_Open, Options => Unsigned_32 (Files.OPEN_READ_ONLY),
+             Length => Unsigned_64 (Name'Length), Arena_Offset => Path_At, others => <>),
+            Deadline_Ms, Status, Handle, Result);
+      if Result = Done then
+         Found := True;
+         Close_Handle (Handle, Deadline_Ms, Closed);
+      elsif Result = Not_Found then
+         Result := Done;
+      end if;
+   end Exists;
+
+   procedure List (Folder : String; Deadline_Ms : Unsigned_64; Result : out Outcome) is
+      package V2 renames CuBit.Directory_Pages;
+      Status : Unsigned_32;
+      Handle, Pages : Unsigned_64;
+      Closed : Outcome;
+      Copy : V2.Page;
+      Valid, Ended : Boolean;
+      Entries : V2.Entry_Count;
+      Used : V2.Used_Bytes;
+      Resume, Stamp : Unsigned_64;
+      --  A listing that never ends (a volume answering wrongly) stops here.
+      Maximum_Pages : constant := 64;
+   begin
+      if Folder'Length = 0 or else Folder'Length > Maximum_Path or else Data_Bytes < V2.Page_Bytes then
+         Result := Failed;
+         return;
+      end if;
+      Put (Path_At, Folder);
+      Call ((Operation => FQ.Queue_Open_Directory, Length => Unsigned_64 (Folder'Length), Arena_Offset => Path_At,
+             others => <>), Deadline_Ms, Status, Handle, Result);
+      if Result /= Done then
+         return;
+      end if;
+      for Page_Count in 1 .. Maximum_Pages loop
+         Call ((Operation => FQ.Queue_Read_Directory, Options => FQ.Directory_Metadata, Handle => Handle,
+                Length => V2.Page_Bytes, Arena_Offset => Data_At, others => <>), Deadline_Ms, Status, Pages, Result);
+         exit when Result /= Done or else Pages = 0;
+         declare
+            Shared : constant V2.Page with Import, Address => FS.Arena (Session) + Storage_Offset (Data_At);
+         begin
+            --  Copied out of shared memory, then checked.
+            Copy := Shared;
+         end;
+         V2.Check (Copy, Valid, Entries, Used, Ended, Resume, Stamp);
+         if not Valid then
+            Result := Failed;
+            exit;
+         end if;
+         declare
+            Offset : Natural := V2.Header_Bytes;
+            Item : V2.Facts;
+            Name : V2.Name_Bytes;
+            Length : V2.Name_Length;
+            Next : Natural;
+            OK : Boolean;
+         begin
+            for E in 1 .. Entries loop
+               V2.Get (Copy, Offset, Used, Item, Name, Length, Next, OK);
+               exit when not OK;
+               declare
+                  Text : String (1 .. Length);
+               begin
+                  for K in 1 .. Length loop
+                     Text (K) := Character'Val (Name (K));
+                  end loop;
+                  if Item.Kind = V2.Kind_File then
+                     Each (Text, Item.Modified);
+                  end if;
+               end;
+               Offset := Next;
+            end loop;
+         end;
+         exit when Ended;
+      end loop;
+      Close_Handle_Directory : declare
+         Value : Unsigned_64;
+      begin
+         Call ((Operation => FQ.Queue_Close_Directory, Handle => Handle, others => <>), Deadline_Ms, Status, Value,
+               Closed);
+      end Close_Handle_Directory;
+   end List;
 
    procedure Save (Name, Bytes : String; Deadline_Ms : Unsigned_64; Result : out Outcome) is
       Slash : Natural := Name'First - 1;

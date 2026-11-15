@@ -34,6 +34,16 @@ package Dash_Files is
    --  Bytes as the file Name, replacing it atomically.
    procedure Save (Name, Bytes : String; Deadline_Ms : Unsigned_64; Result : out Outcome);
 
+   --  Whether the file Name is there (an open for reading, closed again).
+   procedure Exists (Name : String; Deadline_Ms : Unsigned_64; Found : out Boolean; Result : out Outcome);
+
+   --  The folder Folder's entries, each name and when it last changed
+   --  (milliseconds since the Unix epoch), passed to Each in the order
+   --  the volume lists them. Not_Found: no such folder (none saved yet).
+   generic
+      with procedure Each (Name : String; Modified : Unsigned_64);
+   procedure List (Folder : String; Deadline_Ms : Unsigned_64; Result : out Outcome);
+
    --  The filesystem's reply to the last call that failed (diagnostics).
    function Last_Reply return Unsigned_32;
 end Dash_Files;

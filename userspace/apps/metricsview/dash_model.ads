@@ -186,4 +186,8 @@ package Dash_Model is
    Dashboards_Place : constant String := "@nvme:0/Documents/Dashboards/";
    Dashboard_Suffix : constant String := ".ccl";
    function File_Name (D : Dashboard) return String;
+   --  The leaf a dashboard titled Title is saved as (File_Name's last
+   --  part), at most Maximum_Leaf long (the file dialog's names).
+   Maximum_Leaf : constant := 64;
+   function File_Leaf (Title : String) return String;
 end Dash_Model;

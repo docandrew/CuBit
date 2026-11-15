@@ -14,13 +14,18 @@ with Ada.Streams.Stream_IO;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Appearance;
+with CuBit.File_Selection;
 with CuBit.Metric_Updates;
 with CuBit.UI;
 with CuBit.UI.Theme_CCL;
 with Charts_Format;
 with Ada.Real_Time;
+with Ada.Strings.Unbounded;
+with Dash_Choices;
 with Dash_Edit;
 with Dash_Feeds;
+with Dash_Grid;
+with Dash_Jobs;
 with Dash_Layers;
 with Perf_Probe;
 with Dash_Model;
@@ -193,12 +198,99 @@ procedure Metricsview_View_Tests is
 
    Damage_Total : CuBit.UI.Rect := (others => 0);
 
+   --  The dashboards folder, in memory: what the data thread's worker
+   --  reads and writes on CuBit (Dash_Jobs.Worker's formals).
+   package SU renames Ada.Strings.Unbounded;
+   MAXIMUM_TEST_FILES : constant := 8;
+   type Test_File is record
+      Leaf, Content : SU.Unbounded_String;
+      Modified : Unsigned_64 := 0;
+   end record;
+   Folder_Files : array (1 .. MAXIMUM_TEST_FILES) of Test_File;
+   Folder_Used : Natural range 0 .. MAXIMUM_TEST_FILES := 0;
+   Folder_Clock : Unsigned_64 := 0;
+   function File_Index (Leaf : String) return Natural is
+   begin
+      for K in 1 .. Folder_Used loop
+         if SU.To_String (Folder_Files (K).Leaf) = Leaf then
+            return K;
+         end if;
+      end loop;
+      return 0;
+   end File_Index;
+   procedure Test_List (Into : out Dash_View.Folder_Listing) is
+      Accepted : Boolean;
+   begin
+      Into := (Ready => True, others => <>);
+      for K in 1 .. Folder_Used loop
+         Into.Count := Into.Count + 1;
+         CuBit.File_Selection.Set (Into.Entries (Into.Count).Leaf, SU.To_String (Folder_Files (K).Leaf), Accepted);
+         Into.Entries (Into.Count).Modified := Folder_Files (K).Modified;
+      end loop;
+   end Test_List;
+   procedure Test_Read (Leaf : String; Into : out String; Got : out Natural; Result : out Dash_Jobs.File_Result) is
+      K : constant Natural := File_Index (Leaf);
+   begin
+      Into := [others => ' '];
+      Got := 0;
+      if K = 0 then
+         Result := Dash_Jobs.File_Missing;
+         return;
+      end if;
+      declare
+         Bytes : constant String := SU.To_String (Folder_Files (K).Content);
+      begin
+         Got := Bytes'Length;
+         Into (Into'First .. Into'First + Got - 1) := Bytes;
+         Result := Dash_Jobs.File_Done;
+      end;
+   end Test_Read;
+   procedure Test_Write (Leaf, Bytes : String; Result : out Dash_Jobs.File_Result) is
+      K : Natural := File_Index (Leaf);
+   begin
+      if K = 0 then
+         Folder_Used := Folder_Used + 1;
+         K := Folder_Used;
+         Folder_Files (K).Leaf := SU.To_Unbounded_String (Leaf);
+      end if;
+      Folder_Clock := Folder_Clock + 1;
+      Folder_Files (K).Content := SU.To_Unbounded_String (Bytes);
+      Folder_Files (K).Modified := Folder_Clock;
+      Result := Dash_Jobs.File_Done;
+   end Test_Write;
+   function Test_Exists (Leaf : String) return Boolean is (File_Index (Leaf) /= 0);
+   package Jobs is new Dash_Jobs.Worker (Test_List, Test_Read, Test_Write, Test_Exists);
+   --  Saving as the native data thread does (Dash_Runner.Save_Step), into
+   --  the folder above: only where a test says so (the editor's checks
+   --  take and end saves themselves).
+   Autosave : Boolean := False;
+   procedure Save_Step is
+      Due : Boolean;
+      Generation : Natural;
+      Result : Dash_Jobs.File_Result;
+      Place : constant String := Dash_Model.Dashboards_Place;
+   begin
+      Dash_View.Take_Save (View, Due, Generation);
+      if Due then
+         declare
+            Name : constant String := Dash_View.Save_Name (View);
+         begin
+            Test_Write (Name (Name'First + Place'Length .. Name'Last), Dash_View.Save_Source (View) & ASCII.LF, Result);
+            Dash_View.End_Save (View, Generation, Saved => True);
+         end;
+      end if;
+   end Save_Step;
+
    procedure Frame is
       Damage : CuBit.UI.Rect := (others => 0);
    begin
       Feed.Set_Clock (Now);
       --  Both threads' steps, in order, on the test's one thread.
       Dash_View.Data_Step (View);
+      if Autosave then
+         Save_Step;
+      end if;
+      Jobs.Step (View);
       Dash_View.Refresh (View, Damage);
       Damage_Total := Damage;
       if not CuBit.UI.Is_Empty (Damage) then
@@ -378,9 +470,99 @@ procedure Metricsview_View_Tests is
       Dash_Edit.Apply (Edited, Dash_Edit.Narrower, 1, Done, Selected);
       Check (not Done, "a panel never narrower than one column");
    end Model_Edits;
+   --  The picker's rules and the edits it makes, on values: every view
+   --  and source a panel can be given is a Dashboard value that reads
+   --  back as given, a pick undoes as one edit, and a new panel goes in
+   --  the first free place without moving another.
+   procedure Model_Picks is
+      use type Dash_Choices.View_Choice;
+      use type Dash_Model.Match_Kind;
+      use type Dash_Grid.Placement;
+      Original, Edited, Again : Dash_Model.Dashboard;
+      Result : Dash_Model.Load_Result;
+      Done : Boolean;
+      At_Index : Dash_Model.Panel_Index;
+      Where : Dash_Grid.Placement;
+      Before, After : Dash_Grid.Placements;
+      Rows : Dash_Grid.Row_Count;
+      Value_Top : constant := 400;
+      function Grid (Widths : String) return Dash_Model.Dashboard is
+         D : Dash_Model.Dashboard;
+         R : Dash_Model.Load_Result;
+      begin
+         Dash_Model.Load ("(Dashboard title => ""g"" time => (Dashboard_Time span_ms => 60000) panels => [" & Widths
+                          & "])", D, R);
+         Check (R.Success, "a grid dashboard: " & R.Message (1 .. R.Message_Length));
+         return D;
+      end Grid;
+      function Card (Width, Height : Positive) return String is
+        ("(Panel title => ""c"" width =>" & Width'Image & " height =>" & Height'Image
+         & " kind => (Panel_Kind.Stat (Stat_Panel statistic => Metric_Statistic.P99)) series => (list-of Panel_Series))");
+   begin
+      Dash_Model.Load (Dash_Model.DEFAULT_SOURCE, Original, Result);
+      Edited := Original;
+      Dash_Edit.Start (Edited);
+      for Choice in Dash_Choices.View_Choice loop
+         declare
+            Item : constant Dash_Model.Panel := Dash_Choices.With_View (Edited.Panels (1), Choice, Value_Top);
+            Got : Dash_Choices.View_Choice;
+            Found : Boolean;
+         begin
+            Dash_Edit.Replace (Edited, 1, Item, Done);
+            Dash_Model.Load (Dash_Model.To_Source (Edited), Again, Result);
+            Dash_Choices.View_Of (Again.Panels (1), Got, Found);
+            Check (Done and then Result.Success and then Found and then Got = Choice,
+                   "the view " & Choice'Image & " is a Dashboard value and reads back: "
+                   & Result.Message (1 .. Result.Message_Length));
+         end;
+      end loop;
+      Dash_Edit.Replace
+        (Edited, 2, Dash_Choices.With_Source (Edited.Panels (2), (Dash_Model.To_Text ("desktop.latency."),
+                                                                    Dash_Model.Prefix)), Done);
+      Dash_Model.Load (Dash_Model.To_Source (Edited), Again, Result);
+      Check (Done and then Result.Success and then Again.Panels (2).Series_Used = 1
+             and then Again.Panels (2).Series (1).Match = Dash_Model.Prefix
+             and then Dash_Model.Image (Again.Panels (2).Series (1).Name) = "desktop.latency."
+             and then Dash_Model.Image (Again.Panels (2).Title) = "desktop.latency.*, p99",
+             "a prefix source reads back, the title follows it: " & Dash_Model.Image (Again.Panels (2).Title));
+      while Dash_Edit.Can_Undo loop
+         Dash_Edit.Undo (Edited, Done);
+      end loop;
+      Check (Dash_Model.To_Source (Edited) = Dash_Model.To_Source (Original), "every pick undoes, one edit each");
+      --  A new panel: first free place, nothing else moves; an empty
+      --  series list is a Dashboard value.
+      Dash_Grid.Pack (Dash_Grid.Sizes_Of (Edited), Edited.Panels_Used, Before, Rows);
+      Dash_Grid.First_Free (Edited, Dash_Choices.New_Width, Dash_Choices.New_Height, At_Index, Where);
+      Dash_Edit.Insert (Edited, Dash_Choices.New_Panel, At_Index, Done);
+      Dash_Grid.Pack (Dash_Grid.Sizes_Of (Edited), Edited.Panels_Used, After, Rows);
+      Check (Done and then Edited.Panels_Used = Original.Panels_Used + 1 and then After (At_Index) = Where
+             and then (for all P in 1 .. Original.Panels_Used =>
+                         After ((if P < At_Index then P else P + 1)) = Before (P)),
+             "a new panel takes the first free place and moves no other (at" & At_Index'Image & ", column"
+             & Where.Column'Image & " row" & Where.Row'Image & ")");
+      Dash_Model.Load (Dash_Model.To_Source (Edited), Again, Result);
+      Check (Result.Success and then Again.Panels (At_Index).Series_Used = 0,
+             "a new panel without series is a Dashboard value: " & Result.Message (1 .. Result.Message_Length));
+      Dash_Edit.Undo (Edited, Done);
+      Check (Dash_Model.To_Source (Edited) = Dash_Model.To_Source (Original), "adding a panel undoes");
+      --  Hand-made grids: the hole beside a panel, the row under a full one.
+      declare
+         Beside : constant Dash_Model.Dashboard := Grid (Card (8, 2));
+         Under : constant Dash_Model.Dashboard := Grid (Card (12, 2) & " " & Card (4, 2));
+         Hole : constant Dash_Model.Dashboard := Grid (Card (8, 4) & " " & Card (4, 2) & " " & Card (12, 2));
+      begin
+         Dash_Grid.First_Free (Beside, 4, 3, At_Index, Where);
+         Check (At_Index = 2 and then Where = (8, 0), "a 4-wide panel goes beside an 8-wide one");
+         Dash_Grid.First_Free (Under, 4, 3, At_Index, Where);
+         Check (At_Index = 3 and then Where = (4, 2), "and beside a 4-wide one under a full row");
+         Dash_Grid.First_Free (Hole, 4, 2, At_Index, Where);
+         Check (At_Index = 3 and then Where = (8, 2), "and into the hole under a short one, before the row below");
+      end;
+   end Model_Picks;
 begin
    Update_Codec;
    Model_Edits;
+   Model_Picks;
    Install_Themes;
    CuBit.UI.Set_Color_Scheme (CuBit.Appearance.Alloy_Dark);
    Add_Series;
@@ -772,6 +954,297 @@ begin
    end;
    Interact ((Kind => Dash_View.Key_Press, Pressed => Dash_View.Escape, others => <>), "done again");
    Frame;
+
+   --  MET-002's menu bar, a panel's source picker, a new panel, and the
+   --  dashboards folder (save as, open, a file that does not check).
+   declare
+      use type Dash_Choices.View_Choice;
+      use type Dash_Model.Match_Kind;
+      use type CuBit.UI.Rect;
+      function Key (K : Dash_View.Key; Shift, Control, Alt : Boolean := False; Letter : Character := ' ')
+        return Dash_View.Event is
+        (Kind => Dash_View.Key_Press, Pressed => K, Shift => Shift, Control => Control, Alt => Alt,
+         Letter => Letter, others => <>);
+      procedure Click (X, Y : Natural; What : String) is
+      begin
+         Interact ((Kind => Dash_View.Pointer_Press, X => X, Y => Y, others => <>), What & " press");
+         Interact ((Kind => Dash_View.Pointer_Release, X => X, Y => Y, others => <>), What & " release");
+      end Click;
+      procedure Type_Text (Text : String) is
+      begin
+         for C of Text loop
+            Interact ((Kind => Dash_View.Text_Input, Character_Value => C, others => <>), "type");
+         end loop;
+      end Type_Text;
+      Parsed : Dash_Model.Dashboard;
+      function Parse return Boolean is
+      begin
+         Dash_Model.Load (Dash_View.Dashboard_Source (View), Parsed, Loaded);
+         return Loaded.Success;
+      end Parse;
+      function Choice_Index (Field : Dash_View.Picker_Field; Caption : String) return Natural is
+      begin
+         for I in 1 .. Dash_View.Picker_Choices (View, Field) loop
+            if Dash_View.Picker_Choice (View, Field, I) = Caption then
+               return I;
+            end if;
+         end loop;
+         return 0;
+      end Choice_Index;
+      --  Through the open list: highlight Caption, Enter commits (one edit).
+      procedure Choose (Field : Dash_View.Picker_Field; Caption : String) is
+         Want : constant Natural := Choice_Index (Field, Caption);
+         Have : constant Natural := Dash_View.Picker_Selection (View, Field);
+      begin
+         Check (Want /= 0, "the picker offers " & Caption);
+         Interact (Key (Dash_View.Enter), "picker list open");
+         for I in 1 .. abs (Want - Have) loop
+            Interact (Key ((if Want > Have then Dash_View.Down else Dash_View.Up)), "picker list move");
+         end loop;
+         Interact (Key (Dash_View.Enter), "picker commit");
+      end Choose;
+      Before_Source : constant String := Dash_View.Dashboard_Source (View);
+      Bar : constant CuBit.UI.Rect := Dash_View.Menu_Bar_Bounds (View);
+   begin
+      Check (not CuBit.UI.Is_Empty (Bar) and then Bar.y = 0, "the menu bar heads the window");
+      --  File, by the pointer: a press opens it, items light up under it.
+      Click (Bar.x + 12, Bar.y + Bar.h / 2, "menu File");
+      Check (Dash_View.Open_Menu (View) = 1, "a press on File opens it");
+      Frame;
+      Check_Coherent ("menu-open");
+      Repaint_All;
+      Save_PPM ("13-menu-file");
+      declare
+         Popup : constant CuBit.UI.Rect := Dash_View.Menu_Popup_Bounds (View);
+         Total, Worst : Natural := 0;
+         Steps : constant := 8;
+         Row : constant := 29;
+      begin
+         for I in 0 .. Steps - 1 loop
+            declare
+               Damage : CuBit.UI.Rect := (others => 0);
+               Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+               Taken : Natural;
+            begin
+               Dash_View.Handle (View, (Kind => Dash_View.Pointer_Move, X => Popup.x + 40,
+                                        Y => Popup.y + Row / 2 + I * Row, others => <>), Damage);
+               if not CuBit.UI.Is_Empty (Damage) then
+                  Dash_View.Render (View, CuBit.UI.With_Clip (Whole, Damage), Damage);
+               end if;
+               Taken := Elapsed_Us (Started);
+               Total := Total + Taken;
+               Worst := Natural'Max (Worst, Taken);
+            end;
+         end loop;
+         Put_Line ("sequence menu hover:" & Natural'Image (Steps) & " moves, mean" & Natural'Image (Total / Steps)
+                   & " us, worst" & Worst'Image & " us (handle + render)");
+      end;
+      Check_Coherent ("menu-hover");
+      Interact (Key (Dash_View.Right), "menu right");
+      Check (Dash_View.Open_Menu (View) = 2, "Right opens Edit");
+      Check_Coherent ("menu-edit");
+      Interact (Key (Dash_View.Escape), "menu escape");
+      Check (Dash_View.Open_Menu (View) = 0, "Esc closes the menu");
+      Frame;
+      Check_Coherent ("menu-closed");
+      Interact (Key (Dash_View.Menu_Bar), "F10");
+      Check (Dash_View.Open_Menu (View) = 1, "F10 opens the menu bar");
+      Interact (Key (Dash_View.Escape), "menu escape");
+      Interact (Key (Dash_View.Letter_Key, Alt => True, Letter => 'v'), "Alt+V");
+      Check (Dash_View.Open_Menu (View) = 3, "Alt+V opens View");
+      Interact (Key (Dash_View.Show_Source, Letter => 'c'), "View > Show CCL by its letter");
+      Check (Dash_View.Open_Menu (View) = 0 and then Dash_View.Source_Showing (View), "a menu item runs its command");
+      Interact (Key (Dash_View.Show_Source, Letter => 'c'), "hide CCL");
+      Frame;
+      Check_Coherent ("menu-command");
+
+      --  A panel's source picker: its button, the store's series, a pick.
+      declare
+         Button : constant CuBit.UI.Rect := Dash_View.Source_Button_Bounds (View, 1);
+      begin
+         Click (Button.x + Button.w / 2, Button.y + Button.h / 2, "picker button");
+      end;
+      Check (Dash_View.Picker_Panel (View) = 1, "the source button opens the panel's picker");
+      Frame;
+      Frame;
+      Check (Dash_View.Picker_Choices (View, Dash_View.Series_Field) > 10
+             and then Choice_Index (Dash_View.Series_Field, "desktop.latency.*  (10 series)") /= 0,
+             "the picker lists the store's series and their groups:"
+             & Dash_View.Picker_Choices (View, Dash_View.Series_Field)'Image);
+      Check_Coherent ("picker-open");
+      Repaint_All;
+      Save_PPM ("14-picker");
+      Interact (Key (Dash_View.Enter), "picker list open");
+      Check_Coherent ("picker-list");
+      Repaint_All;
+      Save_PPM ("15-picker-list");
+      Interact (Key (Dash_View.Escape), "picker list cancel");
+      Check (Dash_View.Picker_Panel (View) = 1, "Esc closes the list first");
+      Choose (Dash_View.Series_Field, "desktop.latency.submit_to_ready");
+      Check (Parse and then Parsed.Panels (1).Series_Used = 1
+             and then Dash_Model.Image (Parsed.Panels (1).Series (1).Name) = "desktop.latency.submit_to_ready"
+             and then Parsed.Panels (1).Series (1).Match = Dash_Model.Exact
+             and then Dash_Model.Image (Parsed.Panels (1).Title) = "desktop.latency.submit_to_ready, p50 and p99",
+             "a picked series is in the dashboard's CCL value, which checks: " & Loaded.Message (1 .. Loaded.Message_Length));
+      for I in 1 .. 3 loop
+         Frame;
+      end loop;
+      Check (Dash_View.Resolved_Tracks (View) = Dash_View.Track_Total (View)
+             and then Dash_View.Columns_With_Data (View) > 0, "the re-sourced panel reads its series");
+      Check_Coherent ("picker-picked");
+      Interact (Key (Dash_View.Next_Panel), "picker tab");
+      Interact (Key (Dash_View.Down), "picker view down");
+      declare
+         Shown : Dash_Choices.View_Choice;
+      begin
+         Check (Dash_View.Panel_View (View, 1, Shown) and then Shown = Dash_Choices.Line_Tail,
+                "Down on the view field shows the next view");
+      end;
+      Frame;
+      Check_Coherent ("picker-view");
+      Interact (Key (Dash_View.Undo, Control => True), "picker undo view");
+      declare
+         Shown : Dash_Choices.View_Choice;
+      begin
+         Check (Dash_View.Panel_View (View, 1, Shown) and then Shown = Dash_Choices.Lines_Median_And_Tail,
+                "Ctrl+Z undoes the view, one edit");
+      end;
+      Interact (Key (Dash_View.Undo, Control => True), "picker undo series");
+      Check (Dash_View.Dashboard_Source (View) = Before_Source, "and again the series: the dashboard as it was");
+      Interact (Key (Dash_View.Escape), "picker close");
+      Check (Dash_View.Picker_Panel (View) = 0, "Esc closes the picker");
+      for I in 1 .. 3 loop
+         Frame;
+      end loop;
+      Check_Coherent ("picker-closed");
+
+      --  A new panel: the first free place, its picker open, then picked.
+      declare
+         D : Dash_Model.Dashboard;
+         At_Index : Dash_Model.Panel_Index;
+         Where : Dash_Grid.Placement;
+         Count : constant Natural := Dash_View.Panel_Count (View);
+         type Rect_List is array (1 .. Dash_Model.Maximum_Panels) of CuBit.UI.Rect;
+         Before_Rects : Rect_List := [others => (others => 0)];
+         Shown : Dash_Choices.View_Choice;
+      begin
+         Check (Parse, "the dashboard parses");
+         D := Parsed;
+         Dash_Grid.First_Free (D, Dash_Choices.New_Width, Dash_Choices.New_Height, At_Index, Where);
+         for P in 1 .. Count loop
+            Before_Rects (P) := Dash_View.Panel_Bounds (View, P);
+         end loop;
+         Interact (Key (Dash_View.Add_Panel, Letter => 'a'), "add panel");
+         Check (Dash_View.Panel_Count (View) = Count + 1 and then Dash_View.Picker_Panel (View) = At_Index
+                and then Dash_View.Selected (View) = At_Index and then Dash_View.Editing (View),
+                "A adds a panel at the first free place (" & At_Index'Image & "), selected, its picker open");
+         Check ((for all P in 1 .. Count =>
+                   Dash_View.Panel_Bounds (View, (if P < At_Index then P else P + 1)) = Before_Rects (P)),
+                "no other panel moved");
+         Frame;
+         Check_Coherent ("added");
+         Choose (Dash_View.Series_Field, "desktop.latency.input_to_ready");
+         Interact (Key (Dash_View.Next_Panel), "picker tab");
+         Choose (Dash_View.View_Field, Dash_Choices.Caption (Dash_Choices.Number_Tail));
+         Check (Dash_View.Panel_View (View, At_Index, Shown) and then Shown = Dash_Choices.Number_Tail
+                and then Parse and then Dash_Model.Image (Parsed.Panels (At_Index).Title)
+                = "desktop.latency.input_to_ready, p99", "the new panel shows the series picked as a number");
+         Interact (Key (Dash_View.Escape), "picker close");
+         Interact (Key (Dash_View.Escape), "editor done");
+         for I in 1 .. 3 loop
+            Frame;
+         end loop;
+         Check (Dash_View.Resolved_Tracks (View) = Dash_View.Track_Total (View), "the new panel's series resolves");
+         Check_Coherent ("added-picked");
+         Repaint_All;
+         Save_PPM ("16-added-panel");
+      end;
+
+      --  Save as, then open: the same dashboard. A name taken is refused.
+      Autosave := True;
+      Frame;
+      Interact (Key (Dash_View.Save_As, Shift => True, Control => True, Letter => 's'), "save as");
+      Frame;
+      Check (Dash_View.Dialog_Open (View), "Ctrl+Shift+S shows the save dialog");
+      Check_Coherent ("save-dialog");
+      Repaint_All;
+      Save_PPM ("17-save-as");
+      Type_Text ("latency-copy");
+      Interact (Key (Dash_View.Enter), "save as enter");
+      Frame;
+      declare
+         Saved_Source : constant String := Dash_View.Dashboard_Source (View);
+         K : constant Natural := File_Index ("latency-copy.ccl");
+         Bad : Dash_Model.Load_Result;
+         Ignored : Dash_Model.Dashboard;
+         Broken : constant String := "(Dashboard title => ""Broken"" panels => [])";
+         Written : Dash_Jobs.File_Result;
+         function Contains (S, Part : String) return Boolean is
+           (for some I in S'First .. S'Last - Part'Length + 1 => S (I .. I + Part'Length - 1) = Part);
+      begin
+         Check (not Dash_View.Dialog_Open (View) and then Dash_View.Current_File (View) = "latency-copy.ccl"
+                and then K /= 0 and then SU.To_String (Folder_Files (K).Content) = Saved_Source & ASCII.LF,
+                "Save As writes the dashboard's CCL as the new file, which becomes its own: "
+                & Dash_View.Notice (View));
+         Interact (Key (Dash_View.Save_As, Shift => True, Control => True, Letter => 's'), "save as again");
+         Frame;
+         Interact (Key (Dash_View.Select_All, Control => True, Letter => 'a'), "select all");
+         Type_Text ("latency-copy");
+         Interact (Key (Dash_View.Enter), "save as taken");
+         Frame;
+         Check (Dash_View.Dialog_Open (View), "a name already in the folder is refused (the dialog stays)");
+         Interact (Key (Dash_View.Escape), "dialog cancel");
+         Check (not Dash_View.Dialog_Open (View), "Esc cancels the dialog");
+         Frame;
+         Check_Coherent ("dialog-closed");
+         Interact (Key (Dash_View.New_Dashboard, Control => True, Letter => 'n'), "new dashboard");
+         Frame;
+         Check (Dash_View.Title (View) = Dash_Choices.New_Dashboard_Title and then Dash_View.Picker_Panel (View) = 1
+                and then Dash_View.Current_File (View) = "new-dashboard.ccl",
+                "Ctrl+N: a new dashboard, its first panel's picker open");
+         Interact (Key (Dash_View.Escape), "picker close");
+         Interact (Key (Dash_View.Escape), "editor done");
+         Frame;
+         Check_Coherent ("new-dashboard");
+         Interact (Key (Dash_View.Open_Dashboard, Control => True, Letter => 'o'), "open");
+         Frame;
+         Check (Dash_View.Dialog_Open (View), "Ctrl+O shows the open dialog");
+         Interact (Key (Dash_View.Next_Panel), "dialog tab");
+         Interact (Key (Dash_View.Select_All, Control => True, Letter => 'a'), "select all");
+         Type_Text ("latency-copy.ccl");
+         Interact (Key (Dash_View.Enter), "open enter");
+         Frame;
+         Check (not Dash_View.Dialog_Open (View) and then Dash_View.Dashboard_Source (View) = Saved_Source
+                and then Dash_View.Current_File (View) = "latency-copy.ccl",
+                "Save As then Open gives the same dashboard: " & Dash_View.Notice (View));
+         for I in 1 .. 3 loop
+            Frame;
+         end loop;
+         Check (Dash_View.Resolved_Tracks (View) = Dash_View.Track_Total (View), "the opened dashboard reads");
+         Check_Coherent ("opened");
+         --  A file that does not check: refused with the checker's words.
+         Test_Write ("broken.ccl", Broken, Written);
+         Dash_Model.Load (Broken, Ignored, Bad);
+         Check (not Bad.Success, "the broken file does not check");
+         Interact (Key (Dash_View.Open_Dashboard, Control => True, Letter => 'o'), "open");
+         Frame;
+         Interact (Key (Dash_View.Next_Panel), "dialog tab");
+         Interact (Key (Dash_View.Select_All, Control => True, Letter => 'a'), "select all");
+         Type_Text ("broken.ccl");
+         Interact (Key (Dash_View.Enter), "open broken");
+         Frame;
+         Check (Dash_View.Dialog_Open (View) and then Contains (Dash_View.Notice (View), Bad.Message (1 .. Bad.Message_Length))
+                and then Dash_View.Dashboard_Source (View) = Saved_Source,
+                "a file that does not check is refused with the checker's message, the dashboard stays: "
+                & Dash_View.Notice (View));
+         Repaint_All;
+         Save_PPM ("18-refused-file");
+         Interact (Key (Dash_View.Escape), "dialog cancel");
+         Frame;
+         Check_Coherent ("refused-file");
+      end;
+      Autosave := False;
+   end;
 
    --  Repaint cost of the whole window.
    declare

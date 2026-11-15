@@ -127,6 +127,38 @@ package body CuBit.UI.Combo_Boxes is
       end if;
       Changed := State.Selected /= Before;
    end Handle_Pointer;
+   -- The open list under (or, without room below, over) the field R:
+   -- Rows of the choices from First, inside Popup.
+   procedure Layout_Popup
+     (State : Combo_State; Definition : Model; R : Rect; Canvas_Height : Natural;
+      Row_Height, Visible_Rows : Positive; Popup : out Rect; First, Rows : out Natural) is
+      Below : constant Natural := (if Canvas_Height > R.y + R.h then Canvas_Height - (R.y + R.h) else 0);
+      H : Natural := Natural'Min (Definition.Count, Natural'Min (Max_Choices, Visible_Rows));
+      Above : constant Boolean := Below / Row_Height < H and then R.y > Below;
+      Room : constant Natural := (if Above then R.y else Below);
+   begin
+      Popup := (others => 0); First := 1;
+      Rows := Natural'Min (H, (if Room > 4 then (Room - 4) / Row_Height else 0));
+      if Rows = 0 then return; end if;
+      H := Rows * Row_Height + 4;
+      First := (if State.Highlighted > Rows then State.Highlighted - Rows + 1 else 1);
+      First := Natural'Min (First, Definition.Count - Rows + 1);
+      Popup := (R.x, (if Above then R.y - H else R.y + R.h), R.w, H);
+   end Layout_Popup;
+
+   function Popup_Bounds
+     (State : Combo_State; Definition : Model; Bounds : Rect; Canvas_Height : Natural;
+      Row_Height : Positive := Default_Height; Visible_Rows : Positive := 8) return Rect is
+      Popup : Rect;
+      First, Rows : Natural;
+   begin
+      if not State.Opened or else Is_Empty (Bounds) or else Next_Item (Definition, 0, True) = 0 then
+         return (others => 0);
+      end if;
+      Layout_Popup (State, Definition, Bounds, Canvas_Height, Row_Height, Visible_Rows, Popup, First, Rows);
+      return Popup;
+   end Popup_Bounds;
+
    procedure Draw
      (C : Canvas; Map : in out Controls.Control_Map; State : Combo_State;
       Definition : Model; Base : ID_Base; Bounds : Rect; Colors : Theme;
@@ -148,9 +180,8 @@ package body CuBit.UI.Combo_Boxes is
       Ink : constant Color := (if Usable then Colors.text else Colors.muted);
       TY : constant Natural := R.y + (if R.h > UI_Text_Height then (R.h - UI_Text_Height) / 2 else 0)
         + (if R.h >= UI_Text_Height + 8 then 2 else 0);
-      Below, Room, Rows, First, H : Natural;
+      Rows, First : Natural;
       Popup, Row : Rect;
-      Above : Boolean;
       RC : Canvas;
       BG, FG : Color;
    begin
@@ -167,16 +198,8 @@ package body CuBit.UI.Combo_Boxes is
       if not Usable then return; end if;
       Controls.Add_Button (Map, Base, Input_Rect (PC, R), (0, 0, C.width, C.height));
       if not State.Opened then return; end if;
-      Below := C.height - (R.y + R.h);
-      H := Natural'Min (Definition.Count, Natural'Min (Max_Choices, Visible_Rows));
-      Above := Below / Row_Height < H and then R.y > Below;
-      Room := (if Above then R.y else Below);
-      Rows := Natural'Min (H, (if Room > 4 then (Room - 4) / Row_Height else 0));
+      Layout_Popup (State, Definition, R, C.height, Row_Height, Visible_Rows, Popup, First, Rows);
       if Rows = 0 then return; end if;
-      H := Rows * Row_Height + 4;
-      First := (if State.Highlighted > Rows then State.Highlighted - Rows + 1 else 1);
-      First := Natural'Min (First, Definition.Count - Rows + 1);
-      Popup := (R.x, (if Above then R.y - H else R.y + R.h), R.w, H);
       RC := With_Clip (C, Popup);
       Draw_Table_Viewport (RC, Popup, Colors);
       Controls.Add_Button (Map, Base + Max_Choices + 1, Input_Rect (RC, Popup),

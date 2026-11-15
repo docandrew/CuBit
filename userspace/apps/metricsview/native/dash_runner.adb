@@ -9,7 +9,9 @@ with CuBit.Monotonic;
 with CuBit.Thread_Areas;
 with Charts_Format;
 with Dash_Feeds;
+with CuBit.File_Selection;
 with Dash_Files;
+with Dash_Jobs;
 with Dash_Model;
 with Dash_Sync;
 
@@ -83,11 +85,16 @@ package body Dash_Runner is
    Name_19 : aliased constant String := "metricsview.copy_union_px";
    Name_20 : aliased constant String := "metricsview.copy_exact_px";
    Name_21 : aliased constant String := "metricsview.paint_us";
-   Own_Names : constant array (1 .. 21) of Name_Access :=
+   Name_22 : aliased constant String := "metricsview.input_cost_menu_us";
+   Name_23 : aliased constant String := "metricsview.input_to_render_menu_us";
+   Name_24 : aliased constant String := "metricsview.input_cost_picker_us";
+   Name_25 : aliased constant String := "metricsview.input_to_render_picker_us";
+   Own_Names : constant array (Positive range <>) of Name_Access :=
      [Name_1'Access, Name_2'Access, Name_3'Access, Name_4'Access, Name_5'Access, Name_6'Access,
       Name_7'Access, Name_8'Access, Name_9'Access, Name_10'Access, Name_11'Access, Name_12'Access,
       Name_13'Access, Name_14'Access, Name_15'Access, Name_16'Access, Name_17'Access, Name_18'Access,
-      Name_19'Access, Name_20'Access, Name_21'Access];
+      Name_19'Access, Name_20'Access, Name_21'Access, Name_22'Access, Name_23'Access, Name_24'Access,
+      Name_25'Access];
 
    procedure Report_Own;
    procedure Report_Own is
@@ -112,11 +119,91 @@ package body Dash_Runner is
       end loop;
    end Report_Own;
 
+   --  The dashboards folder's work (Dash_Jobs): Dash_Files in the
+   --  dashboards' place, each call waiting at most File_Deadline_Ms.
+   File_Deadline_Ms : constant := 2_000;
+   Folder : constant String :=
+     Dash_Model.Dashboards_Place (Dash_Model.Dashboards_Place'First .. Dash_Model.Dashboards_Place'Last - 1);
+
+   function Result_Of (Result : Dash_Files.Outcome) return Dash_Jobs.File_Result is
+     (case Result is
+        when Dash_Files.Done => Dash_Jobs.File_Done,
+        when Dash_Files.Not_Found => Dash_Jobs.File_Missing,
+        when Dash_Files.Not_Granted => Dash_Jobs.File_Refused,
+        when Dash_Files.Too_Large => Dash_Jobs.File_Too_Large,
+        when Dash_Files.Unavailable => Dash_Jobs.File_Unavailable,
+        when Dash_Files.Late => Dash_Jobs.File_Late,
+        when Dash_Files.Failed => Dash_Jobs.File_Failed);
+   function Deadline return Unsigned_64 is (CuBit.Monotonic.Milliseconds + File_Deadline_Ms);
+
+   procedure List_Folder (Into : out Dash_View.Folder_Listing);
+   procedure List_Folder (Into : out Dash_View.Folder_Listing) is
+      Result : Dash_Files.Outcome;
+      Listing : Dash_View.Folder_Listing;
+      procedure Each (Name : String; Modified : Unsigned_64) is
+         Accepted : Boolean;
+         Suffix : constant String := Dash_Model.Dashboard_Suffix;
+      begin
+         --  Dashboards only (a save's hidden sibling is not one).
+         if Name'Length > Suffix'Length and then Name (Name'Last - Suffix'Length + 1 .. Name'Last) = Suffix
+           and then Name (Name'First) /= '.' and then Listing.Count < CuBit.File_Selection.Maximum_Files
+         then
+            CuBit.File_Selection.Set (Listing.Entries (Listing.Count + 1).Leaf, Name, Accepted);
+            if Accepted then
+               Listing.Count := Listing.Count + 1;
+               Listing.Entries (Listing.Count).Modified := Modified;
+            end if;
+         end if;
+      end Each;
+      procedure Walk is new Dash_Files.List (Each);
+      use type Dash_Files.Outcome;
+   begin
+      if not Dash_Files.Is_Open then
+         Into := (others => <>);
+         return;
+      end if;
+      Walk (Folder, Deadline, Result);
+      --  No folder yet: an empty one (made at the first save).
+      Listing.Ready := Result in Dash_Files.Done | Dash_Files.Not_Found;
+      Into := Listing;
+   end List_Folder;
+
+   procedure Read_File (Leaf : String; Into : out String; Got : out Natural; Result : out Dash_Jobs.File_Result);
+   procedure Read_File (Leaf : String; Into : out String; Got : out Natural; Result : out Dash_Jobs.File_Result) is
+      Outcome : Dash_Files.Outcome;
+   begin
+      Dash_Files.Load (Dash_Model.Dashboards_Place & Leaf, Into, Got, Deadline, Outcome);
+      Result := Result_Of (Outcome);
+   end Read_File;
+
+   procedure Write_File (Leaf, Bytes : String; Result : out Dash_Jobs.File_Result);
+   procedure Write_File (Leaf, Bytes : String; Result : out Dash_Jobs.File_Result) is
+      Outcome : Dash_Files.Outcome;
+   begin
+      Dash_Files.Save (Dash_Model.Dashboards_Place & Leaf, Bytes, Deadline, Outcome);
+      Result := Result_Of (Outcome);
+      CuBit.Messages.debugPrint
+        ("metricsview: saved as " & Leaf & " bytes=" & Charts_Format.Decimal (Unsigned_64 (Bytes'Length))
+         & " result=" & Outcome'Image & ASCII.LF);
+   end Write_File;
+
+   function File_Exists (Leaf : String) return Boolean;
+   function File_Exists (Leaf : String) return Boolean is
+      Found : Boolean;
+      Outcome : Dash_Files.Outcome;
+   begin
+      Dash_Files.Exists (Dash_Model.Dashboards_Place & Leaf, Deadline, Found, Outcome);
+      return Found;
+   end File_Exists;
+
+   package Jobs is new Dash_Jobs.Worker (List_Folder, Read_File, Write_File, File_Exists);
+
    --  An edited dashboard, written when it is due (Dash_View.Take_Save):
    --  the value is copied under the lock and written without it.
    Save_Deadline_Ms : constant := 2_000;
 
-   procedure Save_Step is
+   procedure Autosave;
+   procedure Autosave is
       Due : Boolean;
       Generation : Natural;
    begin
@@ -127,7 +214,7 @@ package body Dash_Runner is
          return;
       end if;
       declare
-         Source : constant String := Dash_View.Dashboard_Source (View) & ASCII.LF;
+         Source : constant String := Dash_View.Save_Source (View) & ASCII.LF;
          Name : constant String := Dash_View.Save_Name (View);
          Result : Dash_Files.Outcome := Dash_Files.Unavailable;
          use type Dash_Files.Outcome;
@@ -153,6 +240,12 @@ package body Dash_Runner is
            ("metricsview: " & (if Result = Dash_Files.Done then "saved " else "not saved ") & Name & " bytes="
             & Charts_Format.Decimal (Unsigned_64 (Source'Length)) & " result=" & Result'Image & ASCII.LF);
       end;
+   end Autosave;
+
+   procedure Save_Step is
+   begin
+      Autosave;
+      Jobs.Step (View);
    end Save_Step;
 
    procedure Data_Loop (Argument : Unsigned_64) with Convention => C, No_Return;

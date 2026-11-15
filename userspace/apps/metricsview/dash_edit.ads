@@ -31,6 +31,16 @@ package Dash_Edit is
    procedure Apply
      (D : in out Dash_Model.Dashboard; Op : Operation; P : Positive; Done : out Boolean; Selected : out Natural);
 
+   --  Panel P of D becomes Item (a picked source or view): Item takes a new
+   --  identity, so the panel's data is read again and undo brings the
+   --  old panel back as it was. Done False when P is not a panel.
+   procedure Replace (D : in out Dash_Model.Dashboard; P : Positive; Item : Dash_Model.Panel; Done : out Boolean);
+
+   --  Item (a new panel) at index At_Index of D, with a new identity.
+   --  Done False when D holds as many panels as a dashboard can.
+   procedure Insert
+     (D : in out Dash_Model.Dashboard; Item : Dash_Model.Panel; At_Index : Positive; Done : out Boolean);
+
    --  Edits between Begin_Group and End_Group (a drag) undo as one.
    procedure Begin_Group;
    procedure End_Group;

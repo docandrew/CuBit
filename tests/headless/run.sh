@@ -1363,6 +1363,19 @@ if [ -n "$INIT_PROFILE" ]; then
         echo "headless: failed to install $TEST_NAME init.ccl" >&2
         exit 1
     fi
+    if [ "$TEST_NAME" = "metricsview" ]; then
+        # MET-002: a saved dashboard that does not check (no time), which
+        # Open must refuse with the checker's message.
+        broken_dashboard="$(mktemp "${TMPDIR:-/tmp}/cubit-metricsview-broken.XXXXXX.ccl")"
+        printf '(Dashboard title => "Broken" panels => (list-of Panel))\n' > "$broken_dashboard"
+        debugfs -w -R "mkdir Documents" "$TEMP_DISK" >/dev/null 2>&1 || true
+        debugfs -w -R "mkdir Documents/Dashboards" "$TEMP_DISK" >/dev/null 2>&1 || true
+        if ! debugfs -w -R "write $broken_dashboard Documents/Dashboards/broken.ccl" "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to seed the broken dashboard" >&2
+            exit 1
+        fi
+        rm -f "$broken_dashboard"
+    fi
     if [ "$TEST_NAME" = "rust-native" ]; then
         for app in rust-probe.app rust-probe-denied.app rust-probe-mismatch.app ccl-test-host.svc clock.svc; do
             if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
@@ -4106,6 +4119,89 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'sendkey esc\n'
                 sleep 2
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-saved.ppm"
+                # The menu bar: File by F10 (a screenshot), then rounds of
+                # open, move, close (input_to_render_menu_us).
+                printf 'sendkey f10\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-menu-file.ppm"
+                printf 'sendkey esc\n'
+                sleep 0.3
+                for ((round = 0; round < 10; round++)); do
+                    for key in f10 down down right down left esc; do
+                        printf 'sendkey %s\n' "$key"
+                        sleep 0.15
+                    done
+                done
+                # A panel's source picker (Enter on the selected panel while
+                # editing): its list, a series picked, the next view, undo
+                # and redo (input_to_render_picker_us).
+                printf 'sendkey e\n'
+                sleep 0.3
+                printf 'sendkey ret\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-picker.ppm"
+                printf 'sendkey ret\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-picker-list.ppm"
+                for key in down down ret tab down; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.3
+                done
+                for ((round = 0; round < 6; round++)); do
+                    printf 'sendkey ctrl-z\n'
+                    sleep 0.2
+                    printf 'sendkey ctrl-y\n'
+                    sleep 0.2
+                done
+                printf 'sendkey esc\n'
+                sleep 0.3
+                # A new panel (A): first free place, its picker open; a
+                # series, then a number view; done (saves).
+                printf 'sendkey a\n'
+                sleep 0.5
+                for key in ret down down down ret tab ret down down down down down down down down ret; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.2
+                done
+                sleep 0.5
+                printf 'sendkey esc\n'
+                sleep 0.3
+                printf 'sendkey esc\n'
+                sleep 3
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-added.ppm"
+                # Save As, a new dashboard, then Open of the copy (the same
+                # dashboard), then Open of a file that does not check.
+                printf 'sendkey ctrl-shift-s\n'
+                sleep 1.5
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-save-as.ppm"
+                for key in h e a d l e s s minus c o p y ret; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
+                sleep 1.5
+                printf 'sendkey ctrl-n\n'
+                sleep 1.5
+                printf 'sendkey esc\n'
+                sleep 0.3
+                printf 'sendkey esc\n'
+                sleep 0.5
+                printf 'sendkey ctrl-o\n'
+                sleep 1.5
+                for key in tab ctrl-a h e a d l e s s minus c o p y dot c c l ret; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
+                sleep 2
+                printf 'sendkey ctrl-o\n'
+                sleep 1.5
+                for key in tab ctrl-a b r o k e n dot c c l ret; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
+                sleep 1.5
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-refused.ppm"
+                printf 'sendkey esc\n'
+                sleep 3
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         elif [ "$TEST_NAME" = "logs" ]; then
             # The Logs app: let boot records arrive, then a live frame, a

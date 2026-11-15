@@ -238,19 +238,22 @@ package body Dash_Model is
              "(Panel_Kind.Logs (Logs_Panel service => " & Quoted (Image (P.Logs_Service)) & " minimum => "
              & Decimal (Unsigned_64 (P.Logs_Minimum)) & "))");
    begin
+      --  An empty list is typed (CCL has no untyped []).
       return "(Panel title => " & Quoted (Image (P.Title)) & " width => " & Decimal (Unsigned_64 (P.Width))
-        & " height => " & Decimal (Unsigned_64 (P.Height)) & " kind => " & Kind & " series => ["
-        & Series_List_Source (1) & "])";
+        & " height => " & Decimal (Unsigned_64 (P.Height)) & " kind => " & Kind & " series => "
+        & (if P.Series_Used = 0 then "(list-of Panel_Series)" else "[" & Series_List_Source (1) & "]") & ")";
    end Panel_Source;
 
-   function File_Name (D : Dashboard) return String is
-      Title : constant String := Image (D.Title);
+   function File_Name (D : Dashboard) return String is (Dashboards_Place & File_Leaf (Image (D.Title)));
+
+   function File_Leaf (Title : String) return String is
       Slug : String (1 .. Title'Length);
       Used : Natural := 0;
       Gap : Boolean := False;
       Lower_Offset : constant := Character'Pos ('a') - Character'Pos ('A');
    begin
       for C of Title loop
+         exit when Used >= Maximum_Leaf - Dashboard_Suffix'Length - 1;
          if C in 'a' .. 'z' | '0' .. '9' | 'A' .. 'Z' then
             if Gap and then Used > 0 then
                Used := Used + 1;
@@ -263,8 +266,8 @@ package body Dash_Model is
             Gap := True;
          end if;
       end loop;
-      return Dashboards_Place & (if Used = 0 then "dashboard" else Slug (1 .. Used)) & Dashboard_Suffix;
-   end File_Name;
+      return (if Used = 0 then "dashboard" else Slug (1 .. Used)) & Dashboard_Suffix;
+   end File_Leaf;
 
    function To_Source (D : Dashboard) return String is
       function Panels_Source (From : Positive) return String is

@@ -71,6 +71,30 @@ saves = SAVE.findall(data)
 check(any(v == "saved" for v, _, _, _ in saves), "an edit ended by Esc saves the dashboard")
 for verdict, name, size, result in saves:
     print(f"metricsview: {verdict} {name} ({size} bytes, {result})")
+# MET-002's menus, picker and dashboards folder (the keys the headless run
+# sends after the editor's): each picked panel's CCL, the notices with the
+# hash of the dashboard shown, and the menu and picker inputs measured.
+PICKED = re.compile(r"metricsview: panel (\d+) now (\(Panel .*\))")
+NOTICE = re.compile(r"metricsview: notice: (.*) \| file=(\S*) source_fnv=(\d+)")
+picked = PICKED.findall(data)
+check(len(picked) >= 3, f"the picker changed panels ({len(picked)} picks)")
+for panel, source in picked[:3]:
+    print(f"metricsview: picked panel {panel}: {source[:160]}")
+check(any("Metric_Statistic.P99" in s and "Panel_Kind.Stat" in s for _, s in picked),
+      "a new panel re-sourced and shown as a number")
+notices = NOTICE.findall(data)
+for text, name, fnv in notices:
+    print(f"metricsview: notice {text!r} (file {name}, fnv {fnv})")
+saved = [fnv for text, name, fnv in notices if text.startswith("Saved as headless-copy.ccl")]
+opened = [fnv for text, name, fnv in notices if text.startswith("Opened headless-copy.ccl")]
+check(bool(saved) and bool(opened) and saved[-1] == opened[-1],
+      "Save As then Open gives the same dashboard (equal CCL source hashes)")
+refused = [(text, fnv) for text, name, fnv in notices if text.startswith("broken.ccl: ")]
+check(bool(refused) and "not a Dashboard" in refused[-1][0] and bool(opened) and refused[-1][1] == opened[-1],
+      "a file that does not check is refused with the checker's message; the dashboard stays")
+for kind in ("menu", "picker"):
+    name = f"metricsview.input_to_render_{kind}_us"
+    check(name in own_all and own_all[name][0] > 0, f"{kind} inputs measured to their render ({name})")
 if stages:
     print("desktop: input_to_ready (Desktop's reports, all inputs): "
           + "; ".join(f"n={s[0]} p50={s[1]} p99={s[3]} max={s[4]}" for s in stages[-3:]))

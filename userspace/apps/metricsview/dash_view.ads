@@ -19,7 +19,9 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with CuBit.File_Selection;
 with CuBit.UI;
+with Dash_Choices;
 with Dash_Feeds;
 with Dash_Model;
 
@@ -55,14 +57,31 @@ package Dash_View is
       --  Insert copies it; Ctrl+Z undoes, Ctrl+Y redoes; C shows its CCL.
       Edit, Next_Panel, Remove, Duplicate, Undo, Redo, Show_Source,
       --  ? or F1: the keys.
-      Show_Keys);
-   type Event_Kind is (Pointer_Move, Pointer_Press, Pointer_Release, Wheel, Key_Press, Pointer_Leave);
+      Show_Keys,
+      --  The menu bar (F10; Alt+letter opens a menu), the panel's source
+      --  picker (Enter while editing), a new panel (A), the dashboards
+      --  (Ctrl+N new, Ctrl+O open, Ctrl+Shift+S save as), and the keys
+      --  the menus, the picker and the dialogs move with.
+      Menu_Bar, Panel_Source, Add_Panel, New_Dashboard, Open_Dashboard, Save_As,
+      Enter, Space, Backspace, Page_Up, Page_Down, Select_All,
+      --  A key known only by its letter (Letter): menu mnemonics and the
+      --  picker's type-ahead.
+      Letter_Key);
+   --  Text_Input: a typed character (Character_Value), for the dialogs'
+   --  name field. Modifier_Change: Alt went down or up (Alt: held now),
+   --  for the menu bar's keyboard cues.
+   type Event_Kind is
+     (Pointer_Move, Pointer_Press, Pointer_Release, Wheel, Key_Press, Pointer_Leave, Text_Input, Modifier_Change);
    type Event is record
       Kind : Event_Kind := Pointer_Move;
       X, Y : Natural := 0;
       Shift : Boolean := False;
+      Control, Alt : Boolean := False;
       Steps : Integer := 0;
       Pressed : Key := No_Key;
+      --  The key's letter or digit, lower case (' ': none).
+      Letter : Character := ' ';
+      Character_Value : Character := ' ';
    end record;
    procedure Handle (V : in out View; E : Event; Damage : in out Rect);
 
@@ -87,11 +106,73 @@ package Dash_View is
    --  Save_Name in the same hold, writes the file without the lock, then
    --  reports with End_Save (under the lock again).
    Autosave_Delay_Ms : constant := 1_000;
+   --  What is saved: Save_Source and Save_Name, in the same hold as
+   --  Take_Save (the dashboard shown, or one just left with edits not yet
+   --  written: another one opened over it).
    procedure Take_Save (V : in out View; Due : out Boolean; Generation : out Natural);
    procedure End_Save (V : in out View; Generation : Natural; Saved : Boolean; Reason : String := "");
    function Save_Name (V : View) return String;
+   function Save_Source (V : View) return String;
+   --  The dashboard's own file in the dashboards folder (its leaf name).
+   function Current_File (V : View) return String;
    type Save_State is (Unedited, Edited, Saving, Saved, Not_Saved);
    function Saving_State (V : View) return Save_State;
+
+   --  The dashboards folder (the data thread's, as saving is): the window
+   --  asks for a listing, a file opened, or the dashboard saved as a new
+   --  file; Take_Job (under the lock) hands one out, the data thread does
+   --  the I/O without the lock and answers (under it again). Leaf names
+   --  only, in Dash_Model.Dashboards_Place.
+   type Job_Kind is (No_Job, List_Folder, Open_File, Save_New_File);
+   type Job is record
+      Kind : Job_Kind := No_Job;
+      Leaf : CuBit.File_Selection.File_Name;
+   end record;
+   procedure Take_Job (V : in out View; J : out Job);
+   --  The folder's dashboards (.ccl files) and when each last changed,
+   --  as many as the file dialog lists (its ceiling). Ready False: the
+   --  folder could not be read (no grant, no disk).
+   type Folder_Entry is record
+      Leaf : CuBit.File_Selection.File_Name;
+      Modified : Unsigned_64 := 0;
+   end record;
+   type Folder_Entries is array (1 .. CuBit.File_Selection.Maximum_Files) of Folder_Entry;
+   type Folder_Listing is record
+      Entries : Folder_Entries;
+      Count : CuBit.File_Selection.File_Count := 0;
+      Ready : Boolean := False;
+   end record;
+   procedure End_List (V : in out View; Listing : Folder_Listing);
+   --  Open_File's answer: D checked (Opened), or why not (the checker's
+   --  message when it does not check); the window's dashboard stays then.
+   procedure End_Open (V : in out View; Leaf : String; D : Dash_Model.Dashboard; Opened : Boolean; Reason : String);
+   --  Save_New_File's: the source written as Leaf (Save_Source, taken in
+   --  the same hold as the job), or why not.
+   procedure End_Save_New (V : in out View; Leaf : String; Saved : Boolean; Reason : String);
+
+   --  Copy as CCL (the menu's): the host copies Dashboard_Source to the
+   --  clipboard when this says so (once).
+   function Take_Copy_Request (V : in out View) return Boolean;
+
+   --  What the window shows, for the tests and the host's markers: the
+   --  open menu (1 is File; 0: none), the picker and its panel, the file
+   --  dialog, the status bar's notice, the picker's choices.
+   function Open_Menu (V : View) return Natural;
+   function Menu_Bar_Bounds (V : View) return Rect;
+   function Menu_Popup_Bounds (V : View) return Rect;
+   function Picker_Panel (V : View) return Natural;
+   function Picker_Bounds (V : View) return Rect;
+   function Source_Button_Bounds (V : View; P : Positive) return Rect;
+   function Dialog_Open (V : View) return Boolean;
+   function Notice (V : View) return String;
+   type Picker_Field is (Series_Field, View_Field);
+   function Picker_Choices (V : View; Field : Picker_Field) return Natural;
+   function Picker_Choice (V : View; Field : Picker_Field; Index : Positive) return String;
+   function Picker_Selection (V : View; Field : Picker_Field) return Natural;
+   function Panel_View (V : View; P : Positive; Choice : out Dash_Choices.View_Choice) return Boolean;
+   function Selected (V : View) return Natural;
+   --  Panel P's CCL expression ("" past the last panel).
+   function Panel_Source (V : View; P : Positive) return String;
 
    --  The drill-down's CCL expression for the selected slice's logs
    --  ((logs.between (LogWindow "service" from to)), boot milliseconds),

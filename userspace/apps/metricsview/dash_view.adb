@@ -1,5 +1,9 @@
 pragma Ada_2022;
 with Ada.Unchecked_Deallocation;
+with CuBit.UI.Combo_Boxes;
+with CuBit.UI.Controls;
+with CuBit.UI.File_Dialogs;
+with CuBit.UI.Menus;
 with CuBit.UI_Metrics;
 with Charts_Buckets;
 with Charts_Columns;
@@ -7,7 +11,9 @@ with Charts_Format;
 with Charts_Palette;
 with Charts_Time_Axis;
 with Charts_Value_Axis;
+with Dash_Commands;
 with Dash_Edit;
+with Dash_Grid;
 with Dash_Labels;
 with Dash_Layers;
 with Dash_Pixels;
@@ -32,6 +38,19 @@ package body Dash_View is
    package Palette renames Charts_Palette;
    package Format renames Charts_Format;
    package M renames CuBit.UI_Metrics;
+   package CB renames CuBit.UI.Combo_Boxes;
+   package Controls renames CuBit.UI.Controls;
+   package Dialogs renames CuBit.UI.File_Dialogs;
+   package Files renames CuBit.File_Selection;
+   package Menus renames CuBit.UI.Menus;
+   package Commands renames Dash_Commands;
+   use type Commands.Command;
+   use type Dialogs.Dialog_Action;
+   use type Dialogs.Dialog_Mode;
+   use type Dialogs.Event_Kind;
+   use type CB.Text;
+   use type CB.Combo_State;
+   use type Controls.Pointer_Action;
    subtype Column_Number is Axis.Column_Number;
 
    ---------------------------------------------------------------------------
@@ -79,6 +98,34 @@ package body Dash_View is
    Edit_Label : constant String := "Edit";
    Done_Label : constant String := "Done";
    Status_Dot : constant := M.Space_M;
+   --  The menu bar (as Text's and Calculator's).
+   Menu_Bar_Height : constant := M.Menu_Bar_Height;
+   Menu_Row : constant := M.Row_Height;
+   --  Each panel's source button (its header's right end) and the picker
+   --  it opens: a card of two fields under the button.
+   Source_Button_Width : constant := M.Control_Height;
+   Chevron_Width : constant := M.Space_M + M.Space_S;
+   Picker_Width : constant := 30 * M.Base_Em;
+   Picker_Padding : constant := M.Space_L;
+   Picker_Label_Width : constant := 4 * M.Base_Em;
+   Picker_Row_Gap : constant := M.Space_S;
+   Picker_Rows : constant := 12;
+   --  The control map's ranges: the menu bar, then the picker's fields.
+   Menu_Base : constant Menus.ID_Base := 1;
+   Series_Base : constant CB.ID_Base := 100;
+   View_Base : constant CB.ID_Base := 200;
+   --  Two presses this close in time and place are a double click (the
+   --  file dialog's list opens on one).
+   Double_Click_Us : constant := 400_000;
+   Double_Click_Slop : constant := 4;
+   --  A status-bar notice (opened, saved as, why not) shows this long.
+   Notice_Lifetime_Us : constant := 6_000_000;
+   Maximum_Notice : constant := 240;
+   --  The picker reads the store's catalog of series again this often
+   --  while it is open.
+   Catalog_Refresh_Us : constant := 2_000_000;
+   Dashboard_Kind : constant String := "Dashboard";
+   Folder_Label : constant String := "Documents/Dashboards";
 
    --  Tints over the card (percent of the mark's colour).
    Band_Tint : constant := 16;
@@ -131,7 +178,7 @@ package body Dash_View is
    Feed : Feed_Access;
    Board : Board_Access;
    Tracks : Track_Array_Access;
-   Whole, Toolbar, Status, Grid : Rect := (others => 0);
+   Whole, Menu_Area, Toolbar, Status, Grid : Rect := (others => 0);
    Panels : Geometry_List := [others => (others => (others => 0))];
    Ports : Viewport_List := [others => (others => <>)];
    Has_Port : Flag_List := [others => False];
@@ -234,6 +281,141 @@ package body Dash_View is
      (R.x >= Outer.x and then R.y >= Outer.y and then R.x + R.w <= Outer.x + Outer.w
       and then R.y + R.h <= Outer.y + Outer.h);
 
+
+   ---------------------------------------------------------------------------
+   --  Layers over the dashboard: the menu bar's open menu, a panel's source
+   --  picker, the file dialog. Each is drawn into the retained frame over
+   --  what is under it (clipped like everything else, so a change under a
+   --  layer redraws both there); what changes wholly under one is not drawn
+   --  until the layer goes, which redraws its place.
+   ---------------------------------------------------------------------------
+   --  The window's controls (hit testing for the menu bar and the picker's
+   --  fields), registered whenever they change (Register); painting
+   --  registers into a map of its own that nothing reads.
+   Map, Paint_Map : Controls.Control_Map;
+   Menu_State : Menus.Menu_State;
+   Menu_Model : Menus.Model;
+   Menu_Width : Positive := 1;
+   --  A press outside an open menu or the picker closes it; its release is
+   --  swallowed too (no click-through).
+   Block_Release : Boolean := False;
+   function Menu_Popup return Rect is
+     (Menus.Popup_Bounds (Menu_State, Menu_Model, Menu_Area, Whole, Menu_Width, Menu_Row));
+
+   --  The picker: its panel (by index), its two fields and their choices.
+   Picker_On : Boolean := False;
+   Picker_Target : Natural := 0;
+   Picker_Focus : Picker_Field := Series_Field;
+   Series_Combo, View_Combo : CB.Combo_State;
+   Series_Model, View_Model : CB.Model;
+   function Picker_Box return Rect;
+   function Field_Box (Field : Picker_Field) return Rect;
+   function Picker_List return Rect is
+     (if not Picker_On then (others => 0)
+      elsif CB.Is_Open (Series_Combo)
+      then CB.Popup_Bounds (Series_Combo, Series_Model, Field_Box (Series_Field), Whole.y + Whole.h,
+                            Visible_Rows => Picker_Rows)
+      elsif CB.Is_Open (View_Combo)
+      then CB.Popup_Bounds (View_Combo, View_Model, Field_Box (View_Field), Whole.y + Whole.h,
+                            Visible_Rows => Picker_Rows)
+      else (others => 0));
+   function Picker_Cover return Rect is (if Picker_On then Add_Rect (Picker_Box, Picker_List) else (others => 0));
+
+   Dialog : Dialogs.Dialog_State;
+   function Dialog_Box return Rect is
+     (if Dialogs.Is_Open (Dialog) then Dialogs.Bounds (Whole.x + Whole.w, Whole.y + Whole.h) else (others => 0));
+
+   --  The store's series this app may read (the picker's choices), as
+   --  the data thread last listed them: up to a combo box's choices.
+   type Catalog_Entry is record
+      Name : Dash_Model.Text;
+   end record;
+   subtype Catalog_Count is Natural range 0 .. CB.Max_Choices;
+   type Catalog_List is array (1 .. CB.Max_Choices) of Catalog_Entry;
+   Catalog : Catalog_List;
+   Catalog_Used : Catalog_Count := 0;
+   --  Bumped at each listing (the picker's choices follow), and asked for
+   --  by the UI thread (the picker opened): the data thread lists then.
+   Catalog_Generation : Natural := 0;
+   Catalog_Wanted : Boolean := True with Atomic;
+   Next_Catalog_Us : Unsigned_64 := 0;
+
+   --  The status bar's notice: what a file command did, or why not.
+   Notice_Text : String (1 .. Maximum_Notice) := [others => ' '];
+   Notice_Length : Natural range 0 .. Maximum_Notice := 0;
+   Notice_Until_Us : Unsigned_64 := 0;
+
+   --  Captions made at run time (a recent file, a series): on the heap,
+   --  freed when the menu or the picker is made again.
+   type Caption_Access is access String;
+   procedure Free is new Ada.Unchecked_Deallocation (String, Caption_Access);
+
+   --  The dashboard's own file (a leaf in Dash_Model.Dashboards_Place).
+   Current_Leaf : Files.File_Name;
+   --  The folder as last listed, and the recent dashboards in it (newest
+   --  first) as the File menu shows them.
+   Folder : Folder_Listing;
+   Recent_Leaves : array (Commands.Recent_Index) of Files.File_Name;
+   Recent_Captions : array (Commands.Recent_Index) of Caption_Access := [others => null];
+   Recent_Used : Commands.Recent_Count := 0;
+   --  The data thread's work asked for (one of each kind at most: a newer
+   --  request replaces an older one), and its answers, taken by the UI
+   --  thread at its next refresh.
+   Want_List : Boolean := False;
+   Want_Open, Want_Save : Files.File_Name;
+   --  A command waiting for the listing it needs (a new name must not be
+   --  a file already there).
+   Deferred : Commands.Command := Commands.No_Command;
+   type Board_Access_Answer is access Dash_Model.Dashboard;
+   List_Answer : Folder_Listing;
+   List_Answered, Open_Answered, Open_Done, Save_Answered, Save_Done : Boolean := False;
+   Open_Board : Board_Access_Answer;
+   Open_Leaf, Save_Leaf : Files.File_Name;
+   Answer_Reason : String (1 .. Maximum_Notice) := [others => ' '];
+   Answer_Reason_Length : Natural range 0 .. Maximum_Notice := 0;
+   Copy_Wanted : Boolean := False;
+   --  A dashboard left (another opened over it) with edits not yet
+   --  written: saved first, under its own name.
+   Parting_Source : Caption_Access;
+   Parting_Name : Files.File_Name;
+   Saving_Parting : Boolean := False;
+   --  The edit a save in flight holds, and the first edit of the
+   --  dashboard shown (an answer for an older one changes nothing here).
+   In_Flight_Generation : Natural := 0;
+   Board_First_Generation : Natural := 0;
+   --  The file dialog's pointer: a press held, and the last press (a
+   --  second one soon after is a double click).
+   Dialog_Down : Boolean := False;
+   Last_Press_Us : Unsigned_64 := 0;
+   Last_Press_X, Last_Press_Y : Natural := 0;
+
+   --  The picker's choices: each series choice's source, each view
+   --  choice's view, and whether the first choice keeps what the panel
+   --  has (several series, a series the store does not list, a view
+   --  outside the list).
+   type Source_Table is array (1 .. CB.Max_Choices) of Dash_Choices.Source_Choice;
+   Series_Sources : Source_Table;
+   Series_Captions : array (1 .. CB.Max_Choices) of Caption_Access := [others => null];
+   type View_Table is array (1 .. CB.Max_Choices) of Dash_Choices.View_Choice;
+   View_Choices : View_Table;
+   View_Captions : array (Dash_Choices.View_Choice) of Caption_Access := [others => null];
+   Series_Keeps, View_Keeps : Boolean := False;
+   Keep_View_Caption : aliased constant String := "As its CCL has it";
+   Built_Generation : Natural := Natural'Last;
+
+   procedure Rebuild_Menus;
+   procedure Register;
+
+   --  R lies wholly under one opaque layer (drawn over everything there).
+   function Under_Layer (R : Rect) return Boolean is
+     (not Is_Empty (R)
+      and then ((Menus.Is_Open (Menu_State) and then Inside (Menu_Popup, R))
+                or else (Picker_On and then (Inside (Picker_Box, R) or else Inside (Picker_List, R)))
+                or else (Dialogs.Is_Open (Dialog) and then Inside (Dialog_Box, R))));
+   --  R reaches under a layer.
+   function Touches_Layer (R : Rect) return Boolean is
+     (Intersects (R, Menu_Popup) or else Intersects (R, Picker_Cover) or else Intersects (R, Dialog_Box));
+
    --  R changed: the retained frame redraws exactly R (Dash_Layers), the
    --  toolkit's frame grows by it.
    --  Pixels marked since the last Render (Take_Copy_Stats), and its copy.
@@ -255,7 +437,10 @@ package body Dash_View is
    procedure Mark (Damage : in out Rect; R : Rect);
    procedure Mark (Damage : in out Rect; R : Rect) is
    begin
-      if Source_Shown and then Intersects (R, Overlay_Box) then
+      if Under_Layer (R) then
+         --  Not seen until the layer goes (which redraws its place).
+         return;
+      elsif Source_Shown and then Intersects (R, Overlay_Box) then
          if not Inside (Overlay_Box, R) then
             Mark_Exactly (Damage, Add_Rect (R, Overlay_Box));
          end if;
@@ -352,54 +537,25 @@ package body Dash_View is
       --  Skyline packing on the 12-column grid: each panel, in order, at the
       --  lowest place its width fits, leftmost on a tie (panels stack in a
       --  column beside a taller one).
-      type Skyline is array (0 .. Dash_Model.Grid_Columns - 1) of Natural;
-      type Placement is record
-         Column, Row : Natural := 0;
-      end record;
-      type Placements is array (Dash_Model.Panel_Index) of Placement;
-      Heights : Skyline := [others => 0];
-      Placed : Placements := [others => <>];
-      Total_Rows : Natural := 0;
+      Placed : Dash_Grid.Placements := [others => <>];
+      Total_Rows : Dash_Grid.Row_Count := 0;
       Unit_W, Unit_H : Natural;
    begin
       Grid_Unit_W := 0;
       Grid_Unit_H := 0;
-      Toolbar := (Whole.x, Whole.y, Whole.w, Natural'Min (Toolbar_Height, Whole.h));
+      Menu_Area := (Whole.x, Whole.y, Whole.w, Natural'Min (Menu_Bar_Height, Whole.h));
+      Toolbar := (Whole.x, Menu_Area.y + Menu_Area.h, Whole.w,
+                  Natural'Min (Toolbar_Height, Whole.h - Menu_Area.h));
       Status := (Whole.x, (if Whole.h > Status_Height then Whole.y + Whole.h - Status_Height else Whole.y),
                  Whole.w, Natural'Min (Status_Height, Whole.h));
       Grid := (Whole.x + Margin, Toolbar.y + Toolbar.h + Margin,
                (if Whole.w > 2 * Margin then Whole.w - 2 * Margin else 0),
-               (if Whole.h > Toolbar.h + Status.h + 2 * Margin then Whole.h - Toolbar.h - Status.h - 2 * Margin
-                else 0));
+               (if Whole.h > Menu_Area.h + Toolbar.h + Status.h + 2 * Margin
+                then Whole.h - Menu_Area.h - Toolbar.h - Status.h - 2 * Margin else 0));
       if Board = null then
          return;
       end if;
-      for P in 1 .. Board.Panels_Used loop
-         declare
-            W : constant Dash_Model.Grid_Width := Board.Panels (P).Width;
-            Best_Column : Natural := 0;
-            Best_Row : Natural := Natural'Last;
-         begin
-            for Column in 0 .. Dash_Model.Grid_Columns - W loop
-               declare
-                  Row : Natural := 0;
-               begin
-                  for K in Column .. Column + W - 1 loop
-                     Row := Natural'Max (Row, Heights (K));
-                  end loop;
-                  if Row < Best_Row then
-                     Best_Row := Row;
-                     Best_Column := Column;
-                  end if;
-               end;
-            end loop;
-            Placed (P) := (Best_Column, Best_Row);
-            for K in Best_Column .. Best_Column + W - 1 loop
-               Heights (K) := Best_Row + Board.Panels (P).Height;
-            end loop;
-            Total_Rows := Natural'Max (Total_Rows, Best_Row + Board.Panels (P).Height);
-         end;
-      end loop;
+      Dash_Grid.Pack (Dash_Grid.Sizes_Of (Board.all), Board.Panels_Used, Placed, Total_Rows);
       --  A grid unit is a cell plus one gap; cards are a unit less the gap.
       --  The row unit holds while the dashboard is edited (Rows_Basis grows,
       --  never shrinks, until the window is laid out afresh): a panel keeps
@@ -535,6 +691,16 @@ package body Dash_View is
       end loop;
       Has_Port := [others => False];
       Dash_Edit.Start (D);
+      declare
+         Accepted : Boolean;
+      begin
+         Files.Set (Current_Leaf, Dash_Model.File_Leaf (Dash_Model.Image (D.Title)), Accepted);
+      end;
+      if Open_Board = null then
+         Open_Board := new Dash_Model.Dashboard;
+      end if;
+      Rebuild_Menus;
+      Want_List := True;
    end Initialize;
 
    procedure Set_Bounds (V : in out View; Bounds : Rect; Numerator, Denominator : Positive := 1) is
@@ -548,6 +714,7 @@ package body Dash_View is
       Update_Quantum;
       --  Plot widths changed: every track follows on the next refresh.
       Has_Port := [others => False];
+      Register;
    end Set_Bounds;
 
    function Bounds (V : View) return Rect is
@@ -920,7 +1087,8 @@ package body Dash_View is
          return;
       end if;
       O := Panels (P).Outer;
-      if not Dash_Layers.Ready or else Source_Shown then
+      if not Dash_Layers.Ready or else Source_Shown or else Touches_Layer (O) then
+         --  Painted straight in, it would land over a layer.
          Mark (Damage, O);
          return;
       end if;
@@ -1113,7 +1281,12 @@ package body Dash_View is
             end if;
          end;
       end loop;
-      Dash_Layers.Move_Blocks (Moves (1 .. Move_Count), Moved_Pixels);
+      --  A layer's pixels must not move with a panel's.
+      if (for some M of Moves (1 .. Move_Count) => Touches_Layer (M.From) or else Touches_Layer (M.To)) then
+         Moved_Pixels := False;
+      else
+         Dash_Layers.Move_Blocks (Moves (1 .. Move_Count), Moved_Pixels);
+      end if;
       for M of Moves (1 .. Move_Count) loop
          if Moved_Pixels then
             Mark_Copied (Damage, M.To);
@@ -1260,20 +1433,50 @@ package body Dash_View is
    procedure Take_Save (V : in out View; Due : out Boolean; Generation : out Natural) is
       pragma Unreferenced (V);
    begin
+      if Parting_Source /= null and then not Save_Pending then
+         --  The dashboard left behind first.
+         Due := True;
+         Generation := 0;
+         Saving_Parting := True;
+         Save_Pending := True;
+         return;
+      end if;
       Due := Board /= null and then not Save_Pending and then Edit_Count /= Saved_Generation
         and then (not Edit_Mode or else Feed.Now_Us - Last_Edit_Us >= Autosave_Delay_Ms * Microseconds_Per_Millisecond);
       Generation := Edit_Count;
       if Due then
          Save_Pending := True;
+         In_Flight_Generation := Generation;
          Shown_Save := Saving;
          Save_Changed := True;
       end if;
    end Take_Save;
 
+   procedure Set_Notice_Text (S : String);
+   procedure Set_Notice_Text (S : String) is
+   begin
+      Notice_Length := Natural'Min (S'Length, Maximum_Notice);
+      Notice_Text (1 .. Notice_Length) := S (S'First .. S'First + Notice_Length - 1);
+      Notice_Until_Us := Feed.Now_Us + Notice_Lifetime_Us;
+   end Set_Notice_Text;
+
    procedure End_Save (V : in out View; Generation : Natural; Saved : Boolean; Reason : String := "") is
       pragma Unreferenced (V);
    begin
       Save_Pending := False;
+      if Saving_Parting then
+         Saving_Parting := False;
+         if not Saved then
+            Set_Notice_Text (Files.Value (Parting_Name) & ": " & Reason);
+            Save_Changed := True;
+         end if;
+         Free (Parting_Source);
+         return;
+      end if;
+      if Generation < Board_First_Generation then
+         --  An answer for the dashboard shown before this one.
+         return;
+      end if;
       --  A failure is not retried until the next edit (no loop of failing
       --  writes); the status bar says why.
       Saved_Generation := Generation;
@@ -1285,8 +1488,22 @@ package body Dash_View is
    function Save_Name (V : View) return String is
       pragma Unreferenced (V);
    begin
-      return (if Board = null then "" else Dash_Model.File_Name (Board.all));
+      return Dash_Model.Dashboards_Place
+        & (if Saving_Parting then Files.Value (Parting_Name) else Files.Value (Current_Leaf));
    end Save_Name;
+
+   function Save_Source (V : View) return String is
+      pragma Unreferenced (V);
+   begin
+      return (if Saving_Parting and then Parting_Source /= null then Parting_Source.all
+              elsif Board = null then "" else Dash_Model.To_Source (Board.all));
+   end Save_Source;
+
+   function Current_File (V : View) return String is
+      pragma Unreferenced (V);
+   begin
+      return Files.Value (Current_Leaf);
+   end Current_File;
 
    function Saving_State (V : View) return Save_State is
       pragma Unreferenced (V);
@@ -1323,6 +1540,55 @@ package body Dash_View is
       UI_Waited_Us := 0;
    end Take_Lock_Wait;
 
+   --  The store's catalog, every page of it, by name (the data thread's;
+   --  the lock only to publish it, and only when it changed).
+   procedure Read_Catalog;
+   procedure Read_Catalog is
+      Page : Dash_Feeds.Series_Infos (1 .. Probe_Page);
+      Names : Catalog_List;
+      Used : Catalog_Count := 0;
+      Listed, Total : Natural;
+      Skip : Natural := 0;
+      Result : Dash_Feeds.Status;
+      use type Dash_Feeds.Status;
+   begin
+      loop
+         Feed.List_All (Skip, Page, Listed, Total, Result);
+         exit when Result /= Dash_Feeds.OK or else Listed = 0;
+         for F of Page (1 .. Listed) loop
+            declare
+               Name : constant String := Dash_Model.Image (F.Name);
+               At_Index : Positive := Used + 1;
+               Known : Boolean := False;
+            begin
+               for K in 1 .. Used loop
+                  if Dash_Model.Image (Names (K).Name) = Name then
+                     Known := True;
+                  elsif At_Index > Used and then Name < Dash_Model.Image (Names (K).Name) then
+                     At_Index := K;
+                  end if;
+               end loop;
+               if not Known and then Used < Names'Last then
+                  Names (At_Index + 1 .. Used + 1) := Names (At_Index .. Used);
+                  Names (At_Index) := (Name => F.Name);
+                  Used := Used + 1;
+               end if;
+            end;
+         end loop;
+         Skip := Skip + Listed;
+         exit when Skip >= Total;
+      end loop;
+      Dash_Sync.Lock;
+      if Used /= Catalog_Used
+        or else (for some K in 1 .. Used => Dash_Model.Image (Names (K).Name) /= Dash_Model.Image (Catalog (K).Name))
+      then
+         Catalog := Names;
+         Catalog_Used := Used;
+         Catalog_Generation := Catalog_Generation + 1;
+      end if;
+      Dash_Sync.Unlock;
+   end Read_Catalog;
+
    procedure Data_Step (V : in out View) is
       pragma Unreferenced (V);
       Started : constant Unsigned_64 := Feed.Now_Us;
@@ -1330,6 +1596,10 @@ package body Dash_View is
    begin
       if Board = null or else Tracks = null then
          return;
+      end if;
+      if Catalog_Wanted then
+         Catalog_Wanted := False;
+         Read_Catalog;
       end if;
       if not Push_Tried then
          --  Once: push if the store offers it (the query path stays for
@@ -1462,19 +1732,23 @@ package body Dash_View is
       end;
    end Refresh_Panel;
 
+   procedure Take_Answers (Damage : in out Rect);
+
    procedure Refresh (V : in out View; Damage : in out Rect) is
       pragma Unreferenced (V);
    begin
       if Board = null or else Tracks = null then
          return;
       end if;
+      Lock_UI;
+      --  What the data thread answered (a dashboard opened replaces this one).
+      Take_Answers (Damage);
       if Drawn_States = null then
          Drawn_States := new State_List'(Tracks'Range => Dash_Tracks.Unresolved);
          --  First frame: fit the span to the data while live.
          Selected_Span := Span;
          Auto_Fit := Live_Mode;
       end if;
-      Lock_UI;
       if Save_Changed then
          Save_Changed := False;
          Mark (Damage, Status);
@@ -2270,7 +2544,9 @@ package body Dash_View is
       Item : constant Dash_Model.Panel := Panel_Of (P);
       H : constant Rect := Panels (P).Header;
       First, Last : Natural;
-      Right : Natural := H.x + H.w;
+      --  Left of the source button.
+      Right : Natural := (if H.w > Source_Button_Width + M.Space_S then H.x + H.w - Source_Button_Width - M.Space_S
+                          else H.x);
       Line_Index : Natural := 0;
       Y : constant Natural := H.y + (if H.h > UI_Text_Height then (H.h - UI_Text_Height) / 2 else 0);
       type Entry_Text is record
@@ -2392,6 +2668,33 @@ package body Dash_View is
       end case;
    end Draw_Legend;
 
+   --  The source button: a chevron at the header's right end (the
+   --  accent while its picker is open).
+   function Source_Button (P : Dash_Model.Panel_Index) return Rect is
+      H : constant Rect := Panels (P).Header;
+      W : constant Natural := Natural'Min (Source_Button_Width, H.w);
+   begin
+      return (H.x + H.w - W, H.y, W, H.h);
+   end Source_Button;
+
+   procedure Draw_Source_Button (C : Canvas; P : Dash_Model.Panel_Index; K : Colors);
+   procedure Draw_Source_Button (C : Canvas; P : Dash_Model.Panel_Index; K : Colors) is
+      B : constant Rect := Source_Button (P);
+      Open : constant Boolean := Picker_On and then Picker_Target = P;
+      Rows : constant Natural := Chevron_Width / 2;
+      X : constant Natural := B.x + (if B.w > Chevron_Width then (B.w - Chevron_Width) / 2 else 0);
+      Y : constant Natural := B.y + (if B.h > Rows then (B.h - Rows) / 2 else 0);
+      Ink : constant Color := (if Open then K.Accent else K.Muted);
+   begin
+      if Open then
+         Fill_Rect (C, B, Palette.Mix (K.Accent, K.Card, Selection_Tint));
+      end if;
+      --  A downward triangle, a row at a time.
+      for Row in 0 .. Rows - 1 loop
+         Fill_Rect (C, (X + Row, Y + Row, Chevron_Width - 2 * Row, 1), Ink);
+      end loop;
+   end Draw_Source_Button;
+
    procedure Draw_Panel (C : Canvas; P : Dash_Model.Panel_Index; K : Colors; Damage : Rect);
    procedure Draw_Panel (C : Canvas; P : Dash_Model.Panel_Index; K : Colors; Damage : Rect) is
       Item : constant Dash_Model.Panel := Panel_Of (P);
@@ -2407,8 +2710,17 @@ package body Dash_View is
       Stroke_Rect (C, G.Outer, K.Edge, K.Edge);
       if Intersects (Damage, G.Header) then
          Strong (C, G.Header.x, G.Header.y + (if G.Header.h > UI_Text_Height then (G.Header.h - UI_Text_Height) / 2
-                                              else 0), Fit_UI_Text (Dash_Model.Image (Item.Title), G.Header.w), K.Text);
+                                              else 0),
+                 Fit_UI_Text (Dash_Model.Image (Item.Title),
+                              (if G.Header.w > Source_Button_Width then G.Header.w - Source_Button_Width else 0)),
+                 K.Text);
          Draw_Legend (C, P, K);
+         Draw_Source_Button (C, P, K);
+      end if;
+      if Item.Series_Used = 0 and then Item.Kind /= Dash_Model.Logs then
+         Draw_Message (C, G.Body_Area, K, "No series yet",
+                       "Pick one: the arrow at the top right, or Enter while editing");
+         return;
       end if;
       if Reason /= "" and then Item.Kind /= Dash_Model.Logs then
          Draw_Empty (C, P, K, Reason);
@@ -2533,7 +2845,9 @@ package body Dash_View is
          else Format.Decimal (Unsigned_64 (Resolved_Tracks (View'(null record)))) & " of "
            & Format.Decimal (Unsigned_64 (Track_Total (View'(null record)))) & " series live");
       Left_Text : constant String :=
-        (if Edit_Mode then "Editing: arrows move, Shift+arrows size, Esc is done, ? for all keys"
+        (if Notice_Length > 0 then Notice_Text (1 .. Notice_Length)
+         elsif Picker_On then "Picking the panel's source: arrows choose, Tab the other field, Esc closes"
+         elsif Edit_Mode then "Editing: arrows move, Shift+arrows size, Enter picks a source, A adds a panel, ? for keys"
          elsif Detail_Valid then Detail_Text
          elsif Live_Mode then "Drag to pan, wheel to zoom, E to edit, ? for keys"
          else "Paused: L or End returns to live");
@@ -2545,7 +2859,7 @@ package body Dash_View is
       Text (C, Status.x + Margin, Y,
             Fit_UI_Text (Left_Text, (if Status.w > UI_Text_Width (Right_Text) + 3 * Margin
                                      then Status.w - UI_Text_Width (Right_Text) - 3 * Margin else 0)),
-            (if Detail_Valid then K.Text else K.Muted));
+            (if Detail_Valid or else Notice_Length > 0 then K.Text else K.Muted));
    end Draw_Status;
 
    procedure Draw_Tooltip (C : Canvas; K : Colors);
@@ -2683,13 +2997,23 @@ package body Dash_View is
    A_Pan : aliased constant String := "Pan back and forth, to the start, live";
    K_Pointer : aliased constant String := "Drag, wheel, Shift+drag";
    A_Pointer : aliased constant String := "Pan, zoom, select a range (editing: move, grip sizes)";
+   K_Add : aliased constant String := "A";
+   A_Add : aliased constant String := "Add a panel (its source picker opens)";
+   K_Pick : aliased constant String := "Enter";
+   A_Pick : aliased constant String := "Pick the selected panel's series and view";
+   K_Menus : aliased constant String := "F10, Alt+F, Alt+E, Alt+V";
+   A_Menus : aliased constant String := "The menus";
+   K_Files : aliased constant String := "Ctrl+N, Ctrl+O, Ctrl+Shift+S";
+   A_Files : aliased constant String := "New, open, save the dashboard as";
    K_Help : aliased constant String := "? or F1";
    A_Help : aliased constant String := "These keys (again, or Esc, closes)";
    Key_Lines : constant array (Positive range <>) of Key_Line :=
      [(K_Edit'Access, A_Edit'Access), (K_Tab'Access, A_Tab'Access), (K_Move'Access, A_Move'Access),
       (K_Size'Access, A_Size'Access), (K_Remove'Access, A_Remove'Access), (K_Copy'Access, A_Copy'Access),
+      (K_Add'Access, A_Add'Access), (K_Pick'Access, A_Pick'Access),
       (K_Undo'Access, A_Undo'Access), (K_Source'Access, A_Source'Access), (K_Range'Access, A_Range'Access),
-      (K_Pan'Access, A_Pan'Access), (K_Pointer'Access, A_Pointer'Access), (K_Help'Access, A_Help'Access)];
+      (K_Pan'Access, A_Pan'Access), (K_Pointer'Access, A_Pointer'Access), (K_Menus'Access, A_Menus'Access),
+      (K_Files'Access, A_Files'Access), (K_Help'Access, A_Help'Access)];
 
    procedure Draw_Keys (C : Canvas; K : Colors);
    function Overlay_Box return Rect is
@@ -2805,43 +3129,182 @@ package body Dash_View is
       Line ("])", K.Muted);
    end Draw_Source;
 
-   procedure Paint (C : Canvas; Damage : Rect) is
-      K : constant Colors := Current_Colors;
-      Content : constant Rect :=
-        (Whole.x, Toolbar.y + Toolbar.h, Whole.w,
-         (if Whole.h > Toolbar.h + Status.h then Whole.h - Toolbar.h - Status.h else 0));
+   ---------------------------------------------------------------------------
+   --  The layers' drawing
+   ---------------------------------------------------------------------------
+   --  The picker's card: under its panel's source button, inside the window.
+   Picker_Height : constant Natural :=
+     2 * Picker_Padding + UI_Text_Height + M.Space_M + 2 * (M.Control_Height + Picker_Row_Gap) + UI_Text_Height;
+   function Picker_Box return Rect is
    begin
-      if Board /= null and then Source_Shown and then Inside (Overlay_Box, Damage) then
-         --  All under the opaque overlay.
-         Draw_Source (With_Clip (C, Overlay_Box), K);
+      if not Picker_On or else Board = null or else Picker_Target not in 1 .. Board.Panels_Used then
+         return (others => 0);
+      end if;
+      declare
+         B : constant Rect := Source_Button (Picker_Target);
+         W : constant Natural := Natural'Min (Picker_Width, (if Whole.w > 2 * Margin then Whole.w - 2 * Margin else 0));
+         H : constant Natural := Picker_Height;
+         Left_Limit : constant Natural := Whole.x + Margin;
+         Right_Limit : constant Natural := Whole.x + Whole.w - Margin;
+         X : constant Natural :=
+           (if B.x + B.w >= Left_Limit + W then Natural'Min (B.x + B.w, Right_Limit) - W else Left_Limit);
+         Below : constant Natural := B.y + B.h + M.Space_XS;
+         Y : constant Natural :=
+           (if Below + H <= Status.y or else B.y < H + M.Space_XS + Toolbar.y + Toolbar.h then Below
+            else B.y - H - M.Space_XS);
+      begin
+         return (X, Y, W, H);
+      end;
+   end Picker_Box;
+
+   function Field_Box (Field : Picker_Field) return Rect is
+      Card : constant Rect := Picker_Box;
+      Top : constant Natural := Card.y + Picker_Padding + UI_Text_Height + M.Space_M;
+      Left : constant Natural := Card.x + Picker_Padding + Picker_Label_Width;
+   begin
+      if Is_Empty (Card) then
+         return (others => 0);
+      end if;
+      return (Left, Top + Picker_Field'Pos (Field) * (M.Control_Height + Picker_Row_Gap),
+              (if Card.w > 2 * Picker_Padding + Picker_Label_Width then Card.w - 2 * Picker_Padding - Picker_Label_Width
+               else 1),
+              M.Control_Height);
+   end Field_Box;
+
+   --  The closed field first, the open one last (its list over the other).
+   procedure Draw_Fields (C : Canvas; Into : in out Controls.Control_Map);
+   procedure Draw_Fields (C : Canvas; Into : in out Controls.Control_Map) is
+      T : constant Theme := Current_Theme;
+      Series_Last : constant Boolean := CB.Is_Open (Series_Combo);
+      procedure Series is
+      begin
+         CB.Draw (C, Into, Series_Combo, Series_Model, Series_Base, Field_Box (Series_Field), T,
+                  Focused => Picker_Focus = Series_Field, Visible_Rows => Picker_Rows);
+      end Series;
+      procedure Views is
+      begin
+         CB.Draw (C, Into, View_Combo, View_Model, View_Base, Field_Box (View_Field), T,
+                  Focused => Picker_Focus = View_Field, Visible_Rows => Picker_Rows);
+      end Views;
+   begin
+      if Series_Last then
+         Views;
+         Series;
+      else
+         Series;
+         Views;
+      end if;
+   end Draw_Fields;
+
+   procedure Draw_Picker (C : Canvas; K : Colors);
+   procedure Draw_Picker (C : Canvas; K : Colors) is
+      Card : constant Rect := Picker_Box;
+      Inner : constant Natural := (if Card.w > 2 * Picker_Padding then Card.w - 2 * Picker_Padding else 0);
+      Title : constant String :=
+        (if Picker_Target in 1 .. Board.Panels_Used then Dash_Model.Image (Board.Panels (Picker_Target).Title) else "");
+      procedure Label (Field : Picker_Field; Caption : String) is
+         F : constant Rect := Field_Box (Field);
+      begin
+         Text (C, Card.x + Picker_Padding, F.y + (if F.h > UI_Text_Height then (F.h - UI_Text_Height) / 2 else 0),
+               Caption, K.Muted);
+      end Label;
+   begin
+      if Is_Empty (Card) then
          return;
       end if;
-      if Intersects (Damage, Content) then
-         Fill_Page (C, K, Content);
+      if Intersects (C.clip, Card) or else not C.clipEnabled then
+         Fill_Rect (C, Card, K.Card);
+         Stroke_Rect (C, Card, K.Accent, K.Accent);
+         Strong (C, Card.x + Picker_Padding, Card.y + Picker_Padding, Fit_UI_Text (Title, Inner), K.Text);
+         Label (Series_Field, "Series");
+         Label (View_Field, "View");
+         Text (C, Card.x + Picker_Padding, Card.y + Card.h - Picker_Padding - UI_Text_Height,
+               Fit_UI_Text ("Applies at once; Ctrl+Z undoes, Esc closes", Inner), K.Muted);
       end if;
-      if Intersects (Damage, Toolbar) then
-         Draw_Toolbar (C, K);
+      Controls.Clear (Paint_Map);
+      Draw_Fields (C, Paint_Map);
+   end Draw_Picker;
+
+   --  The menu bar and its open menu; their controls cover the window
+   --  whatever this frame's clip.
+   procedure Draw_Menus (C : Canvas; Into : in out Controls.Control_Map);
+   procedure Draw_Menus (C : Canvas; Into : in out Controls.Control_Map) is
+      Whole_Input : Canvas := C;
+   begin
+      Whole_Input.inputClipEnabled := True;
+      Whole_Input.inputClip := Whole;
+      Menus.Draw (Whole_Input, Into, Menu_State, Menu_Model, Menu_Base, Menu_Area, Current_Theme, Menu_Width,
+                  Menu_Row);
+   end Draw_Menus;
+
+   --  What hit testing sees, again: the menu bar and the picker's fields
+   --  as they stand (drawn with nothing visible: only the registrations).
+   procedure Register is
+      Ghost : Canvas := Dash_Layers.Canvas;
+   begin
+      Ghost.clipEnabled := True;
+      Ghost.clip := (others => 0);
+      Ghost.inputClipEnabled := True;
+      Ghost.inputClip := Whole;
+      Controls.Clear (Map);
+      if Picker_On then
+         Draw_Fields (Ghost, Map);
       end if;
-      if Board /= null then
-         for P in 1 .. Board.Panels_Used loop
-            --  Nothing a panel draws leaves its card.
-            if Intersects (Panels (P).Outer, Damage) then
-               Draw_Panel (With_Clip (C, Panels (P).Outer), P, K, Damage);
-            end if;
-         end loop;
-      end if;
-      if Board /= null and then Edit_Mode and then Selected_Panel in 1 .. Board.Panels_Used
-        and then Intersects (Panels (Selected_Panel).Outer, Damage)
-      then
-         Draw_Selection (With_Clip (C, Panels (Selected_Panel).Outer), K, Selected_Panel);
-      end if;
-      if Intersects (Damage, Status) then
-         Draw_Status (C, K);
-      end if;
-      if Board /= null and then Source_Shown and then Intersects (Damage, Overlay_Box) then
+      Draw_Menus (Ghost, Map);
+   end Register;
+
+   procedure Paint (C : Canvas; Damage : Rect) is
+      K : constant Colors := Current_Colors;
+      Above : constant Natural := Menu_Area.h + Toolbar.h;
+      Content : constant Rect :=
+        (Whole.x, Toolbar.y + Toolbar.h, Whole.w,
+         (if Whole.h > Above + Status.h then Whole.h - Above - Status.h else 0));
+      --  Wholly under a layer: only the layers are drawn.
+      Hidden : constant Boolean := Under_Layer (Damage);
+   begin
+      if Hidden then
+         null;
+      elsif Board /= null and then Source_Shown and then Inside (Overlay_Box, Damage) then
+         --  All under the opaque overlay.
          Draw_Source (With_Clip (C, Overlay_Box), K);
-      elsif Hover_Valid and then not Is_Empty (Tooltip) and then Intersects (Damage, Tooltip) then
-         Draw_Tooltip (C, K);
+      else
+         if Intersects (Damage, Content) then
+            Fill_Page (C, K, Content);
+         end if;
+         if Intersects (Damage, Toolbar) then
+            Draw_Toolbar (C, K);
+         end if;
+         if Board /= null then
+            for P in 1 .. Board.Panels_Used loop
+               --  Nothing a panel draws leaves its card.
+               if Intersects (Panels (P).Outer, Damage) then
+                  Draw_Panel (With_Clip (C, Panels (P).Outer), P, K, Damage);
+               end if;
+            end loop;
+         end if;
+         if Board /= null and then Edit_Mode and then Selected_Panel in 1 .. Board.Panels_Used
+           and then Intersects (Panels (Selected_Panel).Outer, Damage)
+         then
+            Draw_Selection (With_Clip (C, Panels (Selected_Panel).Outer), K, Selected_Panel);
+         end if;
+         if Intersects (Damage, Status) then
+            Draw_Status (C, K);
+         end if;
+         if Board /= null and then Source_Shown and then Intersects (Damage, Overlay_Box) then
+            Draw_Source (With_Clip (C, Overlay_Box), K);
+         elsif Hover_Valid and then not Is_Empty (Tooltip) and then Intersects (Damage, Tooltip) then
+            Draw_Tooltip (C, K);
+         end if;
+      end if;
+      if Picker_On and then Intersects (Damage, Picker_Cover) then
+         Draw_Picker (C, K);
+      end if;
+      if Intersects (Damage, Menu_Area) or else Intersects (Damage, Menu_Popup) then
+         Controls.Clear (Paint_Map);
+         Draw_Menus (C, Paint_Map);
+      end if;
+      if Dialogs.Is_Open (Dialog) and then Intersects (Damage, Dialog_Box) then
+         Dialogs.Draw (C, Dialog, Current_Theme);
       end if;
    end Paint;
 
@@ -3112,7 +3575,8 @@ package body Dash_View is
       Plot : constant Rect := Panels (P).Plot;
       Reach : constant Natural := Bridge_Of (P) + Cell_Columns (P);
       Overlay : constant Boolean :=
-        (Hover_Valid and then Hover_Panel = P) or else Selecting or else (Detail_Valid and then Detail_Panel = P);
+        (Hover_Valid and then Hover_Panel = P) or else Selecting or else (Detail_Valid and then Detail_Panel = P)
+        or else Touches_Layer (Plot) or else (Source_Shown and then Intersects (Plot, Overlay_Box));
    begin
       Mark (Damage, Panels (P).Bottom_Axis);
       if Old.Width /= New_Port.Width or else Old.Columns /= New_Port.Columns or else Overlay
@@ -3417,6 +3881,1237 @@ package body Dash_View is
       end case;
    end Edit_Key;
 
+   ---------------------------------------------------------------------------
+   --  The menu bar
+   ---------------------------------------------------------------------------
+   function Shown_Range return Natural is
+   begin
+      for I in Preset_Index loop
+         if Span = Presets (I) then
+            return Natural (I);
+         end if;
+      end loop;
+      return 0;
+   end Shown_Range;
+
+   procedure Rebuild_Menus is
+      Flags : Commands.State;
+   begin
+      if Board = null then
+         return;
+      end if;
+      Flags :=
+        (Can_Undo => Dash_Edit.Can_Undo, Can_Redo => Dash_Edit.Can_Redo, Editing => Edit_Mode,
+         Has_Selection => Selected_Panel in 1 .. Board.Panels_Used,
+         Can_Add => Board.Panels_Used < Dash_Model.Maximum_Panels, Live => Live_Mode,
+         Source_Shown => Source_Shown and then Shown_Overlay = Source_Overlay,
+         Keys_Shown => Source_Shown and then Shown_Overlay = Keys_Overlay,
+         Folder_Ready => Folder.Ready, Shown_Range => Shown_Range, Recent => [others => null],
+         Recent_Used => Recent_Used);
+      for R in 1 .. Recent_Used loop
+         Flags.Recent (R) := Menus.Text (Recent_Captions (R));
+      end loop;
+      Menu_Model := Commands.Menu_Bar (Flags);
+      Menu_Width := Commands.Popup_Width (Menu_Model);
+   end Rebuild_Menus;
+
+   --  How the menu bar looks: what changed is drawn again.
+   type Menu_Look is record
+      Open, Selected, Hot : Natural := 0;
+      Cues : Boolean := False;
+      Popup : Rect := (others => 0);
+   end record;
+   function Look return Menu_Look is
+     ((Menus.Open_Menu (Menu_State), Menus.Selected_Item (Menu_State), Menus.Hot_Title (Menu_State),
+       Menus.Cues_Shown (Menu_State), Menu_Popup));
+
+   procedure Close_Picker (Damage : in out Rect);
+
+   procedure Menu_Moved (Before : Menu_Look; Damage : in out Rect);
+   procedure Menu_Moved (Before : Menu_Look; Damage : in out Rect) is
+      After : constant Menu_Look := Look;
+   begin
+      if After = Before then
+         return;
+      end if;
+      if After.Open /= 0 and then Picker_On then
+         Close_Picker (Damage);
+      end if;
+      if After.Open /= Before.Open or else After.Hot /= Before.Hot or else After.Cues /= Before.Cues then
+         Mark_Exactly (Damage, Menu_Area);
+      end if;
+      if After.Popup /= Before.Popup then
+         --  What the old menu covered comes back, then the new one.
+         Mark_Exactly (Damage, Before.Popup);
+         Mark_Exactly (Damage, After.Popup);
+      elsif After.Selected /= Before.Selected or else After.Cues /= Before.Cues then
+         Mark_Exactly (Damage, After.Popup);
+      end if;
+      if After.Open /= Before.Open or else After.Popup /= Before.Popup then
+         Register;
+      end if;
+   end Menu_Moved;
+
+   procedure Dismiss_Menu (Damage : in out Rect);
+   procedure Dismiss_Menu (Damage : in out Rect) is
+      Before : constant Menu_Look := Look;
+   begin
+      Menus.Dismiss (Menu_State);
+      Menu_Moved (Before, Damage);
+   end Dismiss_Menu;
+
+   procedure Set_Notice (S : String; Damage : in out Rect);
+   procedure Set_Notice (S : String; Damage : in out Rect) is
+   begin
+      Set_Notice_Text (S);
+      Mark (Damage, Status);
+   end Set_Notice;
+
+   ---------------------------------------------------------------------------
+   --  The picker
+   ---------------------------------------------------------------------------
+   function Name_Listed (Name : String) return Boolean is
+     (for some K in 1 .. Catalog_Used => Dash_Model.Image (Catalog (K).Name) = Name);
+   function Group_Size (Group : String) return Natural is
+      Count : Natural := 0;
+   begin
+      for K in 1 .. Catalog_Used loop
+         declare
+            Name : constant String := Dash_Model.Image (Catalog (K).Name);
+         begin
+            if Name'Length > Group'Length and then Name (Name'First .. Name'First + Group'Length - 1) = Group then
+               Count := Count + 1;
+            end if;
+         end;
+      end loop;
+      return Count;
+   end Group_Size;
+
+   procedure Build_Picker;
+   procedure Build_Picker is
+      P : Dash_Model.Panel renames Board.Panels (Picker_Target);
+      Current : Dash_Choices.Source_Choice;
+      One : Boolean;
+      Selected_Series, Selected_View : Natural := 0;
+      Shown : Dash_Choices.View_Choice;
+      Shown_Found : Boolean;
+      Last_Group : Dash_Model.Text;
+      procedure Add_Series (Source : Dash_Choices.Source_Choice; Caption : String) is
+      begin
+         if Series_Model.Count < CB.Max_Choices then
+            Series_Model.Count := Series_Model.Count + 1;
+            Series_Captions (Series_Model.Count) := new String'(Caption);
+            Series_Model.Choices (Series_Model.Count) := (Caption => CB.Text (Series_Captions (Series_Model.Count)),
+                                                          Enabled => True);
+            Series_Sources (Series_Model.Count) := Source;
+            if One and then Dash_Model.Image (Source.Name) = Dash_Model.Image (Current.Name)
+              and then Source.Match = Current.Match
+            then
+               Selected_Series := Series_Model.Count;
+            end if;
+         end if;
+      end Add_Series;
+   begin
+      for C of Series_Captions loop
+         if C /= null then
+            Free (C);
+         end if;
+      end loop;
+      Series_Model := (others => <>);
+      Dash_Choices.Source_Of (P, Current, One);
+      Series_Keeps := not One
+        or else (if Current.Match = Dash_Model.Exact then not Name_Listed (Dash_Model.Image (Current.Name))
+                 else Group_Size (Dash_Model.Image (Current.Name)) = 0);
+      if Series_Keeps then
+         --  What the panel reads now, kept as it is.
+         Add_Series (Current, (if P.Series_Used = 0 then "Choose a series"
+                               elsif One then Dash_Choices.Caption (Current) & " (not listed)"
+                               else "Its" & Natural'Image (P.Series_Used) & " series"));
+         Selected_Series := 1;
+      end if;
+      for K in 1 .. Catalog_Used loop
+         declare
+            Name : constant String := Dash_Model.Image (Catalog (K).Name);
+            Group : constant String := Dash_Choices.Group_Of (Name);
+         begin
+            --  A group of two or more, before its first member.
+            if Group'Length > 0 and then Dash_Model.Image (Last_Group) /= Group and then Group_Size (Group) > 1 then
+               Last_Group := Dash_Model.To_Text (Group);
+               Add_Series ((Name => Dash_Model.To_Text (Group), Match => Dash_Model.Prefix),
+                           Dash_Choices.Caption (Dash_Choices.Source_Choice'(Dash_Model.To_Text (Group),
+                                                                             Dash_Model.Prefix))
+                           & "  (" & Format.Decimal (Unsigned_64 (Group_Size (Group))) & " series)");
+            end if;
+            Add_Series ((Name => Catalog (K).Name, Match => Dash_Model.Exact), Name);
+         end;
+      end loop;
+      --  The views.
+      View_Model := (others => <>);
+      Dash_Choices.View_Of (P, Shown, Shown_Found);
+      View_Keeps := not Shown_Found;
+      if View_Keeps then
+         View_Model.Count := 1;
+         View_Model.Choices (1) := (Caption => Keep_View_Caption'Access, Enabled => True);
+         Selected_View := 1;
+      end if;
+      for Choice in Dash_Choices.View_Choice loop
+         if View_Captions (Choice) = null then
+            View_Captions (Choice) := new String'(Dash_Choices.Caption (Choice));
+         end if;
+         View_Model.Count := View_Model.Count + 1;
+         View_Model.Choices (View_Model.Count) := (Caption => CB.Text (View_Captions (Choice)), Enabled => True);
+         View_Choices (View_Model.Count) := Choice;
+         if Shown_Found and then Dash_Choices."=" (Choice, Shown) then
+            Selected_View := View_Model.Count;
+         end if;
+      end loop;
+      declare
+         Series_Was_Open : constant Boolean := CB.Is_Open (Series_Combo);
+         View_Was_Open : constant Boolean := CB.Is_Open (View_Combo);
+      begin
+         CB.Set_Selection (Series_Combo, Series_Model, Selected_Series);
+         CB.Set_Selection (View_Combo, View_Model, Selected_View);
+         --  A list stays open across a change it made.
+         if Series_Was_Open then
+            declare
+               Changed, Handled : Boolean;
+            begin
+               CB.Handle_Key (Series_Combo, Series_Model, CB.Toggle, Changed, Handled);
+            end;
+         end if;
+         if View_Was_Open then
+            declare
+               Changed, Handled : Boolean;
+            begin
+               CB.Handle_Key (View_Combo, View_Model, CB.Toggle, Changed, Handled);
+            end;
+         end if;
+      end;
+      Built_Generation := Catalog_Generation;
+   end Build_Picker;
+
+   procedure Open_Picker (P : Natural; Damage : in out Rect);
+   procedure Open_Picker (P : Natural; Damage : in out Rect) is
+   begin
+      if Board = null or else P not in 1 .. Board.Panels_Used then
+         return;
+      end if;
+      if Menus.Is_Open (Menu_State) then
+         Dismiss_Menu (Damage);
+      end if;
+      if Picker_On then
+         Close_Picker (Damage);
+      end if;
+      if Hover_Valid then
+         Mark (Damage, Tooltip);
+         Mark (Damage, Crosshair_Damage (Hover_Panel, Hover_Time));
+         Hover_Valid := False;
+      end if;
+      Picker_On := True;
+      Picker_Target := P;
+      Picker_Focus := Series_Field;
+      CB.Dismiss (Series_Combo);
+      CB.Dismiss (View_Combo);
+      Build_Picker;
+      --  The store's newest catalog, read by the data thread meanwhile.
+      Catalog_Wanted := True;
+      Next_Catalog_Us := Feed.Now_Us + Catalog_Refresh_Us;
+      Mark (Damage, Source_Button (P));
+      Mark_Exactly (Damage, Picker_Cover);
+      Mark (Damage, Status);
+      Register;
+   end Open_Picker;
+
+   procedure Close_Picker (Damage : in out Rect) is
+      Cover : constant Rect := Picker_Cover;
+      P : constant Natural := Picker_Target;
+   begin
+      if not Picker_On then
+         return;
+      end if;
+      Picker_On := False;
+      CB.Dismiss (Series_Combo);
+      CB.Dismiss (View_Combo);
+      Mark_Exactly (Damage, Cover);
+      if Board /= null and then P in 1 .. Board.Panels_Used then
+         Mark (Damage, Source_Button (P));
+      end if;
+      Mark (Damage, Status);
+      Register;
+   end Close_Picker;
+
+   --  The picker's look changed: its card and its list (and what a list
+   --  that closed covered).
+   procedure Picker_Moved (Before : Rect; Damage : in out Rect);
+   procedure Picker_Moved (Before : Rect; Damage : in out Rect) is
+      After : constant Rect := Picker_Cover;
+   begin
+      if After /= Before then
+         --  A list opened or closed: what it covered, and the card.
+         Mark_Exactly (Damage, Before);
+         Mark_Exactly (Damage, After);
+         Register;
+      else
+         --  The fields and the open list; the card's text stays.
+         Mark_Exactly (Damage, Field_Box (Series_Field));
+         Mark_Exactly (Damage, Field_Box (View_Field));
+         Mark_Exactly (Damage, Picker_List);
+      end if;
+   end Picker_Moved;
+
+   --  The panel picked: Item replaces it (one edit).
+   procedure Apply_Pick (Item : Dash_Model.Panel; Damage : in out Rect);
+   procedure Apply_Pick (Item : Dash_Model.Panel; Damage : in out Rect) is
+      D : Dash_Model.Dashboard := Board.all;
+      Done : Boolean;
+      Was : constant Natural :=
+        (if Selected_Panel in 1 .. Board.Panels_Used then Board.Panels (Selected_Panel).Id else 0);
+   begin
+      Dash_Edit.Replace (D, Picker_Target, Item, Done);
+      if Done then
+         Apply_Dashboard (D, Damage, Was);
+         Build_Picker;
+         --  The card names the panel (its title may follow the pick).
+         Mark_Exactly (Damage, Picker_Box);
+      end if;
+   end Apply_Pick;
+
+   procedure Pick (Field : Picker_Field; Damage : in out Rect);
+   procedure Pick (Field : Picker_Field; Damage : in out Rect) is
+      P : constant Dash_Model.Panel := Board.Panels (Picker_Target);
+   begin
+      case Field is
+         when Series_Field =>
+            declare
+               I : constant Natural := CB.Selection (Series_Combo);
+            begin
+               if I in 1 .. Series_Model.Count and then not (Series_Keeps and then I = 1) then
+                  Apply_Pick (Dash_Choices.With_Source (P, Series_Sources (I)), Damage);
+               end if;
+            end;
+         when View_Field =>
+            declare
+               I : constant Natural := CB.Selection (View_Combo);
+            begin
+               if I in 1 .. View_Model.Count and then not (View_Keeps and then I = 1) then
+                  Apply_Pick (Dash_Choices.With_View (P, View_Choices (I), Tops (Picker_Target)), Damage);
+               end if;
+            end;
+      end case;
+   end Pick;
+
+   --  A key while the picker is open: it takes them all (Ctrl+Z and Ctrl+Y
+   --  undo and redo its edits).
+   procedure Picker_Key (E : Event; Damage : in out Rect);
+   procedure Picker_Key (E : Event; Damage : in out Rect) is
+      Before : constant Rect := Picker_Cover;
+      Series_Was : constant CB.Combo_State := Series_Combo;
+      View_Was : constant CB.Combo_State := View_Combo;
+      Focus_Was : constant Picker_Field := Picker_Focus;
+      Changed, Handled : Boolean := False;
+      procedure Send (Key : CB.Key; Letter : Character := ' ') is
+      begin
+         case Picker_Focus is
+            when Series_Field => CB.Handle_Key (Series_Combo, Series_Model, Key, Changed, Handled, Letter);
+            when View_Field => CB.Handle_Key (View_Combo, View_Model, Key, Changed, Handled, Letter);
+         end case;
+      end Send;
+      function Focused_Open return Boolean is
+        (case Picker_Focus is
+           when Series_Field => CB.Is_Open (Series_Combo),
+           when View_Field => CB.Is_Open (View_Combo));
+   begin
+      case E.Pressed is
+         when Escape =>
+            if Focused_Open then
+               Send (CB.Cancel);
+            else
+               Close_Picker (Damage);
+               return;
+            end if;
+         when Next_Panel =>
+            Send (CB.Tab_Key);
+            Picker_Focus := (if Picker_Focus = Series_Field then View_Field else Series_Field);
+         when Up => Send (CB.Up);
+         when Down => Send ((if E.Alt then CB.Toggle else CB.Down));
+         when Home => Send (CB.Home);
+         when End_Key => Send (CB.End_Key);
+         when Enter | Space => Send ((if Focused_Open then CB.Commit else CB.Toggle));
+         when Undo | Redo =>
+            Undo_Redo (E.Pressed = Redo, Damage);
+            if Picker_Target in 1 .. Board.Panels_Used then
+               Build_Picker;
+               Mark_Exactly (Damage, Picker_Box);
+            else
+               Close_Picker (Damage);
+               return;
+            end if;
+         when others =>
+            if E.Letter /= ' ' and then not E.Control and then not E.Alt then
+               Send (CB.Type_Character, E.Letter);
+            end if;
+      end case;
+      if Changed then
+         Pick (Picker_Focus, Damage);
+      end if;
+      if Picker_On and then (Changed or else Series_Combo /= Series_Was or else View_Combo /= View_Was
+                             or else Picker_Focus /= Focus_Was or else Picker_Cover /= Before)
+      then
+         Picker_Moved (Before, Damage);
+      end if;
+   end Picker_Key;
+
+   ---------------------------------------------------------------------------
+   --  Dashboards: new, open, save as, duplicate
+   ---------------------------------------------------------------------------
+   function Listed (Leaf : String) return Boolean is
+     (for some K in 1 .. Folder.Count => Files.Value (Folder.Entries (K).Leaf) = Leaf);
+
+   --  Base, or Base and a number, whose file is not in the folder.
+   function Unique_Title (Base : String) return String is
+      Kept : constant String :=
+        Base (Base'First .. Base'First + Natural'Min (Base'Length, Dash_Model.Maximum_Text / 2) - 1);
+   begin
+      if not Listed (Dash_Model.File_Leaf (Kept)) then
+         return Kept;
+      end if;
+      for N in 2 .. Folder.Count + 2 loop
+         declare
+            Candidate : constant String := Kept & " " & Format.Decimal (Unsigned_64 (N));
+         begin
+            if not Listed (Dash_Model.File_Leaf (Candidate)) then
+               return Candidate;
+            end if;
+         end;
+      end loop;
+      return Kept;
+   end Unique_Title;
+
+   function Stem (Leaf : String) return String is
+     (if Leaf'Length > Dash_Model.Dashboard_Suffix'Length
+        and then Leaf (Leaf'Last - Dash_Model.Dashboard_Suffix'Length + 1 .. Leaf'Last) = Dash_Model.Dashboard_Suffix
+      then Leaf (Leaf'First .. Leaf'Last - Dash_Model.Dashboard_Suffix'Length) else Leaf);
+
+   --  D replaces the dashboard shown (opened, new, a copy): everything is
+   --  laid out and drawn again, its tracks are new, its edits start over.
+   --  Edits of the one left that are not yet written are saved first.
+   procedure Replace_Board (D : Dash_Model.Dashboard; Leaf : String; Damage : in out Rect);
+   procedure Replace_Board (D : Dash_Model.Dashboard; Leaf : String; Damage : in out Rect) is
+      Count : Natural := 0;
+      Accepted : Boolean;
+   begin
+      if Edit_Count /= Saved_Generation and then not (Save_Pending and then In_Flight_Generation = Edit_Count)
+        and then Parting_Source = null
+      then
+         Parting_Source := new String'(Dash_Model.To_Source (Board.all) & ASCII.LF);
+         Parting_Name := Current_Leaf;
+      end if;
+      Close_Picker (Damage);
+      if Menus.Is_Open (Menu_State) then
+         Dismiss_Menu (Damage);
+      end if;
+      for T of Tracks.all loop
+         Retire ((Track => T, List => null));
+      end loop;
+      Retire ((Track => null, List => Tracks));
+      for P in 1 .. D.Panels_Used loop
+         for S in 1 .. D.Panels (P).Series_Used loop
+            Count := Count + (if D.Panels (P).Series (S).Match = Dash_Model.Prefix then Prefix_Tracks else 1);
+         end loop;
+      end loop;
+      Tracks := new Track_Array'(1 .. Count => null);
+      Count := 0;
+      for P in 1 .. D.Panels_Used loop
+         for S in 1 .. D.Panels (P).Series_Used loop
+            for Match in 1 .. (if D.Panels (P).Series (S).Match = Dash_Model.Prefix then Prefix_Tracks else 1) loop
+               Count := Count + 1;
+               Tracks (Count) := new Dash_Tracks.Track;
+               Tracks (Count).Panel := P;
+               Tracks (Count).Panel_Id := D.Panels (P).Id;
+               Tracks (Count).Spec_Index := S;
+               Tracks (Count).Match_Index := Match;
+               Tracks (Count).Spec := D.Panels (P).Series (S);
+            end loop;
+         end loop;
+      end loop;
+      if Drawn_States /= null then
+         Free (Drawn_States);
+      end if;
+      Board.all := D;
+      Layout_Generation := Layout_Generation + 1;
+      Span := Unsigned_64'Max (Axis.Minimum_Span_Us,
+                               Unsigned_64'Min (D.Span * Microseconds_Per_Millisecond, Axis.Maximum_Span_Us));
+      Live_Mode := D.Live;
+      End_Us := Feed.Now_Us;
+      Has_Port := [others => False];
+      Tops := [others => 1];
+      Lows := [others => 1];
+      Edit_Mode := False;
+      Selected_Panel := 0;
+      Source_Shown := False;
+      Hover_Valid := False;
+      Detail_Valid := False;
+      Pressed := False;
+      Selecting := False;
+      Edit_Drag := False;
+      Dash_Edit.End_Group;
+      Rows_Basis := 0;
+      Lay_Out;
+      Update_Quantum;
+      Dash_Edit.Start (D);
+      Board_First_Generation := Edit_Count + 1;
+      Saved_Generation := Edit_Count;
+      Shown_Save := Unedited;
+      Files.Set (Current_Leaf, Leaf, Accepted);
+      Rebuild_Menus;
+      Register;
+      Mark_Exactly (Damage, Whole);
+   end Replace_Board;
+
+   --  The dashboard counts as edited (a copy not yet written).
+   procedure Note_Edited;
+   procedure Note_Edited is
+   begin
+      Edit_Count := Edit_Count + 1;
+      Last_Edit_Us := Feed.Now_Us;
+      Shown_Save := Edited;
+   end Note_Edited;
+
+   --  A new panel in the first free place, selected, its picker open.
+   procedure Add_Panel_Now (Damage : in out Rect);
+   procedure Add_Panel_Now (Damage : in out Rect) is
+      D : Dash_Model.Dashboard := Board.all;
+      At_Index : Dash_Model.Panel_Index;
+      Where : Dash_Grid.Placement;
+      Done : Boolean;
+      Was : constant Natural :=
+        (if Selected_Panel in 1 .. Board.Panels_Used then Board.Panels (Selected_Panel).Id else 0);
+   begin
+      if D.Panels_Used >= Dash_Model.Maximum_Panels then
+         Set_Notice ("A dashboard holds" & Natural'Image (Dash_Model.Maximum_Panels) & " panels at most", Damage);
+         return;
+      end if;
+      Close_Picker (Damage);
+      Dash_Grid.First_Free (D, Dash_Choices.New_Width, Dash_Choices.New_Height, At_Index, Where);
+      Dash_Edit.Insert (D, Dash_Choices.New_Panel, At_Index, Done);
+      if not Done then
+         return;
+      end if;
+      if not Edit_Mode then
+         Set_Editing (True, Damage);
+      end if;
+      Selected_Panel := At_Index;
+      Apply_Dashboard (D, Damage, Was);
+      Mark_Outline (At_Index, Damage);
+      Open_Picker (At_Index, Damage);
+   end Add_Panel_Now;
+
+   --  The file dialog over the window.
+   procedure Show_Dialog (Mode : Dialogs.Dialog_Mode; Damage : in out Rect);
+   procedure Show_Dialog (Mode : Dialogs.Dialog_Mode; Damage : in out Rect) is
+      Names : Files.File_List;
+      Accepted : Boolean;
+      Suggested : constant String :=
+        (if Mode = Dialogs.Save_New_File then Stem (Files.Value (Current_Leaf)) & "-copy" else "");
+      function Free_Name (Base : String) return String is
+      begin
+         if not Listed (Base & Dash_Model.Dashboard_Suffix) then
+            return Base & Dash_Model.Dashboard_Suffix;
+         end if;
+         for N in 2 .. Folder.Count + 2 loop
+            declare
+               Candidate : constant String := Base & "-" & Format.Decimal (Unsigned_64 (N)) & Dash_Model.Dashboard_Suffix;
+            begin
+               if not Listed (Candidate) then
+                  return Candidate;
+               end if;
+            end;
+         end loop;
+         return Base & Dash_Model.Dashboard_Suffix;
+      end Free_Name;
+   begin
+      Close_Picker (Damage);
+      if Menus.Is_Open (Menu_State) then
+         Dismiss_Menu (Damage);
+      end if;
+      for K in 1 .. Folder.Count loop
+         Files.Append (Names, Files.Value (Folder.Entries (K).Leaf), Accepted);
+      end loop;
+      Dialogs.Show
+        (Dialog, Mode, Names, Folder_Label,
+         Suggested_Name => (if Mode = Dialogs.Save_New_File then Free_Name (Suggested) else ""),
+         Title => (if Mode = Dialogs.Open_File then "Open a dashboard" else "Save the dashboard as a new file"),
+         Kind => Dashboard_Kind,
+         Empty => "No saved dashboards yet");
+      Dialog_Down := False;
+      if Hover_Valid then
+         Mark (Damage, Tooltip);
+         Hover_Valid := False;
+      end if;
+      Mark_Exactly (Damage, Dialog_Box);
+   end Show_Dialog;
+
+   procedure Close_Dialog (Damage : in out Rect);
+   procedure Close_Dialog (Damage : in out Rect) is
+      Box : constant Rect := Dialog_Box;
+   begin
+      Dialogs.Close (Dialog);
+      Dialog_Down := False;
+      Mark_Exactly (Damage, Box);
+   end Close_Dialog;
+
+   --  The dialog's name, as a dashboard's file: ".ccl" added when missing.
+   function Dashboard_Leaf (Name : String) return String is
+     (if Stem (Name) = Name then Name & Dash_Model.Dashboard_Suffix else Name);
+
+   procedure Submit_Dialog (Damage : in out Rect);
+   procedure Submit_Dialog (Damage : in out Rect) is
+      Leaf : constant String := Dashboard_Leaf (Dialogs.Filename (Dialog));
+      Accepted : Boolean;
+   begin
+      if not Files.Valid_Leaf (Leaf) then
+         Dialogs.Set_Error (Dialog, "Use letters, digits, spaces, . _ and - (no folders), at most"
+                            & Natural'Image (Files.Maximum_Name_Length) & " characters");
+      elsif Dialogs.Mode (Dialog) = Dialogs.Open_File then
+         Files.Set (Want_Open, Leaf, Accepted);
+         Dialogs.Set_Error (Dialog, "Opening " & Leaf & "...");
+      elsif Listed (Leaf) then
+         Dialogs.Set_Error (Dialog, "There is a " & Leaf & " already: choose another name");
+      else
+         Files.Set (Want_Save, Leaf, Accepted);
+         Dialogs.Set_Error (Dialog, "Saving " & Leaf & "...");
+      end if;
+      Mark_Exactly (Damage, Dialog_Box);
+   end Submit_Dialog;
+
+   --  A command that needs the folder's listing, once it is in.
+   procedure Run_Deferred (Which : Commands.Command; Damage : in out Rect);
+   procedure Run_Deferred (Which : Commands.Command; Damage : in out Rect) is
+   begin
+      case Which is
+         when Commands.Open_Dashboard | Commands.Save_As =>
+            if not Folder.Ready then
+               Set_Notice ("Can't " & (if Which = Commands.Save_As then "save" else "open")
+                           & ": this app has no folder for dashboards", Damage);
+            else
+               Show_Dialog ((if Which = Commands.Save_As then Dialogs.Save_New_File else Dialogs.Open_File), Damage);
+            end if;
+         when Commands.New_Dashboard =>
+            declare
+               Title : constant String := Unique_Title (Dash_Choices.New_Dashboard_Title);
+            begin
+               Replace_Board (Dash_Choices.New_Dashboard (Title), Dash_Model.File_Leaf (Title), Damage);
+               Set_Notice ("A new dashboard: pick its first panel's series", Damage);
+               Set_Editing (True, Damage);
+               Select_Panel (1, Damage);
+               Open_Picker (1, Damage);
+            end;
+         when Commands.Duplicate_Dashboard =>
+            declare
+               Copy : Dash_Model.Dashboard := Board.all;
+               Title : constant String := Unique_Title (Dash_Model.Image (Board.Title) & " copy");
+            begin
+               Copy.Title := Dash_Model.To_Text (Title);
+               Replace_Board (Copy, Dash_Model.File_Leaf (Title), Damage);
+               --  A copy is a new file: written at once.
+               Note_Edited;
+               Set_Notice ("A copy: " & Title & " (" & Dash_Model.File_Leaf (Title) & ")", Damage);
+            end;
+         when others =>
+            null;
+      end case;
+   end Run_Deferred;
+
+   procedure Toggle_Overlay (Wanted : Overlay_Kind; Damage : in out Rect);
+   procedure Toggle_Overlay (Wanted : Overlay_Kind; Damage : in out Rect) is
+   begin
+      --  The same key again closes it; the other one switches.
+      if Source_Shown and then Shown_Overlay /= Wanted then
+         --  What the other one covered comes back first.
+         Source_Shown := False;
+         Mark (Damage, Whole);
+         Source_Shown := True;
+      else
+         Source_Shown := not Source_Shown;
+      end if;
+      Shown_Overlay := Wanted;
+      if Source_Shown then
+         Hover_Valid := False;
+         Mark_Exactly (Damage, Overlay_Box);
+      else
+         Mark (Damage, Whole);
+      end if;
+   end Toggle_Overlay;
+
+   --  The panel a command without a selection acts on: the one under the
+   --  pointer, else the first.
+   function Target_Panel return Natural is
+     (if Edit_Mode and then Selected_Panel in 1 .. Board.Panels_Used then Selected_Panel
+      elsif Card_At (Hover_X, Hover_Y) /= 0 then Card_At (Hover_X, Hover_Y)
+      elsif Board.Panels_Used > 0 then 1 else 0);
+
+   procedure Run_Command (Item : Natural; Damage : in out Rect);
+   procedure Run_Command (Item : Natural; Damage : in out Rect) is
+      Which : Commands.Command;
+      Recent : Commands.Recent_Count;
+   begin
+      Commands.Decode (Item, Which, Recent);
+      if Recent /= 0 then
+         if Recent <= Recent_Used then
+            Want_Open := Recent_Leaves (Recent);
+            Set_Notice ("Opening " & Files.Value (Recent_Leaves (Recent)) & "...", Damage);
+         end if;
+         return;
+      end if;
+      case Which is
+         when Commands.No_Command =>
+            null;
+         when Commands.New_Dashboard | Commands.Open_Dashboard | Commands.Save_As | Commands.Duplicate_Dashboard =>
+            --  Each needs the folder as it is now.
+            Deferred := Which;
+            Want_List := True;
+         when Commands.Undo | Commands.Redo =>
+            Undo_Redo (Which = Commands.Redo, Damage);
+         when Commands.Toggle_Editor =>
+            Set_Editing (not Edit_Mode, Damage);
+         when Commands.Add_Panel =>
+            Add_Panel_Now (Damage);
+         when Commands.Panel_Source =>
+            Open_Picker (Target_Panel, Damage);
+         when Commands.Duplicate_Panel =>
+            Edit (Dash_Edit.Duplicate, Damage);
+         when Commands.Remove_Panel =>
+            Edit (Dash_Edit.Remove, Damage);
+         when Commands.Copy_Source =>
+            Copy_Wanted := True;
+         when Commands.Zoom_In =>
+            Set_Span (Span * Zoom_Denominator / Zoom_Numerator, 0, Damage);
+         when Commands.Zoom_Out =>
+            Set_Span (Span * Zoom_Numerator / Zoom_Denominator, 0, Damage);
+         when Commands.Range_Command =>
+            Set_Span (Presets (Preset_Index (Commands.Command'Pos (Which) - Commands.Command'Pos (Commands.Range_1)
+                                             + 1)), 0, Damage);
+         when Commands.Go_Live =>
+            Go_Live (Damage);
+         when Commands.Show_Source =>
+            Toggle_Overlay (Source_Overlay, Damage);
+         when Commands.Show_Keys =>
+            Toggle_Overlay (Keys_Overlay, Damage);
+      end case;
+   end Run_Command;
+
+   --  The data thread's answers, taken at the UI thread's refresh.
+   procedure Take_Answers (Damage : in out Rect) is
+   begin
+      if List_Answered then
+         List_Answered := False;
+         Folder := List_Answer;
+         --  The dialog lists by name; recent is by change, newest first.
+         for I in 2 .. Folder.Count loop
+            declare
+               Item : constant Folder_Entry := Folder.Entries (I);
+               J : Natural := I;
+            begin
+               while J > 1 and then Files.Value (Folder.Entries (J - 1).Leaf) > Files.Value (Item.Leaf) loop
+                  Folder.Entries (J) := Folder.Entries (J - 1);
+                  J := J - 1;
+               end loop;
+               Folder.Entries (J) := Item;
+            end;
+         end loop;
+         for C of Recent_Captions loop
+            if C /= null then
+               Free (C);
+            end if;
+         end loop;
+         Recent_Used := 0;
+         declare
+            Taken : array (1 .. Files.Maximum_Files) of Boolean := [others => False];
+         begin
+            while Recent_Used < Commands.Maximum_Recent and then Recent_Used < Folder.Count loop
+               declare
+                  Best : Natural := 0;
+               begin
+                  for K in 1 .. Folder.Count loop
+                     if not Taken (K) and then (Best = 0 or else Folder.Entries (K).Modified > Folder.Entries (Best).Modified)
+                     then
+                        Best := K;
+                     end if;
+                  end loop;
+                  Taken (Best) := True;
+                  Recent_Used := Recent_Used + 1;
+                  Recent_Leaves (Recent_Used) := Folder.Entries (Best).Leaf;
+                  Recent_Captions (Recent_Used) := new String'(Stem (Files.Value (Folder.Entries (Best).Leaf)));
+               end;
+            end loop;
+         end;
+         declare
+            Before : constant Menu_Look := Look;
+         begin
+            Rebuild_Menus;
+            if Menus.Is_Open (Menu_State) then
+               Mark_Exactly (Damage, Before.Popup);
+               Menu_Moved (Before, Damage);
+               Mark_Exactly (Damage, Menu_Popup);
+               Register;
+            end if;
+         end;
+         if Deferred /= Commands.No_Command then
+            declare
+               Which : constant Commands.Command := Deferred;
+            begin
+               Deferred := Commands.No_Command;
+               Run_Deferred (Which, Damage);
+            end;
+         end if;
+      end if;
+      if Open_Answered then
+         Open_Answered := False;
+         if Open_Done then
+            if Dialogs.Is_Open (Dialog) then
+               Close_Dialog (Damage);
+            end if;
+            Replace_Board (Open_Board.all, Files.Value (Open_Leaf), Damage);
+            Set_Notice ("Opened " & Files.Value (Open_Leaf), Damage);
+            Want_List := True;
+         else
+            declare
+               Why : constant String := Files.Value (Open_Leaf) & ": " & Answer_Reason (1 .. Answer_Reason_Length);
+            begin
+               if Dialogs.Is_Open (Dialog) then
+                  Dialogs.Set_Error (Dialog, Why);
+                  Mark_Exactly (Damage, Dialog_Box);
+               end if;
+               Set_Notice (Why, Damage);
+            end;
+         end if;
+      end if;
+      if Save_Answered then
+         Save_Answered := False;
+         if Save_Done then
+            if Dialogs.Is_Open (Dialog) then
+               Close_Dialog (Damage);
+            end if;
+            declare
+               Accepted : Boolean;
+            begin
+               Files.Set (Current_Leaf, Files.Value (Save_Leaf), Accepted);
+            end;
+            Saved_Generation := Edit_Count;
+            Shown_Save := Saved;
+            Set_Notice ("Saved as " & Files.Value (Save_Leaf), Damage);
+            Want_List := True;
+         else
+            declare
+               Why : constant String := Files.Value (Save_Leaf) & ": " & Answer_Reason (1 .. Answer_Reason_Length);
+            begin
+               if Dialogs.Is_Open (Dialog) then
+                  Dialogs.Set_Error (Dialog, Why);
+                  Mark_Exactly (Damage, Dialog_Box);
+               end if;
+               Set_Notice (Why, Damage);
+            end;
+         end if;
+      end if;
+      if Notice_Length > 0 and then Feed.Now_Us >= Notice_Until_Us then
+         Notice_Length := 0;
+         Mark (Damage, Status);
+      end if;
+      if Picker_On then
+         if Catalog_Generation /= Built_Generation and then not CB.Is_Open (Series_Combo)
+           and then not CB.Is_Open (View_Combo) and then Picker_Target in 1 .. Board.Panels_Used
+         then
+            Build_Picker;
+            Mark_Exactly (Damage, Picker_Cover);
+            Register;
+         end if;
+         if Feed.Now_Us >= Next_Catalog_Us then
+            Catalog_Wanted := True;
+            Next_Catalog_Us := Feed.Now_Us + Catalog_Refresh_Us;
+         end if;
+      end if;
+   end Take_Answers;
+
+   ---------------------------------------------------------------------------
+   --  Input to the menu bar, the picker and the dialog
+   ---------------------------------------------------------------------------
+   --  The menu bar's keys: F10 opens and closes it, Alt+letter opens a
+   --  menu; while one is open, arrows, Enter, Esc, Tab and letters move in
+   --  it. Taken: the key was the menu's. Other keys close it and go on.
+   procedure Menu_Key (E : Event; Damage : in out Rect; Taken : out Boolean);
+   procedure Menu_Key (E : Event; Damage : in out Rect; Taken : out Boolean) is
+      Was_Open : constant Boolean := Menus.Is_Open (Menu_State);
+      Before : constant Menu_Look := Look;
+      Key : Menus.Key := Menus.Mnemonic;
+      Chosen : Natural := 0;
+      Handled : Boolean;
+   begin
+      Taken := False;
+      if Was_Open then
+         case E.Pressed is
+            when Menu_Bar => Key := Menus.Activate;
+            when Left => Key := Menus.Left;
+            when Right => Key := Menus.Right;
+            when Up => Key := Menus.Up;
+            when Down => Key := Menus.Down;
+            when Home => Key := Menus.Home;
+            when End_Key => Key := Menus.End_Key;
+            when Enter => Key := Menus.Enter;
+            when Space => Key := Menus.Space;
+            when Escape => Key := Menus.Escape;
+            when Next_Panel => Key := Menus.Tab_Key;
+            when others =>
+               if E.Letter /= ' ' and then not E.Control then
+                  Key := Menus.Mnemonic;
+               else
+                  Dismiss_Menu (Damage);
+                  return;
+               end if;
+         end case;
+      elsif E.Pressed = Menu_Bar and then not E.Control and then not E.Shift then
+         Key := Menus.Activate;
+      elsif E.Alt and then not E.Control and then E.Letter /= ' '
+        and then (for some I in 1 .. Menu_Model.Menu_Count => Menu_Model.Menus (I).Mnemonic = E.Letter)
+      then
+         Key := Menus.Mnemonic;
+      else
+         return;
+      end if;
+      Rebuild_Menus;
+      Menus.Handle_Key (Menu_State, Menu_Model, Key, Chosen, Handled, E.Letter);
+      Taken := Handled or else Was_Open;
+      Menu_Moved (Before, Damage);
+      if Chosen /= 0 then
+         Run_Command (Chosen, Damage);
+      end if;
+      if Menus.Is_Open (Menu_State) and then not Was_Open then
+         --  The recent dashboards as the folder is now.
+         Want_List := True;
+      end if;
+   end Menu_Key;
+
+   --  The menu bar's and the picker's share of a pointer event (the
+   --  toolkit's retained routing: Controls first, then the widget). A
+   --  press outside an open menu or the picker closes it and is taken,
+   --  its release too (no click-through).
+   procedure Control_Pointer (E : Event; Damage : in out Rect; Taken : out Boolean);
+   procedure Control_Pointer (E : Event; Damage : in out Rect; Taken : out Boolean) is
+      Target : constant Controls.Control_ID := Controls.Hit (Map, E.X, E.Y);
+      Action : constant Controls.Pointer_Action :=
+        (case E.Kind is
+           when Pointer_Press => Controls.Pointer_Press,
+           when Pointer_Release => Controls.Pointer_Release,
+           when others => Controls.Pointer_Move);
+      Menu_Open : constant Boolean := Menus.Is_Open (Menu_State);
+      Ours : constant Boolean := Menus.Is_Menu_Control (Menu_Base, Target);
+      In_Series : constant Boolean := Picker_On and then CB.Is_Combo_Control (Series_Base, Target);
+      In_View : constant Boolean := Picker_On and then CB.Is_Combo_Control (View_Base, Target);
+      Inside_Picker : constant Boolean := Picker_On and then Point_In_Rect (E.X, E.Y, Picker_Cover);
+      Before : constant Menu_Look := Look;
+      Before_Picker : constant Rect := Picker_Cover;
+      Series_Was : constant CB.Combo_State := Series_Combo;
+      View_Was : constant CB.Combo_State := View_Combo;
+      Chosen : Natural := 0;
+      Changed, Dispatched, Handled : Boolean;
+   begin
+      Taken := False;
+      if Action = Controls.Pointer_Release and then Block_Release then
+         Block_Release := False;
+         Taken := True;
+         return;
+      end if;
+      if not Menu_Open and then not Ours and then not Picker_On
+        and then (Action /= Controls.Pointer_Move or else Menus.Hot_Title (Menu_State) = 0)
+      then
+         return;
+      end if;
+      if Action = Controls.Pointer_Press
+        and then ((Menu_Open and then not Ours) or else (Picker_On and then not Inside_Picker and then not Ours))
+      then
+         --  Outside: closed, and taken.
+         if Menu_Open then
+            Dismiss_Menu (Damage);
+         end if;
+         if Picker_On then
+            Close_Picker (Damage);
+         end if;
+         Block_Release := True;
+         Taken := True;
+         return;
+      end if;
+      Controls.Dispatch_Pointer (Map, Target, Action, E.X, E.Y, Changed, Dispatched);
+      if Menu_Open or else Ours or else Menus.Hot_Title (Menu_State) /= 0 then
+         Rebuild_Menus;
+         Menus.Handle_Pointer (Menu_State, Menu_Model, Map, Menu_Base, Target, Action, Chosen, Handled);
+         Taken := Handled or else Menu_Open or else (Ours and then Action /= Controls.Pointer_Move);
+         Menu_Moved (Before, Damage);
+         if Menus.Is_Open (Menu_State) and then not Menu_Open then
+            Want_List := True;
+         end if;
+         if Chosen /= 0 then
+            Run_Command (Chosen, Damage);
+         end if;
+         if Taken or else not Picker_On then
+            return;
+         end if;
+      end if;
+      if Picker_On then
+         if In_Series or else (CB.Is_Open (Series_Combo) and then not In_View) then
+            CB.Handle_Pointer (Series_Combo, Series_Model, Map, Series_Base, Target, Action, Changed, Handled);
+            if Action = Controls.Pointer_Press then
+               Picker_Focus := Series_Field;
+            end if;
+            if Changed then
+               Pick (Series_Field, Damage);
+            end if;
+         elsif In_View or else CB.Is_Open (View_Combo) then
+            CB.Handle_Pointer (View_Combo, View_Model, Map, View_Base, Target, Action, Changed, Handled);
+            if Action = Controls.Pointer_Press then
+               Picker_Focus := View_Field;
+            end if;
+            if Changed then
+               Pick (View_Field, Damage);
+            end if;
+         end if;
+         --  Only what changed (a move over the list that stays on its
+         --  row draws nothing).
+         if Picker_On and then (Series_Combo /= Series_Was or else View_Combo /= View_Was
+                                or else Picker_Cover /= Before_Picker)
+         then
+            Picker_Moved (Before_Picker, Damage);
+         end if;
+         Taken := Inside_Picker;
+      end if;
+   end Control_Pointer;
+
+   function Dialog_Event_Of (E : Event) return Dialogs.Dialog_Event is
+      Result : Dialogs.Dialog_Event :=
+        (Kind => Dialogs.No_Event, X => E.X, Y => E.Y, Shift => E.Shift, Control => E.Control, others => <>);
+   begin
+      case E.Kind is
+         when Key_Press =>
+            Result.Kind :=
+              (case E.Pressed is
+                 when Left => Dialogs.Left, when Right => Dialogs.Right, when Home => Dialogs.Home,
+                 when End_Key => Dialogs.End_Key, when Up => Dialogs.Up, when Down => Dialogs.Down,
+                 when Page_Up => Dialogs.Page_Up, when Page_Down => Dialogs.Page_Down, when Enter => Dialogs.Enter,
+                 when Escape => Dialogs.Escape, when Backspace => Dialogs.Backspace, when Remove => Dialogs.Delete,
+                 when Next_Panel => Dialogs.Tab, when Select_All => Dialogs.Select_All,
+                 when others => Dialogs.No_Event);
+         when Text_Input =>
+            Result.Kind := Dialogs.Text_Input;
+            Result.Character_Value := E.Character_Value;
+         when Pointer_Press =>
+            Result.Kind := Dialogs.Pointer_Down;
+         when Pointer_Move =>
+            Result.Kind := (if Dialog_Down then Dialogs.Pointer_Drag else Dialogs.No_Event);
+         when Pointer_Release =>
+            Result.Kind := Dialogs.Pointer_Up;
+         when Wheel =>
+            Result.Kind := (if E.Steps > 0 then Dialogs.Wheel_Up elsif E.Steps < 0 then Dialogs.Wheel_Down
+                            else Dialogs.No_Event);
+         when Pointer_Leave | Modifier_Change =>
+            null;
+      end case;
+      return Result;
+   end Dialog_Event_Of;
+
+   --  Everything goes to the open dialog (it is modal).
+   procedure Dialog_Input (E : Event; Damage : in out Rect);
+   procedure Dialog_Input (E : Event; Damage : in out Rect) is
+      Item : Dialogs.Dialog_Event := Dialog_Event_Of (E);
+      Action : Dialogs.Dialog_Action;
+      Now : constant Unsigned_64 := Feed.Now_Us;
+   begin
+      if Item.Kind = Dialogs.No_Event then
+         return;
+      end if;
+      if E.Kind = Pointer_Press then
+         if Now - Last_Press_Us <= Double_Click_Us and then abs (E.X - Last_Press_X) <= Double_Click_Slop
+           and then abs (E.Y - Last_Press_Y) <= Double_Click_Slop
+         then
+            Item.Kind := Dialogs.Double_Click;
+            Last_Press_Us := 0;
+         else
+            Last_Press_Us := Now;
+         end if;
+         Last_Press_X := E.X;
+         Last_Press_Y := E.Y;
+         Dialog_Down := True;
+      elsif E.Kind = Pointer_Release then
+         Dialog_Down := False;
+      end if;
+      Dialogs.Handle (Dialog, Item, Whole.x + Whole.w, Whole.y + Whole.h, Action);
+      case Action is
+         when Dialogs.Submit =>
+            Submit_Dialog (Damage);
+         when Dialogs.Cancelled =>
+            Mark_Exactly (Damage, Dialogs.Bounds (Whole.x + Whole.w, Whole.y + Whole.h));
+            Dialog_Down := False;
+         when others =>
+            if Dialogs.Is_Open (Dialog) then
+               Mark_Exactly (Damage, Dialog_Box);
+            end if;
+      end case;
+   end Dialog_Input;
+
+   ---------------------------------------------------------------------------
+   --  The data thread's side of the dashboards folder
+   ---------------------------------------------------------------------------
+   procedure Take_Job (V : in out View; J : out Job) is
+      pragma Unreferenced (V);
+   begin
+      J := (others => <>);
+      if Want_Save.Length > 0 then
+         J := (Save_New_File, Want_Save);
+         Want_Save := (others => <>);
+      elsif Want_Open.Length > 0 then
+         J := (Open_File, Want_Open);
+         Want_Open := (others => <>);
+      elsif Want_List then
+         J.Kind := List_Folder;
+         Want_List := False;
+      end if;
+   end Take_Job;
+
+   procedure Keep_Reason (Reason : String);
+   procedure Keep_Reason (Reason : String) is
+   begin
+      Answer_Reason_Length := Natural'Min (Reason'Length, Maximum_Notice);
+      Answer_Reason (1 .. Answer_Reason_Length) := Reason (Reason'First .. Reason'First + Answer_Reason_Length - 1);
+   end Keep_Reason;
+
+   procedure End_List (V : in out View; Listing : Folder_Listing) is
+      pragma Unreferenced (V);
+   begin
+      List_Answer := Listing;
+      List_Answered := True;
+   end End_List;
+
+   procedure End_Open (V : in out View; Leaf : String; D : Dash_Model.Dashboard; Opened : Boolean; Reason : String)
+   is
+      pragma Unreferenced (V);
+      Accepted : Boolean;
+   begin
+      Files.Set (Open_Leaf, Leaf, Accepted);
+      Open_Done := Opened;
+      if Opened then
+         Open_Board.all := D;
+      end if;
+      Keep_Reason (Reason);
+      Open_Answered := True;
+   end End_Open;
+
+   procedure End_Save_New (V : in out View; Leaf : String; Saved : Boolean; Reason : String) is
+      pragma Unreferenced (V);
+      Accepted : Boolean;
+   begin
+      Files.Set (Save_Leaf, Leaf, Accepted);
+      Save_Done := Saved;
+      Keep_Reason (Reason);
+      Save_Answered := True;
+   end End_Save_New;
+
+   function Take_Copy_Request (V : in out View) return Boolean is
+      pragma Unreferenced (V);
+      Wanted : constant Boolean := Copy_Wanted;
+   begin
+      Copy_Wanted := False;
+      return Wanted;
+   end Take_Copy_Request;
+
+   function Open_Menu (V : View) return Natural is
+      pragma Unreferenced (V);
+   begin
+      return Menus.Open_Menu (Menu_State);
+   end Open_Menu;
+
+   function Menu_Bar_Bounds (V : View) return Rect is
+      pragma Unreferenced (V);
+   begin
+      return Menu_Area;
+   end Menu_Bar_Bounds;
+
+   function Menu_Popup_Bounds (V : View) return Rect is
+      pragma Unreferenced (V);
+   begin
+      return Menu_Popup;
+   end Menu_Popup_Bounds;
+
+   function Picker_Panel (V : View) return Natural is
+      pragma Unreferenced (V);
+   begin
+      return (if Picker_On then Picker_Target else 0);
+   end Picker_Panel;
+
+   function Picker_Bounds (V : View) return Rect is
+      pragma Unreferenced (V);
+   begin
+      return Picker_Cover;
+   end Picker_Bounds;
+
+   function Source_Button_Bounds (V : View; P : Positive) return Rect is
+      pragma Unreferenced (V);
+   begin
+      return (if Board /= null and then P <= Board.Panels_Used then Source_Button (P) else (others => 0));
+   end Source_Button_Bounds;
+
+   function Dialog_Open (V : View) return Boolean is
+      pragma Unreferenced (V);
+   begin
+      return Dialogs.Is_Open (Dialog);
+   end Dialog_Open;
+
+   function Notice (V : View) return String is
+      pragma Unreferenced (V);
+   begin
+      return Notice_Text (1 .. Notice_Length);
+   end Notice;
+
+   function Picker_Choices (V : View; Field : Picker_Field) return Natural is
+      pragma Unreferenced (V);
+   begin
+      return (if not Picker_On then 0 elsif Field = Series_Field then Series_Model.Count else View_Model.Count);
+   end Picker_Choices;
+
+   function Picker_Choice (V : View; Field : Picker_Field; Index : Positive) return String is
+      pragma Unreferenced (V);
+      M_Of : constant CB.Model := (if Field = Series_Field then Series_Model else View_Model);
+   begin
+      return (if Picker_On and then Index <= M_Of.Count and then M_Of.Choices (Index).Caption /= null
+              then M_Of.Choices (Index).Caption.all else "");
+   end Picker_Choice;
+
+   function Picker_Selection (V : View; Field : Picker_Field) return Natural is
+      pragma Unreferenced (V);
+   begin
+      return (if not Picker_On then 0
+              elsif Field = Series_Field then CB.Selection (Series_Combo) else CB.Selection (View_Combo));
+   end Picker_Selection;
+
+   function Panel_View (V : View; P : Positive; Choice : out Dash_Choices.View_Choice) return Boolean is
+      pragma Unreferenced (V);
+      Found : Boolean := False;
+   begin
+      Choice := Dash_Choices.View_Choice'First;
+      if Board /= null and then P <= Board.Panels_Used then
+         Dash_Choices.View_Of (Board.Panels (P), Choice, Found);
+      end if;
+      return Found;
+   end Panel_View;
+
+   function Selected (V : View) return Natural is
+      pragma Unreferenced (V);
+   begin
+      return Selected_Panel;
+   end Selected;
+
+   function Panel_Source (V : View; P : Positive) return String is
+      pragma Unreferenced (V);
+   begin
+      return (if Board /= null and then P <= Board.Panels_Used then Dash_Model.Panel_Source (Board.Panels (P)) else "");
+   end Panel_Source;
+
    procedure Handle_Locked (E : Event; Damage : in out Rect);
 
    procedure Handle (V : in out View; E : Event; Damage : in out Rect) is
@@ -3436,6 +5131,95 @@ package body Dash_View is
       if Board = null then
          return;
       end if;
+      if E.Kind in Modifier_Change | Key_Press then
+         --  Alt held: the menu bar's mnemonics show.
+         declare
+            Before : constant Menu_Look := Look;
+         begin
+            Menus.Set_Alt_Held (Menu_State, E.Alt);
+            Menu_Moved (Before, Damage);
+         end;
+         if E.Kind = Modifier_Change then
+            return;
+         end if;
+      end if;
+      if Dialogs.Is_Open (Dialog) then
+         Dialog_Input (E, Damage);
+         return;
+      elsif E.Kind = Text_Input then
+         return;
+      end if;
+      if E.Kind = Key_Press then
+         declare
+            Taken : Boolean;
+         begin
+            Menu_Key (E, Damage, Taken);
+            if Taken then
+               return;
+            end if;
+         end;
+         if Picker_On then
+            Picker_Key (E, Damage);
+            return;
+         end if;
+         case E.Pressed is
+            when New_Dashboard => Run_Command (Commands.Command'Pos (Commands.New_Dashboard), Damage);
+            when Open_Dashboard => Run_Command (Commands.Command'Pos (Commands.Open_Dashboard), Damage);
+            when Save_As => Run_Command (Commands.Command'Pos (Commands.Save_As), Damage);
+            when Add_Panel => Add_Panel_Now (Damage);
+            when Panel_Source => Open_Picker (Target_Panel, Damage);
+            when Enter =>
+               if Edit_Mode then
+                  Open_Picker (Target_Panel, Damage);
+               end if;
+            when others =>
+               --  Alt and a letter that names no menu: nothing.
+               if not E.Alt then
+                  goto Keys;
+               end if;
+         end case;
+         return;
+      elsif E.Kind in Pointer_Move | Pointer_Press | Pointer_Release then
+         declare
+            Taken : Boolean;
+         begin
+            Control_Pointer (E, Damage, Taken);
+            if Taken then
+               return;
+            end if;
+         end;
+         if E.Kind = Pointer_Press then
+            for P in 1 .. Board.Panels_Used loop
+               if Point_In_Rect (E.X, E.Y, Source_Button (P)) then
+                  if Picker_On and then Picker_Target = P then
+                     Close_Picker (Damage);
+                  else
+                     Open_Picker (P, Damage);
+                  end if;
+                  Block_Release := True;
+                  return;
+               end if;
+            end loop;
+         end if;
+      elsif E.Kind = Wheel and then Picker_On then
+         declare
+            Before : constant Rect := Picker_Cover;
+            Handled : Boolean := False;
+         begin
+            if CB.Is_Open (Series_Combo) then
+               CB.Handle_Wheel (Series_Combo, Series_Model, E.Steps, Handled);
+            elsif CB.Is_Open (View_Combo) then
+               CB.Handle_Wheel (View_Combo, View_Model, E.Steps, Handled);
+            end if;
+            if Handled then
+               Picker_Moved (Before, Damage);
+               return;
+            elsif Point_In_Rect (E.X, E.Y, Before) then
+               return;
+            end if;
+         end;
+      end if;
+      <<Keys>>
       case E.Kind is
          when Pointer_Leave =>
             Set_Hover (0, 0, Damage);
@@ -3580,27 +5364,7 @@ package body Dash_View is
                when Edit => Set_Editing (True, Damage);
                when Undo | Redo => Undo_Redo (E.Pressed = Redo, Damage);
                when Show_Source | Show_Keys =>
-                  declare
-                     Wanted : constant Overlay_Kind :=
-                       (if E.Pressed = Show_Source then Source_Overlay else Keys_Overlay);
-                  begin
-                     --  The same key again closes it; the other one switches.
-                     if Source_Shown and then Shown_Overlay /= Wanted then
-                        --  What the other one covered comes back first.
-                        Source_Shown := False;
-                        Mark (Damage, Whole);
-                        Source_Shown := True;
-                     else
-                        Source_Shown := not Source_Shown;
-                     end if;
-                     Shown_Overlay := Wanted;
-                  end;
-                  if Source_Shown then
-                     Hover_Valid := False;
-                     Mark_Exactly (Damage, Overlay_Box);
-                  else
-                     Mark (Damage, Whole);
-                  end if;
+                  Toggle_Overlay ((if E.Pressed = Show_Source then Source_Overlay else Keys_Overlay), Damage);
                when Left | Right =>
                   declare
                      Step : constant Unsigned_64 := Span / Pan_Fraction;
@@ -3628,8 +5392,11 @@ package body Dash_View is
                when Range_4 => Set_Span (Presets (4), 0, Damage);
                when Range_5 => Set_Span (Presets (5), 0, Damage);
                when Range_6 => Set_Span (Presets (6), 0, Damage);
-               when Up | Down | Next_Panel | Remove | Duplicate | Copy | No_Key => null;
+               when Up | Down | Next_Panel | Remove | Duplicate | Copy | No_Key | Menu_Bar | Panel_Source | Add_Panel
+                  | New_Dashboard | Open_Dashboard | Save_As | Enter | Space | Backspace | Page_Up | Page_Down
+                  | Select_All | Letter_Key => null;
             end case;
+         when Text_Input | Modifier_Change => null;
       end case;
    end Handle_Locked;
 

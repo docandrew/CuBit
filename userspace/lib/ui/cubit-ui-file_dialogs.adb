@@ -114,11 +114,21 @@ package body CuBit.UI.File_Dialogs is
    procedure Show
      (State : out Dialog_State; Mode : Dialog_Mode;
       Files : CuBit.File_Selection.File_List; Location : String;
-      Suggested_Name : String := "")
+      Suggested_Name : String := "";
+      Title : String := ""; Kind : String := ""; Empty : String := "")
    is
       Accepted : Boolean;
+      procedure Keep (Into : out String; Length : out Natural; Text : String) is
+      begin
+         Length := Natural'Min (Text'Length, Into'Length);
+         Into := [others => ' '];
+         Into (Into'First .. Into'First + Length - 1) := Text (Text'First .. Text'First + Length - 1);
+      end Keep;
    begin
       State := (others => <>);
+      Keep (State.Title_Text, State.Title_Length, Title);
+      Keep (State.Kind_Text, State.Kind_Length, Kind);
+      Keep (State.Empty_Text, State.Empty_Length, Empty);
       State.Visible := True;
       State.Operation := Mode;
       State.Files := Files;
@@ -332,10 +342,12 @@ package body CuBit.UI.File_Dialogs is
          Colors.activeTitleTop, Colors.activeTitleBottom);
       Draw_UI_Text_Transparent
         (With_Clip (C, G.Frame), G.Frame.x + Inset, G.Frame.y + 2 + (Title_Height - M.Line_Height) / 2,
-         (case State.Operation is
-            when Open_File => "Open CCL source",
-            when Save_New_File => "Save CCL source as a new file",
-            when Unsaved_Changes => "Unsaved changes"),
+         (if State.Title_Length > 0 and then State.Operation /= Unsaved_Changes
+          then State.Title_Text (1 .. State.Title_Length)
+          else (case State.Operation is
+                   when Open_File => "Open CCL source",
+                   when Save_New_File => "Save CCL source as a new file",
+                   when Unsaved_Changes => "Unsaved changes")),
          Colors.selectionText);
       if State.Operation = Unsaved_Changes then
          Widgets.Label (C, (G.Frame.x + M.Space_XL, G.Frame.y + Location_Top + M.Space_M,
@@ -371,11 +383,13 @@ package body CuBit.UI.File_Dialogs is
          Draw_Table_Row
            (With_Clip (C, G.Rows), (G.Rows.x, G.Rows.y + Row * Row_Height, G.Rows.w, Row_Height),
             Colors, State.Selected = First + Row, False,
-            Value (State.Files.Names (First + Row)), "CCL source", "", Columns);
+            Value (State.Files.Names (First + Row)),
+            (if State.Kind_Length > 0 then State.Kind_Text (1 .. State.Kind_Length) else "CCL source"), "", Columns);
       end loop;
       if State.Files.Count = 0 then
          Draw_UI_Text_Transparent (With_Clip (C, G.Rows), G.Rows.x + 6, G.Rows.y + 4,
-           "No saved CCL files in this workspace", Colors.muted);
+           (if State.Empty_Length > 0 then State.Empty_Text (1 .. State.Empty_Length)
+            else "No saved CCL files in this workspace"), Colors.muted);
       end if;
       if State.Focus = File_List then Stroke_Rect (C, G.List, Colors.accent, Colors.accent); end if;
       Draw_Vertical_Scrollbar

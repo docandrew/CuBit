@@ -19,10 +19,15 @@ package CuBit.UI.File_Dialogs is
       Shift, Control : Boolean := False;
    end record;
    type Dialog_State is private;
+   --  Title, Kind (the type column) and Empty (the empty list's line)
+   --  name what the application keeps there; "" keeps the CCL source
+   --  wording.
+   MAXIMUM_CAPTION : constant := 64;
    procedure Show
      (State : out Dialog_State; Mode : Dialog_Mode;
       Files : CuBit.File_Selection.File_List; Location : String;
-      Suggested_Name : String := "");
+      Suggested_Name : String := "";
+      Title : String := ""; Kind : String := ""; Empty : String := "");
    -- Returns a decision only; the caller owns saving and deferred opening.
    procedure Confirm_Unsaved (State : out Dialog_State; Filename : String);
    function Is_Open (State : Dialog_State) return Boolean;
@@ -55,6 +60,8 @@ private
       Location_Length : Natural range 0 .. 128 := 0;
       Error_Text : String (1 .. 128) := [others => ' '];
       Error_Length : Natural range 0 .. 128 := 0;
+      Title_Text, Kind_Text, Empty_Text : String (1 .. MAXIMUM_CAPTION) := [others => ' '];
+      Title_Length, Kind_Length, Empty_Length : Natural range 0 .. MAXIMUM_CAPTION := 0;
       Focus : Focus_Target := File_List;
       Press : Press_Target := No_Press;
       Decision_Focus : Decision := Save_Changes;

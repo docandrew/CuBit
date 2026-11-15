@@ -32,6 +32,12 @@ package CuBit.UI.Combo_Boxes is
       Definition : Model; Base : ID_Base; Bounds : Rect; Colors : Theme;
       Focused : Boolean := False; Enabled : Boolean := True;
       Row_Height : Positive := Default_Height; Visible_Rows : Positive := 8);
+   -- Where Draw puts the open list (empty while closed) for a field at
+   -- Bounds on a canvas Canvas_Height high: damage before drawing, as
+   -- Menus.Popup_Bounds.
+   function Popup_Bounds
+     (State : Combo_State; Definition : Model; Bounds : Rect; Canvas_Height : Natural;
+      Row_Height : Positive := Default_Height; Visible_Rows : Positive := 8) return Rect;
    type Key is (Toggle, Up, Down, Home, End_Key, Commit, Cancel, Tab_Key,
                 Type_Character);
    -- Route focused input: Alt+Down/F4 -> Toggle, Enter/Space -> Commit,

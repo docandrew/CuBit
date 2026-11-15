@@ -99,6 +99,8 @@ package body Dash_Edit is
       History (At_Index) := L;
    end Push;
 
+   procedure Commit (D : Dashboard; Before : Layout);
+
    procedure Start (D : Dashboard) is
    begin
       Known := 0;
@@ -184,18 +186,52 @@ package body Dash_Edit is
             end if;
       end case;
       if Done then
-         --  Remember every panel's present state (a resize changed one).
-         for K in 1 .. D.Panels_Used loop
-            Remember (D.Panels (K));
-         end loop;
-         if not (Group_Open and then Group_Pushed) then
-            Push (Before, Undo_Top + 1);
-            Undo_Top := Natural'Min (Undo_Top + 1, History'Length);
-         end if;
-         Group_Pushed := Group_Open;
-         Redo_Top := Undo_Top;
+         --  Every panel's present state (a resize changed one).
+         Commit (D, Before);
       end if;
    end Apply;
+
+   --  An edit made: every panel's present state remembered, the layout
+   --  before it pushed (once per group).
+   procedure Commit (D : Dashboard; Before : Layout) is
+   begin
+      for K in 1 .. D.Panels_Used loop
+         Remember (D.Panels (K));
+      end loop;
+      if not (Group_Open and then Group_Pushed) then
+         Push (Before, Undo_Top + 1);
+         Undo_Top := Natural'Min (Undo_Top + 1, History'Length);
+      end if;
+      Group_Pushed := Group_Open;
+      Redo_Top := Undo_Top;
+   end Commit;
+
+   procedure Replace (D : in out Dashboard; P : Positive; Item : Panel; Done : out Boolean) is
+      Before : constant Layout := Layout_Of (D);
+   begin
+      Done := P <= D.Panels_Used;
+      if not Done then
+         return;
+      end if;
+      Remember (D.Panels (P));
+      D.Panels (P) := Item;
+      D.Panels (P).Id := Known + 1;
+      Commit (D, Before);
+   end Replace;
+
+   procedure Insert (D : in out Dashboard; Item : Panel; At_Index : Positive; Done : out Boolean) is
+      Before : constant Layout := Layout_Of (D);
+   begin
+      Done := D.Panels_Used < Maximum_Panels and then At_Index <= D.Panels_Used + 1;
+      if not Done then
+         return;
+      end if;
+      D.Panels (At_Index + 1 .. D.Panels_Used + 1) := D.Panels (At_Index .. D.Panels_Used);
+      D.Panels (At_Index) := Item;
+      D.Panels (At_Index).Id := Known + 1;
+      D.Panels_Used := D.Panels_Used + 1;
+      Commit (D, Before);
+   end Insert;
 
    procedure Undo (D : in out Dashboard; Done : out Boolean) is
       Now : constant Layout := Layout_Of (D);
