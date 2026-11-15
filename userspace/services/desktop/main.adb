@@ -604,7 +604,24 @@ procedure main is
    clipEnabled : Boolean := False;
    clipRect    : Rect;
    framePending : Boolean := False;
-   frameDamage  : Rect;
+   --  The scene damage of the next frame, as separate boxes (logical
+   --  pixels): an animating window and a caret stay apart (LAT-002); only
+   --  past Compositor_Damage.Capacity, the named ceiling, do they fall back
+   --  to their envelope. frameDamage is their bounding rectangle.
+   frameRegions : Compositor_Damage.State;
+   function boxOf (r : Rect) return Compositor_Damage.Box is
+     ((r.x, r.y, r.x + r.w, r.y + r.h));
+   function rectOf (b : Compositor_Damage.Box) return Rect is
+     ((b.Left, b.Top, b.Right - b.Left, b.Bottom - b.Top));
+   function frameDamage return Rect is
+     (if Compositor_Damage.Count (frameRegions) = 0 then (others => 0)
+      else rectOf (Compositor_Damage.Bounds (frameRegions)));
+   procedure addRegion (Regions : in out Compositor_Damage.State; r : Rect) is
+   begin
+      if r.w > 0 and then r.h > 0 then
+         Compositor_Damage.Add (Regions, boxOf (r));
+      end if;
+   end addRegion;
    --  Coalesce pointer motion during each bounded event-loop pass. Painting
    --  happens after input dispatch, with no timer delay and no per-report
    --  display IPC. Output retirement still governs transfer-buffer writes.
@@ -3604,7 +3621,8 @@ procedure main is
                              P.Dropped_In_Row'Image & ", total" & droppedFrames'Image);
                         end if;
                         framePending := True;
-                        frameDamage := (x => 0, y => 0, w => fbWidth, h => fbHeight);
+                        Compositor_Damage.Clear (frameRegions);
+                        addRegion (frameRegions, (0, 0, fbWidth, fbHeight));
                         Compositor_Latency.Dropped (latencyLedger, latencyStats, Expected_Token);
                      else
                         CP.Complete (P.Transfer, Reply);
@@ -7382,7 +7400,8 @@ procedure main is
    procedure scheduleRedraw is
    begin
       framePending := True;
-      frameDamage := (x => 0, y => 0, w => fbWidth, h => fbHeight);
+      Compositor_Damage.Clear (frameRegions);
+      addRegion (frameRegions, (0, 0, fbWidth, fbHeight));
    end scheduleRedraw;
 
    procedure scheduleRedrawRect (dirty : Rect) is
@@ -7392,12 +7411,11 @@ procedure main is
          return;
       end if;
 
-      if framePending then
-         frameDamage := unionRect (frameDamage, r);
-      else
-         frameDamage := r;
+      if not framePending then
+         Compositor_Damage.Clear (frameRegions);
          framePending := True;
       end if;
+      addRegion (frameRegions, r);
    end scheduleRedrawRect;
 
    --  Post N to the notification centre: the status button's count, the
@@ -7572,7 +7590,9 @@ procedure main is
    end taskbarChanges;
 
    procedure flushFrame is
-      damage : Rect := frameDamage;
+      regions : Compositor_Damage.State := frameRegions;
+      dead : Rect := (others => 0);
+      damage : Rect;
       Latency_Draw_Started : Unsigned_64;
       t0 : Unsigned_64;
       t1 : Unsigned_64;
@@ -7584,13 +7604,17 @@ procedure main is
          return;
       end if;
       framePending := False;
-      frameDamage := (others => 0);
+      Compositor_Damage.Clear (frameRegions);
 
-      reapDeadClientSurfaces (damage);
-      damage := unionRect (damage, taskbarChanges);
+      reapDeadClientSurfaces (dead);
+      addRegion (regions, dead);
+      addRegion (regions, taskbarChanges);
+      damage := (if Compositor_Damage.Count (regions) = 0 then (others => 0)
+                 else rectOf (Compositor_Damage.Bounds (regions)));
       full :=
          damage.x = 0 and then damage.y = 0 and then
-         damage.w = fbWidth and then damage.h = fbHeight;
+         damage.w = fbWidth and then damage.h = fbHeight and then
+         Compositor_Damage.Count (regions) = 1;
 
       Draw_Started := timingNow;
       Latency_Draw_Started := CuBit.Monotonic.Microseconds;
@@ -7601,8 +7625,15 @@ procedure main is
       elsif dragPresentedValid or else dragPreviewValid then
          redrawDragFrame (damage, damagePixels);
       else
-         redrawRect (damage);
-         damagePixels := Unsigned_64 (damage.w) * Unsigned_64 (damage.h);
+         --  Each box on its own: never their envelope (LAT-002).
+         for I in 1 .. Compositor_Damage.Count (regions) loop
+            declare
+               r : constant Rect := rectOf (Compositor_Damage.Item (regions, I));
+            begin
+               redrawRect (r);
+               damagePixels := damagePixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
+            end;
+         end loop;
       end if;
       dragPresentedValid :=
         (dragMode = DRAG_MOVE and then dragSurfaceId /= 0) or else
@@ -13064,7 +13095,7 @@ procedure main is
       drawingBackBuffer := False;
       cursorSaveValid := False;
       framePending := False;
-      frameDamage := (others => 0);
+      Compositor_Damage.Clear (frameRegions);
       cursorPresentPending := False;
       outputDrainRequested := False;
       outputReopenPending := anySurfaceUsed and then not shutdownRequested;

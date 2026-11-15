@@ -10,9 +10,21 @@ package body Compositor_Damage with SPARK_Mode is
       Frame := Pending;
       Clear (Pending);
    end Capture;
+   --  Each of the frame's boxes goes back as itself: restoring a frame of
+   --  an animating window and a caret must not merge them into their
+   --  envelope (LAT-002: one damage rect of ~950k px per typing frame).
+   --  Add still collapses past Capacity, the named ceiling.
    procedure Restore (Pending, Frame : in out State) is
+      Old_Pending : constant State := Pending with Ghost;
    begin
-      if Frame.Used > 0 then Add (Pending, Frame.Extent); end if;
+      for I in 1 .. Frame.Used loop
+         Add (Pending, Frame.Region (I));
+         pragma Loop_Invariant (Valid (Pending) and Valid (Frame) and Frame = Frame'Loop_Entry);
+         pragma Loop_Invariant
+           (for all J in 1 .. Count (Old_Pending) => Covers (Pending, Item (Old_Pending, J)));
+         pragma Loop_Invariant
+           (for all J in 1 .. I => Covers (Pending, Frame.Region (J)));
+      end loop;
       Clear (Frame);
    end Restore;
    procedure Merge_Local (S : in out State; R : Box; Merged : out Boolean)
