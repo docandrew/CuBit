@@ -1681,7 +1681,11 @@ procedure main is
    package TH renames CuBit.Timing_Histograms;
    package DB renames Compositor_Dispatch_Budget;
    type Timing_Stage is (Input_Dispatch, Request_Dispatch, Scene_Draw,
-                        Submit_Call, Submit_To_Completion);
+                        Submit_Call, Submit_To_Completion,
+                        --  Timing builds only: where one native output pass
+                        --  of the shell scene spends its time.
+                        Shell_Wallpaper, Shell_Windows, Shell_Overlays);
+   subtype Shell_Stage is Timing_Stage range Shell_Wallpaper .. Shell_Overlays;
    type Stage_Histograms is array (Timing_Stage) of TH.Histogram;
    type Stage_Counts is array (Timing_Stage) of Unsigned_64;
    Timing : Stage_Histograms := (others => TH.Empty);
@@ -1738,11 +1742,18 @@ procedure main is
    end recordTransferWork;
    function presentationNow return Unsigned_64 is
      (if DM.Enabled then dispatchNow else timingNow);
+   --  The full-repaint oracle is drawing (checkFullRepaint): its pass is
+   --  not a frame and stays out of every timing series, and it culls
+   --  nothing (passSees, wallpaper occlusion), so it is the naive scene.
+   repaintChecking : Boolean := False;
+   --  Frames handed to Display since Desktop started (never reset).
+   framesSubmittedTotal : Unsigned_64 := 0;
    procedure noteTiming (Stage : Timing_Stage; First : Unsigned_64) is
       Last : Unsigned_64;
    begin
+      if repaintChecking then return; end if;
       if not Desktop_Timing_Policy.Enabled and then
-        (Stage = Submit_To_Completion or else not DM.Enabled or else DM.Disabled)
+        (Stage = Submit_To_Completion or else Stage in Shell_Stage or else not DM.Enabled or else DM.Disabled)
       then return; end if;
       Last := timingNow;
       if DM.Enabled and then not DM.Disabled then
@@ -1752,6 +1763,7 @@ procedure main is
             when Scene_Draw => DM.Record_Stage (Compositor_Stage_Metrics.Scene_Draw, First, Last);
             when Submit_Call => DM.Record_Stage (Compositor_Stage_Metrics.Submit_Call, First, Last);
             when Submit_To_Completion => null; -- Per-output release spans already published.
+            when Shell_Stage => null;
          end case;
       end if;
       if Desktop_Timing_Policy.Enabled then
@@ -1820,7 +1832,10 @@ procedure main is
         when Request_Dispatch => "request_dispatch",
         when Scene_Draw => "scene_draw",
         when Submit_Call => "submit_call",
-        when Submit_To_Completion => "submit_to_completion");
+        when Submit_To_Completion => "submit_to_completion",
+        when Shell_Wallpaper => "shell_wallpaper",
+        when Shell_Windows => "shell_windows",
+        when Shell_Overlays => "shell_overlays");
 
    --  Write the report's next line, skipping steps with nothing to say.
    --  Opt-in trace batches belong to the serial test transport (they stay
@@ -2957,6 +2972,19 @@ procedure main is
          b.y < a.y + a.h;
    end rectIntersects;
 
+   --  Whether drawing into r (logical) can change any pixel of the current
+   --  pass: inside the clip, and in a native output pass inside the
+   --  output's damage. Drawing that cannot is skipped whole: a scene pass
+   --  for a small damage rectangle used to walk every window's shadow
+   --  pixel by pixel and lay out every text on the screen.
+   function passSees (r : Rect) return Boolean is
+     (repaintChecking or else
+      (not isEmpty (r) and then
+       (not clipEnabled or else rectIntersects (r, clipRect)) and then
+       (not nativeOutputPass or else
+          (declare Seen : constant DG.Physical_Rectangle := physicalClip (r);
+           begin Seen.Left < Seen.Right and then Seen.Top < Seen.Bottom))));
+
    function inflateRect (r : Rect; amount : Natural) return Rect is
       x1 : Natural := r.x;
       y1 : Natural := r.y;
@@ -3719,6 +3747,7 @@ procedure main is
          end;
          Compositor_Damage.Clear (P.Frame_Damage);
          statsPresentOps := statsPresentOps + 1;
+         framesSubmittedTotal := framesSubmittedTotal + 1;
          if not asyncAnnounced then
             asyncAnnounced := True;
             debugPrint ("desktop: asynchronous presentation active" & LF);
@@ -4203,7 +4232,7 @@ procedure main is
          -- Only skip a complete damage rectangle: no fragmentation, allocation
          -- or assumption about client opacity. Match fillRect's logical clamp
          -- and its proved physical clip, including fractional DPI/rotation.
-         if Cull_Windows and then not clipEnabled then
+         if Cull_Windows and then not clipEnabled and then not repaintChecking then
             for I in store.Surfaces'Range loop
                if store.Surfaces (I).used and then not store.Surfaces (I).minimized and then
                  store.Surfaces (I).id /= compositionExcludedSurface and then
@@ -4234,12 +4263,54 @@ procedure main is
                if Must_Restart then exitCompositor (1); end if;
                if Drawn then return; end if;
             end;
-            Desktop_Wallpaper_Layers.Paint
-              (Natural (activeOutput),
-               P.Buffer, Natural (P.Geometry.Width), Natural (P.Geometry.Height),
-               P.Pitch, Natural (outputDamage.Left), Natural (outputDamage.Top),
-               Natural (outputDamage.Right - outputDamage.Left),
-               Natural (outputDamage.Bottom - outputDamage.Top), shown);
+            --  Occlusion: window bodies are filled opaquely afterwards, so the
+            --  wallpaper is painted only outside the largest body in this
+            --  damage (at most four strips, Compositor_Repaint.Before_Draw).
+            --  A window repaint used to copy every wallpaper row under it
+            --  first, then overwrite them.
+            declare
+               Damage_Box : constant Compositor_Damage.Box :=
+                 (Natural (outputDamage.Left), Natural (outputDamage.Top),
+                  Natural (outputDamage.Right), Natural (outputDamage.Bottom));
+               Covered : Compositor_Damage.Box := (0, 0, 0, 0);
+               Best : Unsigned_64 := 0;
+            begin
+               if Cull_Windows and then not clipEnabled and then not repaintChecking then
+                  for I in store.Surfaces'Range loop
+                     if store.Surfaces (I).used and then not store.Surfaces (I).minimized and then
+                       store.Surfaces (I).id /= compositionExcludedSurface and then
+                       (store.Surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0
+                     then
+                        declare
+                           Body_Area : constant Rect := clampRect
+                             ((store.Surfaces (I).x, store.Surfaces (I).y,
+                               store.Surfaces (I).w, store.Surfaces (I).h));
+                           Seen : constant DG.Physical_Rectangle :=
+                             (if isEmpty (Body_Area) then DG.Empty else physicalClip (Body_Area));
+                        begin
+                           if Seen.Left < Seen.Right and then Seen.Top < Seen.Bottom and then
+                             Unsigned_64 (Seen.Right - Seen.Left) * Unsigned_64 (Seen.Bottom - Seen.Top) > Best
+                           then
+                              Best := Unsigned_64 (Seen.Right - Seen.Left) * Unsigned_64 (Seen.Bottom - Seen.Top);
+                              Covered := (Natural (Seen.Left), Natural (Seen.Top),
+                                          Natural (Seen.Right), Natural (Seen.Bottom));
+                           end if;
+                        end;
+                     end if;
+                  end loop;
+               end if;
+               if Compositor_Damage.Valid (Damage_Box) then
+                  for Region of RP.Before_Draw (Damage_Box, Covered, (0, 0, 0, 0), Best > 0) loop
+                     if Compositor_Damage.Valid (Region) then
+                        Desktop_Wallpaper_Layers.Paint
+                          (Natural (activeOutput),
+                           P.Buffer, Natural (P.Geometry.Width), Natural (P.Geometry.Height),
+                           P.Pitch, Region.Left, Region.Top,
+                           Region.Right - Region.Left, Region.Bottom - Region.Top, shown);
+                     end if;
+                  end loop;
+               end if;
+            end;
          end;
          return;
       end if;
@@ -4297,21 +4368,26 @@ procedure main is
       --  visible. Besides looking lighter than a solid slab, keeping parity
       --  anchored to absolute coordinates prevents the pattern itself from
       --  crawling as a window moves.
-      for yy in y + DROP_SHADOW_DEPTH .. y + h + DROP_SHADOW_DEPTH - 1 loop
-         for xx in x + w .. x + w + DROP_SHADOW_DEPTH - 1 loop
-            if (xx + yy) mod 2 = 0 then
-               putPixel (xx, yy, C_BLACK);
-            end if;
+      --  Each strip only when the pass can see it (passSees).
+      if passSees ((x + w, y + DROP_SHADOW_DEPTH, DROP_SHADOW_DEPTH, h)) then
+         for yy in y + DROP_SHADOW_DEPTH .. y + h + DROP_SHADOW_DEPTH - 1 loop
+            for xx in x + w .. x + w + DROP_SHADOW_DEPTH - 1 loop
+               if (xx + yy) mod 2 = 0 then
+                  putPixel (xx, yy, C_BLACK);
+               end if;
+            end loop;
          end loop;
-      end loop;
+      end if;
 
-      for yy in y + h .. y + h + DROP_SHADOW_DEPTH - 1 loop
-         for xx in x + DROP_SHADOW_DEPTH .. x + w - 1 loop
-            if (xx + yy) mod 2 = 0 then
-               putPixel (xx, yy, C_BLACK);
-            end if;
+      if w > DROP_SHADOW_DEPTH and then passSees ((x + DROP_SHADOW_DEPTH, y + h, w - DROP_SHADOW_DEPTH, DROP_SHADOW_DEPTH)) then
+         for yy in y + h .. y + h + DROP_SHADOW_DEPTH - 1 loop
+            for xx in x + DROP_SHADOW_DEPTH .. x + w - 1 loop
+               if (xx + yy) mod 2 = 0 then
+                  putPixel (xx, yy, C_BLACK);
+               end if;
+            end loop;
          end loop;
-      end loop;
+      end if;
    end drawDappledShadow;
 
    procedure strokeRect
@@ -4765,6 +4841,17 @@ procedure main is
       procedure Each_Batched is new CuBit.Fonts.Lay_Out (Add);
    begin
       if x >= fbWidth or else y >= fbHeight or else s'Length = 0 then return; end if;
+      --  A run whose line band misses the pass's damage draws nothing (the
+      --  background and every glyph cell lie in [y, y + Line_Height), from
+      --  CuBit.Fonts.Origin left of x rightwards): skip its layout. Every
+      --  scene draw used to lay out every text on the screen, clipped or not.
+      declare
+         Left : constant Natural := Natural'Max (x, CuBit.Fonts.Origin) - CuBit.Fonts.Origin;
+      begin
+         if not passSees ((Left, y, fbWidth - Left, Natural'Min (CuBit.Fonts.Line_Height, fbHeight - y))) then
+            return;
+         end if;
+      end;
       --  One background for the run; glyphs overlap their neighbours' cells
       --  (kerning, ink past the advance), so none paints its own.
       if not transparent then
@@ -5640,6 +5727,14 @@ procedure main is
       frame.w := w;
       frame.h := h;
       inner := w - 2 * Window_Chrome.Border_Width;
+
+      --  Nothing of the window (frame, shadow, client) in this pass: skip it.
+      --  Settings is drawn regardless (its layout is noted while drawing).
+      if s.appKind /= APP_SETTINGS and then
+        not passSees ((x, y, w + DROP_SHADOW_DEPTH, h + DROP_SHADOW_DEPTH))
+      then
+         return;
+      end if;
 
       drawDappledShadow (x, y, w, h);
       strokeRect (x, y, w, h,
@@ -6648,8 +6743,8 @@ procedure main is
       C    : constant DBS.Palette := deskbarColors;
    begin
       --  Only damage is repainted: skip the task-button layout when the
-      --  clip misses the bar.
-      if clipEnabled and then not rectIntersects (clipRect, taskbarRect) then
+      --  pass (its clip, or a native output pass's damage) misses the bar.
+      if not passSees (taskbarRect) then
          return;
       end if;
       fillRect (primaryBounds.x, barY, primaryBounds.w, TASKBAR_H, C.Bar);
@@ -6660,6 +6755,8 @@ procedure main is
    end drawDeskbar;
 
    procedure drawDesktopShell is
+      Timed : constant Boolean := Desktop_Timing_Policy.Enabled and then nativeOutputPass;
+      Started : Unsigned_64 := (if Timed then timingNow else 0);
    begin
       if fbWidth = 0 or else fbHeight = 0 then
          return;
@@ -6670,6 +6767,7 @@ procedure main is
       --  Shared client buffers can replace this drawing path later without
       --  changing the surface/session shape.
       drawWallpaper (Cull_Windows => True);
+      if Timed then noteTiming (Shell_Wallpaper, Started); Started := timingNow; end if;
 
       for i in store.Surfaces'Range loop
          if store.Surfaces (i).used and then
@@ -6680,6 +6778,7 @@ procedure main is
             drawWindow (store.Surfaces (i));
          end if;
       end loop;
+      if Timed then noteTiming (Shell_Windows, Started); Started := timingNow; end if;
 
       --  The Deskbar is the top layer under popups, menus and tooltips.
       drawDeskbar;
@@ -6691,6 +6790,7 @@ procedure main is
       drawShutdownDialog;
       drawToast;
       drawTooltip;
+      if Timed then noteTiming (Shell_Overlays, Started); end if;
    end drawDesktopShell;
 
    procedure drawCurrentScene is
@@ -6838,6 +6938,92 @@ procedure main is
       end;
       noteTiming (Scene_Draw, Started);
    end renderOutput;
+
+   ---------------------------------------------------------------------------
+   --  Full-repaint oracle (timing builds; LAT-002 regression check). While
+   --  nothing is pending, at most every Repaint_Check_Period_Ms after a new
+   --  frame, each output's newest presented frame (composed damage-only,
+   --  with culling and occlusion) is compared with the whole scene drawn
+   --  again into a private image. Every difference is a damage-tracking or
+   --  culling bug: "COMPOSITOR-REPAINT-CHECK: ... mismatched_px=N" (the
+   --  headless desktop-display and display-latency tests fail on N > 0).
+   ---------------------------------------------------------------------------
+   Repaint_Check_Period_Ms : constant := 2_000;
+   type Pixel_Words is array (Natural range <>) of Unsigned_32;
+   type Pixel_Words_Access is access Pixel_Words;
+   repaintScratch : Pixel_Words_Access := null;
+   repaintCheckDueMs : Unsigned_64 := 0;
+   repaintCheckedOps : Unsigned_64 := 0;
+   repaintChecks, repaintMismatches : Unsigned_64 := 0;
+   procedure checkFullRepaint is
+      Now : constant Unsigned_64 := nowMs;
+   begin
+      if not Desktop_Timing_Policy.Enabled or else not nativeScene or else Bootstrap_CPU or else
+        Desktop_Compositor.Full_Output or else not backBufferReady or else
+        framePending or else cursorPresentPending or else renderingPending or else
+        outputDrainRequested or else outputReopenPending or else shutdownRequested or else
+        Now = Unsigned_64'Last or else Now < repaintCheckDueMs or else
+        framesSubmittedTotal = repaintCheckedOps
+      then
+         return;
+      end if;
+      repaintCheckDueMs := Now + Repaint_Check_Period_Ms;
+      repaintCheckedOps := framesSubmittedTotal;
+      for Output in Output_Index loop
+         declare
+            P : Output_Presentation renames presentations (Output);
+            Slot : constant BP.Slot := lastPresented (Output);
+            Width : constant Natural := Natural (P.Geometry.Width);
+            Height : constant Natural := Natural (P.Geometry.Height);
+            Row_Words : constant Natural := P.Pitch / 4;
+         begin
+            if P.Enabled and then Slot in BP.Live_Slot and then
+              Slot /= BP.Writer (P.Pool).Buffer and then
+              P.Targets (Slot).Address /= System.Null_Address and then
+              Compositor_Damage.Count (P.Damage) = 0 and then
+              Width > 0 and then Height > 0 and then Row_Words >= Width
+            then
+               if repaintScratch = null or else repaintScratch'Length < Row_Words * Height then
+                  repaintScratch := new Pixel_Words (0 .. Row_Words * Height - 1);
+               end if;
+               declare
+                  Saved : constant System.Address := P.Buffer;
+                  Presented : Pixel_Words (0 .. Row_Words * Height - 1)
+                    with Import, Address => P.Targets (Slot).Address;
+                  Mismatched : Unsigned_64 := 0;
+                  First_X, First_Y : Natural := 0;
+                  Drawn_From : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+                  Drawn_Us : Unsigned_64;
+               begin
+                  repaintChecking := True;
+                  P.Buffer := repaintScratch.all'Address;
+                  renderOutput (Output, (0, 0, Width, Height));
+                  P.Buffer := Saved;
+                  repaintChecking := False;
+                  --  A warm, naive (no culling) full-output CPU repaint.
+                  Drawn_Us := CuBit.Monotonic.Microseconds - Drawn_From;
+                  for Y in 0 .. Height - 1 loop
+                     for X in 0 .. Width - 1 loop
+                        if Presented (Y * Row_Words + X) /= repaintScratch (Y * Row_Words + X) then
+                           if Mismatched = 0 then First_X := X; First_Y := Y; end if;
+                           Mismatched := Mismatched + 1;
+                        end if;
+                     end loop;
+                  end loop;
+                  repaintChecks := repaintChecks + 1;
+                  if Mismatched > 0 then repaintMismatches := repaintMismatches + 1; end if;
+                  CuBit.Messages.debugPrint
+                    ("COMPOSITOR-REPAINT-CHECK: output=" & Decimal (Unsigned_64 (Output)) &
+                     " check=" & Decimal (repaintChecks) & " mismatched_px=" & Decimal (Mismatched) &
+                     " full_px=" & Decimal (Unsigned_64 (Width) * Unsigned_64 (Height)) &
+                     " full_us=" & Decimal (Drawn_Us) &
+                     (if Mismatched = 0 then ""
+                      else " first=" & Decimal (Unsigned_64 (First_X)) & "," & Decimal (Unsigned_64 (First_Y))) & LF);
+               end;
+            end if;
+         end;
+      end loop;
+   end checkFullRepaint;
 
    procedure repairDirectWriter is
       P : Output_Presentation renames presentations (primaryOutput);
@@ -14338,6 +14524,7 @@ begin
          end if;
          maybePrintStats;
          runHousekeeping;
+         checkFullRepaint;
          if DM.Enabled and then not DM.Disabled and then
            turnWork /= (statsEvents, statsRequests, statsPresentOps)
          then

@@ -9213,6 +9213,20 @@ hello cubit"
         exit 1
     fi
 fi
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "display-latency" ]; then
+    # LAT-002: timing builds compare idle damage-only frames with a full
+    # repaint (Desktop's checkFullRepaint); any difference is a damage or
+    # culling bug. desktop-display needs the timing build, so it must check.
+    if grep -aE 'COMPOSITOR-REPAINT-CHECK: .* mismatched_px=[1-9]' "$SERIAL_LOG"; then
+        echo "headless: a damage-only frame differs from a full repaint" >&2
+        exit 1
+    fi
+    if [ "$TEST_NAME" = "desktop-display" ] && ! grep -aqF 'COMPOSITOR-REPAINT-CHECK: ' "$SERIAL_LOG"; then
+        echo "headless: no full-repaint check ran (build with CUBIT_COMPOSITOR_TIMING=on)" >&2
+        exit 1
+    fi
+    echo "headless: full-repaint checks: $(grep -acF 'COMPOSITOR-REPAINT-CHECK: ' "$SERIAL_LOG")"
+fi
 if [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ]; then
     # LAT-002: the merged report; budgets printed, not enforced.
     if ! python3 -I "$ROOT_DIR/tests/headless/display-latency-summary.py" "$SERIAL_LOG"; then
