@@ -76,8 +76,13 @@ package Log_View is
      (State : in out View_State; Time_Ms : Unsigned_64; Source : Unsigned_64;
       Item : CuBit.Log_Records.Log_Record;
       Node : CuBit.Log_Protocol.Node_Id := CuBit.Log_Protocol.This_Node);
-   --  Records logstore could not deliver (a Gap): shown in place.
-   procedure Add_Gap (State : in out View_State; Lost : Unsigned_64);
+   --  Records missing at this point (a Gap), shown in place: Lost, those
+   --  logstore could not deliver to this viewer; Not_Retained, those of
+   --  Source its retained history gave up (LOG-005), just before the record
+   --  added next (Time_Ms: that record's time; 0: the latest time seen).
+   procedure Add_Gap
+     (State : in out View_State; Lost : Unsigned_64; Not_Retained : Unsigned_64 := 0;
+      Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source; Time_Ms : Unsigned_64 := 0);
    --  What to call a source: a service name or a manifest identity. Process
    --  numbers are reused, so the name covers only records published at or
    --  after Started (the process's start, monotonic ms); older records from
@@ -168,7 +173,8 @@ private
       Source : Unsigned_64 := 0;
       Node : CuBit.Log_Protocol.Node_Id := CuBit.Log_Protocol.This_Node;
       Item : CuBit.Log_Records.Log_Record := CuBit.Log_Records.Empty_Record;
-      Lost : Unsigned_64 := 0;
+      --  A gap's counts (Add_Gap).
+      Lost, Not_Retained : Unsigned_64 := 0;
       --  Whether the search matches it.
       Hit : Boolean := False;
    end record;
@@ -214,7 +220,7 @@ private
       Caption_Length : Caption_Lengths := [others => 0];
       Service_Count : Source_Count := 0;
       Levels : Severity_Counts := [others => 0];
-      Lost : Unsigned_64 := 0;
+      Lost, Not_Retained : Unsigned_64 := 0;
       Now_Ms : Unsigned_64 := 0;
       --  Filters: the search field (marking matches, or with Only showing
       --  just them) and the three combo boxes.

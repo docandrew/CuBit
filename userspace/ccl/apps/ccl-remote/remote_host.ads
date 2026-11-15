@@ -5,7 +5,7 @@
 --  @summary
 --  The remote session's CCL environment: the shared interpreter over the
 --  read-only interfaces this process's manifest was granted (logs.recent,
---  logs.minimum, proc.list, config.get/keys, files.home/enter/up/list,
+--  logs.between, logs.minimum, proc.list, config.get/keys, files.home/enter/up/list,
 --  images, clock; display.capture with the display-capture grant). It is
 --  the Diagnose principal: nothing here writes.
 --

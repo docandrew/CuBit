@@ -28,6 +28,7 @@ package body CCL_Native_Bindings is
    Wifi_Entry             : constant CuBit.Handles.Endpoint := Named ("wifi");
    Llm_Entry              : constant CuBit.Handles.Endpoint := Named ("llm");
    Secrets_Entry          : constant CuBit.Handles.Endpoint := Named ("secrets");
+   Power_Entry            : constant CuBit.Handles.Endpoint := Named ("power");
 
    function Clock            return CuBit.Handles.Endpoint is (Clock_Entry);
    function Logstore         return CuBit.Handles.Services.Logstore.Optional_Endpoint is (Logstore_Entry);
@@ -44,4 +45,5 @@ package body CCL_Native_Bindings is
    function Wifi             return CuBit.Handles.Endpoint is (Wifi_Entry);
    function Llm              return CuBit.Handles.Endpoint is (Llm_Entry);
    function Secrets          return CuBit.Handles.Endpoint is (Secrets_Entry);
+   function Power            return CuBit.Handles.Endpoint is (Power_Entry);
 end CCL_Native_Bindings;

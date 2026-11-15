@@ -10,13 +10,19 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
    use type CCL.Objects.Build_Result;
    use type CCL.Objects.Catalog.Publication_Result;
 
-   --  Fields of a LogEntry, in order.
+   --  Fields of a LogEntry, a LogGap and a LogTally, in order.
    ENTRY_FIELDS : constant := 4;
+   GAP_FIELDS : constant := 5;
+   TALLY_FIELDS : constant := 7;
+   --  LogItem's members, in order.
+   type Item_Member is (Logged, Gap, Tally);
+   function Member_Cell (Member : Item_Member) return CCL.Objects.Cell is
+     (CCL.Objects.Variant_Cell (Item_Member'Pos (Member) + 1));
 
 
    procedure Define_Types
      (Types : in out CCL.Types.Registry; Entries : out CCL.Types.Type_Reference;
-      Contract, Severity_Contract : out CCL.Objects.Binding; Accepted : out Boolean)
+      Contract, Severity_Contract, Window_Contract : out CCL.Objects.Binding; Accepted : out Boolean)
    is
       Specialized : CCL.Types.List_Result;
       Unbound : CCL.Objects.Binding;
@@ -26,14 +32,18 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
       Entries := CCL.Types.Invalid_Type;
       Contract := Unbound;
       Severity_Contract := Unbound;
+      Window_Contract := Unbound;
       CCL.Interface_Sources.Declare_Types (TYPE_SOURCE, Types, Accepted);
       if Accepted then
-         CCL.Types.Specialize_List (Types, Named ("LogEntry"), Entries, Specialized);
+         CCL.Types.Specialize_List (Types, Named ("LogItem"), Entries, Specialized);
          Accepted := Specialized in CCL.Types.List_Specialized | CCL.Types.List_Already_Specialized;
       end if;
       if Accepted then CCL.Objects.Bind (Types, Entries, SCHEMA_KEY, Contract, Accepted); end if;
       if Accepted then
          CCL.Objects.Bind (Types, Named ("Severity"), SEVERITY_KEY, Severity_Contract, Accepted);
+      end if;
+      if Accepted then
+         CCL.Objects.Bind (Types, Named ("LogWindow"), WINDOW_KEY, Window_Contract, Accepted);
       end if;
    end Define_Types;
 
@@ -42,7 +52,7 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
    is
       Types : CCL.Types.Registry := CCL.Catalog.Visible_Types (Item);
       Entries : CCL.Types.Type_Reference;
-      Contract, Severity_Contract : CCL.Objects.Binding;
+      Contract, Severity_Contract, Window_Contract : CCL.Objects.Binding;
       Accepted : Boolean;
       Published : CCL.Objects.Catalog.Publication_Result;
       Descriptor : CCL.Catalog.Interface_Descriptor;
@@ -53,6 +63,10 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
         (case Op is
             when Recent =>
               (Argument => CCL.Host_Values.Text_Value, Argument_Text_Limit => MAX_SERVICE_NAME,
+               Result => CCL.Host_Values.Object_Value, Result_Schema => SCHEMA_KEY,
+               Authority => CCL.VM.Observe_Authority, others => <>),
+            when Between =>
+              (Argument => CCL.Host_Values.Object_Value, Argument_Schema => WINDOW_KEY,
                Result => CCL.Host_Values.Object_Value, Result_Schema => SCHEMA_KEY,
                Authority => CCL.VM.Observe_Authority, others => <>),
             when Minimum =>
@@ -66,13 +80,17 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
       function Parameters (Op : Operation) return Natural is (if Op = Minimum then 0 else 1);
    begin
       Error := CCL.Catalog.Invalid_Host_Contract;
-      Define_Types (Types, Entries, Contract, Severity_Contract, Accepted);
+      Define_Types (Types, Entries, Contract, Severity_Contract, Window_Contract, Accepted);
       if not Accepted then return; end if;
       CCL.Catalog.Publish_Schema (Item, Contract, Published);
       if Published not in CCL.Objects.Catalog.Published | CCL.Objects.Catalog.Already_Published then
          return;
       end if;
       CCL.Catalog.Publish_Schema (Item, Severity_Contract, Published);
+      if Published not in CCL.Objects.Catalog.Published | CCL.Objects.Catalog.Already_Published then
+         return;
+      end if;
+      CCL.Catalog.Publish_Schema (Item, Window_Contract, Published);
       if Published not in CCL.Objects.Catalog.Published | CCL.Objects.Catalog.Already_Published then
          return;
       end if;
@@ -127,39 +145,136 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
    function As_Integer (Value : Unsigned_64) return Integer_64 is
      (if Value > Unsigned_64 (Integer_64'Last) then Integer_64'Last else Integer_64 (Value));
 
+   --  Room for an item of Cells cells and Text_Bytes of text, and for one
+   --  more list element.
+   function Room (Image : CCL.Objects.Image; Cells, Text_Bytes : Natural) return Boolean is
+     (Image.Used_Cells >= 1 and then
+      Unsigned_32 (CCL.Objects.Maximum_Cells) - Image.Used_Cells >= Unsigned_32 (Cells) and then
+      Text_Bytes <= CCL.Objects.Maximum_Text_Bytes and then
+      Unsigned_32 (Text_Bytes) <= Unsigned_32 (CCL.Objects.Maximum_Text_Bytes) - Image.Used_Bytes and then
+      Image.Cells (1).First < Unsigned_64 (MAX_ITEMS));
+
+   --  One more element in the list's count cell.
+   procedure Count_One (Image : in out CCL.Objects.Image) is
+   begin
+      Image.Cells (1) := CCL.Objects.Sequence_Cell (Natural (Image.Cells (1).First) + 1);
+   end Count_One;
+
+   procedure Append_Count
+     (Image : in out CCL.Objects.Image; Value : Unsigned_64; Built : in out CCL.Objects.Build_Result) is
+   begin
+      if Built = CCL.Objects.Added then
+         CCL.Objects.Append (Image, CCL.Objects.Integer_Cell (As_Integer (Value)), Built);
+      end if;
+   end Append_Count;
+
    procedure Add
      (Image : in out CCL.Objects.Image; Time : Unsigned_64; Level : Severity;
       Source : Unsigned_64; Message : String; Added : out Boolean)
    is
       Built : CCL.Objects.Build_Result := CCL.Objects.Added;
-      Count : constant Unsigned_64 := Image.Cells (1).First;
    begin
       --  Only a whole entry: room for its cells and its text, or nothing.
-      Added := Image.Used_Cells >= 1 and then
-        Unsigned_32 (CCL.Objects.Maximum_Cells) - Image.Used_Cells >= ENTRY_CELLS and then
-        Message'Length <= CCL.Objects.Maximum_Text_Bytes and then
-        Unsigned_32 (Message'Length) <= Unsigned_32 (CCL.Objects.Maximum_Text_Bytes) - Image.Used_Bytes and then
-        Count < Unsigned_64 (MAX_ENTRIES);
+      Added := Room (Image, ENTRY_CELLS, Message'Length);
       if not Added then return; end if;
-      CCL.Objects.Append (Image, CCL.Objects.Product_Cell (ENTRY_FIELDS), Built);
+      CCL.Objects.Append (Image, Member_Cell (Logged), Built);
       if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Integer_Cell (As_Integer (Time)), Built);
+         CCL.Objects.Append (Image, CCL.Objects.Product_Cell (ENTRY_FIELDS), Built);
       end if;
+      Append_Count (Image, Time, Built);
       if Built = CCL.Objects.Added then
          CCL.Objects.Append (Image, CCL.Objects.Variant_Cell (Severity'Pos (Level) + 1), Built);
       end if;
       if Built = CCL.Objects.Added then
          CCL.Objects.Append (Image, CCL.Objects.Unit_Cell, Built);
       end if;
+      Append_Count (Image, Source, Built);
       if Built = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Integer_Cell (As_Integer (Source)), Built);
+         CCL.Objects.Append_Text (Image, Message, Built);
+      end if;
+      Added := Built = CCL.Objects.Added;
+      if Added then
+         Count_One (Image);
+      end if;
+   end Add;
+
+   function Decimal (Value : Unsigned_64) return String is
+      Raw : constant String := Unsigned_64'Image (Value);
+   begin
+      return Raw (Raw'First + 1 .. Raw'Last);
+   end Decimal;
+
+   function Gap_Message (Count : Unsigned_64; Reason : Gap_Reason) return String is
+     ("... " & Decimal (Count) & " records " &
+      (case Reason is
+          when Not_Retained => "not retained",
+          when Lost => "lost before delivery",
+          when Not_Shown => "not shown (this result holds no more)") & " ...");
+
+   function Tally_Message
+     (Published, Retained, Not_Retained, Over_Budget, Publisher_Full : Unsigned_64) return String is
+     (Decimal (Published) & " published, " & Decimal (Retained) & " retained, " &
+      Decimal (Not_Retained) & " not retained; shed " & Decimal (Over_Budget) & " over budget, " &
+      Decimal (Publisher_Full) & " by the publisher");
+
+   procedure Add_Gap
+     (Image : in out CCL.Objects.Image; Time, Source, Count : Unsigned_64; Reason : Gap_Reason;
+      Added : out Boolean)
+   is
+      Message : constant String := Gap_Message (Count, Reason);
+      Built : CCL.Objects.Build_Result := CCL.Objects.Added;
+   begin
+      Added := Room (Image, GAP_CELLS, Message'Length);
+      if not Added then return; end if;
+      CCL.Objects.Append (Image, Member_Cell (Gap), Built);
+      if Built = CCL.Objects.Added then
+         CCL.Objects.Append (Image, CCL.Objects.Product_Cell (GAP_FIELDS), Built);
+      end if;
+      Append_Count (Image, Time, Built);
+      Append_Count (Image, Source, Built);
+      Append_Count (Image, Count, Built);
+      if Built = CCL.Objects.Added then
+         CCL.Objects.Append (Image, CCL.Objects.Variant_Cell (Gap_Reason'Pos (Reason) + 1), Built);
+      end if;
+      if Built = CCL.Objects.Added then
+         CCL.Objects.Append (Image, CCL.Objects.Unit_Cell, Built);
       end if;
       if Built = CCL.Objects.Added then
          CCL.Objects.Append_Text (Image, Message, Built);
       end if;
       Added := Built = CCL.Objects.Added;
       if Added then
-         Image.Cells (1) := CCL.Objects.Sequence_Cell (Natural (Count) + 1);
+         Count_One (Image);
       end if;
-   end Add;
+   end Add_Gap;
+
+   procedure Add_Tally
+     (Image : in out CCL.Objects.Image;
+      Source, Published, Retained, Not_Retained, Over_Budget, Publisher_Full : Unsigned_64;
+      Added : out Boolean)
+   is
+      Message : constant String :=
+        Tally_Message (Published, Retained, Not_Retained, Over_Budget, Publisher_Full);
+      Built : CCL.Objects.Build_Result := CCL.Objects.Added;
+   begin
+      Added := Room (Image, TALLY_CELLS, Message'Length);
+      if not Added then return; end if;
+      CCL.Objects.Append (Image, Member_Cell (Tally), Built);
+      if Built = CCL.Objects.Added then
+         CCL.Objects.Append (Image, CCL.Objects.Product_Cell (TALLY_FIELDS), Built);
+      end if;
+      Append_Count (Image, Source, Built);
+      Append_Count (Image, Published, Built);
+      Append_Count (Image, Retained, Built);
+      Append_Count (Image, Not_Retained, Built);
+      Append_Count (Image, Over_Budget, Built);
+      Append_Count (Image, Publisher_Full, Built);
+      if Built = CCL.Objects.Added then
+         CCL.Objects.Append_Text (Image, Message, Built);
+      end if;
+      Added := Built = CCL.Objects.Added;
+      if Added then
+         Count_One (Image);
+      end if;
+   end Add_Tally;
 end CCL.Interfaces.Logs;

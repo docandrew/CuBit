@@ -17,10 +17,12 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    MAX_SECTION_BYTES : constant := HEADER_BYTES + BASIS_BYTES + MAX_ENTRIES * ENTRY_BYTES;
 
    --  What the resource indexes refer to: the matched PCI function's BARs,
-   --  or one entry of devmgr's platform catalog. The encoder derives it
-   --  from the manifest's device matches.
-   type Basis_Kind is (No_Basis, PCI_Basis, Platform_Basis);
-   for Basis_Kind use (No_Basis => 0, PCI_Basis => 1, Platform_Basis => 3);
+   --  one entry of devmgr's platform catalog, or the memory spans devmgr
+   --  admitted for the matched ACPI device, in its _CRS order
+   --  (docs/device-matching.md "ACPI launch"). The encoder derives it from
+   --  the manifest's device matches.
+   type Basis_Kind is (No_Basis, PCI_Basis, Platform_Basis, ACPI_Basis);
+   for Basis_Kind use (No_Basis => 0, PCI_Basis => 1, Platform_Basis => 3, ACPI_Basis => 4);
    --  Legacy devices with fixed resources, described by devmgr's platform
    --  catalog; resource indexes refer to that catalog's entry.
    type Platform_Device is (PS2_Controller, ATA_Primary, CMOS_RTC);
@@ -37,6 +39,10 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    PAGE_BYTES : constant := 4_096;
    PCI_BAR_COUNT : constant := 6;
    MAX_PLATFORM_RESOURCES : constant := 8;
+   --  The most memory spans devmgr admits for one ACPI device: the GPIO
+   --  bootstrap payload's ceiling (GPIO_Bootstrap_Payload.Max_Spans; devmgr
+   --  checks the two are equal when it is compiled).
+   MAX_ACPI_SPANS : constant := 16;
    MAX_DEVICE_MEMORY_BYTES : constant := 256 * 1_024 * 1_024;
    --  The kernel's largest contiguous block (shared/launch Contiguous_Memory:
    --  2 ** 13 pages); devmgr checks the two are equal when it is compiled.
@@ -77,6 +83,20 @@ package CCL.Resource_Sections with Pure, SPARK_Mode => On is
    type Decode_Status is
      (Decoded, Invalid_Length, Invalid_Header, Invalid_Basis, Invalid_Entry,
       Device_Without_Basis, Basis_Without_Device);
+
+   --  An ACPI device's one interrupt resource: its parent line, the first
+   --  interrupt descriptor of its _CRS (docs/device-matching.md "ACPI
+   --  launch").
+   ACPI_PARENT_LINE_INDEX : constant := 0;
+
+   --  The resource indexes Kind admits are 0 .. Index_Limit (Kind) - 1:
+   --  BARs, platform catalog resources, or admitted ACPI spans.
+   function Index_Limit (Kind : Basis_Kind) return Unsigned_32 is
+     (case Kind is
+         when PCI_Basis      => PCI_BAR_COUNT,
+         when Platform_Basis => MAX_PLATFORM_RESOURCES,
+         when ACPI_Basis     => MAX_ACPI_SPANS,
+         when No_Basis       => 0);
 
    --  Whether Basis is one the compiler can emit.
    function Valid_Basis (Basis : Basis_Info) return Boolean;

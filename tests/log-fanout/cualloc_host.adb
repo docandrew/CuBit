@@ -6,7 +6,8 @@ package body CuAlloc_Host is
 
    --  aligned_alloc wants a size that is a multiple of the alignment.
    function Allocate (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
-     (C_Aligned_Alloc (Alignment, (Bytes + Alignment - 1) / Alignment * Alignment));
+     (if Refusing then 0
+      else C_Aligned_Alloc (Alignment, (Bytes + Alignment - 1) / Alignment * Alignment));
 
    procedure Free (Block : Unsigned_64) is
    begin

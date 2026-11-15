@@ -41,10 +41,8 @@
   # interface and applies per-interface settings through it.
   (service netmgr 12 read-write)
   (service gpio 34 read-write)
-  # acpi-backend.svc's named ACPI registers: only a startup entry approving
-  # (acpi-registers approve-declared) gets this endpoint, badged with
-  # ACPI_Register_Roles.Frontend_Tag; the backend registers the role.
-  (service acpi-registers 35 read-write)
+  # 35 was acpi-backend.svc's named-register role; retired with the ACPI
+  # pair (ACPI-ONE-001): acpi.svc holds the hardware itself.
   # Test only: the startup-wait headless test's late provider
   # (CuBit.Startup_Wait_Test; procmgr's startup waits, CAP-003).
   (service startup-wait-test 36 read-write)
@@ -56,8 +54,13 @@
   # only a startup entry approving (display-capture approve-declared) gets
   # this endpoint, badged with CuBit.Display_Capture.Authority_Tag.
   (service display-capture 39 read-write)
-  # System_Publications.ACPI_PCI_Windows_Role; startup-approved backend only.
+  # System_Publications.ACPI_PCI_Windows_Role; only acpi.svc's startup entry
+  # approving (acpi-hardware ...) and (acpi-pci-config ...) gets it.
   (service acpi-pci-windows 40 read-write)
+  (service acpi-power 41 read-write)
+  (service power 42 read-write)
+  (service power-desktop 43 read-write)
+  (service power-console 44 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)
@@ -73,7 +76,7 @@
   (notification lexicon 28 publish-and-manage)
   (notification acpi 29 publish-and-manage)
   (notification installer 31 publish-and-manage)
-  (notification acpi-registers 35 publish-and-manage)
   (notification startup-wait-test 36 publish-and-manage)
   (notification llm 37 publish-and-manage)
-  (notification secrets 38 publish-and-manage))
+  (notification secrets 38 publish-and-manage)
+  (notification power 42 publish-and-manage))

@@ -96,6 +96,23 @@ package CCL.Device_Index with Pure, SPARK_Mode => On is
                       Result.Driver in 1 .. I.Count and then Result.Rival in 1 .. I.Count
                       and then Result.Driver /= Result.Rival);
 
+   --  Which driver an ACPI device with _HID ID (a valid ACPI ID) binds: the
+   --  one driver with an ACPI_ID entry naming it. Two such drivers are
+   --  Ambiguous and neither binds (the image check refuses that image).
+   procedure Bind_ACPI
+     (I : Index; ID : DS.ACPI_Text; Length : DS.ACPI_Length; Result : out Binding)
+   with Pre  => Valid_Index (I),
+        Post => (case Result.Kind is
+                   when Unbound => Result.Driver = 0,
+                   when Bound =>
+                      Result.Driver in 1 .. I.Count
+                      and then Result.At_Entry in 1 .. I.Drivers (Result.Driver).Matches.Count
+                      and then DS.Names_ACPI (I.Drivers (Result.Driver).Matches.Entries
+                                                (Result.At_Entry), ID, Length),
+                   when Ambiguous =>
+                      Result.Driver in 1 .. I.Count and then Result.Rival in 1 .. I.Count
+                      and then Result.Driver /= Result.Rival);
+
    --  The first pair of distinct drivers with Ambiguous entries
    --  (DS.Ambiguous), or Found False when the index is unambiguous.
    procedure First_Ambiguity

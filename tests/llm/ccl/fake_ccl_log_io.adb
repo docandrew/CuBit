@@ -45,6 +45,18 @@ package body CCL_Log_IO is
       Success := Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contract);
    end Recent;
 
+   --  The window is the script's to ignore: the agent tests call only
+   --  logs_recent.
+   procedure Between
+     (Service : String; Within : CCL.Interfaces.Logs.Log_Window; Contract : CCL.Objects.Binding;
+      Image : out CCL.Objects.Image; Success : out Boolean;
+      Why : out CuBit.Failures.Failure)
+   is
+      pragma Unreferenced (Within);
+   begin
+      Recent (Service, Contract, Image, Success, Why);
+   end Between;
+
    procedure Minimum
      (Level : out CCL.Interfaces.Logs.Severity; Success : out Boolean; Why : out CuBit.Failures.Failure) is
    begin

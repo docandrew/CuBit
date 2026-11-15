@@ -147,6 +147,11 @@ package CCL.Device_Sections with Pure, SPARK_Mode => On is
                       and then Best_Rank /= No_Rank)
                 and then (for all I in 1 .. T.Count => Rank_Of (T.Entries (I), F) <= Best_Rank);
 
+   --  Whether M is an ACPI_ID entry naming exactly ID (1 .. Length).
+   function Names_ACPI (M : Device_Match; ID : ACPI_Text; Length : ACPI_Length) return Boolean is
+     (M.Kind = ACPI_ID and then M.ID_Length = Length
+      and then (for all C in ACPI_Index => M.ID (C) = ID (C)));
+
    --  Whether T declares the platform device P.
    function Declares_Platform (T : Match_Table; P : Platform_Device) return Boolean is
      (for some I in 1 .. T.Count =>

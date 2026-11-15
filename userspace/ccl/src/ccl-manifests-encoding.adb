@@ -136,6 +136,14 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
          Append (Result.Resources, Sections.MAGIC, 4);
          Append (Result.Resources, Sections.VERSION, 2);
          Append (Result.Resources, Unsigned_64 (Resource_Count), 2);
+         --  An ACPI-matched program that asks for no device resource (only
+         --  scheduling) states no basis, as it did before the ACPI basis.
+         if Sections."=" (Basis.Kind, Sections.ACPI_Basis)
+           and then (for all Item of Requests (1 .. Count) =>
+                       Item.Kind not in Device_Request)
+         then
+            Basis := (Kind => Sections.No_Basis, Values => [others => 0]);
+         end if;
          Append (Result.Resources, Unsigned_64 (Basis_Kind'Enum_Rep (Basis.Kind)), 1);
          Append (Result.Resources, 0, 1);
          for Number of Basis.Values loop

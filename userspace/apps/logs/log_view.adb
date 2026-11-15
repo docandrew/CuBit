@@ -180,8 +180,15 @@ package body Log_View is
      (if Node = CuBit.Log_Protocol.This_Node then "local"
       elsif Short then Hex (Node.High, 8)
       else Hex (Node.High, 16) & Hex (Node.Low, 16));
+   --  A gap as a row: "... N records not retained ..." (LOG-005), and/or
+   --  what this viewer lost. UI text is ASCII, so the ellipsis is three dots.
+   ELLIPSIS : constant String := "...";
    function Gap_Text (Item : Log_Entry) return String is
-     ("--- " & Image64 (Item.Lost) & " records lost before delivery ---");
+     (ELLIPSIS & " " &
+      (if Item.Not_Retained > 0 then Image64 (Item.Not_Retained) & " records not retained" else "") &
+      (if Item.Not_Retained > 0 and then Item.Lost > 0 then ", " else "") &
+      (if Item.Lost > 0 then Image64 (Item.Lost) & " records lost before delivery" else "") &
+      " " & ELLIPSIS);
    function Message_Of (Item : Log_Entry) return String is
      (if Item.Kind = Gap_Entry then Gap_Text (Item) else LR.Text (Item.Item));
 
@@ -405,6 +412,7 @@ package body Log_View is
       State.Caption_Length := [others => 0];
       State.Levels := [others => 0];
       State.Lost := 0;
+      State.Not_Retained := 0;
       State.Now_Ms := 0;
       Ed.Initialize (State.Search, "", Accepted);
       State.Only := False;
@@ -505,11 +513,16 @@ package body Log_View is
                      others => <>));
    end Add;
 
-   procedure Add_Gap (State : in out View_State; Lost : Unsigned_64) is
+   procedure Add_Gap
+     (State : in out View_State; Lost : Unsigned_64; Not_Retained : Unsigned_64 := 0;
+      Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source; Time_Ms : Unsigned_64 := 0) is
    begin
       State.Lost := State.Lost + Lost;
-      --  Shown where the loss was noticed: at the latest time seen.
-      Store (State, (Kind => Gap_Entry, Lost => Lost, Time_Ms => State.Now_Ms, others => <>));
+      State.Not_Retained := State.Not_Retained + Not_Retained;
+      --  Shown where the records were missing: before the record that
+      --  follows, or where the loss was noticed (the latest time seen).
+      Store (State, (Kind => Gap_Entry, Lost => Lost, Not_Retained => Not_Retained, Source => Source,
+                     Time_Ms => (if Time_Ms = 0 then State.Now_Ms else Time_Ms), others => <>));
    end Add_Gap;
 
    --  The service choices: every distinct name a publisher's records carry.
@@ -1276,7 +1289,14 @@ package body Log_View is
             begin
                if E.Kind = Gap_Entry then
                   Draw_UI_Text_Fitted (C, Inner, Inner.x, Inner.y,
-                    Image64 (E.Lost) & " records were lost: this viewer fell behind logstore's queue for it.",
+                    (if E.Not_Retained > 0
+                     then Image64 (E.Not_Retained) & " records of " & Name_Of (State, E.Source, E.Time_Ms) &
+                          " were not retained: logstore's history for it was at its ceiling (logs.retention)." &
+                          (if E.Lost > 0 then " " else "")
+                     else "") &
+                    (if E.Lost > 0
+                     then Image64 (E.Lost) & " records were lost: this viewer fell behind logstore's queue for it."
+                     else ""),
                     Level_Color (LR.Error, Colors.panel), Colors.panel);
                else
                   Draw_UI_Text_Fitted (C, Inner, Inner.x, Inner.y,
@@ -1345,6 +1365,7 @@ package body Log_View is
              when Denied => "Not granted",
              when Unavailable => "Logstore unavailable") &
          "  |  " & Image (State.Position.Count) & " shown of " & Image (State.Count) & Match_Note (State) &
+         (if State.Not_Retained > 0 then "  |  " & Image64 (State.Not_Retained) & " not retained" else "") &
          (if State.Lost > 0 then "  |  " & Image64 (State.Lost) & " lost" else "") &
          (if not State.Position.Follow and then State.New_Since_Pause > 0
           then "  |  " & Image (State.New_Since_Pause) & " new" else "") &

@@ -8,8 +8,17 @@ connection: a 28-byte header carrying the pairing token, then a body.
   cubit-remote pair HOST[:PORT] [--name NAME]   type the code the device shows
   cubit-remote hello                            check the pairing, show grants
   cubit-remote eval '(proc.list)'               evaluate CCL on the device
-  cubit-remote logs SERVICE                     (logs.recent "SERVICE"), whole
+  cubit-remote logs SERVICE [--literal]         (logs.recent "SERVICE"), whole: records,
+                                                gaps ("… N records not retained …") and
+                                                tallies, one per line
+  cubit-remote logs SERVICE --from MS --to MS   only the records whose time is in MS..MS
+                                                (milliseconds since boot): logs.between,
+                                                to read a long history in slices
   cubit-remote ps                               (proc.list), whole
+  cubit-remote latency [--from MS --to MS]      input-to-photon (LAT-002): Desktop's
+                                                "desktop: latency" report lines, and the
+                                                display path's per-second lines
+                                                (intel-gpu flips, display.svc stats)
   cubit-remote ls [PATH] [--place P]            list the workspace (or mail)
   cubit-remote put LOCAL [REMOTE] [-r]          upload into the workspace
   cubit-remote get REMOTE [LOCAL]               download (SHA-256 checked)
@@ -26,6 +35,9 @@ connection: a 28-byte header carrying the pairing token, then a body.
   cubit-remote system activate SERVICE PRODUCT --health-ms N --stop-grace-ms N
                                                 a workspace product becomes SERVICE's pin in a
                                                 new system generation, which is activated
+  cubit-remote system replace SERVICE LOCAL --health-ms N --stop-grace-ms N
+                                                upload a program built here (to system/SERVICE)
+                                                and activate it as above
   cubit-remote system rollback --health-ms N --stop-grace-ms N
   cubit-remote system generations               the generation records and the current one
 
@@ -53,6 +65,14 @@ explicit (milliseconds): --health-ms and --stop-grace-ms (0: the service
 reads no Stop, so procmgr ends it at once). The generations live in the
 device's storehouse; on the live USB that is RAM, so a reboot returns to
 the image's programs.
+
+system replace is the upload and the activation in one command: it puts
+LOCAL into the workspace as system/SERVICE and runs system activate on it.
+For ACPI, from the repository root (the log says why a program failed its
+window, so it is shown whatever the outcome):
+  nix develop -c make -C kernel acpi-native && { tools/cubit-remote/cubit-remote \
+    system replace acpi.svc userspace/services/acpi/native/build/acpi.svc \
+    --health-ms 20000 --stop-grace-ms 10000; tools/cubit-remote/cubit-remote logs acpi; }
 
 Pairing tokens are stored in ~/.config/cubit-remote/hosts.json (0600, the
 directory 0700) and never printed. Python 3 standard library only.
@@ -657,6 +677,14 @@ def system_activate(host, service, product, health_ms, stop_grace_ms):
     return report
 
 
+def replace_product_name(service):
+    """Where system replace puts the program in the workspace."""
+    name = "system/" + service
+    if not valid_name(name):
+        raise SystemExit("cubit-remote: %r is not a name in the workspace" % name)
+    return name
+
+
 def system_rollback(host, health_ms, stop_grace_ms):
     fields, timeout = deadlines(health_ms, stop_grace_ms)
     report = parse_generation(host.call("system_rollback", "none", fields, timeout))
@@ -781,10 +809,110 @@ def command_eval(args):
     return 0 if ok else 1
 
 
+# (logs.recent "service") is a List<LogItem> (LOG-005): records, typed gaps
+# where records are missing, and each instance's tally.
+LOG_ITEM = re.compile(r'\A\(LogItem\.(Logged|Gap|Tally) \((LogEntry|LogGap|LogTally) (.*)\)\)\Z', re.S)
+LOG_ENTRY_FIELDS = re.compile(r'\A(-?\d+) Severity\.(\w+) (-?\d+) "((?:[^"\\]|\\.)*)"\Z', re.S)
+LOG_GAP_FIELDS = re.compile(r'\A(-?\d+) (-?\d+) (-?\d+) GapReason\.(\w+) "(?:[^"\\]|\\.)*"\Z', re.S)
+LOG_TALLY_FIELDS = re.compile(r'\A(-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) "(?:[^"\\]|\\.)*"\Z', re.S)
+GAP_WORDS = {
+    "Not_Retained": "not retained (logstore's history for it was at its ceiling, logs.retention)",
+    "Lost": "lost before delivery",
+    "Not_Shown": "retained but not shown (one result holds no more)",
+}
+
+
+def unescape(text):
+    return re.sub(r'\\(.)', r'\1', text)
+
+
+def render_log_item(element):
+    """One LogItem as a line: a record, "… N records not retained …", or a
+    tally. None when element is not a LogItem."""
+    found = LOG_ITEM.match(element)
+    if not found:
+        return None
+    member, _, fields = found.groups()
+    if member == "Logged":
+        entry = LOG_ENTRY_FIELDS.match(fields)
+        if not entry:
+            return None
+        time_ms, level, source, message = entry.groups()
+        return "%12.3f  %-11s  %-8s  %s" % (int(time_ms) / 1000.0, level, source, unescape(message))
+    if member == "Gap":
+        gap = LOG_GAP_FIELDS.match(fields)
+        if not gap or gap.group(4) not in GAP_WORDS:
+            return None
+        _, source, count, reason = gap.groups()
+        whose = "" if source == "0" else " of source %s" % source
+        return "\u2026 %s records%s %s \u2026" % (count, whose, GAP_WORDS[reason])
+    tally = LOG_TALLY_FIELDS.match(fields)
+    if not tally:
+        return None
+    source, published, retained, not_retained, over_budget, publisher_full = tally.groups()
+    return ("source %s: %s published, %s retained, %s not retained; shed before publication: "
+            "%s over logstore's budget, %s by the publisher (ring full)"
+            % (source, published, retained, not_retained, over_budget, publisher_full))
+
+
+def render_logs(text):
+    """A logs.recent result, one line per item; text itself when it is not
+    a List<LogItem> (a failure, or a device that predates LOG-005)."""
+    shown = parse_list(text)
+    if shown is None or shown[0] != "List<LogItem>":
+        return text
+    if not shown[1]:
+        return "(no records)"
+    lines = [render_log_item(element) for element in shown[1]]
+    if any(line is None for line in lines):
+        return text
+    return "\n".join(lines)
+
+
+def logs_expression(service, start, end):
+    """(logs.recent "service"), or, given a window, (logs.between (LogWindow
+    "service" from to)): the records whose time (milliseconds since boot)
+    is in from..to. Both ends are given; the device refuses a window that
+    ends before it starts."""
+    if start is None and end is None:
+        return '(logs.recent "%s")' % service
+    if start is None or end is None:
+        raise SystemExit("cubit-remote: a window needs both --from and --to (milliseconds since boot)")
+    return '(logs.between (LogWindow "%s" %d %d))' % (service, start, end)
+
+
 def command_logs(args):
-    ok, text = evaluate_whole(selected_host(args), '(logs.recent "%s")' % args.service)
-    print(text)
+    expression = logs_expression(args.service, args.start, args.end)
+    ok, text = evaluate_whole(selected_host(args), expression)
+    print(text if args.literal or not ok else render_logs(text))
     return 0 if ok else 1
+
+
+# LAT-002: the report lines each service writes (Desktop_Latency_Report,
+# intel_gpu_display_executor Report, display.svc maybePrintStats).
+LATENCY_SOURCES = (
+    ("desktop", "desktop: latency "),
+    ("intel-gpu", "intel-gpu: flips per-second "),
+    ("display", "display: stats "),
+)
+
+
+def latency_lines(rendered, prefix):
+    return [line for line in rendered.splitlines() if prefix in line]
+
+
+def command_latency(args):
+    host = selected_host(args)
+    status = 0
+    for service, prefix in LATENCY_SOURCES:
+        ok, text = evaluate_whole(host, logs_expression(service, args.start, args.end))
+        if not ok:
+            print("%s: %s" % (service, text))
+            status = 1
+            continue
+        lines = latency_lines(render_logs(text), prefix)
+        print("\n".join(lines) if lines else "%s: (no %s records)" % (service, prefix.strip()))
+    return status
 
 
 def command_ps(args):
@@ -933,9 +1061,20 @@ def command_system(args):
             print(line)
         print("current %s" % current)
         return 0
+    product = getattr(args, "product", None)
+    if args.system_command == "replace":
+        # Checked before anything moves: the deadlines and both names.
+        deadlines(args.health_ms, args.stop_grace_ms)
+        if not valid_service_name(args.service):
+            raise SystemExit("cubit-remote: %r is not a startup-plan service name" % args.service)
+        product = replace_product_name(args.service)
+        if not os.path.isfile(args.local):
+            raise SystemExit("cubit-remote: %s is not a file" % args.local)
+        size, digest = put_file(host, "workspace", args.local, product)
+        print("put %s (%d bytes, sha256 %s)" % (product, size, digest))
     try:
-        if args.system_command == "activate":
-            report = system_activate(host, args.service, args.product, args.health_ms, args.stop_grace_ms)
+        if args.system_command in ("activate", "replace"):
+            report = system_activate(host, args.service, product, args.health_ms, args.stop_grace_ms)
         else:
             report = system_rollback(host, args.health_ms, args.stop_grace_ms)
     except GenerationRefused as e:
@@ -970,9 +1109,20 @@ def parser():
     s.set_defaults(run=command_eval)
     s = sub.add_parser("logs", help="a service's recent log records")
     s.add_argument("service")
+    s.add_argument("--literal", action="store_true", help="print the typed List<LogItem> as CCL")
+    s.add_argument("--from", dest="start", type=int, metavar="MS",
+                   help="the window's first millisecond since boot (with --to): logs.between")
+    s.add_argument("--to", dest="end", type=int, metavar="MS",
+                   help="the window's last millisecond since boot (with --from)")
     s.set_defaults(run=command_logs)
     s = sub.add_parser("ps", help="the processes")
     s.set_defaults(run=command_ps)
+    s = sub.add_parser("latency", help="input-to-photon report lines (LAT-002)")
+    s.add_argument("--from", dest="start", type=int, metavar="MS",
+                   help="the window's first millisecond since boot (with --to)")
+    s.add_argument("--to", dest="end", type=int, metavar="MS",
+                   help="the window's last millisecond since boot (with --from)")
+    s.set_defaults(run=command_latency)
 
     for name, function, helptext in (
             ("ls", command_ls, "list a place"), ("stat", command_stat, "size and SHA-256"),
@@ -1031,11 +1181,15 @@ def parser():
     s = sub.add_parser("system", help="system generations: pin a service to a build, activate, roll back")
     system = s.add_subparsers(dest="system_command", required=True)
     for name, helptext in (("activate", "PRODUCT becomes SERVICE's pin in a new generation, activated"),
+                           ("replace", "upload LOCAL as system/SERVICE and activate it as SERVICE's pin"),
                            ("rollback", "activate the current generation's previous one")):
         a = system.add_parser(name, help=helptext)
-        if name == "activate":
+        if name in ("activate", "replace"):
             a.add_argument("service", metavar="SERVICE", help='its startup-plan name, "acpi.svc"')
+        if name == "activate":
             a.add_argument("product", metavar="PRODUCT", help="the program in the workspace")
+        if name == "replace":
+            a.add_argument("local", metavar="LOCAL", help="the program built on this host")
         # Explicit, never defaulted: they are part of what the caller asks.
         a.add_argument("--health-ms", type=int, required=True,
                        help="the health window, %d .. %d" % (MINIMUM_HEALTH_MS, MAXIMUM_HEALTH_MS))

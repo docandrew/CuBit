@@ -41,6 +41,16 @@ package CCL.Configurations with SPARK_Mode => On is
    type Dependency_Array is array (1 .. MAX_DEPENDENCIES) of Launch_Number;
    MAX_READY_DEADLINE_MS : constant := 60_000;
    subtype Ready_Deadline is Positive range 1 .. MAX_READY_DEADLINE_MS;
+   --  (stop-grace-ms N): how long the entry has to end after Stop when the
+   --  system stops (PWR-003, CuBit.System_Stops), before procmgr ends it.
+   --  CuBit.Child_Specs.Maximum_Grace_Ms.
+   MAX_STOP_GRACE_MS : constant := 600_000;
+   subtype Stop_Grace is Positive range 1 .. MAX_STOP_GRACE_MS;
+   --  (stop-stage apps | services | power-tail): when the root stop stops
+   --  the entry (CuBit.Child_Specs.Stop_Stage, the same three): a declared
+   --  fact. Power_Tail (the ACPI service) runs until the firmware's last
+   --  step of a power-off.
+   type Stop_Stage is (Services_Stage, Apps_Stage, Power_Tail_Stage);
    type Key_Text is record
       Length : Natural range 0 .. 128 := 0;
       Data : String (1 .. 128) := [others => ' '];
@@ -91,10 +101,6 @@ package CCL.Configurations with SPARK_Mode => On is
       --  declared ACPI hardware windows (Request.ACPI_Hardware); procmgr
       --  grants them to nothing else (coordination/acpi-region-boundary.md).
       Approve_ACPI_Hardware : Boolean := False;
-      --  (acpi-registers approve-declared): the plan approves the manifest's
-      --  declared "acpi-registers" client endpoint, which procmgr badges
-      --  with the full frontend scope (ACPI_Register_Roles.Frontend_Tag).
-      Approve_ACPI_Registers : Boolean := False;
       --  (display-capture approve-declared): the plan approves the
       --  manifest's declared "display-capture" endpoint, Desktop's endpoint
       --  badged for a read-only copy of the composed frame
@@ -116,6 +122,10 @@ package CCL.Configurations with SPARK_Mode => On is
         CCL.Scheduling_Limits.Microseconds'First;
       Has_Ready_Deadline : Boolean := False;
       Ready_Deadline_Ms : Ready_Deadline := Ready_Deadline'Last;
+      --  Absent: the stop request's grace for undeclared entries applies.
+      Has_Stop_Grace : Boolean := False;
+      Stop_Grace_Ms : Stop_Grace := Stop_Grace'First;
+      Stage : Stop_Stage := Services_Stage;
       --  (arguments (Record field => value ...)): the program's typed
       --  parameters (docs/ccl-launch-parameters.md), as written. procmgr
       --  checks it against the program's .cubit.parameters signature when
@@ -126,6 +136,39 @@ package CCL.Configurations with SPARK_Mode => On is
       --  Where the entry's executable name starts in the profile, from 1.
       Entry_At : Natural := 0;
    end record;
+   --  A device-class launch (SUP-001, docs/otp-supervision-study.md): the
+   --  class is the entry's key, as a setting's key is, and the rest is ONE
+   --  typed CCL value, a Device_Class_Launch, kept as written like a start
+   --  entry's (arguments ...):
+   --
+   --    (driver-class "PNP0C50"
+   --      (Device_Class_Launch
+   --        facts => ["descriptor_register"]
+   --        policy => (HID_Parameters x => ... timing => ...)))
+   --
+   --  The driver a supervisor (devmgr) starts for a device of the class
+   --  through Start_Child (CuBit.Child_Specs) gets these typed parameters:
+   --  policy writes the POLICY fields of the driver's parameter record and
+   --  facts names the FACT fields the supervisor fills from the device.
+   --  Nothing inside the value is read here: its type involves the driver's
+   --  own record, known only with its file. procmgr checks it with CCL's
+   --  type checker (procmgr's Class_Launch_Checks) when it starts the driver: the
+   --  policy against the driver's record without the fact fields (so a
+   --  policy naming a fact, or leaving a policy field out, is a type
+   --  error), the facts against the supervisor's, then the merged record
+   --  against the driver's signature. Class: an ACPI _HID/_CID, once per
+   --  plan.
+   MAX_DRIVER_CLASSES : constant := 8;
+   MAX_CLASS_ID_BYTES : constant := 8;
+   subtype Class_Count is Natural range 0 .. MAX_DRIVER_CLASSES;
+   type Class_Block is record
+      Class : Key_Text;
+      Launch : Value_Text;
+      --  Where the value and the class start in the profile, from 1.
+      Launch_At : Natural := 0;
+      Class_At : Natural := 0;
+   end record;
+   type Class_Array is array (1 .. MAX_DRIVER_CLASSES) of Class_Block;
    type Setting_Array is array (Positive range 1 .. MAX_SETTINGS) of Setting_Entry;
    type Launch_Array is array (Positive range 1 .. MAX_LAUNCHES) of Launch_Entry;
    type Configuration_Plan is record
@@ -134,6 +177,8 @@ package CCL.Configurations with SPARK_Mode => On is
       Launch_Count : Natural range 0 .. MAX_LAUNCHES := 0;
       Settings : Setting_Array;
       Launches : Launch_Array;
+      Class_Total : Class_Count := 0;
+      Classes : Class_Array;
    end record;
    type Diagnostic_Code is
      (No_Error, Invalid_Syntax, Unsupported_Version, Unknown_Declaration,
@@ -142,7 +187,10 @@ package CCL.Configurations with SPARK_Mode => On is
       Missing_Field, Trailing_Input, Invalid_Dependency, Invalid_Launch_Mode,
       Invalid_Scheduling, Invalid_Deadline, Invalid_Typed_Value,
       --  (arguments ...) given twice, or longer than a Value_Text.
-      Invalid_Arguments);
+      Invalid_Arguments,
+      --  A (driver-class ...) entry: its class is no ACPI ID or is given
+      --  twice, or it is not exactly one value that fits a Value_Text.
+      Invalid_Driver_Class);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;

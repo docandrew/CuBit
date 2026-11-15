@@ -12,6 +12,7 @@
 --    CCL.Setting_Codecs.Display_Modeset: desktop.display.modeset
 --    CCL.Setting_Codecs.GPU_Waitboost: gpu.power.waitboost
 --    CCL.Setting_Codecs.Net_Interface: net.interface.
+--    CCL.Setting_Codecs.Log_Retention: logs.retention
 --    CCL.Setting_Codecs.GPU_Rendering: desktop.render.gpu
 package CCL.Setting_Codecs with SPARK_Mode, Pure is
 end CCL.Setting_Codecs;

@@ -8,6 +8,7 @@ with CCL.Interfaces.Desktop_Launch;
 with CCL.Interfaces.Desktop_Input;
 with CCL.Interfaces.GPU_Power;
 with CCL.Interfaces.Net_Interface;
+with CCL.Interfaces.Log_Retention;
 
 --  The settings whose values are CCL values of a declared type, by key
 --  (a family's members included), with each type's declarations and root.
@@ -23,6 +24,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
       Display_Modeset_Setting,
       GPU_Waitboost_Setting,
       Net_Interface_Setting,
+      Log_Retention_Setting,
       GPU_Rendering_Setting);
 
    function Starts (Key, Prefix : String) return Boolean is
@@ -39,6 +41,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
       elsif Key = "desktop.display.modeset" then Display_Modeset_Setting
       elsif Key = "gpu.power.waitboost" then GPU_Waitboost_Setting
       elsif Starts (Key, "net.interface.") then Net_Interface_Setting
+      elsif Key = "logs.retention" then Log_Retention_Setting
       elsif Key = "desktop.render.gpu" then GPU_Rendering_Setting
       else Untyped);
 
@@ -54,6 +57,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
          when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_TYPE_SOURCE,
          when GPU_Waitboost_Setting => CCL.Interfaces.GPU_Power.TYPE_SOURCE,
          when Net_Interface_Setting => CCL.Interfaces.Net_Interface.TYPE_SOURCE,
+         when Log_Retention_Setting => CCL.Interfaces.Log_Retention.TYPE_SOURCE,
          when GPU_Rendering_Setting => CCL.Interfaces.GPU_Power.RENDERING_TYPE_SOURCE,
          when Untyped => "");
    function Root_Name (Kind : Setting_Kind) return String is
@@ -67,6 +71,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
          when Display_Modeset_Setting => "Display_Modeset",
          when GPU_Waitboost_Setting => "GPU_Waitboost",
          when Net_Interface_Setting => "Net_Interface",
+         when Log_Retention_Setting => "Log_Retention",
          when GPU_Rendering_Setting => "GPU_Rendering",
          when Untyped => "");
 end CCL.Setting_Kinds;

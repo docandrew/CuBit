@@ -71,29 +71,25 @@ class Configurations(unittest.TestCase):
                     'DUPLICATE_FIELD')
 
     def test_acpi_approvals_require_explicit_entries(self):
-        """(acpi-hardware approve-declared) and (acpi-registers
-        approve-declared): explicit, once each, and combinable with the
-        firmware snapshot reader's approval on one entry."""
-        base = '(startup v1 (start "acpi-backend.svc" (priority 5) %s))'
-        for clause in ('', '(acpi-hardware deny)', '(acpi-registers deny)'):
+        """(acpi-hardware approve-declared): explicit, once, and combinable
+        with the firmware snapshot reader's approval on one entry. The one
+        acpi.svc (ACPI-ONE-001) holds the hardware itself; the former
+        role-35 (acpi-registers ...) approval no longer exists."""
+        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
+        for clause in ('', '(acpi-hardware deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, 'acpi-backend.svc pri=5\n')
+            self.assertEqual(result.stdout, 'acpi.svc pri=5\n')
         result = self.compile(base % '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
-        result = self.compile(
-            '(startup v1 (start "acpi.svc" (priority 5) (firmware-snapshot approve-declared)'
-            ' (acpi-registers approve-declared)))')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout,
-                         'acpi.svc pri=5 firmware-snapshot=approved acpi-registers=approved\n')
-        for name in ('acpi-hardware', 'acpi-registers'):
-            for clause in (f'({name})', f'({name} all)', f'({name} approve-declared extra)',
-                           f'({name} "hardware")'):
-                self.reject(base % clause)
-            self.reject(base % f'({name} deny) ({name} approve-declared)', 'DUPLICATE_FIELD')
+                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+        for clause in ('(acpi-hardware)', '(acpi-hardware all)', '(acpi-hardware approve-declared extra)',
+                       '(acpi-hardware "hardware")'):
+            self.reject(base % clause)
+        self.reject(base % '(acpi-hardware deny) (acpi-hardware approve-declared)', 'DUPLICATE_FIELD')
+        for clause in ('(acpi-registers approve-declared)', '(acpi-registers deny)'):
+            self.reject(base % clause)
 
     def test_display_capture_approval_is_explicit(self):
         """(display-capture approve-declared) (REMOTE-001 screenshots): off
@@ -116,7 +112,7 @@ class Configurations(unittest.TestCase):
         """(acpi-pci-config approve-declared) (ACPI-PCI-001): explicit, once,
         and only beside (acpi-hardware approve-declared): alone it would
         approve a window of a grant the entry does not have."""
-        base = '(startup v1 (start "acpi-backend.svc" (priority 5) %s))'
+        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
         hardware = '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)'
         result = self.compile(base % hardware)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -124,11 +120,11 @@ class Configurations(unittest.TestCase):
         result = self.compile(base % (hardware + ' (acpi-pci-config deny)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
         result = self.compile(base % (hardware + ' (acpi-pci-config approve-declared)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
                          ' acpi-pci-config=approved\n')
         self.reject(base % '(acpi-pci-config approve-declared)', 'INVALID_APPROVAL')
         self.reject(base % '(acpi-hardware deny) (acpi-pci-config approve-declared)',
@@ -143,7 +139,7 @@ class Configurations(unittest.TestCase):
         """(acpi-firmware-data approve-declared) (table-named firmware data,
         CuBit.Firmware_Data_Exchange): explicit, once, and only beside
         (acpi-hardware approve-declared), like acpi-pci-config."""
-        base = '(startup v1 (start "acpi-backend.svc" (priority 5) %s))'
+        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
         hardware = '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)'
         result = self.compile(base % hardware)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -151,17 +147,17 @@ class Configurations(unittest.TestCase):
         result = self.compile(base % (hardware + ' (acpi-firmware-data deny)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
         result = self.compile(base % (hardware + ' (acpi-firmware-data approve-declared)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
                          ' acpi-firmware-data=approved\n')
         result = self.compile(base % (hardware + ' (acpi-pci-config approve-declared)'
                                       ' (acpi-firmware-data approve-declared)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi-backend.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
                          ' acpi-pci-config=approved acpi-firmware-data=approved\n')
         self.reject(base % '(acpi-firmware-data approve-declared)', 'INVALID_APPROVAL')
         self.reject(base % '(acpi-hardware deny) (acpi-firmware-data approve-declared)',
@@ -360,17 +356,18 @@ class Configurations(unittest.TestCase):
         policy = '''(startup v1
           (start "logstore.svc" (priority 5))
           (start "ps2.drv" (priority 5) (launch per-device) (approve-device)
-            (after "logstore.svc") (ready-deadline-ms 2000))
+            (after "logstore.svc") (ready-deadline-ms 2000) (stop-grace-ms 750))
           (start "hda.drv" (priority 5) (launch per-device) (approve-device))
-          (start "mixer.svc" (priority 5) (after "logstore.svc" "hda.drv")
+          (start "mixer.svc" (priority 5) (stop-stage power-tail) (after "logstore.svc" "hda.drv")
             (approve-scheduling realtime (budget-us 1500) (period-us 5000))))'''
         result = self.compile(policy)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
                          'logstore.svc pri=5\n'
-                         'ps2.drv pri=5 launch=per-device device=approved after=1 ready-ms=2000\n'
+                         'ps2.drv pri=5 launch=per-device device=approved after=1 ready-ms=2000'
+                         ' stop-grace-ms=750\n'
                          'hda.drv pri=5 launch=per-device device=approved\n'
-                         'mixer.svc pri=5 after=1,3 scheduling=1500/5000\n')
+                         'mixer.svc pri=5 after=1,3 scheduling=1500/5000 stop-stage=power-tail\n')
         for old, bad, diagnostic in [
                 # Dependencies name an earlier, unique entry: acyclic by construction.
                 ('(after "logstore.svc" "hda.drv")', '(after "mixer.svc")', 'INVALID_DEPENDENCY'),
@@ -399,7 +396,15 @@ class Configurations(unittest.TestCase):
                 ('(ready-deadline-ms 2000)', '(ready-deadline-ms 0)', 'INVALID_DEADLINE'),
                 ('(ready-deadline-ms 2000)', '(ready-deadline-ms 60001)', 'INVALID_DEADLINE'),
                 ('(ready-deadline-ms 2000)', '(ready-deadline-ms 2000) (ready-deadline-ms 1)',
-                 'DUPLICATE_FIELD')]:
+                 'DUPLICATE_FIELD'),
+                # (stop-grace-ms N): the entry's stop grace (PWR-003), 1 .. 600000, once.
+                ('(stop-grace-ms 750)', '(stop-grace-ms 0)', 'INVALID_DEADLINE'),
+                ('(stop-grace-ms 750)', '(stop-grace-ms 600001)', 'INVALID_DEADLINE'),
+                ('(stop-grace-ms 750)', '(stop-grace-ms 750) (stop-grace-ms 1)', 'DUPLICATE_FIELD'),
+                ('(stop-grace-ms 750)', '(stop-grace-ms "750")', 'INVALID_DEADLINE'),
+                # (stop-stage apps | services | power-tail), once (PWR-003).
+                ('(stop-stage power-tail)', '(stop-stage later)', 'INVALID_LAUNCH_MODE'),
+                ('(stop-stage power-tail)', '(stop-stage apps) (stop-stage services)', 'DUPLICATE_FIELD')]:
             with self.subTest(bad=bad):
                 self.assertIn(old, policy)
                 self.reject(policy.replace(old, bad), diagnostic)

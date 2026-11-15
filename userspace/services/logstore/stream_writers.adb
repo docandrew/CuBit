@@ -108,27 +108,36 @@ package body Stream_Writers is
             else
                declare
                   Value : CuBit.Log_Protocol.Event;
-                  Lost : Unsigned_64;
+                  Missing : CuBit.Log_Protocol.Omission;
+                  Tally : CuBit.Log_Protocol.Source_Tally;
                   Result : CuBit.Log_Protocol.Status;
                   Entry_Bytes : Streams.Entry_Buffer;
                   Length : Streams.Entry_Length;
-                  Put : Channels.Put_Result;
+                  Put : Channels.Put_Result := Channels.Put;
                begin
                   loop
-                     --  Room first: an event taken from the queue is never lost.
+                     --  Room first (a gap and an event): an event taken from
+                     --  the queue is never lost.
                      if Channels.Free_Bytes (S.Link) < Streams.Room_Needed then
                         Backlog := True;
                         exit;
                      end if;
                      Log_Fanout.Read_Next
-                       (Store, S.Owner, S.Authority, S.Handle, Value, Lost, Result, Renew => False);
-                     exit when Result not in CuBit.Log_Protocol.OK | CuBit.Log_Protocol.Gap;
-                     if Result = CuBit.Log_Protocol.Gap then
-                        Streams.Encode_Gap (Lost, Entry_Bytes, Length);
-                     else
-                        Streams.Encode_Event (Value, Entry_Bytes, Length);
+                       (Store, S.Owner, S.Authority, S.Handle, Value, Missing, Tally, Result,
+                        Renew => False);
+                     exit when Result not in CuBit.Log_Protocol.OK | CuBit.Log_Protocol.Gap |
+                                             CuBit.Log_Protocol.Summary;
+                     if CuBit.Log_Protocol.Omits (Missing) then
+                        Streams.Encode_Gap (Missing, Entry_Bytes, Length);
+                        Channels.Put (S.Link, Entry_Bytes'Address, Length, Put);
                      end if;
-                     Channels.Put (S.Link, Entry_Bytes'Address, Length, Put);
+                     if Put = Channels.Put and then Result = CuBit.Log_Protocol.OK then
+                        Streams.Encode_Event (Value, Entry_Bytes, Length);
+                        Channels.Put (S.Link, Entry_Bytes'Address, Length, Put);
+                     elsif Put = Channels.Put and then Result = CuBit.Log_Protocol.Summary then
+                        Streams.Encode_Tally (Tally, Entry_Bytes, Length);
+                        Channels.Put (S.Link, Entry_Bytes'Address, Length, Put);
+                     end if;
                      exit when Put /= Channels.Put;
                   end loop;
                end;

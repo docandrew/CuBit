@@ -320,8 +320,7 @@ package body CCL.Presentations is
       end if;
       Result.Shape := Outcome.Literal_Shape;
       CCL.Literal_Tables.Split
-        (Outcome.Literal.Data (1 .. Outcome.Literal.Length), Result.Shape.Many,
-         Result.Shape.Count, Result.Cells);
+        (Outcome.Literal.Data (1 .. Outcome.Literal.Length), Result.Shape, Result.Cells);
       if not Result.Cells.Complete then
          return;
       end if;

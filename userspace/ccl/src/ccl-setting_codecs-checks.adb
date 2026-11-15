@@ -10,6 +10,7 @@ with CCL.Setting_Codecs.Display_Mode;
 with CCL.Setting_Codecs.Display_Modeset;
 with CCL.Setting_Codecs.GPU_Waitboost;
 with CCL.Setting_Codecs.Net_Interface;
+with CCL.Setting_Codecs.Log_Retention;
 with CCL.Setting_Codecs.GPU_Rendering;
 
 package body CCL.Setting_Codecs.Checks with SPARK_Mode is
@@ -74,6 +75,12 @@ package body CCL.Setting_Codecs.Checks with SPARK_Mode is
                Item : Net_Interface.Net_Interface_Value;
             begin
                Net_Interface.Decode (Source, Item, OK);
+            end;
+         when Kinds.Log_Retention_Setting =>
+            declare
+               Item : Log_Retention.Log_Retention_Value;
+            begin
+               Log_Retention.Decode (Source, Item, OK);
             end;
          when Kinds.GPU_Rendering_Setting =>
             declare

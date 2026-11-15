@@ -31,6 +31,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          when Invalid_Deadline => return "INVALID_DEADLINE";
          when Invalid_Typed_Value => return "INVALID_TYPED_VALUE";
          when Invalid_Arguments => return "INVALID_ARGUMENTS";
+         when Invalid_Driver_Class => return "INVALID_DRIVER_CLASS";
       end case;
    end Diagnostic_Name;
 
@@ -179,8 +180,9 @@ package body CCL.Configurations with SPARK_Mode => On is
       procedure Launch is
          Executable : Key_Text;
          Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device, Have_Restart, Have_Replace,
-           Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments : Boolean := False;
-         Have_ACPI_Hardware, Have_ACPI_Registers, Have_ACPI_PCI_Config,
+           Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments,
+           Have_Stop_Grace, Have_Stop_Stage : Boolean := False;
+         Have_ACPI_Hardware, Have_ACPI_PCI_Config,
            Have_ACPI_Firmware_Data, Have_Display_Capture : Boolean := False;
 
          --  (<name> deny) or (<name> approve-declared), once.
@@ -278,8 +280,6 @@ package body CCL.Configurations with SPARK_Mode => On is
                Have_Firmware := True;
             elsif Matches (Name, "acpi-hardware") then
                Declared_Approval (Have_ACPI_Hardware, Item.Approve_ACPI_Hardware);
-            elsif Matches (Name, "acpi-registers") then
-               Declared_Approval (Have_ACPI_Registers, Item.Approve_ACPI_Registers);
             elsif Matches (Name, "display-capture") then
                Declared_Approval (Have_Display_Capture, Item.Approve_Display_Capture);
             elsif Matches (Name, "acpi-pci-config") then
@@ -382,6 +382,25 @@ package body CCL.Configurations with SPARK_Mode => On is
                if not Stopped then Item.Ready_Deadline_Ms := Ready_Deadline (Number); end if;
                Item.Has_Ready_Deadline := True;
                Have_Deadline := True;
+            elsif Matches (Name, "stop-grace-ms") then
+               --  (stop-grace-ms N), once: the entry's grace when the
+               --  system stops (CuBit.System_Stops).
+               if Have_Stop_Grace then Fail (Duplicate_Field); end if;
+               Integer_Field (1, MAX_STOP_GRACE_MS, Number);
+               if Result.Diagnostic = Invalid_Value then Result.Diagnostic := Invalid_Deadline; end if;
+               if not Stopped then Item.Stop_Grace_Ms := Stop_Grace (Number); end if;
+               Item.Has_Stop_Grace := True;
+               Have_Stop_Grace := True;
+            elsif Matches (Name, "stop-stage") then
+               --  (stop-stage apps | services | power-tail), once.
+               if Have_Stop_Stage then Fail (Duplicate_Field); end if;
+               Read_Symbol (Reader, Name);
+               if Matches (Name, "services") then Item.Stage := Services_Stage;
+               elsif Matches (Name, "apps") then Item.Stage := Apps_Stage;
+               elsif Matches (Name, "power-tail") then Item.Stage := Power_Tail_Stage;
+               else Fail (Invalid_Launch_Mode);
+               end if;
+               Have_Stop_Stage := True;
             else Fail (Unknown_Declaration);
             end if;
             Close_Form (Reader);
@@ -415,6 +434,46 @@ package body CCL.Configurations with SPARK_Mode => On is
          Item.Role := Role;
          Result.Plan.Launches (Count) := Item;
       end Launch;
+      --  (driver-class "<ID>" <value>): the class's launch (Class_Block).
+      --  The value is one Device_Class_Launch, kept as written like a start
+      --  entry's (arguments ...): its type involves the driver's own record,
+      --  known only with its file (CCL.Class_Launches checks it).
+      procedure Driver_Class is
+         Block : Class_Block;
+         First : Positive;
+         Last : Natural;
+      begin
+         if Result.Plan.Class_Total = MAX_DRIVER_CLASSES then Fail (Too_Many_Entries); return; end if;
+         Block.Class_At := Position (Reader);
+         Read_Key (Block.Class);
+         if Stopped then return; end if;
+         --  The key is an ACPI _HID or _CID: up to eight upper-case
+         --  letters, digits and underscores.
+         if Block.Class.Length > MAX_CLASS_ID_BYTES
+           or else (for some C of Block.Class.Data (1 .. Block.Class.Length) =>
+                      C not in 'A' .. 'Z' | '0' .. '9' | '_')
+         then
+            Fail (Invalid_Driver_Class); return;
+         end if;
+         for Earlier of Result.Plan.Classes (1 .. Result.Plan.Class_Total) loop
+            if Earlier.Class = Block.Class then Fail (Invalid_Driver_Class); return; end if;
+         end loop;
+         if At_Close (Reader) or else At_End (Reader) then Fail (Invalid_Driver_Class); return; end if;
+         Take_Expression (Reader, First, Last);
+         if Stopped then return; end if;
+         if Last < First or else Last - First + 1 > Block.Launch.Data'Length then
+            Fail (Invalid_Driver_Class);
+            Result.Position := First;
+            return;
+         end if;
+         Block.Launch.Length := Last - First + 1;
+         Block.Launch.Data (1 .. Block.Launch.Length) := Source_Of (Reader, First, Last);
+         Block.Launch_At := First;
+         --  Exactly one value.
+         if not At_Close (Reader) then Fail (Invalid_Driver_Class); return; end if;
+         Result.Plan.Class_Total := Result.Plan.Class_Total + 1;
+         Result.Plan.Classes (Result.Plan.Class_Total) := Block;
+      end Driver_Class;
    begin
       Result := (others => <>);
       Start (Reader, Source);
@@ -443,6 +502,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          Read_Symbol (Reader, Name);
          if Kind = System_Profile and then Matches (Name, "setting") then Setting;
          elsif Kind = Startup_Profile and then Matches (Name, "start") then Launch;
+         elsif Kind = Startup_Profile and then Matches (Name, "driver-class") then Driver_Class;
          else Fail (Unknown_Declaration);
          end if;
          Close_Form (Reader);

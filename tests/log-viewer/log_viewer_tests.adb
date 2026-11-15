@@ -130,7 +130,7 @@ procedure Log_Viewer_Tests is
    NETSTACK : constant := 24;
    FILESYSTEM : constant := 18;
    DESKTOP : constant := 33;
-   GAP_TEXT : constant String := "--- 12 records lost before delivery ---";
+   GAP_TEXT : constant String := "... 12 records lost before delivery ...";
 begin
    Initialize (State.all);
    Handle (State.all, (Kind => Resize, X => WIDTH, Y => HEIGHT, others => <>), Map.all, Redraw);
@@ -585,6 +585,20 @@ begin
       Ticks ("sorted by source");
       Click (Header_ID (Time_Column));
    end;
+
+   --  LOG-005: records of a source logstore did not retain show as a gap
+   --  row in place, before the record that follows, at its time.
+   Initialize (State.all);
+   Handle (State.all, (Kind => Resize, X => WIDTH, Y => HEIGHT, others => <>), Map.all, Redraw);
+   Set_Connection (State.all, Connected);
+   Log (1_000, NETSTACK, LR.Information, "netstack: boot");
+   Add_Gap (State.all, 0, 300, NETSTACK, 2_000);
+   Log (2_000, NETSTACK, LR.Information, "netstack: after the gap");
+   Check (Total (State.all) = 3 and then Row_Text (State.all, 2) = "... 300 records not retained ...",
+          "a not-retained gap row: " & Row_Text (State.all, 2));
+   Add_Gap (State.all, 5, 7, NETSTACK);
+   Check (Row_Text (State.all, 4) = "... 7 records not retained, 5 records lost before delivery ...",
+          "both counts: " & Row_Text (State.all, 4));
 
    Ada.Text_IO.Put_Line
      ((if Failures = 0 then "PASS" else "FAIL") & ": Logs view," & Natural'Image (Checks) & " checks");

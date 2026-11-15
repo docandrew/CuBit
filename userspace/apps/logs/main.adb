@@ -310,10 +310,14 @@ procedure Main is
 
    function Deadline return Unsigned_64 is (Due);
 
+   --  A gap read just before the record it belongs before (Tick).
+   Held_Gap : P.Omission := P.No_Omission;
+
    procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
       pragma Unreferenced (Running);
       Event : P.Event;
-      Lost : Unsigned_64;
+      Missing : P.Omission;
+      Tally : P.Source_Tally;
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
    begin
       Due := Now + POLL_MS;
@@ -327,10 +331,19 @@ procedure Main is
       end if;
       if Status in P.OK | P.Empty | P.Gap then
          for I in 1 .. BATCH loop
-            CuBit.Logging.Read_Next (Reader, Event, Lost, Status);
-            if Status = P.Gap then
-               Log_View.Add_Gap (View, Lost);
+            CuBit.Logging.Read_Next (Reader, Event, Missing, Tally, Status);
+            if Status = P.Gap and then Missing.Not_Retained > 0 and then Missing.Lost = 0 then
+               --  Records of a source not retained: shown just before its
+               --  next record, at that record's time.
+               Held_Gap := Missing;
+            elsif Status = P.Gap then
+               Log_View.Add_Gap (View, Missing.Lost, Missing.Not_Retained, Missing.Source);
             elsif Status = P.OK then
+               if P.Omits (Held_Gap) then
+                  Log_View.Add_Gap (View, Held_Gap.Lost, Held_Gap.Not_Retained, Held_Gap.Source,
+                                    Event.Monotonic_Ms);
+                  Held_Gap := P.No_Omission;
+               end if;
                Log_View.Add (View, Event.Monotonic_Ms, Event.Source, Event.Data, Event.Node);
                Unnamed := True;
             end if;

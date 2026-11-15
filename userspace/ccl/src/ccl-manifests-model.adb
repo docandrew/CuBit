@@ -66,10 +66,16 @@ package body CCL.Manifests.Model with SPARK_Mode => On is
             Wanted := (Kind => Platform_Basis,
                        Values => [1 => Unsigned_16 (Platform_Device'Enum_Rep (Item.Device)),
                                   others => 0]);
-         when Devices.ACPI_ID | Devices.USB_Class =>
+         when Devices.ACPI_ID =>
+            --  The ACPI basis is the weakest: a PCI or Platform entry in the
+            --  same list decides what resource indexes mean.
+            if Decl.Basis.Kind = No_Basis then
+               Wanted := (Kind => ACPI_Basis, Values => [others => 0]);
+            end if;
+         when Devices.USB_Class =>
             null;
       end case;
-      if Decl.Basis.Kind /= No_Basis and then Wanted /= Decl.Basis then
+      if Decl.Basis.Kind not in No_Basis | ACPI_Basis and then Wanted /= Decl.Basis then
          --  Resource indexes refer to one kind of device only.
          return;
       end if;

@@ -13,7 +13,7 @@ with CuBit.Datagram_Rings;
 with CuBit.Log_Sources;
 with Source_Identities;
 with CuAlloc_Host;
-pragma Unreferenced (CuAlloc_Host);
+
 procedure Main is
    --  Brokers are several MiB each: on the heap, not the test's stack.
    type Broker_Access is access Log_Fanout.Broker;
@@ -26,9 +26,21 @@ procedure Main is
      (Source => 30, Node => This_Node, Publication_Tag => Publisher_Authority_Tag,
       Monotonic_Ms => 123, Data => CuBit.Log_Records.Empty_Record);
    Empty_Value : constant Event := (others => <>);
+   --  Read_Next, with what a gap omits as one count (Lost), and its
+   --  details in Last_Missing.
+   Last_Missing : Omission;
+   procedure Read_Lost
+     (Store : in out Log_Fanout.Broker; Caller : Process_ID; Authority_Tag, Handle : Unsigned_64;
+      Value : out Event; Lost : out Unsigned_64; Result : out Status)
+   is
+      Tally : Source_Tally;
+   begin
+      Log_Fanout.Read_Next (Store, Caller, Authority_Tag, Handle, Value, Last_Missing, Tally, Result);
+      Lost := Last_Missing.Lost + Last_Missing.Not_Retained;
+   end Read_Lost;
    procedure Read (Caller : Process_ID; Handle : Unsigned_64) is
    begin
-      Log_Fanout.Read_Next
+      Read_Lost
         (Store, Caller, Observer_Authority_Tag, Handle, Value, Lost, Result);
    end Read;
 begin
@@ -146,7 +158,7 @@ begin
    pragma Assert (Result = OK and Other = First);
    --  Recycled PID with a different launch-issued observer tag cannot inherit
    --  the previous instance's subscription, even knowing its handle.
-   Log_Fanout.Read_Next
+   Read_Lost
      (Store, From_Word (10), Observer_Authority_Tag + 1, First, Value, Lost, Result);
    pragma Assert (Result = Denied and Value = Empty_Value and Lost = 0);
    Log_Fanout.Close (Store, From_Word (10), Observer_Authority_Tag + 1, First, Result);
@@ -157,7 +169,7 @@ begin
    Log_Fanout.Close (Store, From_Word (20), Observer_Authority_Tag, First, Result);
    pragma Assert (Result = Denied);
    --  Even the owner must invoke the observer authority, not its publisher one.
-   Log_Fanout.Read_Next
+   Read_Lost
      (Store, From_Word (10), Publisher_Authority_Tag, First, Value, Lost, Result);
    pragma Assert (Result = Denied and Value = Empty_Value and Lost = 0);
    Read (From_Word (10), First); pragma Assert (Result = OK and Value = Expected);
@@ -181,18 +193,13 @@ begin
    Read (From_Word (10), First); pragma Assert (Result = Denied);
    Log_Fanout.Close (Store, From_Word (10), Publisher_Authority_Tag, Other, Result);
    pragma Assert (Result = Denied);
-   --  Source 30 published the initial record and Capacity+3 more: its
-   --  history keeps its boot window (the initial record, then 1 .. 31) and
-   --  its newest records, and a fresh subscription replays them in order
-   --  with no gap for what was not retained (LOG-002).
+   --  Source 30 published the initial record and Capacity+3 more, fewer
+   --  than its ceiling (Until_Configured): a fresh subscription replays
+   --  every one in order, with no gap (LOG-002, LOG-005).
    Read (From_Word (10), Other); pragma Assert (Result = OK and Value.Monotonic_Ms = 123);
-   for I in 1 .. Log_Fanout.Boot_Records - 1 loop
+   for I in 1 .. Log_Fanout.Capacity + 3 loop
       Read (From_Word (10), Other);
-      pragma Assert (Result = OK and Value.Monotonic_Ms = Unsigned_64 (I));
-   end loop;
-   for I in Log_Fanout.Capacity + 3 - Log_Fanout.Newest_Records + 1 .. Log_Fanout.Capacity + 3 loop
-      Read (From_Word (10), Other);
-      pragma Assert (Result = OK and Value.Monotonic_Ms = Unsigned_64 (I));
+      pragma Assert (Result = OK and Value.Monotonic_Ms = Unsigned_64 (I) and not Omits (Last_Missing));
    end loop;
    Read (From_Word (10), Other); pragma Assert (Result = Empty);
    Replacement := Other;
@@ -236,7 +243,11 @@ begin
       Take : D.Take_Result;
       Kind : S.Entry_Kind;
       Back : Event;
-      Gap_Count : Unsigned_64;
+      Missing : Omission;
+      Tally : Source_Tally;
+      Sent_Tally : constant Source_Tally :=
+        (Source => 41, Published => 9, Retained => 5, Not_Retained => 4, Over_Budget => 2,
+         Publisher_Full => 1);
       Sent : Event :=
         (Source => 41, Node => (High => 16#0123_4567_89AB_CDEF#, Low => 16#FEDC_BA98_7654_3210#),
          Publication_Tag => Publisher_Authority_Tag, Monotonic_Ms => 0,
@@ -245,7 +256,9 @@ begin
       for Round in 1 .. 3_000 loop
          Sent.Monotonic_Ms := Unsigned_64 (Round);
          if Round mod 97 = 0 then
-            S.Encode_Gap (Unsigned_64 (Round), Entry_Bytes, Length);
+            S.Encode_Gap ((Source => 41, Lost => Unsigned_64 (Round), Not_Retained => 3), Entry_Bytes, Length);
+         elsif Round mod 89 = 0 then
+            S.Encode_Tally (Sent_Tally, Entry_Bytes, Length);
          else
             S.Encode_Event (Sent, Entry_Bytes, Length);
          end if;
@@ -257,27 +270,38 @@ begin
          pragma Assert (Take = D.Taken and not Truncated and Taken_Length = Length);
          R.Accept_Consumed (P, C.Consumed, Accepted);
          pragma Assert (Accepted);
-         S.Decode (Got, Taken_Length, Kind, Back, Gap_Count, Valid);
+         S.Decode (Got, Taken_Length, Kind, Back, Missing, Tally, Valid);
          pragma Assert (Valid);
          if Round mod 97 = 0 then
-            pragma Assert (Kind = S.Gap_Entry and Gap_Count = Unsigned_64 (Round));
+            pragma Assert (Kind = S.Gap_Entry and Missing.Lost = Unsigned_64 (Round)
+                           and Missing.Not_Retained = 3 and Missing.Source = 41);
+         elsif Round mod 89 = 0 then
+            pragma Assert (Kind = S.Tally_Entry and Tally = Sent_Tally and not Omits (Missing));
          else
-            pragma Assert (Kind = S.Event_Entry and Back = Sent and Gap_Count = 0);
+            pragma Assert (Kind = S.Event_Entry and Back = Sent and not Omits (Missing));
          end if;
       end loop;
       --  Wrapped many times over: 3000 entries of about 90 bytes in 64 KiB.
       pragma Assert (R.Distance (0, P.Produced) > R.Count (4 * S.RING_BYTES));
       S.Encode_Event (Sent, Entry_Bytes, Length);
       Entry_Bytes (0) := 7;
-      S.Decode (Entry_Bytes, Length, Kind, Back, Gap_Count, Valid);
+      S.Decode (Entry_Bytes, Length, Kind, Back, Missing, Tally, Valid);
       pragma Assert (not Valid and Back = Empty_Value);
       S.Encode_Event (Sent, Entry_Bytes, Length);
-      S.Decode (Entry_Bytes, Length - 1, Kind, Back, Gap_Count, Valid);
+      S.Decode (Entry_Bytes, Length - 1, Kind, Back, Missing, Tally, Valid);
       pragma Assert (not Valid);
-      S.Encode_Gap (0, Entry_Bytes, Length);
-      S.Decode (Entry_Bytes, Length, Kind, Back, Gap_Count, Valid);
-      pragma Assert (not Valid and Gap_Count = 0);
-      Put_Line ("PASS: log streams carry events and gaps through a wrapping ring; malformed entries refused");
+      --  A gap that omits nothing, a gap with a stray word, a short tally.
+      S.Encode_Gap (No_Omission, Entry_Bytes, Length);
+      S.Decode (Entry_Bytes, Length, Kind, Back, Missing, Tally, Valid);
+      pragma Assert (not Valid and not Omits (Missing));
+      S.Encode_Gap ((Source => 1, Lost => 1, Not_Retained => 0), Entry_Bytes, Length);
+      Entry_Bytes (40) := 1;
+      S.Decode (Entry_Bytes, Length, Kind, Back, Missing, Tally, Valid);
+      pragma Assert (not Valid and not Omits (Missing));
+      S.Encode_Tally (Sent_Tally, Entry_Bytes, Length);
+      S.Decode (Entry_Bytes, Length - 8, Kind, Back, Missing, Tally, Valid);
+      pragma Assert (not Valid and Tally = (others => <>));
+      Put_Line ("PASS: log streams carry events, gaps and tallies through a wrapping ring; malformed entries refused");
    end;
    Put_Line ("PASS: policy matrix, log fan-out gates, independent recipients, loss, launch tags, stale handles and lease expiration");
    --  Severity-filtered subscriptions (observability agent, 2026-10-01).
@@ -302,17 +326,17 @@ begin
       pragma Assert (Result = OK);
       Log_Fanout.Publish (Filtered, At_Level (L.Trace, 3));
       Log_Fanout.Publish (Filtered, At_Level (L.Critical, 4));
-      Log_Fanout.Read_Next (Filtered, From_Word (50), Observer_Authority_Tag, High,
+      Read_Lost (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Value, Lost, Result);
       pragma Assert (Result = OK and Value.Monotonic_Ms = 2);
-      Log_Fanout.Read_Next (Filtered, From_Word (50), Observer_Authority_Tag, High,
+      Read_Lost (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Value, Lost, Result);
       pragma Assert (Result = OK and Value.Monotonic_Ms = 4);
-      Log_Fanout.Read_Next (Filtered, From_Word (50), Observer_Authority_Tag, High,
+      Read_Lost (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Value, Lost, Result);
       pragma Assert (Result = Empty);
       for Ms in Unsigned_64'(1) .. 4 loop
-         Log_Fanout.Read_Next (Filtered, From_Word (51), Observer_Authority_Tag, Low,
+         Read_Lost (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                                Value, Lost, Result);
          pragma Assert (Result = OK and Value.Monotonic_Ms = Ms);
       end loop;
@@ -321,10 +345,10 @@ begin
       for I in 1 .. 2 * Log_Fanout.Capacity loop
          Log_Fanout.Publish (Filtered, At_Level (L.Debug, 5));
       end loop;
-      Log_Fanout.Read_Next (Filtered, From_Word (50), Observer_Authority_Tag, High,
+      Read_Lost (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Value, Lost, Result);
       pragma Assert (Result = Empty);
-      Log_Fanout.Read_Next (Filtered, From_Word (51), Observer_Authority_Tag, Low,
+      Read_Lost (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                             Value, Lost, Result);
       pragma Assert (Result = Gap and Lost = Unsigned_64 (Log_Fanout.Capacity));
       --  A retry keeps the queue and narrows later publications.
@@ -333,11 +357,11 @@ begin
       pragma Assert (Result = OK and Other = Low);
       Log_Fanout.Publish (Filtered, At_Level (L.Error, 6));
       for I in 1 .. Log_Fanout.Capacity loop
-         Log_Fanout.Read_Next (Filtered, From_Word (51), Observer_Authority_Tag, Low,
+         Read_Lost (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                                Value, Lost, Result);
          pragma Assert (Result = OK and Value.Monotonic_Ms = 5);
       end loop;
-      Log_Fanout.Read_Next (Filtered, From_Word (51), Observer_Authority_Tag, Low,
+      Read_Lost (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                             Value, Lost, Result);
       pragma Assert (Result = Empty);
       Put_Line ("PASS: severity-filtered subscriptions, filtered replay, filtering is not loss");
@@ -364,10 +388,10 @@ begin
       Log_Fanout.Publish (Sourced, From (80, 4));
       Log_Fanout.Publish (Sourced, From (70, 5));
       for Ms of From_70 loop
-         Log_Fanout.Read_Next (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
+         Read_Lost (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
          pragma Assert (Result = OK and Value.Source = 70 and Value.Monotonic_Ms = Ms);
       end loop;
-      Log_Fanout.Read_Next (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
+      Read_Lost (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
       pragma Assert (Result = Empty);
       --  Closing and subscribing again replays afresh (a new query).
       Log_Fanout.Close (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Result);
@@ -375,80 +399,103 @@ begin
       Log_Fanout.Subscribe (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Result, Source => 80);
       pragma Assert (Result = OK);
       for Ms of From_80 loop
-         Log_Fanout.Read_Next (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
+         Read_Lost (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
          pragma Assert (Result = OK and Value.Source = 80 and Value.Monotonic_Ms = Ms);
       end loop;
       Put_Line ("PASS: source-filtered subscriptions and fresh replay per query");
    end;
-   --  Per-source retention (LOG-002): a flooding source cannot erase a quiet
-   --  source's boot records; replay merges the histories in publish order,
-   --  reads them incrementally (more than a subscriber queue holds) and
-   --  reports as a gap only records given up while it was due them.
+   --  Per-source retention (LOG-002, LOG-005): a flooding source cannot
+   --  erase a quiet source's boot records; a source over its ceiling gives
+   --  up its oldest record after its boot window, counted in its tally and
+   --  shown as the gap before its next retained record; replay merges the
+   --  histories in publish order, incrementally (more than a subscriber
+   --  queue holds); a reader loses only what it can no longer be shown.
    declare
       package L renames CuBit.Log_Records;
       Retained_Storage : constant Broker_Access := new Log_Fanout.Broker;
       Kept : Log_Fanout.Broker renames Retained_Storage.all;
+      Limits : constant Log_Fanout.Ceilings := Log_Fanout.Limits (Kept);
       Quiet : constant Unsigned_64 := 200;
       Noisy : constant Unsigned_64 := 201;
       Quiet_Records : constant := 5;
       Flood_Records : constant := 5_000;
+      Noisy_Kept : constant Natural := Limits.Per_Source;
+      Noisy_Given_Up : constant Unsigned_64 := Unsigned_64 (Flood_Records - Noisy_Kept);
       Wide_Sources : constant := 20;
-      Wide_Per_Source : constant := Log_Fanout.Boot_Records + Log_Fanout.Newest_Records;
+      Wide_Per_Source : constant := Log_Fanout.Least_Boot;
+      Later_Noisy : constant := 32;
       Published : Unsigned_64 := 0;
       Viewer, Narrow : Unsigned_64;
       Previous : Unsigned_64;
-      Seen : Natural;
+      Seen, Gaps : Natural;
       Found : Boolean;
-      procedure Put (Source : Unsigned_64) is
+      Tally : Source_Tally;
+      procedure Put (Source : Unsigned_64; Level : L.Severity := L.Information) is
       begin
          Published := Published + 1;
          Log_Fanout.Publish
            (Kept, (Source => Source, Node => This_Node, Publication_Tag => Publisher_Authority_Tag,
-                   Monotonic_Ms => Published, Data => L.Make ("z").Value));
+                   Monotonic_Ms => Published, Data => L.Make ("z", Level).Value));
       end Put;
       procedure Next (Caller : Unsigned_64; Handle : Unsigned_64) is
       begin
-         Log_Fanout.Read_Next (Kept, From_Word (Caller), Observer_Authority_Tag, Handle,
-                               Value, Lost, Result);
+         Read_Lost (Kept, From_Word (Caller), Observer_Authority_Tag, Handle, Value, Lost, Result);
       end Next;
+      --  The counting invariant, as the tally reports it.
+      function Balanced (T : Source_Tally) return Boolean is (T.Published = T.Retained + T.Not_Retained);
    begin
+      pragma Assert (Log_Fanout."=" (Limits, Log_Fanout.Until_Configured));
       for I in 1 .. Quiet_Records loop Put (Quiet); end loop;
       for I in 1 .. Flood_Records loop Put (Noisy); end loop;
+      Tally := Log_Fanout.Tally (Kept, Noisy);
+      pragma Assert (Tally.Published = Flood_Records and Tally.Retained = Unsigned_64 (Noisy_Kept)
+                     and Tally.Not_Retained = Noisy_Given_Up and Balanced (Tally));
+      Tally := Log_Fanout.Tally (Kept, Quiet);
+      pragma Assert (Tally.Published = Quiet_Records and Tally.Retained = Quiet_Records and Balanced (Tally));
       --  The quiet source alone: every boot record, no gap.
       Log_Fanout.Subscribe (Kept, From_Word (300), Observer_Authority_Tag, Narrow, Result, Source => Quiet);
       pragma Assert (Result = OK);
       for I in 1 .. Quiet_Records loop
          Next (300, Narrow);
-         pragma Assert (Result = OK and Value.Source = Quiet and Value.Monotonic_Ms = Unsigned_64 (I));
+         pragma Assert (Result = OK and Value.Source = Quiet and Value.Monotonic_Ms = Unsigned_64 (I)
+                        and not Omits (Last_Missing));
       end loop;
       Next (300, Narrow); pragma Assert (Result = Empty);
-      --  Everything: the quiet boot records, the flood's boot window and its
-      --  newest, in publish order and with no gap.
+      --  Everything: the quiet boot records, the flood's boot window, then
+      --  its newest, the first of them after the gap of every flood record
+      --  given up between, in publish order.
       Log_Fanout.Subscribe (Kept, From_Word (301), Observer_Authority_Tag, Viewer, Result);
       pragma Assert (Result = OK);
       Previous := 0;
       Seen := 0;
+      Gaps := 0;
       loop
          Next (301, Viewer);
          exit when Result = Empty;
          pragma Assert (Result = OK and Value.Monotonic_Ms > Previous);
+         if Omits (Last_Missing) then
+            Gaps := Gaps + 1;
+            pragma Assert (Last_Missing.Source = Noisy and Last_Missing.Lost = 0
+                           and Last_Missing.Not_Retained = Noisy_Given_Up
+                           and Value.Monotonic_Ms = Unsigned_64 (Quiet_Records + Limits.Boot) + Noisy_Given_Up + 1);
+         end if;
          Previous := Value.Monotonic_Ms;
          Seen := Seen + 1;
       end loop;
-      pragma Assert (Seen = Quiet_Records + Log_Fanout.Boot_Records + Log_Fanout.Newest_Records);
+      pragma Assert (Seen = Quiet_Records + Noisy_Kept and Gaps = 1);
       pragma Assert (Previous = Published);
       --  The persistent log reads the same histories in publish order; what
-      --  the flood's newest ring gave up before it was taken is its loss.
+      --  was given up before it was taken is its loss.
       Log_Fanout.Take_Persistent (Kept, Value, Found, Lost);
       pragma Assert (Found and Lost = 0 and Value.Monotonic_Ms = 1);
-      for I in 2 .. Quiet_Records + Log_Fanout.Boot_Records loop
+      for I in 2 .. Quiet_Records + Limits.Boot loop
          Log_Fanout.Take_Persistent (Kept, Value, Found, Lost);
          pragma Assert (Found and Lost = 0 and Value.Monotonic_Ms = Unsigned_64 (I));
       end loop;
       Log_Fanout.Take_Persistent (Kept, Value, Found, Lost);
       pragma Assert
-        (Found and Lost = Unsigned_64 (Flood_Records - Log_Fanout.Boot_Records - Log_Fanout.Newest_Records)
-         and Value.Monotonic_Ms = Published - Log_Fanout.Newest_Records + 1);
+        (Found and Lost = Noisy_Given_Up
+         and Value.Monotonic_Ms = Published - Unsigned_64 (Noisy_Kept - Limits.Boot) + 1);
       loop
          Log_Fanout.Take_Persistent (Kept, Value, Found, Lost);
          pragma Assert (Lost = 0);
@@ -474,35 +521,90 @@ begin
          Previous := Value.Monotonic_Ms;
          Seen := Seen + 1;
       end loop;
-      pragma Assert
-        (Seen = Quiet_Records + Wide_Per_Source + Wide_Sources * Wide_Per_Source);
+      pragma Assert (Seen = Quiet_Records + Noisy_Kept + Wide_Sources * Wide_Per_Source);
       Log_Fanout.Close (Kept, From_Word (302), Observer_Authority_Tag, Viewer, Result);
-      --  Records given up while a replay was due them are its gap: the flood's
-      --  newest ring turns over completely before the reader gets to it.
+      --  Records given up while a replay is due them move their gap to the
+      --  next retained record, still in the replay: shown there, not lost.
       Log_Fanout.Subscribe (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Result, Source => Noisy);
       pragma Assert (Result = OK);
-      Next (303, Viewer); pragma Assert (Result = OK);
-      for I in 1 .. Log_Fanout.Newest_Records loop Put (Noisy); end loop;
-      Next (303, Viewer);
-      pragma Assert (Result = Gap and Lost = Unsigned_64 (Log_Fanout.Newest_Records));
+      Next (303, Viewer); pragma Assert (Result = OK and not Omits (Last_Missing));
+      for I in 1 .. Later_Noisy loop Put (Noisy); end loop;
       Seen := 1;
+      Gaps := 0;
       loop
          Next (303, Viewer);
          exit when Result = Empty;
-         pragma Assert (Result = OK);
+         pragma Assert (Result = OK and Last_Missing.Lost = 0);
+         if Omits (Last_Missing) then
+            Gaps := Gaps + 1;
+            pragma Assert (Last_Missing.Not_Retained = Noisy_Given_Up + Later_Noisy);
+         end if;
          Seen := Seen + 1;
       end loop;
-      --  The rest of the boot window, then the newest ring that replaced the
-      --  given-up records, now in the queue as live records.
-      pragma Assert (Seen = Log_Fanout.Boot_Records + Log_Fanout.Newest_Records);
+      --  The boot window, the newest still retained from before, then the
+      --  later ones from the queue as live records.
+      pragma Assert (Seen = Noisy_Kept and Gaps = 1);
       Log_Fanout.Close (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Result);
+      Tally := Log_Fanout.Tally (Kept, Noisy);
+      pragma Assert (Tally.Not_Retained = Noisy_Given_Up + Later_Noisy and Balanced (Tally));
+      --  A reader that leaves the flood's records out (Warning and above)
+      --  still sees the gap, alone.
+      Log_Fanout.Subscribe (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Result, L.Warning, Noisy);
+      Next (303, Viewer);
+      pragma Assert (Result = Gap and Last_Missing.Not_Retained = Noisy_Given_Up + Later_Noisy
+                     and Value = Empty_Value);
+      Next (303, Viewer); pragma Assert (Result = Empty);
+      Log_Fanout.Close (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Result);
+      --  Shed counts and the replay's tallies.
+      Log_Fanout.Count_Shed (Kept, Noisy, 7, 2);
+      Log_Fanout.Subscribe (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Result, L.Critical, Noisy,
+                            With_Tallies);
+      Next (303, Viewer); pragma Assert (Result = Gap);
+      declare
+         Got : Source_Tally;
+         Missing : Omission;
+      begin
+         Log_Fanout.Read_Next (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Value, Missing, Got, Result);
+         pragma Assert (Result = Summary and Got.Source = Noisy and Got.Over_Budget = 7
+                        and Got.Publisher_Full = 2 and Balanced (Got)
+                        and Got.Published = Flood_Records + Later_Noisy);
+         Log_Fanout.Read_Next (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Value, Missing, Got, Result);
+         pragma Assert (Result = Empty);
+         Log_Fanout.Close (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Result);
+         --  A source with no history: its replay still ends with a tally,
+         --  all zero, so a reader knows it is done.
+         Log_Fanout.Subscribe (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Result,
+                               Source => 9_999, Report => With_Tallies);
+         Log_Fanout.Read_Next (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Value, Missing, Got, Result);
+         pragma Assert (Result = Summary and Got = (Source => 9_999, others => 0));
+         Log_Fanout.Read_Next (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Value, Missing, Got, Result);
+         pragma Assert (Result = Empty);
+      end;
+      Log_Fanout.Close (Kept, From_Word (303), Observer_Authority_Tag, Viewer, Result);
+      --  Raised ceilings: the flood grows past the old one, giving up nothing.
+      Log_Fanout.Configure (Kept, (Per_Source => 2 * Limits.Per_Source, Boot => Limits.Boot,
+                                   Total => Limits.Total));
+      for I in 1 .. Limits.Per_Source loop Put (Noisy); end loop;
+      Tally := Log_Fanout.Tally (Kept, Noisy);
+      pragma Assert (Tally.Retained = Unsigned_64 (2 * Limits.Per_Source)
+                     and Tally.Not_Retained = Noisy_Given_Up + Later_Noisy and Balanced (Tally));
       --  Every slot taken: a new source takes an ended source's slot, never a
-      --  live quiet one's.
+      --  live quiet one's, and the history it gave way is reported.
       for S in Wide_Sources + 1 .. Log_Fanout.Source_Slots - 2 loop
          Put (Unsigned_64 (1_000 + S));
       end loop;
       Log_Fanout.Retire (Kept, 1_001);
-      Put (5_000);
+      declare
+         Gone : Source_Tally;
+         Missed : Unsigned_64;
+      begin
+         Log_Fanout.Take_Reclaimed (Kept, Gone, Found, Missed);
+         pragma Assert (not Found);
+         Put (5_000);
+         Log_Fanout.Take_Reclaimed (Kept, Gone, Found, Missed);
+         pragma Assert (Found and Missed = 0 and Gone.Source = 1_001
+                        and Gone.Retained = Wide_Per_Source and Balanced (Gone));
+      end;
       Log_Fanout.Subscribe (Kept, From_Word (304), Observer_Authority_Tag, Narrow, Result, Source => 1_001);
       Next (304, Narrow); pragma Assert (Result = Empty);
       Log_Fanout.Close (Kept, From_Word (304), Observer_Authority_Tag, Narrow, Result);
@@ -514,7 +616,95 @@ begin
       Log_Fanout.Close (Kept, From_Word (304), Observer_Authority_Tag, Narrow, Result);
       Log_Fanout.Subscribe (Kept, From_Word (304), Observer_Authority_Tag, Narrow, Result, Source => 5_000);
       Next (304, Narrow); pragma Assert (Result = OK and Value.Source = 5_000);
-      Put_Line ("PASS: per-source retention, ordered incremental replay, persistence order, replay loss, slot reuse");
+      Put_Line ("PASS: per-source retention to its ceiling, gaps where records were given up, tallies, " &
+                "ordered incremental replay, persistence order, raised ceilings, slot reuse");
+   end;
+   --  The total ceiling and a refusing heap (LOG-005): at the total, the
+   --  largest history gives up its oldest after its boot window, so a quiet
+   --  source still keeps everything; with no memory, a record is counted
+   --  as not retained (the next one's gap), or the source's own oldest goes;
+   --  a reader whose replay can no longer show a gap is told it lost it.
+   declare
+      package L renames CuBit.Log_Records;
+      Total_Storage : constant Broker_Access := new Log_Fanout.Broker;
+      Kept : Log_Fanout.Broker renames Total_Storage.all;
+      Limits : constant Log_Fanout.Ceilings := Log_Fanout.Limits (Kept);
+      Floods : constant Natural := Limits.Total / Limits.Per_Source;
+      Quiet : constant Unsigned_64 := 400;
+      Starved : constant Unsigned_64 := 401;
+      Squeezed : constant Unsigned_64 := 402;
+      Quiet_Records : constant := 10;
+      Starved_Records : constant := 3;
+      --  Squeezed: its boot window and one block's worth of ring, then as
+      --  many again while the heap refuses.
+      Squeezed_Ring : constant := 64;
+      Time : Unsigned_64 := 0;
+      Reader : Unsigned_64;
+      Tally : Source_Tally;
+      Given_Up : Unsigned_64 := 0;
+      Seen : Natural;
+      procedure Put (Source : Unsigned_64) is
+      begin
+         Time := Time + 1;
+         Log_Fanout.Publish
+           (Kept, (Source => Source, Node => This_Node, Publication_Tag => Publisher_Authority_Tag,
+                   Monotonic_Ms => Time, Data => L.Make ("t").Value));
+      end Put;
+      function Balanced (T : Source_Tally) return Boolean is (T.Published = T.Retained + T.Not_Retained);
+   begin
+      pragma Assert (Floods * Limits.Per_Source = Limits.Total);
+      for F in 1 .. Floods loop
+         for I in 1 .. Limits.Per_Source loop Put (Unsigned_64 (500 + F)); end loop;
+      end loop;
+      for I in 1 .. Quiet_Records loop Put (Quiet); end loop;
+      Tally := Log_Fanout.Tally (Kept, Quiet);
+      pragma Assert (Tally.Retained = Quiet_Records and Tally.Not_Retained = 0);
+      for F in 1 .. Floods loop
+         Tally := Log_Fanout.Tally (Kept, Unsigned_64 (500 + F));
+         pragma Assert (Balanced (Tally));
+         Given_Up := Given_Up + Tally.Not_Retained;
+      end loop;
+      pragma Assert (Given_Up = Quiet_Records);
+      --  No memory at all: the starved source's records are counted, and
+      --  the first it can keep carries their gap.
+      CuAlloc_Host.Refusing := True;
+      for I in 1 .. Starved_Records loop Put (Starved); end loop;
+      CuAlloc_Host.Refusing := False;
+      Tally := Log_Fanout.Tally (Kept, Starved);
+      pragma Assert (Tally.Published = Starved_Records and Tally.Retained = 0
+                     and Tally.Not_Retained = Starved_Records);
+      Put (Starved);
+      Log_Fanout.Subscribe (Kept, From_Word (310), Observer_Authority_Tag, Reader, Result, Source => Starved);
+      Read_Lost (Kept, From_Word (310), Observer_Authority_Tag, Reader, Value, Lost, Result);
+      pragma Assert (Result = OK and Last_Missing.Not_Retained = Starved_Records and Last_Missing.Lost = 0);
+      Read_Lost (Kept, From_Word (310), Observer_Authority_Tag, Reader, Value, Lost, Result);
+      pragma Assert (Result = Empty);
+      Log_Fanout.Close (Kept, From_Word (310), Observer_Authority_Tag, Reader, Result);
+      --  A full block the heap will not grow: the source's own oldest after
+      --  its boot window goes. A reader subscribed before is due them all;
+      --  once the last of them goes, the next retained record is past its
+      --  replay, so the whole gap is its loss, reported first.
+      for I in 1 .. Limits.Boot + Squeezed_Ring loop Put (Squeezed); end loop;
+      Log_Fanout.Subscribe (Kept, From_Word (311), Observer_Authority_Tag, Reader, Result, Source => Squeezed);
+      CuAlloc_Host.Refusing := True;
+      for I in 1 .. Squeezed_Ring loop Put (Squeezed); end loop;
+      CuAlloc_Host.Refusing := False;
+      Tally := Log_Fanout.Tally (Kept, Squeezed);
+      pragma Assert (Tally.Retained = Unsigned_64 (Limits.Boot + Squeezed_Ring)
+                     and Tally.Not_Retained = Squeezed_Ring and Balanced (Tally));
+      Read_Lost (Kept, From_Word (311), Observer_Authority_Tag, Reader, Value, Lost, Result);
+      pragma Assert (Result = Gap and Last_Missing.Lost = Squeezed_Ring);
+      Seen := 0;
+      loop
+         Read_Lost (Kept, From_Word (311), Observer_Authority_Tag, Reader, Value, Lost, Result);
+         exit when Result = Empty;
+         pragma Assert (Result = OK and not Omits (Last_Missing));
+         Seen := Seen + 1;
+      end loop;
+      pragma Assert (Seen = Limits.Boot + Squeezed_Ring);
+      Log_Fanout.Close (Kept, From_Word (311), Observer_Authority_Tag, Reader, Result);
+      Put_Line ("PASS: total ceiling gives up the largest history's oldest; a refusing heap is counted, " &
+                "and a gap a replay can no longer show is the reader's loss");
    end;
    --  LOG-003: who a source was, kept past its exit while its records are.
    declare

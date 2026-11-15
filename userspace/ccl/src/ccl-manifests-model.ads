@@ -184,7 +184,8 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    --  entry, a duplicate, a 17th entry, or one whose resource basis
    --  conflicts with an earlier entry's (PCI and Platform, or two Platform
    --  devices). PCI entries give the PCI basis, a Platform entry the
-   --  platform basis; ACPI and USB entries none.
+   --  platform basis; ACPI entries the ACPI basis unless a PCI or Platform
+   --  entry gives one; USB entries none.
    procedure Add_Drive
      (Decl : in out Declaration; Item : Devices.Device_Match;
       Accepted : out Boolean; Diagnostic : out Diagnostic_Code);

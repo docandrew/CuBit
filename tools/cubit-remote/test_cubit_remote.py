@@ -346,11 +346,34 @@ class Commands(unittest.TestCase):
         self.assertIn("(length (proc.list))", self.device.evaluations)
 
     def test_slices_shrink_until_they_fit(self):
-        elements = ['(LogEntry %d Severity.Information 7 "%s")' % (i, "m" * 300) for i in range(40)]
-        self.device.lists['(logs.recent "desktop")'] = ("List<LogEntry>", elements, False)
-        code, out = self.run_cli("logs", "desktop")
+        elements = ['(LogItem.Logged (LogEntry %d Severity.Information 7 "%s"))' % (i, "m" * 300)
+                    for i in range(40)]
+        self.device.lists['(logs.recent "desktop")'] = ("List<LogItem>", elements, False)
+        code, out = self.run_cli("logs", "desktop", "--literal")
         self.assertEqual(code, 0)
         self.assertEqual(cr.parse_list(out.strip())[1], elements)
+
+    def test_logs_show_gaps_and_tallies(self):
+        """LOG-005: a typed gap reads as "… N records not retained …", a
+        tally as its counts; records one per line."""
+        elements = [
+            '(LogItem.Logged (LogEntry 1500 Severity.Information 7 "acpi: phase \\"tables\\""))',
+            '(LogItem.Gap (LogGap 2250 7 300 GapReason.Not_Retained "... 300 records not retained ..."))',
+            '(LogItem.Gap (LogGap 2250 7 12 GapReason.Not_Shown "... 12 records not shown (this result holds no more) ..."))',
+            '(LogItem.Logged (LogEntry 2250 Severity.Error 7 "acpi: node failed"))',
+            '(LogItem.Tally (LogTally 7 1336 1024 312 5 2 "1336 published, 1024 retained, 312 not retained; '
+            'shed 5 over budget, 2 by the publisher"))']
+        self.device.lists['(logs.recent "acpi")'] = ("List<LogItem>", elements, False)
+        code, out = self.run_cli("logs", "acpi")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines(), [
+            '       1.500  Information  7         acpi: phase "tables"',
+            "\u2026 300 records of source 7 not retained (logstore's history for it was at its ceiling, "
+            "logs.retention) \u2026",
+            "\u2026 12 records of source 7 retained but not shown (one result holds no more) \u2026",
+            "       2.250  Error        7         acpi: node failed",
+            "source 7: 1336 published, 1024 retained, 312 not retained; shed before publication: "
+            "5 over logstore's budget, 2 by the publisher (ring full)"])
 
     def test_endpoint_before_result_too_large(self):
         """The endpoint's older words for the same refusal are understood."""
@@ -370,10 +393,34 @@ class Commands(unittest.TestCase):
         self.assertEqual(cr.parse_list(out.strip())[1], keys)
 
     def test_small_and_empty_lists_in_one_request(self):
-        self.device.lists['(logs.recent "quiet")'] = ("List<LogEntry>", [], False)
+        self.device.lists['(logs.recent "quiet")'] = ("List<LogItem>", [], False)
         code, out = self.run_cli("logs", "quiet")
-        self.assertEqual((code, out), (0, "List<LogEntry>: (list-of LogEntry)\n"))
+        self.assertEqual((code, out), (0, "(no records)\n"))
         self.assertEqual(self.device.evaluations, ['(logs.recent "quiet")'])
+
+    def test_logs_window(self):
+        """--from/--to reads one window of the history with logs.between;
+        plain logs stays logs.recent."""
+        window = '(logs.between (LogWindow "acpi" 1000 2000))'
+        elements = ['(LogItem.Logged (LogEntry 1500 Severity.Information 7 "acpi: step"))',
+                    '(LogItem.Tally (LogTally 7 1 1 0 0 0 "1 published, 1 retained, 0 not retained; '
+                    'shed 0 over budget, 0 by the publisher"))']
+        self.device.lists[window] = ("List<LogItem>", elements, False)
+        code, out = self.run_cli("logs", "acpi", "--from", "1000", "--to", "2000")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines()[0], "       1.500  Information  7         acpi: step")
+        self.assertEqual(self.device.evaluations, [window])
+        code, out = self.run_cli("logs", "acpi", "--from", "1000", "--to", "2000", "--literal")
+        self.assertEqual((code, cr.parse_list(out.strip())[1]), (0, elements))
+        self.device.lists['(logs.recent "acpi")'] = ("List<LogItem>", elements, False)
+        self.device.evaluations.clear()
+        self.assertEqual(self.run_cli("logs", "acpi")[0], 0)
+        self.assertEqual(self.device.evaluations, ['(logs.recent "acpi")'])
+
+    def test_logs_window_needs_both_ends(self):
+        with self.assertRaises(SystemExit):
+            self.run_cli("logs", "acpi", "--from", "1000")
+        self.assertEqual(self.device.evaluations, [])
 
     def test_put_get_round_trip(self):
         data = os.urandom(3 * cr.MAXIMUM_CHUNK_BYTES + 5)
@@ -522,6 +569,41 @@ class SystemCommands(AppCommands):
     def test_deadlines_required(self):
         with self.assertRaises(SystemExit):
             cr.parser().parse_args(["system", "activate", "acpi.svc", "p.svc"])
+        with self.assertRaises(SystemExit):
+            cr.parser().parse_args(["system", "replace", "acpi.svc", "acpi.svc", "--health-ms", "5000"])
+
+    def local_program(self, data):
+        path = os.path.join(self.home.name, "acpi-built.svc")
+        with open(path, "wb") as f:
+            f.write(data)
+        return path
+
+    def test_replace_uploads_and_activates(self):
+        local = self.local_program(b"rebuilt acpi")
+        code, out = self.run_cli("system", "replace", "acpi.svc", local, "--health-ms", "20000",
+                                 "--stop-grace-ms", "10000")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.device.files[(1, "system/acpi.svc")], b"rebuilt acpi")
+        self.assertIn("sha256 " + hashlib.sha256(b"rebuilt acpi").hexdigest(), out)
+        self.assertEqual(self.device.activations[-1], ("acpi.svc", "system/acpi.svc", 10000, 20000))
+        self.assertIn("generation 1 active", out)
+
+    def test_replace_rolled_back_says_why(self):
+        self.device.generation_result = (1, 2)
+        code, _, err = self.err("system", "replace", "acpi.svc", self.local_program(b"broken"),
+                                "--health-ms", "20000", "--stop-grace-ms", "10000")
+        self.assertEqual(code, 2)
+        self.assertIn("rolled back", err)
+
+    def test_replace_checks_before_uploading(self):
+        local = self.local_program(b"x")
+        for argv in (("acpi.svc", local, "--health-ms", "99", "--stop-grace-ms", "0"),
+                     ("a/b", local, "--health-ms", "5000", "--stop-grace-ms", "0"),
+                     ("acpi.svc", local + ".missing", "--health-ms", "5000", "--stop-grace-ms", "0")):
+            with self.assertRaises(SystemExit):
+                self.run_cli("system", "replace", *argv)
+        self.assertEqual(self.device.files, {})
+        self.assertEqual(self.device.activations, [])
 
 
 class Screenshots(Commands):

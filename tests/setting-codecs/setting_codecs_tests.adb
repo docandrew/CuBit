@@ -25,6 +25,8 @@ with CCL.Setting_Codecs.GPU_Waitboost;
 with CCL.Setting_Codecs.Key_Repeat;
 with CCL.Setting_Codecs.Launch_Entry;
 with CCL.Setting_Codecs.Net_Interface;
+with CCL.Setting_Codecs.Log_Retention;
+with CCL.Setting_Codecs.Appearance;
 with CCL.Interfaces.Desktop_Launch.Icons;
 
 procedure Setting_Codecs_Tests is
@@ -105,6 +107,18 @@ procedure Setting_Codecs_Tests is
                Item : CCL.Setting_Codecs.Net_Interface.Net_Interface_Value;
             begin
                CCL.Setting_Codecs.Net_Interface.Decode (Source, Item, OK);
+            end;
+         when Log_Retention_Setting =>
+            declare
+               Item : CCL.Setting_Codecs.Log_Retention.Log_Retention_Value;
+            begin
+               CCL.Setting_Codecs.Log_Retention.Decode (Source, Item, OK);
+            end;
+         when Appearance_Setting =>
+            declare
+               Item : CCL.Setting_Codecs.Appearance.Appearance_Value;
+            begin
+               CCL.Setting_Codecs.Appearance.Decode (Source, Item, OK);
             end;
          when Untyped =>
             null;
@@ -293,6 +307,23 @@ begin
                  "gateway => (Gateway.Via ""::ffff:10.0.2.2"") metric => 65535))");
    Differential (Net_Interface_Setting,
                  "(Net_Interface.Static (Static_Interface address => ""fe80::1"" prefix => 0))");
+   --  LOG-005: logstore's ceilings, every field written (no defaults).
+   Differential (Log_Retention_Setting, "(Log_Retention per_source => 4096 boot => 256 total => 16384)");
+   Differential (Log_Retention_Setting, "(Log_Retention per_source => 1024 boot => 64 total => 8192)");
+   Check (not Referenced (Log_Retention_Setting, "(Log_Retention per_source => 4096)"),
+          "a Log_Retention needs all three ceilings");
+   Check (not Referenced (Log_Retention_Setting, "(Log_Retention per_source => 10 boot => 64 total => 8192)"),
+          "a per-source ceiling below its range is refused");
+   declare
+      use CCL.Setting_Codecs.Log_Retention;
+      Item : Log_Retention_Value;
+      OK : Boolean;
+   begin
+      CCL.Setting_Codecs.Log_Retention.Decode
+        (Canonical (Log_Retention_Setting, "(Log_Retention per_source => 4096 boot => 256 total => 16384)"), Item, OK);
+      Check (OK and then Item.per_source = 4096 and then Item.boot = 256 and then Item.total = 16384,
+             "logs.retention decodes its three ceilings");
+   end;
    if Failures = 0 then
       Put_Line ("setting-codecs: PASS" & Natural'Image (Checks) & " checks");
    else

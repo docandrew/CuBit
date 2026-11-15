@@ -101,7 +101,6 @@ begin
                   if Item.Replacement = Graceful then Put (" replace=graceful"); end if;
                   if Item.Approve_Firmware_Snapshot then Put (" firmware-snapshot=approved"); end if;
                   if Item.Approve_ACPI_Hardware then Put (" acpi-hardware=approved"); end if;
-                  if Item.Approve_ACPI_Registers then Put (" acpi-registers=approved"); end if;
                   if Item.Approve_Display_Capture then Put (" display-capture=approved"); end if;
                   if Item.Approve_ACPI_PCI_Config then Put (" acpi-pci-config=approved"); end if;
                   if Item.Approve_ACPI_Firmware_Data then
@@ -123,6 +122,13 @@ begin
                   end if;
                   if Item.Has_Ready_Deadline then
                      Put (" ready-ms=" & Image (Long_Long_Integer (Item.Ready_Deadline_Ms)));
+                  end if;
+                  if Item.Has_Stop_Grace then
+                     Put (" stop-grace-ms=" & Image (Long_Long_Integer (Item.Stop_Grace_Ms)));
+                  end if;
+                  if CCL.Configurations."/=" (Item.Stage, CCL.Configurations.Services_Stage) then
+                     Put (" stop-stage=" & (if CCL.Configurations."=" (Item.Stage, CCL.Configurations.Apps_Stage)
+                                            then "apps" else "power-tail"));
                   end if;
                   if Item.Arguments.Length > 0 then
                      Put (" arguments=" & Item.Arguments.Data (1 .. Item.Arguments.Length));

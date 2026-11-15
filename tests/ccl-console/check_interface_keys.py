@@ -26,7 +26,7 @@ CHECKS = [
       'GRID_KEY': 'Grid', 'IMAGES_KEY': 'List-Image', 'SCALED_KEY': 'Scaled'}),
     (SRC / 'ccl-interfaces-display.ads', {'DIGEST': None, 'AREA_KEY': 'Capture_Area'}),
     (SRC / 'ccl-interfaces-logs.ads',
-     {'DIGEST': None, 'SCHEMA_KEY': 'List-LogEntry', 'SEVERITY_KEY': 'Severity'}),
+     {'DIGEST': None, 'SCHEMA_KEY': 'List-LogItem', 'SEVERITY_KEY': 'Severity', 'WINDOW_KEY': 'LogWindow'}),
     (SRC / 'ccl-interfaces-lexicon.ads',
      {'DIGEST': None, 'DEFINITION_KEY': 'Definition', 'THESAURUS_KEY': 'Thesaurus_Result',
       'SYNONYMS_KEY': 'Synonyms', 'SPELLINGS_KEY': 'Near_Spellings',
@@ -46,6 +46,7 @@ CHECKS = [
       'PASSAGE_RESULT_KEY': 'Passage_Result', 'SEARCH_KEY': 'Search_Result', 'REFERENCE_KEY': 'Reference',
       'PASSAGE_KEY': 'Passage', 'VERSE_QUERY_KEY': 'Verse_Query', 'PASSAGE_QUERY_KEY': 'Passage_Query',
       'SEARCH_QUERY_KEY': 'Search_Query'}),
+    (SRC / 'ccl-interfaces-machine.ads', {'DIGEST': None, 'ANSWER_KEY': 'Power_Answer'}),
     (SRC / 'ccl-interfaces-agent.ads',
      {'DIGEST': None, 'REQUEST_KEY': 'Agent_Request', 'SESSION_KEY': 'Agent_Session',
       'REPLY_KEY': 'Agent_Reply'})]

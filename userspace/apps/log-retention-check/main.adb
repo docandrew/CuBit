@@ -6,14 +6,18 @@ with CuBit.Log_Records;
 with CuBit.Logging;
 with Startup;
 
---  Native regression for LOG-002: one chatty source must not erase a quiet
---  source's boot history. This program is the quiet source: it publishes a
---  few boot records (as acpi-backend does), log-flood then writes thousands,
---  and afterwards
+--  Native regression for LOG-002 and LOG-005: one chatty source must not
+--  erase a quiet source's boot history, and what logstore retains is
+--  accounted for exactly. This program is the quiet source: it publishes a
+--  few boot records (as acpi does), log-flood then writes thousands (fewer
+--  than logs.retention's per-source ceiling), and afterwards
 --  - a subscription filtered to this process (what (logs.recent "name")
 --    does, CCL_Log_IO.Recent) still replays every boot record, with no gap;
---  - a full-history subscription replays the retained window in publish
---    order with no gap, more records than one subscriber queue holds.
+--  - a full-history subscription with tallies replays every retained
+--    record in publish order, more than one subscriber queue holds, each
+--    gap typed, and ends with each source's tally: the flood's records
+--    replayed are exactly its tally's retained ones, and its tally
+--    balances (published = retained + not retained).
 procedure Main is
    package P renames CuBit.Log_Protocol;
    package L renames CuBit.Log_Records;
@@ -29,10 +33,10 @@ procedure Main is
    Stage_Prefix : constant String := "log-retention: stage ";
 
    Quiet_Records : constant := 10;
-   --  The flood's records a full replay must at least hold: its boot
-   --  window and newest records in logstore (Log_Fanout.Boot_Records and
-   --  Newest_Records), the newest being its done record.
-   Least_Flood_Retained : constant := 64;
+   --  log-flood's records (its Flood_Records and its done record): under
+   --  logs.retention's per-source ceiling, so all of them are retained
+   --  unless its ring shed some, which its tally then counts.
+   Flood_Published : constant := 4_001;
    Poll_Ms : constant := 20;
    Wait_Limit_Ms : constant Unsigned_64 := 60_000;
    Flush_Wait_Ms : constant := 2_000;
@@ -138,45 +142,83 @@ begin
       debugPrint ("TEST: PASS log-retention-quiet-source" & ASCII.LF);
    end;
 
-   --  Full history: the retained window, in publish order, with no gap.
+   --  Full history: every retained record, in publish order, then each
+   --  source's tally (LOG-005).
    declare
-      Total, Quiet_Seen, Flood_Seen, Empties : Natural := 0;
+      Total, Quiet_Seen, Flood_Seen, Empties, Gaps : Natural := 0;
       Previous_Ms : Unsigned_64 := 0;
       Saw_Flood_Done : Boolean := False;
+      Missing : P.Omission;
+      Tally : P.Source_Tally;
+      Flood_Tally, Quiet_Tally : P.Source_Tally;
+      Tallied : Boolean := False;
    begin
-      CuBit.Logging.Subscribe (Reader, Result);
+      CuBit.Logging.Subscribe (Reader, Result, Report => P.With_Tallies);
       Check (Result = P.OK, "subscribe to every source");
       while Empties < Settle_Polls loop
-         CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
+         CuBit.Logging.Read_Next (Reader, Value, Missing, Tally, Result);
          if Result = P.Empty then
             Empties := Empties + 1;
             Ignore := syscall (SYSCALL_SLEEP, Poll_Ms);
-         else
-            Check (Result /= P.Gap, "full replay reports no loss (gap of" &
-                   Unsigned_64'Image (Lost) & ")");
-            Check (Result = P.OK, "full replay read");
+         elsif Result = P.Summary then
             Empties := 0;
-            Total := Total + 1;
-            Check (Value.Monotonic_Ms >= Previous_Ms, "full replay in publish order");
-            Previous_Ms := Value.Monotonic_Ms;
-            declare
-               Text : constant String := L.Text (Value.Data);
-            begin
-               if Value.Source = Own_Pid and then Starts (Text, Stage_Prefix) then
-                  Quiet_Seen := Quiet_Seen + 1;
-               elsif Value.Source = Flood_Source then
-                  Flood_Seen := Flood_Seen + 1;
-                  Saw_Flood_Done := Text = Flood_Done_Text;
-                  Check (Saw_Flood_Done or else Starts (Text, Flood_Prefix), "flood record text");
+            Tallied := True;
+            Check (Tally.Published = Tally.Retained + Tally.Not_Retained,
+                   "a tally balances: published" & Unsigned_64'Image (Tally.Published) & ", retained" &
+                   Unsigned_64'Image (Tally.Retained) & ", not retained" & Unsigned_64'Image (Tally.Not_Retained));
+            if Tally.Source = Flood_Source then
+               Flood_Tally := Tally;
+            elsif Tally.Source = Own_Pid then
+               Quiet_Tally := Tally;
+            end if;
+         else
+            Check (Result in P.OK | P.Gap, "full replay read");
+            Check (not Tallied, "records before the tallies");
+            Check (Missing.Lost = 0, "full replay loses nothing (lost" & Unsigned_64'Image (Missing.Lost) & ")");
+            if Result = P.Gap or else P.Omits (Missing) then
+               Gaps := Gaps + 1;
+            end if;
+            Empties := 0;
+            if Result = P.OK then
+               Total := Total + 1;
+               --  Publish order is each source's own time order; across
+               --  sources it is not (the kernel's records carry the
+               --  kernel's times, taken later than logstore stamps others).
+               if Value.Source = Flood_Source then
+                  Check (Value.Monotonic_Ms >= Previous_Ms, "full replay in publish order");
+                  Previous_Ms := Value.Monotonic_Ms;
                end if;
-            end;
+               declare
+                  Text : constant String := L.Text (Value.Data);
+               begin
+                  if Value.Source = Own_Pid and then Starts (Text, Stage_Prefix) then
+                     Quiet_Seen := Quiet_Seen + 1;
+                  elsif Value.Source = Flood_Source then
+                     Flood_Seen := Flood_Seen + 1;
+                     Saw_Flood_Done := Text = Flood_Done_Text;
+                     Check (Saw_Flood_Done or else Starts (Text, Flood_Prefix), "flood record text");
+                  end if;
+               end;
+            end if;
          end if;
       end loop;
       CuBit.Logging.Close (Reader, Result);
       debugPrint ("log-retention: full replay" & Natural'Image (Total) & " records, quiet" &
-                  Natural'Image (Quiet_Seen) & ", flood" & Natural'Image (Flood_Seen) & ASCII.LF);
-      Check (Quiet_Seen = Quiet_Records, "full replay holds the quiet boot records");
-      Check (Flood_Seen >= Least_Flood_Retained, "full replay holds the flood's retained window");
+                  Natural'Image (Quiet_Seen) & ", flood" & Natural'Image (Flood_Seen) & ";" &
+                  Natural'Image (Gaps) & " gaps; flood tally: published" &
+                  Unsigned_64'Image (Flood_Tally.Published) & ", retained" &
+                  Unsigned_64'Image (Flood_Tally.Retained) & ", not retained" &
+                  Unsigned_64'Image (Flood_Tally.Not_Retained) & ", shed" &
+                  Unsigned_64'Image (Flood_Tally.Over_Budget) & " over budget," &
+                  Unsigned_64'Image (Flood_Tally.Publisher_Full) & " by its ring" & ASCII.LF);
+      Check (Tallied, "the replay ends with the tallies");
+      Check (Quiet_Seen = Quiet_Records and then Quiet_Tally.Not_Retained = 0,
+             "full replay holds the quiet boot records");
+      Check (Unsigned_64 (Flood_Seen) = Flood_Tally.Retained, "every flood record retained is replayed");
+      Check (Flood_Tally.Published + Flood_Tally.Over_Budget + Flood_Tally.Publisher_Full = Flood_Published,
+             "every flood record is published or counted as shed");
+      Check (Flood_Tally.Not_Retained = 0, "under its ceiling, the flood gives up none");
+      Check (Gaps = 0, "no gap under the ceilings");
       Check (Saw_Flood_Done, "full replay holds the flood's last record");
       debugPrint ("TEST: PASS log-retention-full-history" & ASCII.LF);
    end;

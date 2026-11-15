@@ -20,6 +20,7 @@ with CCL.Interfaces.Programs;
 with CCL.Interfaces.Console;
 with CCL.Interfaces.Llm;
 with CCL.Interfaces.Secrets;
+with CCL.Interfaces.Machine;
 with CCL.Interfaces.Agent;
 with CCL_Execution;
 
@@ -49,6 +50,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Programs.DIRECTORY_INTERFACES +
      CCL.Interfaces.Console.PUBLISHED_INTERFACES +
      CCL.Interfaces.Llm.PUBLISHED_INTERFACES + CCL.Interfaces.Secrets.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Machine.PUBLISHED_INTERFACES +
      CCL.Interfaces.Agent.PUBLISHED_INTERFACES;
    MOST_SCHEMAS : constant :=
      CCL.Interfaces.Config.PUBLISHED_SCHEMAS + CCL_Execution.PUBLISHED_SCHEMAS +
@@ -63,6 +65,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Programs.DIRECTORY_SCHEMAS +
      CCL.Interfaces.Console.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Llm.PUBLISHED_SCHEMAS + CCL.Interfaces.Secrets.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Machine.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Agent.PUBLISHED_SCHEMAS;
    MOST_TYPES : constant :=
      CCL.Interfaces.Config.PUBLISHED_TYPES + CCL_Execution.PUBLISHED_TYPES +
@@ -77,6 +80,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Programs.DIRECTORY_TYPES +
      CCL.Interfaces.Console.PUBLISHED_TYPES +
      CCL.Interfaces.Llm.PUBLISHED_TYPES + CCL.Interfaces.Secrets.PUBLISHED_TYPES +
+     CCL.Interfaces.Machine.PUBLISHED_TYPES +
      CCL.Interfaces.Agent.PUBLISHED_TYPES;
    --  Room a session keeps in its copy of the registry for its own type
    --  declarations and the Task, Stream and List types its calls need

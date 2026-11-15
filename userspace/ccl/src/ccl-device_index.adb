@@ -140,6 +140,35 @@ package body CCL.Device_Index with SPARK_Mode => On is
       end loop;
    end Bind;
 
+   procedure Bind_ACPI
+     (I : Index; ID : DS.ACPI_Text; Length : DS.ACPI_Length; Result : out Binding) is
+   begin
+      Result := (others => <>);
+      for D in 1 .. I.Count loop
+         pragma Loop_Invariant
+           (case Result.Kind is
+              when Unbound => Result.Driver = 0,
+              when Bound =>
+                 Result.Driver in 1 .. D - 1
+                 and then Result.At_Entry in 1 .. I.Drivers (Result.Driver).Matches.Count
+                 and then DS.Names_ACPI (I.Drivers (Result.Driver).Matches.Entries
+                                           (Result.At_Entry), ID, Length),
+              when Ambiguous =>
+                 Result.Driver in 1 .. D - 1 and then Result.Rival in 1 .. D - 1
+                 and then Result.Driver /= Result.Rival);
+         for E in 1 .. I.Drivers (D).Matches.Count loop
+            if DS.Names_ACPI (I.Drivers (D).Matches.Entries (E), ID, Length) then
+               if Result.Kind = Unbound then
+                  Result := (Kind => Bound, Driver => D, At_Entry => E, Rival => 0);
+               elsif Result.Kind = Bound then
+                  Result := (Kind => Ambiguous, Driver => Result.Driver, At_Entry => 0, Rival => D);
+               end if;
+               exit;
+            end if;
+         end loop;
+      end loop;
+   end Bind_ACPI;
+
    procedure First_Ambiguity
      (I : Index; Found : out Boolean; Left, Right : out Driver_Count;
       Left_Entry, Right_Entry : out DS.Entry_Count)

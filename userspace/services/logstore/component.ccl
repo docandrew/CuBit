@@ -1,2 +1,6 @@
 (Component name => "logstore" kind => (Kind.Service Launcher.Process_Manager)
-  source => (Source.Ada (Ada_Source)))
+  source => (Source.Ada (Ada_Source
+    # The typed logs.retention setting is read through CCL's typed settings
+    # (Logstore_Retention_Settings).
+    sources => ["userspace/ccl/src"]
+    language => Ada_Language.Ada_2022)))

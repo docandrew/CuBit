@@ -448,12 +448,17 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          elsif Kind in "Device_Memory" | "IO_Ports" | "Interrupt" | "DMA" then
                --  Resources are relative to the matched device.
                if Decl.Basis.Kind = No_Basis then Fail (Missing_Device_Match); return; end if;
+               --  An ACPI device's resources are its admitted memory spans
+               --  and its one parent line (docs/device-matching.md "ACPI
+               --  launch").
+               if Decl.Basis.Kind = ACPI_Basis and then Kind not in "Device_Memory" | "Interrupt" then
+                  Fail (Invalid_Device_Resource); return;
+               end if;
                Binding (Named (Body_Cursor, "binding"), Item);
                if Kind = "Device_Memory" then
                      Item.Kind := Device_Memory_Request;
                      Number_Value := Number (Named (Body_Cursor, "index"));
-                     if not In_Range (Number_Value, 0, (if Decl.Basis.Kind = Platform_Basis
-                                                        then MAX_PLATFORM_RESOURCES else PCI_BAR_COUNT) - 1)
+                     if not In_Range (Number_Value, 0, Integer_64 (CCL.Resource_Sections.Index_Limit (Decl.Basis.Kind)) - 1)
                      then Fail (Invalid_Device_Resource); return; end if;
                      Item.Index := Unsigned_32 (Number_Value);
                      Number_Value := Number (Named (Body_Cursor, "max_bytes"));
@@ -466,8 +471,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                elsif Kind = "IO_Ports" then
                      Item.Kind := IO_Port_Request;
                      Number_Value := Number (Named (Body_Cursor, "index"));
-                     if not In_Range (Number_Value, 0, (if Decl.Basis.Kind = Platform_Basis
-                                                        then MAX_PLATFORM_RESOURCES else PCI_BAR_COUNT) - 1)
+                     if not In_Range (Number_Value, 0, Integer_64 (CCL.Resource_Sections.Index_Limit (Decl.Basis.Kind)) - 1)
                      then Fail (Invalid_Device_Resource); return; end if;
                      Item.Index := Unsigned_32 (Number_Value);
                      Number_Value := Number (Named (Body_Cursor, "count"));
@@ -478,14 +482,27 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                      Item.Kind := Interrupt_Request;
                      Item.Rights := Read_Only;
                      if Alt (Named (Body_Cursor, "mode")) = "Platform_Line" then
-                           if Decl.Basis.Kind /= Platform_Basis then Fail (Invalid_Device_Resource); return; end if;
+                           if Decl.Basis.Kind not in Platform_Basis | ACPI_Basis then
+                              Fail (Invalid_Device_Resource); return;
+                           end if;
                            Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Platform_Line));
                            Number_Value := Number (Named (Body_Cursor, "index"));
-                           if not In_Range (Number_Value, 0, MAX_PLATFORM_RESOURCES - 1) then
+                           --  An ACPI device's platform line is its parent line:
+                           --  the first interrupt of its _CRS, declared once.
+                           if Decl.Basis.Kind = ACPI_Basis then
+                              if Number_Value /= CCL.Resource_Sections.ACPI_PARENT_LINE_INDEX
+                                or else (for some Existing of Decl.Requests (1 .. Decl.Count) =>
+                                           Existing.Kind = Interrupt_Request)
+                              then
+                                 Fail (Invalid_Device_Resource); return;
+                              end if;
+                           elsif not In_Range (Number_Value, 0, MAX_PLATFORM_RESOURCES - 1) then
                               Fail (Invalid_Device_Resource); return;
                            end if;
                            Item.Index := Unsigned_32 (Number_Value);
                            Item.Amount := 1;
+                     elsif Decl.Basis.Kind = ACPI_Basis then
+                           Fail (Invalid_Device_Resource); return;
                      elsif Alt (Named (Body_Cursor, "mode")) = "Line" then
                            if Decl.Basis.Kind = Platform_Basis then Fail (Invalid_Device_Resource); return; end if;
                            Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Line));

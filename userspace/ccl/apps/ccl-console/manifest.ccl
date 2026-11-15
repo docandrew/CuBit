@@ -33,10 +33,13 @@
     (service "llm" "llm")
     # (secrets.set ...): stores a named secret through non-echoing entry;
     # no operation reads a value back.
-    (service "secrets" "secrets")]
-  # Without these the console runs; lexicon.*, system.*, wifi.*, llm.* and
-  # secrets.* say why not.
-  optional => ["lexicon" "installer" "network-stack" "wifi" "llm" "secrets"]
+    (service "secrets" "secrets")
+    # (power-off), (halt): power.svc, as the console's own requester badge
+    # (PWR-003; startup plan only).
+    (service "power-console" "power")]
+  # Without these the console runs; lexicon.*, system.*, wifi.*, llm.*,
+  # secrets.* and machine.* say why not (machine.* is then absent).
+  optional => ["lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "power"]
   scopes => [
     (config-all [File_Right.Read])
     # :files, :save and :load; and the files handed to programs it starts.

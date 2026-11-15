@@ -1,4 +1,5 @@
---  The hosted preview has no logstore: logs.recent is not offered.
+--  The hosted preview has no logstore: logs.recent and logs.between are not
+--  offered.
 package body CCL_Log_IO is
    function Available return Boolean is (False);
    procedure Announce (Text : String) is null;
@@ -15,6 +16,16 @@ package body CCL_Log_IO is
       Why := CuBit.Failures.Failed
         (CuBit.Failures.Unavailable, "the hosted preview has no log store");
    end Recent;
+
+   procedure Between
+     (Service : String; Within : CCL.Interfaces.Logs.Log_Window; Contract : CCL.Objects.Binding;
+      Image : out CCL.Objects.Image; Success : out Boolean;
+      Why : out CuBit.Failures.Failure)
+   is
+      pragma Unreferenced (Within);
+   begin
+      Recent (Service, Contract, Image, Success, Why);
+   end Between;
 
    procedure Minimum
      (Level : out CCL.Interfaces.Logs.Severity; Success : out Boolean; Why : out CuBit.Failures.Failure) is

@@ -15,9 +15,11 @@ DECODER = ROOT / 'tests/ccl-manifests/build/resources/resource_decode'
 SOURCE = (ROOT / 'userspace/ccl/apps/ccl-vm/manifest.ccl').read_text()
 SCHEMA = ROOT / 'userspace/ccl/interfaces/executable-manifest.ccl'
 # .cubit.resources version 2: the header names the resource basis
-# (CCL.Resource_Sections.Basis_Kind: 0 none, 1 PCI function, 3 platform).
+# (CCL.Resource_Sections.Basis_Kind: 0 none, 1 PCI function, 3 platform,
+# 4 the spans devmgr admitted for an ACPI device).
 RESOURCES_VERSION = 2
-BASIS_PCI, BASIS_PLATFORM = 1, 3
+BASIS_PCI, BASIS_PLATFORM, BASIS_ACPI = 1, 3, 4
+MAX_ACPI_SPANS = 16
 # .cubit.devices (CCL.Device_Sections): "CBDV", version 1, 16-byte entries.
 DEVICES_MAGIC, DEVICES_VERSION = 0x56444243, 1
 MATCH_PCI_IDS, MATCH_PCI_CLASS, MATCH_ACPI_ID, MATCH_USB_CLASS, MATCH_PLATFORM = 1, 2, 3, 4, 5
@@ -832,10 +834,76 @@ class Manifests(unittest.TestCase):
         many = ' '.join('(Device_Match.PCI_IDs (PCI_IDs 0x8086 %d %d))' % (n, n) for n in range(17))
         result = self.compile(base.replace(pci_ids, many), self.DRIVER)
         self.assertEqual(result.returncode, 1)
-        # Resources need a device devmgr gives resources for.
-        acpi_only = base.replace(pci_ids, '').replace(
-            '(Device_Match.PCI_Class (PCI_Class 0x0C 0x03 0x30))', '')
-        self.assertEqual(self.compile(acpi_only, self.DRIVER).returncode, 1)
+        # Resources need a device devmgr gives resources for: USB alone
+        # gives none.
+        usb_only = base.replace(pci_ids, '').replace(
+            '(Device_Match.PCI_Class (PCI_Class 0x0C 0x03 0x30))', '').replace(
+            '(Device_Match.ACPI_ID "PNP0C50")', '')
+        self.assertEqual(self.compile(usb_only, self.DRIVER).returncode, 1)
+
+    def test_acpi_spans(self):
+        # An ACPI-matched driver's device-memory index is the Nth span devmgr
+        # admitted for the device, in _CRS order (docs/device-matching.md
+        # "ACPI launch"): the ACPI basis, device memory and one parent line.
+        base = """(Executable_Manifest identity => "gpio" version => "1"
+          drives => [(Device_Match.ACPI_ID "INTC1057") (Device_Match.USB_Class (USB_Class 3 1 2))]
+          requests => [(device-memory "community0" 0 65536 Access.Read_Write)
+                       (device-memory "community5" 3 4194304 Access.Read)
+                       (service "device-manager" "ready")])"""
+        result = self.compile(base, self.DRIVER)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        self.assertEqual(sections['.cubit.devices'], devices_section(
+            (MATCH_ACPI_ID, b'INTC1057'), (MATCH_USB_CLASS, bytes([3, 1, 2]))))
+        resources = sections['.cubit.resources']
+        self.assertEqual(resources[:24], struct.pack('<IHH', 0x53524243, RESOURCES_VERSION, 2) +
+                         struct.pack('<BBHHHQ', BASIS_ACPI, 0, 0, 0, 0, 0))
+        self.assertEqual(resources[24:], struct.pack('<BBHIQQ', 16, 3, 0, 0, 65536, 0) +
+                         struct.pack('<BBHIQQ', 16, 1, 0, 3, 4194304, 0))
+        self.assertEqual(self.decode(resources).stdout.splitlines(), [
+            'basis ACPI_BASIS 0 0 0',
+            'DEVICE_MEMORY READ_WRITE index=0 amount=65536 extra=0',
+            'DEVICE_MEMORY READ_ONLY index=3 amount=4194304 extra=0'])
+        last = base.replace('"community5" 3', '"community5" %d' % (MAX_ACPI_SPANS - 1))
+        self.assertEqual(self.compile(last, self.DRIVER).returncode, 0)
+        extra = '(service "device-manager" "ready")'
+        for old, bad in [
+                ('"community5" 3', '"community5" %d' % MAX_ACPI_SPANS),
+                ('"community5" 3', '"community5" -1'),
+                (extra, extra + ' (dma "buffer" 4096)'),
+                (extra, extra + ' (interrupt "irq" Interrupt_Mode.MSI 1)'),
+                (extra, extra + ' (interrupt "irq" Interrupt_Mode.Line 1)'),
+                (extra, extra + ' (platform-interrupt "irq" 1)'),
+                (extra, extra + ' (platform-interrupt "irq" 0) (platform-interrupt "again" 0)'),
+                (extra, extra + ' (io-ports "ports" 0 8)')]:
+            with self.subTest(bad=bad):
+                self.reject(base.replace(old, bad), self.DRIVER, diagnostic='INVALID_DEVICE_RESOURCE')
+        # The parent line: one platform line at resource 0.
+        parent = base.replace(extra, extra + ' (platform-interrupt "parent" 0)')
+        result = self.compile(parent, self.DRIVER)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.decode(self.sections(result.stdout)['.cubit.resources']).stdout.splitlines(), [
+            'basis ACPI_BASIS 0 0 0',
+            'DEVICE_MEMORY READ_WRITE index=0 amount=65536 extra=0',
+            'DEVICE_MEMORY READ_ONLY index=3 amount=4194304 extra=0',
+            'INTERRUPT READ_ONLY index=0 amount=1 extra=4'])
+        # A PCI or Platform entry decides what indexes mean, in either order.
+        pci = '(Device_Match.PCI_IDs (PCI_IDs 0x8086 0x54E8 0x54E9))'
+        for drives in ['(Device_Match.ACPI_ID "INTC1057") ' + pci, pci + ' (Device_Match.ACPI_ID "INTC1057")']:
+            with self.subTest(drives=drives):
+                mixed = base.replace('(Device_Match.ACPI_ID "INTC1057")', drives).replace(
+                    '"community5" 3', '"community5" 5')
+                result = self.compile(mixed, self.DRIVER)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.sections(result.stdout)['.cubit.resources'][8:24],
+                                 struct.pack('<BBHHHQ', BASIS_PCI, 0, 0, 0, 0, 0))
+        # Only scheduling: no basis, as before the ACPI basis existed.
+        timed = base.replace('(device-memory "community0" 0 65536 Access.Read_Write)', '').replace(
+            '(device-memory "community5" 3 4194304 Access.Read)',
+            '(scheduling "realtime" 1500 5000)')
+        result = self.compile(timed, self.DRIVER)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.sections(result.stdout)['.cubit.resources'][8:24], bytes(16))
 
     def test_platform_device_and_ports(self):
         template = '''(executable-manifest v1 (identity "ps2") (version "1")
@@ -1003,7 +1071,9 @@ class Manifests(unittest.TestCase):
         memory = lambda **f: struct.pack('<BBHIQQ', f.get('kind', 16), f.get('rights', 3),
                                          f.get('reserved', 0), f.get('index', 0),
                                          f.get('amount', 4096), f.get('extra', 0))
+        acpi = struct.pack('<BBHHHQ', BASIS_ACPI, 0, 0, 0, 0, 0)
         self.assertEqual(self.decode(header + pci + memory()).returncode, 0)
+        self.assertEqual(self.decode(header + acpi + memory(index=MAX_ACPI_SPANS - 1)).returncode, 0)
         for bad, status in [
                 (header + pci + memory(reserved=4), 'INVALID_ENTRY'),
                 (header + pci + memory(reserved=0x8000), 'INVALID_ENTRY'),
@@ -1018,6 +1088,14 @@ class Manifests(unittest.TestCase):
                 (header + struct.pack('<BBHHHQ', BASIS_PCI, 0, 1, 8, 2, 0) + memory(), 'INVALID_BASIS'),
                 (header + struct.pack('<BBHHHQ', 2, 0, 0, 0, 0, 0) + memory(), 'INVALID_BASIS'),
                 (header + struct.pack('<BBHHHQ', BASIS_PLATFORM, 0, 9, 0, 0, 0) + memory(), 'INVALID_BASIS'),
+                (header + struct.pack('<BBHHHQ', BASIS_ACPI, 0, 1, 0, 0, 0) + memory(), 'INVALID_BASIS'),
+                (header + struct.pack('<BBHHHQ', 5, 0, 0, 0, 0, 0) + memory(), 'INVALID_BASIS'),
+                (header + acpi + memory(index=MAX_ACPI_SPANS), 'INVALID_ENTRY'),
+                (header + acpi + memory(kind=17, amount=8), 'INVALID_ENTRY'),
+                (header + acpi + memory(kind=19), 'INVALID_ENTRY'),
+                (header + acpi + struct.pack('<BBHIQQ', 18, 1, 0, 0, 1, 2), 'INVALID_ENTRY'),
+                (header + acpi + struct.pack('<BBHIQQ', 18, 1, 0, 0, 1, 3), 'INVALID_ENTRY'),
+                (header + acpi + struct.pack('<BBHIQQ', 20, 1, 0, 0, 1500, 5000), 'BASIS_WITHOUT_DEVICE'),
                 (header + pci + struct.pack('<BBHIQQ', 20, 1, 0, 0, 1500, 5000),
                  'BASIS_WITHOUT_DEVICE'),
                 (struct.pack('<IHH', 0x53524243, 1, 1) + pci + memory(), 'INVALID_HEADER'),
@@ -1172,8 +1250,8 @@ class Manifests(unittest.TestCase):
         .cubit.caps request (kind 13) and startup entry (kind 14) whose
         Startup function returns CuBit.ACPI_Windows.Grant; never optional,
         never twice, and its binding leaves room for the window names. It
-        sits beside the backend's own firmware snapshot reader."""
-        typed = ('(Executable_Manifest identity => "com.cubit.acpi-backend" version => "1" '
+        sits beside acpi.svc's own firmware snapshot reader."""
+        typed = ('(Executable_Manifest identity => "com.cubit.acpi" version => "1" '
                  'requests => [(Request.Firmware_Snapshot "tables") (Request.ACPI_Hardware "hardware")])')
         result = self.compile(typed, self.NATIVE)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -1202,21 +1280,16 @@ class Manifests(unittest.TestCase):
         self.reject(typed.replace('"hardware"', f'"{longest}x"'), self.NATIVE,
                     'too long for its window names')
 
-    def test_acpi_registers_role(self):
-        """Catalog role 35: acpi.svc's client endpoint and the backend's
-        registration notification."""
-        typed = ('(Executable_Manifest identity => "com.cubit.acpi" version => "1" '
-                 'requests => [(Request.Firmware_Snapshot "tables") (service "acpi-registers" "registers")])')
-        result = self.compile(typed, self.NATIVE)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        caps = self.sections(result.stdout)['.cubit.caps']
-        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 24), (2, 3, 0, 35, 0))
-        backend = ('(Executable_Manifest identity => "com.cubit.acpi-backend" version => "1" '
-                   'requests => [(notification "acpi-registers" Notify_Access.Manage "registration")])')
-        result = self.compile(backend, self.NATIVE)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        caps = self.sections(result.stdout)['.cubit.caps']
-        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 8), (7, 2, 0, 35, 0))
+    def test_acpi_registers_role_retired(self):
+        """Catalog role 35 (the former ACPI backend's named registers) is retired
+        with the ACPI pair (ACPI-ONE-001): neither its client endpoint nor
+        its registration notification can be declared any more."""
+        client = ('(Executable_Manifest identity => "com.cubit.acpi" version => "1" '
+                  'requests => [(Request.Firmware_Snapshot "tables") (service "acpi-registers" "registers")])')
+        self.assertNotEqual(self.compile(client, self.NATIVE).returncode, 0)
+        provider = ('(Executable_Manifest identity => "com.cubit.acpi" version => "1" '
+                    'requests => [(notification "acpi-registers" Notify_Access.Manage "registration")])')
+        self.assertNotEqual(self.compile(provider, self.NATIVE).returncode, 0)
 
     def test_startup_channel_limits(self):
         def channels(text):

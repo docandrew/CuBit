@@ -5,10 +5,7 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
    ENTRIES_FIRST : constant := HEADER_BYTES + BASIS_BYTES + 1;
 
    function Valid_Index (Basis : Basis_Info; Index : Unsigned_32) return Boolean is
-     (case Basis.Kind is
-         when PCI_Basis => Index < PCI_BAR_COUNT,
-         when Platform_Basis => Index < MAX_PLATFORM_RESOURCES,
-         when No_Basis => False);
+     (Index < Index_Limit (Basis.Kind));
 
    function Page_Sized (Amount, Limit : Unsigned_64) return Boolean is
      (Amount in PAGE_BYTES .. Limit and then Amount mod PAGE_BYTES = 0);
@@ -22,7 +19,7 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
    begin
       return
         (case Basis.Kind is
-           when No_Basis | PCI_Basis =>
+           when No_Basis | PCI_Basis | ACPI_Basis =>
               (for all Value of Basis.Values => Value = 0),
            when Platform_Basis =>
               Basis.Values (1) in
@@ -40,8 +37,11 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
               and then Page_Sized (Item.Amount, MAX_DEVICE_MEMORY_BYTES)
               and then Item.Rights in Read_Only | Read_Write
               and then Item.Extra = 0,
+           --  An ACPI device's resources are its admitted memory spans and
+           --  its parent line.
            when IO_Ports =>
-              Valid_Index (Basis, Item.Index)
+              Basis.Kind /= ACPI_Basis
+              and then Valid_Index (Basis, Item.Index)
               and then Item.Amount in 1 .. IO_PORT_SPACE
               and then Item.Rights = Read_Write
               and then Item.Extra = 0,
@@ -50,6 +50,10 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
               and then
                 (case Basis.Kind is
                     when No_Basis => False,
+                    when ACPI_Basis =>
+                       Item.Extra = Code (Platform_Line)
+                       and then Item.Index = ACPI_PARENT_LINE_INDEX
+                       and then Item.Amount = 1,
                     when Platform_Basis =>
                        Item.Extra = Code (Platform_Line)
                        and then Valid_Index (Basis, Item.Index)
@@ -62,7 +66,7 @@ package body CCL.Resource_Sections with SPARK_Mode => On is
                           ((Item.Extra = Code (MSI_X) or else Item.Extra = Code (MSI))
                            and then Item.Amount in 1 .. MAX_INTERRUPT_VECTORS))),
            when DMA =>
-              Basis.Kind /= No_Basis
+              Basis.Kind in PCI_Basis | Platform_Basis
               and then Item.Index = 0
               and then Page_Sized (Item.Amount, MAX_DMA_BYTES)
               and then Item.Rights = Read_Write

@@ -31,4 +31,6 @@ package CCL_Native_Bindings is
    function Llm              return CuBit.Handles.Endpoint;   --  "llm"
    --  secrets.svc: (secrets.set ...) and friends (CuBit.Secrets_Protocol).
    function Secrets          return CuBit.Handles.Endpoint;   --  "secrets"
+   --  power.svc, as a requester's badge (CuBit.Power_Requests): machine.*.
+   function Power            return CuBit.Handles.Endpoint;   --  "power"
 end CCL_Native_Bindings;

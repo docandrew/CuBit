@@ -17,13 +17,16 @@ package body Publisher_Rings is
 
    --  logstore's own record about a publisher (what it shed).
    procedure Note_Shed
-     (Store : in out Log_Fanout.Broker; Owner : Process_ID; Count, Now_Ms : Unsigned_64);
+     (Store : in out Log_Fanout.Broker; Owner : Process_ID;
+      Over_Budget, Publisher_Full, Now_Ms : Unsigned_64);
    procedure Note_Shed
-     (Store : in out Log_Fanout.Broker; Owner : Process_ID; Count, Now_Ms : Unsigned_64)
+     (Store : in out Log_Fanout.Broker; Owner : Process_ID;
+      Over_Budget, Publisher_Full, Now_Ms : Unsigned_64)
    is
       Made : constant Logs.Decoded :=
-        Logs.Make ("logstore: shed" & Unsigned_64'Image (Count) & " records from pid" &
-                   " " & CuBit.Process_IDs.Text.Image (Owner) & " (ring full or over budget)", Logs.Warning);
+        Logs.Make ("logstore: shed records from pid " & CuBit.Process_IDs.Text.Image (Owner) & ":" &
+                   Unsigned_64'Image (Over_Budget) & " over budget," &
+                   Unsigned_64'Image (Publisher_Full) & " by the publisher (ring full)", Logs.Warning);
    begin
       if Made.Success then
          Log_Fanout.Publish
@@ -46,7 +49,8 @@ package body Publisher_Rings is
       Taken : Channels.Take_Result;
       Admitted : Boolean;
       Decoded : Logs.Decoded;
-      Shed : Unsigned_64 := 0;
+      --  Shed by logstore's budget, and by the publisher (its ring full).
+      Over_Budget, Publisher_Full : Unsigned_64 := 0;
       Took : Boolean := False;
       Reported_Shed : constant Unsigned_64 := Channels.Shed_Count (R.Link);
    begin
@@ -64,8 +68,8 @@ package body Publisher_Rings is
                     (Store, (Source => To_Word (R.Owner), Node => CuBit.Log_Protocol.This_Node,
                              Publication_Tag => R.Authority, Monotonic_Ms => Now_Ms,
                              Data => Decoded.Value));
-               else
-                  Shed := Shed + 1;
+               elsif Over_Budget < Unsigned_64'Last then
+                  Over_Budget := Over_Budget + 1;
                end if;
             end if;
          end if;
@@ -82,11 +86,14 @@ package body Publisher_Rings is
       Channels.Set_Consumer_Word (R.Link, Publish.Minimum_Word, Logs.Severity'Pos (Minimum));
       --  What the publisher could not fit, as it counted, since last time.
       if Reported_Shed > R.Shed_Seen then
-         Shed := Shed + (Reported_Shed - R.Shed_Seen);
+         Publisher_Full := Reported_Shed - R.Shed_Seen;
       end if;
       R.Shed_Seen := Reported_Shed;
-      if Shed > 0 then
-         Note_Shed (Store, R.Owner, Shed, Now_Ms);
+      if Over_Budget > 0 or else Publisher_Full > 0 then
+         --  In the source's tally (logs.recent shows it), and as logstore's
+         --  own record.
+         Log_Fanout.Count_Shed (Store, To_Word (R.Owner), Over_Budget, Publisher_Full);
+         Note_Shed (Store, R.Owner, Over_Budget, Publisher_Full, Now_Ms);
       end if;
    end Drain_One;
 

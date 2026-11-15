@@ -8,14 +8,18 @@ with CuBit.Logging;
 with CuBit.Service_Names;
 with CCL_Processes;
 with CCL.Interfaces.Logs;
+with CCL_Log_Selection;
 with CCL_Native_Bindings;
 with CuBit.Handles;
 with CuBit.Handles.Services;
 
---  logs.recent on CuBit: for each process the name has named during this
---  boot (LOG-003: exited ones too, as logstore's launchers recorded them), a
---  subscription to logstore filtered to it, which replays its retained
---  records and is closed again; the newest that fit one result are kept.
+--  logs.recent and logs.between on CuBit: for each process the name has
+--  named during this boot (LOG-003: exited ones too, as logstore's
+--  launchers recorded them), a subscription to logstore filtered to it,
+--  which replays its retained records through to its tally (LOG-005) and is
+--  closed again; CCL_Log_Selection keeps those in the window that fit one
+--  result, and every record of the window left out is counted in a typed
+--  gap (CCL.Interfaces.Logs).
 package body CCL_Log_IO is
    procedure Announce (Text : String) is
       Published : Boolean;
@@ -42,7 +46,8 @@ package body CCL_Log_IO is
          when P.Invalid_Request => "invalid request", when P.Exhausted => "no subscription free",
          when P.Empty => "empty", when P.Gap => "records lost",
          when P.Unavailable => "unavailable", when P.Rate_Limited => "rate limited",
-         when P.Below_Minimum => "below the minimum logstore keeps");
+         when P.Below_Minimum => "below the minimum logstore keeps",
+         when P.Summary => "a tally");
 
    function Logstore return CuBit.Messages.Process_ID is (CuBit.Service_Names.Process_Of ("logstore"));
 
@@ -159,33 +164,44 @@ package body CCL_Log_IO is
          when others => Failures.Failed
            (Failures.Refused, Context & " (" & Spelling (Status) & ")"));
 
-   procedure Recent
-     (Service : String; Contract : CCL.Objects.Binding;
+   --  How long one instance's replay may take to reach its tally (the
+   --  replay's end, LOG-005): logstore refills a reader's stream every pass
+   --  while it has more, so a few thousand records take a fraction of this.
+   Replay_Limit_Ms : constant Unsigned_64 := 5_000;
+   --  Between looks at an empty stream before the replay's end.
+   Replay_Poll_Ms : constant := 10;
+
+   function Record_Level (Item : L.Log_Record) return Logs.Severity is (Level_Of (L.Level (Item)));
+   package Selections is new CCL_Log_Selection (L.Log_Record, Record_Level, L.Text);
+
+   --  The records of Service in Within: every instance's retained history
+   --  replayed through to its tally, and what one result shows of it
+   --  chosen by CCL_Log_Selection.
+   procedure Select_Records
+     (Service : String; Within : Logs.Log_Window; Contract : CCL.Objects.Binding;
       Image : out CCL.Objects.Image; Success : out Boolean;
       Why : out CuBit.Failures.Failure)
+     with Pre => Logs.Valid (Within)
    is
       Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (CCL_Native_Bindings.Log_Observer);
       Result : P.Status;
       Value : P.Event;
-      Lost : Unsigned_64;
+      Missing : P.Omission;
+      Tally : P.Source_Tally;
       --  The sources Service names, newest instance first (LOG-003): every
       --  process that carried the name during this boot, live or exited,
       --  as logstore's launchers recorded them, then a running process the
-      --  name resolves to now. A result holds at most MAX_ENTRIES records,
-      --  so more instances could add nothing.
+      --  name resolves to now.
       Instances : CuBit.Logging.Source_Entries (1 .. Logs.MAX_ENTRIES);
       Sources : array (1 .. Logs.MAX_ENTRIES) of Unsigned_64 := [others => 0];
       Source_Count : Natural range 0 .. Logs.MAX_ENTRIES := 0;
       Found : Natural;
       Process : CuBit.Messages.Process_ID;
       Is_Number : Boolean;
-      --  Records kept, Held (1 .. Used): each instance's newest that still
-      --  fit, newest instance first; Order then puts them oldest first.
-      Held : array (1 .. Logs.MAX_ENTRIES) of P.Event;
-      Used : Natural range 0 .. Logs.MAX_ENTRIES := 0;
-      Order : array (1 .. Logs.MAX_ENTRIES) of Positive;
-      Closed : P.Status;
-      Added : Boolean;
+      Chosen : Selections.Selection;
+
+      function Now return Unsigned_64 is
+        (CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME));
 
       procedure Add_Source (Source : Unsigned_64) is
       begin
@@ -197,50 +213,58 @@ package body CCL_Log_IO is
          end if;
       end Add_Source;
 
-      --  Source's retained records into Held (Used + 1 .. ): the newest
-      --  Room of them, oldest first.
+      --  Source's whole retained history, through to its tally, into the
+      --  selection. Ok False when logstore refused or did not reach the
+      --  end within Replay_Limit_Ms.
       procedure Replay (Source : Unsigned_64; Ok : out Boolean) is
-         Room : constant Positive := Logs.MAX_ENTRIES - Used;
-         Base : constant Natural := Used;
-         Next : Positive := 1;
-         Count : Natural := 0;
+         Deadline : constant Unsigned_64 := Now + Replay_Limit_Ms;
+         Ignore : Unsigned_64;
+         Closed : P.Status;
       begin
-         CuBit.Logging.Subscribe (Reader, Result, Source => Source);
+         CuBit.Logging.Subscribe (Reader, Result, Source => Source, Report => P.With_Tallies);
          Ok := Result = P.OK;
          if not Ok then
             return;
          end if;
-         --  The replay holds at most a queue's worth of records; the region
-         --  Held (Base + 1 .. Base + Room) is a ring until it ends.
-         for Step in 1 .. P.Observer_Queue_Records + 1 loop
-            CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
-            exit when Result not in P.OK | P.Gap;
-            if Result = P.OK then
-               Held (Base + Next) := Value;
-               Next := (if Next = Room then 1 else Next + 1);
-               Count := Natural'Min (Count + 1, Room);
+         Selections.Begin_Instance (Chosen, Source);
+         loop
+            CuBit.Logging.Read_Next (Reader, Value, Missing, Tally, Result);
+            if Result in P.OK | P.Gap and then P.Omits (Missing) then
+               --  The gap just before this record (or, for Lost, here).
+               Selections.Omitted
+                 (Chosen, Missing.Not_Retained, Missing.Lost,
+                  Next => (if Result = P.OK then Value.Monotonic_Ms else Selections.Last_Time (Chosen)));
             end if;
+            case Result is
+               when P.OK =>
+                  Selections.Logged (Chosen, Value.Monotonic_Ms, Value.Data);
+               when P.Gap =>
+                  null;
+               when P.Summary =>
+                  Selections.Tallied
+                    (Chosen, (Published => Tally.Published, Retained => Tally.Retained,
+                              Not_Retained => Tally.Not_Retained, Over_Budget => Tally.Over_Budget,
+                              Publisher_Full => Tally.Publisher_Full));
+                  exit;
+               when P.Empty =>
+                  if Now >= Deadline then
+                     Ok := False;
+                     Result := P.Unavailable;
+                     exit;
+                  end if;
+                  Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Replay_Poll_Ms);
+               when others =>
+                  Ok := False;
+                  exit;
+            end case;
          end loop;
-         Ok := Result = P.Empty;
+         Selections.End_Instance (Chosen);
          CuBit.Logging.Close (Reader, Closed);
-         if not Ok then
-            return;
-         end if;
-         --  Unwind the ring: oldest first.
-         if Count = Room and then Next /= 1 then
-            declare
-               Ring : constant array (1 .. Room) of P.Event := [for I in 1 .. Room => Held (Base + I)];
-            begin
-               for I in 1 .. Room loop
-                  Held (Base + I) := Ring ((Next + I - 2) mod Room + 1);
-               end loop;
-            end;
-         end if;
-         Used := Used + Count;
       end Replay;
    begin
       Logs.Start (Contract, Image);
       Why := (others => <>);
+      Selections.Start (Chosen, Within);
       CuBit.Process_IDs.Parse (Service, Process, Is_Number);
       if not Is_Number then
          CuBit.Logging.Find_Sources (Reader, Service, Instances, Found, Result);
@@ -259,53 +283,34 @@ package body CCL_Log_IO is
          return;
       end if;
       for I in 1 .. Source_Count loop
-         exit when Used = Logs.MAX_ENTRIES;
          Replay (Sources (I), Success);
          if not Success then
-            Why := Refusal (Result, "the log store would not replay " & Service);
+            Why := (if Result = P.Unavailable
+                    then Failures.Failed
+                      (Failures.Unavailable, "the log store did not finish replaying " & Service &
+                       " within" & Unsigned_64'Image (Replay_Limit_Ms) & " ms")
+                    else Refusal (Result, "the log store would not replay " & Service));
             return;
          end if;
       end loop;
-      --  Oldest first across instances (stable: equal times keep their order).
-      for I in 1 .. Used loop
-         Order (I) := I;
-         for J in reverse 1 .. I - 1 loop
-            exit when Held (Order (J)).Monotonic_Ms <= Held (Order (J + 1)).Monotonic_Ms;
-            declare
-               Swap : constant Positive := Order (J);
-            begin
-               Order (J) := Order (J + 1);
-               Order (J + 1) := Swap;
-            end;
-         end loop;
-      end loop;
-      --  Add stops when the image is full; the records it drops are then
-      --  the newest, so keep the newest instead: skip the oldest until the
-      --  rest fit.
-      declare
-         Text_Room : Natural := CCL.Objects.Maximum_Text_Bytes;
-         Skip : Natural := Used;
-      begin
-         for Back in reverse 1 .. Used loop
-            declare
-               Length : constant Natural := L.Text (Held (Order (Back)).Data)'Length;
-            begin
-               exit when Length > Text_Room;
-               Text_Room := Text_Room - Length;
-               Skip := Skip - 1;
-            end;
-         end loop;
-         for Position in Skip + 1 .. Used loop
-            declare
-               Item : P.Event renames Held (Order (Position));
-            begin
-               Logs.Add (Image, Item.Monotonic_Ms, Level_Of (L.Level (Item.Data)), Item.Source,
-                         L.Text (Item.Data), Added);
-               exit when not Added;
-            end;
-         end loop;
-      end;
+      Selections.Build (Chosen, Contract, Image);
+   end Select_Records;
+
+   procedure Recent
+     (Service : String; Contract : CCL.Objects.Binding;
+      Image : out CCL.Objects.Image; Success : out Boolean;
+      Why : out CuBit.Failures.Failure) is
+   begin
+      Select_Records (Service, Logs.WHOLE_HISTORY, Contract, Image, Success, Why);
    end Recent;
+
+   procedure Between
+     (Service : String; Within : Logs.Log_Window; Contract : CCL.Objects.Binding;
+      Image : out CCL.Objects.Image; Success : out Boolean;
+      Why : out CuBit.Failures.Failure) is
+   begin
+      Select_Records (Service, Within, Contract, Image, Success, Why);
+   end Between;
 
    procedure Minimum
      (Level : out Logs.Severity; Success : out Boolean; Why : out CuBit.Failures.Failure)

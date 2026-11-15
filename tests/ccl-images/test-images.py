@@ -87,11 +87,14 @@ class Images(unittest.TestCase):
                     # Every driver is in every image (HW-002), and devmgr binds
                     # them by the generated driver index.
                     self.assertEqual(bootstrap, stage1 | {"system.ccl", "virtio-input.drv", "intel-gpu.drv",
-                                                         "generic-check.drv"})
+                                                         "generic-check.drv", "gpio-launch-check.drv",
+                                                         "hid-launch-check.drv"})
                 elif name == "laptop-initrd":
                     self.assertEqual(bootstrap, stage1 | stage2 |
                                      {"system.ccl", "init.ccl", "live-rw.ext2", "doom1.wad",
-                                      "virtio-input.drv", "intel-gpu.drv"})
+                                      "virtio-input.drv", "intel-gpu.drv",
+                                      # The touchpad (SUP-001).
+                                      "gpio.drv", "i2c-dw.drv", "hid-i2c.drv"})
                 else:
                     self.assertEqual(header[1], "OPTICAL_IMAGE")
                     self.assertEqual(bootstrap, {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv",
@@ -135,6 +138,23 @@ class Images(unittest.TestCase):
         for name in ("laptop-build", "laptop-build-test"):
             with self.subTest(profile=name):
                 self.assertEqual(usb - apps(name), set())
+
+    def test_touchpad_drivers_and_one_pnp0c50_driver(self):
+        # SUP-001: the laptop images carry the touchpad's three drivers, and
+        # no image carries two PNP0C50 drivers (devmgr would refuse the
+        # ambiguous match): hid-launch-check.drv is the development
+        # image's, hid-i2c.drv the hardware images'.
+        def names(profile):
+            _, rows, _ = realizer.compile_plan(ROOT / "images/artifacts.ccl", ROOT / f"images/{profile}.ccl")
+            return {row[2] for row in rows}
+        for profile in ("laptop-build", "laptop-build-test", "laptop-install", "laptop-initrd"):
+            with self.subTest(profile=profile):
+                self.assertLessEqual({"gpio", "i2c-dw", "hid-i2c"}, names(profile))
+        for profile in sorted((ROOT / "images").glob("*.ccl")):
+            if profile.name == "artifacts.ccl":
+                continue
+            with self.subTest(profile=profile.name):
+                self.assertFalse({"hid-i2c", "hid-launch-check"} <= names(profile.stem))
 
     def test_graphics_profiles_include_diagnostics_and_console(self):
         for name in ('laptop-usb', 'render-session', 'mesa-device',

@@ -221,6 +221,67 @@ procedure Main is
       end if;
    end Read_Volume_Setting;
 
+   function Decimal (Value : Unsigned_64) return String is
+      Raw : constant String := Unsigned_64'Image (Value);
+   begin
+      return Raw (Raw'First + 1 .. Raw'Last);
+   end Decimal;
+
+   --  logs.retention (Logstore_Retention_Settings): the retained history's
+   --  ceilings. Until Config answers, Log_Fanout.Until_Configured; read
+   --  until it does. Each outcome is logstore's own record, so what it
+   --  retains is never a guess.
+   Retention_Settled : Boolean := False;
+   procedure Read_Retention_Setting is
+      use all type CuBit.Settings.Outcome;
+      package Setting renames Startup.Settings.Logs_Retention;
+      Stored : constant Setting.Reading := Setting.Read;
+      function Described (Limits : Log_Fanout.Ceilings) return String is
+        (Decimal (Unsigned_64 (Limits.Per_Source)) & " records per source (its first" & Natural'Image (Limits.Boot) &
+         " always kept)," & Natural'Image (Limits.Total) & " in all");
+   begin
+      case Stored.Kind is
+         when Present =>
+            Retention_Settled := True;
+            if Log_Fanout.Raises (Stored.Item, Log_Fanout.Limits (Store)) then
+               Log_Fanout.Configure (Store, Stored.Item);
+               Note ("logstore: retaining up to " & Described (Stored.Item) & " (" & Setting.Setting_Key & ")");
+            else
+               Note ("logstore: " & Setting.Setting_Key & " would lower the ceilings already in force; retaining up to " &
+                     Described (Log_Fanout.Limits (Store)), Logs.Warning);
+            end if;
+         when Invalid =>
+            Retention_Settled := True;
+            Note ("logstore: " & Setting.Setting_Key & " is not a consistent Log_Retention (boot below per_source, " &
+                  "per_source within total); retaining up to " & Described (Log_Fanout.Limits (Store)), Logs.Warning);
+         when Absent | Denied =>
+            Retention_Settled := True;
+            Note ("logstore: " & Setting.Setting_Key & " is " &
+                  (if Stored.Kind = Absent then "not in the plan" else "not readable") &
+                  "; retaining up to the startup ceilings, " & Described (Log_Fanout.Limits (Store)), Logs.Warning);
+         when Unavailable =>
+            null;
+      end case;
+   end Read_Retention_Setting;
+
+   --  A history that gave way to a new source (Log_Fanout.Source_Slots):
+   --  logstore's own record says whose and how much.
+   procedure Report_Reclaimed is
+      Gone : CuBit.Log_Protocol.Source_Tally;
+      Found : Boolean;
+      Missed : Unsigned_64;
+   begin
+      Log_Fanout.Take_Reclaimed (Store, Gone, Found, Missed);
+      if Found then
+         Note ("logstore: gave up the history of " &
+               Kernel_Source_Name (Gone.Source, "source " & Decimal (Gone.Source)) &
+               " for a new source:" & Unsigned_64'Image (Gone.Retained) & " records retained," &
+               Unsigned_64'Image (Gone.Published) & " published" &
+               (if Missed > 0 then ";" & Unsigned_64'Image (Missed) & " more histories given up before this"
+                else ""), Logs.Warning);
+      end if;
+   end Report_Reclaimed;
+
    procedure Read_Minimum_Setting is
       use all type CuBit.Settings.Outcome;
       Stored : constant Startup.Settings.Logs_Minimum_Level.Reading := Startup.Settings.Logs_Minimum_Level.Read;
@@ -262,6 +323,7 @@ begin
       Now_Ms);
    Kernel_Log.Set_Started (Started_Ms);
    Read_Minimum_Setting;
+   Read_Retention_Setting;
    loop
       --  Deadline is for idle subscription reclamation, not input polling.
       --  Ask publishers for a Kick while asleep; records that arrived
@@ -288,6 +350,9 @@ begin
       end if;
       if not Volume_Settled then
          Read_Volume_Setting;
+      end if;
+      if not Retention_Settled then
+         Read_Retention_Setting;
       end if;
       Log_Fanout.Advance_Time (Store, Now_Ms);
       Log_Budgets.Advance_Time (Budgets, Now_Ms);
@@ -360,13 +425,17 @@ begin
             then
                case Op is
                   when Subscribe =>
-                     --  Words: minimum, source, the reader's stream channel.
+                     --  Words: minimum, source, the reader's stream channel,
+                     --  whether the replay ends with tallies.
                      if Request.words (0) <= Logs.Severity'Pos (Logs.Severity'Last) and then
-                       Request.words (3) = 0
+                       Request.words (3) in Replay_Report'Enum_Rep (Records_Only) |
+                                            Replay_Report'Enum_Rep (With_Tallies)
                      then
                         Log_Fanout.Subscribe
                           (Store, From, Request.authorityTag, Handle, Result,
-                           Logs.Severity'Val (Request.words (0)), Request.words (1));
+                           Logs.Severity'Val (Request.words (0)), Request.words (1),
+                           (if Request.words (3) = Replay_Report'Enum_Rep (With_Tallies)
+                            then With_Tallies else Records_Only));
                         if Result = OK then
                            --  The reader's stream channel, filled by Drain.
                            Stream_Writers.Bind
@@ -433,6 +502,7 @@ begin
       --  records are.
       Source_Registrars.Drain (Registrars, Identities, Now_Ms, Waiting_Notices);
       Waiting_Records := Waiting_Records or else Waiting_Notices;
+      Report_Reclaimed;
       Source_Identities.Prune (Identities, Store, Now_Ms);
       Stream_Writers.Drain (Writers, Store, Backlog);
       Log_Persistence.Pump (Store, Now_Ms);
