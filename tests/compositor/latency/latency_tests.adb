@@ -65,6 +65,11 @@ procedure Latency_Tests is
              S.Paths (CPU).Rectangles = 2 and then TH.Maximum (S.Paths (CPU).Render) = 40,
              "frame path stats");
       Check (In_Flight (L) = 0, "shown input forgotten");
+      --  LAT-002: frames that carried an input, and their damage.
+      Compose (L, 0, CPU, 50_000, 1, Vblank + 500);   --  an animation frame: no input
+      Take_Counts (L, S);
+      Check (S.Input_Frames = 1 and then S.Input_Frame_Pixels = 1_000 and then
+             S.Input_Frame_Max_Pixels = 1_000, "only frames carrying an input count as input frames");
       --  Input 100 us before a vblank: latched one refresh later (1 late).
       One (L, S, Vblank + Period - 100, 2, 12,
            (PT.Hardware_Latch, Vblank + Period + 120, Vblank + 2 * Period, Vblank + 2 * Period + 10,

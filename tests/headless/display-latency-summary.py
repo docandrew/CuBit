@@ -29,6 +29,7 @@ def main() -> int:
     phases = {}
     stages = {}
     paths = {}
+    inputs_px = {"frames": 0, "px": 0, "max": 0}
     grid = "none"
     period = "0"
     with open(sys.argv[1], "rb") as log:
@@ -60,6 +61,11 @@ def main() -> int:
                 slot["n"] += int(item["n"])
                 for key in ("p50", "p90", "p99", "max"):
                     slot[key] = max(slot[key], int(item[key]))
+            elif body.startswith("input_frames="):
+                frames = int(item["input_frames"])
+                inputs_px["frames"] += frames
+                inputs_px["px"] += int(item["px_avg"]) * frames
+                inputs_px["max"] = max(inputs_px["max"], int(item["px_max"]))
             elif body.startswith("path="):
                 name = item["path"]
                 parts = body.split(" render ")
@@ -93,6 +99,9 @@ def main() -> int:
               "submit_to_ready p50<=%d p99<=%d" % (
                   name, slot["frames"], slot["px"] // max(slot["frames"], 1), slot["render_p50"],
                   slot["render_p99"], slot["render_max"], slot["ready_p50"], slot["ready_p99"]))
+    if inputs_px["frames"]:
+        print("DISPLAY-LATENCY: input frames=%d px_avg=%d px_max=%d" % (
+            inputs_px["frames"], inputs_px["px"] // inputs_px["frames"], inputs_px["max"]))
     timed = sum(late)
     if timed == 0:
         print("DISPLAY-LATENCY: FAIL no press followed to a timed latch")

@@ -1240,6 +1240,11 @@ with open(sys.argv[1], "wb") as f:
         ;;
     display-latency)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-latency.ccl"
+        # CUBIT_DISPLAY_LATENCY_ANIMATION=1: a window animating every refresh
+        # beside the Calculator (frame-ticker.app, as Teapots on the laptop).
+        if [ "${CUBIT_DISPLAY_LATENCY_ANIMATION:-0}" = 1 ]; then
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-latency-animated.ccl"
+        fi
         ;;
     metrics-latency)
         # MET-002: display-latency with metrics.svc and ccl-remote; the
@@ -2039,6 +2044,14 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "display-latency" ] && [ "${CUBIT_DISPLAY_LATENCY_ANIMATION:-0}" = 1 ]; then
+        debugfs -w -R "rm frame-ticker.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/frame-ticker.app frame-ticker.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install frame-ticker.app" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "ccl-remote" ]; then
         for REMOTE_IMAGE_NAME in ccl-control.app clock.svc; do

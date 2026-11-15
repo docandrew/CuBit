@@ -298,7 +298,7 @@ procedure main is
    flipsAnnounced : Boolean := False;
 
    type Command_Phase is
-     (Idle, Transfer, Awaiting_Scanout, Set_Scanout, Flush, Quarantined);
+     (Idle, Transfer, Awaiting_Scanout, Set_Scanout, Flush, Awaiting_Vblank, Quarantined);
    subtype Buffer_Index is Natural range 0 .. 1;
    type Pending_Presentation is record
       Phase : Command_Phase := Idle;
@@ -310,6 +310,8 @@ procedure main is
       Deadline : Unsigned_64 := 0;
       --  When the Present was accepted (LAT-002, microseconds).
       Armed_Us : Unsigned_64 := 0;
+      --  Test mode "vblank": the virtual latch the answer waits for.
+      Latch_Us : Unsigned_64 := 0;
    end record;
    Pending : array (Head_Index) of Pending_Presentation;
    Fence_Sequence : Unsigned_64 := 0;
@@ -1456,9 +1458,22 @@ procedure main is
       then
          return [0, 0, 0];
       end if;
+      if GPU_Test_Policy.Vblank_Period_Us /= 0 and then Item.Latch_Us /= 0 and then
+        Item.Latch_Us >= Item.Armed_Us and then Item.Latch_Us <= Seen and then
+        Seen - Item.Latch_Us <= CuBit.Present_Timing.Maximum_Lag_Us
+      then
+         return CuBit.Present_Timing.Encode_Reply
+           ((CuBit.Present_Timing.Hardware_Latch, Item.Armed_Us, Item.Latch_Us, Seen,
+             GPU_Test_Policy.Vblank_Period_Us));
+      end if;
       return CuBit.Present_Timing.Encode_Reply
         ((CuBit.Present_Timing.Host_Fence, Item.Armed_Us, Seen, Seen, 0));
    end presentTiming;
+
+   --  Test mode "vblank": the first grid point after Now.
+   function Next_Vblank (Now : Unsigned_64) return Unsigned_64 is
+     (if GPU_Test_Policy.Vblank_Period_Us = 0 then Now
+      else (Now / GPU_Test_Policy.Vblank_Period_Us + 1) * GPU_Test_Policy.Vblank_Period_Us);
 
    procedure finishPresentation (Head : Head_Index; Success : Boolean) is
       Item : Pending_Presentation renames Pending (Head);
@@ -1476,7 +1491,7 @@ procedure main is
             flipsAnnounced := True;
          end if;
       end if;
-      if Item.Phase in Transfer | Awaiting_Scanout | Set_Scanout | Flush then
+      if Item.Phase in Transfer | Awaiting_Scanout | Set_Scanout | Flush | Awaiting_Vblank then
          Ignored := Answer (Head_Replies (Head), Response);
       end if;
       Item.Phase := (if Success then Idle else Quarantined);
@@ -1537,7 +1552,7 @@ procedure main is
             put32 (Cmd, 36, Frame_Height (Head));
             put32 (Cmd, 40, Unsigned_32 (Head));
             put32 (Cmd, 44, Resource);
-         when Idle | Awaiting_Scanout | Quarantined =>
+         when Idle | Awaiting_Scanout | Awaiting_Vblank | Quarantined =>
             return;
       end case;
       descs (ID) :=
@@ -1661,7 +1676,7 @@ procedure main is
             Resp := Response_Offset (Head);
             Fence := Unsigned_64 (get32 (Resp, 8)) or
               Shift_Left (Unsigned_64 (get32 (Resp, 12)), 32);
-            if Pending (Head).Phase in Idle | Awaiting_Scanout or else Entry_Value.len /= 24 or else
+            if Pending (Head).Phase in Idle | Awaiting_Scanout | Awaiting_Vblank or else Entry_Value.len /= 24 or else
               get32 (Resp, 0) /= RESP_OK_NODATA or else
               get32 (Resp, 4) /= 1 or else Fence /= Pending (Head).Fence
             then
@@ -1690,10 +1705,14 @@ procedure main is
                         Pending (Head).Buffer := 0;
                         Pending (Head).Phase := Transfer;
                         issueCommand (Head);
+                     elsif GPU_Test_Policy.Vblank_Period_Us /= 0 and then not Pending (Head).Clearing then
+                        --  Test mode "vblank": answer at the next virtual latch.
+                        Pending (Head).Phase := Awaiting_Vblank;
+                        Pending (Head).Latch_Us := Next_Vblank (CuBit.Monotonic.Microseconds);
                      else
                         finishPresentation (Head, True);
                      end if;
-                  when Idle | Awaiting_Scanout | Quarantined => null;
+                  when Idle | Awaiting_Scanout | Awaiting_Vblank | Quarantined => null;
                end case;
             end if;
          end if;
@@ -1708,7 +1727,11 @@ procedure main is
          flushCursors;
       end if;
       for H in Head_Index loop
-         if Pending (H).Phase = Awaiting_Scanout and then Now >= Pending (H).Deadline then
+         if Pending (H).Phase = Awaiting_Vblank and then
+           CuBit.Monotonic.Microseconds >= Pending (H).Latch_Us
+         then
+            finishPresentation (H, True);
+         elsif Pending (H).Phase = Awaiting_Scanout and then Now >= Pending (H).Deadline then
             Pending (H).Phase := Set_Scanout;
             issueCommand (H);
          elsif Pending (H).Phase in Transfer | Set_Scanout | Flush and then
@@ -2243,6 +2266,9 @@ begin
             for Item of Pending loop
                if Item.Phase in Transfer | Awaiting_Scanout | Set_Scanout | Flush then
                   Deadline := Unsigned_64'Min (Deadline, Item.Deadline);
+               elsif Item.Phase = Awaiting_Vblank then
+                  --  The next millisecond: the latch is polled, as intel-gpu does.
+                  Deadline := Unsigned_64'Min (Deadline, syscall (SYSCALL_GETTIME) + 1);
                end if;
             end loop;
             if cursorTransfer.Phase = Transfer then

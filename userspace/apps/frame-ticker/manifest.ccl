@@ -1,0 +1,7 @@
+# frame-ticker: a test window that animates every refresh (LAT-002), as
+# Teapots does on the laptop, for headless latency tests on a GPU-less VM:
+# a bar moves across a small area, which it damages, every 16 ms.
+(executable-manifest v1
+  (identity "com.cubit.frame-ticker")
+  (version "0.1.0")
+  (request-service desktop read-write desktop))

@@ -138,6 +138,10 @@ package Compositor_Latency with SPARK_Mode is
       --  Frames whose present timing arrived, and the refreshes in the
       --  interval at the last period (frames presented vs vblanks).
       Timed_Frames : Unsigned_64 := 0;
+      --  Frames that carried an input (composed with one Ready): how many,
+      --  their damage pixels in all and the largest (LAT-002: a typing
+      --  frame beside an animating window stays small).
+      Input_Frames, Input_Frame_Pixels, Input_Frame_Max_Pixels : Unsigned_64 := 0;
    end record;
 
    --  Start a new interval at Now, in place (Stats is tens of kilobytes:
@@ -280,6 +284,7 @@ private
       Sent : Sent_Table;
       Pending_Draw_Us : Unsigned_64 := 0;
       Taken, Evicted : Unsigned_64 := 0;
+      Input_Frames, Input_Frame_Pixels, Input_Frame_Max_Pixels : Unsigned_64 := 0;
       Queue : Observation_Queue;
       Queued : Observation_Count := 0;
       Lost : Lost_Table;

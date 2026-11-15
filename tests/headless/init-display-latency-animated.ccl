@@ -1,0 +1,12 @@
+# LAT-002 input-to-photon fixture with an animating window: the Calculator
+# beside frame-ticker.app, which repaints a small area every refresh (as
+# Teapots does on the laptop). Key presses at swept refresh phases go to
+# the Calculator, started last so it has the focus (tests/headless/run.sh
+# --test display-latency --accel kvm, CUBIT_DISPLAY_LATENCY_ANIMATION=1).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "frame-ticker.app" (priority 3))
+  (start "calculator.app" (priority 3))
+)

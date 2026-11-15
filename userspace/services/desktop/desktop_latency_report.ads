@@ -11,6 +11,7 @@ with Compositor_Latency;
 --    desktop: latency stage=NAME n=.. p50=.. p90=.. p99=.. max=.. budget_us=..
 --    desktop: latency path=cpu|gpu frames=.. px_avg=.. rects_avg=..
 --      render p50=.. p99=.. max=.. submit_to_ready p50=.. p99=.. max=..
+--    desktop: latency input_frames=.. px_avg=.. px_max=..   (frames carrying an input)
 --
 --  Quantiles are histogram bucket upper bounds (four per octave), not
 --  exact order statistics. Budgets are printed, not enforced.

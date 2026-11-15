@@ -172,13 +172,23 @@ package body Compositor_Latency with SPARK_Mode is
                             Draw_Us => L.Pending_Draw_Us, Pixels => Pixels,
                             Rectangles => Rectangles, others => <>);
       L.Pending_Draw_Us := 0;
-      for R of L.Inputs loop
-         if R.State = Ready then
-            R.State := Composed;
-            R.Output := Output;
-            R.Composed_At := Now;
+      declare
+         Carries_Input : Boolean := False;
+      begin
+         for R of L.Inputs loop
+            if R.State = Ready then
+               R.State := Composed;
+               R.Output := Output;
+               R.Composed_At := Now;
+               Carries_Input := True;
+            end if;
+         end loop;
+         if Carries_Input then
+            Bump (L.Input_Frames);
+            Raise_By (L.Input_Frame_Pixels, Pixels);
+            L.Input_Frame_Max_Pixels := Unsigned_64'Max (L.Input_Frame_Max_Pixels, Pixels);
          end if;
-      end loop;
+      end;
    end Compose;
 
    procedure Frame_Ready (L : in out Ledger; Output : Output_Number; Now : Time_Us) is
@@ -346,8 +356,14 @@ package body Compositor_Latency with SPARK_Mode is
    begin
       Raise_By (S.Inputs, L.Taken);
       Raise_By (S.Evicted, L.Evicted);
+      Raise_By (S.Input_Frames, L.Input_Frames);
+      Raise_By (S.Input_Frame_Pixels, L.Input_Frame_Pixels);
+      S.Input_Frame_Max_Pixels := Unsigned_64'Max (S.Input_Frame_Max_Pixels, L.Input_Frame_Max_Pixels);
       L.Taken := 0;
       L.Evicted := 0;
+      L.Input_Frames := 0;
+      L.Input_Frame_Pixels := 0;
+      L.Input_Frame_Max_Pixels := 0;
    end Take_Counts;
 
    procedure Reset (S : in out Stats; Now : Time_Us) is
@@ -376,6 +392,9 @@ package body Compositor_Latency with SPARK_Mode is
       S.Grid := No_Grid;
       S.Period := 0;
       S.Timed_Frames := 0;
+      S.Input_Frames := 0;
+      S.Input_Frame_Pixels := 0;
+      S.Input_Frame_Max_Pixels := 0;
    end Reset;
 
    function In_Flight (L : Ledger) return Natural is

@@ -1985,6 +1985,14 @@ text: ccl-build user_runtime ccl-manifest ui-fonts-native
 	$(CCL_BUILD) ../userspace/apps/text/component.ccl
 	cp ../userspace/apps/text/build/text.app isodir/boot/text.app
 
+# A test window animating every refresh (LAT-002; display-latency with
+# CUBIT_DISPLAY_LATENCY_ANIMATION=1 runs it beside the Calculator).
+.PHONY : frame-ticker
+frame-ticker: ccl-build user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/frame-ticker/build
+	$(CCL_BUILD) ../userspace/apps/frame-ticker/component.ccl
+	cp ../userspace/apps/frame-ticker/build/frame-ticker.app isodir/boot/frame-ticker.app
+
 # The calculator (docs/calculator.md): the calculator core in userspace/lib/calc.
 .PHONY : calculator
 # On gprbuild until CCL capacity M1: its declaration exceeds the program
@@ -2825,7 +2833,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview
+world: check-declarations trace-viewer test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview
 
 .PHONY : headless-test
 headless-test: world

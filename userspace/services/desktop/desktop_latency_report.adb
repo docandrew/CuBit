@@ -76,6 +76,12 @@ package body Desktop_Latency_Report with SPARK_Mode => Off is
             end if;
          end;
       end loop;
+      if S.Input_Frames > 0 then
+         Desktop_Logs.Write
+           ("desktop: latency input_frames=" & Decimal (S.Input_Frames) &
+            " px_avg=" & Decimal (S.Input_Frame_Pixels / S.Input_Frames) &
+            " px_max=" & Decimal (S.Input_Frame_Max_Pixels) & LF);
+      end if;
    end Report;
 
    procedure Tick (L : in out Ledger; S : in out Stats; Now : Unsigned_64) is
