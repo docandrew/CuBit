@@ -167,6 +167,7 @@ package body Remote_Capture is
       end if;
       Reserve (Page_Bytes, OK);
       if not OK then
+         Log ("capture failed: no memory for the capture buffer");
          return;
       end if;
       --  At most twice: the first answer may say the buffer is too small
@@ -175,6 +176,8 @@ package body Remote_Capture is
          MG.Create_Via_Capability
            (Endpoint, To_Address (Integer_Address (Buffer)), Natural (Capacity / Page_Bytes), True, Loan, OK);
          if not OK then
+            Log ("capture failed: the capture buffer could not be lent to Desktop (" &
+                 Unsigned_64'Image (Capacity) & " bytes)");
             return;
          end if;
          Last_Loan := Loan;
@@ -190,6 +193,7 @@ package body Remote_Capture is
          Size_Word := Request.words (0);
          Bytes_Word := Request.words (1);
          if not Answer.Valid then
+            Log ("capture failed: Desktop's answer was not a capture status (label" & Tag.label'Image & ")");
             return;
          end if;
          case Answer.Value is
@@ -198,6 +202,7 @@ package body Remote_Capture is
                  or else Bytes_Word /= DC.Width_Of (Size_Word) * DC.Height_Of (Size_Word) * DC.Bytes_Per_Pixel
                  or else Bytes_Word > Capacity
                then
+                  Log ("capture failed: Desktop's frame size does not match its byte count");
                   return;
                end if;
                Width := Natural (DC.Width_Of (Size_Word));
@@ -206,9 +211,16 @@ package body Remote_Capture is
                Result := W.Captured;
                return;
             when DC.Buffer_Too_Small =>
-               exit when Attempt = 2 or else Bytes_Word <= Capacity;
+               if Attempt = 2 or else Bytes_Word <= Capacity then
+                  Log ("capture failed: Desktop still found the buffer too small (" &
+                       Unsigned_64'Image (Bytes_Word) & " bytes wanted)");
+                  exit;
+               end if;
                Reserve (Bytes_Word, OK);
-               exit when not OK;
+               if not OK then
+                  Log ("capture failed: no memory for a" & Unsigned_64'Image (Bytes_Word) & "-byte capture buffer");
+                  exit;
+               end if;
             when DC.Not_Authorized => Result := W.No_Capability; return;
             when DC.Capture_Off => Result := W.Capture_Off; return;
             when DC.Rate_Limited => Result := W.Rate_Limited; return;
@@ -216,7 +228,12 @@ package body Remote_Capture is
             when DC.No_Frame => Result := W.No_Frame; return;
             when DC.Bad_Output => Result := W.Bad_Output; return;
             when DC.Bad_Area => Result := W.Bad_Area; return;
-            when DC.Buffer_Refused | DC.Invalid_Request => return;
+            when DC.Buffer_Refused =>
+               Log ("capture failed: Desktop could not map the capture buffer");
+               return;
+            when DC.Invalid_Request =>
+               Log ("capture failed: Desktop refused the request as malformed");
+               return;
          end case;
       end loop;
    end Take;
@@ -248,6 +265,10 @@ package body Remote_Capture is
          if not Failed then
             Remote_Files.Put (W.Captures, Name, Offset, Pending (1 .. Used), Put_Result);
             Failed := Put_Result /= W.OK;
+            if Failed then
+               Log ("capture failed: writing captures/" & Name & " at" & Unsigned_64'Image (Offset) &
+                    ": " & W.Status'Image (Put_Result));
+            end if;
          end if;
          if Failed then
             Used := 0;   --  the rest is encoded and dropped; the capture fails
@@ -299,5 +320,8 @@ package body Remote_Capture is
       --  The staging file becomes the name only if what is on disk is what
       --  was written (Remote_Files.Commit reads it back and compares).
       Remote_Files.Commit (W.Captures, Name, Size, Hash, Result);
+      if Result /= W.OK then
+         Log ("capture failed: committing captures/" & Name & ": " & W.Status'Image (Result));
+      end if;
    end Save_PNG;
 end Remote_Capture;
