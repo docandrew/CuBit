@@ -63,13 +63,46 @@ package CuBit.Log_Protocol with Pure, SPARK_Mode is
       Monotonic_Ms : Unsigned_64 := 0;
       Data : CuBit.Log_Records.Log_Record := CuBit.Log_Records.Empty_Record;
    end record;
+   --  What a reader was not given (LOG-005), as a gap in its stream
+   --  (CuBit.Log_Streams) or just before a replayed record:
+   --  - Lost: this reader fell behind (its queue in logstore gave up its
+   --    oldest), or records it was due went from logstore before it read
+   --    them; Source is Every_Source.
+   --  - Not_Retained: Source's records logstore's retained history gave up
+   --    (its ceilings, Log_Fanout) between the record before and the next;
+   --    counted at every severity, whatever the reader's filter.
+   --  Counts saturate at Unsigned_64'Last.
+   type Omission is record
+      Source : Unsigned_64 := Every_Source;
+      Lost : Unsigned_64 := 0;
+      Not_Retained : Unsigned_64 := 0;
+   end record;
+   No_Omission : constant Omission := (others => <>);
+   function Omits (Item : Omission) return Boolean is
+     (Item.Lost /= 0 or else Item.Not_Retained /= 0);
+   --  One source's accounting in logstore (LOG-005), reported after a
+   --  replay that asked for it (Replay_Report): every record it published
+   --  is either Retained now or Not_Retained (Published = Retained +
+   --  Not_Retained, proved in Log_Fanout); Over_Budget and Publisher_Full
+   --  were shed before publication, by logstore's publication budget
+   --  (Log_Budgets) and by the publisher when its ring was full.
+   type Source_Tally is record
+      Source : Unsigned_64 := Every_Source;
+      Published, Retained, Not_Retained : Unsigned_64 := 0;
+      Over_Budget, Publisher_Full : Unsigned_64 := 0;
+   end record;
+   --  Subscribe's word 3: whether the replay ends with a Source_Tally for
+   --  each source it covers.
+   type Replay_Report is (Records_Only, With_Tallies);
+   for Replay_Report use (Records_Only => 0, With_Tallies => 1);
+   --  Summary: a reader's read gave a Source_Tally, not a record.
    type Status is (OK, Denied, Invalid_Request, Exhausted, Empty, Gap,
-                   Unavailable, Rate_Limited, Below_Minimum);
+                   Unavailable, Rate_Limited, Below_Minimum, Summary);
    for Status use
      (OK => 16#F000#, Denied => 16#F002#, Invalid_Request => 16#F003#,
       Exhausted => 16#F004#, Empty => 16#F005#, Gap => 16#F006#,
       Unavailable => 16#F007#, Rate_Limited => 16#F008#,
-      Below_Minimum => 16#F009#);
+      Below_Minimum => 16#F009#, Summary => 16#F00A#);
    --  Rate_Limited: all-zero words, no acquisition and no record accepted.
    --  All requests/replies: length four, zero flags/reserved.
    --  Publishing (publisher role, May_Publish): a channel opened to
@@ -81,7 +114,10 @@ package CuBit.Log_Protocol with Pure, SPARK_Mode is
    --  Subscribe: minimum severity (Log_Records.Severity'Pos, zero = all),
    --    source (Every_Source: all), the reader's stream channel (its number
    --    at logstore: CuBit.Log_Streams.CONTRACT, opened consuming first),
-   --    zero. logstore writes the reader's events into it; reading takes no
+   --    the Replay_Report'Enum_Rep. logstore writes the reader's events into
+   --    it: the retained history first, each record after a gap entry for
+   --    what was not retained before it, then (With_Tallies) a tally entry
+   --    per source the replay covered; then live records. Reading takes no
    --    IPC. OK reply: subscription handle, the
    --    source filter applied, zero, zero. Repeating it (same owner and
    --    authority) renews the lease and updates the filter; it keeps the

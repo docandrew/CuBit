@@ -88,6 +88,30 @@ package body CuBit.ACPI_Windows.Launch with SPARK_Mode => Off is
       then
          return Empty;
       end if;
+      --  The SCI line: exactly one legacy line, readable, not delegable.
+      --  Anything else leaves it absent, never the windows.
+      declare
+         Found : constant HS.Optional_Interrupt :=
+           HS.Optional_Interrupt_Named (Labels.SCI_Label (Label));
+      begin
+         if Found.Present then
+            declare
+               What : constant CuBit.Handles.IPC.Description :=
+                 CuBit.Handles.IPC.Describe (Found.Value);
+            begin
+               if What.Current
+                 and then What.Kind = CuBit.Handles.ABI.Interrupt
+                 and then What.Held.Read and then not What.Held.Grant
+                 and then What.Parameter = 1
+                 and then What.Object in Interrupt_Line_ABI.First_Vector ..
+                                         Interrupt_Line_ABI.Last_Vector
+               then
+                  Result.SCI := (Present => True, Line => Found.Value,
+                                 Vector => Interrupt_Line_ABI.Line_Vector (What.Object));
+               end if;
+            end;
+         end if;
+      end;
       return Result;
    end Named;
 

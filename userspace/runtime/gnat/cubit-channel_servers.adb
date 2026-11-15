@@ -267,6 +267,7 @@ package body CuBit.Channel_Servers is
             CuBit.Channel_Bells.Watch (L.Channel.Peer_Grant, Watched);
             L.Routed := Watched = CuBit.Channel_Bells.Routed;
             L.Client := From;
+            L.Badge := Request.authorityTag;
             L.Offer := O;
             L.Ring_Owed := False;
             L.Needs_Arm := True;
@@ -455,6 +456,25 @@ package body CuBit.Channel_Servers is
       end if;
    end Sleep;
 
+   procedure Find_Ending_Channel
+     (S : Server; Event : CuBit.Control_Events.Event;
+      Found : out Boolean; At_Index : out Index) is
+   begin
+      Found := False;
+      At_Index := Index'First;
+      for I in 1 .. S.Size loop
+         declare
+            L : constant Link := Link_Of (S, I);
+         begin
+            if L.Active and then CuBit.Channels.Ended (L.Channel, Event) then
+               Found := True;
+               At_Index := I;
+               return;
+            end if;
+         end;
+      end loop;
+   end Find_Ending_Channel;
+
    procedure Handle_Event (S : in out Server; Event : CuBit.Control_Events.Event;
                            Ended : out Boolean; At_Index : out Index) is
    begin
@@ -476,6 +496,7 @@ package body CuBit.Channel_Servers is
                   Schedule.Close (Order, I);
                   L.Active := False;
                   L.Client := CuBit.Messages.No_Process;
+                  L.Badge := 0;
                end;
                Ended := True;
                At_Index := I;
@@ -487,6 +508,12 @@ package body CuBit.Channel_Servers is
 
    function Is_Active (S : Server; I : Index) return Boolean is
      (I <= S.Size and then Link_Of (S, I).Active);
+   function Badge_Of (S : Server; I : Index) return Unsigned_64 is
+     (if Is_Active (S, I) then Link_Of (S, I).Badge else 0);
+   function Write_Payload (S : Server; I : Index) return RC.Payload_View is
+     (if Is_Active (S, I) then RC.Write_Payload (Link_Of (S, I).Ring) else RC.Empty_Payload);
+   function Read_Payload (S : Server; I : Index) return RC.Payload_View is
+     (if Is_Active (S, I) then RC.Read_Payload (Link_Of (S, I).Ring) else RC.Empty_Payload);
    function Client_Of (S : Server; I : Index) return CuBit.Messages.Process_ID is
      (Link_Of (S, I).Client);
    function Offer_Of (S : Server; I : Index) return Offer_Index is (Link_Of (S, I).Offer);

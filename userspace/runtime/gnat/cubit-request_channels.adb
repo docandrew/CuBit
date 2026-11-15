@@ -27,6 +27,22 @@ package body CuBit.Request_Channels is
 
    function At_Offset (Base : System.Address; Offset : Natural) return System.Address is
      (Base + Storage_Offset (Offset));
+   function View (Base : System.Address; Offset, Pages : Natural; Writable : Boolean) return Payload_View;
+   function View (Base : System.Address; Offset, Pages : Natural; Writable : Boolean) return Payload_View is
+   begin
+      if Base = System.Null_Address or else Pages = 0 then
+         return Empty_Payload;
+      end if;
+      return (At_Offset (Base, Offset), Pages * Page_Bytes, Writable);
+   end View;
+   function Write_Payload (C : Client) return Payload_View is
+     (if Client_Attached (C) then View (C.Own, Client_Payload_At, Client_Extra_Pages, True) else Empty_Payload);
+   function Read_Payload (C : Client) return Payload_View is
+     (if Client_Attached (C) then View (C.Peer, Server_Payload_At, Server_Extra_Pages, False) else Empty_Payload);
+   function Write_Payload (S : Server) return Payload_View is
+     (if Server_Attached (S) then View (S.Own, Server_Payload_At, Server_Extra_Pages, True) else Empty_Payload);
+   function Read_Payload (S : Server) return Payload_View is
+     (if Server_Attached (S) then View (S.Peer, Client_Payload_At, Client_Extra_Pages, False) else Empty_Payload);
 
    function Load (Base : System.Address; Offset : Natural) return Unsigned_32;
    function Load (Base : System.Address; Offset : Natural) return Unsigned_32 is

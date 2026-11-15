@@ -2,6 +2,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Desktop_Protocol;
 with CuBit.Grant_References;
+with CuBit.Present_Timing;
 
 --  Compositor -> scanout service. Reuse the desktop's bounded BGRA layout
 --  and wire envelope, but not surface names or application session semantics.
@@ -104,6 +105,9 @@ package CuBit.Display_Protocol with SPARK_Mode, Pure is
       Frame : Live_ID;
       Outcome : Frame_Outcome;
       Buffer_State : Buffer_Disposition;
+      --  When a published frame reached the screen (LAT-002): the backend's
+      --  timing, in the high bits of words 2 and 3. No_Compact otherwise.
+      Timing : CuBit.Present_Timing.Compact := CuBit.Present_Timing.No_Compact;
    end record;
    --  A decoded result alone is not a release fence: match a successful
    --  kernel completion to the outstanding token/session/frame first.

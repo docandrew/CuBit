@@ -16,6 +16,10 @@
 --  started (call accepting a capability). words (0) = the service role.
 --  REPLY_OK carries the endpoint (REPLY_WITH_CAPABILITY); Reply_Error
 --  without a capability when no running service of that role is devmgr's.
+--  With length Provider_Request_Words, words (1) names the provider: the
+--  process (identity word) whose endpoint procmgr needs, one of devmgr's
+--  running children (a Start_Child binding's Provider, SUP-001: one I2C
+--  controller driver among several serving one role).
 --
 --  Available: procmgr offers devmgr the endpoint of a service procmgr
 --  started (call offering a capability). words (0) = the service role.
@@ -30,7 +34,9 @@ package CuBit.Service_Exchange with Pure, SPARK_Mode is
    Available        : constant Unsigned_32 := 16#0249#;
 
    Request_Words : constant := 1;
+   Provider_Request_Words : constant := 2;
    Role_Word     : constant := 0;
+   Provider_Word : constant := 1;
 
    Reply_OK    : constant Unsigned_32 := 16#F000#;
    Reply_Error : constant Unsigned_32 := 16#F001#;

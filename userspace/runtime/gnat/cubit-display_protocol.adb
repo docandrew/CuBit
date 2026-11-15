@@ -57,24 +57,41 @@ package body CuBit.Display_Protocol with SPARK_Mode is
    end Decode_Frame;
 
    function Encode_Frame_Result (Item : Frame_Result) return Wire_Message is
-     (Label => Code (Submit_Frame), Length => 4,
-      Words => [Item.Session, Item.Frame,
-        Frame_Outcome'Enum_Rep (Item.Outcome),
-        Buffer_Disposition'Enum_Rep (Item.Buffer_State)], others => <>);
+      Packed : constant CuBit.Present_Timing.Packed_Pair :=
+        CuBit.Present_Timing.Pack
+          (if CuBit.Present_Timing.Valid (Item.Timing) then Item.Timing
+           else CuBit.Present_Timing.No_Compact);
+   begin
+      return (Label => Code (Submit_Frame), Length => 4,
+              Words => [Item.Session, Item.Frame,
+                Frame_Outcome'Enum_Rep (Item.Outcome) or Packed.Outcome_High,
+                Buffer_Disposition'Enum_Rep (Item.Buffer_State) or Packed.Buffer_High],
+              others => <>);
+   end Encode_Frame_Result;
 
    function Decode_Frame_Result (Wire : Wire_Message)
       return Frame_Result_Decoding
    is
+      Mask : constant Unsigned_64 := CuBit.Present_Timing.Enumeration_Mask;
+      Outcome_Rep : constant Unsigned_64 := Wire.Words (2) and Mask;
+      Buffer_Rep : constant Unsigned_64 := Wire.Words (3) and Mask;
+      High : constant CuBit.Present_Timing.Packed_Pair :=
+        (Wire.Words (2) and not Mask, Wire.Words (3) and not Mask);
+      Timing : constant CuBit.Present_Timing.Compact := CuBit.Present_Timing.Unpack (High);
+      use type CuBit.Present_Timing.Packed_Pair;
    begin
+      --  One encoding per value: high bits that are not a timing's packing
+      --  are refused, as any other malformed field.
       if Wire.Label /= Code (Submit_Frame) or else Wire.Length /= 4 or else
         Wire.Flags /= 0 or else Wire.Reserved /= 0 or else
         Wire.Words (0) = 0 or else Wire.Words (1) = 0 or else
-        Wire.Words (2) > 2 or else Wire.Words (3) > 2
+        Outcome_Rep > 2 or else Buffer_Rep > 2 or else
+        CuBit.Present_Timing.Pack (Timing) /= High
       then
          return (Valid => False);
       end if;
       return (True, (Wire.Words (0), Wire.Words (1),
-        Frame_Outcome'Val (Wire.Words (2)),
-        Buffer_Disposition'Val (Wire.Words (3))));
+        Frame_Outcome'Val (Outcome_Rep),
+        Buffer_Disposition'Val (Buffer_Rep), Timing));
    end Decode_Frame_Result;
 end CuBit.Display_Protocol;

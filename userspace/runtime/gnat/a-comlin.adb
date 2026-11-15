@@ -10,15 +10,18 @@ with CuBit.Launch_Arguments; use CuBit.Launch_Arguments;
 package body Ada.Command_Line is
 
    --  Kept by the start code (userspace/runtime/start/cubit_start.S) from
-   --  the entry RDI; userspace/c/crt0.S exits with Exit_Code once
-   --  Exit_Code_Set is nonzero.
+   --  the entry RDI.
    Launch_Length : Unsigned_64
    with Import, Convention => C,
         External_Name => "__cubit_launch_arguments_length";
-   Exit_Code : Unsigned_64
-   with Import, Convention => C, External_Name => "__cubit_exit_status";
-   Exit_Code_Set : Unsigned_64
-   with Import, Convention => C, External_Name => "__cubit_exit_status_set";
+
+   --  The status the program exits with when its main subprogram returns
+   --  (LIVE-002): the binder's main returns it (System.Exit_Status_Supported)
+   --  and userspace/c/crt0.S exits with that. Success until the program sets
+   --  another; an unhandled exception never returns here and exits with
+   --  CuBit.Program_Endings.Unhandled_Exception_Status instead.
+   Exit_Code : Integer := Integer (Success)
+   with Export, Convention => C, External_Name => "gnat_exit_status";
 
    Checked : Boolean := False;
    Usable  : Boolean := False;
@@ -91,8 +94,7 @@ package body Ada.Command_Line is
    procedure Set_Exit_Status (Code : Exit_Status) is
    begin
       --  The kernel keeps the low 8 bits, as POSIX does.
-      Exit_Code := Unsigned_64'Mod (Code);
-      Exit_Code_Set := 1;
+      Exit_Code := Integer (Code);
    end Set_Exit_Status;
 
 end Ada.Command_Line;

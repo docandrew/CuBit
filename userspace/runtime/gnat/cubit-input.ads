@@ -76,9 +76,39 @@ package CuBit.Input with SPARK_Mode => On is
          (if Observed_Ms <= Maximum_Pointer_Time then Observed_Ms
           else Unsigned_64'Last);
 
+   --  Sub-millisecond acquisition time (LAT-002): a driver stamping in
+   --  microseconds puts the milliseconds in the snapshot (Pointer_Snapshot
+   --  layout, keyboards with no buttons) and the remaining microseconds in
+   --  header bits 17 .. 26 (Encode_Stamped). A publisher stamping whole
+   --  milliseconds (or not at all) leaves them zero. The microsecond clock
+   --  is CuBit.Monotonic.Read, which shares Milliseconds' epoch.
+   Microseconds_Per_Millisecond : constant := 1_000;
+   subtype Sub_Millisecond is Unsigned_64 range 0 .. Microseconds_Per_Millisecond - 1;
+   --  The largest millisecond stamp whose microsecond time fits a word.
+   Maximum_Stamped_Ms : constant Unsigned_64 :=
+     (Unsigned_64'Last - (Microseconds_Per_Millisecond - 1)) / Microseconds_Per_Millisecond;
+   --  The snapshot of a report acquired at Observed_Us (Unsigned_64'Last:
+   --  unstamped), Buttons in the low eight bits (zero for keyboards).
+   function Source_Snapshot (Buttons, Observed_Us : Unsigned_64) return Unsigned_64 is
+     (Pointer_Snapshot
+        (Buttons, (if Observed_Us = Unsigned_64'Last then Unsigned_64'Last
+                   else Observed_Us / Microseconds_Per_Millisecond)));
+   function Sub_Millisecond_Of (Observed_Us : Unsigned_64) return Sub_Millisecond is
+     (if Observed_Us = Unsigned_64'Last then 0
+      else Observed_Us mod Microseconds_Per_Millisecond);
+
    NULL_SOURCE_REPORT : constant Source_Report := (others => <>);
 
    function Encode (report : Source_Report) return CuBit.Messages.Message;
+   --  Encode, carrying Observed_Us's sub-millisecond part; report.snapshot
+   --  should be Source_Snapshot (buttons, Observed_Us).
+   function Encode_Stamped
+     (report : Source_Report; Observed_Us : Unsigned_64) return CuBit.Messages.Message;
+
+   --  The acquisition time of a valid source report message in microseconds,
+   --  Unsigned_64'Last when unstamped. A whole-millisecond publisher's
+   --  stamp reads as its millisecond times 1000.
+   function Source_Time_Us (msg : CuBit.Messages.Message) return Unsigned_64;
 
    --  Publisher: the kernel-reported publisher of the event (Poll_Event).
    function Is_Source_Report

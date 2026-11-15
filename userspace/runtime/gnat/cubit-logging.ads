@@ -76,16 +76,31 @@ package CuBit.Logging is
    --  first and every renewal): a reader that must not block on logstore
    --  (the Desktop bootstrap screen) gets Unavailable instead of waiting.
    No_Limit : constant Unsigned_64 := Unsigned_64'Last;
+   --  Report With_Tallies: the replay ends with each covered source's
+   --  accounting (Summary reads, below).
    procedure Subscribe
      (Item : in out Reader; Result : out CuBit.Log_Protocol.Status;
       Minimum : CuBit.Log_Records.Severity := CuBit.Log_Records.Trace;
       Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source;
-      Limit_Ms : Unsigned_64 := No_Limit);
-   --  The next event, from the reader's stream channel (CuBit.Log_Streams):
-   --  logstore produces into it, so reading takes no IPC. Result is Gap (with
-   --  Lost) where logstore could not keep events for this reader, Empty when
-   --  nothing new has arrived. Every RENEW_MS of reading, the subscription's
-   --  lease is renewed with one Subscribe call.
+      Limit_Ms : Unsigned_64 := No_Limit;
+      Report : CuBit.Log_Protocol.Replay_Report := CuBit.Log_Protocol.Records_Only);
+   --  The next entry, from the reader's stream channel (CuBit.Log_Streams):
+   --  logstore produces into it, so reading takes no IPC. Result is
+   --  - OK: Value;
+   --  - Gap: Missing says what this reader was not given just here: records
+   --    its source's retained history gave up (Not_Retained, before the
+   --    record that follows), or records logstore could not keep for this
+   --    reader (Lost);
+   --  - Summary: Tally, a source's accounting after a With_Tallies replay;
+   --  - Empty: nothing new has arrived.
+   --  Every RENEW_MS of reading, the subscription's lease is renewed with
+   --  one Subscribe call.
+   procedure Read_Next
+     (Item : in out Reader; Value : out CuBit.Log_Protocol.Event;
+      Missing : out CuBit.Log_Protocol.Omission; Tally : out CuBit.Log_Protocol.Source_Tally;
+      Result : out CuBit.Log_Protocol.Status);
+   --  The same for a reader that needs only how many: Lost counts every
+   --  record a Gap omits, and Summary entries are passed over.
    procedure Read_Next
      (Item : in out Reader; Value : out CuBit.Log_Protocol.Event;
       Lost : out Unsigned_64; Result : out CuBit.Log_Protocol.Status);
@@ -165,5 +180,6 @@ private
       Renewed_Ms : Unsigned_64 := 0;
       Subscription : Unsigned_64 := 0;
       Limit_Ms : Unsigned_64 := No_Limit;
+      Report : CuBit.Log_Protocol.Replay_Report := CuBit.Log_Protocol.Records_Only;
    end record;
 end CuBit.Logging;

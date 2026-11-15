@@ -19,6 +19,7 @@ pragma Ada_2022;
 with Interfaces;
 with CuBit.Handles;
 with CuBit.ACPI_Memory_Classes;
+with Interrupt_Line_ABI;
 
 package CuBit.ACPI_Windows with SPARK_Mode is
    use type Interfaces.Unsigned_64;
@@ -79,12 +80,29 @@ package CuBit.ACPI_Windows with SPARK_Mode is
    type IO_Windows     is array (1 .. Maximum_IO_Windows) of IO_Window;
    type Memory_Windows is array (1 .. Maximum_Memory_Windows) of Memory_Window;
 
+   --  ACPI's System Control Interrupt: the legacy line it arrives on,
+   --  already routed to this program (level-triggered as the firmware
+   --  says). Line names exactly that one line, read right, no grant; Vector
+   --  is what the kernel says it names. Interrupts arrive as the IRQ
+   --  doorbell event (CuBit.Device_Interrupts.Is_Doorbell); after clearing
+   --  the GPE / PM1 status it handled, the program must call
+   --  CuBit.Handles.Lines.Acknowledge (Line, Vector), which unmasks the line
+   --  (CuBit.Handles.Lines states the protocol). Not Present: the launcher
+   --  refused it and logged why; the windows are unaffected.
+   type SCI_Line is record
+      Present : Boolean := False;
+      Line    : CuBit.Handles.Interrupt := CuBit.Handles.No_Interrupt;
+      Vector  : Interrupt_Line_ABI.Line_Vector := Interrupt_Line_ABI.Line_Vector'First;
+   end record;
+
    type Grant is record
       IO_Used     : IO_Window_Count := 0;
       IO          : IO_Windows;
       Memory_Used : Memory_Window_Count := 0;
       Memory      : Memory_Windows;
+      SCI         : SCI_Line;
    end record;
    --  Windows are sorted by first port / first page and never overlap;
-   --  an empty Grant (both counts 0) means nothing was admitted.
+   --  an empty Grant (both counts 0) means nothing was admitted, and then
+   --  has no SCI either.
 end CuBit.ACPI_Windows;

@@ -40,6 +40,8 @@ generic
    type Result is private;
    Request_Bits    : Natural;   --  2 ** Request_Bits request slots
    Completion_Bits : Natural;   --  2 ** Completion_Bits completion slots
+   Client_Extra_Pages : Natural := 0;
+   Server_Extra_Pages : Natural := 0;
 package CuBit.Request_Channels is
 
    package Queues is new CuBit.Submission_Queues (Request, Result, Request_Bits, Completion_Bits);
@@ -67,8 +69,23 @@ package CuBit.Request_Channels is
    Completion_Ring_Bytes : constant Natural := Queues.Completions.Ring'Size / 8;
 
    --  Pages of each region: the header page and the ring.
-   Client_Pages : constant Positive := 1 + (Request_Ring_Bytes + Page_Bytes - 1) / Page_Bytes;
-   Server_Pages : constant Positive := 1 + (Completion_Ring_Bytes + Page_Bytes - 1) / Page_Bytes;
+   Client_Ring_Pages : constant Positive := 1 + (Request_Ring_Bytes + Page_Bytes - 1) / Page_Bytes;
+   Server_Ring_Pages : constant Positive := 1 + (Completion_Ring_Bytes + Page_Bytes - 1) / Page_Bytes;
+   Client_Pages : constant Positive := Client_Ring_Pages + Client_Extra_Pages;
+   Server_Pages : constant Positive := Server_Ring_Pages + Server_Extra_Pages;
+   Client_Payload_At : constant Natural := Client_Ring_Pages * Page_Bytes;
+   Server_Payload_At : constant Natural := Server_Ring_Pages * Page_Bytes;
+   type Payload_View is record
+      Base : System.Address := System.Null_Address;
+      Bytes : Natural := 0;
+      Writable : Boolean := False;
+   end record;
+   Empty_Payload : constant Payload_View := (others => <>);
+   --  Optional producer-owned areas follow the rings. Zero extras preserve all
+   --  old offsets/page counts and return an empty view. Native channel glue
+   --  must validate/map the full declared contract, including these pages.
+   --  Views expose only the already attached mapping, never physical addresses
+   --  or authority. Peer views are read-only and remain borrowed until detach.
 
    ---------------------------------------------------------------------------
    --  The client's half.
@@ -78,6 +95,8 @@ package CuBit.Request_Channels is
    procedure Attach_Client (C : in out Client; Own_Region, Server_Region : System.Address);
    procedure Detach_Client (C : in out Client);
    function Client_Attached (C : Client) return Boolean;
+   function Write_Payload (C : Client) return Payload_View;
+   function Read_Payload (C : Client) return Payload_View;
 
    --  Room for one more request (taking the server's consumed index).
    function Can_Submit (C : in out Client) return Boolean;
@@ -114,6 +133,8 @@ package CuBit.Request_Channels is
    procedure Attach_Server (S : in out Server; Own_Region, Client_Region : System.Address);
    procedure Detach_Server (S : in out Server);
    function Server_Attached (S : Server) return Boolean;
+   function Write_Payload (S : Server) return Payload_View;
+   function Read_Payload (S : Server) return Payload_View;
 
    --  A request waits and its answer has a reserved slot.
    function Can_Take (S : in out Server) return Boolean;

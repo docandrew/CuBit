@@ -183,10 +183,4 @@ package body CuBit.Handles.Control is
      return Unsigned_64 is
      (K.Call (K.Read_Device_Vector, Vector, Field, K.Word (Authority)));
 
-   function Enable_IRQ
-     (Vector : Unsigned_64; Owner : Process_ID; Route : Unsigned_64;
-      Authority : Process; Lines : Interrupt) return Boolean is
-     (K.Call (K.Enable_IRQ, Vector, CuBit.Process_IDs.To_Word (Owner), Route,
-              K.Word (Authority), K.Word (Lines)) = 0);
-
 end CuBit.Handles.Control;

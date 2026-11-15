@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with Interfaces; use Interfaces;
 package body CuBit.Log_Streams with SPARK_Mode is
    WORD_BYTES : constant := 8;
    BYTE_BITS : constant := 8;
@@ -9,11 +10,22 @@ package body CuBit.Log_Streams with SPARK_Mode is
    MS_AT : constant := 32;
    TAG_AT : constant := 40;
    LENGTH_AT : constant := 48;
+   --  A gap's counts, in the words an event uses for its node and time.
+   NOT_RETAINED_AT : constant := NODE_HIGH_AT;
+   LOST_AT : constant := MS_AT;
+   --  A tally's counts follow the header, in Source_Tally's order.
+   PUBLISHED_AT : constant := HEADER_BYTES;
+   RETAINED_AT : constant := PUBLISHED_AT + WORD_BYTES;
+   EVICTED_AT : constant := RETAINED_AT + WORD_BYTES;
+   OVER_BUDGET_AT : constant := EVICTED_AT + WORD_BYTES;
+   PUBLISHER_FULL_AT : constant := OVER_BUDGET_AT + WORD_BYTES;
+   pragma Compile_Time_Error
+     (PUBLISHER_FULL_AT + WORD_BYTES /= TALLY_BYTES, "a tally's words fill TALLY_BYTES");
 
    procedure Put_Word (Into : in out Entry_Buffer; At_Byte : Natural; Value : Unsigned_64)
-     with Pre => At_Byte <= HEADER_BYTES - WORD_BYTES;
+     with Pre => At_Byte <= TALLY_BYTES - WORD_BYTES;
    function Word (From : Entry_Buffer; At_Byte : Natural) return Unsigned_64
-     with Pre => At_Byte <= HEADER_BYTES - WORD_BYTES;
+     with Pre => At_Byte <= TALLY_BYTES - WORD_BYTES;
 
    procedure Put_Word (Into : in out Entry_Buffer; At_Byte : Natural; Value : Unsigned_64) is
    begin
@@ -52,17 +64,36 @@ package body CuBit.Log_Streams with SPARK_Mode is
       Length := HEADER_BYTES + Natural (Used);
    end Encode_Event;
 
-   procedure Encode_Gap (Lost : Unsigned_64; Into : out Entry_Buffer; Length : out Entry_Length) is
+   procedure Encode_Gap
+     (Missing : CuBit.Log_Protocol.Omission; Into : out Entry_Buffer; Length : out Entry_Length) is
    begin
       Into := [others => 0];
       Put_Word (Into, KIND_AT, Entry_Kind'Pos (Gap_Entry));
-      Put_Word (Into, MS_AT, Lost);
+      Put_Word (Into, SOURCE_AT, Missing.Source);
+      Put_Word (Into, NOT_RETAINED_AT, Missing.Not_Retained);
+      Put_Word (Into, LOST_AT, Missing.Lost);
       Length := HEADER_BYTES;
    end Encode_Gap;
 
+   procedure Encode_Tally
+     (Tally : CuBit.Log_Protocol.Source_Tally; Into : out Entry_Buffer; Length : out Entry_Length) is
+   begin
+      Into := [others => 0];
+      Put_Word (Into, KIND_AT, Entry_Kind'Pos (Tally_Entry));
+      Put_Word (Into, SOURCE_AT, Tally.Source);
+      Put_Word (Into, LENGTH_AT, TALLY_WORDS * WORD_BYTES);
+      Put_Word (Into, PUBLISHED_AT, Tally.Published);
+      Put_Word (Into, RETAINED_AT, Tally.Retained);
+      Put_Word (Into, EVICTED_AT, Tally.Not_Retained);
+      Put_Word (Into, OVER_BUDGET_AT, Tally.Over_Budget);
+      Put_Word (Into, PUBLISHER_FULL_AT, Tally.Publisher_Full);
+      Length := TALLY_BYTES;
+   end Encode_Tally;
+
    procedure Decode
      (From : Entry_Buffer; Length : Natural; Kind : out Entry_Kind;
-      Value : out CuBit.Log_Protocol.Event; Lost : out Unsigned_64; Valid : out Boolean)
+      Value : out CuBit.Log_Protocol.Event; Missing : out CuBit.Log_Protocol.Omission;
+      Tally : out CuBit.Log_Protocol.Source_Tally; Valid : out Boolean)
    is
       Kind_Word, Encoded : Unsigned_64;
       Bytes : Logs.Wire_Buffer := [others => 0];
@@ -70,7 +101,8 @@ package body CuBit.Log_Streams with SPARK_Mode is
    begin
       Kind := Event_Entry;
       Value := (others => <>);
-      Lost := 0;
+      Missing := CuBit.Log_Protocol.No_Omission;
+      Tally := (others => <>);
       Valid := False;
       if Length < HEADER_BYTES or else Length > Maximum_Entry_Bytes then
          return;
@@ -79,10 +111,31 @@ package body CuBit.Log_Streams with SPARK_Mode is
       Encoded := Word (From, LENGTH_AT);
       if Kind_Word = Entry_Kind'Pos (Gap_Entry) then
          Kind := Gap_Entry;
-         Lost := Word (From, MS_AT);
-         Valid := Length = HEADER_BYTES and then Encoded = 0 and then Lost > 0;
+         if Length = HEADER_BYTES and then Encoded = 0
+           and then Word (From, NODE_LOW_AT) = 0 and then Word (From, TAG_AT) = 0
+         then
+            Missing := (Source => Word (From, SOURCE_AT),
+                        Not_Retained => Word (From, NOT_RETAINED_AT),
+                        Lost => Word (From, LOST_AT));
+            Valid := CuBit.Log_Protocol.Omits (Missing);
+         end if;
          if not Valid then
-            Lost := 0;
+            Missing := CuBit.Log_Protocol.No_Omission;
+         end if;
+         return;
+      elsif Kind_Word = Entry_Kind'Pos (Tally_Entry) then
+         Kind := Tally_Entry;
+         if Length = TALLY_BYTES and then Encoded = TALLY_WORDS * WORD_BYTES
+           and then Word (From, NODE_HIGH_AT) = 0 and then Word (From, NODE_LOW_AT) = 0
+           and then Word (From, MS_AT) = 0 and then Word (From, TAG_AT) = 0
+         then
+            Tally := (Source => Word (From, SOURCE_AT),
+                      Published => Word (From, PUBLISHED_AT),
+                      Retained => Word (From, RETAINED_AT),
+                      Not_Retained => Word (From, EVICTED_AT),
+                      Over_Budget => Word (From, OVER_BUDGET_AT),
+                      Publisher_Full => Word (From, PUBLISHER_FULL_AT));
+            Valid := True;
          end if;
          return;
       elsif Kind_Word /= Entry_Kind'Pos (Event_Entry) or else

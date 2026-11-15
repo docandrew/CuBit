@@ -21,6 +21,12 @@ with CuBit.Startup_Tables;
 --  (acpi-pci-config approve-declared) too) is its own Device_Memory entry
 --  after the I/O windows, named Memory_Label (Binding, K), K counting only
 --  the windows installed, in ascending address order.
+--  ACPI's System Control Interrupt (SCI) comes with the same approval: one
+--  Interrupt entry named SCI_Label (Binding), after the windows, Optional:
+--  Granted with a read-only interrupt capability naming exactly the SCI's
+--  line, routed to the program (CuBit.Handles.Lines), or Absent when devmgr
+--  or the kernel refused it (procmgr logs the typed reason). Its absence
+--  never empties the grant.
 --  CuBit.ACPI_Windows.Launch reads them back as a CuBit.ACPI_Windows.Grant.
 package CuBit.ACPI_Hardware_Authority with Pure, SPARK_Mode is
 
@@ -72,6 +78,14 @@ package CuBit.ACPI_Hardware_Authority with Pure, SPARK_Mode is
    --  "hardware-io-3": window K's startup name.
    function IO_Label (Binding : String; K : IO_Window_Number) return String is
      (Binding & IO_Infix & Digits_Of (K))
+   with Pre => Binding'Length <= Maximum_Binding_Length
+               and then Binding'Last <= Natural'Last - Maximum_Suffix;
+
+   --  "hardware-sci": the SCI line's startup name.
+   SCI_Suffix : constant String := "-sci";
+   pragma Compile_Time_Error (SCI_Suffix'Length > Maximum_Suffix,
+                              "Maximum_Suffix must cover the SCI label");
+   function SCI_Label (Binding : String) return String is (Binding & SCI_Suffix)
    with Pre => Binding'Length <= Maximum_Binding_Length
                and then Binding'Last <= Natural'Last - Maximum_Suffix;
 

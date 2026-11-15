@@ -73,6 +73,11 @@ package CuBit.Channels is
       Own_Bytes   : Unsigned_64 := 0;
       Own_Grant   : CuBit.Memory_Grants.Grant_Reference := (slot => 0, generation => 1);
       Has_Own     : Boolean := False;
+      --  Preserve one closed region identity through failed-open cleanup.
+      --  Prepare_Open resets this history for a new attempt. This is neither
+      --  an address nor proof of retirement; the owner must query the kernel.
+      Closed_Own_Present : Boolean := False;
+      Closed_Own_Grant : CuBit.Memory_Grants.Grant_Reference := (slot => 0, generation => 1);
       Peer_Base   : Unsigned_64 := 0;
       Peer_Grant  : CuBit.Memory_Grants.Grant_Reference := (slot => 0, generation => 1);
       Has_Peer    : Boolean := False;

@@ -158,7 +158,12 @@ private
    Configurable_Run_Time     : constant Boolean := True;
    Denorm                    : constant Boolean := True;
    Duration_32_Bits          : constant Boolean := False;
-   Exit_Status_Supported     : constant Boolean := False;
+   Exit_Status_Supported     : constant Boolean := True;
+   --  CuBit (LIVE-002): the binder's main is then a function returning
+   --  gnat_exit_status (Ada.Command_Line), Success unless the program set
+   --  another, or 0 when Ada.Command_Line is not in the closure; the start
+   --  code (userspace/c/crt0.S) exits with it. As a procedure, a main that
+   --  returned exited with whatever RAX held.
    Fractional_Fixed_Ops      : constant Boolean := False;
    Frontend_Layout           : constant Boolean := False;
    Machine_Overflows         : constant Boolean := False;

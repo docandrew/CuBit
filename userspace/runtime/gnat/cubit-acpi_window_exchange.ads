@@ -37,6 +37,19 @@
 --  acpi-pci-config; the program reads the extent and kind back from the
 --  kernel, never these words). Reply_Error: there is no K-th window (the
 --  windows end).
+--
+--  SCI_Request: the same kind of call, no words. devmgr resolves ACPI's
+--  System Control Interrupt from its own sealed FADT and MADT
+--  (CuBit.ACPI_SCI_Route; never a number from the caller) and claims that
+--  line for ACPI for the rest of the boot, unless a driver holds it.
+--  REPLY_OK carries an interrupt capability naming exactly that one line,
+--  with read and grant (procmgr routes it to the approved program, then
+--  installs a read-only copy), and words (Vector_Word) = its vector,
+--  (Route_Word) = Interrupt_Line_ABI.Route_Word (0, trigger, polarity),
+--  (GSI_Word) = its GSI, (Overridden_Word) = 1 when an Interrupt Source
+--  Override gave them, else 0. Reply_Error carries words (Reason_Word) =
+--  SCI_Refusal'Pos and, for Firmware_Refused, words (Detail_Word) =
+--  CuBit.ACPI_SCI_Route.Refusal'Pos.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
@@ -56,6 +69,27 @@ package CuBit.ACPI_Window_Exchange with Pure, SPARK_Mode is
    Bytes_Word  : constant := 1;
    --  CuBit.ACPI_Windows.Maximum_Memory_Windows.
    Maximum_Memory_Windows : constant := 16;
+
+   SCI_Request       : constant Unsigned_32 := 16#024E#;
+   SCI_Request_Words : constant := 0;
+   SCI_Reply_Words   : constant := 4;
+   Vector_Word       : constant := 0;
+   Route_Word        : constant := 1;
+   GSI_Word          : constant := 2;
+   Overridden_Word   : constant := 3;
+   SCI_Error_Words   : constant := 2;
+   --  How long procmgr waits for devmgr's SCI answer (two sealed table
+   --  reads, no hardware): past it the SCI is refused for this launch.
+   SCI_Request_Deadline_Ms : constant := 2_000;
+   Reason_Word       : constant := 0;
+   Detail_Word       : constant := 1;
+
+   --  Why devmgr gave no SCI line.
+   type SCI_Refusal is
+     (Tables_Unreadable,    --  its FADT or MADT copy could not be read whole
+      Firmware_Refused,     --  CuBit.ACPI_SCI_Route refused (Detail_Word)
+      Line_Held_By_Driver,  --  devmgr routed that line to a driver
+      Not_Transferred);     --  the reply could not carry the capability
 
    Reply_OK    : constant Unsigned_32 := 16#F000#;
    Reply_Error : constant Unsigned_32 := 16#F001#;

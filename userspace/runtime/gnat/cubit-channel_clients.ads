@@ -34,6 +34,8 @@ with CuBit.Control_Events;
 with CuBit.Deadlines;
 with CuBit.Futex_Locks;
 with CuBit.Handles;
+with CuBit.Grant_References;
+with CuBit.Messages;
 with CuBit.Request_Channels;
 with CuBit.Request_Tags;
 
@@ -59,12 +61,22 @@ package CuBit.Channel_Clients is
       Outcome : out Open_Outcome; Refusal : out CuBit.Channel_Protocol.Open_Refusal);
 
    function Is_Open (C : Client) return Boolean;
+   function Write_Payload (C : Client) return RC.Payload_View;
+   function Read_Payload (C : Client) return RC.Payload_View;
 
    --  Why a channel ended.
    type End_Reason is (Open_Channel, Closed, Server_Ended);
    function Reason (C : Client) return End_Reason;
 
    procedure Close (C : in out Client);
+   type Retirement_Receipt is private;
+   procedure Close (C : in out Client; Receipt : out Retirement_Receipt);
+   function Retirement_Confirmed (Receipt : Retirement_Receipt) return Boolean;
+   --  Capture of the last closed own region, even when a kernel event closed
+   --  the channel first. Closed/Ended alone do not imply retirement. The query
+   --  is owner-only and asks the existing kernel grant-generation interface;
+   --  defaults and foreign-process receipts never certify a release. A receipt
+   --  remains about that one region after the Client is opened again.
 
    type Submit_Result is (Queued, Full, Ended);
    procedure Submit (C : in out Client; Item : RC.Request; Number : out Tag;
@@ -105,6 +117,12 @@ package CuBit.Channel_Clients is
    function Stray_Answers (C : Client) return Unsigned_64;
 
 private
+   type Receipt_Kind is (Unknown_Region, No_Own_Region, Owned_Region);
+   type Retirement_Receipt is record
+      Kind : Receipt_Kind := Unknown_Region;
+      Owner : CuBit.Messages.Process_ID := CuBit.Messages.No_Process;
+      Reference : CuBit.Grant_References.Reference;
+   end record;
    type Answer_Array is array (Tags.Entry_Index) of RC.Result;
    type Client is limited record
       Channel : CuBit.Channels.Channel;
@@ -114,6 +132,7 @@ private
       Why     : End_Reason := Closed;
       Routed  : Boolean := False;
       Strays  : Unsigned_64 := 0;
+      Last_Retirement : Retirement_Receipt;
       --  Threads: the state above is changed only under Guard; Pumping: a
       --  waiter sleeps on the doorbell; Followers: waiters sleeping on
       --  Answers_Ready, which the pump signals after reaping.

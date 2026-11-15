@@ -114,6 +114,23 @@ package body CuBit.ACPI_Fixed_Windows with SPARK_Mode is
                    and then At_Offset <= Maximum_Table_Bytes - GAS_Bytes,
            Post => Block_Total <= Block_Total'Old + 1 and then In_Space;
 
+      --  The SMI command port: one port at the FADT's 32-bit SMI_CMD.
+      procedure SMI_Command_Port
+      with Pre  => Block_Total < Maximum_Windows and then In_Space
+                   and then FADT'First = 1 and then FADT'Length <= Maximum_Table_Bytes
+                   and then FADT_Limit <= FADT'Length,
+           Post => Block_Total <= Block_Total'Old + 1 and then In_Space;
+
+      procedure SMI_Command_Port is
+         Address : Unsigned_64;
+         Present : Boolean;
+      begin
+         Field (FADT, FADT_Limit, SMI_Command_Offset, 4, Address, Present);
+         if Present then
+            Add (Address, SMI_Command_Ports);
+         end if;
+      end SMI_Command_Port;
+
       --  Exchange blocks J - 1 and J.
       procedure Swap (J : Window_Index)
       with Pre  => J in 2 .. Block_Total and then In_Space,
@@ -174,13 +191,14 @@ package body CuBit.ACPI_Fixed_Windows with SPARK_Mode is
          FADT_Block (PM_Timer_Offset, X_PM_Timer_Offset, PM_Timer_Length_Offset);
          FADT_Block (GPE0_Offset, X_GPE0_Offset, GPE0_Length_Offset);
          FADT_Block (GPE1_Offset, X_GPE1_Offset, GPE1_Length_Offset);
+         SMI_Command_Port;
       end if;
       if ECDT_Limit > 0 then
          EC_Register (EC_Control_Offset);
          EC_Register (EC_Data_Offset);
       end if;
 
-      --  Ascending by first port (insertion by swaps; at most nine).
+      --  Ascending by first port (insertion by swaps; at most ten).
       for I in 2 .. Block_Total loop
          for J in reverse 2 .. I loop
             exit when Blocks (J - 1).First <= Blocks (J).First;

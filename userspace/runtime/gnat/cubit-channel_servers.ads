@@ -123,8 +123,23 @@ package CuBit.Channel_Servers is
    procedure Handle_Event (S : in out Server; Event : CuBit.Control_Events.Event;
                            Ended : out Boolean; At_Index : out Index);
 
+   --  Inspect an already authenticated kernel event without closing a mapping,
+   --  releasing admission, changing readiness or dropping outstanding work.
+   --  A hardware owner can retain the copied event, stop taking new work for
+   --  this channel, quiesce, then pass it to Handle_Event. A failed quiescence
+   --  must retain the channel for supervision. Do not pass arbitrary peer
+   --  messages here as if they were kernel grant events.
+   procedure Find_Ending_Channel
+     (S : Server; Event : CuBit.Control_Events.Event;
+      Found : out Boolean; At_Index : out Index);
+
    function Is_Active (S : Server; I : Index) return Boolean;
+   function Write_Payload (S : Server; I : Index) return RC.Payload_View;
+   function Read_Payload (S : Server; I : Index) return RC.Payload_View;
    function Client_Of (S : Server; I : Index) return CuBit.Messages.Process_ID;
+   --  Kernel-stamped opening authority, retained after Admit accepts it.
+   --  Closed/absent channels return zero; payload words never update it.
+   function Badge_Of (S : Server; I : Index) return Unsigned_64;
    function Offer_Of (S : Server; I : Index) return Offer_Index;
    function Owed (S : Server; I : Index) return Natural;
 
@@ -146,6 +161,7 @@ private
       Channel : CuBit.Channels.Channel;
       Ring    : RC.Server;
       Client  : CuBit.Messages.Process_ID := CuBit.Messages.No_Process;
+      Badge   : Unsigned_64 := 0;
       Offer   : Offer_Index := Offer_Index'First;
       Routed  : Boolean := False;
       --  The client asked to be rung (answers, or room); rung at Sleep.

@@ -754,6 +754,9 @@ package body CuBit.Channels is
    procedure Close (C : in out Channel) is
       Done : Boolean;
       M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+      Closed_Own_Present : constant Boolean := C.Has_Own or else C.Closed_Own_Present;
+      Closed_Own_Grant : constant MG.Grant_Reference :=
+        (if C.Has_Own then C.Own_Grant else C.Closed_Own_Grant);
    begin
       if C.Opener and then C.Active then
          M.tag := (label => CP.OP_CLOSE, length => CP.Close_Words, protocol => 0, ipc => <>, reserved => 0);
@@ -774,7 +777,8 @@ package body CuBit.Channels is
       elsif C.Own_Base /= 0 and then not C.Shares_Region then
          Release (C.Own_Base, C.Own_Bytes);
       end if;
-      C := (others => <>);
+      C := (Closed_Own_Present => Closed_Own_Present,
+            Closed_Own_Grant => Closed_Own_Grant, others => <>);
    end Close;
 
 end CuBit.Channels;

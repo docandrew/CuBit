@@ -15,6 +15,11 @@ package CuBit.Monotonic is
    --  certify physical accuracy. Callers must bound waits independently to
    --  handle a stopped clock.
 
+   --  Read's microseconds as one word: Unavailable_Us when the clock is not
+   --  published. For latency stamps (LAT-002): no system call.
+   Unavailable_Us : constant Interfaces.Unsigned_64 := Interfaces.Unsigned_64'Last;
+   function Microseconds return Interfaces.Unsigned_64;
+
    function Milliseconds return Interfaces.Unsigned_64;
    --  GETTIME's clock (the kernel's msTicks, which receive and call deadlines
    --  use), from the publication when it is published: never behind GETTIME,

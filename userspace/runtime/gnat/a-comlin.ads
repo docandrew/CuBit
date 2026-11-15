@@ -9,8 +9,9 @@
 --  use (docs/process-arguments.md). A process started without a block (or
 --  with an invalid one) has no arguments and an empty Command_Name.
 --  Set_Exit_Status sets the code the process exits with when its main
---  subprogram returns (userspace/c/crt0.S). The environment is not exposed
---  here.
+--  subprogram returns; a main that returns without setting one exits with
+--  Success (LIVE-002: the binder's main returns this status). The
+--  environment is not exposed here.
 ------------------------------------------------------------------------------
 package Ada.Command_Line is
    pragma Preelaborate;

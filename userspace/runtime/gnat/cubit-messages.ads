@@ -457,19 +457,7 @@ package CuBit.Messages is
 
    --  Device manager wrappers
 
-   --  Enable IOAPIC routing and register an IRQ subscriber. PCI INTx callers
-   --  must request level-triggered, active-low routing; ISA-style sources use
-   --  the edge-triggered, active-high defaults.
-   --  Route a legacy IOAPIC/PIC line to its owner. Message-signaled
-   --  devices take allocated vectors instead (CuBit.Device_Interrupts).
-   function enableIrq
-     (vector    : Unsigned_64;
-      ownerPID  : Process_ID;
-      targetCPU : Unsigned_64;
-      authority : CuBit.Handles.Process;
-      lines     : CuBit.Handles.Interrupt;
-      levelTriggered : Boolean := False;
-      activeLow      : Boolean := False) return Unsigned_64;
+   --  Legacy interrupt lines: CuBit.Handles.Lines.
 
    --  Map pages into a target process's address space (privileged: the
    --  caller holds CAP_PROCESS with RIGHT_GRANT for it). Kind

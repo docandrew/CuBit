@@ -151,11 +151,6 @@ package CuBit.Handles.Control is
    function Read_Vector (Vector, Field : Unsigned_64; Authority : Interrupt)
      return Unsigned_64;
 
-   --  Route a legacy interrupt line to Owner: Lines holds the line (Grant),
-   --  Authority is process authority (Grant) over Owner. Route is the
-   --  kernel's route word (CPU, trigger, polarity).
-   function Enable_IRQ
-     (Vector : Unsigned_64; Owner : Process_ID; Route : Unsigned_64;
-      Authority : Process; Lines : Interrupt) return Boolean;
+   --  Legacy interrupt lines: CuBit.Handles.Lines.
 
 end CuBit.Handles.Control;

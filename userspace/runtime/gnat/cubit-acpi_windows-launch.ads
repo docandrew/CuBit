@@ -24,7 +24,10 @@
 --  Cache what its kernel tag says (an unknown tag empties the grant). A
 --  grant with no window of either kind is empty too; a memory-only grant
 --  (a hardware-reduced platform) is admitted
---  (CuBit.ACPI_Hardware_Authority.Declared_Holds).
+--  (CuBit.ACPI_Hardware_Authority.Declared_Holds). Then the SCI line,
+--  SCI_Label (Label): present only when it is a current interrupt
+--  capability naming exactly one legacy line, with read and without
+--  grant; otherwise absent, which leaves the windows as they are.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with CuBit.Startup_State;

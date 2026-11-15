@@ -30,10 +30,11 @@ package CuBit.ACPI_Fixed_Windows with Pure, SPARK_Mode is
 
    type Byte_Array is array (Positive range <>) of Unsigned_8;
 
-   --  The fixed blocks: seven FADT blocks, two EC registers.
+   --  The fixed blocks: seven FADT blocks, two EC registers, and the
+   --  FADT's SMI command port (ACPI-mode transition, 4.8.2.1).
    type Block_Kind is
      (PM1a_Event, PM1b_Event, PM1a_Control, PM1b_Control, PM_Timer, GPE0, GPE1,
-      EC_Command, EC_Data);
+      EC_Command, EC_Data, SMI_Command);
    subtype FADT_Block is Block_Kind range PM1a_Event .. GPE1;
    subtype EC_Block is Block_Kind range EC_Command .. EC_Data;
 
@@ -77,6 +78,10 @@ package CuBit.ACPI_Fixed_Windows with Pure, SPARK_Mode is
    --  FADT 32-bit block addresses (u32) and lengths (u8).
    PM1a_Event_Offset    : constant := 56;
    PM1b_Event_Offset    : constant := 60;
+   --  FADT SMI_CMD (u32, one port; no 64-bit form): where OSPM writes
+   --  ACPI_ENABLE to enter ACPI mode. Zero: no transition (already ACPI).
+   SMI_Command_Offset   : constant := 48;
+   SMI_Command_Ports    : constant := 1;
    PM1a_Control_Offset  : constant := 64;
    PM1b_Control_Offset  : constant := 68;
    PM_Timer_Offset      : constant := 76;

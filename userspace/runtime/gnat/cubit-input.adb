@@ -4,7 +4,13 @@ package body CuBit.Input with SPARK_Mode => On is
    DELIVERY_MASK     : constant Unsigned_64 := 16#0000_0000_0000_FF00#;
    GENERATION_MASK   : constant Unsigned_64 := 16#FFFF_FFFF_0000_0000#;
    RESYNC_MASK       : constant Unsigned_64 := 16#0000_0000_0001_0000#;
-   RESERVED_FLAG_MASK : constant Unsigned_64 := 16#0000_0000_FFFE_0000#;
+   SUB_MILLISECOND_SHIFT : constant := 17;
+   SUB_MILLISECOND_MASK : constant Unsigned_64 := 16#0000_0000_07FE_0000#;
+   RESERVED_FLAG_MASK : constant Unsigned_64 := 16#0000_0000_F800_0000#;
+
+   function Header_Sub_Millisecond (header : Unsigned_64) return Unsigned_64;
+   function Header_Sub_Millisecond (header : Unsigned_64) return Unsigned_64 is
+     (Shift_Right (header and SUB_MILLISECOND_MASK, SUB_MILLISECOND_SHIFT));
 
    function Encode (report : Source_Report) return CuBit.Messages.Message is
       header : Unsigned_64 :=
@@ -28,6 +34,28 @@ package body CuBit.Input with SPARK_Mode => On is
                    3 => report.snapshot));
    end Encode;
 
+   function Encode_Stamped
+     (report : Source_Report; Observed_Us : Unsigned_64) return CuBit.Messages.Message
+   is
+      msg : CuBit.Messages.Message := Encode (report);
+   begin
+      msg.words (1) := msg.words (1) or
+        Shift_Left (Sub_Millisecond_Of (Observed_Us), SUB_MILLISECOND_SHIFT);
+      return msg;
+   end Encode_Stamped;
+
+   function Source_Time_Us (msg : CuBit.Messages.Message) return Unsigned_64 is
+      Whole : constant Unsigned_64 := Pointer_Time (msg.words (3));
+      Part : constant Unsigned_64 := Header_Sub_Millisecond (msg.words (1));
+   begin
+      if Whole = Unsigned_64'Last or else Whole > Maximum_Stamped_Ms or else
+        Part >= Microseconds_Per_Millisecond
+      then
+         return Unsigned_64'Last;
+      end if;
+      return Whole * Microseconds_Per_Millisecond + Part;
+   end Source_Time_Us;
+
    function Is_Source_Report
      (msg : CuBit.Messages.Message; publisher : CuBit.Messages.Process_ID) return Boolean
    is
@@ -44,6 +72,7 @@ package body CuBit.Input with SPARK_Mode => On is
         publisher /= CuBit.Messages.No_Process and then
         msg.words (0) /= 0 and then
         (msg.words (1) and RESERVED_FLAG_MASK) = 0 and then
+        Header_Sub_Millisecond (msg.words (1)) < Microseconds_Per_Millisecond and then
         (msg.words (1) and GENERATION_MASK) /= 0 and then
         deviceRep in
           Unsigned_64 (Device_Class'Enum_Rep (Device_Class'First)) ..

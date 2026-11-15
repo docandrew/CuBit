@@ -39,5 +39,6 @@ package CuBit.Launch_Configurations is
    procedure Get (Value : out LC.Network_Device_Configuration; Valid : out Boolean);
    procedure Get (Value : out LC.Virtio_GPU_Configuration; Valid : out Boolean);
    procedure Get (Value : out LC.Generic_PCI_Configuration; Valid : out Boolean);
+   procedure Get (Value : out LC.Generic_ACPI_Configuration; Valid : out Boolean);
 
 end CuBit.Launch_Configurations;

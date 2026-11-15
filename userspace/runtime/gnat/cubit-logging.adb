@@ -385,7 +385,8 @@ package body CuBit.Logging is
      (Item : in out Reader; Result : out Status;
       Minimum : Logs.Severity := Logs.Trace;
       Source : Unsigned_64 := Every_Source;
-      Limit_Ms : Unsigned_64 := No_Limit) is
+      Limit_Ms : Unsigned_64 := No_Limit;
+      Report : CuBit.Log_Protocol.Replay_Report := CuBit.Log_Protocol.Records_Only) is
       Msg : Message := Request (CuBit.Log_Protocol.Subscribe);
       Tag : MessageTag;
       Opened : Channels.Open_Result;
@@ -403,7 +404,8 @@ package body CuBit.Logging is
             return;
          end if;
       end if;
-      Msg.words := [Logs.Severity'Pos (Minimum), Source, Item.Link.Peer_Number, 0];
+      Msg.words := [Logs.Severity'Pos (Minimum), Source, Item.Link.Peer_Number,
+                    CuBit.Log_Protocol.Replay_Report'Enum_Rep (Report)];
       Tag := capCall (Item.Slot, Msg, Deadline);
       Result := (if CuBit.Messages.Ending_Of (Tag) /= CuBit.Messages.Call_Answered
                  then Unavailable else Reply_Status (Msg));
@@ -414,6 +416,7 @@ package body CuBit.Logging is
          Item.Subscription := Msg.words (0);
          Item.Minimum := Minimum;
          Item.Source := Source;
+         Item.Report := Report;
          Item.Renewed_Ms := CuBit.Published_Clock.Milliseconds;
       else
          if Result = OK then
@@ -424,8 +427,8 @@ package body CuBit.Logging is
    end Subscribe;
 
    procedure Read_Next
-     (Item : in out Reader; Value : out Event; Lost : out Unsigned_64;
-      Result : out Status) is
+     (Item : in out Reader; Value : out Event; Missing : out CuBit.Log_Protocol.Omission;
+      Tally : out CuBit.Log_Protocol.Source_Tally; Result : out Status) is
       Entry_Bytes : CuBit.Log_Streams.Entry_Buffer := [others => 0];
       Length : Natural;
       Valid : Boolean;
@@ -434,10 +437,10 @@ package body CuBit.Logging is
       Now : Unsigned_64;
       Renewal : Status;
       use type Channels.Take_Result;
-      use type CuBit.Log_Streams.Entry_Kind;
    begin
       Value := (others => <>);
-      Lost := 0;
+      Missing := CuBit.Log_Protocol.No_Omission;
+      Tally := (others => <>);
       Result := Unavailable;
       if Item.Subscription = 0 then
          return;
@@ -448,7 +451,7 @@ package body CuBit.Logging is
          --  Nothing to read: a good moment to keep the subscription alive.
          Now := CuBit.Published_Clock.Milliseconds;
          if Now >= Item.Renewed_Ms + RENEW_MS then
-            Subscribe (Item, Renewal, Item.Minimum, Item.Source, Item.Limit_Ms);
+            Subscribe (Item, Renewal, Item.Minimum, Item.Source, Item.Limit_Ms, Item.Report);
          end if;
          return;
       end if;
@@ -456,8 +459,26 @@ package body CuBit.Logging is
          Result := Invalid_Request;
          return;
       end if;
-      CuBit.Log_Streams.Decode (Entry_Bytes, Length, Kind, Value, Lost, Valid);
-      Result := (if not Valid then Invalid_Request elsif Kind = CuBit.Log_Streams.Gap_Entry then Gap else OK);
+      CuBit.Log_Streams.Decode (Entry_Bytes, Length, Kind, Value, Missing, Tally, Valid);
+      Result := (if not Valid then Invalid_Request
+                 else (case Kind is
+                          when CuBit.Log_Streams.Event_Entry => OK,
+                          when CuBit.Log_Streams.Gap_Entry => Gap,
+                          when CuBit.Log_Streams.Tally_Entry => Summary));
+   end Read_Next;
+
+   procedure Read_Next
+     (Item : in out Reader; Value : out Event; Lost : out Unsigned_64;
+      Result : out Status) is
+      Missing : CuBit.Log_Protocol.Omission;
+      Tally : CuBit.Log_Protocol.Source_Tally;
+   begin
+      loop
+         Read_Next (Item, Value, Missing, Tally, Result);
+         exit when Result /= Summary;
+      end loop;
+      Lost := (if Missing.Lost > Unsigned_64'Last - Missing.Not_Retained then Unsigned_64'Last
+               else Missing.Lost + Missing.Not_Retained);
    end Read_Next;
 
    procedure Close (Item : in out Reader; Result : out Status) is

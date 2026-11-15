@@ -380,32 +380,6 @@ package body CuBit.Messages is
 
    --  Device manager wrappers
 
-   function enableIrq
-     (vector    : Unsigned_64;
-      ownerPID  : Process_ID;
-      targetCPU : Unsigned_64;
-      authority : CuBit.Handles.Process;
-      lines     : CuBit.Handles.Interrupt;
-      levelTriggered : Boolean := False;
-      activeLow      : Boolean := False) return Unsigned_64
-   is
-      --  The route word (Syscall.Admin.handleEnableIrq).
-      ROUTE_CPU_MASK   : constant Unsigned_64 := 16#00FF#;
-      ROUTE_LEVEL      : constant Unsigned_64 := 16#0100#;
-      ROUTE_ACTIVE_LOW : constant Unsigned_64 := 16#0200#;
-      route : Unsigned_64 := targetCPU and ROUTE_CPU_MASK;
-   begin
-      if levelTriggered then
-         route := route or ROUTE_LEVEL;
-      end if;
-      if activeLow then
-         route := route or ROUTE_ACTIVE_LOW;
-      end if;
-      return (if CuBit.Handles.Control.Enable_IRQ
-                    (vector, ownerPID, route, authority, lines)
-              then 0 else Unsigned_64'Last);
-   end enableIrq;
-
    function mapInto
      (targetPID : Process_ID;
       physAddr  : Unsigned_64;

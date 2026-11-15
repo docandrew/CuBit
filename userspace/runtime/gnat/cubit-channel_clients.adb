@@ -5,8 +5,8 @@
 pragma Ada_2022;
 with System.Storage_Elements;
 with CuBit.Channel_Bells;
-with CuBit.Messages;
 with CuBit.Process_Events;
+with CuBit.Memory_Grants;
 
 package body CuBit.Channel_Clients is
 
@@ -34,9 +34,13 @@ package body CuBit.Channel_Clients is
    begin
       C.Table := (others => <>);
       C.Strays := 0;
+      C.Last_Retirement := (others => <>);
       CuBit.Channels.Open
         (Endpoint, Channel_Contract, CuBit.Channels.Producing, C.Channel, Result, Refusal,
          Deadline => CuBit.Deadlines.Kernel_Word (Deadline));
+      if Result /= CuBit.Channels.Opened and then C.Channel.Closed_Own_Present then
+         C.Last_Retirement := (Owned_Region, CuBit.Messages.Own_Process, C.Channel.Closed_Own_Grant);
+      end if;
       case Result is
          when CuBit.Channels.Opened =>
             RC.Attach_Client (C.Ring, Address_Of (C.Channel.Own_Base), Address_Of (C.Channel.Peer_Base));
@@ -56,8 +60,29 @@ package body CuBit.Channel_Clients is
    end Open;
 
    function Is_Open (C : Client) return Boolean is (C.Why = Open_Channel);
+   function Write_Payload (C : Client) return RC.Payload_View is
+     (if Is_Open (C) then RC.Write_Payload (C.Ring) else RC.Empty_Payload);
+   function Read_Payload (C : Client) return RC.Payload_View is
+     (if Is_Open (C) then RC.Read_Payload (C.Ring) else RC.Empty_Payload);
    function Reason (C : Client) return End_Reason is (C.Why);
    function Stray_Answers (C : Client) return Unsigned_64 is (C.Strays);
+   function Retirement_Confirmed (Receipt : Retirement_Receipt) return Boolean is
+      use type CuBit.Messages.Process_ID;
+   begin
+      if Receipt.Owner /= CuBit.Messages.Own_Process then
+         return False;
+      end if;
+      case Receipt.Kind is
+         when Unknown_Region => return False;
+         when No_Own_Region =>
+            --  No grant was created for this producing client. Any pages
+            --  allocated before that failure were released locally by Open;
+            --  there is no own grant left awaiting kernel retirement.
+            return True;
+         when Owned_Region =>
+            return CuBit.Memory_Grants.Retirement_Confirmed (Receipt.Reference);
+      end case;
+   end Retirement_Confirmed;
 
    procedure Finish (C : in out Client; Why : End_Reason);
    procedure Finish (C : in out Client; Why : End_Reason) is
@@ -65,6 +90,9 @@ package body CuBit.Channel_Clients is
       if C.Why /= Open_Channel then
          return;
       end if;
+      C.Last_Retirement :=
+        (Kind => (if C.Channel.Has_Own then Owned_Region else No_Own_Region),
+         Owner => CuBit.Messages.Own_Process, Reference => C.Channel.Own_Grant);
       Tags.Fail_All (C.Table);
       CuBit.Channel_Bells.Unwatch (C.Channel.Peer_Grant);
       RC.Detach_Client (C.Ring);
@@ -72,13 +100,19 @@ package body CuBit.Channel_Clients is
       C.Why := Why;
    end Finish;
 
-   procedure Close (C : in out Client) is
+   procedure Close (C : in out Client; Receipt : out Retirement_Receipt) is
    begin
       CuBit.Futex_Locks.Lock (C.Guard);
       Finish (C, Closed);
+      Receipt := C.Last_Retirement;
       CuBit.Futex_Locks.Unlock (C.Guard);
       --  Waiting threads see the end.
       CuBit.Futex_Locks.Signal (C.Answers_Ready);
+   end Close;
+   procedure Close (C : in out Client) is
+      Receipt : Retirement_Receipt;
+   begin
+      Close (C, Receipt);
    end Close;
 
    procedure Ring_Server (C : Client);
