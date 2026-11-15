@@ -9,6 +9,12 @@
   (setting "clock.time-zone" "UTC")
   (setting "cubit.config.storage.database" ":memory:")
   (setting "logs.minimum-level" "Severity.Information")
+  # What logstore's retained history keeps, in records (LOG-005,
+  # Log_Retention): per source, the first of them always (its boot), and in
+  # all. A whole acpi.svc bring-up (a few hundred records) fits a source's
+  # share many times; one record takes at most about 0.9 KiB, so the total
+  # bounds the history near 14 MiB.
+  (setting "logs.retention" (Log_Retention per_source => 4096 boot => 256 total => 16384))
   (setting "net.interface.pci-00-10-0"
     (Net_Interface.Static (Static_Interface address => "::ffff:10.0.2.15" prefix => 120
       gateway => (Gateway.Via "::ffff:10.0.2.2"))))

@@ -1,0 +1,15 @@
+# Actual firmware interpreter and power controller, with the same q35/edu
+# module-I/O fixture as acpi-one-service. No shutdown-standin is launched.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "acpi.svc" (priority 4) (stop-stage power-tail)
+    (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Neutral))
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared))
+  (start "shutdown-cooperative.app" (priority 3) (stop-grace-ms 2000)
+    (arguments (Cooperative_Parameters quiesce_ms => 200)))
+  (start "shutdown-stubborn.app" (priority 3) (stop-grace-ms 500))
+  (start "power.svc" (priority 5)
+    (arguments (Power_Parameters undeclared_grace_ms => 300 storage_deadline_ms => 10000
+      driver_grace_ms => 1000 button => Button_Policy.Power_Off)))
+)

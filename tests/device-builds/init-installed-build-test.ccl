@@ -9,28 +9,53 @@
   # and connects for llm.svc, whose one tls-scope is the Messages API host.
   # timesync keeps the wall clock certificate validation needs.
   (start "tls.svc" (priority 5) (network approve-declared))
-  (start "timesync.svc" (priority 5) (network approve-declared))
+  # (replace transparent): timesync has no clients and keeps nothing (the
+  # next instance polls again); it exits on Stop between polls.
+  (start "timesync.svc" (priority 5) (network approve-declared) (replace transparent))
   (start "config-storage.svc" (priority 5) (role config-storage))
   (start "display.svc" (priority 5))
-  # ACPI, as on the live medium (tests/hardware/init-usb-live-build.ccl):
-  # the backend holds the FADT I/O windows and serves named registers;
-  # acpi.svc (AML, no hardware authority) connects to it. Both keep the
-  # default restart contract, reboot: a new program for either is
-  # activated for the next boot (procmgr applies the current generation's
-  # pins before this plan runs; SYS-003).
-  (start "acpi-backend.svc" (priority 5)
-    (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (acpi-firmware-data approve-declared)
-    (acpi-pci-config approve-declared))
-  (start "acpi.svc" (priority 4)
-    (firmware-snapshot approve-declared) (acpi-registers approve-declared))
+  # ACPI (ACPI-ONE-001): the one acpi.svc holds the hardware grant (FADT
+  # fixed blocks, FACS/NVS memory), the platform-register pool through
+  # its firmware-data endpoint and the read-only PCI configuration
+  # broker, and runs AML over them in-process.
+  # (replace graceful): a system generation may switch it live (cubit-remote
+  # system replace). procmgr sends Stop; acpi.svc closes its consumers,
+  # retires the hardware through its shutdown controller and exits 0 within
+  # the stop grace; the new program gets the same approvals and runs
+  # startup again from the sealed tables (headless acpi-live-replace). One
+  # that has not registered by the end of the health window is stopped and
+  # the program before runs again. Startup is re-run, device _INI included,
+  # not handed over (no firmware-state handover yet, LIVE-001): a
+  # development path while bring-up stops before _INI on the laptop.
+  (start "acpi.svc" (priority 5) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Known_Windows))
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared)
+    (replace graceful)
+    # The root stop keeps it for the firmware's last step (PWR-003).
+    (stop-stage power-tail))
+  # PWR-003: power.svc, the power manager. After acpi.svc (its button watch
+  # and S5, the acpi-power role) and before Desktop: Desktop's requester
+  # badge (power-desktop, Shut Down...) resolves at its launch from this
+  # trusted plan. The power button powers off. undeclared_grace_ms is the
+  # stop grace of every entry without (stop-grace-ms ...) and of the apps
+  # Desktop launched: at least CuBit.UI.Recovery's 1500 ms, so Text writes
+  # its recovery copies before it is ended.
+  (start "power.svc" (priority 5)
+    (arguments (Power_Parameters undeclared_grace_ms => 2000 storage_deadline_ms => 10000
+                                 driver_grace_ms => 1000 button => Button_Policy.Power_Off)))
   # Dictionary, thesaurus and spelling (docs/lexicon.md).
   (start "lexicon.svc" (priority 4))
   # GPU rendering is a settings grant (desktop.render.gpu, default on);
   # without a supported GPU devmgr refuses the session and Desktop renders
   # in software. One image for every machine (HW-002).
   # BUG-001: a desktop that fails is started again (procmgr, growing delay).
+  # (replace graceful): a system generation may switch Desktop live. On Stop
+  # it hands every output lease and buffer back to Display and exits 0
+  # within the stop grace; the new program takes the display (headless
+  # desktop-live-replace). Windows are not handed over yet (UI-037): the
+  # apps Desktop hosts lose them.
   (start "desktop.svc" (priority 4) (render setting "desktop.render.gpu")
-    (restart on-failure))
+    (restart on-failure) (replace graceful))
   (start "boot-logs.app" (priority 4))
   # tls.svc has registered by now (llm.svc's TLS scope needs it). The API
   # key is the named secret anthropic-api-key, typed into agent.app's
@@ -52,4 +77,42 @@
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
       display => Pairing_Display.Kernel_Console work => "@system/work"
       files => true builds => true mail => true)))
+  # The touchpad (SUP-001): devmgr starts the HID-over-I2C driver for each
+  # PNP0C50 device acpi.svc offers, through procmgr's Start_Child. The
+  # launch is one typed value, a Device_Class_Launch: policy is hid-i2c's
+  # HID_Parameters less the fields named in facts, which devmgr fills from
+  # the device (descriptor_register, its _DSM). procmgr type-checks it
+  # against hid-i2c's own record when it starts it: naming a fact here, or
+  # leaving a policy field out, is a type error, and devmgr may give no
+  # other field. Bring-up values, conservative; none is a hardware fact:
+  #   x, y: report units map 1:1 to pointer units, in the reported
+  #     direction (pointer speed is a later Settings value, not guessed);
+  #   confidence: only contacts the device marks confident (palm
+  #     rejection; precision touchpads report the Confidence usage);
+  #   buttons: physical buttons 1..3 are primary, secondary, middle;
+  #   contact_limit: five, what Windows precision touchpads must report;
+  #   binding_budget: report-descriptor binding work, a bound on parsing
+  #     effort (the driver's ceilings: 1024 fields, 2048 usages, 128
+  #     collections), not a device fact;
+  #   timing, milliseconds: startup is the whole bring-up, with room for
+  #     the HID over I2C reset (the specification allows the device 5 s);
+  #     control one command or GPIO step; read one input report; cleanup
+  #     one shutdown step;
+  #   idle_backoff: STOPGAP, the polled GPIO transport's wait when idle,
+  #     until gpio.drv takes its controller's interrupt. Every millisecond
+  #     here is added to touch-to-photon latency (target under 1 ms), so it
+  #     is 1, the least HID_Milliseconds admits, at the cost of up to 1000
+  #     idle wake-ups a second.
+  (driver-class "PNP0C50"
+    (Device_Class_Launch
+      facts => ["descriptor_register"]
+      policy => (HID_Parameters
+        x => (HID_Axis numerator => 1 denominator => 1 direction => HID_Direction.As_Reported)
+        y => (HID_Axis numerator => 1 denominator => 1 direction => HID_Direction.As_Reported)
+        confidence => HID_Confidence.Require_Confident
+        buttons => (HID_Buttons button_1 => HID_Button.Primary_Button
+          button_2 => HID_Button.Secondary_Button button_3 => HID_Button.Middle_Button)
+        contact_limit => 5 binding_budget => 65536
+        timing => (HID_Timing startup => 10000 control => 1000 read => 250
+          cleanup => 1000 idle_backoff => 1))))
 )

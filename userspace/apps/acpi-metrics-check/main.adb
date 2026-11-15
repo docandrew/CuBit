@@ -3,7 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  acpi-native-smoke: the real acpi.svc answers ACPI_Requests.Read_Metrics
+--  acpi-one-service: the one acpi.svc answers ACPI_Requests.Read_Metrics
 --  on its observer endpoint once bring-up reaches registration: phase
 --  Complete, every expected table installed, and a revision that does not
 --  move between two reads.
@@ -21,8 +21,9 @@ procedure Main is
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
    --  ACPI_Requests phase representation once registration is done.
    PHASE_COMPLETE : constant Unsigned_64 := 2;
-   --  q35's snapshot (tests/headless acpi-native-smoke).
-   Q35_TABLES : constant Unsigned_64 := 7;
+   --  q35's 7 tables plus the ACPI-ONE-001 regression SSDT
+   --  (tests/headless acpi-one-service, -acpitable).
+   Q35_TABLES : constant Unsigned_64 := 8;
 
    Call_Deadline_Ms : constant := 2_000;
    --  acpi.svc runs AML startup before it registers; each attempt waits

@@ -16,6 +16,13 @@
   (file bootstrap "virtio-gpu" "virtio-gpu.drv")
   (file bootstrap "hda" "hda.drv")
   (file bootstrap "rtw89" "rtw89.drv")
+  # The touchpad (SUP-001): the GPIO controller driver (ACPI launch), the
+  # I2C controller driver (one per controller, generic PCI launch) and the
+  # HID-over-I2C driver devmgr starts through Start_Child. hid-i2c.drv is
+  # this image's only PNP0C50 driver (never with hid-launch-check.drv).
+  (file bootstrap "gpio" "gpio.drv")
+  (file bootstrap "i2c-dw" "i2c-dw.drv")
+  (file bootstrap "hid-i2c" "hid-i2c.drv")
   (file bootstrap "mixer" "mixer.svc")
   (file bootstrap "ps2" "ps2.drv")
   (file bootstrap "xhci" "xhci.drv")
@@ -30,6 +37,8 @@
   (file bootstrap "clock" "clock.svc")
   (file bootstrap "display" "display.svc")
   (file bootstrap "desktop" "desktop.svc")
+  # The power manager (PWR-003): shutdown from Desktop.
+  (file bootstrap "power" "power.svc")
   (file bootstrap "ccl-workbench" "ccl-workbench.app")
   (file bootstrap "devices" "devices.app")
   (file bootstrap "config-inspector" "config-inspector.app")

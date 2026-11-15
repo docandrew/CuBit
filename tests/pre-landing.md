@@ -49,17 +49,52 @@ bash tests/headless/run.sh --test logs --accel kvm
 One chatty source cannot erase another's log history. log-flood writes
 4,000 records after log-retention-check (the quiet source) published 10
 boot records; then a subscription filtered to the quiet source (what
-`(logs.recent "acpi-backend")` does) still replays all 10 in order, and a
+`(logs.recent "acpi")` does) still replays all 10 in order, and a
 full-history subscription replays the retained window in publish order
-with no gap. Failed before: logstore kept one 512-record history shared
-by every source, so the flood evicted the quiet records, and a new
-subscription began with a gap counting every evicted record ("--- 269
-records lost before delivery ---" in the Logs app). The hosted core
-regression is `tests/log-fanout/run.sh`.
+with no gap, then each source's tally (LOG-005): the flood's replayed
+records are exactly its retained ones, its tally balances and, under the
+`logs.retention` ceiling, nothing was given up. Failed before: logstore
+kept one 512-record history shared by every source, so the flood evicted
+the quiet records, and a new subscription began with a gap counting every
+evicted record ("--- 269 records lost before delivery ---" in the Logs
+app); later (LOG-002) each source kept only 32 + 32, and the full replay
+had no account of the rest. The hosted core regression is
+`tests/log-fanout/run.sh`.
 
 ```sh
 make -C kernel world
 bash tests/headless/run.sh --test log-retention --accel kvm
+```
+
+## log-burst (LOG-005)
+
+A service's whole bring-up stays in logstore, and anything left out says
+so. log-burst-probe writes 1,000 records at startup (as acpi.svc's few
+hundred do), then 4,000 more; after each, `(logs.recent "log-burst-probe")`
+at the console returns a `List<LogItem>`: its first records (line 1
+first: the boot window is kept), typed `LogItem.Gap` entries where records
+are missing (`GapReason.Not_Retained` for those logstore's history gave up
+at its `logs.retention` ceiling, `GapReason.Not_Shown` for those one result
+cannot hold), its newest records and its `LogItem.Tally`.
+`tests/log-burst/check_serial.py` requires, for each result, that every
+missing line between two shown records is exactly the gaps between them,
+that shown records plus gap counts equal the tally's published count, that
+the tally balances (published = retained + not retained; published plus
+shed equals the lines written, the ring's shed count equal to the probe's),
+nothing given up under the ceiling (phase 1) and exactly the ceiling (4096)
+retained over it (phase 2). Failed before: logstore kept the first 32 and
+newest 32 records of each source, so a 1,000-record bring-up lost 936 of
+them, and `logs.recent` showed what was left with no mark for the hole
+(the probe's middle looked silent); shed records were counted but never
+reported. The hosted core (growth, ceilings, eviction from the middle,
+gaps, tallies, a refusing heap; the counting invariant proved at level 2)
+is `tests/log-fanout/run.sh`; the CCL types and their image builders are
+`tests/ccl-type-discovery/run.sh` (log_view_tests); cubit-remote's rendering
+is `python3 tools/cubit-remote/test_cubit_remote.py`.
+
+```sh
+make -C kernel world log-burst-probe
+CCL_CONSOLE_DEMO=log-burst bash tests/headless/run.sh --test ccl-console --accel kvm --timeout 120
 ```
 
 ## log-exited (LOG-003)
@@ -203,7 +238,7 @@ crt0, link scripts, TLS or thread start/exit (libc, Rust std, raw threads).
 ```sh
 tests/secondary-stack-layout/run.sh
 tests/headless/run.sh --test secondary-stacks --accel kvm --timeout 300
-tests/headless/run.sh --test acpi-native-smoke --accel kvm --timeout 300
+tests/headless/run.sh --test acpi-one-service --accel kvm --timeout 300
 tests/headless/run.sh --test threads --accel kvm --timeout 300
 tests/headless/run.sh --test rust-std --accel kvm --timeout 300
 ```
@@ -446,20 +481,19 @@ bash tests/headless/run.sh --test wifi-crypto --accel kvm
 
 ## acpi-hardware (ACPI region boundary, slice 1)
 
-`(Request.ACPI_Hardware "<binding>")` and catalog role 35 `acpi-registers`
-(coordination/acpi-region-boundary.md). Hosted: the manifest compiler's
-caps/startup encoding, never-optional, at-most-once and binding-length
+`(Request.ACPI_Hardware "<binding>")` (coordination/acpi-region-boundary.md).
+Catalog role 35 `acpi-registers` is retired with the ACPI pair
+(ACPI-ONE-001): the one acpi.svc holds the hardware itself. Hosted: the
+manifest compiler's caps/startup encoding, never-optional, at-most-once and binding-length
 refusals, the generated `Startup.<Binding> return CuBit.ACPI_Windows.Grant`
-(strict compile), role 35 in the catalog; the startup-plan approvals
-`(acpi-hardware approve-declared)` and `(acpi-registers approve-declared)`,
-each once and combinable with `(firmware-snapshot approve-declared)` on one
+(strict compile), role 35 refused by the catalog; the startup-plan approval
+`(acpi-hardware approve-declared)` (`(acpi-registers ...)` refused), once and
+combinable with `(firmware-snapshot approve-declared)` on one
 entry; the FADT/ECDT window computation and devmgr's port-claim ledger
 (proved at level 2 with `--prove`). Native (q35, KVM): the approved grant is
 non-empty, sorted, disjoint, each handle exactly its range without grant,
 equal to the FADT fixed blocks, the PM timer advances through its window;
-the same image without the hardware approval is refused at launch; the
-role-35 client gets the Frontend_Tag badge only with approval and cannot
-re-badge or derive it.
+the same image without the hardware approval is refused at launch.
 
 Slice 2 (firmware memory): the kernel's firmware-memory roots (ACPI NVS
 runs, the FACS page) and their authority are hosted-tested and proved in
@@ -477,8 +511,31 @@ python3 tests/ccl-configurations/test-configurations.py
 bash tests/acpi-hardware-windows/run.sh --prove
 (cd kernel && alr exec -- gprbuild -p -P ../tests/device-memory/authority.gpr && ../tests/device-memory/build-authority/authority_tests)
 make -C kernel world CUBIT_COMPOSITOR_TIMING=on
-make -C kernel acpi-hardware-check acpi-registers-standin acpi-registers-client
+make -C kernel acpi-hardware-check
 bash tests/headless/run.sh --test acpi-hardware --accel kvm
+```
+
+## SCI delivery (level-triggered legacy lines, no system call of its own)
+
+The SCI comes with `(acpi-hardware approve-declared)`: devmgr resolves it
+from its own FADT/MADT (CuBit.ACPI_SCI_Route), procmgr routes it to the
+program and installs `<binding>-sci` (read-only line handle). The kernel
+masks a level line when it delivers it and unmasks it when every owner
+acknowledges; the acknowledgement is ENABLE_IRQ's owner form
+(Interrupt_Line_ABI.Route_Acknowledge). Hosted and proved (level 2): the
+ABI, the kernel's line policy, the SCI route and acpi.svc's register
+layout; mutations of the policy and route must be caught. Native:
+acpi-hardware's stand-in checks the protocol (no storm while unacknowledged,
+an uncleared source re-delivered, a second press while masked delivered at
+the acknowledgement); acpi-sci checks the one acpi.svc logs and acknowledges
+two power-button SCIs.
+
+```sh
+bash tests/interrupt-lines/run.sh --prove
+bash tests/interrupt-lines/mutations.sh
+make -C kernel acpi-native acpi-metrics-check acpi-hardware-check
+bash tests/headless/run.sh --test acpi-hardware --accel kvm
+bash tests/headless/run.sh --test acpi-sci --accel kvm --timeout 300
 ```
 
 ## acpi-pci-config (ACPI-PCI-001, kernel/devmgr/procmgr half)
@@ -508,7 +565,7 @@ forged handle maps the slice.
 (cd kernel && alr exec -- gprbuild -p -P ../tests/device-memory/authority.gpr && ../tests/device-memory/build-authority/authority_tests)
 python3 tests/ccl-configurations/test-configurations.py
 make -C kernel world CUBIT_COMPOSITOR_TIMING=on
-make -C kernel acpi-pci-check acpi-hardware-check acpi-registers-standin acpi-registers-client
+make -C kernel acpi-pci-check acpi-hardware-check
 bash tests/headless/run.sh --test acpi-pci-config --accel kvm
 bash tests/headless/run.sh --test acpi-hardware --accel kvm
 bash tests/headless/run.sh --test capability-security --accel kvm
@@ -609,6 +666,53 @@ bash tests/headless/run.sh --test generic-launch --iommu --accel kvm
 bash tests/headless/run.sh --test startup-health --accel kvm --timeout 90
 ```
 
+## acpi-one-service (ACPI-ONE-001: one acpi.svc, laptop MBAR refusal)
+
+The one acpi.svc holds the ACPI hardware grant, the platform-register pool
+and the PCI configuration broker itself, and binds the ACPI agent's local
+root (tables admitted before Fields; Hardware, memory bridge and Fields from
+the copied FADT inside the module callback; Finish_Startup after device
+_INI; hardware maintenance bounds the serving wait; the shutdown controller
+retires the root before exit). q35 gets QEMU's edu device (devmgr's pool
+test profile) and the regression SSDT tests/headless/acpi/acpi-one-service-pool.aml:
+its module-level code reads a BAR-backed CHIPSET_SHARED pool member, which
+firmware data cannot serve, during table load. Failed before: the acpi-backend.svc pair refused exactly this read (STARTUP_REFUSED;
+laptop image 11, MBAR RBAR at 0xFEDC7110). Passes after: module AML
+completes for both tables and all 8 tables install.
+
+```sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on
+make -C kernel acpi-native acpi-metrics-check
+tests/headless/run.sh --test acpi-one-service --accel kvm --timeout 300
+```
+
+## acpi-live-replace (LIVE-001 for ACPI: graceful live replacement)
+
+The one acpi.svc is (replace graceful) in the laptop's live and installed
+plans, so cubit-remote's system generations switch it while it runs. The
+test switches it over ccl-remote. On Stop, acpi.svc serves STOP_REQUESTED,
+retires QUIESCENT and exits 0; the new program runs startup again and
+registers. A crashing program and one that never registers are rolled
+back. A 1 ms stop grace either aborts (Stop_Failed; the generation is kept,
+and after a late stop procmgr starts it again) or is met; the run prints
+which BRANCH it took. Over all instances, each got the first instance's
+hardware grant exactly and mapped the platform pool as it did, and no grant
+was refused as still held.
+
+Failed before: acpi.svc's main returned without an exit status, and the
+binder's main is a procedure, so it exited with code 1 (RAX). Every
+graceful switch therefore ended "did not quiesce cleanly", and the old
+program was started again.
+
+Passes after: acpi.svc sets 0 only after a served Stop and a QUIESCENT
+retirement.
+
+```sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on
+make -C kernel acpi-native
+tests/headless/run.sh --test acpi-live-replace --accel kvm --timeout 400
+```
+
 ## platform-quirks (ACPI-POOL-001 step 1b)
 
 The IdeaPad's P2SB discovery is classified by the step that failed
@@ -629,4 +733,259 @@ bash tests/platform-quirks/run.sh
 bash tests/platform-pool/run.sh
 make -C kernel world platform-pool-check
 bash tests/headless/run.sh --test platform-pool --accel kvm --timeout 120
+```
+
+## exit-status (LIVE-002: a returning main's exit status)
+
+Every Ada program whose main returns exits with a defined status. The user
+runtime's System.Exit_Status_Supported makes the binder's main a function
+that returns Ada.Command_Line's status: Success unless the program set
+another. exit-status-check runs three times from the plan: a plain return
+exits 0, Set_Exit_Status (Failure) exits 1, and an unhandled exception
+exits 134 (Unhandled_Exception_Status, unchanged). The run pairs each
+program's PID with procmgr's exit line.
+
+Failed before: the binder's main was a procedure, so a main that returned
+exited with whatever RAX held (acpi.svc exited 1 that way, see
+acpi-live-replace). A return without a status now exits 0.
+
+```sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on
+tests/headless/run.sh --test exit-status --accel kvm
+```
+
+## desktop-live-replace (LIVE-002: Desktop and timesync live replacement)
+
+desktop.svc is (restart on-failure) (replace graceful) in the laptop's
+live and installed plans. Switched over ccl-remote: on Stop, Desktop hands
+every output lease and buffer back to Display and exits 0 ("desktop:
+stopped; display released, exiting 0"); the new program takes the display
+and presents a frame. A crashing program is rolled back and the previous
+one presents again; system rollback returns to the image's program. Open
+windows are not handed over (UI-037). The same run switches timesync.svc
+(replace transparent): it reads Stop between polls and exits 0.
+
+Failed before: Desktop ignored procmgr's Stop, so a graceful switch could
+only end in Stop_Failed (the running instance never ended).
+
+```sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on
+tests/headless/run.sh --test desktop-live-replace --accel kvm --timeout 400
+```
+
+## gpio-launch (ACPI launch, docs/device-matching.md)
+
+devmgr launches the driver of an ACPI device it verified for use, from
+that driver's manifest and the admission record alone. The GPIO bootstrap
+handler answers and records the controller; the launch waits for acpi.svc's
+Consumer_Initialization_Complete (16#0253#: all startup AML is over), and
+only status Completed queues it, and the service loop binds the driver by `(Device_Match.ACPI_ID "...")` and gives
+its K-th `device-memory` request a capability narrowed to the admitted
+span its index names (`_CRS` order, at most max_bytes). In QEMU (the edu
+test profile with the CBTEST/GPIOBOOT firmware identity, whose quirk row
+runs P2SB discovery and names the test controller CBIT1057), the fixture
+requester waits while logstore starts and nothing is launched; after its
+completion messages (four non-canonical frames carrying COMPLETED for
+the right epoch: MALFORMED, unrecorded; epoch 0 and an unknown status:
+MALFORMED; INCOMPLETE for epoch 2: recorded, nothing queued; COMPLETED
+for epoch 2: CONFLICTING, no promotion; COMPLETED for epoch 3, where
+nothing was observed: nothing released; COMPLETED for epoch 1, twice:
+one receipt, one launch) the driver gets exactly its two
+windows in index order, maps them (the
+read-only one only read-only), and the kernel refuses the page past each
+window and the other span. Hosted: a request for more spans than were
+admitted, a read-write request for a read-only span and non-memory
+resources refuse the whole launch; Devmgr_Phase_Declarations releases only
+the sender's records of exactly the declared epoch and refuses epoch 0,
+conflicting statuses and non-canonical frames; the compiler gives ACPI-only manifests
+the ACPI basis (device memory only, indexes 0 .. 15); `Generic_ACPI`
+round-trips and refuses bad words; `Bind_ACPI` binds exactly and finds
+ambiguity; a P2SB_AVAILABLE proposal is verified for use only when its
+spans are exactly the inserted P2SB communities (tests/platform-quirks) (tests/launch-configuration also checks `Generic_ACPI`; its
+older "statistics size" check fails independently). Failed before: devmgr bound ACPI_ID entries to nothing ("not
+enumerated by devmgr"), an ACPI-only manifest with device-memory did not
+compile (MISSING_DEVICE_MATCH), and no driver was ever started for an
+admitted controller.
+
+HID offers (16#0252#, `CuBit.HID_Offer_Exchange`, wire docs/hid-offer-wire.md):
+the same requester then offers a PNP0C50 touchpad whose I2C controller is
+edu at 00:15.0 (bound to generic-check.drv) and whose GpioInt is on
+CBIT1057. Four non-canonical frames, request id 0, a wrong version, length
+field, compatible ID and epoch 0 are MALFORMED (with the payload byte) and
+unrecorded; a grant that is not the sender's is COPY_FAILED; an unresolved
+`_ADR` and an absent function are UNKNOWN_CONTROLLER, the driverless host
+bridge CONTROLLER_MISMATCH, another GPIO controller and another epoch
+GPIO_NOT_ADMITTED; the touchpad is QUEUED at position 1 with its I2C-target
+and GPIO-input badges, its repeat gets the same answer, a second request
+for the same device is DUPLICATE_DEVICE, and a recorded UNKNOWN_CONTROLLER
+id keeps its answer for the canonical payload. The deferred step runs from
+the service loop only after the GPIO driver reported ready (the harness
+checks the order). Then (SUP-001) devmgr starts hid-launch-check.drv, the
+image's PNP0C50 fixture, through procmgr's Start_Child: the plan's
+(driver-class "PNP0C50" ...) policy merged with devmgr's descriptor
+register fact (0x20) reaches the driver exactly, the driver reports ready
+and its exit reaches devmgr; procmgr never refuses devmgr's start.
+Hosted (tests/gpio-launch/windows, `Devmgr_HID_Offers`, proved at level 2):
+every known-mask 0 .. 6, another segment, sender, epoch, GPIO `_HID`/`_UID`
+kind/value/path, pin 0xFFFF, duplicates per (sender, epoch, path), golden
+badge words, and the launch order. Failed before: devmgr had no 0252
+handler (the label was "rejected unknown message" with REPLY_ERROR) and the
+hosted suite did not compile without `Devmgr_HID_Offers`.
+
+```sh
+bash tests/gpio-launch/windows/run.sh
+bash tests/platform-quirks/run.sh
+make -C kernel ccl-manifest ccl-image
+python3 tests/ccl-manifests/test-manifests.py -k acpi_spans -k typed_drives -k round_trip_through
+bash tests/device-matching/run.sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on gpio-bootstrap-check
+bash tests/headless/run.sh --test gpio-launch --accel kvm --timeout 120
+bash tests/headless/run.sh --test platform-pool --accel kvm --timeout 120
+```
+
+## supervision (SUP-001: Start_Child, supervision edges, reaping)
+
+procmgr is the only process creator; Start_Child records a typed
+supervision edge. Headless: supervision-check (a supervisor whose
+start-children scope is its may_launch list) starts supervision-child.app
+with typed parameters, which logs exactly what it decoded; its exit event
+reaches the supervisor (exited code 3); procmgr refuses, each typed, a
+parameter of the wrong type (LAUNCH_REFUSED, parameters rejected), a
+program outside the scope (NOT_GRANTED), a device-class start
+(CLASS_NOT_GRANTED), badge bindings (BINDINGS_NOT_GRANTED) and an ended
+sibling as a dependency (DEPENDENCY_UNKNOWN); when the supervisor ends
+with a child still running, procmgr reaps (stops) the child. Hosted
+(tests/supervision, proved at level 2): the spec codec (round trip, every
+truncation, each field and rule broken), the fact/policy merge checked
+by CCL's type checker against hid-i2c's own HID_Parameters (a plan
+naming a fact field or missing a policy field is refused; the
+supervisor may give only declared facts), (driver-class ...) blocks in
+plans, the laptop plans' PNP0C50 block, and the supervision edges (one
+supervisor per process, ranks ordered along supervisor chains so no
+cycle, removal, reaping marks, restart decisions). Failed before:
+procmgr answered 16#0114# with REPLY_ERR (unknown label), so every
+check failed; the plan compiler refused (driver-class ...) as
+UNKNOWN_DECLARATION; the hosted suite did not compile.
+
+```sh
+bash tests/supervision/run.sh --prove
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on supervision-test
+bash tests/headless/run.sh --test supervision --accel kvm --timeout 90
+```
+
+## touchpad plumbing (SUP-001: held start, GPIO sink, controller-correct bindings, typed class launches)
+
+Headless gpio-launch, with two I2C-controller stand-ins (edu at 00:15.0
+and 00:15.1, a generic-check.drv on each; the touchpad offer names
+00:15.0): devmgr starts hid-launch-check.drv Held through Start_Child,
+naming each binding's provider (the generic driver launched for 00:15.0,
+the GPIO controller's driver) and asking for the sink; procmgr holds the
+child and its receipt carries an endpoint to it badged with the GPIO
+input; devmgr offers it Write-only to the GPIO fixture with
+OP_GPIO_ADMIT_SINK (16#02A4#), which checks the caller is its launcher,
+zero words, one Write-only endpoint whose Describe badge is the offer's
+GPIO input (0x475010000001004C), answers COMPLETED and sends one event
+through it; only then does devmgr release the child (Release_Operation
+16#0115#), and the harness checks held < admitted < released < first
+line. The fixture's "i2c" call reaches the 00:15.0 driver with the I2C
+target's badge, never 00:15.1, and the GPIO event arrives through the
+admitted sink. Failed before: the bindings were badged copies of
+whichever process held the role's registry entry (the last i2c-dw to
+register; for the fixtures none, so "i2c absent, gpio absent"), no sink
+existed (the GPIO driver could not admit the input; the HID driver ran
+before any admission), and procmgr answered 16#0115# REPLY_ERR.
+
+Hosted: tests/supervision (spec v2 codec: start mode, sink kind and
+badge, binding providers, release words; the typed class launch
+`(driver-class "PNP0C50" (Device_Class_Launch facts => [...] policy =>
+...))` checked by CCL's type checker against hid-i2c's record less the
+facts: a policy naming a fact or leaving a policy field out is a type
+error, facts not exactly the supervisor's are refused, a fact outside its
+range fails the full check, default strings with parentheses are one
+field; every laptop plan's PNP0C50 launch merges to a HID_Parameters).
+tests/gpio-launch/windows (Provider_At: each controller's own driver,
+launch order irrelevant, a not-ready driver or two drivers for one
+function give none). Failed before: the plan reader parsed a hand-written
+(facts ...) (parameters ...) form; no Provider_At, no v2 fields.
+
+```sh
+bash tests/supervision/run.sh --prove
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 bash tests/gpio-launch/windows/run.sh --prove
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on gpio-bootstrap-check hid-launch-check supervision-test
+bash tests/headless/run.sh --test gpio-launch --accel kvm --timeout 120
+bash tests/headless/run.sh --test supervision --accel kvm --timeout 90
+python3 tests/ccl-images/test-images.py
+```
+
+## shutdown and shutdown-console (PWR-003 slice 1: the root stop)
+
+A shutdown request is a typed, ordered stop, not a kill. Headless (KVM):
+QEMU's power button (system_powerdown) reaches power.svc through
+shutdown-standin, a TEST STAND-IN for acpi.svc's side of
+CuBit.Power_Event_Exchange (it polls PM1_STS and writes PM1a_CNT; no AML);
+shutdown-console types (power-off) at the CCL console instead, the
+console's own power-console badge. procmgr stops the apps first; then
+acpi.svc (the stand-in) prepares to sleep (Prepare_To_Sleep S5) while
+everything else still runs; then procmgr keeps power.svc and the firmware
+step's protected tail and stops every other plan entry in reverse startup
+order, each within its (stop-grace-ms N): shutdown-stubborn ignores Stop
+and is ended after 500 ms (FORCED), shutdown-cooperative obeys
+(STOPPED_CLEAN); then the filesystem commits and detaches the journaled
+disk, devmgr stops its drivers, and the stand-in writes S5: QEMU must exit
+by itself (status 0, not the timeout), the disk must have no
+needs_recovery and pass e2fsck -fn. Hosted (tests/shutdown, proved at
+level 2): the stop order (stage, then reverse start), the apps-only first
+phase, kept units never stopped, ending only at a unit's grace, Forced /
+Not_Ended / Ended_Early, storage, devmgr's drivers refused, polled and
+timed out, Finished means every unit is kept or decided; power.svc's
+answers and button policy; the wire codecs. Failed before: procmgr
+answered 16#0274# and 16#0275# with REPLY_ERR, so nothing stopped and QEMU
+ran to the timeout; the journaled disk kept needs_recovery (the
+filesystem never detached); the plan compiler refused (stop-grace-ms N) as
+UNKNOWN_DECLARATION; the hosted suite did not compile.
+
+```sh
+bash tests/shutdown/run.sh --prove
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on shutdown-test power
+bash tests/headless/run.sh --test shutdown --accel kvm
+bash tests/headless/run.sh --test shutdown-console --accel kvm
+```
+
+## shutdown-text (PWR-003: apps close safely)
+
+procmgr's Stop reaches every UI app as a typed close request
+(CuBit.UI.Input.Close_Reason System_Shutdown, delivered by CuBit.UI.App.Run
+with no per-app plumbing); the framework first calls the app's
+Save_Recovery hook. Headless (KVM): Text has an unsaved line when the power
+button is pressed; it writes @system/Recovery/com.cubit.text/recovery-1.txt
+(CuBit.UI.Recovery: the document's bytes, never over its own file) and
+exits within its 3000 ms grace (STOPPED_CLEAN); the disk then holds the
+line in the copy and notes.txt unchanged. Hosted (tests/text-editor): a
+missing recovery copy opens nothing; a present one opens with the restore
+note. Failed before: Text never read the Stop, was ended after its grace
+(FORCED) and the unsaved line was lost.
+
+```sh
+bash tests/text-editor/run.sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on shutdown-test power
+bash tests/headless/run.sh --test shutdown-text --accel kvm
+```
+
+## shutdown-desktop and shutdown-desktop-cancel (PWR-003: Shut Down... in the Apps menu)
+
+Desktop's Apps menu ends, under a separator, with Restart... (shown,
+greyed: no platform reset path yet) and Shut Down..., keyboard first.
+Headless (KVM), by keyboard: Super, Up (wraps to Shut Down...), Enter opens
+the confirmation; Enter shuts down (Desktop's power-desktop badge, power.svc
+ACCEPTED, then the root stop and S5 through the stand-in: QEMU exits by
+itself); Escape cancels and nothing is sent (no power request, no
+procmgr stop). Hosted (tests/desktop-launch): Up wraps to Shut Down...
+skipping the disabled Restart..., Enter chooses it, a click on Restart...
+does nothing. Failed before: the menu's Power row did nothing.
+
+```sh
+bash tests/desktop-launch/run.sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on shutdown-test power
+bash tests/headless/run.sh --test shutdown-desktop --accel kvm
+bash tests/headless/run.sh --test shutdown-desktop-cancel --accel kvm
 ```

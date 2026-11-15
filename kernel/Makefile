@@ -752,6 +752,8 @@ prepare-desktop-protocol:
 		../userspace/runtime/gnat/cubit-grant_references.ads \
 		../userspace/runtime/gnat/cubit-display_protocol.ads \
 		../userspace/runtime/gnat/cubit-display_protocol.adb \
+		../userspace/runtime/gnat/cubit-present_timing.ads \
+		../userspace/runtime/gnat/cubit-present_timing.adb \
 		../userspace/runtime/gnat/cubit-desktop_protocol.adb ../tests/desktop-protocol/build/source/
 
 test-desktop-protocol: prepare-desktop-protocol
@@ -760,7 +762,7 @@ test-desktop-protocol: prepare-desktop-protocol
 
 prove-desktop-protocol: prepare-desktop-protocol
 	$(ALR) gnatprove -P ../tests/desktop-protocol/protocol.gpr \
-		-u cubit-desktop_protocol.adb cubit-display_protocol.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u cubit-desktop_protocol.adb cubit-display_protocol.adb cubit-present_timing.adb --level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/desktop-protocol/build/obj/gnatprove/gnatprove.out
 
 .PHONY: prepare-desktop-state test-desktop-state prove-desktop-state
@@ -1430,6 +1432,13 @@ secrets: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/services/secrets/component.ccl
 	cp ../userspace/services/secrets/build/secrets.svc isodir/boot/secrets.svc
 
+# power.svc, the power manager (PWR-003 slice 1, CuBit.Power_Requests).
+.PHONY : power
+power: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/services/power/build
+	$(CCL_BUILD) ../userspace/services/power/component.ccl
+	cp ../userspace/services/power/build/power.svc isodir/boot/power.svc
+
 # Headless-test variant for llm-mock: llm.svc with only .cubit.access
 # replaced by tests/llm/manifest-test.ccl (the mock's name and port
 # instead of api.anthropic.com:443), checked as timesync-test is. Only the
@@ -1627,30 +1636,14 @@ firmware-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/firmware-check/component.ccl
 	cp ../userspace/apps/firmware-check/build/firmware-check.app isodir/boot/firmware-check.app
 
-# The real acpi.svc (userspace/services/acpi/native) and the observer
-# metrics client for headless --test acpi-native-smoke.
+# The one acpi.svc (userspace/services/acpi/native; ACPI-ONE-001): AML plus
+# the hardware it holds itself, and the observer metrics client, for
+# headless --test acpi-one-service.
 .PHONY : acpi-native acpi-metrics-check
 acpi-native: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/acpi/native/build
 	$(CCL_BUILD) ../userspace/services/acpi/native/component.ccl
 	cp ../userspace/services/acpi/native/build/acpi.svc isodir/boot/acpi.svc
-
-# The real acpi-backend.svc (userspace/services/acpi/backend/native):
-# hardware windows and the role-35 register endpoint for acpi.svc.
-# headless --test acpi-pair-smoke.
-.PHONY : acpi-backend-native
-acpi-backend-native: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/acpi/backend/native/build
-	$(CCL_BUILD) ../userspace/services/acpi/backend/native/component.ccl
-	cp ../userspace/services/acpi/backend/native/build/acpi-backend.svc isodir/boot/acpi-backend.svc
-
-# ACPI agent's read-only named PM-timer probe (tests/acpi-register-probe),
-# a role-35 client of acpi-backend.svc: headless --test acpi-register-probe.
-# Test-only (never in world/images).
-.PHONY : acpi-register-probe
-acpi-register-probe: ccl-build user_runtime ccl-manifest
-	mkdir -p ../tests/acpi-register-probe/native/build
-	$(CCL_BUILD) ../tests/acpi-register-probe/native/component.ccl
 
 acpi-metrics-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/acpi-metrics-check/build
@@ -1663,22 +1656,13 @@ acpi-standin: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/acpi-standin/build
 	$(CCL_BUILD) ../userspace/apps/acpi-standin/component.ccl
 
-# ACPI hardware windows and the role-35 register endpoint
-# (coordination/acpi-region-boundary.md): headless --test acpi-hardware.
-# The stand-in and the unapproved client are test-only (never in images).
-.PHONY : acpi-hardware-check acpi-registers-standin acpi-registers-client
+# ACPI hardware windows (coordination/acpi-region-boundary.md): headless
+# --test acpi-hardware. Test-only (never in images).
+.PHONY : acpi-hardware-check
 acpi-hardware-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/acpi-hardware-check/build
 	$(CCL_BUILD) ../userspace/apps/acpi-hardware-check/component.ccl
 	cp ../userspace/apps/acpi-hardware-check/build/acpi-hardware-check.app isodir/boot/acpi-hardware-check.app
-
-acpi-registers-standin: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/acpi-registers-standin/build
-	$(CCL_BUILD) ../userspace/apps/acpi-registers-standin/component.ccl
-
-acpi-registers-client: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/acpi-registers-client/build
-	$(CCL_BUILD) ../userspace/apps/acpi-registers-client/component.ccl
 
 # ACPI-PCI-001: the opt-in read-only PCI segment 0 bus 0 window of the ACPI
 # hardware grant (headless --test acpi-pci-config). Test-only (never in
@@ -1706,6 +1690,15 @@ platform-pool-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/platform-pool-check/build
 	$(CCL_BUILD) ../userspace/apps/platform-pool-check/component.ccl
 	cp ../userspace/apps/platform-pool-check/build/platform-pool-check.app isodir/boot/platform-pool-check.app
+
+# The ACPI launch (docs/device-matching.md "ACPI launch"): the stand-in for
+# acpi.svc that asks devmgr to admit the test GPIO controller's spans
+# (headless --test gpio-launch). Test-only (never in world/images).
+.PHONY : gpio-bootstrap-check
+gpio-bootstrap-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../tests/gpio-launch/requester/build
+	$(CCL_BUILD) ../tests/gpio-launch/requester/component.ccl
+	cp ../tests/gpio-launch/requester/build/gpio-bootstrap-check.app isodir/boot/gpio-bootstrap-check.app
 
 firmware-undeclared: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/firmware-undeclared/build
@@ -2102,6 +2095,58 @@ program-parameters-test: ccl-build user_runtime ccl-manifest
 	cp ../tests/program-parameters/check/build/parameters-check.app isodir/boot/parameters-check.app
 	cp ../tests/program-parameters/plain/build/parameters-plain.app isodir/boot/parameters-plain.app
 
+# LIVE-002: the headless exit-status test's program, which ends as its typed
+# parameter says (tests/exit-status).
+.PHONY : exit-status-test
+exit-status-test: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../tests/exit-status/check/component.ccl
+	cp ../tests/exit-status/check/build/exit-status-check.app isodir/boot/exit-status-check.app
+
+# PWR-003 slice 1: the headless shutdown tests' fixtures: a TEST STAND-IN
+# for acpi.svc's side of CuBit.Power_Event_Exchange (button watch, S5 on
+# q35), a service that obeys Stop and one that does not.
+.PHONY : shutdown-test
+shutdown-test: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../tests/shutdown/standin/component.ccl
+	$(CCL_BUILD) ../tests/shutdown/cooperative/component.ccl
+	$(CCL_BUILD) ../tests/shutdown/stubborn/component.ccl
+	cp ../tests/shutdown/standin/build/shutdown-standin.app isodir/boot/shutdown-standin.app
+	cp ../tests/shutdown/cooperative/build/shutdown-cooperative.app isodir/boot/shutdown-cooperative.app
+	cp ../tests/shutdown/stubborn/build/shutdown-stubborn.app isodir/boot/shutdown-stubborn.app
+
+# Start_Child (SUP-001): the headless supervision test's supervisor and
+# the child it starts with typed parameters. Test-only.
+.PHONY : supervision-test
+supervision-test: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../tests/supervision/supervisor/component.ccl
+	$(CCL_BUILD) ../tests/supervision/child/component.ccl
+	cp ../tests/supervision/supervisor/build/supervision-check.app isodir/boot/supervision-check.app
+	cp ../tests/supervision/child/build/supervision-child.app isodir/boot/supervision-child.app
+
+# HID launch fixture (SUP-001): a test driver declaring ACPI_ID PNP0C50 and
+# hid-i2c's HID_Parameters, which devmgr starts through Start_Child in the
+# headless gpio-launch test. Test-only (never in world/images).
+.PHONY : hid-launch-check
+hid-launch-check: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../tests/gpio-launch/hid-driver/component.ccl
+	cp ../tests/gpio-launch/hid-driver/build/hid-launch-check.drv isodir/boot/hid-launch-check.drv
+
+# The laptop touchpad (SUP-001): the INTC1057 GPIO driver (ACPI launch),
+# the DesignWare I2C controller driver (generic PCI launch, 8086:54E8/54E9)
+# and the HID-over-I2C driver (PNP0C50, started by devmgr through
+# procmgr's Start_Child). Hardware images only (LAPTOP_LIVE_STAGE1); the
+# development image keeps hid-launch-check as its PNP0C50 driver.
+.PHONY : gpio i2c-dw hid-i2c
+gpio: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../userspace/services/gpio/component.ccl
+	cp ../userspace/services/gpio/build/gpio.drv isodir/boot/gpio.drv
+i2c-dw: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../userspace/services/i2c-dw/component.ccl
+	cp ../userspace/services/i2c-dw/build/i2c-dw.drv isodir/boot/i2c-dw.drv
+hid-i2c: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../userspace/services/hid-i2c/component.ccl
+	cp ../userspace/services/hid-i2c/build/hid-i2c.drv isodir/boot/hid-i2c.drv
+
 # procmgr's startup waits (CAP-003): the headless startup-wait test's late
 # provider of the test-only startup-wait-test service and its client.
 .PHONY : startup-wait-test
@@ -2149,6 +2194,15 @@ generic-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../tests/generic-launch/driver/build
 	$(CCL_BUILD) ../tests/generic-launch/driver/component.ccl
 	cp ../tests/generic-launch/driver/build/generic-check.drv isodir/boot/generic-check.drv
+
+# The ACPI launch's fixture driver (docs/device-matching.md "ACPI launch"):
+# launched only when devmgr admits an ACPI device with _HID CBIT1057 (the
+# headless gpio-launch profile's test controller).
+.PHONY: gpio-launch-check
+gpio-launch-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../tests/gpio-launch/driver/build
+	$(CCL_BUILD) ../tests/gpio-launch/driver/component.ccl
+	cp ../tests/gpio-launch/driver/build/gpio-launch-check.drv isodir/boot/gpio-launch-check.drv
 
 virtio-input: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/services/virtio-input/build
@@ -2242,6 +2296,14 @@ log-exit-probe: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/log-exit-probe/build
 	$(CCL_BUILD) ../userspace/apps/log-exit-probe/component.ccl
 	cp ../userspace/apps/log-exit-probe/build/log-exit-probe.app isodir/boot/log-exit-probe.app
+
+# LOG-005: a bring-up's worth of records, then more than its retention
+# ceiling (headless CCL_CONSOLE_DEMO=log-burst --test ccl-console).
+.PHONY : log-burst-probe
+log-burst-probe: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/log-burst-probe/build
+	$(CCL_BUILD) ../userspace/apps/log-burst-probe/component.ccl
+	cp ../userspace/apps/log-burst-probe/build/log-burst-probe.app isodir/boot/log-burst-probe.app
 
 # LOG-004: dies of an unhandled exception; its last words reach logstore
 # through the kernel log ring (run.sh --test ccl-console, CCL_CONSOLE_DEMO=kernel-log).
@@ -2476,7 +2538,7 @@ servo: libc ccl-manifest
 # to the staging targets: copying an old service beside a newly rebuilt driver
 # can silently violate their capability/protocol contract.
 INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 xhci virtio-input intel-gpu ufs generic-check rtw89 config netmgr wifi procmgr devmgr
+	mixer ps2 xhci virtio-input intel-gpu ufs generic-check gpio-launch-check hid-launch-check rtw89 config netmgr wifi procmgr devmgr
 
 # Binaries used by the graphical desktop session. Keep this as a separate
 # staging target so run-desktop can build/copy them into isodir first, then
@@ -2523,7 +2585,7 @@ $(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-s
 # all services have been staged so a parallel caller cannot capture a partial
 # archive.
 CAPABILITY_SECURITY_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net \
-	virtio-gpu hda mixer ps2 xhci virtio-input intel-gpu ufs generic-check rtw89 config netmgr wifi procmgr devmgr
+	virtio-gpu hda mixer ps2 xhci virtio-input intel-gpu ufs generic-check gpio-launch-check hid-launch-check rtw89 config netmgr wifi procmgr devmgr
 
 .PHONY : capability-security-image
 capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILITY_SECURITY_DISK)
@@ -2543,7 +2605,8 @@ initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAG
 # this separate from the normal two-stage image: the laptop must reach a
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 xhci virtio-input intel-gpu ufs rtw89 config netmgr wifi procmgr devmgr
+	mixer ps2 xhci virtio-input intel-gpu ufs rtw89 config netmgr wifi procmgr devmgr \
+	gpio i2c-dw hid-i2c
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ccl-console logs devices files config-inspector boot-logs \
 	storage-check doom sameboy tls timesync secrets llm agent tls-roots
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
@@ -2741,7 +2804,7 @@ test-programs: $(TEST_PROGRAMS)
 # pack. world builds them too, so a world pass means every image binary
 # compiled and links; the image targets name the same phony targets, so one
 # make invocation builds each once.
-IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots
+IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots gpio i2c-dw hid-i2c
 
 # CAP-002: capabilities are named by handles, never numbers. Runs first in
 # world; --self-test shows it rejecting each forbidden form.
@@ -2750,7 +2813,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets agent ccl-remote cpu-times-check
+world: check-declarations trace-viewer test-programs $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check
 
 .PHONY : headless-test
 headless-test: world

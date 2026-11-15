@@ -13,10 +13,7 @@
 --  blocks this program computes itself from its own firmware snapshot
 --  (CuBit.ACPI_Fixed_Windows; on q35 no other holder overlaps them); that
 --  the PM timer, read twice through its window, advances; and that a port
---  just past a window is refused. Then, through the role-35 "registers"
---  endpoint: it carries ACPI_Register_Roles.Frontend_Tag
---  (acpi-registers-standin reports the kernel-stamped tag), and no copy of
---  it can be re-badged or derived at all.
+--  just past a window is refused.
 --
 --  Slice 2, the firmware-memory windows: at least one; sorted and
 --  disjoint; each handle a firmware-memory capability covering exactly its
@@ -26,6 +23,21 @@
 --  program finds in its own FADT, write-back (on q35 it is the control
 --  kind: SeaBIOS has no NVS), and mapping it shows the FACS signature; the
 --  page just past (and just before) each window is refused.
+--
+--  The SCI (ACPI's System Control Interrupt) comes with the grant: one
+--  read-only interrupt handle naming exactly the line this program's own
+--  FADT and MADT give (CuBit.ACPI_SCI_Route; q35: SCI_INT 9, overridden to
+--  GSI 9 level / active high). It enables the power button event
+--  (PWRBTN_EN in PM1_EN), says "SCI armed" (the harness sends QEMU's
+--  system_powerdown), and checks the level-triggered protocol
+--  (CuBit.Handles.Lines): the interrupt arrives; no second one while it has
+--  not acknowledged (the kernel holds the line masked: no storm);
+--  acknowledging without clearing PWRBTN_STS delivers it again at once
+--  (nothing lost); a second press while the line is held masked latches
+--  with no delivery and is delivered at the acknowledgement (nothing lost);
+--  clearing then acknowledging ends it (no further interrupt).
+--  Acknowledging is ENABLE_IRQ's owner form (no system call of its own);
+--  with no line handle, or for another line, it is refused.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with System;
@@ -41,7 +53,11 @@ with CuBit.ACPI_Windows.Launch;
 with CuBit.ACPI_Fixed_Windows;
 with CuBit.ACPI_Memory_Classes;
 with CuBit.Firmware_Snapshot;
-with ACPI_Register_Roles;
+with CuBit.Firmware_Snapshot.Whole_Tables;
+with CuBit.ACPI_SCI_Route;
+with CuBit.Device_Interrupts;
+with CuBit.Handles.Lines;
+with Interrupt_Line_ABI;
 with Startup;
 
 procedure Main is
@@ -296,35 +312,201 @@ begin
       end if;
    end;
 
-   --  The role-35 endpoint: frontend badge, and no re-badging.
+   --  The SCI line and the level-triggered acknowledgement protocol.
    declare
-      Registers : constant CuBit.Handles.Startup.Optional_Endpoint := Startup.Registers;
-   begin
-      Check (Registers.Present, "registers endpoint granted");
-      if Registers.Present then
+      package SR renames CuBit.ACPI_SCI_Route;
+      package WT renames CuBit.Firmware_Snapshot.Whole_Tables;
+      package LA renames Interrupt_Line_ABI;
+      use type WT.Read_Status, LA.Trigger_Mode, LA.Pin_Polarity;
+      --  ACPI 6.5, 4.8.4.1: PM1 status at the event block, enable in its
+      --  second half; the power button is bit 8 of both (status: write 1
+      --  to clear).
+      PWRBTN_Bit : constant Unsigned_16 := 2 ** 8;
+      --  How long it waits for the injected event, for silence, and for a
+      --  re-delivery.
+      Event_Deadline_Ms    : constant := 20_000;
+      Silence_Ms           : constant := 300;
+      Redelivery_Ms        : constant := 2_000;
+      --  How often it looks at PWRBTN_STS while the line is held masked.
+      Poll_Ms              : constant := 20;
+
+      --  The whole table named Signature (empty when absent).
+      function Whole (Signature : String) return SR.Byte_Array is
+         Table : FS.Table_ID;
+         Bytes : WT.Table_Bytes;
+         Status : WT.Read_Status;
+      begin
+         WT.Find (Tables, Signature, Table, Bytes, Status);
+         if Status /= WT.Found then
+            return [1 .. 0 => 0];
+         end if;
          declare
-            Probe : Message := NULL_MESSAGE;
-            D : constant IPC.Description := IPC.Describe (Registers.Value);
+            Into : SR.Byte_Array (1 .. Bytes);
          begin
-            Probe.tag.label := Probe_Label;
-            Probe.tag := capCall (Registers.Value, Probe, Deadline_After (Probe_Deadline_Ms));
-            Check (Probe.tag.label = REPLY_OK
-                   and then ACPI_Register_Roles.Is_Frontend (ACPI_Register_Roles.Role_Tag (Probe.words (0))),
-                   "registers endpoint carries the frontend badge");
-            Check (D.Current and then not D.Held.Grant
-                   and then D.Authority_Tag = Unsigned_64 (ACPI_Register_Roles.Frontend_Tag),
-                   "registers endpoint holds no grant right");
-            Check (not Valid (Endpoint'(CuBit.Handles.Control.Derive
-                                          (Badged (Registers.Value, Read_Write, Forged_Tag))))
-                   and then not Valid (Endpoint'(CuBit.Handles.Control.Derive
-                                          (Copy (Registers.Value, Read_Only))))
-                   and then not Valid (Endpoint'(CuBit.Handles.Control.Derive
-                                          (Copy (Registers.Value,
-                                                 (Read | Write | Grant => True, others => False))))),
-                   "registers endpoint cannot be re-badged or derived");
-            Check (IPC.Describe (Registers.Value).Authority_Tag =
-                     Unsigned_64 (ACPI_Register_Roles.Frontend_Tag),
-                   "refused re-badging leaves the frontend badge");
+            WT.Copy (Tables, Table, Into, Status);
+            return (if Status = WT.Found then Into else [1 .. 0 => 0]);
+         end;
+      end Whole;
+
+      --  Whether the IRQ doorbell rings before Milliseconds pass (other
+      --  messages are ignored).
+      function Doorbell_Within (Milliseconds : Unsigned_64) return Boolean is
+         Deadline : constant Unsigned_64 := Deadline_After (Milliseconds);
+         From : Process_ID;
+         Msg : Message;
+         Received : Boolean;
+      begin
+         loop
+            receiveUntil (Deadline, From, Msg, Received);
+            if not Received then
+               return False;
+            elsif CuBit.Device_Interrupts.Is_Doorbell (Msg) then
+               return True;
+            end if;
+         end loop;
+      end Doorbell_Within;
+
+      SCI : constant CuBit.ACPI_Windows.SCI_Line := G.SCI;
+      Own_FADT : constant SR.Byte_Array := Whole (SR.FADT_Signature);
+      Own_MADT : constant SR.Byte_Array := Whole (SR.MADT_Signature);
+      Expected_Route : constant SR.Resolution := SR.Resolve_SCI (Own_FADT, Own_MADT);
+      PM1_Base, PM1_Length : Unsigned_64 := 0;
+      PM1 : Natural := 0;   --  the window holding the PM1 event block
+   begin
+      Check (SCI.Present, "SCI line granted");
+      Check (Expected_Route.Routed, "SCI resolves from this program's own FADT and MADT");
+      if Expected_Route.Routed then
+         debugPrint ("acpi-hardware-check: SCI is GSI" & Unsigned_32'Image (Expected_Route.Route.GSI) &
+                     (if Expected_Route.Route.Trigger = LA.Level then " level" else " edge") &
+                     (if Expected_Route.Route.Polarity = LA.Active_Low then " active-low" else " active-high") &
+                     (if Expected_Route.Route.Overridden then " (override)" else " (default)") & LF);
+         Check (Expected_Route.Route.GSI = 9 and then Expected_Route.Route.Overridden
+                and then Expected_Route.Route.Trigger = LA.Level
+                and then Expected_Route.Route.Polarity = LA.Active_High,
+                "q35 SCI is the MADT override's GSI 9, level, active high");
+      end if;
+      if SCI.Present then
+         declare
+            D : constant IPC.Description := IPC.Describe (SCI.Line);
+         begin
+            Check (D.Current and then D.Kind = ABI.Interrupt and then D.Parameter = 1
+                   and then D.Object = Unsigned_64 (SCI.Vector)
+                   and then Expected_Route.Routed
+                   and then SCI.Vector = Expected_Route.Vector,
+                   "SCI handle names exactly the resolved line");
+            Check (D.Current and then D.Held.Read and then not D.Held.Grant,
+                   "SCI handle is read-only without grant");
+         end;
+      end if;
+      declare
+         use type LA.Route_Outcome;
+         Refused : constant CuBit.Handles.Lines.Acknowledgement :=
+           CuBit.Handles.Lines.Acknowledge (No_Interrupt, LA.Line_Vector'First);
+      begin
+         Check (not Refused.Accepted and then Refused.Why = LA.No_Line_Authority,
+                "acknowledging no line handle is refused");
+      end;
+      if SCI.Present then
+         declare
+            use type LA.Route_Outcome;
+            Other : constant LA.Line_Vector :=
+              (if SCI.Vector = LA.Line_Vector'Last then LA.Line_Vector'First else SCI.Vector + 1);
+            Refused : constant CuBit.Handles.Lines.Acknowledgement :=
+              CuBit.Handles.Lines.Acknowledge (SCI.Line, Other);
+         begin
+            Check (not Refused.Accepted and then Refused.Why = LA.Malformed_Acknowledge,
+                   "acknowledging another line with the SCI handle is refused");
+         end;
+      end if;
+
+      --  The PM1a event block, from this program's own FADT.
+      for I in 0 .. 3 loop
+         PM1_Base := PM1_Base or
+           Shift_Left (Unsigned_64 (FADT (AF.PM1a_Event_Offset + 1 + I)), 8 * I);
+      end loop;
+      PM1_Length := Unsigned_64 (FADT (AF.PM1_Event_Length_Offset + 1));
+      for K in 1 .. G.IO_Used loop
+         if PM1_Base >= Unsigned_64 (G.IO (K).First)
+           and then PM1_Base + PM1_Length <= Unsigned_64 (G.IO (K).First) + Unsigned_64 (G.IO (K).Count)
+         then
+            PM1 := K;
+         end if;
+      end loop;
+      Check (PM1 /= 0 and then PM1_Length >= 4, "PM1 event block inside a window");
+
+      if SCI.Present and then PM1 /= 0 and then PM1_Length >= 4 then
+         declare
+            Ports : constant IO_Ports := G.IO (PM1).Ports;
+            Status_Port : constant Unsigned_16 := Unsigned_16 (PM1_Base);
+            Enable_Port : constant Unsigned_16 := Unsigned_16 (PM1_Base + PM1_Length / 2);
+            Enabled : constant Unsigned_64 := CuBit.Handles.Devices.In_16 (Ports, Enable_Port);
+            Ack : CuBit.Handles.Lines.Acknowledgement;
+            Ignore : Boolean;
+         begin
+            --  Start clean: clear a stale press, then enable the event.
+            Ignore := CuBit.Handles.Devices.Out_16 (Ports, Status_Port, PWRBTN_Bit);
+            Check (Enabled /= Unsigned_64'Last
+                   and then CuBit.Handles.Devices.Out_16
+                              (Ports, Enable_Port, Unsigned_16 (Enabled and 16#FFFF#) or PWRBTN_Bit),
+                   "power button event enabled through the PM1 window");
+            debugPrint ("acpi-hardware-check: SCI armed" & LF);
+
+            Check (Doorbell_Within (Event_Deadline_Ms), "SCI delivered for the power button");
+            Check ((CuBit.Handles.Devices.In_16 (Ports, Status_Port) and Unsigned_64 (PWRBTN_Bit)) /= 0,
+                   "PWRBTN_STS set");
+            Check (not Doorbell_Within (Silence_Ms),
+                   "SCI held masked until acknowledged (no storm)");
+
+            --  Acknowledge without clearing: still asserted, so it comes
+            --  again at once.
+            Ack := CuBit.Handles.Lines.Acknowledge (SCI.Line, SCI.Vector);
+            Check (Ack.Accepted and then Ack.Delivered = 1,
+                   "first acknowledgement accepted after one delivery");
+            Check (Doorbell_Within (Redelivery_Ms),
+                   "uncleared SCI delivered again after acknowledgement (nothing lost)");
+
+            --  A second event while the line is held masked: clear the first
+            --  press but do not acknowledge; the harness presses again. The
+            --  status latches with no delivery; the acknowledgement then
+            --  delivers it at once.
+            Ignore := CuBit.Handles.Devices.Out_16 (Ports, Status_Port, PWRBTN_Bit);
+            Check ((CuBit.Handles.Devices.In_16 (Ports, Status_Port) and Unsigned_64 (PWRBTN_Bit)) = 0,
+                   "PWRBTN_STS cleared");
+            debugPrint ("acpi-hardware-check: SCI second press wanted" & LF);
+            declare
+               Deadline : constant Unsigned_64 := Deadline_After (Event_Deadline_Ms);
+               Latched, Delivered_Early : Boolean := False;
+            begin
+               loop
+                  if Doorbell_Within (Poll_Ms) then
+                     Delivered_Early := True;
+                  end if;
+                  Latched := (CuBit.Handles.Devices.In_16 (Ports, Status_Port)
+                              and Unsigned_64 (PWRBTN_Bit)) /= 0;
+                  exit when Latched or else Deadline_After (0) >= Deadline;
+               end loop;
+               Check (Latched, "second press latched in PWRBTN_STS");
+               Check (not Delivered_Early, "second press not delivered while the line is held masked");
+            end;
+            Ack := CuBit.Handles.Lines.Acknowledge (SCI.Line, SCI.Vector);
+            Check (Ack.Accepted and then Ack.Delivered = 2,
+                   "acknowledged with the second press pending, two deliveries so far");
+            Check (Doorbell_Within (Redelivery_Ms),
+                   "second SCI delivered at the acknowledgement (not lost)");
+
+            --  Clear the source, then acknowledge: it ends.
+            Ignore := CuBit.Handles.Devices.Out_16 (Ports, Status_Port, PWRBTN_Bit);
+            Ack := CuBit.Handles.Lines.Acknowledge (SCI.Line, SCI.Vector);
+            Check (Ack.Accepted and then Ack.Delivered = 3,
+                   "acknowledged after clearing, three deliveries in all");
+            Check (not Doorbell_Within (Silence_Ms),
+                   "no SCI after clearing and acknowledgement");
+            Ack := CuBit.Handles.Lines.Acknowledge (SCI.Line, SCI.Vector);
+            Check (Ack.Accepted and then Ack.Delivered = 3,
+                   "the line stayed quiet: still three deliveries");
+            Ignore := CuBit.Handles.Devices.Out_16
+              (Ports, Enable_Port, Unsigned_16 (Enabled and 16#FFFF#));
+            debugPrint ("acpi-hardware-check: SCI done" & LF);
          end;
       end if;
    end;

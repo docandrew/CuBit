@@ -1,5 +1,5 @@
 --  Native QEMU regression for devmgr's named PCI-window broker.
---  This test-only executable is a validated com.cubit.acpi-backend stand-in.
+--  This test-only executable is a validated com.cubit.acpi stand-in.
 --  Startup hardware contains no PCI pregrant. With the launch plan's hardware
 --  and PCI approvals it requests segment0/bus0, verifies the read-only,
 --  uncached, non-delegable one-bus handle against its own MCFG copy, reads the

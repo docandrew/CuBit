@@ -34,6 +34,13 @@
   (file optical "intel-firmware-license" "licenses/Intel-GPU.txt")
   (file optical "hda" "apps/hda.drv")
   (file optical "rtw89" "apps/rtw89.drv")
+  # The touchpad (SUP-001): the GPIO controller driver (ACPI launch), the
+  # I2C controller driver (one per controller, generic PCI launch) and the
+  # HID-over-I2C driver devmgr starts through Start_Child. hid-i2c.drv is
+  # this image's only PNP0C50 driver (never with hid-launch-check.drv).
+  (file optical "gpio" "apps/gpio.drv")
+  (file optical "i2c-dw" "apps/i2c-dw.drv")
+  (file optical "hid-i2c" "apps/hid-i2c.drv")
   (file optical "mixer" "apps/mixer.svc")
   (file optical "config" "apps/config.svc")
   (file optical "config-storage" "apps/config-storage.svc")
@@ -45,6 +52,8 @@
   (file optical "clock" "apps/clock.svc")
   (file optical "display" "apps/display.svc")
   (file optical "desktop" "apps/desktop.svc")
+  # The power manager (PWR-003): shutdown from Desktop and the console.
+  (file optical "power" "apps/power.svc")
   (file optical "ccl-workbench" "apps/ccl-workbench.app")
   (file optical "ccl-console" "apps/ccl-console.app")
   # The agent path (AGENT-002): agent.app asks llm.svc, which reaches the

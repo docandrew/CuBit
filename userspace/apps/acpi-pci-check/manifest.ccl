@@ -1,7 +1,7 @@
-# Test-only backend stand-in; broker approval requires the exact validated
-# backend identity plus launch-plan hardware and PCI approvals. No policy widening.
+# Test-only acpi.svc stand-in; broker approval requires the exact validated
+# acpi.svc identity plus launch-plan hardware and PCI approvals. No policy widening.
 (Executable_Manifest
-  identity => "com.cubit.acpi-backend"
+  identity => "com.cubit.acpi"
   version => "0.1.0"
   optional => ["pci-windows"]
   requests => [

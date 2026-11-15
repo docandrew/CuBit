@@ -1,5 +1,5 @@
 --  Native QEMU regression for devmgr's firmware-data windows.
---  This test-only executable is a validated com.cubit.acpi-backend stand-in.
+--  This test-only executable is a validated com.cubit.acpi stand-in.
 --  The launch plan independently approves hardware, PCI and firmware-data.
 --  The approved instance requests a read-only segment0/bus0 handle from the
 --  PCI broker to discover real device BARs; no startup PCI pregrant is used.

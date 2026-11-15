@@ -1,0 +1,29 @@
+# The ACPI launch (docs/device-matching.md "ACPI launch"). run.sh adds
+# QEMU's edu device and the CBTEST/GPIOBOOT firmware identity: devmgr's
+# gpio-launch test profile, whose P2SB discovery runs and does not find,
+# opening the GPIO bootstrap admission for the test controller CBIT1057.
+# gpio-bootstrap-check stands in for acpi.svc (approved for the
+# firmware-data endpoint) and has devmgr admit the controller's two spans;
+# devmgr then launches gpio-launch-check.drv, whose manifest declares
+# (Device_Match.ACPI_ID "CBIT1057"), once logstore runs. The touchpad
+# offer's driver, hid-launch-check.drv (_CID PNP0C50), is started through
+# procmgr's Start_Child (SUP-001) with the class block below: the laptop
+# plans' policy values, and the descriptor register devmgr gives as a fact.
+(startup v1
+  (start "gpio-bootstrap-check.app" (priority 3)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-firmware-data approve-declared))
+  (start "logstore.svc" (priority 5))
+  (driver-class "PNP0C50"
+    (Device_Class_Launch
+      facts => ["descriptor_register"]
+      policy => (HID_Parameters
+        x => (HID_Axis numerator => 1 denominator => 1 direction => HID_Direction.As_Reported)
+        y => (HID_Axis numerator => 1 denominator => 1 direction => HID_Direction.As_Reported)
+        confidence => HID_Confidence.Require_Confident
+        buttons => (HID_Buttons button_1 => HID_Button.Primary_Button
+          button_2 => HID_Button.Secondary_Button button_3 => HID_Button.Middle_Button)
+        contact_limit => 5 binding_budget => 65536
+        timing => (HID_Timing startup => 10000 control => 1000 read => 250
+          cleanup => 1000 idle_backoff => 1))))
+)

@@ -24,6 +24,13 @@
   (file bootstrap "ufs" "ufs.drv")
   # The generic launch's fixture driver: bound only to QEMU's edu device.
   (file bootstrap "generic-check" "generic-check.drv")
+  # The ACPI launch's fixture driver: bound only to the gpio-launch test
+  # profile's ACPI controller (_HID CBIT1057).
+  (file bootstrap "gpio-launch-check" "gpio-launch-check.drv")
+  # The HID start's fixture driver (SUP-001): _CID PNP0C50, started by
+  # devmgr through procmgr's Start_Child in the gpio-launch test. Not in
+  # an image that carries the real hid-i2c.drv (PNP0C50 would be ambiguous).
+  (file bootstrap "hid-launch-check" "hid-launch-check.drv")
   (file bootstrap "config" "config.svc")
   (file bootstrap "netmgr" "netmgr.svc")
   (file bootstrap "wifi" "wifi.svc")

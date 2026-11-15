@@ -1,0 +1,13 @@
+# LOG-005 (CCL_CONSOLE_DEMO=log-burst): log-burst-probe writes a bring-up's
+# worth of records at startup (1000), then more than logs.retention's
+# per-source ceiling (system.ccl); after each, (logs.recent "log-burst-probe")
+# at the console returns all of them or typed gaps with exact counts
+# (tests/log-burst/check_serial.py).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "log-burst-probe.app" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "ccl-console.app" (priority 3))
+)

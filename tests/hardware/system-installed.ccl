@@ -31,6 +31,12 @@
   # The NUC live disc: the user's zone (Settings > Date & Time changes it).
   (setting "clock.time-zone" "America/Denver")
   (setting "logs.minimum-level" "Severity.Information")
+  # What logstore's retained history keeps, in records (LOG-005,
+  # Log_Retention): per source, the first of them always (its boot), and in
+  # all. A whole acpi.svc bring-up (a few hundred records) fits a source's
+  # share many times; one record takes at most about 0.9 KiB, so the total
+  # bounds the history near 14 MiB.
+  (setting "logs.retention" (Log_Retention per_source => 4096 boot => 256 total => 16384))
   # Explicitly volatile Turso; no writes to the machine's internal disks.
   (setting "cubit.config.storage.database" ":memory:")
   (setting "desktop.launch.10-workbench"

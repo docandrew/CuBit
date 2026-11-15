@@ -45,6 +45,9 @@ def build(output, files, debug_dir=None):
         root = Path(tmp)
         stage = root / 'root'
         (stage / 'work').mkdir(parents=True)
+        # Apps' recovery places (CuBit.UI.Recovery, @system/Recovery/): unsaved
+        # work at shutdown. The development disk is @system in its boots.
+        (stage / 'Recovery' / 'com.cubit.text').mkdir(parents=True)
         expected = {}
         for destination, source in payloads.items():
             target = stage / destination

@@ -1,2 +1,0 @@
-(Component name => "acpi-registers-client" kind => Kind.Application
-  source => (Source.Ada (Ada_Source)))

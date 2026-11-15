@@ -31,6 +31,8 @@ TEST_NAME="boot-shell-nvme"
 # full desktop with injected input; the others finish well inside the default.
 DEFAULT_TIMEOUT_SECONDS=25
 DESKTOP_TIMEOUT_SECONDS=180
+# PWR-003: boot, the button press, every stage's grace, then power-off.
+SHUTDOWN_TIMEOUT_SECONDS=90
 NETWORK_AUTHORITY_TIMEOUT_SECONDS=100
 # net-link and net-multi: boot, DHCP, and each pulled cable (tests/net-link).
 NET_LINK_TIMEOUT_SECONDS=150
@@ -90,7 +92,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, display-latency, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -303,8 +305,10 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|bible|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart)
+        desktop-display|desktop-protocol|files|text|calculator|lexicon|dictionary|bible|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
+        shutdown|acpi-shutdown)
+            TIMEOUT_SECONDS=$SHUTDOWN_TIMEOUT_SECONDS ;;
         network-authority)
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
         net-link|net-multi)
@@ -352,7 +356,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|secondary-stacks|ada-runtime|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|acpi-native-smoke|acpi-pair-smoke|multi-instance|program-parameters|startup-wait|usb-hotplug|usb-slots|wifi-crypto|acpi-register-probe|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -639,6 +643,11 @@ with open(sys.argv[1], "wb") as f:
             # words reach logstore only through the kernel log ring.
             INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console-kernel-log.ccl"
         fi
+        if [ "${CCL_CONSOLE_DEMO:-}" = log-burst ]; then
+            # LOG-005: log-burst-probe's 1000 startup records, then 5000;
+            # logs.recent returns them or typed gaps with exact counts.
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console-log-burst.ccl"
+        fi
         # The gcc demo runs cc1, a 45 MB image procmgr reads whole.
         if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then QEMU_MEMORY="${QEMU_MEMORY:-1G}"; fi
         ;;
@@ -723,6 +732,25 @@ with open(sys.argv[1], "wb") as f:
         # rolled back through ccl-remote, and clock.svc (graceful) refused
         # (tests/service-switch/service_switch.py).
         INIT_PROFILE="$ROOT_DIR/tests/service-switch/init.ccl"
+        ;;
+    acpi-live-replace)
+        # LIVE-001 for ACPI: the one acpi.svc (replace graceful) switched
+        # through system generations over ccl-remote, its hardware grants
+        # retired and granted again each time, a crash and a hang rolled
+        # back, an unmet stop grace aborted with the generation kept
+        # (tests/acpi-live-replace/acpi_live_replace.py). Build: make -C
+        # kernel world acpi-native. As acpi-one-service: q35 with edu and
+        # the regression SSDT, 2 GiB.
+        INIT_PROFILE="$ROOT_DIR/tests/acpi-live-replace/init.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
+        ;;
+    desktop-live-replace)
+        # LIVE-002: desktop.svc (restart on-failure) (replace graceful), as
+        # in the laptop plans, switched through system generations over
+        # ccl-remote: Stop hands the display back and exits 0, the new
+        # program presents again; a crash rolled back; rollback to the
+        # image (tests/desktop-live-replace/desktop_live_replace.py).
+        INIT_PROFILE="$ROOT_DIR/tests/desktop-live-replace/init.ccl"
         ;;
     device-build|console-run-staged|bench-build)
         # bench-build (PERF-010): the same system, timing builds instead
@@ -815,23 +843,40 @@ with open(sys.argv[1], "wb") as f:
         # (RT-008), and zero-cost exceptions (EXC-001).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ada-runtime.ccl"
         ;;
-    acpi-native-smoke)
-        # The real acpi.svc on q35 (build: make -C kernel acpi-native
-        # acpi-metrics-check). 2 GiB until MEM-004: CuAlloc's first small
-        # allocation backs a whole 16 MiB arena.
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-native-smoke.ccl"
+    exit-status)
+        # LIVE-002: a returning main's exit status from the user runtime
+        # (tests/exit-status; built below with make -C kernel
+        # exit-status-test): 0 for a plain return, 1 for
+        # Ada.Command_Line.Failure, 134 for an unhandled exception.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-exit-status.ccl"
+        ;;
+    acpi-shutdown)
+        # Real acpi.svc + power.svc: copied SCI event, preparation, S5.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-shutdown.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         ;;
-    acpi-register-probe)
-        # Named read-only PM-timer reads through acpi-backend.svc (build:
-        # make -C kernel acpi-backend-native acpi-register-probe).
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-register-probe.ccl"
+    acpi-one-service)
+        # ACPI-ONE-001: the one acpi.svc on q35 (build: make -C kernel
+        # acpi-native acpi-metrics-check) with the regression SSDT
+        # tests/headless/acpi/acpi-one-service-pool.aml (-acpitable) and
+        # QEMU's edu device (devmgr's pool test profile): its module-level
+        # code reads a BAR-backed CHIPSET_SHARED pool member during table
+        # load, which firmware data cannot serve. 2 GiB until MEM-004: CuAlloc's first
+        # small allocation backs a whole 16 MiB arena.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-one-service.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         ;;
-    acpi-pair-smoke)
-        # The real acpi-backend.svc and acpi.svc on q35 (build: make -C
-        # kernel acpi-backend-native acpi-native acpi-metrics-check).
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-pair-smoke.ccl"
+    acpi-sci)
+        # SCI-DELIVERY: acpi-one-service's image and firmware, and QEMU's
+        # system_powerdown twice: the PM1 power button raises the SCI (GSI
+        # 9, level) on the line procmgr routed to the one acpi.svc, which
+        # reads and clears PWRBTN_STS through its I/O window, logs it and
+        # acknowledges (ENABLE_IRQ's owner form). The second press is sent as
+        # soon as the first is logged, before or after the acknowledgement:
+        # it must arrive either way. SCI_EN must be on when it arms: already
+        # set, or set by its ACPI_ENABLE write to SMI_CMD (build: make -C
+        # kernel acpi-native acpi-metrics-check).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-acpi-one-service.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         ;;
     firmware-snapshot)
@@ -861,6 +906,14 @@ with open(sys.argv[1], "wb") as f:
         # revocation when edu's fixture driver binds, and the shared
         # community kept (build: make -C kernel platform-pool-check).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-platform-pool.ccl"
+        ;;
+    gpio-launch)
+        # docs/device-matching.md "ACPI launch": devmgr admits a GPIO
+        # controller's spans (the GPIO bootstrap admission), then launches
+        # the driver whose manifest matches its _HID with exactly those
+        # spans (build: make -C kernel world gpio-bootstrap-check). The
+        # profile: edu plus the CBTEST/GPIOBOOT firmware identity below.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-gpio-launch.ccl"
         ;;
     acpi-firmware-data)
         # Table-named firmware data: devmgr's narrowed, uncached windows
@@ -965,6 +1018,41 @@ with open(sys.argv[1], "wb") as f:
         # docs/ccl-launch-parameters.md: typed program parameters from the
         # startup plan, checked by procmgr, decoded by the program.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-program-parameters.ccl"
+        ;;
+    supervision)
+        # Start_Child (SUP-001): a supervisor starts a child with typed
+        # parameters through procmgr, gets its exit event and typed
+        # refusals, then ends and procmgr reaps its running child.
+        INIT_PROFILE="$ROOT_DIR/tests/supervision/init.ccl"
+        ;;
+    shutdown)
+        # PWR-003 slice 1: QEMU's power button (system_powerdown) through a
+        # TEST STAND-IN for acpi.svc's button watch, to power.svc, whose
+        # stop procmgr runs in reverse startup order with each entry's
+        # grace (one entry obeys Stop, one hangs and is forced), the
+        # filesystem commits and detaches (the journaled disk ends without
+        # needs_recovery), devmgr stops its drivers, and the stand-in
+        # writes S5 into PM1a_CNT: QEMU powers off by itself.
+        INIT_PROFILE="$ROOT_DIR/tests/shutdown/init.ccl"
+        ;;
+    shutdown-console)
+        # PWR-003 slice 1: (power-off) typed at the CCL console, the
+        # console's own requester badge on power.svc; the same stop, with
+        # the Desktop session, ending in S5 through the stand-in.
+        INIT_PROFILE="$ROOT_DIR/tests/shutdown/init-console.ccl"
+        ;;
+    shutdown-desktop|shutdown-desktop-cancel)
+        # PWR-003: Shut Down... in Desktop's Apps menu, by keyboard, then the
+        # confirmation: Enter shuts down (S5 through the stand-in); Escape
+        # cancels and nothing is sent.
+        INIT_PROFILE="$ROOT_DIR/tests/shutdown/init-desktop.ccl"
+        ;;
+    shutdown-text)
+        # PWR-003: apps close safely. Text, with unsaved edits, gets
+        # procmgr's Stop as a System_Shutdown close (CuBit.UI.App), writes a
+        # recovery copy to its recovery place, never over its file, and
+        # exits within its grace; then S5 through the stand-in.
+        INIT_PROFILE="$ROOT_DIR/tests/shutdown/init-text.ccl"
         ;;
     startup-wait)
         # procmgr's startup waits (CAP-003): a client waits, parked, for a
@@ -1139,6 +1227,9 @@ with open(sys.argv[1], "wb") as f:
         ;;
     calculator)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-calculator.ccl"
+        ;;
+    display-latency)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-latency.ccl"
         ;;
     clipboard)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-clipboard.ccl"
@@ -1481,6 +1572,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "launch-failure" ] ||
        [ "$TEST_NAME" = "text" ] ||
        [ "$TEST_NAME" = "calculator" ] ||
+       [ "$TEST_NAME" = "display-latency" ] ||
        [ "$TEST_NAME" = "clipboard" ] ||
        [ "$TEST_NAME" = "key-repeat" ] ||
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
@@ -1665,6 +1757,9 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
             if [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then
                 CCL_IMAGES="$CCL_IMAGES crash-probe.app fault-check.app stack-probe.app"
+            fi
+            if [ "${CCL_CONSOLE_DEMO:-}" = log-burst ]; then
+                CCL_IMAGES="$CCL_IMAGES log-burst-probe.app"
             fi
         elif [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ]; then
             # llm-test.svc is llm.svc with only its tls-scope replaced (the
@@ -1900,7 +1995,7 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
-    if [ "$TEST_NAME" = "calculator" ]; then
+    if [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "display-latency" ]; then
         CALC_TEST_IMAGE="$KERNEL_DIR/isodir/boot/calculator.app"
         if [ ! -f "$CALC_TEST_IMAGE" ]; then
             echo "headless: missing current Calculator test image: $CALC_TEST_IMAGE" >&2
@@ -2194,13 +2289,11 @@ if [ -n "$INIT_PROFILE" ]; then
         # name: the same declaration, without (acpi-hardware approve-declared).
         for HARDWARE_PAIR in logstore.svc:logstore.svc \
                              acpi-hardware-check.app:acpi-hardware-check.app \
-                             acpi-hardware-check.app:acpi-hardware-denied.app \
-                             ../../../userspace/apps/acpi-registers-standin/build/acpi-registers-standin.app:acpi-registers-standin.app \
-                             ../../../userspace/apps/acpi-registers-client/build/acpi-registers-client.app:acpi-registers-client.app; do
+                             acpi-hardware-check.app:acpi-hardware-denied.app; do
             HARDWARE_SOURCE="$KERNEL_DIR/isodir/boot/${HARDWARE_PAIR%%:*}"
             HARDWARE_TARGET="${HARDWARE_PAIR##*:}"
             if [ ! -f "$HARDWARE_SOURCE" ]; then
-                echo "headless: build ${HARDWARE_PAIR%%:*} first (make -C kernel acpi-hardware-check acpi-registers-standin acpi-registers-client)" >&2
+                echo "headless: build ${HARDWARE_PAIR%%:*} first (make -C kernel acpi-hardware-check)" >&2
                 exit 1
             fi
             debugfs -w -R "rm $HARDWARE_TARGET" "$TEMP_DISK" >/dev/null 2>&1
@@ -2228,6 +2321,23 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $PCI_SOURCE $PCI_TARGET" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $PCI_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "gpio-launch" ]; then
+        # hid-launch-check.drv is in the bootstrap image (devmgr's driver
+        # index binds PNP0C50 to it); procmgr, which starts it through
+        # Start_Child, reads programs from the disk.
+        for GPIO_IMAGE in logstore.svc gpio-bootstrap-check.app hid-launch-check.drv; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$GPIO_IMAGE" ]; then
+                echo "headless: build $GPIO_IMAGE first (make -C kernel world gpio-bootstrap-check)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $GPIO_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$GPIO_IMAGE $GPIO_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $GPIO_IMAGE" >&2
                 exit 1
             fi
         done
@@ -2267,25 +2377,53 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "acpi-native-smoke" ] || [ "$TEST_NAME" = "acpi-pair-smoke" ] ||
-       [ "$TEST_NAME" = "acpi-register-probe" ]; then
-        ACPI_BACKEND=../../../userspace/services/acpi/backend/native/build/acpi-backend.svc:acpi-backend.svc
-        case "$TEST_NAME" in
-            acpi-native-smoke) ACPI_FILES="acpi-metrics-check.app:acpi-metrics-check.app ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc" ;;
-            acpi-pair-smoke) ACPI_FILES="acpi-metrics-check.app:acpi-metrics-check.app ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc $ACPI_BACKEND" ;;
-            acpi-register-probe) ACPI_FILES="$ACPI_BACKEND ../../../tests/acpi-register-probe/native/build/acpi-register-probe.app:acpi-register-probe.app" ;;
-        esac
+    if [ "$TEST_NAME" = "acpi-one-service" ] || [ "$TEST_NAME" = "acpi-sci" ] || [ "$TEST_NAME" = "acpi-shutdown" ]; then
+        ACPI_FILES="acpi-metrics-check.app:acpi-metrics-check.app ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc"
         for ACPI_PAIR in logstore.svc:logstore.svc $ACPI_FILES; do
             ACPI_SOURCE="$KERNEL_DIR/isodir/boot/${ACPI_PAIR%%:*}"
             ACPI_TARGET="${ACPI_PAIR##*:}"
             if [ ! -f "$ACPI_SOURCE" ]; then
-                echo "headless: build ${ACPI_PAIR%%:*} first (make -C kernel acpi-backend-native acpi-native acpi-metrics-check acpi-register-probe)" >&2
+                echo "headless: build ${ACPI_PAIR%%:*} first (make -C kernel acpi-native acpi-metrics-check)" >&2
                 exit 1
             fi
             debugfs -w -R "rm $ACPI_TARGET" "$TEMP_DISK" >/dev/null 2>&1
             if ! debugfs -w -R "write $ACPI_SOURCE $ACPI_TARGET" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $ACPI_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "acpi-live-replace" ]; then
+        # The one acpi.svc and the remote session, as built now.
+        for SWITCH_PAIR in logstore.svc:logstore.svc clock.svc:clock.svc ccl-remote.app:ccl-remote.app \
+            ../../../userspace/services/acpi/native/build/acpi.svc:acpi.svc; do
+            SWITCH_SOURCE="$KERNEL_DIR/isodir/boot/${SWITCH_PAIR%%:*}"
+            SWITCH_TARGET="${SWITCH_PAIR##*:}"
+            if [ ! -f "$SWITCH_SOURCE" ]; then
+                echo "headless: build ${SWITCH_PAIR%%:*} first (make -C kernel world acpi-native)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $SWITCH_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $SWITCH_SOURCE $SWITCH_TARGET" "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $SWITCH_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "desktop-live-replace" ]; then
+        # Desktop and the remote session, as built now.
+        for SWITCH_PAIR in logstore.svc:logstore.svc clock.svc:clock.svc ccl-remote.app:ccl-remote.app \
+            display.svc:display.svc desktop.svc:desktop.svc timesync.svc:timesync.svc; do
+            SWITCH_SOURCE="$KERNEL_DIR/isodir/boot/${SWITCH_PAIR%%:*}"
+            SWITCH_TARGET="${SWITCH_PAIR##*:}"
+            if [ ! -f "$SWITCH_SOURCE" ]; then
+                echo "headless: build ${SWITCH_PAIR%%:*} first (make -C kernel world)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $SWITCH_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $SWITCH_SOURCE $SWITCH_TARGET" "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $SWITCH_TARGET" >&2
                 exit 1
             fi
         done
@@ -2438,6 +2576,82 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WAIT_IMAGE $WAIT_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $WAIT_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "exit-status" ]; then
+        if ! make -C "$KERNEL_DIR" exit-status-test >/dev/null; then
+            echo "headless: failed to build exit-status-check (make -C kernel exit-status-test)" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm exit-status-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/exit-status-check.app exit-status-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install exit-status-check.app" >&2
+            exit 1
+        fi
+    fi
+    if [ "$TEST_NAME" = "acpi-shutdown" ] || [ "$TEST_NAME" = "shutdown" ] || [ "$TEST_NAME" = "shutdown-console" ] || [ "$TEST_NAME" = "shutdown-text" ] ||
+       [ "$TEST_NAME" = "shutdown-desktop" ] || [ "$TEST_NAME" = "shutdown-desktop-cancel" ]; then
+        if ! make -C "$KERNEL_DIR" shutdown-test power >/dev/null; then
+            echo "headless: failed to build power.svc and the shutdown test programs" >&2
+            exit 1
+        fi
+        for SHUTDOWN_IMAGE in logstore.svc power.svc shutdown-standin.app shutdown-cooperative.app \
+                              shutdown-stubborn.app; do
+            debugfs -w -R "rm $SHUTDOWN_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$SHUTDOWN_IMAGE $SHUTDOWN_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $SHUTDOWN_IMAGE" >&2
+                exit 1
+            fi
+        done
+        if [ "$TEST_NAME" = "shutdown-text" ]; then
+            debugfs -w -R "mkdir Documents" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "mkdir Recovery" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "mkdir Recovery/com.cubit.text" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "rm Documents/notes.txt" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "rm Recovery/com.cubit.text/recovery-1.txt" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $ROOT_DIR/tests/headless/text-notes.txt Documents/notes.txt" \
+                 "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install Text's document" >&2
+                exit 1
+            fi
+        fi
+        if [ "$TEST_NAME" != "shutdown" ] && [ "$TEST_NAME" != "acpi-shutdown" ]; then
+            for SHUTDOWN_IMAGE in ccl-console.app desktop.svc text.app; do
+                debugfs -w -R "rm $SHUTDOWN_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+                if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$SHUTDOWN_IMAGE $SHUTDOWN_IMAGE" \
+                  "$TEMP_DISK" >/dev/null 2>&1; then
+                    echo "headless: failed to install $SHUTDOWN_IMAGE" >&2
+                    exit 1
+                fi
+            done
+        fi
+        # Journaled (ext3), so a clean stop is visible: the filesystem sets
+        # needs_recovery when it admits the volume and only its stop-time
+        # detach clears it. The disk must start without it.
+        if ! dumpe2fs -h "$TEMP_DISK" 2>/dev/null | grep -q has_journal && \
+           ! tune2fs -j "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to add a journal to the $TEST_NAME disk" >&2
+            exit 1
+        fi
+        if dumpe2fs -h "$TEMP_DISK" 2>/dev/null | grep -q needs_recovery; then
+            echo "headless: the $TEST_NAME disk needs recovery before the run" >&2
+            exit 1
+        fi
+    fi
+    if [ "$TEST_NAME" = "supervision" ]; then
+        if ! make -C "$KERNEL_DIR" supervision-test >/dev/null; then
+            echo "headless: failed to build the supervision test programs" >&2
+            exit 1
+        fi
+        for SUPERVISION_IMAGE in logstore.svc supervision-check.app supervision-child.app; do
+            debugfs -w -R "rm $SUPERVISION_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$SUPERVISION_IMAGE $SUPERVISION_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $SUPERVISION_IMAGE" >&2
                 exit 1
             fi
         done
@@ -3138,7 +3352,7 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
    [ "$TEST_NAME" = "logs" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
-   [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
+   [ "$TEST_NAME" = "desktop-virtio-vga" ] || [ "$TEST_NAME" = "display-latency" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
     VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
 fi
@@ -3200,11 +3414,25 @@ TEST_DEVICE_ARGS=()
 if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "platform-pool" ]; then
     TEST_DEVICE_ARGS=(-device edu)
 fi
+# gpio-launch's HID offers name their I2C controller by PCI location: edu
+# stands in for it at 00:15.0 (the IdeaPad's touchpad controller's slot),
+# and a second edu at 00:15.1 for the IdeaPad's other I2C controller, so
+# the HID driver's "i2c" binding must reach the driver of the offer's
+# controller, not merely one serving the role (SUP-001).
+if [ "$TEST_NAME" = "gpio-launch" ]; then
+    TEST_DEVICE_ARGS=(-device edu,addr=0x15.0,multifunction=on -device edu,addr=0x15.1)
+fi
 # QEMU's PCI test device has no CuBit driver: its 1 MiB 64-bit prefetchable
 # BAR 2 (membar, the size acpi-data-check expects) is a driverless BAR whose
 # tail devmgr must refuse as firmware data (sized at enumeration).
 if [ "$TEST_NAME" = "acpi-firmware-data" ]; then
     TEST_DEVICE_ARGS=(-device pci-testdev,membar=1M)
+fi
+# ACPI-ONE-001's regression table: an extra SSDT whose module-level code
+# reads a pool-backed SystemMemory register (tests/headless/acpi), in the
+# edu test profile's CHIPSET_SHARED member (devmgr declares it with edu).
+if [ "$TEST_NAME" = "acpi-one-service" ] || [ "$TEST_NAME" = "acpi-sci" ] || [ "$TEST_NAME" = "acpi-live-replace" ] || [ "$TEST_NAME" = "acpi-shutdown" ]; then
+    TEST_DEVICE_ARGS=(-device edu -acpitable "file=$ROOT_DIR/tests/headless/acpi/acpi-one-service-pool.aml")
 fi
 # Two xHCI controllers, a USB keyboard on one and a USB optical drive on
 # the other (a disc with the apps/ tree @cd:0 mounts, holding one file),
@@ -3265,7 +3493,7 @@ if [ "$TEST_NAME" = "managed-ui" ] || [ "$TEST_NAME" = "remote-screenshot" ]; th
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
 fi
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
@@ -3313,6 +3541,18 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # One key as soon as the PS/2 driver serves its consumer: the
             # timeline's First_Input_Accepted is when Desktop takes it.
             printf 'sendkey shift\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            exit 0
+        fi
+        if [ "$TEST_NAME" = "display-latency" ]; then
+            # LAT-002: presses at swept refresh phases into the focused
+            # Calculator, then two of Desktop's report intervals.
+            for ((attempt = 0; attempt < 600; attempt++)); do
+                grep -aF "calculator: first frame presented" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                sleep 0.1
+            done
+            sleep 1
+            python3 -I "$ROOT_DIR/tests/headless/display-latency-keys.py" "$MONITOR_SOCKET" \
+              "${DISPLAY_LATENCY_PRESSES:-96}"
             exit 0
         fi
         if [ "$TEST_NAME" = "scanout-repair" ]; then
@@ -3674,7 +3914,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 sleep 0.3
                 # The REPL log viewer: (>= (length (logs.recent "desktop")) 0)
                 # proves observer authority, logstore's source filter and a
-                # typed List<LogEntry> crossing into the session.
+                # typed List<LogItem> crossing into the session.
                 for key in shift-9 shift-dot equal spc shift-9 l e n g t h spc shift-9 \
                            l o g s dot r e c e n t spc shift-apostrophe d e s k t o p \
                            shift-apostrophe shift-0 shift-0 spc 0 shift-0; do
@@ -4113,6 +4353,25 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
               '(logs.recent "log-exit-probe")' 0.08
             sleep 2
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-log-exited.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
+            elif [ "${CCL_CONSOLE_DEMO:-}" = log-burst ]; then
+            # LOG-005 (CCL_CONSOLE_DEMO=log-burst): after each of the probe's
+            # phases, its records by name at the console. The probe waits
+            # 8 s between the phases for the first.
+            for phase in 1 2; do
+                for ((attempt = 0; attempt < 600; attempt++)); do
+                    grep -qa "log-burst-probe: phase $phase done" "$SERIAL_LOG" && break
+                    grep -qa "log-burst-probe: FAIL" "$SERIAL_LOG" && break
+                    sleep 0.2
+                done
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" \
+                  '(logs.recent "log-burst-probe")' 0.08
+                for ((attempt = 0; attempt < 100; attempt++)); do
+                    [ "$(grep -ac "REPL completed: List<LogItem>" "$SERIAL_LOG")" -ge "$phase" ] && break
+                    sleep 0.2
+                done
+            done
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-log-burst.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             sleep 0.5
             elif [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then
             # LOG-004 (CCL_CONSOLE_DEMO=kernel-log): once procmgr has seen
@@ -4899,6 +5158,123 @@ if [ "$TEST_NAME" = "usb-hotplug" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 
+# acpi-hardware and acpi-sci: QEMU's system_powerdown raises PWRBTN_STS,
+# which q35 signals on the SCI (GSI 9, level). One press per trigger line,
+# each sent once that line is on the serial log, in order:
+# * acpi-hardware: the stand-in enables the power button event and says
+#   "SCI armed" (first press), then, with the line held masked, "SCI second
+#   press wanted" (the press that must not be lost before the acknowledgement);
+# * acpi-sci: the one acpi.svc says "SCI armed"; the second press follows its
+#   log of the first.
+if [ "$TEST_NAME" = "acpi-hardware" ] || [ "$TEST_NAME" = "acpi-sci" ]; then
+    if ! command -v nc >/dev/null 2>&1; then
+        echo "headless: the SCI injection requires nc" >&2
+        exit 127
+    fi
+    if [ "$TEST_NAME" = "acpi-hardware" ]; then
+        SCI_TRIGGERS=("acpi-hardware-check: SCI armed" "acpi-hardware-check: SCI second press wanted")
+    else
+        SCI_TRIGGERS=("acpi: SCI armed" "acpi: SCI 1 fixed=[PWRBTN ]")
+    fi
+    MONITOR_SOCKET="$(qemu_socket monitor)"
+    rm -f "$MONITOR_SOCKET"
+    MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
+    (
+        for trigger in "${SCI_TRIGGERS[@]}"; do
+            sent=0
+            for ((attempt = 0; attempt < TIMEOUT_SECONDS * 10; attempt++)); do
+                if [ -S "$MONITOR_SOCKET" ] &&
+                   grep -aqF "$trigger" "$SERIAL_LOG" 2>/dev/null; then
+                    printf 'system_powerdown\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+                    sent=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$sent" -ne 1 ]; then
+                echo "headless: SCI injector timed out waiting for: $trigger" >&2
+                exit 1
+            fi
+        done
+        exit 0
+    ) &
+    INPUT_INJECTOR_PID=$!
+fi
+
+# PWR-003 shutdown tests: one request once everything runs and power.svc
+# watches. shutdown: QEMU's power button (system_powerdown) once the
+# stand-in kept power.svc's watch and both fixtures run. shutdown-console:
+# (power-off) typed at the console once it has a frame and power.svc is
+# ready. Then QEMU must power off by itself.
+if [ "$TEST_NAME" = "acpi-shutdown" ] || [ "$TEST_NAME" = "shutdown" ] || [ "$TEST_NAME" = "shutdown-console" ] || [ "$TEST_NAME" = "shutdown-text" ] ||
+   [ "$TEST_NAME" = "shutdown-desktop" ] || [ "$TEST_NAME" = "shutdown-desktop-cancel" ]; then
+    if ! command -v nc >/dev/null 2>&1; then
+        echo "headless: the shutdown request requires nc" >&2
+        exit 127
+    fi
+    MONITOR_SOCKET="$(qemu_socket monitor)"
+    rm -f "$MONITOR_SOCKET"
+    MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
+    if [ "$TEST_NAME" = "acpi-shutdown" ]; then
+        SHUTDOWN_READY=("acpi: stage runtime-selection ok one-service mode=LOCAL_RUNTIME" "acpi: SCI armed" "power: ready" "shutdown-cooperative: running" "shutdown-stubborn: running")
+    elif [ "$TEST_NAME" = "shutdown" ]; then
+        SHUTDOWN_READY=("shutdown-standin: watch kept" "shutdown-cooperative: running" "shutdown-stubborn: running")
+    elif [ "$TEST_NAME" = "shutdown-text" ]; then
+        SHUTDOWN_READY=("shutdown-standin: watch kept" "text: status Opened @nvme:0/Documents/notes.txt")
+    elif [ "$TEST_NAME" = "shutdown-desktop" ] || [ "$TEST_NAME" = "shutdown-desktop-cancel" ]; then
+        SHUTDOWN_READY=("power: ready" "desktop: launch menu entries=" "shutdown-stubborn: running")
+    else
+        SHUTDOWN_READY=("ccl-console: first frame presented" "power: ready" "shutdown-stubborn: running")
+    fi
+    (
+        ready=0
+        for ((attempt = 0; attempt < TIMEOUT_SECONDS * 10; attempt++)); do
+            ready=1
+            for marker in "${SHUTDOWN_READY[@]}"; do
+                if ! grep -aqF "$marker" "$SERIAL_LOG" 2>/dev/null; then
+                    ready=0
+                fi
+            done
+            if [ "$ready" -eq 1 ] && [ -S "$MONITOR_SOCKET" ]; then
+                break
+            fi
+            sleep 0.1
+        done
+        if [ "$ready" -ne 1 ]; then
+            echo "headless: $TEST_NAME: the system did not come up for the request" >&2
+            exit 1
+        fi
+        sleep 1
+        if [ "$TEST_NAME" = "shutdown-text" ]; then
+            # Unsaved edits: a line typed at the end, not saved.
+            for key in ctrl-end ret u n s a v e d spc w o r k; do
+                printf 'sendkey %s\n' "$key"
+                sleep 0.15
+            done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 1
+        fi
+        if [ "$TEST_NAME" = "shutdown-desktop" ] || [ "$TEST_NAME" = "shutdown-desktop-cancel" ]; then
+            # Super opens the Apps menu; Up wraps to Shut Down...; Enter
+            # asks; Enter confirms, Escape cancels.
+            for key in meta_l up ret "$([ "$TEST_NAME" = "shutdown-desktop" ] && echo ret || echo esc)"; do
+                printf 'sendkey %s\n' "$key"
+                sleep 0.6
+            done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            if [ "$TEST_NAME" = "shutdown-desktop-cancel" ]; then
+                # Nothing may follow: give it time, then end the run.
+                sleep 4
+                printf 'quit\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            fi
+        elif [ "$TEST_NAME" = "acpi-shutdown" ] || [ "$TEST_NAME" = "shutdown" ] || [ "$TEST_NAME" = "shutdown-text" ]; then
+            printf 'system_powerdown\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+        else
+            python3 -I "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" '(power-off)' 0.05
+        fi
+        exit 0
+    ) &
+    INPUT_INJECTOR_PID=$!
+fi
+
 if [ "$TEST_NAME" = "desktop-vm" ]; then
     # Absolute pointer and dynamic resolution, driven from the host; the
     # checker quits QEMU when done (tests/vm-experience/check-desktop-vm.py).
@@ -5035,6 +5411,28 @@ if [ "$TEST_NAME" = "service-switch" ]; then
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$SERVICE_SWITCH_PORT" \
         "$KERNEL_DIR/isodir/boot/lexicon.svc" "$KERNEL_DIR/isodir/boot/clock.svc" \
         "$KERNEL_DIR/isodir/boot/logstore.svc" &
+    INPUT_INJECTOR_PID=$!
+fi
+if [ "$TEST_NAME" = "acpi-live-replace" ]; then
+    # As service-switch: the guest's port 8445 from the host's loopback.
+    ACPI_LIVE_REPLACE_PORT="${ACPI_LIVE_REPLACE_PORT:-18451}"
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:$ACPI_LIVE_REPLACE_PORT-10.0.2.15:8445"
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/acpi-live-replace/acpi_live_replace.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$ACPI_LIVE_REPLACE_PORT" \
+        "$ROOT_DIR/userspace/services/acpi/native/build/acpi.svc" &
+    INPUT_INJECTOR_PID=$!
+fi
+if [ "$TEST_NAME" = "desktop-live-replace" ]; then
+    # As service-switch: the guest's port 8445 from the host's loopback.
+    DESKTOP_LIVE_REPLACE_PORT="${DESKTOP_LIVE_REPLACE_PORT:-18452}"
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:$DESKTOP_LIVE_REPLACE_PORT-10.0.2.15:8445"
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/desktop-live-replace/desktop_live_replace.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$DESKTOP_LIVE_REPLACE_PORT" \
+        "$KERNEL_DIR/isodir/boot/desktop.svc" "$KERNEL_DIR/isodir/boot/timesync.svc" &
     INPUT_INJECTOR_PID=$!
 fi
 if [ "$TEST_NAME" = "service-switch-reboot" ]; then
@@ -5177,6 +5575,13 @@ if [ "$IOMMU" = 1 ]; then
     if [ "$TEST_NAME" = "generic-launch" ]; then
         QEMU_MEMORY=256M
     fi
+fi
+
+# The gpio-launch profile's firmware identity: QEMU writes it into every
+# ACPI table's header, so devmgr's quirk table (Platform_Quirks.
+# QEMU_Q35_Test_GPIO_Bootstrap) knows this q35 + edu run from platform-pool's.
+if [ "$TEST_NAME" = "gpio-launch" ]; then
+    MACHINE_ARGS[1]="${MACHINE_ARGS[1]},x-oem-id=CBTEST,x-oem-table-id=GPIOBOOT"
 fi
 
 # The benchmark runs without a packet capture, as its Linux reference does.
@@ -5434,6 +5839,30 @@ procmgr: switch clock.svc not switched: the running instance did not end
 procmgr: switch lexicon.svc switched; it runs lexicon.svc pid
 procmgr: logstore.svc -> @system/storehouse/executables/
  admitted for the next boot
+"
+        ;;
+    acpi-live-replace)
+        required_markers="
+acpi: stage registration ok STARTING
+ccl-remote: a host paired
+procmgr: staged app launches allowed by the Desktop switch
+procmgr: switch acpi.svc switched; it runs @system/storehouse/executables/
+acpi: stage serve ok STOP_REQUESTED
+acpi: stage retire ok QUIESCENT
+procmgr: switch acpi.svc rolled back (the program ended inside its health window)
+procmgr: switch acpi.svc rolled back (the program did not register its service in time)
+procmgr: switch acpi.svc switched; it runs acpi.svc pid
+"
+        ;;
+    desktop-live-replace)
+        required_markers="
+ccl-remote: a host paired
+procmgr: staged app launches allowed by the Desktop switch
+procmgr: switch desktop.svc switched; it runs @system/storehouse/executables/
+desktop: stop requested; releasing the display
+desktop: stopped; display released, exiting 0
+procmgr: switch desktop.svc rolled back (the program ended inside its health window)
+procmgr: switch desktop.svc switched; it runs desktop.svc pid
 "
         ;;
     service-switch-reboot)
@@ -5902,6 +6331,233 @@ startup-wait-client: provider answered PASS
             exit 1
         fi
         ;;
+    exit-status)
+        # Each ending's PID (the program's own line) must exit with its
+        # code (procmgr's line for that PID).
+        required_markers="
+exit-status-check: pid
+"
+        for ENDING in Returns:0 Sets_Failure:1 Raises:134; do
+            if ! awk -v ending="${ENDING%%:*}" -v code="${ENDING##*:}" '
+                /exit-status-check: pid [0-9]+ ends / {
+                    for (i = 1; i <= NF; i++) if ($i == "pid") p = $(i + 1)
+                    if ($NF == ending) want = p
+                }
+                /procmgr: process com.cubit.exit-status-check pid/ && want != "" {
+                    line = $0; sub(/.* pid ?/, "", line); split(line, f, " ")
+                    if (f[1] == want) { got = (line ~ ("exited code " code "($|;)")) ; seen = 1 }
+                }
+                END { exit !(seen && got) }' "$SERIAL_LOG"; then
+                echo "headless: exit-status-check ${ENDING%%:*} did not exit with code ${ENDING##*:}" >&2
+                grep -aE 'exit-status-check' "$SERIAL_LOG" >&2
+                exit 1
+            fi
+            echo "headless: exit-status-check ${ENDING%%:*} exited with code ${ENDING##*:}"
+        done
+        ;;
+    supervision)
+        required_markers="
+procmgr: parameters supervision-child.app: (Child_Parameters label => Child_Label.First count => 7 mode => (Child_Mode.Exit_With 3))
+procmgr: start_child supervision-child.app pid
+ supervised by com.cubit.test.supervision-check pid
+ (restart temporary, stop grace 1000 ms)
+supervision-child: decoded label=First count=7 mode=Exit_With 3
+supervision-check: a child started with typed parameters PASS
+supervision-check: the child's exit reached its supervisor: pid
+ exited code 3 PASS
+procmgr: supervised child com.cubit.test.supervision-child pid
+supervision-check: a parameter of the wrong type is refused (LAUNCH_REFUSED, parameters rejected) PASS
+procmgr: parameters refused: supervision-child.app: not a Child_Parameters
+supervision-check: a program its may_launch does not name is NOT_GRANTED PASS
+supervision-check: a device-class start from a program is CLASS_NOT_GRANTED PASS
+supervision-check: badge bindings from a program are BINDINGS_NOT_GRANTED PASS
+supervision-check: an ended sibling as a dependency is DEPENDENCY_UNKNOWN PASS
+supervision-check: a held start from a program is SINK_NOT_GRANTED PASS
+supervision-check: a sink asked by a program is SINK_NOT_GRANTED PASS
+supervision-child: decoded label=Lingering count=1 mode=Linger
+supervision-child: lingering until its supervisor ends
+supervision-check: a lingering child started PASS
+supervision-check: the lingering child still runs PASS
+supervision-check: releasing a child that was not held is NOT_HELD PASS
+supervision-check: releasing a process it does not supervise is NOT_SUPERVISED PASS
+supervision-check: all checks passed; ending with a child running (procmgr reaps it)
+procmgr: process com.cubit.test.supervision-check pid
+ exited code 0
+procmgr: supervisor com.cubit.test.supervision-check pid
+ ended; reaping its child com.cubit.test.supervision-child pid
+ reaped (its supervisor pid
+"
+        if grep -aF 'supervision-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           [ "$(grep -acF 'supervision-child: decoded' "$SERIAL_LOG")" -ne 2 ] ||
+           [ "$(grep -acF ' ended; reaping its child com.cubit.test.supervision-child' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -ac 'procmgr: start_child from com.cubit.test.supervision-check pid.* refused: ' "$SERIAL_LOG")" -ne 7 ] ||
+           [ "$(grep -ac 'procmgr: release of pid.* refused: ' "$SERIAL_LOG")" -ne 2 ]; then
+            echo "headless: supervision: a check failed, a refused child ran, or the child was not reaped once" >&2
+            exit 1
+        fi
+        # The lingering child ends only after its supervisor did (reaped),
+        # and it was stopped, not exited.
+        if ! awk '/supervision-check: all checks passed/ && !done { done = NR }
+                  / ended; reaping its child com.cubit.test.supervision-child/ && !reap { reap = NR }
+                  /procmgr: process com.cubit.test.supervision-child pid.* stopped \(killed or faulted\)/ && !stop { stop = NR }
+                  END { exit !(done && reap && stop && done < reap && reap < stop) }' "$SERIAL_LOG"; then
+            echo "headless: supervision: the running child was not stopped after its supervisor ended" >&2
+            exit 1
+        fi
+        ;;
+    shutdown-desktop-cancel)
+        required_markers="
+power: ready
+desktop: shut down: confirmation shown
+desktop: shut down: cancelled; nothing sent
+"
+        if grep -aqF "power: POWER_OFF requested" "$SERIAL_LOG" ||
+           grep -aqF "procmgr: shutdown requested" "$SERIAL_LOG"; then
+            echo "headless: shutdown-desktop-cancel: a cancelled confirmation still asked for a shutdown" >&2
+            exit 1
+        fi
+        ;;
+    acpi-shutdown)
+        required_markers=""
+        bash "$ROOT_DIR/tests/headless/check-acpi-shutdown.sh" "$SERIAL_LOG" "$qemu_status" || exit 1
+        if dumpe2fs -h "$TEMP_DISK" 2>/dev/null | grep -q needs_recovery ||
+           ! e2fsck -fn "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: acpi-shutdown: filesystem did not detach cleanly" >&2
+            exit 1
+        fi
+        ;;
+    shutdown|shutdown-console|shutdown-text|shutdown-desktop)
+        if [ "$TEST_NAME" = "shutdown-desktop" ]; then
+            required_markers="
+power: ready
+desktop: shut down: confirmation shown
+desktop: shut down: power.svc answered ACCEPTED
+power: POWER_OFF requested by DESKTOP
+procmgr: shutdown: stopping com.cubit.desktop pid
+"
+            SHUTDOWN_ORDER="com.cubit.test.shutdown-stubborn com.cubit.desktop com.cubit.display com.cubit.logstore"
+        elif [ "$TEST_NAME" = "shutdown-text" ]; then
+            required_markers="
+power: POWER_OFF requested by POWER_BUTTON
+procmgr: shutdown: stopping com.cubit.text pid
+ (service, grace 3000 ms)
+ui-app: Stop received: closing (System_Shutdown)
+text: recovery copy of @nvme:0/Documents/notes.txt -> @system/Recovery/com.cubit.text/recovery-1.txt written
+text: shutdown: 1 recovery copies; exiting
+procmgr: shutdown: com.cubit.text pid
+ STOPPED_CLEAN after
+procmgr: shutdown: stopping com.cubit.desktop pid
+"
+            SHUTDOWN_ORDER="com.cubit.text com.cubit.desktop com.cubit.display com.cubit.logstore"
+        elif [ "$TEST_NAME" = "shutdown" ]; then
+            required_markers="
+shutdown-standin: registered (STAND-IN for acpi.svc;
+power: ready
+shutdown-standin: power button pressed (count 1)
+power: power button pressed (FIXED_EVENT, count 1)
+power: POWER_OFF requested by POWER_BUTTON
+procmgr: shutdown: stopping com.cubit.test.shutdown-cooperative pid
+ (service, grace 2000 ms)
+shutdown-cooperative: Stop received; quiescing
+shutdown-cooperative: quiesced; exiting 0
+"
+            SHUTDOWN_ORDER="com.cubit.test.shutdown-stubborn com.cubit.test.shutdown-cooperative com.cubit.logstore"
+        else
+            required_markers="
+power: ready
+power: POWER_OFF requested by CONSOLE
+procmgr: shutdown: stopping com.cubit.ccl-console pid
+procmgr: shutdown: stopping com.cubit.desktop pid
+procmgr: shutdown: stopping com.cubit.display pid
+"
+            SHUTDOWN_ORDER="com.cubit.ccl-console com.cubit.test.shutdown-stubborn com.cubit.desktop com.cubit.display com.cubit.logstore"
+        fi
+        required_markers="$required_markers
+procmgr: shutdown requested by com.cubit.power pid
+: power off, apps first;
+procmgr: shutdown: apps stopped in
+power: procmgr stopped the apps
+power: asking acpi.svc to prepare to sleep (S5)
+shutdown-standin: Prepare_To_Sleep S5 answered PREPARED
+power: prepare to sleep PREPARED
+procmgr: shutdown: keeping com.cubit.power pid
+ (the requester)
+procmgr: shutdown: keeping com.cubit.acpi pid
+ (Power_Tail: the firmware step)
+procmgr: shutdown: stopping com.cubit.logstore pid
+procmgr: shutdown: the filesystem commits (deadline 10000 ms)
+FS: stop: nvme:0 committed and detached (journal empty, needs_recovery clear)
+procmgr: shutdown: storage COMMITTED
+devmgr: shutdown: procmgr asks to stop the drivers: ACCEPTED,
+procmgr: shutdown: devmgr stops its drivers (
+devmgr: shutdown: drivers stopped
+procmgr: shutdown: stopped in
+power: procmgr stopped the system:
+power: asking acpi.svc to enter S5
+shutdown-standin: entering S5 (SLP_TYP 0
+"
+        if [ "$TEST_NAME" != "shutdown-text" ]; then
+            required_markers="$required_markers
+procmgr: shutdown: stopping com.cubit.test.shutdown-stubborn pid
+ (service, grace 500 ms)
+shutdown-stubborn: Stop received; ignoring it
+did not end within its grace of 500 ms; ending it
+procmgr: shutdown: com.cubit.test.shutdown-stubborn pid
+ FORCED after
+"
+        fi
+        # QEMU must have ended by itself (ACPI S5), not at the timeout.
+        if [ "$qemu_status" -ne 0 ]; then
+            echo "headless: $TEST_NAME: QEMU did not power off (status $qemu_status)" >&2
+            exit 1
+        fi
+        if grep -aqF "power: halted" "$SERIAL_LOG" || grep -aqF "STILL_RUNNING" "$SERIAL_LOG"; then
+            echo "headless: $TEST_NAME: the machine halted instead of powering off" >&2
+            exit 1
+        fi
+        # Reverse startup order: each entry's Stop after the one started
+        # after it was decided; storage after every service; drivers after
+        # storage; S5 last.
+        if ! awk -v order="$SHUTDOWN_ORDER" '
+              BEGIN { n = split(order, names, " ") }
+              { for (i = 1; i <= n; i++)
+                  if (!at[i] && index($0, "procmgr: shutdown: stopping " names[i] " pid")) at[i] = NR }
+              /FS: stop: storage / && !fs { fs = NR }
+              /shutdown-standin: Prepare_To_Sleep S5 answered/ && !prep { prep = NR }
+              /devmgr: shutdown: procmgr asks to stop the drivers/ && !dev { dev = NR }
+              /shutdown-standin: entering S5/ && !s5 { s5 = NR }
+              END {
+                for (i = 1; i <= n; i++) if (!at[i] || (i > 1 && at[i] < at[i - 1])) exit 1
+                exit !(prep && prep < at[1] && fs > at[n] && dev > fs && s5 > dev)
+              }' "$SERIAL_LOG"; then
+            echo "headless: $TEST_NAME: not prepare-to-sleep, then reverse startup order, storage, drivers, S5" >&2
+            exit 1
+        fi
+        # The filesystem detached the journaled volume: no recovery needed,
+        # and the disk is consistent as Linux reads it.
+        if dumpe2fs -h "$TEMP_DISK" 2>/dev/null | grep -q needs_recovery; then
+            echo "headless: $TEST_NAME: the disk still needs recovery (not committed and detached)" >&2
+            exit 1
+        fi
+        if ! e2fsck -fn "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: $TEST_NAME: e2fsck found the disk inconsistent" >&2
+            exit 1
+        fi
+        if [ "$TEST_NAME" = "shutdown-text" ]; then
+            # The recovery copy holds the unsaved line; the user's file
+            # does not (nothing was saved over it).
+            if ! debugfs -R "cat Recovery/com.cubit.text/recovery-1.txt" "$TEMP_DISK" 2>/dev/null |
+                   grep -qF "unsaved work"; then
+                echo "headless: shutdown-text: the recovery copy does not hold the unsaved edit" >&2
+                exit 1
+            fi
+            if debugfs -R "cat Documents/notes.txt" "$TEMP_DISK" 2>/dev/null | grep -qF "unsaved work" ||
+               ! debugfs -R "cat Documents/notes.txt" "$TEMP_DISK" 2>/dev/null | cmp -s - "$ROOT_DIR/tests/headless/text-notes.txt"; then
+                echo "headless: shutdown-text: the user's file changed" >&2
+                exit 1
+            fi
+        fi
+        ;;
     program-parameters)
         required_markers="
 procmgr: parameters parameters-check.app: (Check_Parameters count => 64 deadline => (Check_Deadline.Within 2500) verbose => false)
@@ -6075,55 +6731,68 @@ cpu-times-check: write to the CPU times page armed
             exit 1
         fi
         ;;
-    acpi-native-smoke)
+    acpi-one-service)
+        # One process holds the hardware and runs AML: Hardware, the memory
+        # bridge (pool cache + PCI broker) and Fields come up inside module
+        # startup from the copied FADT; module AML then completes for BOTH
+        # tables, including the SSDT's pool-backed read, which the former
+        # pair refused (STARTUP_REFUSED; laptop image 11's MBAR).
+        # No acpi-backend.svc and no role-35 endpoint exist.
         required_markers="
-acpi: stage service-start ok
-acpi: stage snapshot ok tables= 7 bytes= 9351
+acpi: stage service-start ok one-service
+acpi: stage hardware-config ok memory=
+pool=1 pci=1
+acpi: stage snapshot ok tables= 8 bytes=
 acpi: stage aml-startup ok FINISHED
+acpi: stage hardware ok registers=
+acpi: stage memory-bridge ok pool=1 cache=1 pci=1
+completed= 2
 acpi: stage sleep-registers ok 
-acpi: stage registration ok observer-only
-acpi: bring-up reached registration (4/4) hardware-pending
+acpi: stage finish-startup ok setup=CLOSED
+acpi: stage runtime ok LOCAL_IDLE
+acpi: stage events ok FIXED_ONLY ec=ABSENT
+acpi: stage registration ok STARTING
+acpi: bring-up reached registration (4/4) hardware=LOCAL
 acpi-metrics-check: metrics reply well formed PASS
 acpi-metrics-check: phase complete PASS
 acpi-metrics-check: every expected table installed PASS
 acpi-metrics-check: revision stable across reads PASS
 TEST: PASS acpi-metrics
 "
-        # Without provisioned hardware regions the device walk stops at the
-        # first OperationRegion and HID, power and sleep discovery wait on
-        # it (ACPI agent's decode, 2026-10-30): exactly these are accepted
-        # (sleep registers come from the FADT alone, so they must be ok);
-        # any other failed stage, recovery, heap exhaustion or exit fails.
-        # Both enum renderings are accepted: numeric under Discard_Names,
-        # names once EXC-001 keeps enumeration names in the user runtime.
+        # q35 still has no provisioned _REG regions (ACPI_Unprovisioned_Regions):
+        # the device walk stops at the first OperationRegion and HID/power
+        # discovery wait on it, exactly as before the merge. Any other failed
+        # stage, a refused module (the pair's MBAR-style refusal), recovery,
+        # heap exhaustion, exit or a backend/role-35 trace fails.
         if grep -aE '^acpi: stage [a-z-]+ fail' "$SERIAL_LOG" |
            grep -avE '^acpi: stage (devices fail DEVICES_INCOMPLETE regions=REGIONS_UNAVAILABLE errors= 0 fuel= 0|hid-discovery fail ( 1 search= 0 query= 0 |NOT_READY search=NOT_READY query=NOT_ATTEMPTED )|power-discovery fail ( 1 phase= 0 fuel= 0 |NOT_READY phase=LID_SAMPLING fuel= 0 ))' ||
-           grep -aqE 'recovery=TRUE|Ada heap: cannot allocate|com\.cubit\.acpi pid[0-9]+ exited|acpi-metrics-check: .* FAIL' "$SERIAL_LOG"; then
-            echo "headless: acpi.svc bring-up or metrics check failed" >&2
+           grep -aqE 'STARTUP_REFUSED|module-field-context|recovery=TRUE|Ada heap: cannot allocate|com\.cubit\.acpi(-backend)? pid[0-9]+ exited|acpi-metrics-check: .* FAIL' "$SERIAL_LOG"; then
+            echo "headless: one-service acpi.svc bring-up or metrics check failed" >&2
             exit 1
         fi
         ;;
-    acpi-register-probe)
+    acpi-sci)
+        # The SCI reaches the one acpi.svc and is acknowledged: two presses,
+        # two SCIs, each logged, nothing lost and no storm.
         required_markers="
-acpi-backend: stage registration ok
-stage timer ok COUNTER_CHANGED
-TEST: PASS acpi-register-probe
+devmgr: ACPI SCI is line 41, GSI 9 level/active-high (MADT override)
+procmgr: ACPI SCI line 41 (GSI 9, level/active-high, MADT override) routed to acpi.svc
+acpi: bring-up reached registration (4/4) hardware=LOCAL
+acpi: SCI armed line=41 pm1a=0x600 gpe0=0x620+8
+ acpi_mode=ON acpi_mode_switch=
+ fixed=[POWER_BUTTON]
+acpi: SCI 1 fixed=[PWRBTN ] gpe=[]
+acpi: SCI 2 fixed=[PWRBTN ] gpe=[]
+acpi: power-button presses=
 "
-        if grep -aqE '^acpi-backend: stage [a-z-]+ fail|TEST: FAIL acpi-register-probe|com\.cubit\.acpi-backend pid[0-9]+ (exited|stopped)' "$SERIAL_LOG"; then
-            echo "headless: named PM-timer probe failed" >&2
-            exit 1
-        fi
-        ;;
-    acpi-pair-smoke)
-        required_markers="
-acpi-backend: stage hardware ok windows=
-acpi-backend: stage registration ok
-acpi: stage register-provider ok named=
-acpi: stage aml-startup ok FINISHED
-acpi-metrics-check: phase complete PASS
-"
-        if grep -aqE '^acpi-backend: stage [a-z-]+ fail|^acpi: stage register-provider (fail|unavailable)|recovery=TRUE|Ada heap: cannot allocate|com\.cubit\.acpi(-backend)? pid[0-9]+ exited|acpi-metrics-check: .* FAIL' "$SERIAL_LOG"; then
-            echo "headless: acpi-backend.svc/acpi.svc pair bring-up failed" >&2
+        # The event domain (queue 24) publishes one copied power-button fact
+        # per delivered press, once the service is quiet again.
+        presses=$(grep -acE '^acpi: power-button presses= *[0-9]+' "$SERIAL_LOG")
+        interrupts=$(grep -acE '^acpi: SCI [0-9]+ fixed=' "$SERIAL_LOG")
+        if [ "$presses" -ne 2 ] || [ "$interrupts" -ne 2 ] ||
+           grep -aqE 'acpi: SCI unavailable|acpi: SCI acknowledgement refused|ACPI-mode switch failed|ACPI SCI refused|ENABLE_IRQ: refused|has no consumer' "$SERIAL_LOG" ||
+           grep -aqE 'com\.cubit\.acpi pid[0-9]+ exited|Ada heap: cannot allocate' "$SERIAL_LOG"; then
+            echo "headless: acpi.svc SCI delivery failed: presses=$presses interrupts=$interrupts" >&2
             exit 1
         fi
         ;;
@@ -6163,7 +6832,6 @@ TEST: PASS firmware-undeclared
         ;;
     acpi-hardware)
         required_markers="
-acpi-registers-standin: registered
 acpi-hardware-check: grant has I/O windows PASS
 acpi-hardware-check: grant has memory windows PASS
 acpi-hardware-check: windows sorted and disjoint PASS
@@ -6188,25 +6856,46 @@ claimed, closed to device memory
 procmgr: ACPI memory window 1 installed for acpi-hardware-check.app
 acpi-hardware-check: PM timer inside a window PASS
 acpi-hardware-check: PM timer advances through its window PASS
-acpi-hardware-check: registers endpoint granted PASS
-acpi-registers-standin: probe frontend=yes
-acpi-hardware-check: registers endpoint carries the frontend badge PASS
-acpi-hardware-check: registers endpoint holds no grant right PASS
-acpi-hardware-check: registers endpoint cannot be re-badged or derived PASS
-acpi-hardware-check: refused re-badging leaves the frontend badge PASS
+devmgr: ACPI SCI is line 41, GSI 9 level/active-high (MADT override)
+procmgr: ACPI SCI line 41 (GSI 9, level/active-high, MADT override) routed to acpi-hardware-check.app
+acpi-hardware-check: SCI line granted PASS
+acpi-hardware-check: SCI resolves from this program's own FADT and MADT PASS
+acpi-hardware-check: q35 SCI is the MADT override's GSI 9, level, active high PASS
+acpi-hardware-check: SCI handle names exactly the resolved line PASS
+acpi-hardware-check: SCI handle is read-only without grant PASS
+acpi-hardware-check: acknowledging no line handle is refused PASS
+acpi-hardware-check: acknowledging another line with the SCI handle is refused PASS
+acpi-hardware-check: PM1 event block inside a window PASS
+acpi-hardware-check: power button event enabled through the PM1 window PASS
+acpi-hardware-check: SCI armed
+acpi-hardware-check: SCI delivered for the power button PASS
+acpi-hardware-check: PWRBTN_STS set PASS
+acpi-hardware-check: SCI held masked until acknowledged (no storm) PASS
+acpi-hardware-check: first acknowledgement accepted after one delivery PASS
+acpi-hardware-check: uncleared SCI delivered again after acknowledgement (nothing lost) PASS
+acpi-hardware-check: PWRBTN_STS cleared PASS
+acpi-hardware-check: SCI second press wanted
+acpi-hardware-check: second press latched in PWRBTN_STS PASS
+acpi-hardware-check: second press not delivered while the line is held masked PASS
+acpi-hardware-check: acknowledged with the second press pending, two deliveries so far PASS
+acpi-hardware-check: second SCI delivered at the acknowledgement (not lost) PASS
+acpi-hardware-check: acknowledged after clearing, three deliveries in all PASS
+acpi-hardware-check: no SCI after clearing and acknowledgement PASS
+acpi-hardware-check: the line stayed quiet: still three deliveries PASS
+acpi-hardware-check: SCI done
 TEST: PASS acpi-hardware
 procmgr: ACPI hardware refused: acpi-hardware-denied.app is not approved by the startup plan
 procmgr: init spawn failed: acpi-hardware-denied.app
-acpi-registers-client: no registers endpoint without approval PASS
-TEST: PASS acpi-registers-client
 "
         # The unapproved image never runs; no check fails; no port I/O
         # outside a window other than the deliberate next-port probes.
         if grep -aF 'acpi-hardware-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
            grep -aqF 'TEST: FAIL acpi-' "$SERIAL_LOG" ||
-           grep -aqF 'acpi-registers-standin: probe frontend=no' "$SERIAL_LOG" ||
            grep -aqF 'still open to device memory' "$SERIAL_LOG" ||
            grep -aqF 'installed for acpi-hardware-denied.app' "$SERIAL_LOG" ||
+           grep -aqF 'routed to acpi-hardware-denied.app' "$SERIAL_LOG" ||
+           grep -aqF 'ACPI SCI refused' "$SERIAL_LOG" ||
+           grep -aqF 'ENABLE_IRQ: refused' "$SERIAL_LOG" ||
            [ "$(grep -acF 'acpi-hardware-check: starting' "$SERIAL_LOG")" -ne 1 ]; then
             echo "headless: ACPI hardware checks failed, or the unapproved image ran" >&2
             exit 1
@@ -6326,6 +7015,166 @@ TEST: PASS acpi-firmware-data
            [ "$(grep -acF 'TEST: PASS acpi-firmware-data' "$SERIAL_LOG")" -ne 1 ] ||
            [ "$(grep -acF 'acpi-data-check: no firmware-data endpoint' "$SERIAL_LOG")" -ne 1 ]; then
             echo "headless: ACPI firmware-data checks failed, or the unapproved image got the endpoint" >&2
+            exit 1
+        fi
+        ;;
+    gpio-launch)
+        # devmgr admits the test controller's two spans (P2SB discovery ran
+        # on q35 and did not find), answers before any launch, queues one
+        # launch, binds gpio-launch-check.drv by its ACPI_ID, gives window 1
+        # = span 1 (clamped to the 64 KiB span) and window 2 = span 0 (one
+        # page, read-only) and routes the observed parent line (GSI 10,
+        # level/active-low) to its "parent" binding; the driver sees exactly
+        # that, acknowledges the line, maps both, and the kernel refuses
+        # every page outside them.
+        required_markers="
+devmgr: sideband: P2SB outcome=
+devmgr: platform pool: room for 4 GPIO bootstrap spans
+gpio-bootstrap-check: the bootstrap payload is lent read-only PASS
+devmgr: platform pool member 0x20010000 +0x10000 CHIPSET_SHARED owner=GPIO bootstrap CBIT1057 span 1
+devmgr: platform pool member 0x20000000 +0x10000 CHIPSET_SHARED owner=GPIO bootstrap CBIT1057 span 2
+gpio-bootstrap-check: devmgr admits the test controller's two spans PASS
+devmgr: acpi device CBIT1057 \_SB_.GPI0 admitted with 2 spans (epoch 1); its driver launch waits for consumer initialization to complete
+gpio-bootstrap-check: the same request id gets the same answer PASS
+gpio-bootstrap-check: a second admission is ALREADY_ADMITTED PASS
+logstore: authorized typed diagnostics ready
+gpio-bootstrap-check: a four-word frame is MALFORMED PASS
+gpio-bootstrap-check: a stray fourth word is MALFORMED PASS
+gpio-bootstrap-check: reserved tag bits are MALFORMED PASS
+gpio-bootstrap-check: a frame accepting a capability is MALFORMED PASS
+ MALFORMED epoch 0 status 1 COMPLETED; 0 driver launches queued
+gpio-bootstrap-check: COMPLETED for epoch 0 is MALFORMED PASS
+devmgr: consumer initialization complete: request 10 from
+ MALFORMED epoch 1 status 153; 0 driver launches queued
+gpio-bootstrap-check: a completion with an unknown status is MALFORMED PASS
+ RECEIVED epoch 2 status 3 INCOMPLETE; 0 driver launches queued
+gpio-bootstrap-check: INCOMPLETE is RECEIVED and launches nothing PASS
+ CONFLICTING epoch 2 status 1 COMPLETED (declared INCOMPLETE); 0 driver launches queued
+gpio-bootstrap-check: COMPLETED after INCOMPLETE for one epoch is CONFLICTING PASS
+ RECEIVED epoch 3 status 1 COMPLETED; 0 driver launches queued
+gpio-bootstrap-check: COMPLETED for an epoch nothing was observed in is RECEIVED, releases nothing PASS
+gpio-bootstrap-check: sending consumer initialization complete
+devmgr: acpi device CBIT1057 \_SB_.GPI0: its driver launch is queued (observed in epoch 1)
+ RECEIVED epoch 1 status 1 COMPLETED; 1 driver launches queued
+gpio-bootstrap-check: consumer initialization COMPLETED is RECEIVED and reports one launch released PASS
+gpio-bootstrap-check: the same completion again gets the same receipt and the same released count PASS
+gpio-bootstrap-check: a four-word offer frame is MALFORMED PASS
+gpio-bootstrap-check: a stray fourth offer word is MALFORMED PASS
+gpio-bootstrap-check: reserved offer tag bits are MALFORMED PASS
+gpio-bootstrap-check: an offer frame accepting a capability is MALFORMED PASS
+gpio-bootstrap-check: offer request id 0 is MALFORMED PASS
+gpio-bootstrap-check: offer version 2 is MALFORMED at byte 0 PASS
+gpio-bootstrap-check: a wrong length field is MALFORMED at byte 4 PASS
+gpio-bootstrap-check: another compatible ID is MALFORMED at byte 160 PASS
+gpio-bootstrap-check: an offer in epoch 0 is MALFORMED at byte 8 PASS
+gpio-bootstrap-check: an offer whose grant is not the sender's is COPY_FAILED PASS
+devmgr: hid offer: request 31 from
+ UNKNOWN_CONTROLLER detail 0 epoch 1 device \_SB_.PCI0.I2C1.TPD0 i2c \_SB_.PCI0.I2C1 pci unresolved gpio CBIT1057 \_SB_.GPI0 pin 76
+gpio-bootstrap-check: an unresolved _ADR is UNKNOWN_CONTROLLER PASS
+gpio-bootstrap-check: an absent PCI function is UNKNOWN_CONTROLLER PASS
+ CONTROLLER_MISMATCH detail 0 epoch 1 device \_SB_.PCI0.I2C1.TPD0
+gpio-bootstrap-check: a function no driver binds is CONTROLLER_MISMATCH PASS
+gpio-bootstrap-check: another GPIO controller is GPIO_NOT_ADMITTED PASS
+gpio-bootstrap-check: an epoch with no admitted GPIO controller is GPIO_NOT_ADMITTED PASS
+gpio-bootstrap-check: offering the touchpad
+ QUEUED detail 0 epoch 1 device \_SB_.PCI0.I2C1.TPD0 i2c \_SB_.PCI0.I2C1 pci 0x0:0x0:0x150000 (00:15.0
+i2c-badge 0x4932101500061A80 gpio-badge 0x475010000001004C queue position 1
+gpio-bootstrap-check: the touchpad offer is QUEUED at position 1 PASS
+gpio-bootstrap-check: the same offer again gets the same answer PASS
+gpio-bootstrap-check: a second offer of the touchpad is DUPLICATE_DEVICE PASS
+gpio-bootstrap-check: a recorded request id keeps its answer (never decided twice) PASS
+gpio-bootstrap-check: admitted, released and offered; devmgr launches the driver
+devmgr: match acpi CBIT1057 \_SB_.GPI0 -> gpio-launch-check.drv (ACPI_ID CBIT1057)
+devmgr: gpio-launch-check.drv window 1 = span 2 0x20000000 +0x10000 read-write
+devmgr: gpio-launch-check.drv window 2 = span 1 0x20010000 +0x1000 read-only
+devmgr: gpio-launch-check.drv parent line routed GSI 10 vector 42 level/active-low shared
+devmgr: gpio-launch-check.drv launched for acpi CBIT1057 \_SB_.GPI0 with 2 of 2 admitted spans (ACPI launch)
+gpio-launch-check: stage identify ok hid=CBIT1057 path=\_SB_.GPI0 uid-type= 1 uid=0x0000000000000000 epoch=0x0000000000000001 windows= 2 window 1=0x0000000020000000+0x0000000000010000 window 2=0x0000000020010000+0x0000000000001000
+gpio-launch-check: stage parent-line ok binding=TRUE present=TRUE gsi= 10 vector= 42 ack=TRUE
+gpio-launch-check: stage map ok
+gpio-launch-check: stage bounded ok past-second refused=TRUE past-first refused=TRUE other-span refused=TRUE
+gpio-launch-check: bring-up complete
+devmgr: acpi driver ready for CBIT1057 \_SB_.GPI0
+devmgr: hid offer \_SB_.PCI0.I2C1.TPD0 (request 30): the GPIO driver and the I2C controller's driver (generic-check.drv at 00:15.0
+i2c-target badge 0x4932101500061A80 gpio-input badge 0x475010000001004C descriptor register 0x20
+devmgr: hid offer \_SB_.PCI0.I2C1.TPD0 (request 30): starting hid-launch-check.drv held through procmgr's Start_Child (class PNP0C50, fact descriptor_register = 32, i2c on pid
+procmgr: parameters hid-launch-check.drv: (HID_Parameters descriptor_register => 32 x => (HID_Axis numerator => 1 denominator => 1 direction => HID_Direction.As_Reported)
+procmgr: held PID
+procmgr: start_child hid-launch-check.drv pid
+ supervised by devmgr pid
+ (restart temporary, stop grace 5000 ms, class PNP0C50: 1 facts, held for its supervisor)
+devmgr: hid offer \_SB_.PCI0.I2C1.TPD0 (request 30): hid-launch-check.drv started pid
+ (Start_Child, held), supervised by devmgr
+gpio-launch-check: sink admission ok status=COMPLETED badge=0x475010000001004C owner=
+gpio-launch-check: event through the sink sent
+devmgr: hid offer \_SB_.PCI0.I2C1.TPD0 (request 30): GPIO input 0x475010000001004C admitted at the GPIO driver
+ released by devmgr
+devmgr: hid offer \_SB_.PCI0.I2C1.TPD0 (request 30): hid driver pid
+ released by procmgr; it runs with its GPIO input live
+hid-launch-check: parameters descriptor_register=0x0000000000000020 x=1/1 As_Reported y=1/1 As_Reported confidence=Require_Confident buttons=Primary_Button,Secondary_Button,Middle_Button contact_limit=5 binding_budget=65536 timing=10000/1000/250/1000/1
+hid-launch-check: i2c badge 0x4932101500061A80, gpio badge 0x475010000001004C
+generic-check: probed at 00:15.0 badge=0x4932101500061A80
+hid-launch-check: i2c reaches the driver at 00:15.0 with badge 0x4932101500061A80
+hid-launch-check: gpio event through the admitted sink from the GPIO driver, badge 0x475010000001004C
+devmgr: hid driver ready for \_SB_.PCI0.I2C1.TPD0
+devmgr: child hid-launch-check (
+) exited code 0
+procmgr: supervised child com.cubit.test.hid-launch-check pid
+"
+        if grep -aF 'gpio-bootstrap-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aqF 'TEST: FAIL gpio-launch' "$SERIAL_LOG" ||
+           grep -aF 'gpio-launch-check: stage' "$SERIAL_LOG" | grep -qF ' fail ' ||
+           [ "$(grep -acF 'devmgr: gpio-launch-check.drv launched for acpi' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'MALFORMED frame' "$SERIAL_LOG")" -ne 4 ] ||
+           [ "$(grep -acF ' driver launches queued' "$SERIAL_LOG")" -ne 10 ] ||
+           [ "$(grep -acF 'devmgr: hid offer: request' "$SERIAL_LOG")" -ne 17 ] ||
+           [ "$(grep -acF ' QUEUED detail 0 epoch 1' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'devmgr: hid offer \_SB_.PCI0.I2C1.TPD0 (request 30): the GPIO driver and' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'procmgr: start_child hid-launch-check.drv pid' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'hid-launch-check: parameters ' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'gpio-launch-check: sink admission ok' "$SERIAL_LOG")" -ne 1 ] ||
+           [ "$(grep -acF 'devmgr: generic-check.drv launched for' "$SERIAL_LOG")" -ne 2 ] ||
+           grep -aqF 'generic-check: probed at 00:15.1' "$SERIAL_LOG" ||
+           grep -aqF 'gpio-launch-check: sink admission fail' "$SERIAL_LOG" ||
+           grep -aqF 'hid-launch-check: no gpio event' "$SERIAL_LOG" ||
+           grep -aqF 'procmgr: release of pid' "$SERIAL_LOG" ||
+           grep -aqF 'procmgr: start_child from devmgr' "$SERIAL_LOG"; then
+            echo "headless: gpio-launch: a check failed, or the driver was not launched exactly once" >&2
+            exit 1
+        fi
+        # No launch before Consumer_Initialization_Complete, although
+        # logstore (the generic launch's precondition) ran before it.
+        if ! awk '/logstore: authorized typed diagnostics ready/ && !ready { ready = NR }
+                  /gpio-bootstrap-check: sending consumer initialization complete/ && !sent { sent = NR }
+                  /launch is queued \(observed in epoch/ && !queued { queued = NR }
+                  /devmgr: match acpi CBIT1057/ && !matched { matched = NR }
+                  /devmgr: gpio-launch-check.drv launched for acpi/ && !launched { launched = NR }
+                  END { exit !(ready && sent && queued && matched && launched &&
+                               ready < sent && sent < queued && queued < matched && matched < launched) }' \
+             "$SERIAL_LOG"; then
+            echo "headless: gpio-launch: the driver started before consumer initialization completed" >&2
+            exit 1
+        fi
+        # The HID offer is answered QUEUED before anything for it happens;
+        # its deferred step runs only after the GPIO driver registered.
+        if ! awk '/ QUEUED detail 0 epoch 1 device/ && !queued { queued = NR }
+                  /devmgr: acpi driver ready for CBIT1057/ && !ready { ready = NR }
+                  /devmgr: hid offer .*TPD0 \(request 30\): the GPIO driver and/ && !step { step = NR }
+                  END { exit !(queued && ready && step && queued < step && ready < step) }' \
+             "$SERIAL_LOG"; then
+            echo "headless: gpio-launch: the HID offer's launch step ran before the GPIO driver registered" >&2
+            exit 1
+        fi
+        # The HID driver runs only after its GPIO sink is admitted: held by
+        # procmgr, admitted at the GPIO driver, released, then its first line.
+        if ! awk '/procmgr: held PID/ && !held { held = NR }
+                  /gpio-launch-check: sink admission ok/ && !admitted { admitted = NR }
+                  /procmgr: held pid.* released by devmgr/ && !released { released = NR }
+                  /hid-launch-check: parameters / && !ran { ran = NR }
+                  END { exit !(held && admitted && released && ran &&
+                               held < admitted && admitted < released && released < ran) }' \
+             "$SERIAL_LOG"; then
+            echo "headless: gpio-launch: the HID driver ran before its GPIO sink was admitted" >&2
             exit 1
         fi
         ;;
@@ -6580,7 +7429,7 @@ Llm_Stop.Deadline
             llm_failed=1
         fi
         # The usage reached logstore: (logs.recent "llm") shows it.
-        if ! grep -a "REPL completed: List<LogEntry>" "$SERIAL_LOG" | grep -aF "stop end_turn" >/dev/null; then
+        if ! grep -a "REPL completed: List<LogItem>" "$SERIAL_LOG" | grep -aF "stop end_turn" >/dev/null; then
             echo "headless: (logs.recent \"llm\") did not show the exchange" >&2
             llm_failed=1
         fi
@@ -6959,7 +7808,7 @@ ccl-console: REPL completed: Wifi_Status: (Wifi_Status Wifi_State.No_Radio \"\" 
 wifi: no Wi-Fi radio is attached
 ccl-console: REPL completed: config.get failed
 wifi: passphrase stored for \"CuBitTest\"
-ccl-console: REPL completed: List<LogEntry>: [(LogEntry
+ccl-console: REPL completed: List<LogItem>: [(LogItem.Logged (LogEntry
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = log-exited ]; then
             # LOG-003: the probe's records carry no name of their own; after
@@ -6969,9 +7818,16 @@ log-exit-probe: published 3 records, exiting
 boot-logs: log-exit-probe: exit probe stage 1 of 3
 boot-logs: log-exit-probe: exit probe stage 3 of 3
 boot-logs: log-exit-probe exited (com.cubit.log-exit-probe, log-exit-probe.app)
-ccl-console: REPL completed: List<LogEntry>: [(LogEntry
-\"exit probe stage 1 of 3\")
-\"exit probe stage 3 of 3\")]
+ccl-console: REPL completed: List<LogItem>: [(LogItem.Logged (LogEntry
+\"exit probe stage 1 of 3\"))
+\"exit probe stage 3 of 3\")) (LogItem.Tally (LogTally
+"
+        elif [ "${CCL_CONSOLE_DEMO:-}" = log-burst ]; then
+            # LOG-005: both phases, and both results (tests/log-burst/
+            # check_serial.py checks their counts).
+            required_markers="$required_markers
+log-burst-probe: phase 1 done, 1000 lines
+log-burst-probe: phase 2 done, 5000 lines
 "
         elif [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then
             # LOG-004: the handler's line on serial as before; in logstore
@@ -7007,7 +7863,7 @@ desktop: clipboard manager open entries= 1
 ccl-console: REPL completed: Integer: 42
 ccl-console: REPL completed: List<Integer>: [1, 2, 3]
 ccl-console: REPL completed: Boolean: true
-ccl-console: REPL completed: List<LogEntry>: [(LogEntry
+ccl-console: REPL completed: List<LogItem>: [(LogItem.Logged (LogEntry
 ccl-console: REPL completed: Image: (Image 160 100
 ccl-console: REPL completed: Image: (Image 320 120
 "
@@ -7431,6 +8287,14 @@ text: saved @nvme:0/Documents/notes.txt bytes=39
 text: closed
 "
         ;;
+    display-latency)
+        required_markers="
+display: backend virtio-gpu
+calculator: first frame presented
+desktop: latency inputs=
+desktop: latency stage=input_to_ready
+"
+        ;;
     calculator)
         required_markers="
 calculator: starting
@@ -7691,7 +8555,9 @@ CPU Vendor: ${expected_vendor%%,*}"
         ;;
 esac
 if { [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "service-switch" ] \
-       || [ "$TEST_NAME" = "service-switch-reboot" ] || [ "$TEST_NAME" = "console-run-staged" ] || [ "$TEST_NAME" = "bench-build" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
+       || [ "$TEST_NAME" = "service-switch-reboot" ] || [ "$TEST_NAME" = "acpi-live-replace" ] \
+       || [ "$TEST_NAME" = "desktop-live-replace" ] \
+       || [ "$TEST_NAME" = "console-run-staged" ] || [ "$TEST_NAME" = "bench-build" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
     # The host driver's own checks (its PASS/FAIL lines above) gate too.
     if ! wait "$INPUT_INJECTOR_PID"; then
         INPUT_INJECTOR_PID=""
@@ -7739,6 +8605,15 @@ if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ];
     # dropped marker with the same counts.
     if ! python3 -I "$ROOT_DIR/tests/kernel-log-ring/check_serial.py" "$SERIAL_LOG" \
         ${KERNEL_LOG_OVERFLOW:+--overflow}; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = log-burst ]; then
+    # LOG-005: logs.recent returned all of the probe's records or typed
+    # gaps with exact counts, and logstore's tally balances.
+    if ! python3 -I "$ROOT_DIR/tests/log-burst/check_serial.py" "$SERIAL_LOG"; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi
@@ -8161,6 +9036,14 @@ hello cubit"
         echo "headless: two plain clicks after Ctrl+S did not leave one cursor" >&2
         exit 1
     fi
+fi
+if [ "$TEST_NAME" = "display-latency" ]; then
+    # LAT-002: the merged report; budgets printed, not enforced.
+    if ! python3 -I "$ROOT_DIR/tests/headless/display-latency-summary.py" "$SERIAL_LOG"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    grep -aE "virtio-gpu: |display: stats " "$SERIAL_LOG" | tail -n 3 || true
 fi
 if [ "$TEST_NAME" = "calculator" ]; then
     # A failed Enter (division by zero) adds nothing: the next entry is

@@ -39,15 +39,24 @@
   (file optical "intel-firmware-license" "licenses/Intel-GPU.txt")
   (file optical "hda" "apps/hda.drv")
   (file optical "rtw89" "apps/rtw89.drv")
+  # The touchpad (SUP-001): the GPIO controller driver (ACPI launch), the
+  # I2C controller driver (one per controller, generic PCI launch) and the
+  # HID-over-I2C driver devmgr starts through Start_Child. hid-i2c.drv is
+  # this image's only PNP0C50 driver (never with hid-launch-check.drv).
+  (file optical "gpio" "apps/gpio.drv")
+  (file optical "i2c-dw" "apps/i2c-dw.drv")
+  (file optical "hid-i2c" "apps/hid-i2c.drv")
   (file optical "mixer" "apps/mixer.svc")
   (file optical "config" "apps/config.svc")
   (file optical "config-storage" "apps/config-storage.svc")
   (file optical "servo" "apps/cubitshell.app")
   (file optical "netmgr" "apps/netmgr.svc")
   (file optical "wifi" "apps/wifi.svc")
-  # ACPI: the AML frontend and the hardware backend (coordination/acpi-region-boundary.md).
+  # ACPI: the one acpi.svc, AML plus the hardware it holds (ACPI-ONE-001).
   (file optical "acpi" "apps/acpi.svc")
-  (file optical "acpi-backend" "apps/acpi-backend.svc")
+  # The power manager (PWR-003): shutdown from Desktop, the console and
+  # the power button.
+  (file optical "power" "apps/power.svc")
   (file optical "procmgr" "apps/procmgr.svc")
   (file optical "logstore" "apps/logstore.svc")
   (file optical "clock" "apps/clock.svc")
