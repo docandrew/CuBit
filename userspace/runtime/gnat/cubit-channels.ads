@@ -186,6 +186,10 @@ package CuBit.Channels is
    --  Sync: this thread is about to block (CuBit.Doorbells.Ring).
    procedure Signal (C : Channel; Sync : Boolean; Result : out Signal_Result);
 
+   --  Producers: whether the consumer armed its waiting word (it sleeps
+   --  until woken): an acceptor that produces signals only then.
+   function Consumer_Waiting (C : Channel) return Boolean;
+
    --  Producers of a channel with a consumer index: whether the consumer
    --  has taken everything put so far.
    function All_Taken (C : in out Channel) return Boolean;

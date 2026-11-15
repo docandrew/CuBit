@@ -1,7 +1,9 @@
 pragma Ada_2022;
 with CuBit.Grant_References;
 with CuBit.Memory_Grants;
+with CuBit.Channel_Protocol;
 with CuBit.Messages;
+with CuBit.Metric_Updates;
 
 package body CuBit.Metric_Queries is
    use CuBit.Messages;
@@ -102,4 +104,31 @@ package body CuBit.Metric_Queries is
       Answer := Pages.Page (Lent);
       Merged := Reply (0);
    end Read_Window;
+
+   procedure Subscribe
+     (Item : Reader; Match : Name_Match; Name, Source : String; Link : in out CuBit.Channels.Channel;
+      Result : out Status)
+   is
+      use type CuBit.Channels.Open_Result;
+      use type Protocol.Status;
+      Lent : aliased Lent_Page := [others => 0];
+      Reply : MessageWords;
+      Opened : CuBit.Channels.Open_Result;
+      Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
+   begin
+      Result := Protocol.Unavailable;
+      if not CuBit.Handles.Valid (Item.Slot) then
+         return;
+      end if;
+      CuBit.Channels.Open (Item.Slot, CuBit.Metric_Updates.CONTRACT, CuBit.Channels.Consuming, Link, Opened,
+                           Ignore_Refusal, Deadline => Deadline_After (Open_Wait_Ms));
+      if Opened /= CuBit.Channels.Opened then
+         return;
+      end if;
+      Put_Selector (Pages.Page (Lent), Match, Name, Source);
+      Call (Item, Protocol.Subscribe, Lent, Link.Peer_Number, 0, 0, Reply, Result);
+      if Result /= Protocol.OK then
+         CuBit.Channels.Close (Link);
+      end if;
+   end Subscribe;
 end CuBit.Metric_Queries;

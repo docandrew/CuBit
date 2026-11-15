@@ -522,6 +522,10 @@ package body CuBit.Channels is
       end if;
    end Kick;
 
+   function Consumer_Waiting (C : Channel) return Boolean is
+     (C.Active and then C.This_Side = Producing and then C.Has_Peer
+      and then Word (C.Peer_Base, CP.CONSUMER_WAITING_OFFSET) /= Not_Waiting);
+
    procedure Signal (C : Channel; Sync : Boolean; Result : out Signal_Result) is
    begin
       if not C.Active or else not C.Has_Own then

@@ -25,7 +25,6 @@ package body Metric_Reads is
      (Series.Text_Of (Store, Series.Info (Store, Index).With_Labels.Name));
 
    --  The selector the reader wrote at the page's start.
-   function Selector_Of (Item : Pages.Page) return Series.Selector;
    function Selector_Of (Item : Pages.Page) return Series.Selector is
       Sel : Series.Selector;
       Name : constant String := Pages.Get_Text (Item, Pages.Select_Name, Pages.Text_Bytes);

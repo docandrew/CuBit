@@ -33,12 +33,16 @@ package CuBit.Metric_Protocol with Pure, SPARK_Mode is
 
    --  List_Series, Read_Range and Read_Window (MET-002) read the series
    --  store through one page the reader lends, writable (CuBit.Metric_Query_Pages).
+   --  Subscribe (DESIGN-metrics-push, CuBit.Metric_Updates): request [page,
+   --  the reader's consuming channel's number at metrics.svc, 0, 0]; page in:
+   --  the selector (as Read_Window's). From then on the selected series'
+   --  samples go into that channel.
    type Operation is
-     (Publish_Batch, Query_Summaries, Query_Raw, List_Series, Read_Range, Read_Window,
+     (Publish_Batch, Query_Summaries, Query_Raw, List_Series, Read_Range, Read_Window, Subscribe,
       Set_Scopes, Revoke_Scopes);
    for Operation use
      (Publish_Batch => 16#0D00#, Query_Summaries => 16#0D01#, Query_Raw => 16#0D02#,
-      List_Series => 16#0D03#, Read_Range => 16#0D04#, Read_Window => 16#0D05#,
+      List_Series => 16#0D03#, Read_Range => 16#0D04#, Read_Window => 16#0D05#, Subscribe => 16#0D06#,
       Set_Scopes => 16#0D10#, Revoke_Scopes => 16#0D11#);
 
    --  Out_Of_Scope: an observer asked for series outside the read scopes
@@ -62,7 +66,8 @@ package CuBit.Metric_Protocol with Pure, SPARK_Mode is
    function May_Invoke (Tag : Unsigned_64; Op : Operation) return Boolean is
      (case Op is
          when Publish_Batch => Is_Publisher (Tag),
-         when Query_Summaries | Query_Raw | List_Series | Read_Range | Read_Window => Is_Observer (Tag),
+         when Query_Summaries | Query_Raw | List_Series | Read_Range | Read_Window | Subscribe =>
+           Is_Observer (Tag),
          when Set_Scopes | Revoke_Scopes => Tag = Policy_Tag);
 
    --  Set_Scopes: [process, count, grant slot, generation]: count entries of

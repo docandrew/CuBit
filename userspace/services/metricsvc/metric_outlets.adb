@@ -83,10 +83,12 @@ package body Metric_Outlets is
 
    procedure Drain_One
      (T : in out Table; O : in out Outlet_Record; Store : in out Metric_Series.Store;
-      Sources : Metric_Sources.Table; Now_Ms : Unsigned_64; Pending : in out Boolean);
+      Sources : Metric_Sources.Table; Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
+      Now_Ms : Unsigned_64; Pending : in out Boolean);
    procedure Drain_One
      (T : in out Table; O : in out Outlet_Record; Store : in out Metric_Series.Store;
-      Sources : Metric_Sources.Table; Now_Ms : Unsigned_64; Pending : in out Boolean)
+      Sources : Metric_Sources.Table; Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
+      Now_Ms : Unsigned_64; Pending : in out Boolean)
    is
       Wire : Outlet.Element_Buffer;
       Length : Natural;
@@ -119,6 +121,9 @@ package body Metric_Outlets is
                      else
                         Metric_Series.Append
                           (Store, Series_Of (O, Item.Value.Key), Item.Value.Time_Us, Item.Value.Value);
+                        Metric_Subscriptions.Offer_Sample
+                          (Fanout, Store, Scopes, Series_Of (O, Item.Value.Key), Item.Value.Time_Us,
+                           Item.Value.Value);
                      end if;
                   when Outlet.Loss =>
                      if Series_Of (O, Item.Value.Key) = Metric_Series.No_Series then
@@ -127,6 +132,9 @@ package body Metric_Outlets is
                         Metric_Series.Note_Shed
                           (Store, Series_Of (O, Item.Value.Key), Item.Value.Shed, Item.Value.First_Us,
                            Item.Value.Last_Us);
+                        Metric_Subscriptions.Offer_Gap
+                          (Fanout, Store, Scopes, Series_Of (O, Item.Value.Key), Item.Value.Shed,
+                           Item.Value.First_Us, Item.Value.Last_Us);
                      end if;
                end case;
             end if;
@@ -143,16 +151,18 @@ package body Metric_Outlets is
 
    procedure Finish
      (T : in out Table; O : in out Outlet_Record; Store : in out Metric_Series.Store;
-      Sources : Metric_Sources.Table; Now_Ms : Unsigned_64);
+      Sources : Metric_Sources.Table; Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
+      Now_Ms : Unsigned_64);
    procedure Finish
      (T : in out Table; O : in out Outlet_Record; Store : in out Metric_Series.Store;
-      Sources : Metric_Sources.Table; Now_Ms : Unsigned_64)
+      Sources : Metric_Sources.Table; Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
+      Now_Ms : Unsigned_64)
    is
       Pending : Boolean := False;
    begin
       --  What a program wrote just before it ended is kept: no identity
       --  wait now (the end of time is past every wait).
-      Drain_One (T, O, Store, Sources, Unsigned_64'Last, Pending);
+      Drain_One (T, O, Store, Sources, Fanout, Scopes, Unsigned_64'Last, Pending);
       pragma Unreferenced (Now_Ms);
       Channels.Close (O.Link);
       Key_Blocks.Release (O.Keys);
@@ -213,6 +223,7 @@ package body Metric_Outlets is
 
    procedure Close
      (T : in out Table; Store : in out Metric_Series.Store; Sources : Metric_Sources.Table;
+      Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
       From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message; Now_Ms : Unsigned_64)
    is
       Number : constant Unsigned_64 := Channels.Number_Of (Request);
@@ -221,7 +232,7 @@ package body Metric_Outlets is
       if Number in 1 .. Unsigned_64 (T.Used) then
          O := Outlet_Blocks.Get (T.Outlets, Natural (Number) - 1);
          if O.Owner = From and then Channels.Closed_By (O.Link, From, Request) then
-            Finish (T, O, Store, Sources, Now_Ms);
+            Finish (T, O, Store, Sources, Fanout, Scopes, Now_Ms);
             Outlet_Blocks.Set (T.Outlets, Natural (Number) - 1, O);
          end if;
       end if;
@@ -229,6 +240,7 @@ package body Metric_Outlets is
 
    procedure Ended
      (T : in out Table; Store : in out Metric_Series.Store; Sources : Metric_Sources.Table;
+      Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
       Event : CuBit.Control_Events.Event; Now_Ms : Unsigned_64)
    is
       O : Outlet_Record;
@@ -236,7 +248,7 @@ package body Metric_Outlets is
       for I in 0 .. T.Used - 1 loop
          O := Outlet_Blocks.Get (T.Outlets, I);
          if O.Link.Active and then Channels.Ended (O.Link, Event) then
-            Finish (T, O, Store, Sources, Now_Ms);
+            Finish (T, O, Store, Sources, Fanout, Scopes, Now_Ms);
             Outlet_Blocks.Set (T.Outlets, I, O);
          end if;
       end loop;
@@ -244,6 +256,7 @@ package body Metric_Outlets is
 
    procedure Drain
      (T : in out Table; Store : in out Metric_Series.Store; Sources : Metric_Sources.Table;
+      Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
       Now_Ms : Unsigned_64; Pending : out Boolean)
    is
       O : Outlet_Record;
@@ -252,7 +265,7 @@ package body Metric_Outlets is
       for I in 0 .. T.Used - 1 loop
          O := Outlet_Blocks.Get (T.Outlets, I);
          if O.Link.Active then
-            Drain_One (T, O, Store, Sources, Now_Ms, Pending);
+            Drain_One (T, O, Store, Sources, Fanout, Scopes, Now_Ms, Pending);
             Outlet_Blocks.Set (T.Outlets, I, O);
          end if;
       end loop;

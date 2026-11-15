@@ -26,4 +26,8 @@ package Metric_Reads is
      (Store : Metric_Series.Store; Scopes : Metric_Scopes.Table; Reader : Unsigned_64;
       Id, From_Us, To_Us : Unsigned_64; Item : in out Pages.Page;
       Merged : out Unsigned_64; Result : out CuBit.Metric_Protocol.Status);
+
+   --  The selector a reader wrote at the page's start (List, Read_Window,
+   --  Subscribe).
+   function Selector_Of (Item : Pages.Page) return Metric_Series.Selector;
 end Metric_Reads;

@@ -17,6 +17,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with CuBit.Channels;
 with CuBit.Handles;
 with CuBit.Handles.Startup;
 with CuBit.Metric_Protocol;
@@ -52,6 +53,16 @@ package CuBit.Metric_Queries is
    procedure Read_Window
      (Item : Reader; Id : Unsigned_64; Match : Name_Match; Name, Source : String;
       From_Us, To_Us : Unsigned_64; Answer : out Pages.Page; Merged : out Unsigned_64; Result : out Status);
+
+   --  A push subscription (CuBit.Metric_Updates): open Link, a consuming
+   --  channel to metrics.svc, and subscribe it to the selector's series
+   --  (within the read scopes, as every read). Result OK: samples arrive in
+   --  Link from the store's next pass; read them with Channels.Take, no IPC.
+   --  Otherwise Link is closed.
+   Open_Wait_Ms : constant := 2_000;
+   procedure Subscribe
+     (Item : Reader; Match : Name_Match; Name, Source : String; Link : in out CuBit.Channels.Channel;
+      Result : out Status);
 private
    type Reader is limited record
       Slot : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;

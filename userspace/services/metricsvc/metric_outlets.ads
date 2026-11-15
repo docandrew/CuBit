@@ -3,8 +3,10 @@ with Interfaces; use Interfaces;
 with CuBit.Channels;
 with CuBit.Control_Events;
 with CuBit.Messages;
+with Metric_Scopes;
 with Metric_Series;
 with Metric_Sources;
+with Metric_Subscriptions;
 private with Heap_Arrays;
 
 --  metrics.svc's side of each declared com.cubit-os.stdmetric outlet
@@ -39,14 +41,19 @@ package Metric_Outlets is
       Request : CuBit.Messages.Message; Now_Ms : Unsigned_64; Reply : out CuBit.Messages.Message);
    procedure Close
      (T : in out Table; Store : in out Metric_Series.Store; Sources : Metric_Sources.Table;
+      Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
       From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message; Now_Ms : Unsigned_64);
    procedure Ended
      (T : in out Table; Store : in out Metric_Series.Store; Sources : Metric_Sources.Table;
+      Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
       Event : CuBit.Control_Events.Event; Now_Ms : Unsigned_64);
    --  Take what every ring holds into Store. Pending: a ring still holds
    --  elements (a batch's worth was taken).
+   --  Each sample and gap stored is offered to the push subscriptions
+   --  (Fanout, within Scopes).
    procedure Drain
      (T : in out Table; Store : in out Metric_Series.Store; Sources : Metric_Sources.Table;
+      Fanout : in out Metric_Subscriptions.Table; Scopes : Metric_Scopes.Table;
       Now_Ms : Unsigned_64; Pending : out Boolean);
    function Open_Count (T : Table) return Natural;
 

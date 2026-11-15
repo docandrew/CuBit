@@ -22,6 +22,7 @@ with Metric_Outlets;
 with Metric_Sources;
 with Metric_Scopes;
 with Metric_Reads;
+with Metric_Subscriptions;
 
 --  metrics.svc (MET-001, MET-002): typed metric collection and the series
 --  store. Each declared com.cubit-os.stdmetric outlet's ring is accepted
@@ -50,6 +51,8 @@ procedure Main is
    Outlets : Metric_Outlets.Table;
    Sources : Metric_Sources.Table;
    Scopes : Metric_Scopes.Table;
+   --  Push subscriptions (DESIGN-metrics-push.md, CuBit.Metric_Updates).
+   Fanout : Metric_Subscriptions.Table;
    From : Process_ID;
    Request, Response : Message;
    Received, Known, Acquired, Returned, Pending, Have_Event : Boolean;
@@ -145,7 +148,13 @@ procedure Main is
       Metric_Reads.Read_Window (Series, Scopes, To_Word (From), Request.words (1), Request.words (2),
                                 Request.words (3), Item, Reply_Words (0), Result);
    end Window_Answer;
+   procedure Subscribe_Answer (Item : in out Pages.Page);
+   procedure Subscribe_Answer (Item : in out Pages.Page) is
+   begin
+      Metric_Subscriptions.Subscribe (Fanout, Scopes, From, Request.words (1), Metric_Reads.Selector_Of (Item), Result);
+   end Subscribe_Answer;
    procedure List_Page is new With_Page (List_Answer);
+   procedure Subscribe_Page is new With_Page (Subscribe_Answer);
    procedure Range_Page is new With_Page (Range_Answer);
    procedure Window_Page is new With_Page (Window_Answer);
 
@@ -218,7 +227,7 @@ procedure Main is
       Done : Boolean;
    begin
       --  The latest samples first.
-      Metric_Outlets.Drain (Outlets, Series, Sources, Now_Ms, Pending);
+      Metric_Outlets.Drain (Outlets, Series, Sources, Fanout, Scopes, Now_Ms, Pending);
       Reply_Words := [others => 0];
       Result := Unavailable;
       case Op is
@@ -247,7 +256,8 @@ begin
       receiveUntil
         ((if Backlog then Now_Ms
           else Now_Ms + Unsigned_64'Min
-                 ((if Metric_Outlets.Open_Count (Outlets) > 0 then Metric_Outlets.Drain_Interval_Ms
+                 ((if Metric_Subscriptions.Active (Fanout) then Metric_Subscriptions.Live_Drain_Interval_Ms
+                   elsif Metric_Outlets.Open_Count (Outlets) > 0 then Metric_Outlets.Drain_Interval_Ms
                    else Idle_Wake_Ms),
                   Unsigned_64'Last - Now_Ms)),
          From, Request, Received);
@@ -259,7 +269,8 @@ begin
          CuBit.Process_Events.Next (Ended_Event, Have_Event);
          exit when not Have_Event;
          Metric_Sources.Ended (Sources, Ended_Event);
-         Metric_Outlets.Ended (Outlets, Series, Sources, Ended_Event, Now_Ms);
+         Metric_Outlets.Ended (Outlets, Series, Sources, Fanout, Scopes, Ended_Event, Now_Ms);
+         Metric_Subscriptions.Ended (Fanout, Ended_Event);
       end loop;
       if Received and then Request.tag.label = CuBit.Channel_Protocol.OP_OPEN_PRODUCING then
          --  A launcher's registrar channel, or a program's outlet.
@@ -271,11 +282,21 @@ begin
             Response := Channels.Refusal_Reply (CuBit.Channel_Protocol.Unsupported);
          end if;
          Ignore := reply (From, Response);
+      elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_OPEN_CONSUMING then
+         --  A reader's push subscription channel (its observer badge).
+         if From /= No_Process and then Is_Observer (Request.authorityTag) then
+            Metric_Subscriptions.Open (Fanout, From, Request.authorityTag, Request, Response);
+         else
+            Response := Channels.Refusal_Reply (CuBit.Channel_Protocol.Unsupported);
+         end if;
+         Ignore := reply (From, Response);
       elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_CLOSE then
          if Metric_Sources.Owns (Channels.Number_Of (Request)) then
             Metric_Sources.Close (Sources, From, Request);
+         elsif Metric_Subscriptions.Owns (Channels.Number_Of (Request)) then
+            Metric_Subscriptions.Close (Fanout, From, Request);
          else
-            Metric_Outlets.Close (Outlets, Series, Sources, From, Request, Now_Ms);
+            Metric_Outlets.Close (Outlets, Series, Sources, Fanout, Scopes, From, Request, Now_Ms);
          end if;
       elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_KICK then
          --  A publisher's Flush: drained below.
@@ -397,6 +418,18 @@ begin
                      end if;
                   when List_Series | Read_Range | Read_Window =>
                      Serve_Store_Read;
+                  when Subscribe =>
+                     declare
+                        Done : Boolean;
+                     begin
+                        Result := Unavailable;
+                        Subscribe_Page (Request.words (0), From, Done);
+                        if not Done then
+                           Result := Invalid_Request;
+                        elsif Result = Out_Of_Scope then
+                           Report_Refusal (From, "Subscribe");
+                        end if;
+                     end;
                   when Set_Scopes =>
                      declare
                         Done : Boolean;
@@ -423,7 +456,9 @@ begin
                           reserved => 0);
          Ignore := reply (From, Response);
       end if;
-      Metric_Outlets.Drain (Outlets, Series, Sources, Now_Ms, Backlog);
+      Metric_Outlets.Drain (Outlets, Series, Sources, Fanout, Scopes, Now_Ms, Backlog);
+      --  Wake each subscriber given anything in this pass (one wake each).
+      Metric_Subscriptions.Flush (Fanout);
       Report_Accounting;
    end loop;
 end Main;
