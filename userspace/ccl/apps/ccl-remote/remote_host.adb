@@ -14,6 +14,7 @@ with CCL_Config_Bindings;
 with CCL_File_Bindings;
 with CCL_Image_Bindings;
 with CCL_Log_Bindings;
+with CCL_Metric_Bindings;
 with CCL_Native_Bindings;
 with CCL_Process_Bindings;
 with Remote_Capture;
@@ -69,6 +70,8 @@ package body Remote_Host is
             "change the minimum on the device (the Logs app's Keep box)");
       elsif CCL_Log_Bindings.Handles (Binding) then
          CCL_Log_Bindings.Invoke (Binding, Argument, Reply);
+      elsif CCL_Metric_Bindings.Handles (Binding) then
+         CCL_Metric_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Process_Bindings.Handles (Binding) then
          CCL_Process_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Config_Bindings.Handles (Binding) then
@@ -105,6 +108,8 @@ package body Remote_Host is
       CCL.Catalog.Initialize (Grants);
       CCL_Config_Bindings.Install (Catalog, Grants, Success);
       if Success then CCL_Log_Bindings.Install (Catalog, Grants, Success); end if;
+      --  metrics.* (MET-002): read only, within the manifest's metrics scope.
+      if Success then CCL_Metric_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Process_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_File_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Image_Bindings.Install (Catalog, Grants, Success); end if;

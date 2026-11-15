@@ -92,7 +92,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, display-latency, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, display-latency, metrics-latency, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -356,7 +356,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1231,6 +1231,11 @@ with open(sys.argv[1], "wb") as f:
     display-latency)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-latency.ccl"
         ;;
+    metrics-latency)
+        # MET-002: display-latency with metrics.svc and ccl-remote; the
+        # host reads the series back (tests/metrics-latency/metrics_session.py).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-metrics-latency.ccl"
+        ;;
     clipboard)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-clipboard.ccl"
         ;;
@@ -1572,7 +1577,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "launch-failure" ] ||
        [ "$TEST_NAME" = "text" ] ||
        [ "$TEST_NAME" = "calculator" ] ||
-       [ "$TEST_NAME" = "display-latency" ] ||
+       [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ] ||
        [ "$TEST_NAME" = "clipboard" ] ||
        [ "$TEST_NAME" = "key-repeat" ] ||
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
@@ -1995,7 +2000,8 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
-    if [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "display-latency" ]; then
+    if [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "display-latency" ] ||
+       [ "$TEST_NAME" = "metrics-latency" ]; then
         CALC_TEST_IMAGE="$KERNEL_DIR/isodir/boot/calculator.app"
         if [ ! -f "$CALC_TEST_IMAGE" ]; then
             echo "headless: missing current Calculator test image: $CALC_TEST_IMAGE" >&2
@@ -2031,6 +2037,18 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "metrics-latency" ]; then
+        # The series store (MET-002) and the remote endpoint that reads it.
+        for METRICS_IMAGE_NAME in metrics.svc ccl-remote.app clock.svc logstore.svc; do
+            debugfs -w -R "rm $METRICS_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$METRICS_IMAGE_NAME $METRICS_IMAGE_NAME" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $METRICS_IMAGE_NAME (make -C kernel metricsvc ccl-remote)" >&2
+                exit 1
+            fi
+        done
+        debugfs -w -R "mkdir work" "$TEMP_DISK" >/dev/null 2>&1
     fi
     if [ "$TEST_NAME" = "ccl-remote-session" ] || [ "$TEST_NAME" = "remote-screenshot" ]; then
         # The endpoint, its work root and the device agent's message in
@@ -3353,6 +3371,7 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "logs" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-virtio-vga" ] || [ "$TEST_NAME" = "display-latency" ] ||
+   [ "$TEST_NAME" = "metrics-latency" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
     VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
 fi
@@ -3493,7 +3512,7 @@ if [ "$TEST_NAME" = "managed-ui" ] || [ "$TEST_NAME" = "remote-screenshot" ]; th
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
 fi
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
@@ -3543,7 +3562,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             printf 'sendkey shift\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             exit 0
         fi
-        if [ "$TEST_NAME" = "display-latency" ]; then
+        if [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ]; then
             # LAT-002: presses at swept refresh phases into the focused
             # Calculator, then two of Desktop's report intervals.
             for ((attempt = 0; attempt < 600; attempt++)); do
@@ -5399,6 +5418,19 @@ if [ "$TEST_NAME" = "remote-screenshot" ]; then
         ${REMOTE_SCREENSHOT_OUT:+"$REMOTE_SCREENSHOT_OUT"} &
     INPUT_INJECTOR_PID=$!
 fi
+METRICS_DRIVER_PID=""
+if [ "$TEST_NAME" = "metrics-latency" ]; then
+    # MET-002: the guest's port 8445 from the host's loopback, as
+    # ccl-remote-session; the driver pairs, waits for the presses, reads the
+    # series back through CCL, checks them against Desktop's report lines
+    # and quits QEMU.
+    REMOTE_SESSION_PORT="${REMOTE_SESSION_PORT:-18453}"
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:$REMOTE_SESSION_PORT-10.0.2.15:8445"
+    python3 "$ROOT_DIR/tests/metrics-latency/metrics_session.py" \
+        "$SERIAL_LOG" "$MONITOR_SOCKET" "$TIMEOUT_SECONDS" "$REMOTE_SESSION_PORT" \
+        "${DISPLAY_LATENCY_PRESSES:-96}" &
+    METRICS_DRIVER_PID=$!
+fi
 if [ "$TEST_NAME" = "service-switch" ]; then
     # As device-build: the guest's port 8445 from the host's loopback; the
     # driver pairs, turns the Desktop's switch on by a click over QMP, and
@@ -5625,6 +5657,17 @@ if [ -n "$CLOCK_OBSERVER_PID" ]; then
     fi
     CLOCK_OBSERVER_PID=""
     echo "headless: host clock reference: ${SERIAL_LOG}.host-clock.json"
+fi
+
+metrics_driver_status=0
+if [ -n "$METRICS_DRIVER_PID" ]; then
+    wait "$METRICS_DRIVER_PID" || metrics_driver_status=$?
+    METRICS_DRIVER_PID=""
+fi
+if [ "$metrics_driver_status" -ne 0 ]; then
+    echo "headless: metrics-latency: the host driver reported failures" >&2
+    echo "headless: serial log: $SERIAL_LOG" >&2
+    exit 1
 fi
 
 injector_status=0
@@ -8295,6 +8338,15 @@ desktop: latency inputs=
 desktop: latency stage=input_to_ready
 "
         ;;
+    metrics-latency)
+        required_markers="
+metricsvc: typed metrics ready
+display: backend virtio-gpu
+calculator: first frame presented
+desktop: latency inputs=
+ccl-remote: a host paired
+"
+        ;;
     calculator)
         required_markers="
 calculator: starting
@@ -9037,7 +9089,7 @@ hello cubit"
         exit 1
     fi
 fi
-if [ "$TEST_NAME" = "display-latency" ]; then
+if [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ]; then
     # LAT-002: the merged report; budgets printed, not enforced.
     if ! python3 -I "$ROOT_DIR/tests/headless/display-latency-summary.py" "$SERIAL_LOG"; then
         echo "headless: serial log: $SERIAL_LOG" >&2
