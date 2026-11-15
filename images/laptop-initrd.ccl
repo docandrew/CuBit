@@ -39,6 +39,8 @@
   (file bootstrap "desktop" "desktop.svc")
   # The power manager (PWR-003): shutdown from Desktop.
   (file bootstrap "power" "power.svc")
+  # The metrics store (MET-002).
+  (file bootstrap "metrics" "metrics.svc")
   (file bootstrap "ccl-workbench" "ccl-workbench.app")
   (file bootstrap "devices" "devices.app")
   (file bootstrap "config-inspector" "config-inspector.app")

@@ -5,6 +5,9 @@
 (startup v1
   (start "storage-check.app" (priority 5))
   (start "logstore.svc" (priority 5))
+  # MET-002: the metrics store, before every program that declares a
+  # com.cubit-os.stdmetric outlet (Desktop), so their outlets are wired at launch.
+  (start "metrics.svc" (priority 5))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))
   # PWR-003: power.svc, the power manager, before Desktop: Desktop's

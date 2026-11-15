@@ -54,6 +54,8 @@
   (file optical "desktop" "apps/desktop.svc")
   # The power manager (PWR-003): shutdown from Desktop and the console.
   (file optical "power" "apps/power.svc")
+  # The metrics store (MET-002): every declared com.cubit-os.stdmetric outlet's series.
+  (file optical "metrics" "apps/metrics.svc")
   (file optical "ccl-workbench" "apps/ccl-workbench.app")
   (file optical "ccl-console" "apps/ccl-console.app")
   # The agent path (AGENT-002): agent.app asks llm.svc, which reaches the
@@ -71,6 +73,7 @@
   (file optical "config-inspector" "apps/config-inspector.app")
   (file optical "boot-logs" "apps/boot-logs.app")
   (file optical "logs" "apps/logs.app")
+  (file optical "metricsview" "apps/metricsview.app")
   (file optical "gpu-viewer" "apps/gpu-viewer.app")
   (file optical "files" "apps/files.app")
   (file optical "doom" "apps/doom.elf")

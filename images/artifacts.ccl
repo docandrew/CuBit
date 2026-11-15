@@ -29,6 +29,8 @@
   (artifact "wifi" repository "kernel/isodir/boot/wifi.svc")
   (artifact "acpi" repository "kernel/isodir/boot/acpi.svc")
   (artifact "power" repository "kernel/isodir/boot/power.svc")
+  (artifact "metrics" repository "kernel/isodir/boot/metrics.svc")
+  (artifact "metricsview" repository "kernel/isodir/boot/metricsview.app")
   (artifact "procmgr" repository "kernel/isodir/boot/procmgr.svc")
   (artifact "logstore" repository "kernel/isodir/boot/logstore.svc")
   (artifact "clock" repository "kernel/isodir/boot/clock.svc")

@@ -58,6 +58,8 @@
   # The power manager (PWR-003): shutdown from Desktop, the console and
   # the power button.
   (file optical "power" "apps/power.svc")
+  # The metrics store (MET-002): every declared com.cubit-os.stdmetric outlet's series.
+  (file optical "metrics" "apps/metrics.svc")
   (file optical "procmgr" "apps/procmgr.svc")
   (file optical "logstore" "apps/logstore.svc")
   (file optical "clock" "apps/clock.svc")
@@ -82,6 +84,7 @@
   (file optical "config-inspector" "apps/config-inspector.app")
   (file optical "boot-logs" "apps/boot-logs.app")
   (file optical "logs" "apps/logs.app")
+  (file optical "metricsview" "apps/metricsview.app")
   (file optical "gpu-viewer" "apps/gpu-viewer.app")
   (file optical "files" "apps/files.app")
   (file optical "doom" "apps/doom.elf")
