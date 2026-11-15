@@ -29,5 +29,5 @@ package Charts_Quantiles with SPARK_Mode, Pure is
    --  Reorder Items so that Items (Items'First + K - 1) holds the K-th
    --  smallest value (K from 1), and return it.
    procedure Select_Kth (Items : in out Sample_Array; K : Positive; Result : out Unsigned_64)
-     with Pre => Items'Length >= 1 and then K <= Items'Length and then Items'Last < Natural'Last;
+     with Pre => Items'Last < Natural'Last and then Items'Length >= 1 and then K <= Items'Length;
 end Charts_Quantiles;

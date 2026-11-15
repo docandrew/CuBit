@@ -1,0 +1,13 @@
+--  SPARK proof of the charts core (userspace/lib/charts, MET-002's app):
+--  run.sh --prove (memory-capped, -j2, level 2). Charts_Format's body is
+--  not in SPARK (string building); its spec is.
+project Charts_Proof is
+   for Source_Dirs use ("../../userspace/lib/charts");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--timeout=60");
+   end Prove;
+end Charts_Proof;

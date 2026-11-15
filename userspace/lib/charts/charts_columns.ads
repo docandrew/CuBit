@@ -61,7 +61,7 @@ package Charts_Columns with SPARK_Mode, Pure is
    Maximum_Column_Samples : constant := Natural'Last / Charts_Quantiles.Permille_Scale;
    procedure Summarize_Raw
      (Values : in out Charts_Quantiles.Sample_Array; Last_Value : Unsigned_64; Result : out Summary)
-     with Pre => Values'Length in 1 .. Maximum_Column_Samples and then Values'Last < Natural'Last;
+     with Pre => Values'Last < Natural'Last and then Values'Length in 1 .. Maximum_Column_Samples;
 
    --  A tier window, as the store answers Read_Range (CuBit.Metric_Query_Pages).
    type Window_Row is record
@@ -96,7 +96,7 @@ package Charts_Columns with SPARK_Mode, Pure is
    function Holds (R : Ring; C : Column_Number) return Boolean is
      (C <= R.Last and then R.Last - C < Unsigned_64 (R.Capacity));
 
-   function Slot (R : Ring; C : Column_Number) return Positive is (Natural (C mod Unsigned_64 (R.Capacity)) + 1)
+   function Slot (R : Ring; C : Column_Number) return Positive
      with Post => Slot'Result <= R.Capacity;
 
    function Get (R : Ring; C : Column_Number) return Summary is

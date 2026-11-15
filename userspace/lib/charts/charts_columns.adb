@@ -2,6 +2,15 @@ pragma Ada_2022;
 
 package body Charts_Columns with SPARK_Mode is
 
+   function Slot (R : Ring; C : Column_Number) return Positive is
+      --  Column numbers stay below 2^62 (Charts_Time_Axis): the remainder
+      --  is taken in integer arithmetic, where it is plainly below Capacity.
+      Whole : constant Long_Long_Integer := Long_Long_Integer (Unsigned_64'Min (C, Axis.Maximum_Time_Us));
+      Remainder : constant Long_Long_Integer := Whole mod Long_Long_Integer (R.Capacity);
+   begin
+      return Natural (Remainder) + 1;
+   end Slot;
+
    procedure Summarize_Raw
      (Values : in out Charts_Quantiles.Sample_Array; Last_Value : Unsigned_64; Result : out Summary)
    is
@@ -46,6 +55,7 @@ package body Charts_Columns with SPARK_Mode is
             begin
                while At_Position > 1 and then Order (At_Position - 1).P50 > R.P50 loop
                   pragma Loop_Invariant (At_Position in 2 .. Used + 1);
+                  pragma Loop_Variant (Decreases => At_Position);
                   Order (At_Position) := Order (At_Position - 1);
                   At_Position := At_Position - 1;
                end loop;
@@ -88,6 +98,7 @@ package body Charts_Columns with SPARK_Mode is
       C : Column_Number := From;
    begin
       for I in Into'Range loop
+         pragma Loop_Invariant (At_Slot in 1 .. R.Capacity);
          Into (I) := (if C >= Oldest and then C <= R.Last then R.Items (At_Slot) else Nothing);
          At_Slot := (if At_Slot = R.Capacity then 1 else At_Slot + 1);
          if C < Column_Number'Last then

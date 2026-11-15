@@ -2,9 +2,16 @@ pragma Ada_2022;
 
 package body Charts_Buckets with SPARK_Mode is
 
-   function Slot (R : Ring; C : Column_Number) return Positive is
-     (Natural (C mod Unsigned_64 (R.Capacity)) + 1)
+   function Slot (R : Ring; C : Column_Number) return Positive
      with Post => Slot'Result <= R.Capacity;
+   function Slot (R : Ring; C : Column_Number) return Positive is
+      --  Column numbers stay below 2^62 (Charts_Time_Axis): the remainder
+      --  is taken in integer arithmetic, where it is plainly below Capacity.
+      Whole : constant Long_Long_Integer := Long_Long_Integer (Unsigned_64'Min (C, Axis.Maximum_Time_Us));
+      Remainder : constant Long_Long_Integer := Whole mod Long_Long_Integer (R.Capacity);
+   begin
+      return Natural (Remainder) + 1;
+   end Slot;
 
    procedure Clear_Slot (R : in out Ring; C : Column_Number)
      with Post => R.Last = R.Last'Old;

@@ -43,8 +43,10 @@ package Charts_Time_Axis with SPARK_Mode, Pure is
    --  Clock readings arithmetic is done on: far beyond any uptime (2^62 us
    --  is 146 000 years), and room to add a span without overflow.
    Maximum_Time_Us : constant := 2 ** 62;
-   subtype Time_Us is Unsigned_64 range 0 .. Maximum_Time_Us;
-   subtype Column_Number is Unsigned_64 range 0 .. Maximum_Time_Us;
+   --  Times and column numbers are whole words; the preconditions keep
+   --  them under Maximum_Time_Us where arithmetic needs the room.
+   subtype Time_Us is Unsigned_64;
+   subtype Column_Number is Unsigned_64;
 
    --  The column width that shows S in Columns columns (rounded up: the
    --  plot shows at least S).
@@ -81,8 +83,7 @@ package Charts_Time_Axis with SPARK_Mode, Pure is
      (if V.Last >= Unsigned_64 (V.Columns - 1) then V.Last - Unsigned_64 (V.Columns - 1) else 0);
 
    --  Column C's pixel column, 0 at the left.
-   function X_Of (V : Viewport; C : Column_Number) return Natural is
-     (V.Columns - 1 - Natural (V.Last - C))
+   function X_Of (V : Viewport; C : Column_Number) return Natural
      with Pre => Visible (V, C), Post => X_Of'Result < V.Columns;
 
    --  Pixel column X shows a column (not before the clock's zero).

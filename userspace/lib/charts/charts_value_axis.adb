@@ -11,6 +11,7 @@ package body Charts_Value_Axis with SPARK_Mode is
       end if;
       loop
          pragma Loop_Invariant (Power >= 1 and then Power < V and then Power <= Value_Ceiling / Decimal_Base);
+         pragma Loop_Variant (Increases => Power);
          if 2 * Power >= V then
             return 2 * Power;
          elsif 5 * Power >= V then
@@ -29,22 +30,30 @@ package body Charts_Value_Axis with SPARK_Mode is
 
    function Axis_Top (High : Value; Ticks : Tick_Count) return Value is
       Step : constant Value := Tick_Step (High, Ticks);
-      Steps : constant Unsigned_64 := (High + Step - 1) / Step;
+      Over : constant Unsigned_64 := High mod Step;
+      Down : constant Value := High - Over;
    begin
-      if Steps = 0 then
+      --  High rounded up to a multiple of Step (Step itself for zero).
+      if High = 0 then
          return Step;
-      elsif Steps > Value_Ceiling / Step then
+      elsif Over = 0 then
+         return High;
+      elsif Down > Value_Ceiling - Step then
          return Value_Ceiling;
       else
-         return Steps * Step;
+         return Down + Step;
       end if;
    end Axis_Top;
 
    function Row_Of (V : Unsigned_64; Top : Value; Rows : Row_Count) return Natural is
+      subtype Row_Word is Unsigned_64 range 0 .. Maximum_Rows;
       Shown : constant Value := (if V > Top then Top else V);
       --  Shown * (Rows - 1) <= 2^48 * 2^13: no overflow.
-      Above_Zero : constant Unsigned_64 := Shown * Unsigned_64 (Rows - 1) / Top;
+      Above_Zero : constant Row_Word :=
+        Unsigned_64'Min (Shown * Unsigned_64 (Rows - 1) / Top, Unsigned_64 (Rows - 1));
+      --  In Natural from here (the word's subtype carries the bound across).
+      Above : constant Natural := Natural'Min (Natural (Above_Zero), Rows - 1);
    begin
-      return Rows - 1 - Natural (Above_Zero);
+      return Rows - 1 - Above;
    end Row_Of;
 end Charts_Value_Axis;
