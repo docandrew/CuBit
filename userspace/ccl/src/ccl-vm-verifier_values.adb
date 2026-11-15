@@ -4,7 +4,7 @@ package body CCL.VM.Verifier_Values with SPARK_Mode => On is
    use type Abstract_Stacks.Operation_Result;
 
    procedure Step_Scalar
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
    is
       Ignored : Stack_Type;
       Stack_Result : Abstract_Stacks.Operation_Result;
@@ -50,7 +50,7 @@ package body CCL.VM.Verifier_Values with SPARK_Mode => On is
    end Step_Scalar;
 
    procedure Step_Composite
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
    is
       Types : CCL.Types.Registry renames Candidate.Data_Types;
       D : constant CCL.Types.Description := CCL.Types.Describe (Types, Ins.Data_Type);
@@ -163,7 +163,7 @@ package body CCL.VM.Verifier_Values with SPARK_Mode => On is
    end Step_Stack;
 
    procedure Step_Switch
-     (Candidate : Program; PC : Instruction_Index; Ins : Instruction; Limit : Program_Length;
+     (Candidate : Sized_Program; PC : Instruction_Index; Ins : Instruction; Limit : Program_Length;
       State : in out Abstract_State; States : in out State_Table; Error : in out Validation_Error;
       Switch : out CCL.Ownership.Bytecode.Instruction)
    is

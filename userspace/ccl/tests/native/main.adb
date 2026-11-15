@@ -360,21 +360,21 @@ procedure Main is
       Verify (Candidate, Checked, Error);
       Check (Error = Type_Mismatch, "reject operand type mismatch");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Length := 2;
       Candidate.Code (0) := Ins (Jump, Target => 0);
       Candidate.Code (1) := Ins (Halt);
       Verify (Candidate, Checked, Error);
       Check (Error = Backward_Jump, "reject backward jump");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Length := 2;
       Candidate.Code (0) := Ins (Push_Integer, 1);
       Candidate.Code (1) := Ins (Drop);
       Verify (Candidate, Checked, Error);
       Check (Error = Missing_Halt, "reject fallthrough without halt");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Length := 5;
       Candidate.Code (0) := Ins (Push_Boolean, 1);
       Candidate.Code (1) := Ins (Jump_If_False, Target => 4);
@@ -384,21 +384,21 @@ procedure Main is
       Verify (Candidate, Checked, Error);
       Check (Error = Inconsistent_Stack, "reject inconsistent branch join");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Length := 2;
       Candidate.Code (0) := Ins (Halt);
       Candidate.Code (1) := Ins (Halt);
       Verify (Candidate, Checked, Error);
       Check (Error = Unreachable_Instruction, "reject unreachable instruction");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Length := 2;
       Candidate.Code (0) := Ins (Jump, Target => 9);
       Candidate.Code (1) := Ins (Halt);
       Verify (Candidate, Checked, Error);
       Check (Error = Invalid_Jump_Target, "reject invalid jump target");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Length := Program_Length (MAX_STACK_DEPTH + 2);
       for I in Instruction_Index range
         0 .. Instruction_Index (MAX_STACK_DEPTH)
@@ -1917,7 +1917,7 @@ procedure Main is
          Verify (Tampered, Checked, Error);
          Check (Error = Invalid_Constant, "reject a text constant outside the pool");
          Tampered := Compiled.Program;
-         Tampered.Constants (0).First := MAX_CONSTANT_BYTES;
+         Tampered.Constants (0).First := DEFAULT_CONSTANT_BYTES;
          Verify (Tampered, Checked, Error);
          Check (Error = Invalid_Constant, "reject a pool entry outside the pool text");
       end;
@@ -2410,14 +2410,14 @@ procedure Main is
             "resume after Workbench host completion");
       end if;
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Length := 2;
       Candidate.Code (0) := Ins (Push_Integer, 1);
       Candidate.Code (1) := Ins (Invoke_Import, Import => 0);
       Verify (Candidate, Checked, Error);
       Check (Error = Invalid_Import, "reject undeclared host import");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Imports_Length := 1;
       Candidate.Imports (0) :=
         (Argument => Boolean_Value, Result => Integer_Value,
@@ -2601,7 +2601,7 @@ procedure Main is
                   Noncanonical_Instruction, "reject noncanonical serialized instruction");
       end;
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Imports_Length := 1;
       Candidate.Imports (0) :=
         (Argument => Integer_Value, Result => Integer_Value,
@@ -2694,7 +2694,7 @@ procedure Main is
          Outcome.Requested_Binding = 42,
          "round-trip and explicitly link portable module import");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Types_Length := 3;
       Candidate.Types (2).Mode := Must_Handle;
       Candidate.Types (2).Dispositions_Length := 1;
@@ -2921,7 +2921,7 @@ procedure Main is
       use type OB.Verification_Error;
       SEND   : constant Disposition_Id := 1;
       CANCEL : constant Disposition_Id := 2;
-      Candidate : OB.Program;
+      Candidate : OB.Default_Program;
       Result    : OB.Verification_Result;
    begin
       Candidate.Types (0).Mode := Unrestricted;
@@ -2957,7 +2957,7 @@ procedure Main is
          Result.Ownership_Error = Branch_Ownership_Mismatch,
          "reject bytecode branch ownership mismatch");
 
-      Candidate := (others => <>);
+      Candidate := (Last => OB.DEFAULT_LAST, others => <>);
       Candidate.Types (2).Mode := Must_Handle;
       Candidate.Types (2).Dispositions_Length := 1;
       Candidate.Types (2).Dispositions (0) :=
@@ -3010,7 +3010,7 @@ procedure Main is
          Result.Ownership_Error = Copy_Requires_Unrestricted,
          "reject bytecode copy of must-handle local");
 
-      Candidate := (others => <>);
+      Candidate := (Last => OB.DEFAULT_LAST, others => <>);
       Candidate.Types (2).Mode := Must_Handle;
       Candidate.Types (2).Dispositions_Length := 2;
       Candidate.Types (2).Dispositions (0) :=
@@ -3115,7 +3115,7 @@ procedure Main is
         (Error = Valid,
          "admit transfer of must-handle local from VM");
 
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Types_Length := 3;
       Candidate.Types (2).Mode := Must_Handle;
       Candidate.Types (2).Dispositions_Length := 2;

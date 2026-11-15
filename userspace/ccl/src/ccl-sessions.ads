@@ -21,8 +21,8 @@ package CCL.Sessions with SPARK_Mode is
    subtype Fuel_Budget is Natural range 0 .. Maximum_Fuel;
    Default_Fuel : constant Fuel_Budget := 1_000_000;
    type Submission is record
-      Source : String (1 .. CCL.Language.MAX_SOURCE_LENGTH) := [others => ' '];
-      Source_Length : Natural range 0 .. CCL.Language.MAX_SOURCE_LENGTH := 0;
+      Source : String (1 .. CCL.Language.DEFAULT_SOURCE_ROOM) := [others => ' '];
+      Source_Length : Natural range 0 .. CCL.Language.DEFAULT_SOURCE_ROOM := 0;
       Source_Truncated : Boolean := False;
       Fuel : Fuel_Budget := 0;
       Outcome : CCL.Language.Interpretation_Result;
@@ -50,7 +50,7 @@ package CCL.Sessions with SPARK_Mode is
    --  An entry changes the environment only if it succeeds. The commands
    --  :env (what is kept) and :reset (forget it all) are typed like entries.
    Maximum_Kept_Values : constant := 16;
-   Maximum_Definitions_Length : constant := CCL.Language.MAX_SOURCE_LENGTH / 2;
+   Maximum_Definitions_Length : constant := CCL.Language.DEFAULT_SOURCE_ROOM / 2;
    procedure Reset_Environment (Item : in out Session);
    --  The kept definitions as canonical Lisp source ("" if none), to save.
    function Definitions_Source (Item : Session) return String;

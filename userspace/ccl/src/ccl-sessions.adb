@@ -366,7 +366,7 @@ package body CCL.Sessions with SPARK_Mode is
 
       procedure Add_Program (Text : String) is
       begin
-         if Result.Fits and then Text'Length <= CCL.Language.MAX_SOURCE_LENGTH - Result.Program.Length then
+         if Result.Fits and then Text'Length <= CCL.Language.DEFAULT_SOURCE_ROOM - Result.Program.Length then
             Result.Program.Data (Result.Program.Length + 1 .. Result.Program.Length + Text'Length) := Text;
             Result.Program.Length := Result.Program.Length + Text'Length;
          else
@@ -939,7 +939,7 @@ package body CCL.Sessions with SPARK_Mode is
    begin
       Shown := (others => <>);
       Converted := False;
-      if Source'Length = 0 or else Source'Length > CCL.Language.MAX_SOURCE_LENGTH then return; end if;
+      if Source'Length = 0 or else Source'Length > CCL.Language.DEFAULT_SOURCE_ROOM then return; end if;
       --  Session commands read the same in both notations.
       if Source (Source'First) = ':' then Keep (Source); return; end if;
       From := V.Detect (Source);

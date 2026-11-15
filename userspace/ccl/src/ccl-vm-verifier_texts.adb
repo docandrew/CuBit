@@ -8,7 +8,7 @@ package body CCL.VM.Verifier_Texts with SPARK_Mode => On is
    use type CCL.Streams.View_Kind;
 
    procedure Step_Text
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
    is
    begin
       if Error /= Valid then
@@ -68,7 +68,7 @@ package body CCL.VM.Verifier_Texts with SPARK_Mode => On is
    end Step_Text;
 
    procedure Step_List
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
    is
       Types : CCL.Types.Registry renames Candidate.Data_Types;
    begin
@@ -152,7 +152,7 @@ package body CCL.VM.Verifier_Texts with SPARK_Mode => On is
    end Step_List;
 
    procedure Step_Stream
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
    is
       Types : CCL.Types.Registry renames Candidate.Data_Types;
    begin

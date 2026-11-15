@@ -92,7 +92,7 @@ package body Build_Declarations is
    --  Text without its comments ('#' to the end of the line, outside
    --  string literals), each line ending kept: the checker sees the same
    --  lines and columns, and comments do not count against the language's
-   --  source capacity (CCL.Language.MAX_SOURCE_LENGTH, ccl-capacity.md M1),
+   --  source capacity (CCL.Language.DEFAULT_SOURCE_ROOM, ccl-capacity.md M1),
    --  which the schema and the catalog would otherwise exceed together.
    Comment_Start : constant Character := '#';
    function Without_Comments (Text : String) return String is
@@ -132,9 +132,9 @@ package body Build_Declarations is
       Done : Boolean := False;
       Value : Result_Type;
    begin
-      if Schema'Length + 1 + Source'Length > CCL.Language.MAX_SOURCE_LENGTH then
+      if Schema'Length + 1 + Source'Length > CCL.Language.DEFAULT_SOURCE_ROOM then
          raise Declaration_Error with "schema and declaration exceed" &
-           Natural'Image (CCL.Language.MAX_SOURCE_LENGTH) & " bytes together";
+           Natural'Image (CCL.Language.DEFAULT_SOURCE_ROOM) & " bytes together";
       end if;
       declare
          task Evaluation is

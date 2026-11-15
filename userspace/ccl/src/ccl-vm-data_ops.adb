@@ -3,7 +3,7 @@ with CCL.VM.Operations;
 package body CCL.VM.Data_Ops with SPARK_Mode => On is
    use type Runtime_Stacks.Operation_Result;
 
-   procedure Run_Data (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
+   procedure Run_Data (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       D : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, Ins.Data_Type);
       Good : Boolean := True;

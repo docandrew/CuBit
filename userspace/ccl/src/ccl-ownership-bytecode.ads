@@ -2,10 +2,12 @@ with CCL.Types;
 package CCL.Ownership.Bytecode with
    SPARK_Mode => On
 is
-   --  CCL.VM.MAX_INSTRUCTIONS (stopgap 512: drop with sized programs).
-   MAX_CODE : constant := 512;
-   type Code_Index is mod MAX_CODE;
-   subtype Code_Length is Natural range 0 .. MAX_CODE;
+   --  A named ceiling (CAPACITY): the most instructions one program may
+   --  hold. A program's storage is sized by what it holds (Program's
+   --  discriminant), never by this.
+   CODE_CEILING : constant := 2 ** 20;
+   type Code_Index is mod CODE_CEILING;
+   subtype Code_Length is Natural range 0 .. CODE_CEILING;
    subtype Binding_Count is Natural range 0 .. MAX_BINDINGS;
 
    type Op_Code is
@@ -42,17 +44,23 @@ is
       Targets : Switch_Targets := [others => 0];
    end record;
 
-   type Instruction_Array is array (Code_Index) of Instruction;
+   type Instruction_Array is array (Code_Index range <>) of Instruction;
    type Local_Type_Array is array (Binding_Id) of Type_Id;
 
-   type Program is record
+   --  The room the VM's default program has (CCL.VM.DEFAULT_INSTRUCTIONS).
+   DEFAULT_CODE : constant := 256;
+   --  Code (0 .. Last): room for Last + 1 instructions, Length of them used.
+   type Program (Last : Code_Index) is record
       Length        : Code_Length := 0;
-      Code          : Instruction_Array := [others => (others => <>)];
+      Code          : Instruction_Array (0 .. Last) := [others => (others => <>)];
       Locals_Length : Binding_Count := 0;
       Dynamic_Locals_Length : Binding_Count := 0;
       Local_Types   : Local_Type_Array := [others => 0];
       Types         : Type_Table := [others => (others => <>)];
    end record;
+
+   DEFAULT_LAST : constant Code_Index := DEFAULT_CODE - 1;
+   subtype Default_Program is Program (Last => DEFAULT_LAST);
 
    type Verification_Error is
      (Bytecode_Valid,

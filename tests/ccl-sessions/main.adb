@@ -46,10 +46,10 @@ begin
    pragma Assert (Outcome.Status = Evaluation_Fuel_Exhausted and Outcome.Fuel_Remaining = 0);
    Submit (A, "(+ 1 2)", 1, Outcome);
    pragma Assert (Outcome.Fuel_Remaining <= 1);
-   Submit (A, String'(1 .. MAX_SOURCE_LENGTH + 1 => '1'), Default_Fuel, Outcome);
+   Submit (A, String'(1 .. DEFAULT_SOURCE_ROOM + 1 => '1'), Default_Fuel, Outcome);
    pragma Assert (Outcome.Status = Parse_Failed and Outcome.Diagnostic = Source_Too_Long);
    Recall (A, Length (A), Item, Found);
-   pragma Assert (Found and Item.Source_Truncated and Item.Source_Length = MAX_SOURCE_LENGTH);
+   pragma Assert (Found and Item.Source_Truncated and Item.Source_Length = DEFAULT_SOURCE_ROOM);
    declare
       Offset_Source : constant String (101 .. 109) := "(+ 20 22)";
    begin

@@ -7,7 +7,7 @@ private package CCL.VM.Scalar_Ops with SPARK_Mode => On is
    use CCL.VM.Machine;
    use type CCL.Imports.Import_Phase;
 
-   procedure Run_Arithmetic (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
+   procedure Run_Arithmetic (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs) and then
                  Item.Content.Code (Regs.PC).Op in
@@ -15,7 +15,7 @@ private package CCL.VM.Scalar_Ops with SPARK_Mode => On is
           Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
               CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
 
-   procedure Run_Logic (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
+   procedure Run_Logic (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs) and then
                  Item.Content.Code (Regs.PC).Op in

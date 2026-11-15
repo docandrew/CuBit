@@ -186,17 +186,26 @@ class Manifests(unittest.TestCase):
                 self.assertIn(message, result.stderr)
 
     def test_a_failure_at_no_position_is_explained(self):
-        """A program the bytecode cannot hold fails at no source position:
-        the tool says so (once it said NO_ERROR / NO_DIAGNOSTIC, the
-        explanation itself raising a range check on position 0)."""
+        """A run that fails at no source position (here, a division by
+        zero) is explained: the tool says so (once it said NO_ERROR /
+        NO_DIAGNOSTIC, the explanation itself raising a range check on
+        position 0). The program the bytecode once could not hold (a
+        200-entry list, PROGRAM_FULL) now compiles, its storage sized by
+        its input, and is refused only for what it says."""
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        failing = self.TLS_TYPED.replace('true 8 "tcp"', 'true (/ 8 0) "tcp"')
+        self.assertNotEqual(failing, self.TLS_TYPED)
+        result = self.compile(failing, catalog)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, '')
+        self.assertNotIn('NO_ERROR', result.stderr)
+        self.assertIn('the manifest is not an Executable_Manifest: Cannot divide by zero', result.stderr)
         big = self.TLS_TYPED.replace('  scopes =>', '  optional => [' + ' '.join(['"tcp"'] * 200) + ']\n  scopes =>')
         result = self.compile(big, catalog)
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout, '')
-        self.assertNotIn('NO_ERROR', result.stderr)
-        self.assertIn('the manifest is not an Executable_Manifest', result.stderr)
-        self.assertIn('cannot be compiled to bytecode', result.stderr)
+        self.assertNotIn('cannot be compiled to bytecode', result.stderr)
+        self.assertIn('optional entry 2: "tcp" is listed twice', result.stderr)
 
     def test_metrics_scopes_and_the_metric_outlet(self):
         """MET-002: a metrics read scope is (Scope.Metrics place), read
@@ -600,8 +609,10 @@ class Manifests(unittest.TestCase):
                 self.reject(catalog=catalog, diagnostic=diagnostic)
 
     def test_bounds(self):
-        self.reject(source=' ' * 4097, diagnostic='4096-byte bound')
-        self.reject(catalog=' ' * 4097, diagnostic='4096-byte bound')
+        # No byte bound on the files (CCL storage is sized by its input):
+        # long inputs are read whole and refused only for what they say.
+        self.reject(source=' ' * 4097, diagnostic='UNEXPECTED_END')
+        self.reject(catalog=' ' * 4097, diagnostic='UNEXPECTED_END')
         base = '(executable-manifest v1 (identity "a") (version "1") '
         self.reject(base + ''.join(f'(request-service clock read b{i})' for i in range(1, 34)) + ')',
                     diagnostic='TOO_MANY_REQUESTS')

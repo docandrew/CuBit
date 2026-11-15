@@ -12,7 +12,7 @@ package body CCL.VM.Machine with SPARK_Mode => On is
    end Trap;
 
    procedure Push_Next
-     (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State; Value : CCL.VM.Value)
+     (Item : Sized_Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State; Value : CCL.VM.Value)
    is
       Pushed : Runtime_Stacks.Operation_Result;
    begin
@@ -38,7 +38,7 @@ package body CCL.VM.Machine with SPARK_Mode => On is
    end Pop_Text;
 
    procedure Enter_Call
-     (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State;
+     (Item : Sized_Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State;
       Callee : Value; Arguments : Component_Values; Arity : CCL.Types.Component_Count;
       Return_PC : Instruction_Index; Good : out Boolean)
    is

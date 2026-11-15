@@ -1,5 +1,6 @@
 with Ada.Unchecked_Deallocation;
 with CCL.Compiler;
+with CCL.Debug_Maps;
 with CCL.Held_Texts;
 with CCL.Objects.Holders;
 with CCL.Objects.Views;
@@ -67,10 +68,15 @@ package body CCL.Evaluation is
    end Type_Source;
 
    --  The checked, compiled, linked and verified form of Source, or why not.
-   type Prepared is record
-      Analysis : L.Analysis_Result;
-      Compiled : CCL.Compiler.Compilation_Result;
-      Program : CCL.VM.Validated_Program;
+   --  Sized as its analysis and its compilation (CCL.Compiler.Compilation_Of).
+   type Prepared
+     (Source_Room : L.Source_Room; Last_Node : L.Node_Index;
+      Last_Instruction : CCL.VM.Instruction_Index; Last_Constant : CCL.VM.Constant_Index;
+      Text_Room : CCL.VM.Constant_Text_Room; Last_Entry : CCL.Debug_Maps.Entry_Index) is
+   record
+      Analysis : L.Sized_Analysis (Source_Room, Last_Node);
+      Compiled : CCL.Compiler.Sized_Compilation (Last_Instruction, Last_Constant, Text_Room, Last_Entry);
+      Program : CCL.VM.Sized_Validated_Program (Last_Instruction, Last_Constant, Text_Room);
       Ready : Boolean := False;
    end record;
 
@@ -121,7 +127,7 @@ package body CCL.Evaluation is
       Result : in out L.Interpretation_Result; Scalar_Only : Boolean := False)
    is
       Linked : CCL.Catalog.Link_Result;
-      Program : CCL.VM.Program;
+      Program : CCL.VM.Sized_Program (Item.Last_Instruction, Item.Last_Constant, Item.Text_Room);
       Error : CCL.VM.Validation_Error;
    begin
       Item.Ready := False;
@@ -136,7 +142,7 @@ package body CCL.Evaluation is
          Result.Diagnostic_Found := L.Analysis_Diagnostic_Found (Item.Analysis);
          return;
       end if;
-      CCL.Compiler.Compile (Item.Analysis, Item.Compiled);
+      --  Item.Compiled is the analysis compiled in rooms sized by it (Run).
       if Item.Compiled.Status = CCL.Compiler.Ownership_Check_Failed then
          Result.Status := L.Type_Check_Failed;
          Result.Diagnostic := L.Resource_Ownership_Violation;
@@ -335,7 +341,7 @@ package body CCL.Evaluation is
         (Context : in out Host_Context; Request : CCL.Streams.View_Request;
          Reply : in out CCL.Streams.View_Reply);
    procedure Run
-     (Analysis : L.Analysis_Result; Fuel : Natural;
+     (Analysis : L.Sized_Analysis; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
       Grants : CCL.Catalog.Granted_Bindings;
       Context : in out Host_Context; Result : out L.Interpretation_Result;
@@ -344,7 +350,7 @@ package body CCL.Evaluation is
       Scalar_Only : Boolean := False);
 
    procedure Run
-     (Analysis : L.Analysis_Result; Fuel : Natural;
+     (Analysis : L.Sized_Analysis; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
       Grants : CCL.Catalog.Granted_Bindings;
       Context : in out Host_Context; Result : out L.Interpretation_Result;
@@ -352,265 +358,298 @@ package body CCL.Evaluation is
       Object : out CCL.Objects.Image; Object_Ready : out Boolean;
       Scalar_Only : Boolean := False)
    is
-      Item : Prepared;
-      Machine : Machine_Access := new N.Machine;
-      Step : CCL.VM.Execution_Result;
-      Mismatched : Boolean := False;
-
-      --  Admit Held (valid for Contract) as the waiting call's result,
-      --  growing the machine first when its rooms cannot hold it.
-      procedure Admit (Contract : CCL.Objects.Binding; Held : CCL.Objects.Holders.Holder) is
-         View : Snapshot_Access :=
-           new CCL.Objects.Views.Sized_Snapshot
-             (CCL.Objects.Holders.Cells_Of (Held), CCL.Objects.Holders.Bytes_Of (Held));
-         Captured, Fits, Possible : Boolean;
-         Wanted : CCL.VM.Rooms;
-         Grown : Machine_Access;
-      begin
-         CCL.Objects.Views.Capture (View.all, Contract, Held, Captured);
-         N.Complete_Captured (Item.Program, Machine.all, Contract, View.all, Captured, Fits);
-         if not Fits then
-            N.Needed_Rooms (Item.Program, Machine.all, View.all, Wanted, Possible);
-            if Possible then
-               Grown := new N.Sized_Machine
-                 (Wanted.Nodes, Wanted.Slots, Wanted.Text, Wanted.Strings, Wanted.Elements, Wanted.Lists);
-               N.Grow (Machine.all, Grown.all);
-               Free (Machine);
-               Machine := Grown;
-               N.Complete_Captured (Item.Program, Machine.all, Contract, View.all, Captured, Fits);
-            end if;
-            if not Fits then
-               --  Past the ceilings (CAPACITY): the run stops there.
-               N.Stop_Exhausted (Machine.all);
-            end if;
-         end if;
-         CCL.Objects.Views.Clear (View.all);
-         Free (View);
-      end Admit;
-
-      --  The waiting call's argument, as the host takes it.
-      procedure Argument_Of
-        (Op : CCL.Host_Values.Import_Declaration; Argument : out CCL.Host_Values.Value;
-         Good : out Boolean)
+      --  One attempt in the given rooms: the program, compiled into Item
+      --  where it runs, never copied out. Outgrew says which room was too
+      --  small (Compilation_Succeeded: none, the run happened).
+      procedure Run_In
+        (Rooms : CCL.Compiler.Program_Rooms; Outgrew : out CCL.Compiler.Compilation_Status);
+      procedure Run_In
+        (Rooms : CCL.Compiler.Program_Rooms; Outgrew : out CCL.Compiler.Compilation_Status)
       is
-         Contract : CCL.Objects.Binding;
-         Image : CCL.Objects.Image;
-      begin
-         Argument := CCL.Host_Values.Integer_Constant (0);
-         Good := True;
-         case Step.Request_Argument.Kind is
-            when CCL.VM.Integer_Value | CCL.VM.Boolean_Value =>
-               Argument := CCL.Host_Values.From_Scalar (Step.Request_Argument);
-            when CCL.VM.Text_Value =>
-               Good := Step.Has_Request_Text;
-               if Good and then Op.Argument = CCL.Host_Values.Object_Value then
-                  --  A schema-bound String: the host takes it as an image.
-                  declare
-                     Built : CCL.Objects.Build_Result;
-                  begin
-                     CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Argument_Schema, Contract);
-                     Image := CCL.Objects.Empty (Contract);
-                     CCL.Objects.Append_Text
-                       (Image, CCL.VM.Image (Step.Request_Text), Built);
-                     Good := CCL.Objects."=" (Built, CCL.Objects.Added) and then
-                       CCL.Objects.Validate (Image, Contract);
-                     if Good then Argument := CCL.Host_Values.Object_Constant (Image); end if;
-                  end;
-               elsif Good then
-                  declare
-                     Text : CCL.Host_Values.Text;
-                  begin
-                     CCL.Host_Values.Copy_Text
-                       (CCL.VM.Image (Step.Request_Text), Text, Good);
-                     if Good then Argument := CCL.Host_Values.Text_Constant (Text); end if;
-                  end;
-               end if;
-            when CCL.VM.Function_Value =>
-               --  A handler: the host registers it by the program's source
-               --  and the function's name (CCL.Handler_References).
-               declare
-                  Name : constant L.Name :=
-                    L.Analysis_Function (Item.Analysis, L.Function_Index (Step.Request_Argument.Integer)).Identifier;
-                  Ref : CCL.Handler_References.Reference;
-               begin
-                  CCL.Handler_References.Create
-                    (L.Analysis_Source (Item.Analysis), Name.Data (1 .. Name.Length), Ref, Good);
-                  if Good then Argument := CCL.Host_Values.Handler_Constant (Ref); end if;
-               end;
-            when CCL.VM.Object_Value | CCL.VM.List_Value | CCL.VM.Variant_Value =>
-               CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Argument_Schema, Contract);
-               N.Export_Argument (Item.Program, Machine.all, Contract, Image, Good);
-               if Good then Argument := CCL.Host_Values.Object_Constant (Image); end if;
-            when others =>
-               Good := False;
-         end case;
-      end Argument_Of;
+         Item : Prepared
+           (Analysis.Source_Room, Analysis.Last_Node, Rooms.Last_Instruction, Rooms.Last_Constant,
+            Rooms.Text_Room, Rooms.Last_Entry);
+         Machine : Machine_Access := new N.Machine;
+         Step : CCL.VM.Execution_Result;
+         Mismatched : Boolean := False;
 
-      --  Answer the waiting call with the host's reply.
-      procedure Answer (Op : CCL.Host_Values.Import_Declaration; Reply : CCL.Host_Values.Call_Result) is
-         Scalar : CCL.VM.Value;
-         Good : Boolean;
-         Contract : CCL.Objects.Binding;
-      begin
-         --  A reply of another kind than the contract's is the host's fault.
-         if Reply.Success and then Reply.Value.Kind /=
-           (if Op.Result_Stream or Op.Result_Task then CCL.Host_Values.Integer_Value else Op.Result)
-         then
-            Mismatched := True;
-         end if;
-         --  A stream's or a task's result is its handle (an Integer), whatever
-         --  its elements are: a Stream<String> answers like a Stream<Integer>.
-         if Op.Result = CCL.Host_Values.Text_Value and then not (Op.Result_Stream or Op.Result_Task) then
-            if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Text_Value and then
-              not CCL.Host_Values.Within (Reply.Value.Content.Length, Op.Result_Text_Limit)
+         --  Admit Held (valid for Contract) as the waiting call's result,
+         --  growing the machine first when its rooms cannot hold it.
+         procedure Admit (Contract : CCL.Objects.Binding; Held : CCL.Objects.Holders.Holder) is
+            View : Snapshot_Access :=
+              new CCL.Objects.Views.Sized_Snapshot
+                (CCL.Objects.Holders.Cells_Of (Held), CCL.Objects.Holders.Bytes_Of (Held));
+            Captured, Fits, Possible : Boolean;
+            Wanted : CCL.VM.Rooms;
+            Grown : Machine_Access;
+         begin
+            CCL.Objects.Views.Capture (View.all, Contract, Held, Captured);
+            N.Complete_Captured (Item.Program, Machine.all, Contract, View.all, Captured, Fits);
+            if not Fits then
+               N.Needed_Rooms (Item.Program, Machine.all, View.all, Wanted, Possible);
+               if Possible then
+                  Grown := new N.Sized_Machine
+                    (Wanted.Nodes, Wanted.Slots, Wanted.Text, Wanted.Strings, Wanted.Elements, Wanted.Lists);
+                  N.Grow (Machine.all, Grown.all);
+                  Free (Machine);
+                  Machine := Grown;
+                  N.Complete_Captured (Item.Program, Machine.all, Contract, View.all, Captured, Fits);
+               end if;
+               if not Fits then
+                  --  Past the ceilings (CAPACITY): the run stops there.
+                  N.Stop_Exhausted (Machine.all);
+               end if;
+            end if;
+            CCL.Objects.Views.Clear (View.all);
+            Free (View);
+         end Admit;
+
+         --  The waiting call's argument, as the host takes it.
+         procedure Argument_Of
+           (Op : CCL.Host_Values.Import_Declaration; Argument : out CCL.Host_Values.Value;
+            Good : out Boolean)
+         is
+            Contract : CCL.Objects.Binding;
+            Image : CCL.Objects.Image;
+         begin
+            Argument := CCL.Host_Values.Integer_Constant (0);
+            Good := True;
+            case Step.Request_Argument.Kind is
+               when CCL.VM.Integer_Value | CCL.VM.Boolean_Value =>
+                  Argument := CCL.Host_Values.From_Scalar (Step.Request_Argument);
+               when CCL.VM.Text_Value =>
+                  Good := Step.Has_Request_Text;
+                  if Good and then Op.Argument = CCL.Host_Values.Object_Value then
+                     --  A schema-bound String: the host takes it as an image.
+                     declare
+                        Built : CCL.Objects.Build_Result;
+                     begin
+                        CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Argument_Schema, Contract);
+                        Image := CCL.Objects.Empty (Contract);
+                        CCL.Objects.Append_Text
+                          (Image, CCL.VM.Image (Step.Request_Text), Built);
+                        Good := CCL.Objects."=" (Built, CCL.Objects.Added) and then
+                          CCL.Objects.Validate (Image, Contract);
+                        if Good then Argument := CCL.Host_Values.Object_Constant (Image); end if;
+                     end;
+                  elsif Good then
+                     declare
+                        Text : CCL.Host_Values.Text;
+                     begin
+                        CCL.Host_Values.Copy_Text
+                          (CCL.VM.Image (Step.Request_Text), Text, Good);
+                        if Good then Argument := CCL.Host_Values.Text_Constant (Text); end if;
+                     end;
+                  end if;
+               when CCL.VM.Function_Value =>
+                  --  A handler: the host registers it by the program's source
+                  --  and the function's name (CCL.Handler_References).
+                  declare
+                     Name : constant L.Name :=
+                       L.Analysis_Function (Item.Analysis, L.Function_Index (Step.Request_Argument.Integer)).Identifier;
+                     Ref : CCL.Handler_References.Reference;
+                  begin
+                     CCL.Handler_References.Create
+                       (L.Analysis_Source (Item.Analysis), Name.Data (1 .. Name.Length), Ref, Good);
+                     if Good then Argument := CCL.Host_Values.Handler_Constant (Ref); end if;
+                  end;
+               when CCL.VM.Object_Value | CCL.VM.List_Value | CCL.VM.Variant_Value =>
+                  CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Argument_Schema, Contract);
+                  N.Export_Argument (Item.Program, Machine.all, Contract, Image, Good);
+                  if Good then Argument := CCL.Host_Values.Object_Constant (Image); end if;
+               when others =>
+                  Good := False;
+            end case;
+         end Argument_Of;
+
+         --  Answer the waiting call with the host's reply.
+         procedure Answer (Op : CCL.Host_Values.Import_Declaration; Reply : CCL.Host_Values.Call_Result) is
+            Scalar : CCL.VM.Value;
+            Good : Boolean;
+            Contract : CCL.Objects.Binding;
+         begin
+            --  A reply of another kind than the contract's is the host's fault.
+            if Reply.Success and then Reply.Value.Kind /=
+              (if Op.Result_Stream or Op.Result_Task then CCL.Host_Values.Integer_Value else Op.Result)
             then
                Mismatched := True;
             end if;
-            if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Text_Value then
-               N.Complete_Text (Item.Program, Machine.all,
-                                Reply.Value.Content.Data (1 .. Reply.Value.Content.Length), True);
-            else
-               N.Complete_Text (Item.Program, Machine.all, "", False);
-            end if;
-         elsif Op.Result = CCL.Host_Values.Object_Value and then not (Op.Result_Stream or Op.Result_Task)
-           and then CCL.Catalog.Schema_Type (Visible_Interfaces, Op.Result_Schema) = CCL.Types.String_Type
-         then
-            --  A schema-bound String image: the run takes its text.
-            CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Result_Schema, Contract);
-            if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Object_Value and then
-              CCL.Objects.Holders.Validate (Reply.Value.Object, Contract)
+            --  A stream's or a task's result is its handle (an Integer), whatever
+            --  its elements are: a Stream<String> answers like a Stream<Integer>.
+            if Op.Result = CCL.Host_Values.Text_Value and then not (Op.Result_Stream or Op.Result_Task) then
+               if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Text_Value and then
+                 not CCL.Host_Values.Within (Reply.Value.Content.Length, Op.Result_Text_Limit)
+               then
+                  Mismatched := True;
+               end if;
+               if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Text_Value then
+                  N.Complete_Text (Item.Program, Machine.all,
+                                   Reply.Value.Content.Data (1 .. Reply.Value.Content.Length), True);
+               else
+                  N.Complete_Text (Item.Program, Machine.all, "", False);
+               end if;
+            elsif Op.Result = CCL.Host_Values.Object_Value and then not (Op.Result_Stream or Op.Result_Task)
+              and then CCL.Catalog.Schema_Type (Visible_Interfaces, Op.Result_Schema) = CCL.Types.String_Type
             then
+               --  A schema-bound String image: the run takes its text.
+               CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Result_Schema, Contract);
+               if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Object_Value and then
+                 CCL.Objects.Holders.Validate (Reply.Value.Object, Contract)
+               then
+                  declare
+                     View : CCL.Objects.Views.Snapshot;
+                     Captured : Boolean;
+                  begin
+                     CCL.Objects.Views.Capture (View, Contract, Reply.Value.Object, Captured);
+                     if Captured then
+                        N.Complete_Text (Item.Program, Machine.all,
+                                         CCL.Objects.Views.Text (View, CCL.Objects.Views.Root (View)), True);
+                     else
+                        N.Complete_Text (Item.Program, Machine.all, "", False);
+                     end if;
+                  end;
+               else
+                  if Reply.Success then Mismatched := True; end if;
+                  N.Complete_Text (Item.Program, Machine.all, "", False);
+               end if;
+            elsif Op.Result = CCL.Host_Values.Object_Value and then not (Op.Result_Stream or Op.Result_Task) then
+               CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Result_Schema, Contract);
+               if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Object_Value and then
+                 not CCL.Objects.Holders.Validate (Reply.Value.Object, Contract)
+               then
+                  Mismatched := True;
+               end if;
+               if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Object_Value and then
+                 CCL.Objects.Holders.Validate (Reply.Value.Object, Contract)
+               then
+                  Admit (Contract, Reply.Value.Object);
+               else
+                  N.Complete_Object (Item.Program, Machine.all, Contract, CCL.Objects.Empty (Contract), False);
+               end if;
+            else
+               CCL.Host_Values.To_Scalar (Reply.Value, Scalar, Good);
+               N.Complete_Scalar (Item.Program, Machine.all, Scalar, Reply.Success and Good);
+            end if;
+         end Answer;
+      begin
+         Outgrew := CCL.Compiler.Compilation_Succeeded;
+         Result := (Fuel_Remaining => Fuel, others => <>);
+         Object := (if Want_Object then CCL.Objects.Empty (Expected) else (others => <>));
+         Object_Ready := False;
+         Item.Analysis := Analysis;
+         CCL.Compiler.Compile (Item.Analysis, Item.Compiled);
+         if CCL.Compiler.Outgrown (Rooms, Item.Compiled.Status) then
+            --  Too small a room: Run compiles again in grown ones.
+            Outgrew := Item.Compiled.Status;
+            Free (Machine);
+            return;
+         end if;
+         Build (Visible_Interfaces, Grants, Item, Result, Scalar_Only);
+         if not Item.Ready then
+            Free (Machine);
+            return;
+         end if;
+         if Want_Object and then not CCL.Objects.Matches_Type
+           (Expected, L.Analysis_Types (Item.Analysis),
+            L.Analysis_Node (Item.Analysis, L.Analysis_Root (Item.Analysis)).Static_Kind)
+         then
+            --  The program's type is not the one asked for: refused before it runs.
+            Result.Status := L.Type_Check_Failed;
+            Free (Machine);
+            return;
+         end if;
+         N.Initialize (Item.Program, Fuel, Machine.all, Growable => True);
+         loop
+            N.Continue_Execution_For (Item.Program, Machine.all, Fuel, Step);
+            exit when Step.Status /= CCL.VM.Waiting_For_Host;
+            if Step.Stream_Requested then
                declare
-                  View : CCL.Objects.Views.Snapshot;
-                  Captured : Boolean;
+                  Reply : CCL.Streams.View_Reply;
                begin
-                  CCL.Objects.Views.Capture (View, Contract, Reply.Value.Object, Captured);
-                  if Captured then
-                     N.Complete_Text (Item.Program, Machine.all,
-                                      CCL.Objects.Views.Text (View, CCL.Objects.Views.Root (View)), True);
-                  else
-                     N.Complete_Text (Item.Program, Machine.all, "", False);
+                  Reply.Status := CCL.Streams.No_Such_Stream;
+                  Read_Stream (Context, Step.Stream_Request, Reply);
+                  if Step.Stream_Request.View = CCL.Streams.Wait_View
+                    and then Reply.Status = CCL.Streams.Stream_Empty
+                  then
+                     --  Pending: the caller runs the entry again once it is done.
+                     N.Stop (Machine.all);
+                     Free (Machine);
+                     Result.Status := L.Waiting_On_Task;
+                     Result.Waited_On := Step.Stream_Request.Stream;
+                     Result.Fuel_Remaining := Natural'Min (Natural (Step.Fuel_Remaining), Fuel);
+                     return;
                   end if;
+                  N.Complete_Stream_View (Item.Program, Machine.all, Reply);
                end;
             else
-               if Reply.Success then Mismatched := True; end if;
-               N.Complete_Text (Item.Program, Machine.all, "", False);
-            end if;
-         elsif Op.Result = CCL.Host_Values.Object_Value and then not (Op.Result_Stream or Op.Result_Task) then
-            CCL.Catalog.Resolve_Schema (Visible_Interfaces, Op.Result_Schema, Contract);
-            if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Object_Value and then
-              not CCL.Objects.Holders.Validate (Reply.Value.Object, Contract)
-            then
-               Mismatched := True;
-            end if;
-            if Reply.Success and then Reply.Value.Kind = CCL.Host_Values.Object_Value and then
-              CCL.Objects.Holders.Validate (Reply.Value.Object, Contract)
-            then
-               Admit (Contract, Reply.Value.Object);
-            else
-               N.Complete_Object (Item.Program, Machine.all, Contract, CCL.Objects.Empty (Contract), False);
-            end if;
-         else
-            CCL.Host_Values.To_Scalar (Reply.Value, Scalar, Good);
-            N.Complete_Scalar (Item.Program, Machine.all, Scalar, Reply.Success and Good);
-         end if;
-      end Answer;
-   begin
-      Result := (Fuel_Remaining => Fuel, others => <>);
-      Object := (if Want_Object then CCL.Objects.Empty (Expected) else (others => <>));
-      Object_Ready := False;
-      Item.Analysis := Analysis;
-      Build (Visible_Interfaces, Grants, Item, Result, Scalar_Only);
-      if not Item.Ready then
-         Free (Machine);
-         return;
-      end if;
-      if Want_Object and then not CCL.Objects.Matches_Type
-        (Expected, L.Analysis_Types (Item.Analysis),
-         L.Analysis_Node (Item.Analysis, L.Analysis_Root (Item.Analysis)).Static_Kind)
-      then
-         --  The program's type is not the one asked for: refused before it runs.
-         Result.Status := L.Type_Check_Failed;
-         Free (Machine);
-         return;
-      end if;
-      N.Initialize (Item.Program, Fuel, Machine.all, Growable => True);
-      loop
-         N.Continue_Execution_For (Item.Program, Machine.all, Fuel, Step);
-         exit when Step.Status /= CCL.VM.Waiting_For_Host;
-         if Step.Stream_Requested then
-            declare
-               Reply : CCL.Streams.View_Reply;
-            begin
-               Reply.Status := CCL.Streams.No_Such_Stream;
-               Read_Stream (Context, Step.Stream_Request, Reply);
-               if Step.Stream_Request.View = CCL.Streams.Wait_View
-                 and then Reply.Status = CCL.Streams.Stream_Empty
-               then
-                  --  Pending: the caller runs the entry again once it is done.
-                  N.Stop (Machine.all);
-                  Free (Machine);
-                  Result.Status := L.Waiting_On_Task;
-                  Result.Waited_On := Step.Stream_Request.Stream;
-                  Result.Fuel_Remaining := Natural'Min (Natural (Step.Fuel_Remaining), Fuel);
-                  return;
-               end if;
-               N.Complete_Stream_View (Item.Program, Machine.all, Reply);
-            end;
-         else
-            declare
-               Op : constant CCL.Host_Values.Import_Declaration :=
-                 CCL.Catalog.Element (Item.Compiled.Linkage, Step.Requested_Import).Import;
-               Argument : CCL.Host_Values.Value;
-               Reply : CCL.Host_Values.Call_Result;
-               Good : Boolean;
-            begin
-               Argument_Of (Op, Argument, Good);
-               if Good then
-                  Invoke (Context, Step.Requested_Binding, Argument, Reply);
-               else
-                  Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
-               end if;
-               if not Reply.Success then
-                  Result.Failure := Reply.Why;
-                  Locate_Call (Item, Step.Requested_Import, Result);
-                  if not Good then
-                     Name_Reason (Result, "ARGUMENT_NOT_EXPORTED");
+               declare
+                  Op : constant CCL.Host_Values.Import_Declaration :=
+                    CCL.Catalog.Element (Item.Compiled.Linkage, Step.Requested_Import).Import;
+                  Argument : CCL.Host_Values.Value;
+                  Reply : CCL.Host_Values.Call_Result;
+                  Good : Boolean;
+               begin
+                  Argument_Of (Op, Argument, Good);
+                  if Good then
+                     Invoke (Context, Step.Requested_Binding, Argument, Reply);
+                  else
+                     Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
                   end if;
-               end if;
-               Answer (Op, Reply);
-            end;
+                  if not Reply.Success then
+                     Result.Failure := Reply.Why;
+                     Locate_Call (Item, Step.Requested_Import, Result);
+                     if not Good then
+                        Name_Reason (Result, "ARGUMENT_NOT_EXPORTED");
+                     end if;
+                  end if;
+                  Answer (Op, Reply);
+               end;
+            end if;
+         end loop;
+         Result.Fuel_Remaining := Natural'Min (Natural (Step.Fuel_Remaining), Fuel);
+         if Result.Status = L.Not_Compiled then
+            N.Stop (Machine.all);
+            Free (Machine);
+            return;
          end if;
-      end loop;
-      Result.Fuel_Remaining := Natural'Min (Natural (Step.Fuel_Remaining), Fuel);
-      if Result.Status = L.Not_Compiled then
+         Result.Status :=
+           (if Mismatched then L.Host_Result_Type_Mismatch else Status_Of (Step.Status));
+         if Result.Status = L.Succeeded then
+            Result.Diagnostic_Position := 0;
+            if Want_Object then
+               --  Only the image matters: no display limits apply.
+               Result.Has_Value := Step.Has_Value;
+               N.Export_Result (Item.Program, Machine.all, Expected, Object, Object_Ready);
+               if not Object_Ready then
+                  --  Its type matched Expected before the run (Matches_Type):
+                  --  a value no image takes is out of the image's room
+                  --  (CCL.Objects.Maximum_Cells, Maximum_Text_Bytes).
+                  Result.Status := L.Evaluation_Object_Storage_Exhausted;
+               end if;
+            else
+               Report_Value (Item, Step, Machine.all, Result);
+            end if;
+         elsif Result.Status /= L.Host_Call_Failed then
+            Result.Diagnostic_Position := 0;
+         end if;
          N.Stop (Machine.all);
          Free (Machine);
-         return;
-      end if;
-      Result.Status :=
-        (if Mismatched then L.Host_Result_Type_Mismatch else Status_Of (Step.Status));
-      if Result.Status = L.Succeeded then
-         Result.Diagnostic_Position := 0;
-         if Want_Object then
-            --  Only the image matters: no display limits apply.
-            Result.Has_Value := Step.Has_Value;
-            N.Export_Result (Item.Program, Machine.all, Expected, Object, Object_Ready);
-            if not Object_Ready then
-               Result.Status := L.Host_Result_Type_Mismatch;
-            end if;
-         else
-            Report_Value (Item, Step, Machine.all, Result);
-         end if;
-      elsif Result.Status /= L.Host_Call_Failed then
-         Result.Diagnostic_Position := 0;
-      end if;
-      N.Stop (Machine.all);
-      Free (Machine);
+      end Run_In;
+
+      Rooms : CCL.Compiler.Program_Rooms := CCL.Compiler.First_Rooms (Analysis);
+      Outgrew : CCL.Compiler.Compilation_Status;
+      Attempts_Left : Natural := CCL.Compiler.GROWTH_STEPS;
+   begin
+      loop
+         Run_In (Rooms, Outgrew);
+         exit when Outgrew = CCL.Compiler.Compilation_Succeeded or else Attempts_Left = 0;
+         Rooms := CCL.Compiler.Grown (Rooms, Outgrew);
+         Attempts_Left := Attempts_Left - 1;
+      end loop;
    end Run;
 
    procedure Evaluate_Analysis_With_Values
-     (Analysis : CCL.Language.Analysis_Result; Fuel : Natural;
+     (Analysis : CCL.Language.Sized_Analysis; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
       Grants : CCL.Catalog.Granted_Bindings;
       Context : in out Host_Context; Result : out L.Interpretation_Result)
@@ -630,49 +669,59 @@ package body CCL.Evaluation is
       Grants : CCL.Catalog.Granted_Bindings;
       Context : in out Host_Context; Result : out L.Interpretation_Result)
    is
-      procedure Show_Task_State;
       procedure Execute is new Evaluate_Analysis_With_Values (Host_Context, Invoke, Read_Stream);
-      Analysis : L.Analysis_Result;
+      procedure Execute_Inner (Inner_Analysis : L.Sized_Analysis);
+      procedure Evaluate_Analysis (Analysis : L.Sized_Analysis);
+      procedure Analyse is new L.With_Analysis (Evaluate_Analysis);
+      procedure Analyse_Inner is new L.With_Analysis (Execute_Inner);
+      Inner : L.Interpretation_Result;
 
-      --  A task result shows its state, read without waiting: Running, or
-      --  Done with its result. The result comes from running the program
-      --  again with its root expression replaced by (wait (task T n)): the
-      --  task is done, so that run makes no host call, and the program's
-      --  type and function definitions stay in scope for T.
-      procedure Show_Task_State is
-         Root : constant L.Node := L.Analysis_Node (Analysis, L.Analysis_Root (Analysis));
-         Reply : CCL.Streams.View_Reply;
-         Handle_Image : constant String := CCL.Streams.Handle'Image (Result.Stream);
-         Waiting : constant String :=
-           "(wait (task " & Result.Stream_Element.Data (1 .. Result.Stream_Element.Length) &
-           Handle_Image & "))";
-         Inner : L.Interpretation_Result;
-         Inner_Analysis : L.Analysis_Result;
+      procedure Execute_Inner (Inner_Analysis : L.Sized_Analysis) is
       begin
-         Reply.Status := CCL.Streams.No_Such_Stream;
-         Read_Stream (Context, (Stream => Result.Stream, View => CCL.Streams.Wait_View, Count => 1), Reply);
-         if Reply.Status /= CCL.Streams.View_Answered then return; end if;
-         Result.Task_Done := True;
-         --  Positions are one-based; the end is one past the root's text.
-         if Root.Source_Position not in 1 .. Source'Length or else
-           Root.Source_End_Position not in Root.Source_Position + 1 .. Source'Length + 1
-         then
-            return;
-         end if;
-         L.Analyze (Source (Source'First .. Source'First + Root.Source_Position - 2) & Waiting &
-                    Source (Source'First + Root.Source_End_Position - 1 .. Source'Last),
-                    Visible_Interfaces, Inner_Analysis);
          Execute (Inner_Analysis, Fuel, Visible_Interfaces, Grants, Context, Inner);
-         if Inner.Status = L.Succeeded then
-            Result.Task_Value := CCL.Held_Texts.To_Text (Literal_Of (Inner));
+      end Execute_Inner;
+
+      procedure Evaluate_Analysis (Analysis : L.Sized_Analysis) is
+         --  A task result shows its state, read without waiting: Running, or
+         --  Done with its result. The result comes from running the program
+         --  again with its root expression replaced by (wait (task T n)): the
+         --  task is done, so that run makes no host call, and the program's
+         --  type and function definitions stay in scope for T.
+         procedure Show_Task_State;
+         procedure Show_Task_State is
+            Root : constant L.Node := L.Analysis_Node (Analysis, L.Analysis_Root (Analysis));
+            Reply : CCL.Streams.View_Reply;
+            Handle_Image : constant String := CCL.Streams.Handle'Image (Result.Stream);
+            Waiting : constant String :=
+              "(wait (task " & Result.Stream_Element.Data (1 .. Result.Stream_Element.Length) &
+              Handle_Image & "))";
+         begin
+            Reply.Status := CCL.Streams.No_Such_Stream;
+            Read_Stream (Context, (Stream => Result.Stream, View => CCL.Streams.Wait_View, Count => 1), Reply);
+            if Reply.Status /= CCL.Streams.View_Answered then return; end if;
+            Result.Task_Done := True;
+            --  Positions are one-based; the end is one past the root's text.
+            if Root.Source_Position not in 1 .. Source'Length or else
+              Root.Source_End_Position not in Root.Source_Position + 1 .. Source'Length + 1
+            then
+               return;
+            end if;
+            Analyse_Inner (Source (Source'First .. Source'First + Root.Source_Position - 2) & Waiting &
+                           Source (Source'First + Root.Source_End_Position - 1 .. Source'Last),
+                           Visible_Interfaces);
+            if Inner.Status = L.Succeeded then
+               Result.Task_Value := CCL.Held_Texts.To_Text (Literal_Of (Inner));
+            end if;
+         end Show_Task_State;
+      begin
+         Execute (Analysis, Fuel, Visible_Interfaces, Grants, Context, Result);
+         if Result.Status = L.Succeeded and then Result.Is_Task then
+            Show_Task_State;
          end if;
-      end Show_Task_State;
+      end Evaluate_Analysis;
    begin
-      L.Analyze (Source, Visible_Interfaces, Analysis);
-      Execute (Analysis, Fuel, Visible_Interfaces, Grants, Context, Result);
-      if Result.Status = L.Succeeded and then Result.Is_Task then
-         Show_Task_State;
-      end if;
+      Result := (Fuel_Remaining => Fuel, others => <>);
+      Analyse (Source, Visible_Interfaces);
    end Evaluate_With_Values;
 
    procedure Evaluate_With_Host
@@ -704,14 +753,19 @@ package body CCL.Evaluation is
         (Context : in out Host_Context; Request : CCL.Streams.View_Request;
          Reply : in out CCL.Streams.View_Reply) is null;
       procedure Execute is new Run (Host_Context, Invoke_Values, No_Views);
-      Analysis : L.Analysis_Result;
       Unused_Expected : CCL.Objects.Binding;
       Unused_Object : CCL.Objects.Image;
-      Unused_Ready : Boolean;
+      Unused_Ready : Boolean := False;
+      procedure Evaluate_Analysis (Analysis : L.Sized_Analysis);
+      procedure Evaluate_Analysis (Analysis : L.Sized_Analysis) is
+      begin
+         Execute (Analysis, Fuel, Visible_Interfaces, Grants, Context, Result,
+                  Unused_Expected, False, Unused_Object, Unused_Ready, Scalar_Only => True);
+      end Evaluate_Analysis;
+      procedure Analyse is new L.With_Analysis (Evaluate_Analysis);
    begin
-      L.Analyze (Source, Visible_Interfaces, Analysis);
-      Execute (Analysis, Fuel, Visible_Interfaces, Grants, Context, Result,
-               Unused_Expected, False, Unused_Object, Unused_Ready, Scalar_Only => True);
+      Result := (Fuel_Remaining => Fuel, others => <>);
+      Analyse (Source, Visible_Interfaces);
    end Evaluate_With_Host;
 
    type No_Host is null record;
@@ -764,12 +818,16 @@ package body CCL.Evaluation is
       procedure Execute is new Run (Host_Context, Invoke, No_Views);
       Outcome : L.Interpretation_Result;
       Ready : Boolean;
-      Analysis : L.Analysis_Result;
+      procedure Evaluate_Analysis (Analysis : L.Sized_Analysis);
+      procedure Evaluate_Analysis (Analysis : L.Sized_Analysis) is
+      begin
+         Execute (Analysis, Fuel, Visible_Interfaces, Grants, Context, Outcome,
+                  Expected, True, Result.Value, Ready);
+      end Evaluate_Analysis;
+      procedure Analyse is new L.With_Analysis (Evaluate_Analysis);
    begin
       Result := (Fuel_Remaining => Fuel, others => <>);
-      L.Analyze (Source, Visible_Interfaces, Analysis);
-      Execute (Analysis, Fuel, Visible_Interfaces, Grants, Context, Outcome,
-               Expected, True, Result.Value, Ready);
+      Analyse (Source, Visible_Interfaces);
       Result.Status := Outcome.Status;
       Result.Diagnostic := Outcome.Diagnostic;
       Result.Diagnostic_Position := Outcome.Diagnostic_Position;

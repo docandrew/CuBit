@@ -37,7 +37,7 @@ procedure Text_Limit_Tests is
       Interned : CCL.Catalog.Intern_Result;
       Text : constant String := "hi";
    begin
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Length := 3;
       Candidate.Code (0) := (Op => Push_Text, Immediate => 0, others => <>);
       Candidate.Code (1) := (Op => Invoke_Import, others => <>);

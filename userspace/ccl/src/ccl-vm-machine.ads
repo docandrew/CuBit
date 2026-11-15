@@ -33,8 +33,9 @@ private package CCL.VM.Machine with SPARK_Mode => On is
 
    --  Where a step may start: a valid program, an instruction inside it,
    --  and a slice still running.
-   function Ready (Item : Validated_Program; Regs : Registers) return Boolean is
-     (Is_Valid (Item) and then Program_Length (Regs.PC) < Item.Content.Length and then not Regs.Done);
+   function Ready (Item : Sized_Validated_Program; Regs : Registers) return Boolean is
+     (Is_Valid (Item) and then Program_Length (Regs.PC) < Item.Content.Length and then
+      Regs.PC <= Item.Content.Last_Instruction and then not Regs.Done);
 
    --  Stop the run with Code. Only the terminal status changes.
    procedure Trap (Regs : in out Registers; State : in out Sized_Machine_State; Code : Execution_Status)
@@ -46,7 +47,7 @@ private package CCL.VM.Machine with SPARK_Mode => On is
 
    --  Push Value and step to the next instruction, or trap.
    procedure Push_Next
-     (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State; Value : CCL.VM.Value)
+     (Item : Sized_Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State; Value : CCL.VM.Value)
      with Global => null, Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
          CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
 
@@ -58,7 +59,7 @@ private package CCL.VM.Machine with SPARK_Mode => On is
    --  Enter the function value Callee: its captures, then Arity arguments,
    --  as the callee's frame; Return_PC is where its result comes back to.
    procedure Enter_Call
-     (Item : Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State;
+     (Item : Sized_Validated_Program; Regs : in out Registers; State : in out Sized_Machine_State;
       Callee : Value; Arguments : Component_Values; Arity : CCL.Types.Component_Count;
       Return_PC : Instruction_Index; Good : out Boolean)
      with Global => null, Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and

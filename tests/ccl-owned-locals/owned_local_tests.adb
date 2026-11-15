@@ -35,7 +35,7 @@ procedure Owned_Local_Tests is
 
    procedure Transfer_Program (Tag : Type_Id; Mode : Ownership_Mode) is
    begin
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Types_Length := CCL.VM.Type_Count (Tag) + 1;
       Candidate.Types (Tag).Mode := Mode;
       Candidate.Locals_Length := 2;
@@ -103,7 +103,7 @@ begin
 
             -- A forged primitive has tag zero, but is unrestricted. Even tag
             -- zero ownership types cannot acquire it as an owned resource.
-            Candidate := (others => <>);
+            Candidate := Empty_Program;
             Candidate.Types_Length := CCL.VM.Type_Count (Tag) + 1;
             Candidate.Types (Tag).Mode := Mode;
             Candidate.Locals_Length := 1;
@@ -205,7 +205,7 @@ begin
         Outcome.Result_Value.Integer = 44, "execute both ownership branches");
    end loop;
 
-   Candidate := (others => <>);
+   Candidate := Empty_Program;
    Candidate.Types_Length := 3;
    Candidate.Locals_Length := 2;
    Candidate.Local_Types (0) := 1;
@@ -222,7 +222,7 @@ begin
    -- An import that borrows a local still returns an operand. Verify its
    -- result can initialize a local; do not ignore that result in stack checks.
    for Transfer in CCL.Imports.Transfer_Mode loop
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Types_Length := 2;
       Candidate.Types (1).Mode := (if Transfer = CCL.Imports.Copy_Argument then Unrestricted else Must_Handle);
       Candidate.Types (1).Dispositions_Length := 1;

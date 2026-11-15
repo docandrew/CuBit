@@ -12,47 +12,50 @@ is
    use type CCL.Ownership.Ownership_Mode;
 
    function Analysis_Status_Of
-     (Result : Analysis_Result) return Analysis_Status is (Result.Status);
+     (Result : Sized_Analysis) return Analysis_Status is (Result.Status);
 
    function Analysis_Diagnostic
-     (Result : Analysis_Result) return Diagnostic_Code is (Result.Diagnostic);
+     (Result : Sized_Analysis) return Diagnostic_Code is (Result.Diagnostic);
 
    function Analysis_Diagnostic_Subject
-     (Result : Analysis_Result) return Name is (Result.Diagnostic_Subject);
-   function Analysis_Diagnostic_Expected (Result : Analysis_Result) return Name is
+     (Result : Sized_Analysis) return Name is (Result.Diagnostic_Subject);
+   function Analysis_Diagnostic_Expected (Result : Sized_Analysis) return Name is
      (Result.Diagnostic_Expected);
-   function Analysis_Diagnostic_Found (Result : Analysis_Result) return Name is
+   function Analysis_Diagnostic_Found (Result : Sized_Analysis) return Name is
      (Result.Diagnostic_Found);
 
    function Analysis_Diagnostic_Position
-     (Result : Analysis_Result) return Natural is
+     (Result : Sized_Analysis) return Natural is
      (Result.Diagnostic_Position);
 
    function Analysis_Node_Count
-     (Result : Analysis_Result) return Node_Count is (Result.Tree.Length);
+     (Result : Sized_Analysis) return Node_Count is (Result.Tree.Length);
 
    function Analysis_Root
-     (Result : Analysis_Result) return Node_Reference is (Result.Tree.Root);
+     (Result : Sized_Analysis) return Node_Reference is (Result.Tree.Root);
    function Analysis_Literal
-     (Result : Analysis_Result;
+     (Result : Sized_Analysis;
       Index  : Node_Index) return String is
-     (if Index < Result.Tree.Length and then Result.Tree.Nodes (Index).Kind = String_Literal
+     (if Index < Result.Tree.Length and then Index <= Result.Last_Node
+        and then Result.Tree.Nodes (Index).Kind = String_Literal
+        and then Result.Tree.Nodes (Index).Text_Last <= Result.Tree.Text_Room
       then Result.Tree.Text_Data (Result.Tree.Nodes (Index).Text_First ..
                                   Result.Tree.Nodes (Index).Text_Last)
       else "");
-   function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry is (Result.Tree.Types);
-   function Analysis_Resource_Policies (Result : Analysis_Result)
+   function Analysis_Types (Result : Sized_Analysis) return CCL.Types.Registry is (Result.Tree.Types);
+   function Analysis_Resource_Policies (Result : Sized_Analysis)
      return CCL.Resource_Policies.Policy_Table is (Result.Resource_Policies);
 
-   function Analysis_Function_Count (Result : Analysis_Result) return Natural is
+   function Analysis_Function_Count (Result : Sized_Analysis) return Natural is
      (Result.Tree.Function_Count);
    function Analysis_Function
-     (Result : Analysis_Result; Id : Function_Index) return Function_Declaration is
+     (Result : Sized_Analysis; Id : Function_Index) return Function_Declaration is
      (Result.Tree.Functions (Id));
 
    function Analysis_Node
-     (Result : Analysis_Result;
-      Index  : Node_Index) return Node is (Result.Tree.Nodes (Index));
+     (Result : Sized_Analysis;
+      Index  : Node_Index) return Node is
+     (if Index <= Result.Last_Node then Result.Tree.Nodes (Index) else (others => <>));
 
    type Type_Binding is record
       Identifier : Name;
@@ -111,16 +114,16 @@ is
       --  reports through Self_List_Read.
       Declaring : Name;
       Self_List_Read : Boolean := False;
-      Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
+      Diagnostic_Position : Natural range 0 .. SOURCE_CEILING + 1 := 0;
       Diagnostic_Subject : Name;
       Diagnostic_Expected, Diagnostic_Found : Name;
       subtype Diagnostic_Source_Position is
-        Positive range 1 .. MAX_SOURCE_LENGTH + 1;
+        Positive range 1 .. SOURCE_CEILING + 1;
 
       function To_Diagnostic_Position
         (Offset : Natural) return Diagnostic_Source_Position
       is
-        (if Offset >= MAX_SOURCE_LENGTH then MAX_SOURCE_LENGTH + 1
+        (if Offset >= SOURCE_CEILING then SOURCE_CEILING + 1
          else Offset + 1);
 
       function Is_Whitespace (Item : Character) return Boolean is
@@ -167,12 +170,17 @@ is
          end if;
       end Read_Name;
 
+      --  Node X of the tree (an invalid node past its storage: a reference
+      --  is always to a node already added, so that never happens).
+      function Node_At (X : Node_Reference) return Node is
+        (if X <= Tree.Last_Node then Tree.Nodes (X) else (others => <>));
+
       procedure Add_Node
         (Item  : Node;
          Index : out Node_Reference)
       is
       begin
-         if Tree.Length = MAX_AST_NODES then
+         if Tree.Length > Tree.Last_Node then
             Diagnostic := AST_Full;
             Index := NO_NODE;
          else
@@ -353,7 +361,7 @@ is
 
          procedure Append (Value : Character) is
          begin
-            if Tree.Text_Bytes_Used = MAX_PROGRAM_TEXT then
+            if Tree.Text_Bytes_Used >= Tree.Text_Room then
                Diagnostic := Text_Storage_Full;
             else
                Tree.Text_Bytes_Used := Tree.Text_Bytes_Used + 1;
@@ -616,7 +624,7 @@ is
                     Declared_Kind => Variant_Type, Alternative => Choice, First => C, others => <>), Arm);
                   if Diagnostic /= No_Diagnostic then return; end if;
                   if Previous = NO_NODE then B := Arm;
-                  else Tree.Nodes (Previous).Second := Arm; end if;
+                  else if Previous <= Tree.Last_Node then Tree.Nodes (Previous).Second := Arm; end if; end if;
                   Previous := Arm;
                   Skip_Trivia;
                end loop;
@@ -849,7 +857,7 @@ is
                   if Source (Source'First + Cursor) = '(' then
                      Parse_Expression (Depth + 1, Stage);
                      if Diagnostic /= No_Diagnostic then return; end if;
-                     if Stage < Tree.Length and then
+                     if Stage < Tree.Length and then Stage <= Tree.Last_Node and then
                        Tree.Nodes (Stage).Kind in Builtin_Form | Function_Call and then
                        Tree.Nodes (Stage).Argument_Count < MAX_PARAMETERS
                      then
@@ -891,8 +899,8 @@ is
                      if Diagnostic /= No_Diagnostic then return; end if;
                      --  A bare stage spans its name.
                      if Stage < Tree.Length then
-                        Tree.Nodes (Stage).Source_Position := To_Diagnostic_Position (Name_Start);
-                        Tree.Nodes (Stage).Source_End_Position := To_Diagnostic_Position (Cursor);
+                        if Stage <= Tree.Last_Node then Tree.Nodes (Stage).Source_Position := To_Diagnostic_Position (Name_Start); end if;
+                        if Stage <= Tree.Last_Node then Tree.Nodes (Stage).Source_End_Position := To_Diagnostic_Position (Cursor); end if;
                      end if;
                   end if;
                   Piped_Value := Stage;
@@ -987,15 +995,15 @@ is
                end if;
                Parse_Expression (Depth + 1, A);
                if Diagnostic /= No_Diagnostic then return; end if;
-               if A = NO_NODE or else Tree.Nodes (A).Kind /= Integer_Literal then
+               if A = NO_NODE or else Node_At (A).Kind /= Integer_Literal then
                   Diagnostic := Expected_Stream; return;
-               elsif Tree.Nodes (A).Integer_Value not in 1 .. CCL.Streams.Maximum_Handle then
+               elsif Node_At (A).Integer_Value not in 1 .. CCL.Streams.Maximum_Handle then
                   Diagnostic := Value_Out_Of_Range; return;
                end if;
                Expect (')', Ok);
                if not Ok then return; end if;
                Add_Node ((Kind => Stream_Reference, Declared_Kind => Task_Type,
-                          Integer_Value => Tree.Nodes (A).Integer_Value, others => <>), Index);
+                          Integer_Value => Node_At (A).Integer_Value, others => <>), Index);
             end;
          elsif Name_Is (Operator_Name, "stream") then
             --  (stream T n): stream n of this session, whose elements are T.
@@ -1015,15 +1023,15 @@ is
                end if;
                Parse_Expression (Depth + 1, A);
                if Diagnostic /= No_Diagnostic then return; end if;
-               if A = NO_NODE or else Tree.Nodes (A).Kind /= Integer_Literal then
+               if A = NO_NODE or else Node_At (A).Kind /= Integer_Literal then
                   Diagnostic := Expected_Stream; return;
-               elsif Tree.Nodes (A).Integer_Value not in 1 .. CCL.Streams.Maximum_Handle then
+               elsif Node_At (A).Integer_Value not in 1 .. CCL.Streams.Maximum_Handle then
                   Diagnostic := Value_Out_Of_Range; return;
                end if;
                Expect (')', Ok);
                if not Ok then return; end if;
                Add_Node ((Kind => Stream_Reference, Declared_Kind => Stream_Type,
-                          Integer_Value => Tree.Nodes (A).Integer_Value, others => <>), Index);
+                          Integer_Value => Node_At (A).Integer_Value, others => <>), Index);
             end;
          elsif Name_Is (Operator_Name, "to-string") then
             Parse_Expression (Depth + 1, A);
@@ -1273,8 +1281,8 @@ is
             Cursor := Cursor + 1;
             Parse_List (Depth, Index);
             if Index < Tree.Length then
-               Tree.Nodes (Node_Index (Index)).Source_Position :=
-                 To_Diagnostic_Position (Start);
+               if Node_Index (Index) <= Tree.Last_Node then Tree.Nodes (Node_Index (Index)).Source_Position :=
+                 To_Diagnostic_Position (Start); end if;
             end if;
          elsif Source (Source'First + Cursor) = '[' then
             Cursor := Cursor + 1;
@@ -1283,8 +1291,8 @@ is
             Cursor := Cursor + 1;
             Parse_String (Index);
             if Index < Tree.Length then
-               Tree.Nodes (Node_Index (Index)).Source_Position :=
-                 To_Diagnostic_Position (Start);
+               if Node_Index (Index) <= Tree.Last_Node then Tree.Nodes (Node_Index (Index)).Source_Position :=
+                 To_Diagnostic_Position (Start); end if;
             end if;
          elsif Source (Source'First + Cursor) = '-' or else
            (Source (Source'First + Cursor) >= '0' and then
@@ -1292,8 +1300,8 @@ is
          then
             Parse_Integer (Index);
             if Index < Tree.Length then
-               Tree.Nodes (Node_Index (Index)).Source_Position :=
-                 To_Diagnostic_Position (Start);
+               if Node_Index (Index) <= Tree.Last_Node then Tree.Nodes (Node_Index (Index)).Source_Position :=
+                 To_Diagnostic_Position (Start); end if;
             end if;
          elsif Is_Name_Character (Source (Source'First + Cursor)) then
             Read_Name (Item, Ok);
@@ -1314,10 +1322,10 @@ is
             Diagnostic := Unexpected_Token;
          end if;
          if Index < Tree.Length then
-            Tree.Nodes (Node_Index (Index)).Source_Position :=
-              To_Diagnostic_Position (Start);
-            Tree.Nodes (Node_Index (Index)).Source_End_Position :=
-              To_Diagnostic_Position (Cursor);
+            if Node_Index (Index) <= Tree.Last_Node then Tree.Nodes (Node_Index (Index)).Source_Position :=
+              To_Diagnostic_Position (Start); end if;
+            if Node_Index (Index) <= Tree.Last_Node then Tree.Nodes (Node_Index (Index)).Source_End_Position :=
+              To_Diagnostic_Position (Cursor); end if;
          end if;
          if Diagnostic /= No_Diagnostic and then Diagnostic_Position = 0 then
             Diagnostic_Position := To_Diagnostic_Position (Start);
@@ -1404,7 +1412,7 @@ is
                   if Diagnostic /= No_Diagnostic then return; end if;
                   --  Declarations are siblings: the rest of the program is not nested.
                   Parse_Program (Depth, Tail);
-                  Tree.Nodes (Index).Second := Tail;
+                  if Index <= Tree.Last_Node then Tree.Nodes (Index).Second := Tail; end if;
                   return;
                end;
             end if;
@@ -1524,7 +1532,7 @@ is
             if Diagnostic /= No_Diagnostic then return; end if;
             --  Declarations are siblings: the rest of the program is not nested.
                   Parse_Program (Depth, Tail);
-            Tree.Nodes (Index).Second := Tail;
+            if Index <= Tree.Last_Node then Tree.Nodes (Index).Second := Tail; end if;
             return;
          elsif not Name_Is (Token, "define") then
             Cursor := Start;
@@ -1577,7 +1585,7 @@ is
          if Diagnostic /= No_Diagnostic then return; end if;
          --  Declarations are siblings: the rest of the program is not nested.
                   Parse_Program (Depth, Tail);
-         Tree.Nodes (Index).Second := Tail;
+         if Index <= Tree.Last_Node then Tree.Nodes (Index).Second := Tail; end if;
       end Parse_Program;
 
       Type_Env : Type_Environment := [others => (others => <>)];
@@ -1683,9 +1691,9 @@ is
 
       --  An anonymous function with a parameter written without a type.
       function Untyped_Lambda (Index : Node_Reference) return Boolean is
-        (Index < Tree.Length and then Tree.Nodes (Index).Kind = Lambda_Form and then
-         (for some P in 1 .. Tree.Functions (Tree.Nodes (Index).Function_Id).Count =>
-            Tree.Functions (Tree.Nodes (Index).Function_Id).Parameters (P).Kind = Invalid_Type));
+        (Index < Tree.Length and then Node_At (Index).Kind = Lambda_Form and then
+         (for some P in 1 .. Tree.Functions (Node_At (Index).Function_Id).Count =>
+            Tree.Functions (Node_At (Index).Function_Id).Parameters (P).Kind = Invalid_Type));
 
       --  Give an untyped anonymous function's first two parameters these types
       --  (written types are kept; the checker reports any mismatch).
@@ -1693,7 +1701,7 @@ is
       begin
          if Untyped_Lambda (Index) then
             declare
-               Id : constant Function_Index := Tree.Nodes (Index).Function_Id;
+               Id : constant Function_Index := Node_At (Index).Function_Id;
             begin
                for P in 1 .. Tree.Functions (Id).Count loop
                   if Tree.Functions (Id).Parameters (P).Kind = Invalid_Type then
@@ -1736,9 +1744,9 @@ is
          if Diagnostic /= No_Diagnostic or else Source = Target then
             return;
          elsif Source = Integer_Type and then CCL.Types.Is_Range (Tree.Types, Target) then
-            if From < Tree.Length and then Tree.Nodes (From).Kind = Integer_Literal and then
-              (Tree.Nodes (From).Integer_Value < CCL.Types.Low_Of (Tree.Types, Target) or else
-               Tree.Nodes (From).Integer_Value > CCL.Types.High_Of (Tree.Types, Target))
+            if From < Tree.Length and then Node_At (From).Kind = Integer_Literal and then
+              (Node_At (From).Integer_Value < CCL.Types.Low_Of (Tree.Types, Target) or else
+               Node_At (From).Integer_Value > CCL.Types.High_Of (Tree.Types, Target))
             then
                Diagnostic := Value_Out_Of_Range;
             end if;
@@ -1767,38 +1775,38 @@ is
             return;
          end if;
 
-         case Tree.Nodes (Node_Index (Index)).Kind is
+         case Node_At (Node_Index (Index)).Kind is
             when Type_Definition =>
-               if CCL.Types.Describe (Tree.Types, Tree.Nodes (Index).Declared_Kind).Form = CCL.Types.Product then
+               if CCL.Types.Describe (Tree.Types, Node_At (Index).Declared_Kind).Form = CCL.Types.Product then
                   declare
-                     Name : constant CCL.Types.Name := CCL.Types.Describe (Tree.Types, Tree.Nodes (Index).Declared_Kind).Identifier;
+                     Name : constant CCL.Types.Name := CCL.Types.Describe (Tree.Types, Node_At (Index).Declared_Kind).Identifier;
                   begin
                      if Reserved (Name) or else
                        (for some F in 1 .. Visible_Functions => Names_Equal (Name, Tree.Functions (F - 1).Identifier))
                      then Diagnostic := Duplicate_Declaration; return; end if;
                   end;
                end if;
-               Visible_Types := Tree.Nodes (Index).Declared_Kind;
+               Visible_Types := Node_At (Index).Declared_Kind;
                --  Declarations are siblings: the rest of the program is not nested.
-               Check_Node (Tree.Nodes (Index).Second, Depth, Kind);
+               Check_Node (Node_At (Index).Second, Depth, Kind);
             when Variant_Literal =>
-               Kind := Tree.Nodes (Index).Declared_Kind;
+               Kind := Node_At (Index).Declared_Kind;
             when Variant_Construct =>
-               Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
-               Kind := Tree.Nodes (Index).Declared_Kind;
+               Check_Node (Node_At (Index).First, Depth + 1, Left_Type);
+               Kind := Node_At (Index).Declared_Kind;
                if Kind > Visible_Types or else not CCL.Objects.Storable (Tree.Types, Kind) then
                   Diagnostic := Invalid_Variant_Payload;
                else
                   Conform (Left_Type, CCL.Types.Describe (Tree.Types, Kind).
-                             Parts (Tree.Nodes (Index).Alternative).Payload,
-                           Tree.Nodes (Index).First, Invalid_Variant_Payload);
+                             Parts (Node_At (Index).Alternative).Payload,
+                           Node_At (Index).First, Invalid_Variant_Payload);
                end if;
             when Lambda_Form =>
                --  The body is checked on top of the enclosing bindings, with
                --  its parameters innermost; enclosing names it uses become
                --  captures (Note_Capture). Its result type is the body's.
                declare
-                  Id : constant Function_Index := Tree.Nodes (Index).Function_Id;
+                  Id : constant Function_Index := Node_At (Index).Function_Id;
                   Decl : Function_Declaration := Tree.Functions (Id);
                   Saved_Types : constant Type_Environment := Type_Env;
                   Saved_Frames : constant Natural range 0 .. MAX_FUNCTIONS := Frame_Count;
@@ -1848,9 +1856,9 @@ is
             when Builtin_Form =>
                --  Operands first (left to right), then the builtin's profile.
                declare
-                  Operation : constant Builtin_Operation := Tree.Nodes (Index).Builtin;
+                  Operation : constant Builtin_Operation := Node_At (Index).Builtin;
                   Operand_Types : array (Parameter_Index) of Static_Type := [others => Invalid_Type];
-                  Count : constant Parameter_Count := Tree.Nodes (Index).Argument_Count;
+                  Count : constant Parameter_Count := Node_At (Index).Argument_Count;
                   List_Type, Element_Type, Function_Type : Static_Type := Invalid_Type;
                   Specialized : CCL.Types.List_Result;
                   --  Whether Kind is a function of the given parameters and result.
@@ -1883,8 +1891,8 @@ is
                   end if;
                   for P in 1 .. Count loop
                      --  An untyped function operand waits for the subject.
-                     if P > 1 or else not Untyped_Lambda (Tree.Nodes (Index).Arguments (1)) then
-                        Check_Node (Tree.Nodes (Index).Arguments (P), Depth + 1, Operand_Types (P));
+                     if P > 1 or else not Untyped_Lambda (Node_At (Index).Arguments (1)) then
+                        Check_Node (Node_At (Index).Arguments (P), Depth + 1, Operand_Types (P));
                         if Diagnostic /= No_Diagnostic then return; end if;
                      end if;
                   end loop;
@@ -1908,14 +1916,14 @@ is
                         Element_Type := CCL.Types.Element_Of (Tree.Types, List_Type);
                      end if;
                   end if;
-                  if Untyped_Lambda (Tree.Nodes (Index).Arguments (1)) then
+                  if Untyped_Lambda (Node_At (Index).Arguments (1)) then
                      --  (fold f init xs): f takes (init's type, element);
                      --  the others take one element.
                      Infer_Parameters
-                       (Tree.Nodes (Index).Arguments (1),
+                       (Node_At (Index).Arguments (1),
                         (if Operation = Fold_Builtin then Operand_Types (2) else Element_Type),
                         (if Operation = Fold_Builtin then Element_Type else Invalid_Type));
-                     Check_Node (Tree.Nodes (Index).Arguments (1), Depth + 1, Operand_Types (1));
+                     Check_Node (Node_At (Index).Arguments (1), Depth + 1, Operand_Types (1));
                      if Diagnostic /= No_Diagnostic then return; end if;
                   end if;
                   Function_Type := Operand_Types (1);
@@ -2049,11 +2057,11 @@ is
                --  Every element has the first element's type; the result is
                --  List<that type>. An empty list needs a declared type
                --  ((list-of T)). Chunks chained through Second continue it.
-               if Tree.Nodes (Index).Element_Count = 0 then
-                  if Tree.Nodes (Index).Declared_Kind /= Invalid_Type and then
-                    CCL.Types.Is_List (Tree.Types, Tree.Nodes (Index).Declared_Kind)
+               if Node_At (Index).Element_Count = 0 then
+                  if Node_At (Index).Declared_Kind /= Invalid_Type and then
+                    CCL.Types.Is_List (Tree.Types, Node_At (Index).Declared_Kind)
                   then
-                     Kind := Tree.Nodes (Index).Declared_Kind;
+                     Kind := Node_At (Index).Declared_Kind;
                   else
                      Diagnostic := Empty_List_Needs_Type; return;
                   end if;
@@ -2066,8 +2074,8 @@ is
                begin
                   for Step in 0 .. MAX_NESTING loop
                      exit when Chunk >= Tree.Length;
-                     for P in 1 .. Tree.Nodes (Chunk).Element_Count loop
-                        Check_Node (Tree.Nodes (Chunk).Components (P), Depth + 1, Next_Type);
+                     for P in 1 .. Node_At (Chunk).Element_Count loop
+                        Check_Node (Node_At (Chunk).Components (P), Depth + 1, Next_Type);
                         if Diagnostic /= No_Diagnostic then return; end if;
                         if First_Element then
                            Element_Type := Next_Type;
@@ -2076,7 +2084,7 @@ is
                            Diagnostic := List_Element_Mismatch; return;
                         end if;
                      end loop;
-                     Chunk := Tree.Nodes (Chunk).Second;
+                     Chunk := Node_At (Chunk).Second;
                   end loop;
                   CCL.Types.Specialize_List (Tree.Types, Element_Type, Kind, Specialized);
                   if Specialized not in CCL.Types.List_Specialized |
@@ -2087,39 +2095,39 @@ is
                end;
                end if;
             when Record_Construct =>
-               Kind := Tree.Nodes (Index).Declared_Kind;
+               Kind := Node_At (Index).Declared_Kind;
                if Kind > Visible_Types or else not CCL.Objects.Storable (Tree.Types, Kind) then
                   Diagnostic := Invalid_Type_Declaration; return;
                end if;
                for P in 1 .. CCL.Types.Describe (Tree.Types, Kind).Count loop
-                  Check_Node (Tree.Nodes (Index).Components (P), Depth + 1, Left_Type);
+                  Check_Node (Node_At (Index).Components (P), Depth + 1, Left_Type);
                   if Diagnostic /= No_Diagnostic then return; end if;
                   Conform (Left_Type, CCL.Types.Describe (Tree.Types, Kind).Parts (P).Payload,
-                           Tree.Nodes (Index).Components (P), Field_Type_Mismatch);
+                           Node_At (Index).Components (P), Field_Type_Mismatch);
                   if Diagnostic = Field_Type_Mismatch then
                      --  Which field, and the type it wants and was given.
                      Diagnostic_Subject := CCL.Types.Describe (Tree.Types, Kind).Parts (P).Identifier;
                      Diagnostic_Expected := Type_Name (CCL.Types.Describe (Tree.Types, Kind).Parts (P).Payload);
                      Diagnostic_Found := Type_Name (Left_Type);
-                     if Tree.Nodes (Index).Components (P) < Tree.Length then
+                     if Node_At (Index).Components (P) < Tree.Length then
                         Diagnostic_Position :=
-                          Tree.Nodes (Tree.Nodes (Index).Components (P)).Source_Position;
+                          Node_At (Node_At (Index).Components (P)).Source_Position;
                      end if;
                   end if;
                   if Diagnostic /= No_Diagnostic then return; end if;
                end loop;
             when Field_Form =>
-               Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
+               Check_Node (Node_At (Index).First, Depth + 1, Left_Type);
                if Diagnostic /= No_Diagnostic then return; end if;
                declare
                   D : constant CCL.Types.Description := CCL.Types.Describe (Tree.Types, Left_Type);
                begin
                   if D.Form = CCL.Types.Product then
                      for P in 1 .. D.Count loop
-                        if Names_Equal (Tree.Nodes (Index).Identifier, D.Parts (P).Identifier) then
+                        if Names_Equal (Node_At (Index).Identifier, D.Parts (P).Identifier) then
                            --  Reading a range-typed field gives an Integer.
                            Kind := CCL.Types.Base_Of (Tree.Types, D.Parts (P).Payload);
-                           Tree.Nodes (Index).Alternative := P;
+                           if Index <= Tree.Last_Node then Tree.Nodes (Index).Alternative := P; end if;
                            exit;
                         end if;
                      end loop;
@@ -2127,7 +2135,7 @@ is
                   if Kind = Invalid_Type then Diagnostic := Unknown_Name; end if;
                end;
             when Match_Form =>
-               Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
+               Check_Node (Node_At (Index).First, Depth + 1, Left_Type);
                if Diagnostic /= No_Diagnostic then return; end if;
                if CCL.Types.Describe (Tree.Types, Left_Type).Form /= CCL.Types.Sum then
                   Diagnostic := Invalid_Match_Pattern; return;
@@ -2135,12 +2143,12 @@ is
                declare
                   D : constant CCL.Types.Description := CCL.Types.Describe (Tree.Types, Left_Type);
                   Seen : array (CCL.Types.Component_Index) of Boolean := [others => False];
-                  Arm : Node_Reference := Tree.Nodes (Index).Second;
+                  Arm : Node_Reference := Node_At (Index).Second;
                   N : Node;
                   Payload : Static_Type;
                begin
                   while Arm < Tree.Length and then Diagnostic = No_Diagnostic loop
-                     N := Tree.Nodes (Arm);
+                     N := Node_At (Arm);
                      if N.Kind /= Match_Arm or else N.Declared_Kind /= Left_Type then
                         Diagnostic := Invalid_Match_Pattern; exit;
                      elsif Seen (N.Alternative) then Diagnostic := Duplicate_Match_Arm; exit;
@@ -2164,7 +2172,7 @@ is
                      elsif Diagnostic = No_Diagnostic and then Kind /= Right_Type then
                         Diagnostic := Branch_Type_Mismatch;
                      end if;
-                     Tree.Nodes (Arm).Static_Kind := Right_Type;
+                     if Arm <= Tree.Last_Node then Tree.Nodes (Arm).Static_Kind := Right_Type; end if;
                      Arm := N.Second;
                   end loop;
                   if Diagnostic = No_Diagnostic and then
@@ -2175,7 +2183,7 @@ is
             when Function_Definition =>
                declare
                   Decl : constant Function_Declaration :=
-                    Tree.Functions (Tree.Nodes (Index).Function_Id);
+                    Tree.Functions (Node_At (Index).Function_Id);
                begin
                   if Reserved (Decl.Identifier) or else
                     CCL.Types.Describe (Tree.Types, CCL.Types.Find (Tree.Types, Decl.Identifier)).Form = CCL.Types.Product
@@ -2207,41 +2215,41 @@ is
                   if Diagnostic = No_Diagnostic then
                      --  Publish only after checking the body: no self calls or
                      --  forward calls, and therefore no recursive call graph.
-                     Visible_Functions := Tree.Nodes (Index).Function_Id + 1;
-                     Check_Node (Tree.Nodes (Index).Second, Depth, Kind);
+                     Visible_Functions := Node_At (Index).Function_Id + 1;
+                     Check_Node (Node_At (Index).Second, Depth, Kind);
                   end if;
                end;
             when Function_Call | Handler_Form =>
                for F in 1 .. Visible_Functions loop
-                  if Names_Equal (Tree.Nodes (Index).Identifier,
+                  if Names_Equal (Node_At (Index).Identifier,
                                   Tree.Functions (F - 1).Identifier)
                   then
-                     Tree.Nodes (Index).Function_Id := F - 1;
+                     if Index <= Tree.Last_Node then Tree.Nodes (Index).Function_Id := F - 1; end if;
                      Found := True;
                      exit;
                   end if;
                end loop;
                --  A call through a function-typed binding: (f 3) with f a
                --  parameter or let of function type.
-               if not Found and then Tree.Nodes (Index).Kind = Function_Call and then
+               if not Found and then Node_At (Index).Kind = Function_Call and then
                  Type_Env_Length > 0
                then
                   for Position in reverse 0 .. Type_Env_Length - 1 loop
-                     if Names_Equal (Type_Env (Position).Identifier, Tree.Nodes (Index).Identifier) then
+                     if Names_Equal (Type_Env (Position).Identifier, Node_At (Index).Identifier) then
                         if CCL.Types.Is_Function (Tree.Types, Type_Env (Position).Kind) then
                            declare
                               D : constant CCL.Types.Description :=
                                 CCL.Types.Describe (Tree.Types, Type_Env (Position).Kind);
                            begin
                               Found := True;
-                              Tree.Nodes (Index).Calls_Value := True;
+                              if Index <= Tree.Last_Node then Tree.Nodes (Index).Calls_Value := True; end if;
                               Note_Capture (Position);
-                              if Tree.Nodes (Index).Argument_Count /= D.Count - 1 then
+                              if Node_At (Index).Argument_Count /= D.Count - 1 then
                                  Diagnostic := Function_Arity_Mismatch;
                               else
                                  for P in 1 .. D.Count - 1 loop
-                                    Infer_From_Type (Tree.Nodes (Index).Arguments (P), D.Parts (P).Payload);
-                                    Check_Node (Tree.Nodes (Index).Arguments (P), Depth + 1, Left_Type);
+                                    Infer_From_Type (Node_At (Index).Arguments (P), D.Parts (P).Payload);
+                                    Check_Node (Node_At (Index).Arguments (P), Depth + 1, Left_Type);
                                     if Diagnostic = No_Diagnostic and then
                                       CCL.Types.Base_Of (Tree.Types, Left_Type) /=
                                         CCL.Types.Base_Of (Tree.Types, D.Parts (P).Payload)
@@ -2258,31 +2266,31 @@ is
                   end loop;
                end if;
                if not Found then Diagnostic := Unknown_Form;
-               elsif Tree.Nodes (Index).Calls_Value then null;
+               elsif Node_At (Index).Calls_Value then null;
                else
                   declare
                      Decl : constant Function_Declaration :=
-                       Tree.Functions (Tree.Nodes (Index).Function_Id);
+                       Tree.Functions (Node_At (Index).Function_Id);
                   begin
-                     if Tree.Nodes (Index).Kind = Handler_Form then
+                     if Node_At (Index).Kind = Handler_Form then
                         if Decl.Count /= 0 or else Decl.Result_Kind /= Boolean_Type then
                            Diagnostic := Invalid_Handler_Profile;
                         else Kind := Handler_Type; end if;
-                     elsif Tree.Nodes (Index).Argument_Count /= Decl.Count then
+                     elsif Node_At (Index).Argument_Count /= Decl.Count then
                         Diagnostic := Function_Arity_Mismatch;
                      else
                         for P in 1 .. Decl.Count loop
-                           Infer_From_Type (Tree.Nodes (Index).Arguments (P), Decl.Parameters (P).Kind);
-                           Check_Node (Tree.Nodes (Index).Arguments (P), Depth + 1, Left_Type);
+                           Infer_From_Type (Node_At (Index).Arguments (P), Decl.Parameters (P).Kind);
+                           Check_Node (Node_At (Index).Arguments (P), Depth + 1, Left_Type);
                            Conform (Left_Type, Decl.Parameters (P).Kind,
-                                    Tree.Nodes (Index).Arguments (P), Function_Argument_Mismatch);
+                                    Node_At (Index).Arguments (P), Function_Argument_Mismatch);
                         end loop;
                         Kind := CCL.Types.Base_Of (Tree.Types, Decl.Result_Kind);
                      end if;
                   end;
                end if;
             when Integer_Literal => Kind := Integer_Type;
-            when Stream_Reference => Kind := Tree.Nodes (Index).Declared_Kind;
+            when Stream_Reference => Kind := Node_At (Index).Declared_Kind;
             when Boolean_Literal => Kind := Boolean_Type;
             when String_Literal => Kind := String_Type;
             when Name_Reference =>
@@ -2290,7 +2298,7 @@ is
                   for Position in reverse 0 .. Type_Env_Length - 1 loop
                      if Names_Equal
                        (Type_Env (Position).Identifier,
-                        Tree.Nodes (Node_Index (Index)).Identifier)
+                        Node_At (Node_Index (Index)).Identifier)
                      then
                         Kind := Type_Env (Position).Kind;
                         Found := True;
@@ -2301,7 +2309,7 @@ is
                end if;
                if not Found then
                   declare
-                     Identifier : constant Name := Tree.Nodes (Index).Identifier;
+                     Identifier : constant Name := Node_At (Index).Identifier;
                      Ref : Static_Type;
                      D : CCL.Types.Description;
                   begin
@@ -2322,9 +2330,9 @@ is
                                        Diagnostic := Invalid_Variant_Payload;
                                        return;
                                     end if;
-                                    Tree.Nodes (Index).Kind := Variant_Literal;
-                                    Tree.Nodes (Index).Declared_Kind := Ref;
-                                    Tree.Nodes (Index).Alternative := I;
+                                    if Index <= Tree.Last_Node then Tree.Nodes (Index).Kind := Variant_Literal; end if;
+                                    if Index <= Tree.Last_Node then Tree.Nodes (Index).Declared_Kind := Ref; end if;
+                                    if Index <= Tree.Last_Node then Tree.Nodes (Index).Alternative := I; end if;
                                     Kind := Ref; Found := True;
                                     exit;
                                  end if;
@@ -2338,7 +2346,7 @@ is
                --  A defined function's name is a value of its function type.
                if not Found then
                   for F in 1 .. Visible_Functions loop
-                     if Names_Equal (Tree.Nodes (Index).Identifier, Tree.Functions (F - 1).Identifier) then
+                     if Names_Equal (Node_At (Index).Identifier, Tree.Functions (F - 1).Identifier) then
                         declare
                            Decl : constant Function_Declaration := Tree.Functions (F - 1);
                            Parameters : CCL.Types.Function_Parameters := [others => Invalid_Type];
@@ -2352,8 +2360,8 @@ is
                            if Specialized in CCL.Types.Function_Specialized |
                              CCL.Types.Function_Already_Specialized
                            then
-                              Tree.Nodes (Index).Names_Function := True;
-                              Tree.Nodes (Index).Function_Id := F - 1;
+                              if Index <= Tree.Last_Node then Tree.Nodes (Index).Names_Function := True; end if;
+                              if Index <= Tree.Last_Node then Tree.Nodes (Index).Function_Id := F - 1; end if;
                               Found := True;
                            end if;
                         end;
@@ -2367,11 +2375,11 @@ is
             when Add_Form | Subtract_Form | Multiply_Form | Divide_Form |
                  Modulo_Form | Equal_Form | Not_Equal_Form | Less_Form |
                  Less_Equal_Form | Greater_Form | Greater_Equal_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
-               Check_Node (Tree.Nodes (Node_Index (Index)).Second,
+               Check_Node (Node_At (Node_Index (Index)).Second,
                            Depth + 1, Right_Type);
-               if Tree.Nodes (Index).Kind in Equal_Form | Not_Equal_Form then
+               if Node_At (Index).Kind in Equal_Form | Not_Equal_Form then
                   if Diagnostic = No_Diagnostic and then
                     (Left_Type /= Right_Type or else
                      (Left_Type /= Integer_Type and then
@@ -2385,11 +2393,11 @@ is
                  (Left_Type /= Integer_Type or else Right_Type /= Integer_Type)
                then
                   Diagnostic := Expected_Integer;
-               elsif Tree.Nodes (Node_Index (Index)).Kind in
+               elsif Node_At (Node_Index (Index)).Kind in
                  Add_Form | Subtract_Form
                then
                   Kind := Integer_Type;
-               elsif Tree.Nodes (Node_Index (Index)).Kind in
+               elsif Node_At (Node_Index (Index)).Kind in
                  Multiply_Form | Divide_Form | Modulo_Form
                then
                   Kind := Integer_Type;
@@ -2397,7 +2405,7 @@ is
                   Kind := Boolean_Type;
                end if;
             when Not_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
                if Diagnostic = No_Diagnostic and then Left_Type /= Boolean_Type
                then
@@ -2406,9 +2414,9 @@ is
                   Kind := Boolean_Type;
                end if;
             when And_Form | Or_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
-               Check_Node (Tree.Nodes (Node_Index (Index)).Second,
+               Check_Node (Node_At (Node_Index (Index)).Second,
                            Depth + 1, Right_Type);
                if Diagnostic = No_Diagnostic and then
                  (Left_Type /= Boolean_Type or else Right_Type /= Boolean_Type)
@@ -2418,11 +2426,11 @@ is
                   Kind := Boolean_Type;
                end if;
             when If_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
-               Check_Node (Tree.Nodes (Node_Index (Index)).Second,
+               Check_Node (Node_At (Node_Index (Index)).Second,
                            Depth + 1, Right_Type);
-               Check_Node (Tree.Nodes (Node_Index (Index)).Third,
+               Check_Node (Node_At (Node_Index (Index)).Third,
                            Depth + 1, Third_Type);
                if Diagnostic = No_Diagnostic and then Left_Type /= Boolean_Type
                then
@@ -2435,7 +2443,7 @@ is
                   Kind := Right_Type;
                end if;
             when Let_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
                if Diagnostic = No_Diagnostic and then
                  Type_Env_Length = MAX_BINDINGS
@@ -2443,15 +2451,15 @@ is
                   Diagnostic := Too_Many_Bindings;
                elsif Diagnostic = No_Diagnostic then
                   Type_Env (Type_Env_Length) :=
-                    (Identifier => Tree.Nodes (Node_Index (Index)).Identifier,
+                    (Identifier => Node_At (Node_Index (Index)).Identifier,
                      Kind => Left_Type);
                   Type_Env_Length := Type_Env_Length + 1;
-                  Check_Node (Tree.Nodes (Node_Index (Index)).Second,
+                  Check_Node (Node_At (Node_Index (Index)).Second,
                               Depth + 1, Kind);
                   Type_Env_Length := Entry_Environment_Length;
                end if;
             when String_Length_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
                if Diagnostic = No_Diagnostic and then
                  Left_Type /= String_Type and then
@@ -2462,9 +2470,9 @@ is
                   Kind := Integer_Type;
                end if;
             when String_Index_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
-               Check_Node (Tree.Nodes (Node_Index (Index)).Second,
+               Check_Node (Node_At (Node_Index (Index)).Second,
                            Depth + 1, Right_Type);
                if Diagnostic = No_Diagnostic and then
                  Left_Type /= String_Type and then
@@ -2481,9 +2489,9 @@ is
                   Kind := Character_Type;
                end if;
             when String_Concat_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
-               Check_Node (Tree.Nodes (Node_Index (Index)).Second,
+               Check_Node (Node_At (Node_Index (Index)).Second,
                            Depth + 1, Right_Type);
                if Diagnostic = No_Diagnostic and then
                  (Left_Type /= String_Type or else Right_Type /= String_Type)
@@ -2493,7 +2501,7 @@ is
                   Kind := String_Type;
                end if;
             when To_String_Form =>
-               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+               Check_Node (Node_At (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
                if Diagnostic = No_Diagnostic and then
                  Left_Type /= Integer_Type and then
@@ -2505,7 +2513,7 @@ is
                end if;
             when Host_Import_Form =>
                declare
-                  Op : constant CCL.Catalog.Resolved_Operation := Tree.Nodes (Index).Host_Call;
+                  Op : constant CCL.Catalog.Resolved_Operation := Node_At (Index).Host_Call;
                   Argument_Type : constant Static_Type := Host_Type
                     (Op.Import.Argument, Op.Import.Argument_Schema, Op.Import.Argument_Resource);
                   Result_Type : constant Static_Type := Host_Type
@@ -2524,13 +2532,13 @@ is
                      Diagnostic := Unsupported_Host_Object;
                   else
                      if Has_Receiver then
-                        Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
+                        Check_Node (Node_At (Index).First, Depth + 1, Left_Type);
                         if Diagnostic = No_Diagnostic and then Left_Type /= Receiver_Type then
                            Diagnostic := Host_Object_Type_Mismatch;
                         end if;
                      end if;
                      if Diagnostic = No_Diagnostic and then Op.Parameters = 1 then
-                        Check_Node ((if Has_Receiver then Tree.Nodes (Index).Second else Tree.Nodes (Index).First),
+                        Check_Node ((if Has_Receiver then Node_At (Index).Second else Node_At (Index).First),
                           Depth + 1, Left_Type);
                         if Diagnostic = No_Diagnostic and then Left_Type /= Argument_Type then
                            Diagnostic := (case Op.Import.Argument is
@@ -2542,7 +2550,7 @@ is
                                Argument_Type_Mismatch);
                            if Diagnostic = Argument_Type_Mismatch then
                               --  Which operation, and the type it takes and was given.
-                              Diagnostic_Subject := Tree.Nodes (Index).Identifier;
+                              Diagnostic_Subject := Node_At (Index).Identifier;
                               Diagnostic_Expected := Type_Name (Argument_Type);
                               Diagnostic_Found := Type_Name (Left_Type);
                            end if;
@@ -2582,11 +2590,11 @@ is
             Diagnostic := Handler_Result_Not_Exportable;
          end if;
          if Diagnostic = No_Diagnostic then
-            Tree.Nodes (Node_Index (Index)).Static_Kind := Kind;
+            if Node_Index (Index) <= Tree.Last_Node then Tree.Nodes (Node_Index (Index)).Static_Kind := Kind; end if;
          end if;
          if Diagnostic /= No_Diagnostic and then Diagnostic_Position = 0 then
             Diagnostic_Position :=
-              Tree.Nodes (Node_Index (Index)).Source_Position;
+              Node_At (Node_Index (Index)).Source_Position;
          end if;
       end Check_Node;
 
@@ -2596,12 +2604,13 @@ is
         (Status => Parse_Failed, Diagnostic => No_Diagnostic,
          Diagnostic_Position => 0, others => <>);
 
-      Tree := (others => <>);
+      Tree := (Last_Node => Tree.Last_Node, Text_Room => Tree.Text_Room, others => <>);
       Tree.Types := CCL.Catalog.Visible_Types (Visible_Interfaces);
       Visible_Types := CCL.Types.Last (Tree.Types);
-      if Source'Length > MAX_SOURCE_LENGTH then
+      --  Its literals' text fits the tree's text room when the source does.
+      if Source'Length > Tree.Text_Room then
          Result.Diagnostic := Source_Too_Long;
-         Result.Diagnostic_Position := MAX_SOURCE_LENGTH + 1;
+         Result.Diagnostic_Position := To_Diagnostic_Position (Tree.Text_Room);
          return;
       end if;
 
@@ -2635,12 +2644,12 @@ is
 
 
 
-   function Analysis_Source (Result : Analysis_Result) return String is
-     (Result.Source_Text (1 .. Result.Source_Length));
+   function Analysis_Source (Result : Sized_Analysis) return String is
+     (Result.Source_Text (1 .. Natural'Min (Result.Source_Length, Result.Source_Room)));
 
    procedure Analyze
      (Source : String;
-      Result : out Analysis_Result)
+      Result : out Sized_Analysis)
    is
       Empty   : CCL.Catalog.Interface_Catalog;
    begin
@@ -2651,33 +2660,97 @@ is
    procedure Analyze
      (Source             : String;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Result             : out Analysis_Result)
+      Result             : out Sized_Analysis)
    is
-      Tree    : Syntax_Tree;
       Outcome : Interpretation_Result;
    begin
-      Check_Source (Source, Visible_Interfaces, Outcome, Tree);
-
-      Result :=
-        (Status =>
-           (case Outcome.Status is
-               when Succeeded => Analysis_Succeeded,
-               when Type_Check_Failed => Analysis_Type_Check_Failed,
-               when others => Analysis_Parse_Failed),
-         Diagnostic => Outcome.Diagnostic,
-         Diagnostic_Position => Outcome.Diagnostic_Position,
-         Diagnostic_Subject => Outcome.Diagnostic_Subject,
-         Diagnostic_Expected => Outcome.Diagnostic_Expected,
-         Diagnostic_Found => Outcome.Diagnostic_Found,
-         Tree => Tree, others => <>);
+      Result.Resource_Policies := [others => (others => <>)];
+      Check_Source (Source, Visible_Interfaces, Outcome, Result.Tree);
+      Result.Status :=
+        (case Outcome.Status is
+            when Succeeded => Analysis_Succeeded,
+            when Type_Check_Failed => Analysis_Type_Check_Failed,
+            when others => Analysis_Parse_Failed);
+      Result.Diagnostic := Outcome.Diagnostic;
+      Result.Diagnostic_Position := Outcome.Diagnostic_Position;
+      Result.Diagnostic_Subject := Outcome.Diagnostic_Subject;
+      Result.Diagnostic_Expected := Outcome.Diagnostic_Expected;
+      Result.Diagnostic_Found := Outcome.Diagnostic_Found;
       for Ref in CCL.Types.Type_Reference loop
          Result.Resource_Policies (Ref) := CCL.Catalog.Resource_Policy (Visible_Interfaces, Ref);
       end loop;
-      if Source'Length <= MAX_SOURCE_LENGTH then
+      Result.Source_Text := [others => ' '];
+      Result.Source_Length := 0;
+      if Source'Length <= Result.Source_Room then
          Result.Source_Length := Source'Length;
          Result.Source_Text (1 .. Source'Length) := Source;
       end if;
    end Analyze;
+
+   --  Source analysed with a node room of Last + 1 (Last a parameter, so
+   --  it may constrain the storage); Grow says the room filled up on a
+   --  failure, which a larger one may not have.
+   function Room_For (Source : String) return CCL.Language.Source_Room is
+     (if Source'Length = 0 then 1 elsif Source'Length > SOURCE_CEILING then SOURCE_CEILING
+      else Source'Length);
+   function Outgrew (Attempt : Sized_Analysis) return Boolean is
+     (Attempt.Status /= Analysis_Succeeded and then Attempt.Tree.Length > Attempt.Last_Node
+      and then Attempt.Last_Node < NODE_CEILING - 1);
+
+   --  A convenience over Analyze (whose recursion over the source need not
+   --  terminate): not itself proved; With_Analysis is the proved route.
+   function Analysis_Of
+     (Source : String; Visible_Interfaces : CCL.Catalog.Interface_Catalog) return Sized_Analysis
+     with SPARK_Mode => Off
+   is
+      function Attempt_With (Last : Node_Index) return Sized_Analysis
+        with Post => Attempt_With'Result.Last_Node = Last;
+      function Attempt_With (Last : Node_Index) return Sized_Analysis is
+         Attempt : Sized_Analysis (Source_Room => Room_For (Source), Last_Node => Last);
+      begin
+         Analyze (Source, Visible_Interfaces, Attempt);
+         return Attempt;
+      end Attempt_With;
+      Last : Node_Index := DEFAULT_NODE_ROOM - 1;
+   begin
+      loop
+         pragma Loop_Variant (Increases => Last);
+         declare
+            Attempt : constant Sized_Analysis := Attempt_With (Last);
+         begin
+            --  A failure with its node room full may be that room's (the
+            --  parser can report AST_Full as the error it leads to): grow.
+            if not Outgrew (Attempt) then
+               return Attempt;
+            end if;
+         end;
+         Last := Grown_Node_Room (Last);
+      end loop;
+   end Analysis_Of;
+
+   procedure With_Analysis (Source : String; Visible_Interfaces : CCL.Catalog.Interface_Catalog) is
+      --  One attempt with a node room of Last + 1, handed on unless it outgrew it.
+      procedure Attempt_With (Last : Node_Index; Grow : out Boolean)
+        with Post => (if Grow then Last < NODE_CEILING - 1);
+      procedure Attempt_With (Last : Node_Index; Grow : out Boolean) is
+         Attempt : Sized_Analysis (Source_Room => Room_For (Source), Last_Node => Last);
+      begin
+         Analyze (Source, Visible_Interfaces, Attempt);
+         Grow := Outgrew (Attempt);
+         if not Grow then
+            Use_Analysis (Attempt);
+         end if;
+      end Attempt_With;
+      Last : Node_Index := DEFAULT_NODE_ROOM - 1;
+      Grow : Boolean;
+   begin
+      loop
+         pragma Loop_Variant (Increases => Last);
+         Attempt_With (Last, Grow);
+         exit when not Grow;
+         Last := Grown_Node_Room (Last);
+      end loop;
+   end With_Analysis;
 
 
 end CCL.Language;

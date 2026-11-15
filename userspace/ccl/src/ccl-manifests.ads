@@ -8,7 +8,6 @@ with CuBit.Parameter_Signatures;
 --  Pure executable-declaration frontend. This emits requests, never grants.
 --  Field expressions use the existing CCL evaluator without a host adapter.
 package CCL.Manifests with SPARK_Mode => On is
-   MAX_DECLARATION_LENGTH : constant := 4_096;
    MAX_SECTION_BYTES : constant := 4_096;
    MAX_BINDINGS : constant := 32;
    MAX_NAME_TEXT : constant := 64;
@@ -67,7 +66,10 @@ package CCL.Manifests with SPARK_Mode => On is
       --  A catalog (client …) that is not a Service_Client (CAP-003).
       Unknown_Client,
       --  (request-publication NAME) naming no kernel publication (KERN-002).
-      Unknown_Publication);
+      Unknown_Publication,
+      --  The manifest's value is larger than one native object image
+      --  (CCL.Objects) holds: a named ceiling, Why says which.
+      Value_Too_Large);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;

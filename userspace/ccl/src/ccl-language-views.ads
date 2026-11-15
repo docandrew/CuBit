@@ -5,7 +5,7 @@ package CCL.Language.Views with SPARK_Mode => On is
    --  The first line of BASIC source: Detect reads a program as BASIC by it.
    BASIC_MARKER : constant String := "#!ccl basic";
    --  Pretty-printed views run longer than the canonical source.
-   Maximum_View_Length : constant := 2 * CCL.Language.MAX_SOURCE_LENGTH;
+   Maximum_View_Length : constant := 2 * CCL.Language.DEFAULT_SOURCE_ROOM;
    subtype View_Length is Natural range 0 .. Maximum_View_Length;
    type Text is record
       Length : View_Length := 0;
@@ -14,7 +14,8 @@ package CCL.Language.Views with SPARK_Mode => On is
    type Span is record
       First, After_Last : Natural range 0 .. Maximum_View_Length + 1 := 0;
    end record;
-   type Node_Spans is array (Node_Index) of Span;
+   --  Views read default-room analyses (Analysis_Result): one span per node.
+   type Node_Spans is array (Node_Index range 0 .. DEFAULT_NODE_ROOM - 1) of Span;
    type Conversion_Status is
      (Converted, Invalid_Source, Capacity_Exceeded);
    type Conversion is record

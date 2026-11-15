@@ -1,0 +1,111 @@
+# large-manifest-probe (headless --test large-manifest): a typed manifest well
+# beyond the CCL limits the manifest compiler had before its storage was
+# sized by its input (8 KiB of program source with the schema, 512 syntax
+# nodes, 256 VM instructions, 32 constants). It must compile, its ELF
+# sections must load at procmgr, and the program must launch. Each list is
+# at its own named ceiling (CuBit.Program_Descriptions' parameters and
+# pieces, the manifest's 16 access scopes) or sized to fit one (the launch
+# table's 512 bytes; one object image, CCL.Objects, for the whole value);
+# tests/ccl-manifest-capacity checks its sizes against the old limits.
+(Executable_Manifest
+  identity => "com.cubit-os.large-manifest-probe"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (service "clock" "clock")
+    (service "filesystem" "filesystem")]
+  optional => ["clock" "filesystem"]
+  scopes => [
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-01/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-02/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-03/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-04/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-05/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-06/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-07/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-08/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-09/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-10/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-11/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-12/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-13/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-14/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-15/")
+    (filesystem [File_Right.Read] "@mem:0/large-manifest-probe/declared-read-only-area-number-16/")]
+  may_launch => [
+    (Launch "lmp-child-01.app")
+    (Launch "lmp-child-02.app")
+    (Launch "lmp-child-03.app")
+    (Launch "lmp-child-04.app")
+    (Launch "lmp-child-05.app")
+    (Launch "lmp-child-06.app")
+    (Launch "lmp-child-07.app")
+    (Launch "lmp-child-08.app")
+    (Launch "lmp-child-09.app")
+    (Launch "lmp-child-10.app")
+    (Launch "lmp-child-11.app")
+    (Launch "lmp-child-12.app")
+    (Launch "lmp-child-13.app")
+    (Launch "lmp-child-14.app")
+    (Launch "lmp-child-15.app")
+    (Launch "lmp-child-16.app")
+    (Launch "lmp-child-17.app")
+    (Launch "lmp-child-18.app")
+    (Launch "lmp-child-19.app")
+    (Launch "lmp-child-20.app")
+    (Launch "lmp-child-21.app")
+    (Launch "lmp-child-22.app")
+    (Launch "lmp-child-23.app")
+    (Launch "lmp-child-24.app")]
+  argv => (Argv.Mapped (Argv_Mapping
+    parameters => [
+      (Argv_Parameter name => "declared-flag-number-01" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-02" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-03" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-04" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-05" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-06" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-07" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-08" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-09" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-10" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-11" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-12" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-13" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-14" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-15" kind => Argv_Kind.Flag required => false)
+      (Argv_Parameter name => "declared-flag-number-16" kind => Argv_Kind.Flag required => false)]
+    pieces => [
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-01" text => "--declared-flag-number-01-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-02" text => "--declared-flag-number-02-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-03" text => "--declared-flag-number-03-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-04" text => "--declared-flag-number-04-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-05" text => "--declared-flag-number-05-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-06" text => "--declared-flag-number-06-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-07" text => "--declared-flag-number-07-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-08" text => "--declared-flag-number-08-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-09" text => "--declared-flag-number-09-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-10" text => "--declared-flag-number-10-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-11" text => "--declared-flag-number-11-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-12" text => "--declared-flag-number-12-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-13" text => "--declared-flag-number-13-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-14" text => "--declared-flag-number-14-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-15" text => "--declared-flag-number-15-is-set"))
+      (Argv_Piece.When_Set (Conditional_Literal parameter => "declared-flag-number-16" text => "--declared-flag-number-16-is-set"))
+      (Argv_Piece.Literal "--always-present-literal-argument-01")
+      (Argv_Piece.Literal "--always-present-literal-argument-02")
+      (Argv_Piece.Literal "--always-present-literal-argument-03")
+      (Argv_Piece.Literal "--always-present-literal-argument-04")
+      (Argv_Piece.Literal "--always-present-literal-argument-05")
+      (Argv_Piece.Literal "--always-present-literal-argument-06")
+      (Argv_Piece.Literal "--always-present-literal-argument-07")
+      (Argv_Piece.Literal "--always-present-literal-argument-08")]))
+  outlets => [
+    (Outlet name => "com.cubit-os.large-manifest-probe.channel-01" element => Element.Text)
+    (Outlet name => "com.cubit-os.large-manifest-probe.channel-02" element => Element.Text)
+    (Outlet name => "com.cubit-os.large-manifest-probe.channel-03" element => Element.Text)
+    (Outlet name => "com.cubit-os.large-manifest-probe.channel-04" element => Element.Text)
+    (Outlet name => "com.cubit-os.large-manifest-probe.channel-05" element => Element.Text)
+    (Outlet name => "com.cubit-os.large-manifest-probe.channel-06" element => Element.Text)
+    (Outlet name => "com.cubit-os.large-manifest-probe.channel-07" element => Element.Text)
+    (Outlet name => "com.cubit-os.large-manifest-probe.channel-08" element => Element.Text)])

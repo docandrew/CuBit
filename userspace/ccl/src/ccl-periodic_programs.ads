@@ -88,8 +88,8 @@ private
       Due : Timestamp := Timestamp'Last;
       Period : Interval_Ms := 1_000;
       Budget : Fuel_Budget := 4_096;
-      Text : String (1 .. CCL.Language.MAX_SOURCE_LENGTH) := [others => ' '];
-      Length : Natural range 0 .. CCL.Language.MAX_SOURCE_LENGTH := 0;
+      Text : String (1 .. CCL.Language.DEFAULT_SOURCE_ROOM) := [others => ' '];
+      Length : Natural range 0 .. CCL.Language.DEFAULT_SOURCE_ROOM := 0;
       Outcome : CCL.Language.Interpretation_Result;
    end record;
    function State (Item : Program) return Lifecycle is (Item.Status);

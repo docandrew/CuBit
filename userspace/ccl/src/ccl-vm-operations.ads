@@ -87,7 +87,7 @@ private package CCL.VM.Operations with SPARK_Mode => On is
      with Pre => Immediate in 0 .. MAX_FUNCTIONS - 1;
    function Constant_Operand (Immediate : Integer_64) return Constant_Index is
      (Constant_Index (Immediate))
-     with Pre => Immediate in 0 .. MAX_CONSTANTS - 1;
+     with Pre => Immediate in 0 .. CONSTANT_CEILING - 1;
    function Match_Operand (Immediate : Integer_64) return Match_Index is
      (Match_Index (Immediate))
      with Pre => Immediate in 0 .. Maximum_Matches - 1;

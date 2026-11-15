@@ -9,7 +9,7 @@ private package CCL.VM.Verifier_Sweep with SPARK_Mode => On is
 
    --  The main body starts empty; a function's code with its parameters on
    --  the stack.
-   procedure Enter (Candidate : Program; States : in out State_Table; Error : in out Validation_Error)
+   procedure Enter (Candidate : Sized_Program; States : in out State_Table; Error : in out Validation_Error)
      with Global => null,
           Post => (if Error'Old /= Valid then Error = Error'Old);
 
@@ -17,10 +17,12 @@ private package CCL.VM.Verifier_Sweep with SPARK_Mode => On is
    --  function; the state it falls through to or jumps to is merged into
    --  States, its depth into Own_Max, its calls into Calls and Base_Max.
    procedure Step
-     (Candidate : Program; PC : Instruction_Index;
+     (Candidate : Sized_Program; PC : Instruction_Index;
       States : in out State_Table; Switches : in out Switch_Table;
       Own_Max : in out Region_Demands; Base_Max : in out Call_Demands; Calls : in out Call_Presence;
       Error : in out Validation_Error)
      with Global => null,
-          Pre => Error = Valid and then Program_Length (PC) < Candidate.Length;
+          Pre => Error = Valid and then Program_Length (PC) < Candidate.Length and then
+                 PC <= Candidate.Last_Instruction and then PC in States'Range and then
+                 PC in Switches'Range;
 end CCL.VM.Verifier_Sweep;

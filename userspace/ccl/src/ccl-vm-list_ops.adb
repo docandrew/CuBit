@@ -416,7 +416,7 @@ package body CCL.VM.List_Ops with SPARK_Mode => On is
       end if;
    end Run_List_Builtin;
 
-   procedure Run_List (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
+   procedure Run_List (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       --  The frame at entry: each region update below keeps it (asserted
       --  after each, so each step is its own small proof).
       Before : constant Frame_Mark := Frame_Of (State) with Ghost;

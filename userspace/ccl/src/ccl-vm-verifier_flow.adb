@@ -8,7 +8,7 @@ package body CCL.VM.Verifier_Flow with SPARK_Mode => On is
    use type CCL.Ownership.Ownership_Mode;
 
    procedure Step_Closure
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
    is
       Types : CCL.Types.Registry renames Candidate.Data_Types;
    begin
@@ -111,7 +111,7 @@ package body CCL.VM.Verifier_Flow with SPARK_Mode => On is
    end Step_Closure;
 
    procedure Step_Call
-     (Candidate : Program; Ins : Instruction; Region : Region_Index;
+     (Candidate : Sized_Program; Ins : Instruction; Region : Region_Index;
       State : in out Abstract_State; Error : in out Validation_Error;
       Calls : in out Call_Presence; Base_Max : in out Call_Demands; Falls_Through : in out Boolean)
    is
@@ -212,7 +212,7 @@ package body CCL.VM.Verifier_Flow with SPARK_Mode => On is
    end Step_Jump;
 
    procedure Step_Import
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
    is
    begin
       if Error /= Valid then
@@ -247,7 +247,7 @@ package body CCL.VM.Verifier_Flow with SPARK_Mode => On is
    end Step_Import;
 
    procedure Step_Local
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
    is
       Abstract_Value : Stack_Type;
       Stack_Result : Abstract_Stacks.Operation_Result;

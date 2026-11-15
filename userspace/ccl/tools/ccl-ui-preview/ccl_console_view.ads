@@ -199,8 +199,8 @@ private
    type Shown_Source is record
       Valid : Boolean := False;
       Into : CCL.Interfaces.Console.Notation := CCL.Interfaces.Console.Lisp;
-      Source : String (1 .. CCL.Language.MAX_SOURCE_LENGTH) := [others => ' '];
-      Source_Length : Natural range 0 .. CCL.Language.MAX_SOURCE_LENGTH := 0;
+      Source : String (1 .. CCL.Language.DEFAULT_SOURCE_ROOM) := [others => ' '];
+      Source_Length : Natural range 0 .. CCL.Language.DEFAULT_SOURCE_ROOM := 0;
       Shown : CCL.Language.Views.Text;
    end record;
    type Shown_Array is array (CCL.Sessions.History_Index) of Shown_Source;

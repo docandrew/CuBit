@@ -176,7 +176,7 @@ begin
       Submit_OK : Boolean;
       IMPORT_TOKEN : constant Unsigned_64 := 16#CC10_0001#;
    begin
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Imports_Length := 1;
       Candidate.Imports (0) :=
         (Argument => Integer_Value,

@@ -1,4 +1,5 @@
 with Interfaces;
+with CuBit.Failures;
 with CuBit.Channel_Declarations;
 with CuBit.Network_Authority;
 with CuBit.Launch_Authority;
@@ -342,18 +343,29 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
             Append (Result.Launch, Unsigned_64 (Name.Length), 1);
             Write_Text (Result.Launch, Name.Data (1 .. Name.Length));
          end loop;
-         declare
-            Bytes : CuBit.Launch_Authority.Table_Bytes (1 .. Result.Launch.Length);
-         begin
-            for I in Bytes'Range loop Bytes (I) := Result.Launch.Data (I); end loop;
-            if Bytes'Length > CuBit.Launch_Authority.Maximum_Table_Bytes
-              or else not CuBit.Launch_Authority.Valid (Bytes)
-            then
-               Result.Success := False;
-               Result.Diagnostic := Invalid_Launch;
-               Result.Launch := (others => <>);
-            end if;
-         end;
+         --  The table's own named ceiling first: a longer one is refused,
+         --  never cut to fit.
+         if Result.Launch.Length > CuBit.Launch_Authority.Maximum_Table_Bytes then
+            Result.Success := False;
+            Result.Diagnostic := Invalid_Launch;
+            Result.Why := CuBit.Failures.Failed
+              (CuBit.Failures.Exhausted,
+               "may_launch: its names take" & Natural'Image (Result.Launch.Length) & " bytes, over the" &
+               Natural'Image (CuBit.Launch_Authority.Maximum_Table_Bytes) & " a launch table holds",
+               "list fewer or shorter program names");
+            Result.Launch := (others => <>);
+         else
+            declare
+               Bytes : CuBit.Launch_Authority.Table_Bytes (1 .. Result.Launch.Length);
+            begin
+               for I in Bytes'Range loop Bytes (I) := Result.Launch.Data (I); end loop;
+               if not CuBit.Launch_Authority.Valid (Bytes) then
+                  Result.Success := False;
+                  Result.Diagnostic := Invalid_Launch;
+                  Result.Launch := (others => <>);
+               end if;
+            end;
+         end if;
       end if;
       --  .cubit.description: the descriptor CuBit.Program_Descriptions decodes;
       --  emitted only when it decodes.

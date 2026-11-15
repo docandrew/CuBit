@@ -240,7 +240,7 @@ package body Control_Host is
       Status : CCL.Periodic_Programs.Load_Result;
       use type CCL.Periodic_Programs.Load_Result;
       Slot : Slot_Index;
-      Program : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+      Program : String (1 .. CCL.Language.DEFAULT_SOURCE_ROOM);
       Length : Natural;
       Plain : Boolean;
    begin

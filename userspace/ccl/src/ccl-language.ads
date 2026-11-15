@@ -16,14 +16,23 @@ package CCL.Language with
    SPARK_Mode => On
 is
 
-   MAX_SOURCE_LENGTH : constant := 8_192;
-   MAX_AST_NODES     : constant := 512;
+   --  One program's source and syntax tree: named ceilings (CAPACITY, the
+   --  most one analysis may hold) and the room of the default
+   --  Analysis_Result subtype. Storage is sized by the input
+   --  (Sized_Analysis's discriminants): Analysis_Of gives the source and
+   --  its literals' text exactly the source's length, and doubles the node
+   --  room from the default until the tree fits or the ceiling refuses it
+   --  (AST_Full, Source_Too_Long).
+   SOURCE_CEILING      : constant := 2 ** 24;
+   NODE_CEILING        : constant := 2 ** 20;
+   DEFAULT_SOURCE_ROOM : constant := 8_192;
+   DEFAULT_NODE_ROOM   : constant := 512;
    MAX_NAME_LENGTH   : constant := CCL.Types.Maximum_Name_Length;
    MAX_BINDINGS      : constant := 32;
    MAX_NESTING       : constant := 32;
    MAX_TEXT_BYTES    : constant := CCL.Host_Values.Maximum_Text_Length;
    --  All string literals of one program together: bounded by its source.
-   MAX_PROGRAM_TEXT  : constant := MAX_SOURCE_LENGTH;
+   MAX_PROGRAM_TEXT  : constant := SOURCE_CEILING;
    MAX_FUNCTIONS     : constant := 16;
    MAX_PARAMETERS    : constant := 8;
    --  Enclosing values one anonymous function may capture.
@@ -40,12 +49,14 @@ is
    --  Shared, bounded frontend representation.  Both direct interpretation
    --  and CCLB compilation consume this tree, so syntax and type semantics
    --  cannot silently diverge between the two execution modes.
-   subtype Node_Index is Natural range 0 .. MAX_AST_NODES - 1;
-   NO_NODE : constant Natural := MAX_AST_NODES;
+   subtype Node_Index is Natural range 0 .. NODE_CEILING - 1;
+   NO_NODE : constant Natural := NODE_CEILING;
 
    subtype Node_Reference is Natural range 0 .. NO_NODE;
-   subtype Node_Count is Natural range 0 .. MAX_AST_NODES;
-   subtype Source_Position is Natural range 0 .. MAX_SOURCE_LENGTH + 1;
+   subtype Node_Count is Natural range 0 .. NODE_CEILING;
+   subtype Source_Position is Natural range 0 .. SOURCE_CEILING + 1;
+   --  The room of an analysis's source (a Sized_Analysis discriminant).
+   subtype Source_Room is Positive range 1 .. SOURCE_CEILING;
 
    subtype Name_Buffer is String (1 .. MAX_NAME_LENGTH);
 
@@ -307,17 +318,18 @@ is
       Piped           : Boolean := False;
    end record;
 
-   type Node_Array is array (Node_Index) of Node;
+   type Node_Array is array (Node_Index range <>) of Node;
 
-   type Syntax_Tree is record
+   --  Room for Last_Node + 1 nodes and Text_Room bytes of literal text.
+   type Syntax_Tree (Last_Node : Node_Index; Text_Room : Source_Room) is record
       Length : Node_Count := 0;
-      Nodes  : Node_Array := [others => (others => <>)];
+      Nodes  : Node_Array (0 .. Last_Node) := [others => (others => <>)];
       Root   : Node_Reference := NO_NODE;
       Function_Count : Natural range 0 .. MAX_FUNCTIONS := 0;
       Functions : Function_Array := [others => (others => <>)];
       Types : CCL.Types.Registry;
       Text_Bytes_Used : Natural range 0 .. MAX_PROGRAM_TEXT := 0;
-      Text_Data : String (1 .. MAX_PROGRAM_TEXT) :=
+      Text_Data : String (1 .. Text_Room) :=
         [others => Character'Val (0)];
    end record;
 
@@ -468,57 +480,78 @@ is
       Analysis_Parse_Failed,
       Analysis_Type_Check_Failed);
 
-   type Analysis_Result is private;
+   --  An analysis whose storage holds Source_Room bytes of source (and of
+   --  its literals' text) and Last_Node + 1 syntax nodes. Analysis_Result is
+   --  the default room; Analysis_Of sizes one by its source.
+   type Sized_Analysis (Source_Room : CCL.Language.Source_Room; Last_Node : Node_Index) is private;
+   subtype Analysis_Result is Sized_Analysis
+     (Source_Room => DEFAULT_SOURCE_ROOM, Last_Node => DEFAULT_NODE_ROOM - 1);
+   --  The node room after Room (Last_Node + 1) doubles, within the ceiling.
+   function Grown_Node_Room (Last_Node : Node_Index) return Node_Index is
+     (if Last_Node >= NODE_CEILING / 2 then NODE_CEILING - 1 else 2 * Last_Node + 1);
 
    function Analysis_Status_Of
-     (Result : Analysis_Result) return Analysis_Status;
+     (Result : Sized_Analysis) return Analysis_Status;
 
    function Analysis_Diagnostic
-     (Result : Analysis_Result) return Diagnostic_Code;
+     (Result : Sized_Analysis) return Diagnostic_Code;
 
    function Analysis_Diagnostic_Position
-     (Result : Analysis_Result) return Natural;
+     (Result : Sized_Analysis) return Natural;
 
    function Analysis_Node_Count
-     (Result : Analysis_Result) return Node_Count;
+     (Result : Sized_Analysis) return Node_Count;
 
    function Analysis_Root
-     (Result : Analysis_Result) return Node_Reference;
+     (Result : Sized_Analysis) return Node_Reference;
    function Analysis_Diagnostic_Subject
-     (Result : Analysis_Result) return Name;
+     (Result : Sized_Analysis) return Name;
    --  For a type mismatch: the type wanted and the type given.
-   function Analysis_Diagnostic_Expected (Result : Analysis_Result) return Name;
-   function Analysis_Diagnostic_Found (Result : Analysis_Result) return Name;
-   function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry;
-   function Analysis_Resource_Policies (Result : Analysis_Result)
+   function Analysis_Diagnostic_Expected (Result : Sized_Analysis) return Name;
+   function Analysis_Diagnostic_Found (Result : Sized_Analysis) return Name;
+   function Analysis_Types (Result : Sized_Analysis) return CCL.Types.Registry;
+   function Analysis_Resource_Policies (Result : Sized_Analysis)
      return CCL.Resource_Policies.Policy_Table;
 
    --  The analysis's function table (named functions and lifted lambdas).
-   function Analysis_Function_Count (Result : Analysis_Result) return Natural
+   function Analysis_Function_Count (Result : Sized_Analysis) return Natural
      with Post => Analysis_Function_Count'Result <= MAX_FUNCTIONS;
    function Analysis_Function
-     (Result : Analysis_Result; Id : Function_Index) return Function_Declaration;
+     (Result : Sized_Analysis; Id : Function_Index) return Function_Declaration;
 
    function Analysis_Node
-     (Result : Analysis_Result;
+     (Result : Sized_Analysis;
       Index  : Node_Index) return Node;
 
    --  The source the analysis read (empty when it was too long to keep).
-   function Analysis_Source (Result : Analysis_Result) return String;
+   function Analysis_Source (Result : Sized_Analysis) return String;
 
    --  A string literal node's text (empty for any other node).
    function Analysis_Literal
-     (Result : Analysis_Result;
+     (Result : Sized_Analysis;
       Index  : Node_Index) return String;
 
    procedure Analyze
      (Source : String;
-      Result : out Analysis_Result);
+      Result : out Sized_Analysis);
 
    procedure Analyze
      (Source             : String;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Result             : out Analysis_Result);
+      Result             : out Sized_Analysis);
+
+   --  Source analysed in storage sized by it: the source's own length (its
+   --  literals' text too), and a node room doubled from the default until
+   --  its tree fits. AST_Full and Source_Too_Long then mean a named
+   --  ceiling (NODE_CEILING, SOURCE_CEILING), never a fixed buffer.
+   function Analysis_Of
+     (Source : String; Visible_Interfaces : CCL.Catalog.Interface_Catalog) return Sized_Analysis;
+
+   --  The same, handing the analysis to Use_Analysis where it was built,
+   --  never copied out: one analysis on the stack, as a fixed room had.
+   generic
+      with procedure Use_Analysis (Analysis : Sized_Analysis);
+   procedure With_Analysis (Source : String; Visible_Interfaces : CCL.Catalog.Interface_Catalog);
 
    type Interpretation_Result is record
       Status         : Interpretation_Status := Parse_Failed;
@@ -604,15 +637,15 @@ is
 private
 
 
-   type Analysis_Result is record
+   type Sized_Analysis (Source_Room : CCL.Language.Source_Room; Last_Node : Node_Index) is record
       Resource_Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
       Status              : Analysis_Status := Analysis_Parse_Failed;
       Diagnostic          : Diagnostic_Code := No_Diagnostic;
-      Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
+      Diagnostic_Position : Natural range 0 .. SOURCE_CEILING + 1 := 0;
       Diagnostic_Subject  : Name;
       Diagnostic_Expected, Diagnostic_Found : Name;
-      Tree                : Syntax_Tree;
-      Source_Length : Natural range 0 .. MAX_SOURCE_LENGTH := 0;
-      Source_Text : String (1 .. MAX_SOURCE_LENGTH) := [others => ' '];
+      Tree                : Syntax_Tree (Last_Node, Source_Room);
+      Source_Length : Natural range 0 .. SOURCE_CEILING := 0;
+      Source_Text : String (1 .. Source_Room) := [others => ' '];
    end record;
 end CCL.Language;

@@ -100,7 +100,7 @@ begin
    Host.Fail := False; Host.Wrong_Type := True;
    Run ("(clock.monotonic-ms)");
    pragma Assert (Outcome.Status = Host_Result_Type_Mismatch and Host.Calls = 7);
-   Run (String'(1 .. MAX_SOURCE_LENGTH + 1 => 'a'));
+   Run (String'(1 .. DEFAULT_SOURCE_ROOM + 1 => 'a'));
    pragma Assert (Outcome.Status = Parse_Failed and Host.Calls = 7);
    declare
       Analysis : Analysis_Result;

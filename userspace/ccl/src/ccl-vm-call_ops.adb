@@ -87,12 +87,12 @@ package body CCL.VM.Call_Ops with SPARK_Mode => On is
 
    --  List_Apply at PC: start an iteration, or resume it with the result
    --  of its last call; then call for the next element or finish.
-   procedure Run_Apply (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
+   procedure Run_Apply (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs),
           Post => (Fuel_Limit (State) = Fuel_Limit (State)'Old and
               CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Phase (State.Import_Lifecycle)'Old);
-   procedure Run_Apply (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
+   procedure Run_Apply (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Types : constant CCL.Types.Registry := Item.Content.Data_Types;
       Good : Boolean := True;
@@ -308,7 +308,7 @@ package body CCL.VM.Call_Ops with SPARK_Mode => On is
       end;
    end Run_Apply;
 
-   procedure Run_Call (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
+   procedure Run_Call (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Stack_Result : Runtime_Stacks.Operation_Result;
       List_Status : List_Regions.Operation_Result;

@@ -14,8 +14,10 @@ is
    use type CCL.Language.Node_Kind;
    use type CCL.Language.Static_Type;
    use type CCL.VM.Program_Length;
+   use type CCL.VM.Instruction_Index;
    use type CCL.VM.Local_Count;
    use type CCL.VM.Match_Count;
+   use type CCL.VM.Function_Count;
    use type CCL.VM.Constant_Count;
    use type CCL.Host_Values.Value_Kind;
    use type CCL.Debug_Maps.Add_Result;
@@ -49,23 +51,35 @@ is
    type Local_Environment is
      array (CCL.VM.Local_Count range 0 .. CCL.Language.MAX_BINDINGS - 1) of Local_Binding;
 
-   procedure Compile
-     (Analysis : CCL.Language.Analysis_Result;
-      Result   : out Compilation_Result)
+   --  Compile into Result, whose rooms are Last_Instruction, Last_Constant,
+   --  Text_Room and Last_Entry (its discriminants, passed as constants so
+   --  the program's storage is constrained by them).
+   procedure Compile_In
+     (Analysis : CCL.Language.Sized_Analysis;
+      Last_Instruction : CCL.VM.Instruction_Index; Last_Constant : CCL.VM.Constant_Index;
+      Text_Room : CCL.VM.Constant_Text_Room; Last_Entry : CCL.Debug_Maps.Entry_Index;
+      Result   : out Sized_Compilation)
+     with Pre => Result.Last_Instruction = Last_Instruction and then Result.Last_Constant = Last_Constant
+                 and then Result.Text_Room = Text_Room and then Result.Last_Entry = Last_Entry;
+   procedure Compile_In
+     (Analysis : CCL.Language.Sized_Analysis;
+      Last_Instruction : CCL.VM.Instruction_Index; Last_Constant : CCL.VM.Constant_Index;
+      Text_Room : CCL.VM.Constant_Text_Room; Last_Entry : CCL.Debug_Maps.Entry_Index;
+      Result   : out Sized_Compilation)
    is
       Status  : Compilation_Status := Compilation_Succeeded;
-      Program : CCL.VM.Program;
+      Program : CCL.VM.Sized_Program (Last_Instruction, Last_Constant, Text_Room);
       Failed_Node : CCL.Language.Node_Reference := CCL.Language.NO_NODE;
       Failed_Position : CCL.Language.Source_Position := 0;
       Environment : Local_Environment := [others => (others => <>)];
       Environment_Length : CCL.VM.Local_Count := 0;
       Next_Local : CCL.VM.Local_Count := 0;
-      Debug : CCL.Debug_Maps.Debug_Map;
+      Debug : CCL.Debug_Maps.Debug_Map (Last_Entry);
       Linkage : CCL.Catalog.Linkage_Table;
       Resource_Tags : CCL.Resource_Policies.Binding_Map := [others => 0];
       Resource_Roots : CCL.Resource_Policies.Selection := [others => False];
       Layout_Result : CCL.Resource_Policies.Layout_Result;
-      Checked : CCL.VM.Validated_Program;
+      Checked : CCL.VM.Sized_Validated_Program (Last_Instruction, Last_Constant, Text_Room);
       Validation : CCL.VM.Validation_Error;
       Type_Total : CCL.Resource_Policies.Layout_Count;
       --  Compiling a function body: bindings live on the operand stack,
@@ -140,7 +154,9 @@ is
       begin
          if Status /= Compilation_Succeeded then
             return;
-         elsif Program.Length = CCL.VM.MAX_INSTRUCTIONS then
+         elsif Program.Length >= CCL.VM.Code_Room (Program) or else
+           CCL.VM.Instruction_Index (Program.Length) not in Program.Code'Range
+         then
             Fail (Program_Full, CCL.Language.NO_NODE);
          else
             Program.Code (CCL.VM.Instruction_Index (Program.Length)) :=
@@ -186,13 +202,27 @@ is
          end if;
       end Emit_Name;
 
+      --  Jump at Position now goes to To (a position Mark_Target gave, so
+      --  inside the program's code).
+      procedure Patch (Position, To : CCL.VM.Instruction_Index)
+        with Post => Program.Length = Program.Length'Old and then
+                     Program.Constants_Length = Program.Constants_Length'Old and then
+                     Program.Matches_Length = Program.Matches_Length'Old and then
+                     Program.Functions_Length = Program.Functions_Length'Old;
+      procedure Patch (Position, To : CCL.VM.Instruction_Index) is
+      begin
+         if Position <= Program.Code'Last then
+            Program.Code (Position).Target := To;
+         end if;
+      end Patch;
+
       procedure Mark_Target
         (Position : out CCL.VM.Instruction_Index;
          Ok       : out Boolean)
       is
       begin
          Ok := Status = Compilation_Succeeded and then
-           Program.Length < CCL.VM.MAX_INSTRUCTIONS;
+           Program.Length < CCL.VM.Code_Room (Program);
          if Ok then
             Position := CCL.VM.Instruction_Index (Program.Length);
          else
@@ -309,7 +339,9 @@ is
                   end loop;
                   Mark_Target (Target, Ok);
                   if Ok then
-                     for A in 1 .. D.Count loop Program.Code (Exits (A)).Target := Target; end loop;
+                     for A in 1 .. D.Count loop
+                        Patch (Exits (A), Target);
+                     end loop;
                   end if;
                end;
             when CCL.Language.Match_Arm => Fail (Malformed_Typed_Tree, Index);
@@ -393,12 +425,12 @@ is
                   Mark_Target (Target, Ok);
                end if;
                if Ok then
-                  Program.Code (False_Jump).Target := Target;
+                  Patch (False_Jump, Target);
                   Emit_Node (Item.Third, Depth + 1, True, Stack_Base);
                   Mark_Target (Target, Ok);
                end if;
                if Ok then
-                  Program.Code (End_Jump).Target := Target;
+                  Patch (End_Jump, Target);
                end if;
 
             when CCL.Language.Name_Reference =>
@@ -743,7 +775,7 @@ is
                   Mark_Target (Target, Ok);
                end if;
                if Ok then
-                  Program.Code (False_Jump).Target := Target;
+                  Patch (False_Jump, Target);
                   if Item.Kind = CCL.Language.And_Form then
                      Emit (CCL.VM.Push_Boolean, 0);
                   else
@@ -752,7 +784,7 @@ is
                   Mark_Target (Target, Ok);
                end if;
                if Ok then
-                  Program.Code (End_Jump).Target := Target;
+                  Patch (End_Jump, Target);
                end if;
 
             when CCL.Language.Builtin_Form =>
@@ -828,7 +860,7 @@ is
                   Part : CCL.Language.Node;
                   Total : Natural range 0 .. CCL.VM.DEFAULT_LIST_ELEMENTS := 0;
                begin
-                  for Step in 0 .. CCL.Language.MAX_AST_NODES loop
+                  for Step in 0 .. CCL.Language.Analysis_Node_Count (Analysis) loop
                      exit when Chunk = CCL.Language.NO_NODE;
                      Read_Node (Chunk, Part);
                      if Part.Kind /= CCL.Language.List_Construct or else
@@ -842,7 +874,7 @@ is
                   Emit (CCL.VM.New_List, Interfaces.Integer_64 (Total), Data_Type => Item.Static_Kind);
                   Chunk := Index;
                   Total := 0;
-                  for Step in 0 .. CCL.Language.MAX_AST_NODES loop
+                  for Step in 0 .. CCL.Language.Analysis_Node_Count (Analysis) loop
                      exit when Chunk = CCL.Language.NO_NODE or else Status /= Compilation_Succeeded;
                      Read_Node (Chunk, Part);
                      for P in 1 .. Part.Element_Count loop
@@ -878,7 +910,7 @@ is
                   Found : CCL.VM.Constant_Count := Program.Constants_Length;
                   Used : Natural := 0;
                begin
-                  for C in 0 .. Program.Constants_Length - 1 loop
+                  for C in 0 .. CCL.VM.Constant_Count'Min (Program.Constants_Length, CCL.VM.Constant_Room (Program)) - 1 loop
                      declare
                         K : constant CCL.VM.Text_Constant := Program.Constants (C);
                         First : constant Natural := Natural (K.First);
@@ -888,7 +920,7 @@ is
                            Used := First + Length - 1;
                         end if;
                         if Found = Program.Constants_Length and then Length = Text'Length and then
-                          CCL.VM.In_Pool (K) and then
+                          CCL.VM.In_Pool (K, Program.Text_Room) and then
                           Program.Constant_Text (First .. First + Length - 1) = Text
                         then
                            Found := C;
@@ -896,8 +928,8 @@ is
                      end;
                   end loop;
                   if Found = Program.Constants_Length then
-                     if Program.Constants_Length = CCL.VM.MAX_CONSTANTS or else
-                       Text'Length > CCL.VM.MAX_CONSTANT_BYTES - Used
+                     if Program.Constants_Length >= CCL.VM.Constant_Room (Program) or else
+                       Used > Program.Text_Room or else Text'Length > Program.Text_Room - Used
                      then
                         Fail (Program_Full, Index, Item.Source_Position); return;
                      end if;
@@ -969,9 +1001,14 @@ is
          end if;
       end Emit_Node;
    begin
-      Result := (others => <>);
+      Result.Status := Analysis_Failed;
+      Result.Diagnostic_Node := CCL.Language.NO_NODE;
+      Result.Source_Position := 0;
       CCL.Debug_Maps.Initialize (Debug);
       CCL.Catalog.Initialize (Linkage);
+      Result.Program := Program;
+      Result.Debug := Debug;
+      Result.Linkage := Linkage;
       if CCL.Language.Analysis_Status_Of (Analysis) /=
         CCL.Language.Analysis_Succeeded
       then
@@ -1052,17 +1089,79 @@ is
             Emit (CCL.VM.Return_Function);
          end;
       end loop;
-      In_Function := False;
       if Status = Compilation_Succeeded and then (for some Needed of Resource_Roots => Needed) then
          CCL.VM.Verify (Program, Checked, Validation);
          if Validation /= CCL.VM.Valid then Status := Ownership_Check_Failed; end if;
       end if;
-      Result :=
-        (Status => Status,
-         Diagnostic_Node => Failed_Node,
-         Source_Position => Failed_Position,
-         Program => Program,
-         Linkage => Linkage,
-         Debug => Debug);
+      Result.Status := Status;
+      Result.Diagnostic_Node := Failed_Node;
+      Result.Source_Position := Failed_Position;
+      Result.Program := Program;
+      Result.Linkage := Linkage;
+      Result.Debug := Debug;
+   end Compile_In;
+
+   procedure Compile
+     (Analysis : CCL.Language.Sized_Analysis;
+      Result   : out Sized_Compilation)
+   is
+   begin
+      Compile_In (Analysis, Result.Last_Instruction, Result.Last_Constant, Result.Text_Room,
+                  Result.Last_Entry, Result);
    end Compile;
+
+   function First_Rooms (Analysis : CCL.Language.Sized_Analysis) return Program_Rooms is
+      Nodes : constant Natural := CCL.Language.Analysis_Node_Count (Analysis);
+   begin
+      return (Last_Entry =>
+                (if Nodes = 0 then 0 else Natural'Min (Nodes, CCL.Debug_Maps.ENTRY_CEILING) - 1),
+              others => <>);
+   end First_Rooms;
+
+   function Outgrown (Rooms : Program_Rooms; Status : Compilation_Status) return Boolean is
+     ((Status = Program_Full and then
+       (Rooms.Last_Instruction /= CCL.VM.Instruction_Index'Last or else
+        Rooms.Last_Constant /= CCL.VM.Constant_Index'Last or else
+        Rooms.Text_Room /= CCL.VM.Constant_Text_Room'Last)) or else
+      (Status = Debug_Map_Full and then Rooms.Last_Entry /= CCL.Debug_Maps.Entry_Index'Last));
+
+   function Grown (Rooms : Program_Rooms; Status : Compilation_Status) return Program_Rooms is
+     (if Status = Program_Full
+      then (Last_Instruction => CCL.VM.Grown_Code (Rooms.Last_Instruction),
+            Last_Constant => CCL.VM.Grown_Constants (Rooms.Last_Constant),
+            Text_Room => CCL.VM.Grown_Text (Rooms.Text_Room),
+            Last_Entry => Rooms.Last_Entry)
+      else (Rooms with delta Last_Entry => CCL.Debug_Maps.Grown_Entries (Rooms.Last_Entry)));
+
+   --  A convenience over Compile (which need not terminate, being
+   --  recursive over the tree): not itself proved.
+   function Compilation_Of (Analysis : CCL.Language.Sized_Analysis) return Sized_Compilation
+     with SPARK_Mode => Off
+   is
+      --  One attempt in Rooms (a parameter, so it may constrain storage).
+      function Attempt_In (Rooms : Program_Rooms) return Sized_Compilation
+        with Post => Attempt_In'Result.Last_Instruction = Rooms.Last_Instruction;
+      function Attempt_In (Rooms : Program_Rooms) return Sized_Compilation is
+         Attempt : Sized_Compilation
+           (Rooms.Last_Instruction, Rooms.Last_Constant, Rooms.Text_Room, Rooms.Last_Entry);
+      begin
+         Compile (Analysis, Attempt);
+         return Attempt;
+      end Attempt_In;
+      Rooms : Program_Rooms := First_Rooms (Analysis);
+      Attempts_Left : Natural := GROWTH_STEPS;
+   begin
+      loop
+         pragma Loop_Variant (Decreases => Attempts_Left);
+         declare
+            Attempt : constant Sized_Compilation := Attempt_In (Rooms);
+         begin
+            if not Outgrown (Rooms, Attempt.Status) or else Attempts_Left = 0 then
+               return Attempt;
+            end if;
+            Rooms := Grown (Rooms, Attempt.Status);
+         end;
+         Attempts_Left := Attempts_Left - 1;
+      end loop;
+   end Compilation_Of;
 end CCL.Compiler;

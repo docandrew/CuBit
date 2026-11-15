@@ -97,9 +97,10 @@ package body Asset_Catalogs is
    is
       Schema : constant String := W.SOURCES_TYPE_SOURCE;
       Program : constant String := Schema & LF & Source;
-      Checked : CCL.Language.Analysis_Result;
       Sources_Type : CCL.Types.Type_Reference;
-      Catalog_View : CCL.Catalog.Interface_Catalog;
+      Catalog_View : constant CCL.Catalog.Interface_Catalog := CCL.Catalog.Empty_Catalog;
+      --  The analysis, in storage sized by the program.
+      Checked : constant CCL.Language.Sized_Analysis := CCL.Language.Analysis_Of (Program, Catalog_View);
       Grants : CCL.Catalog.Granted_Bindings;
       Contract : CCL.Objects.Binding;
       Published, Captured : Boolean;
@@ -182,14 +183,7 @@ package body Asset_Catalogs is
       Success := True;
       Why := (others => <>);
       Plan := Null_Unbounded_String;
-      if Program'Length > CCL.Language.MAX_SOURCE_LENGTH then
-         Fail ("the source list and its schema are longer than" &
-               Natural'Image (CCL.Language.MAX_SOURCE_LENGTH) & " characters");
-         return;
-      end if;
-      CCL.Catalog.Initialize (Catalog_View);
       CCL.Catalog.Initialize (Grants);
-      CCL.Language.Analyze (Program, Catalog_View, Checked);
       if CCL.Language.Analysis_Status_Of (Checked) /= CCL.Language.Analysis_Succeeded then
          Fail ("not a " & W.SOURCES_ROOT_TYPE_NAME & ": character" &
                Natural'Image (Natural'Max (0, CCL.Language.Analysis_Diagnostic_Position (Checked) - Schema'Length - 1)) &

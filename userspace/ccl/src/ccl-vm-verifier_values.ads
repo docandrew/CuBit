@@ -11,7 +11,7 @@ private package CCL.VM.Verifier_Values with SPARK_Mode => On is
    --  Push_Integer, Push_Boolean, integer arithmetic, comparisons, Not_Boolean,
    --  Drop and Check_Range.
    procedure Step_Scalar
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
      with Global => null,
           Pre => Ins.Op in Push_Integer | Push_Boolean | Add_Integer | Subtract_Integer | Multiply_Integer |
                    Divide_Integer | Modulo_Integer | Equal_Integer | Less_Integer | Less_Equal_Integer |
@@ -20,7 +20,7 @@ private package CCL.VM.Verifier_Values with SPARK_Mode => On is
 
    --  Make_Variant, Equal_Variant, Project_Field and Make_Node.
    procedure Step_Composite
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
      with Global => null,
           Pre => Ins.Op in Make_Variant | Equal_Variant | Project_Field | Make_Node,
           Post => (if Error'Old /= Valid then Error = Error'Old);
@@ -36,7 +36,7 @@ private package CCL.VM.Verifier_Values with SPARK_Mode => On is
    --  target gets the state with its payload pushed. Switch is the
    --  instruction's control flow for the ownership pass.
    procedure Step_Switch
-     (Candidate : Program; PC : Instruction_Index; Ins : Instruction; Limit : Program_Length;
+     (Candidate : Sized_Program; PC : Instruction_Index; Ins : Instruction; Limit : Program_Length;
       State : in out Abstract_State; States : in out State_Table; Error : in out Validation_Error;
       Switch : out CCL.Ownership.Bytecode.Instruction)
      with Global => null,

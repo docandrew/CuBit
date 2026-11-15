@@ -89,9 +89,10 @@ package body Setting_Catalogs is
       Success : out Boolean; Why : out CuBit.Failures.Failure)
    is
       Program : constant String := Schema & ASCII.LF & Source;
-      Checked : CCL.Language.Analysis_Result;
       Catalog_Type : CCL.Types.Type_Reference;
-      Catalog_View : CCL.Catalog.Interface_Catalog;
+      Catalog_View : constant CCL.Catalog.Interface_Catalog := CCL.Catalog.Empty_Catalog;
+      --  The analysis, in storage sized by the program.
+      Checked : constant CCL.Language.Sized_Analysis := CCL.Language.Analysis_Of (Program, Catalog_View);
       Grants : CCL.Catalog.Granted_Bindings;
       Contract : CCL.Objects.Binding;
       Published, Captured : Boolean;
@@ -195,14 +196,7 @@ package body Setting_Catalogs is
    begin
       Success := True;
       Why := (others => <>);
-      if Program'Length > CCL.Language.MAX_SOURCE_LENGTH then
-         Fail ("the catalog and its schema are longer than" & Natural'Image (CCL.Language.MAX_SOURCE_LENGTH) &
-               " characters", "split the file");
-         return;
-      end if;
-      CCL.Catalog.Initialize (Catalog_View);
       CCL.Catalog.Initialize (Grants);
-      CCL.Language.Analyze (Program, Catalog_View, Checked);
       if CCL.Language.Analysis_Status_Of (Checked) /= CCL.Language.Analysis_Succeeded then
          Fail ("not a Setting_Catalog: character" &
                Natural'Image (Natural'Max (0, CCL.Language.Analysis_Diagnostic_Position (Checked) - Schema'Length - 1)) &

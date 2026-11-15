@@ -58,7 +58,7 @@ procedure Main is
    end Run_Source;
 
    procedure Run_Arguments is
-      Buffer : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+      Buffer : String (1 .. CCL.Language.DEFAULT_SOURCE_ROOM);
       Length : Natural := 0;
       Ok     : Boolean;
    begin
@@ -91,7 +91,7 @@ procedure Main is
    end Run_Arguments;
 
    procedure Run_REPL is
-      Buffer : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+      Buffer : String (1 .. CCL.Language.DEFAULT_SOURCE_ROOM);
       Last   : Natural;
       Ignore : Boolean;
    begin

@@ -50,7 +50,7 @@ begin
    pragma Assert (Accepted and Next_Deadline (P) = 10010 and Completed_Runs (P) = 2);
    Claim_Due (P, 9011, T, Ready); pragma Assert (not Ready);
    Stop (P); pragma Assert (State (P) = Stopped);
-   Load (P, [1 .. CCL.Language.MAX_SOURCE_LENGTH + 1 => 'x'], 20000, 1000, 64, Loaded_Status);
+   Load (P, [1 .. CCL.Language.DEFAULT_SOURCE_ROOM + 1 => 'x'], 20000, 1000, 64, Loaded_Status);
    pragma Assert (Loaded_Status = Source_Too_Long and State (P) = Stopped);
    pragma Assert (Source_Text (P) = "(clock.monotonic-ms)");
    Claim_Due (P, 20000, T, Ready); pragma Assert (not Ready);

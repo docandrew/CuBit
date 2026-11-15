@@ -309,7 +309,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Store;
 
    procedure Initialize
-     (Item : Validated_Program; Fuel : Natural; State : in out Sized_Machine; Growable : Boolean := False) is
+     (Item : Sized_Validated_Program; Fuel : Natural; State : in out Sized_Machine; Growable : Boolean := False) is
    begin
       CCL.VM.Initialize (Item, Fuel, State.Core);
       State.Initialized := True;
@@ -320,7 +320,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
      (CCL.VM.Snapshot (State.Core));
 
    procedure Inspect
-     (Item : Validated_Program; State : Sized_Machine;
+     (Item : Sized_Validated_Program; State : Sized_Machine;
       Result : out Inspection_Snapshot) is
    begin
       Result := (others => <>);
@@ -331,7 +331,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Inspect;
 
    procedure Continue_Execution_For
-     (Item : Validated_Program; State : in out Sized_Machine;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine;
       Instructions : Natural; Result : out Execution_Result) is
    begin
       Result := (others => <>);
@@ -360,7 +360,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       end if;
    end Continue_Execution_For;
 
-   function Pending_Call (Item : Validated_Program; State : Sized_Machine)
+   function Pending_Call (Item : Sized_Validated_Program; State : Sized_Machine)
      return Execution_Result is
       Position : constant Machine_Snapshot := Snapshot (State.Core);
    begin
@@ -378,14 +378,14 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
         others => <>);
    end Pending_Call;
 
-   function Ready_For_Completion (Item : Validated_Program; State : Sized_Machine) return Boolean is
+   function Ready_For_Completion (Item : Sized_Validated_Program; State : Sized_Machine) return Boolean is
      (State.Initialized and then Is_Well_Formed (Item, State.Core) and then
       State.Core.Waiting and then not State.Core.Terminal and then
       (not State.Core.Waiting_Owned or else
        CCL.Imports.Phase (State.Core.Import_Lifecycle) = CCL.Imports.Import_Accepted));
 
    function Accepts_Object_Result
-     (Item : Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding)
+     (Item : Sized_Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding)
       return Boolean is
      (Pending_Call (Item, State).Status = Waiting_For_Host and then
       CCL.Objects.Matches_Type (Contract, Item.Content.Data_Types,
@@ -447,7 +447,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       Need.Lists <= Natural (State.List_Room) - List_Regions.Live_Values (State.Lists));
 
    procedure Needed_Rooms
-     (Item : Validated_Program; State : Sized_Machine; View : CCL.Objects.Views.Sized_Snapshot;
+     (Item : Sized_Validated_Program; State : Sized_Machine; View : CCL.Objects.Views.Sized_Snapshot;
       Wanted : out Rooms; Possible : out Boolean)
    is
       pragma Unreferenced (Item);
@@ -507,7 +507,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Grow;
 
    procedure Complete_Captured
-     (Item : Validated_Program; State : in out Sized_Machine;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine;
       Contract : CCL.Objects.Binding; View : CCL.Objects.Views.Sized_Snapshot; Accepted : Boolean;
       Fits : out Boolean)
    is
@@ -543,7 +543,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Captured;
 
    procedure Result_Literal
-     (Item : Validated_Program; State : Sized_Machine; Output : out String; Printed : out Boolean) is
+     (Item : Sized_Validated_Program; State : Sized_Machine; Output : out String; Printed : out Boolean) is
    begin
       Output := [others => ' '];
       Printed := State.Initialized and then State.Core.Terminal and then
@@ -554,7 +554,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Result_Literal;
 
    procedure Complete_Object
-     (Item : Validated_Program; State : in out Sized_Machine;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine;
       Contract : CCL.Objects.Binding; Response : CCL.Objects.Image; Accepted : Boolean)
    is
       Good : Boolean;
@@ -589,7 +589,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Object;
 
    procedure Complete_Text
-     (Item : Validated_Program; State : in out Sized_Machine; Response : String; Accepted : Boolean)
+     (Item : Sized_Validated_Program; State : in out Sized_Machine; Response : String; Accepted : Boolean)
    is
       Good : Boolean;
       Result : CCL.VM.Value := (Kind => Text_Value, others => <>);
@@ -611,7 +611,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Text;
 
    procedure Complete_Stream_View
-     (Item : Validated_Program; State : in out Sized_Machine; Reply : CCL.Streams.View_Reply)
+     (Item : Sized_Validated_Program; State : in out Sized_Machine; Reply : CCL.Streams.View_Reply)
    is
       Good : Boolean := False;
       Result : CCL.VM.Value := (others => <>);
@@ -650,7 +650,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Stream_View;
 
    procedure Complete_Scalar
-     (Item : Validated_Program; State : in out Sized_Machine; Response : Value; Accepted : Boolean) is
+     (Item : Sized_Validated_Program; State : in out Sized_Machine; Response : Value; Accepted : Boolean) is
    begin
       if State.Initialized and then Is_Well_Formed (Item, State.Core) then
          CCL.VM.Complete_Host_Call (Item, State.Core, Response, Accepted);
@@ -658,7 +658,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Scalar;
 
    procedure Complete_Resource
-     (Item : Validated_Program; State : in out Sized_Machine;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine;
       Owner : CCL.Resources.Registry; Resource : CCL.Resources.Reference;
       Accepted : out Boolean) is
    begin
@@ -669,7 +669,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Complete_Resource;
 
    procedure Acknowledge_Host_Submission
-     (Item : Validated_Program; State : in out Sized_Machine; Accepted : Boolean) is
+     (Item : Sized_Validated_Program; State : in out Sized_Machine; Accepted : Boolean) is
    begin
       if State.Initialized and then Is_Well_Formed (Item, State.Core) then
          CCL.VM.Acknowledge_Host_Submission (Item, State.Core, Accepted);
@@ -677,7 +677,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Acknowledge_Host_Submission;
 
    procedure Export_Value
-     (Item : Validated_Program; State : Sized_Machine; Source : CCL.VM.Value;
+     (Item : Sized_Validated_Program; State : Sized_Machine; Source : CCL.VM.Value;
       Contract : CCL.Objects.Binding; Value : out CCL.Objects.Image; Accepted : out Boolean) is
    begin
       Value := CCL.Objects.Empty (Contract); Accepted := False;
@@ -708,7 +708,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Export_Value;
 
    procedure Export_Argument
-     (Item : Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding;
+     (Item : Sized_Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding;
       Value : out CCL.Objects.Image; Accepted : out Boolean) is
    begin
       Value := CCL.Objects.Empty (Contract); Accepted := False;
@@ -718,7 +718,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    end Export_Argument;
 
    procedure Export_Result
-     (Item : Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding;
+     (Item : Sized_Validated_Program; State : Sized_Machine; Contract : CCL.Objects.Binding;
       Value : out CCL.Objects.Image; Accepted : out Boolean) is
    begin
       Value := CCL.Objects.Empty (Contract); Accepted := False;

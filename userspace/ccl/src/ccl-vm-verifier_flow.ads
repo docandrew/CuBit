@@ -8,7 +8,7 @@ private package CCL.VM.Verifier_Flow with SPARK_Mode => On is
 
    --  Make_Closure, Call_Value and List_Apply.
    procedure Step_Closure
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
      with Global => null,
           Pre => Ins.Op in Make_Closure | Call_Value | List_Apply,
           Post => (if Error'Old /= Valid then Error = Error'Old);
@@ -17,7 +17,7 @@ private package CCL.VM.Verifier_Flow with SPARK_Mode => On is
    --  callee and the stack under its frame (Calls, Base_Max); a return ends
    --  the region's path (Falls_Through).
    procedure Step_Call
-     (Candidate : Program; Ins : Instruction; Region : Region_Index;
+     (Candidate : Sized_Program; Ins : Instruction; Region : Region_Index;
       State : in out Abstract_State; Error : in out Validation_Error;
       Calls : in out Call_Presence; Base_Max : in out Call_Demands; Falls_Through : in out Boolean)
      with Global => null,
@@ -35,14 +35,14 @@ private package CCL.VM.Verifier_Flow with SPARK_Mode => On is
 
    --  Invoke_Import.
    procedure Step_Import
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
      with Global => null,
           Pre => Ins.Op = Invoke_Import,
           Post => (if Error'Old /= Valid then Error = Error'Old);
 
    --  The local opcodes (their ownership is checked by the ownership pass).
    procedure Step_Local
-     (Candidate : Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
+     (Candidate : Sized_Program; Ins : Instruction; State : in out Abstract_State; Error : in out Validation_Error)
      with Global => null,
           Pre => Ins.Op in Initialize_Local | Copy_Local | Move_Local | Drop_Local | Borrow_Local_RO |
                    Return_Local_RO | Borrow_Local_RW | Return_Local_RW | Apply_Local_Disposition,

@@ -26,7 +26,7 @@ private package CCL.VM.List_Ops with SPARK_Mode => On is
      with Global => null,
           Post => CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Old);
 
-   procedure Run_List (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
+   procedure Run_List (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs) and then
                  Item.Content.Code (Regs.PC).Op in

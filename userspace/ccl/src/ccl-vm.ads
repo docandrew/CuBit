@@ -1,5 +1,6 @@
 with Interfaces;
 with CCL.Ownership;
+with CCL.Ownership.Bytecode;
 with CCL.Imports;
 with CCL.Bounded_Stacks;
 with CCL.Execution_Budgets;
@@ -20,9 +21,13 @@ is
    use type CCL.Types.Shape;
    use type CCL.Resources.Reference;
 
-   --  Stopgap (MET-002): 512, so the CCL hosts' manifests fit with their
-   --  metrics grants; drop when programs are sized by their input.
-   MAX_INSTRUCTIONS : constant := 512;
+   --  A program's code: a named ceiling (CAPACITY, the most one program may
+   --  hold) and the room of the default Program subtype. Storage is sized
+   --  by what a program holds (Sized_Program's discriminants): a compilation
+   --  starts at the default room and doubles it until the program fits or
+   --  the ceiling refuses it (CCL.Compiler.Program_Full).
+   INSTRUCTION_CEILING  : constant := CCL.Ownership.Bytecode.CODE_CEILING;
+   DEFAULT_INSTRUCTIONS : constant := CCL.Ownership.Bytecode.DEFAULT_CODE;
    --  Functions per program ("Functions" below).
    MAX_FUNCTIONS    : constant := 16;
    MAX_STACK_DEPTH  : constant := 64;
@@ -30,9 +35,9 @@ is
 
    --  Each dimension is its own type, so a count or index of one kind never
    --  flows into another without one of the named conversions below.
-   type Instruction_Index is mod MAX_INSTRUCTIONS;
+   type Instruction_Index is mod INSTRUCTION_CEILING;
    type Stack_Index is range 0 .. MAX_STACK_DEPTH - 1;
-   type Program_Length is range 0 .. MAX_INSTRUCTIONS;
+   type Program_Length is range 0 .. INSTRUCTION_CEILING;
    type Stack_Depth is range 0 .. MAX_STACK_DEPTH;
    type Import_Count is range 0 .. MAX_IMPORTS;
    subtype Import_Index is Import_Count range 0 .. MAX_IMPORTS - 1;
@@ -98,28 +103,33 @@ is
    TEXT_BYTE_CEILING   : constant := 2 ** 26;
    TEXT_VALUE_CEILING  : constant := 2 ** 21;
    MAX_RESULT_TEXT    : constant := MAX_HOST_TEXT;
-   --  Stopgap (MET-002): 64, so Desktop's typed manifest (with its metric
-   --  outlet) fits; drop when programs are sized by their input.
-   MAX_CONSTANTS      : constant := 64;
-   MAX_CONSTANT_BYTES : constant := 4_096;
+   --  The constant pool: its entries and its text, each a named ceiling
+   --  (CAPACITY) and the default Program subtype's room, grown as the code is.
+   CONSTANT_CEILING       : constant := 2 ** 16;
+   CONSTANT_BYTE_CEILING  : constant := 2 ** 24;
+   DEFAULT_CONSTANTS      : constant := 32;
+   DEFAULT_CONSTANT_BYTES : constant := 4_096;
    package Text_Regions is new CCL.Secondary_Stacks
      (Capacity => TEXT_BYTE_CEILING, Max_Values => TEXT_VALUE_CEILING,
       Max_String_Length => MAX_STRING_BYTES);
-   type Constant_Count is range 0 .. MAX_CONSTANTS;
-   subtype Constant_Index is Constant_Count range 0 .. MAX_CONSTANTS - 1;
+   type Constant_Count is range 0 .. CONSTANT_CEILING;
+   subtype Constant_Index is Constant_Count range 0 .. CONSTANT_CEILING - 1;
    --  Byte positions in the constant pool's text, one past its end for an
    --  empty constant there.
-   type Constant_Position is range 0 .. MAX_CONSTANT_BYTES + 1;
-   subtype Constant_Length is Constant_Position range 0 .. MAX_CONSTANT_BYTES;
-   subtype Constant_First is Constant_Position range 1 .. MAX_CONSTANT_BYTES + 1;
+   type Constant_Position is range 0 .. CONSTANT_BYTE_CEILING + 1;
+   subtype Constant_Length is Constant_Position range 0 .. CONSTANT_BYTE_CEILING;
+   subtype Constant_First is Constant_Position range 1 .. CONSTANT_BYTE_CEILING + 1;
+   --  The room of a pool's text (a Sized_Program discriminant).
+   subtype Constant_Text_Room is Positive range 1 .. CONSTANT_BYTE_CEILING;
    type Text_Constant is record
       First  : Constant_First := 1;
       Length : Constant_Length := 0;
    end record;
-   type Text_Constants is array (Constant_Index) of Text_Constant;
-   --  Whether a pool entry lies inside the pool's text.
-   function In_Pool (Item : Text_Constant) return Boolean is
-     (Item.Length <= MAX_CONSTANT_BYTES - (Item.First - 1));
+   type Text_Constants is array (Constant_Index range <>) of Text_Constant;
+   --  Whether a pool entry lies inside a pool text of Room bytes.
+   function In_Pool (Item : Text_Constant; Room : Constant_Text_Room) return Boolean is
+     (Item.First - 1 <= Constant_Position (Room) and then
+      Item.Length <= Constant_Position (Room) - (Item.First - 1));
    type Result_Text_Length is range 0 .. MAX_RESULT_TEXT;
    type Result_Text is record
       Length : Result_Text_Length := 0;
@@ -565,7 +575,12 @@ is
       Alternative : CCL.Types.Component_Count := 0;
    end record;
 
-   type Instruction_Array is array (Instruction_Index) of Instruction;
+   type Instruction_Array is array (Instruction_Index range <>) of Instruction;
+
+   --  The default rooms' last indexes (Program, Validated_Program).
+   DEFAULT_LAST_INSTRUCTION : constant Instruction_Index := DEFAULT_INSTRUCTIONS - 1;
+   DEFAULT_LAST_CONSTANT    : constant Constant_Index := DEFAULT_CONSTANTS - 1;
+
 
    Maximum_Matches : constant := 16;
    type Match_Count is range 0 .. Maximum_Matches;
@@ -612,9 +627,17 @@ is
    end record;
    type Function_Array is array (Function_Index) of Function_Declaration;
 
-   type Program is record
+   --  A program whose storage holds Last_Instruction + 1 instructions,
+   --  Last_Constant + 1 pool entries and Text_Room bytes of pool text: sized
+   --  by what it holds. Program is the default room every program starts
+   --  from; a larger one is a Sized_Program of the room it grew to.
+   type Sized_Program
+     (Last_Instruction : Instruction_Index;
+      Last_Constant    : Constant_Index;
+      Text_Room        : Constant_Text_Room) is
+   record
       Length : Program_Length := 0;
-      Code   : Instruction_Array := [others => (others => <>)];
+      Code   : Instruction_Array (0 .. Last_Instruction) := [others => (others => <>)];
       Imports_Length : Import_Count := 0;
       Imports : Import_Array := [others => (others => <>)];
       Locals_Length : Local_Count := 0;
@@ -631,9 +654,35 @@ is
       Functions : Function_Array := [others => (others => <>)];
       --  Text literals: Constants (I) is Constant_Text (First .. First + Length - 1).
       Constants_Length : Constant_Count := 0;
-      Constants : Text_Constants := [others => (others => <>)];
-      Constant_Text : String (1 .. MAX_CONSTANT_BYTES) := [others => ' '];
+      Constants : Text_Constants (0 .. Last_Constant) := [others => (others => <>)];
+      Constant_Text : String (1 .. Text_Room) := [others => ' '];
    end record;
+   subtype Program is Sized_Program
+     (Last_Instruction => DEFAULT_LAST_INSTRUCTION,
+      Last_Constant    => DEFAULT_LAST_CONSTANT,
+      Text_Room        => DEFAULT_CONSTANT_BYTES);
+
+   --  A room after it doubles, within its ceiling (Last is a room's last
+   --  index: the room is Last + 1).
+   function Grown_Code (Last : Instruction_Index) return Instruction_Index is
+     (if Last >= Instruction_Index'Last / 2 then Instruction_Index'Last else 2 * Last + 1);
+   function Grown_Constants (Last : Constant_Index) return Constant_Index is
+     (if Last >= Constant_Index'Last / 2 then Constant_Index'Last else 2 * Last + 1);
+   function Grown_Text (Room : Constant_Text_Room) return Constant_Text_Room is
+     (if Room >= Constant_Text_Room'Last / 2 then Constant_Text_Room'Last else 2 * Room);
+
+   --  A program of the default room holding nothing (for a builder's start).
+   function Empty_Program return Program is
+     ((Last_Instruction => DEFAULT_LAST_INSTRUCTION, Last_Constant => DEFAULT_LAST_CONSTANT,
+       Text_Room => DEFAULT_CONSTANT_BYTES, others => <>));
+
+   --  What a program's storage holds, and whether its counts lie in it.
+   function Code_Room (Item : Sized_Program) return Program_Length is
+     (Program_Length (Item.Last_Instruction) + 1);
+   function Constant_Room (Item : Sized_Program) return Constant_Count is
+     (Constant_Count (Item.Last_Constant) + 1);
+   function Fits_Storage (Item : Sized_Program) return Boolean is
+     (Item.Length <= Code_Room (Item) and then Item.Constants_Length <= Constant_Room (Item));
 
    type Validation_Error is
      (Valid,
@@ -655,19 +704,33 @@ is
       Invalid_Constant,
       --  A Text_Builtin or List_Builtin naming no operation, or a
       --  List_Builtin on a list it does not apply to.
-      Invalid_Builtin);
+      Invalid_Builtin,
+      --  Its code or constant pool says it holds more than its storage does.
+      Exceeds_Storage);
 
-   type Validated_Program is private;
+   --  A verified program, sized as the program it was verified from.
+   type Sized_Validated_Program
+     (Last_Instruction : Instruction_Index;
+      Last_Constant    : Constant_Index;
+      Text_Room        : Constant_Text_Room) is private;
+   subtype Validated_Program is Sized_Validated_Program
+     (Last_Instruction => DEFAULT_LAST_INSTRUCTION,
+      Last_Constant    => DEFAULT_LAST_CONSTANT,
+      Text_Room        => DEFAULT_CONSTANT_BYTES);
 
    procedure Verify
-     (Candidate : Program;
-      Result    : out Validated_Program;
+     (Candidate : Sized_Program;
+      Result    : out Sized_Validated_Program;
       Error     : out Validation_Error)
    with
+      Pre =>
+        Result.Last_Instruction = Candidate.Last_Instruction and then
+        Result.Last_Constant = Candidate.Last_Constant and then
+        Result.Text_Room = Candidate.Text_Room,
       Post =>
         (if Error = Valid then Is_Valid (Result));
 
-   function Is_Valid (Item : Validated_Program) return Boolean;
+   function Is_Valid (Item : Sized_Validated_Program) return Boolean;
 
    type Execution_Status is
      (Completed,
@@ -777,12 +840,12 @@ is
        State.List_Room));
 
    function Is_Well_Formed
-     (Item : Validated_Program; State : Sized_Machine_State) return Boolean;
+     (Item : Sized_Validated_Program; State : Sized_Machine_State) return Boolean;
 
    function Fuel_Limit (State : Sized_Machine_State) return Unsigned_32;
 
    procedure Initialize
-     (Item  : Validated_Program;
+     (Item  : Sized_Validated_Program;
       Fuel  : Natural;
       State : out Sized_Machine_State)
    with
@@ -791,7 +854,7 @@ is
        Fuel_Limit (State) = Unsigned_32 (Fuel);
 
    procedure Initialize_With_Locals
-     (Item     : Validated_Program;
+     (Item     : Sized_Validated_Program;
       Fuel     : Natural;
       Values   : Local_Value_Array;
       Count    : Local_Count;
@@ -805,7 +868,7 @@ is
           Fuel_Limit (State) = Unsigned_32 (Fuel));
 
    procedure Continue_Execution
-     (Item   : Validated_Program;
+     (Item   : Sized_Validated_Program;
       State  : in out Sized_Machine_State;
       Result : out Execution_Result)
    with
@@ -815,7 +878,7 @@ is
        Result.Steps <= Fuel_Limit (State);
 
    procedure Continue_Execution_For
-     (Item         : Validated_Program;
+     (Item         : Sized_Validated_Program;
       State        : in out Sized_Machine_State;
       Instructions : Natural;
       Result       : out Execution_Result)
@@ -871,7 +934,7 @@ is
    end record;
 
    procedure Inspect
-     (Item   : Validated_Program;
+     (Item   : Sized_Validated_Program;
       State  : Sized_Machine_State;
       Result : out Inspection_Snapshot)
    with
@@ -880,7 +943,7 @@ is
    procedure Stop (State : in out Sized_Machine_State);
 
    procedure Complete_Host_Call
-     (Item     : Validated_Program;
+     (Item     : Sized_Validated_Program;
       State    : in out Sized_Machine_State;
       Response : Value;
       Accepted : Boolean)
@@ -891,7 +954,7 @@ is
    --  Must be called after the host attempts to enqueue an owned import.
    --  Rejection preserves ownership; acceptance activates move/borrow state.
    procedure Acknowledge_Host_Submission
-     (Item     : Validated_Program;
+     (Item     : Sized_Validated_Program;
       State    : in out Sized_Machine_State;
       Accepted : Boolean)
    with
@@ -899,7 +962,7 @@ is
      Post => Is_Well_Formed (Item, State);
 
    procedure Execute
-     (Item   : Validated_Program;
+     (Item   : Sized_Validated_Program;
       Fuel   : Natural;
       Result : out Execution_Result)
    with
@@ -1000,12 +1063,12 @@ private
    --  Answer a stream view: push Response (already of Stream_Result_Type)
    --  and continue, or stop the run with Failure.
    procedure Complete_Stream_Call
-     (Item : Validated_Program; State : in out Sized_Machine_State;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine_State;
       Response : Value; Failure : Execution_Status)
      with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
        Post => Is_Well_Formed (Item, State);
    procedure Complete_Checked_Host_Call
-     (Item : Validated_Program; State : in out Sized_Machine_State;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine_State;
       Host_Response : Value; Accepted : Boolean; Native_Response : Boolean;
       Resource_Response : Boolean := False)
      with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
@@ -1016,9 +1079,13 @@ private
       Element_Type  => Value,
       Default_Value => (others => <>));
 
-   type Validated_Program is record
+   type Sized_Validated_Program
+     (Last_Instruction : Instruction_Index;
+      Last_Constant    : Constant_Index;
+      Text_Room        : Constant_Text_Room) is
+   record
       Checked : Boolean := False;
-      Content : Program;
+      Content : Sized_Program (Last_Instruction, Last_Constant, Text_Room);
    end record;
 
    --  A live call: where to continue, and whose frame it is.
@@ -1076,15 +1143,15 @@ private
    procedure Copy_State (From : Sized_Machine_State; Into : in out Sized_Machine_State)
      with Pre => Holds_All (From, Into);
 
-   function Is_Valid (Item : Validated_Program) return Boolean is
-     (Item.Checked and then Item.Content.Length > 0 and then
+   function Is_Valid (Item : Sized_Validated_Program) return Boolean is
+     (Item.Checked and then Item.Content.Length > 0 and then Fits_Storage (Item.Content) and then
       Item.Content.Dynamic_Locals_Length <= Item.Content.Locals_Length);
 
    function Fuel_Limit (State : Sized_Machine_State) return Unsigned_32 is
      (CCL.Execution_Budgets.Limit (State.Execution_Budget));
 
    function Is_Well_Formed
-     (Item : Validated_Program; State : Sized_Machine_State) return Boolean is
+     (Item : Sized_Validated_Program; State : Sized_Machine_State) return Boolean is
      ((not State.Waiting or else
        State.Waiting_Import < Item.Content.Imports_Length) and then
       (not State.Waiting_Owned or else

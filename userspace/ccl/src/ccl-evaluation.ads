@@ -48,7 +48,7 @@ package CCL.Evaluation is
         (Context : in out Host_Context; Request : CCL.Streams.View_Request;
          Reply : in out CCL.Streams.View_Reply) is null;
    procedure Evaluate_Analysis_With_Values
-     (Analysis : CCL.Language.Analysis_Result; Fuel : Natural;
+     (Analysis : CCL.Language.Sized_Analysis; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
       Grants : CCL.Catalog.Granted_Bindings;
       Context : in out Host_Context; Result : out CCL.Language.Interpretation_Result)

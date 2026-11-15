@@ -15,7 +15,7 @@ private package CCL.VM.Text_Ops with SPARK_Mode => On is
 
    --  Constant Index of Content's pool, as a new string in Region.
    procedure Push_Constant
-     (Content : Program; Index : Constant_Index;
+     (Content : Sized_Program; Index : Constant_Index;
       Region  : in out Text_Regions.Stack; Item : out Value;
       Status  : out Text_Regions.Operation_Result)
      with Global => null;
@@ -48,7 +48,7 @@ private package CCL.VM.Text_Ops with SPARK_Mode => On is
      with Global => null;
 
    --  The text opcodes.
-   procedure Run_Text (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
+   procedure Run_Text (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers)
      with Global => null,
           Pre => Ready (Item, Regs) and then
                  Item.Content.Code (Regs.PC).Op in

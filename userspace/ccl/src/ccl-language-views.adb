@@ -1191,7 +1191,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
       if Full then Result.Status := Capacity_Exceeded; return; end if;
       if Failed then Result.Position := Cursor; Result.Diagnostic := Unexpected_Token; return; end if;
       if not Check and then From = Basic and then Into = Lisp then
-         if Lowered.Length > MAX_SOURCE_LENGTH then
+         if Lowered.Length > DEFAULT_SOURCE_ROOM then
             Result.Status := Capacity_Exceeded;
          else
             Result.Canonical := Lowered;
@@ -1223,7 +1223,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
       if Into = Basic then Append (Result.Rendered, Marker & ASCII.LF); end if;
       Append (Result.Rendered, Comments.Data (1 .. Comments.Length));
       Print (Analysis.Tree.Root, Into, Result.Rendered, Result.Output_Nodes, 0, Pretty => True);
-      if Full or Result.Canonical.Length > MAX_SOURCE_LENGTH then
+      if Full or Result.Canonical.Length > DEFAULT_SOURCE_ROOM then
          Result.Status := Capacity_Exceeded;
       elsif not Failed then Result.Status := Converted;
       end if;

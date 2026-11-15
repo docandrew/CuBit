@@ -2158,6 +2158,13 @@ hid-i2c: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/services/hid-i2c/component.ccl
 	cp ../userspace/services/hid-i2c/build/hid-i2c.drv isodir/boot/hid-i2c.drv
 
+# The headless large-manifest test's program: a typed manifest well past the
+# CCL limits the manifest compiler had (tests/large-manifest-probe).
+.PHONY : large-manifest-probe
+large-manifest-probe: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../tests/large-manifest-probe/component.ccl
+	cp ../tests/large-manifest-probe/build/large-manifest-probe.app isodir/boot/large-manifest-probe.app
+
 # procmgr's startup waits (CAP-003): the headless startup-wait test's late
 # provider of the test-only startup-wait-test service and its client.
 .PHONY : startup-wait-test

@@ -2,6 +2,7 @@ with CuBit.Channel_Limits;
 with CuBit.Channel_Declarations;
 with Ada.Command_Line;
 with Ada.Directories;
+with Ada.Exceptions;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
@@ -28,22 +29,9 @@ with SPARKTLSCrypto.Hashing.SHA256;
 procedure Main is
    use Ada.Command_Line;
    use Ada.Text_IO;
-   use type Ada.Streams.Stream_IO.Count;
    use type Ada.Streams.Stream_Element_Offset;
    use type Interfaces.Unsigned_8;
    Input : Ada.Streams.Stream_IO.File_Type;
-   --  The schema file may be longer than a CCL program: its comments and
-   --  indentation are removed before it is prepended to the manifest
-   --  (CCL.Manifests.Typed), which must then fit one.
-   Maximum_Schema_File : constant := 2 * CCL.Language.MAX_SOURCE_LENGTH;
-   Bytes : Ada.Streams.Stream_Element_Array (1 .. Maximum_Schema_File);
-   Last : Ada.Streams.Stream_Element_Offset;
-   Source, Catalog_Source : String (1 .. CCL.Manifests.MAX_DECLARATION_LENGTH);
-   Source_Length, Catalog_Length : Natural;
-   --  interfaces/executable-manifest.ccl: the CCL declarations typed
-   --  manifests are checked against, found beside the catalogs directory.
-   Schema_Source : String (1 .. Maximum_Schema_File);
-   Schema_Length : Natural := 0;
    --  CATALOG MANIFEST, then options as pairs: --output FILE (the ELF
    --  section assembly; standard output without it), --startup-output FILE
    --  (the Ada Startup package), --rust-output FILE (the Rust accessors),
@@ -89,6 +77,17 @@ procedure Main is
    --  (Tasking_Error at activation), and every manifest in the tree
    --  compiles to the same bytes with this one.
    Interpreter_Stack_Bytes : constant := 64 * 1024 * 1024;
+   --  A manifest's evaluation keeps its analysis and program in storage
+   --  sized by its source (CCL.Language.Analysis_Of, CCL.Compiler.
+   --  Compilation_Of), so its task's stack grows with the source: this
+   --  much per source byte above the base, up to a named ceiling (a source
+   --  that would need more is refused as too large, never truncated).
+   Stack_Bytes_Per_Source_Byte : constant := 1_024;
+   Interpreter_Stack_Ceiling : constant := 192 * 1024 * 1024;
+   function Interpreter_Stack_For (Source_Bytes : Natural) return Natural is
+     (if Source_Bytes > (Interpreter_Stack_Ceiling - Interpreter_Stack_Bytes) / Stack_Bytes_Per_Source_Byte
+      then Interpreter_Stack_Ceiling
+      else Interpreter_Stack_Bytes + Source_Bytes * Stack_Bytes_Per_Source_Byte);
 
    --  The setting catalog's directory and schema: settings/ and
    --  setting-catalog.ccl beside the manifest schema.
@@ -99,22 +98,25 @@ procedure Main is
      (Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Settings_Directory)) &
       "/setting-catalog.ccl");
 
-   procedure Read_Source (Path : String; Text : out String; Length : out Natural) is
+   --  A file's whole text, sized by the file (no buffer bounds it).
+   function File_Text (Path : String) return String is
    begin
-      Text := [others => ' '];
-      Length := 0;
       Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
-      if Ada.Streams.Stream_IO.Size (Input) > Ada.Streams.Stream_IO.Count (Text'Length) then
+      declare
+         Size : constant Ada.Streams.Stream_Element_Offset :=
+           Ada.Streams.Stream_Element_Offset (Ada.Streams.Stream_IO.Size (Input));
+         Bytes : Ada.Streams.Stream_Element_Array (1 .. Size);
+         Last : Ada.Streams.Stream_Element_Offset;
+      begin
+         Ada.Streams.Stream_IO.Read (Input, Bytes, Last);
          Ada.Streams.Stream_IO.Close (Input);
-         raise Ada.Streams.Stream_IO.Use_Error;
-      end if;
-      Ada.Streams.Stream_IO.Read (Input, Bytes, Last);
-      Ada.Streams.Stream_IO.Close (Input);
-      Length := Natural (Last);
-      for Index in 1 .. Length loop
-         Text (Index) := Character'Val (Bytes (Ada.Streams.Stream_Element_Offset (Index)));
-      end loop;
-   end Read_Source;
+         return Text : String (1 .. Natural (Last)) do
+            for Index in Text'Range loop
+               Text (Index) := Character'Val (Bytes (Ada.Streams.Stream_Element_Offset (Index)));
+            end loop;
+         end return;
+      end;
+   end File_Text;
 
    --  .cubit.access: a 16-byte header (magic, version, count), then 80-byte
    --  entries: rights, prefix length, domain, 5 reserved, the 64-byte
@@ -162,8 +164,6 @@ procedure Main is
       Found : Directory_Entry_Type;
       Names : array (1 .. Setting_Catalogs.Maximum_Settings) of Setting_Catalogs.Bounded_Text;
       Count : Natural := 0;
-      Schema_Text, Catalog_Text : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
-      Schema_Last, Catalog_Last : Natural;
       Success : Boolean;
    begin
       Settings_Read := False;
@@ -173,7 +173,9 @@ procedure Main is
             "keep interfaces/settings/ and interfaces/setting-catalog.ccl beside the manifest schema");
          return;
       end if;
-      Read_Source (Settings_Schema_Path, Schema_Text, Schema_Last);
+      declare
+         Schema_Text : constant String := File_Text (Settings_Schema_Path);
+      begin
       Start_Search (Search, Settings_Directory, "*.ccl", [Ordinary_File => True, others => False]);
       while More_Entries (Search) and then Count < Names'Last loop
          Get_Next_Entry (Search, Found);
@@ -195,14 +197,15 @@ procedure Main is
          end loop;
       end loop;
       for I in 1 .. Count loop
-         Read_Source (Settings_Directory & "/" & Setting_Catalogs.Image (Names (I)), Catalog_Text, Catalog_Last);
          Setting_Catalogs.Add
-           (Settings, "settings/" & Setting_Catalogs.Image (Names (I)), Catalog_Text (1 .. Catalog_Last),
-            Schema_Text (1 .. Schema_Last), Success, Settings_Why);
+           (Settings, "settings/" & Setting_Catalogs.Image (Names (I)),
+            File_Text (Settings_Directory & "/" & Setting_Catalogs.Image (Names (I))),
+            Schema_Text, Success, Settings_Why);
          if not Success then
             return;
          end if;
       end loop;
+      end;
       Settings_Read := True;
    end Read_Settings;
 
@@ -1117,20 +1120,16 @@ begin
          declare
             task Generation with Storage_Size => Interpreter_Stack_Bytes;
             task body Generation is
-               Text : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
-               Last : Natural;
             begin
-               Read_Source (Argument (2), Text, Last);
                Asset_Catalogs.Build_Wallpapers
-                 (Text (1 .. Last), Argument (2),
+                 (File_Text (Argument (2)), Argument (2),
                   Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Argument (2))),
                   Argument (3), Plan, Built, Why);
             exception
                when Ada.Streams.Stream_IO.Use_Error | Ada.Streams.Stream_IO.Name_Error =>
                   Why := CuBit.Failures.Failed
                     (CuBit.Failures.Invalid_Argument,
-                     Argument (2) & ": unreadable or longer than" &
-                     Natural'Image (CCL.Language.MAX_SOURCE_LENGTH) & " characters");
+                     Argument (2) & ": unreadable");
             end Generation;
          begin
             null;
@@ -1228,24 +1227,44 @@ begin
       Set_Exit_Status (Failure);
       return;
    end if;
-   Read_Source (Argument (1), Catalog_Source, Catalog_Length);
-   Read_Source (Argument (2), Source, Source_Length);
-   if Ada.Directories.Exists (Schema_Path) then
-      Read_Source (Schema_Path, Schema_Source, Schema_Length);
-   end if;
    --  The interpreter recurses with large frames (about 240 KiB each), more
    --  than a default 8 MiB stack holds for a typed manifest and its schema,
-   --  so the compilation runs on a task with room for it.
+   --  so the compilation runs on a task with room for it, sized by the
+   --  source. interfaces/executable-manifest.ccl: the CCL declarations
+   --  typed manifests are checked against, found beside the catalogs
+   --  directory.
    declare
-      task Compilation with Storage_Size => Interpreter_Stack_Bytes;
+      Catalog_Source : constant String := File_Text (Argument (1));
+      Source : constant String := File_Text (Argument (2));
+      Schema_Source : constant String :=
+        (if Ada.Directories.Exists (Schema_Path) then File_Text (Schema_Path) else "");
+      Stack_Bytes : constant Natural := Interpreter_Stack_For (Source'Length + Schema_Source'Length);
+      task Compilation with Storage_Size => Stack_Bytes;
       task body Compilation is
       begin
-         CCL.Manifests.Compile
-           (Source (1 .. Source_Length), Catalog_Source (1 .. Catalog_Length), Result,
-            Schema_Source (1 .. Schema_Length));
+         CCL.Manifests.Compile (Source, Catalog_Source, Result, Schema_Source);
          if Result.Success and then Has_Config_Scopes then
             Read_Settings;
          end if;
+      exception
+         when Storage_Error =>
+            --  Past the evaluation's stack ceiling: a capacity refusal,
+            --  never a silent failure.
+            Result.Success := False;
+            Result.Why := CuBit.Failures.Failed
+              (CuBit.Failures.Exhausted,
+               Argument (2) & " needs more than the" & Natural'Image (Stack_Bytes / (1024 * 1024)) &
+               " MiB its evaluation may use",
+               "split the program's manifest, or raise Interpreter_Stack_Ceiling in ccl-manifest");
+         when Failure : others =>
+            --  A defect in the compiler, said as such (never a silent
+            --  empty result).
+            Result.Success := False;
+            Result.Why := CuBit.Failures.Failed
+              (CuBit.Failures.Refused,
+               Argument (2) & ": the manifest compiler failed: " &
+               Ada.Exceptions.Exception_Information (Failure),
+               "report it with the manifest");
       end Compilation;
    begin
       null;
@@ -1367,6 +1386,6 @@ begin
    end;
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>
-      Put_Line (Standard_Error, "cannot access input/output, or input exceeds 4096-byte bound");
+      Put_Line (Standard_Error, "cannot access input/output");
       Set_Exit_Status (Failure);
 end Main;

@@ -51,13 +51,14 @@ is
 
 
    procedure Verify
-     (Candidate : Program;
-      Result    : out Validated_Program;
+     (Candidate : Sized_Program;
+      Result    : out Sized_Validated_Program;
       Error     : out Validation_Error)
    is
       use CCL.VM.Verifier_State;
-      States : State_Table := [others => (others => <>)];
-      Switches : Switch_Table := [others => (others => <>)];
+      --  Per instruction of the candidate's storage, which holds its code.
+      States : State_Table (0 .. Candidate.Last_Instruction) := [others => (others => <>)];
+      Switches : Switch_Table (0 .. Candidate.Last_Instruction) := [others => (others => <>)];
       Length : constant Program_Length := Candidate.Length;
       --  Whole-program stack bound. Each region's own maximum depth, and for
       --  each call site the depth under the callee's frame.
@@ -65,7 +66,13 @@ is
       Base_Max : Call_Demands := [others => [others => 0]];
       Calls : Call_Presence := [others => [others => False]];
    begin
-      Result := (Checked => False, Content => Candidate);
+      Result.Checked := False;
+      Result.Content := Candidate;
+      --  Its code and pool lie in its storage (every later check relies on it).
+      if not Fits_Storage (Candidate) then
+         Error := Exceeds_Storage;
+         return;
+      end if;
       Verifier_Tables.Check_Tables (Candidate, Error);
       if Error /= Valid then
          return;
@@ -79,7 +86,7 @@ is
 
       Verifier_Sweep.Enter (Candidate, States, Error);
 
-      for PC in Instruction_Index loop
+      for PC in Instruction_Index range 0 .. Candidate.Last_Instruction loop
          exit when Program_Length (PC) >= Length;
          if Error /= Valid then
             exit;
@@ -97,13 +104,13 @@ is
       if Error = Valid then
          Verifier_Tables.Check_Ownership (Candidate, Switches, Error);
          if Error = Valid then
-            Result := (Checked => True, Content => Candidate);
+            Result.Checked := True;
          end if;
       end if;
    end Verify;
 
    procedure Initialize
-     (Item  : Validated_Program;
+     (Item  : Sized_Validated_Program;
       Fuel  : Natural;
       State : out Sized_Machine_State)
    is
@@ -127,7 +134,7 @@ is
    end Initialize;
 
    procedure Initialize_With_Locals
-     (Item     : Validated_Program;
+     (Item     : Sized_Validated_Program;
       Fuel     : Natural;
       Values   : Local_Value_Array;
       Count    : Local_Count;
@@ -385,7 +392,7 @@ is
    end From_Element;
 
    procedure Run
-     (Item   : Validated_Program;
+     (Item   : Sized_Validated_Program;
       State  : in out Sized_Machine_State;
       Instructions : Natural;
       Result : out Execution_Result)
@@ -393,7 +400,7 @@ is
        Post => Fuel_Limit (State) = Fuel_Limit (State)'Old and then
          Is_Well_Formed (Item, State) and then Result.Steps <= Fuel_Limit (State);
    procedure Run
-     (Item   : Validated_Program;
+     (Item   : Sized_Validated_Program;
       State  : in out Sized_Machine_State;
       Instructions : Natural;
       Result : out Execution_Result)
@@ -441,18 +448,26 @@ is
          exit when Regs.Done or else
            Slice_Remaining = 0 or else
            not CCL.Execution_Budgets.Has_Fuel (State.Execution_Budget);
+         --  Running: nothing waits, so no owned import is in flight.
+         pragma Assert
+           (not Waiting and then not Waiting_Owned and then
+            CCL.Imports.Phase (State.Import_Lifecycle) not in
+              CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
          CCL.Execution_Budgets.Consume (State.Execution_Budget, Budget_Result);
          pragma Assert (Fuel_Limit (State) = Entry_Fuel);
          Slice_Remaining := Slice_Remaining - 1;
 
          if Budget_Result /= CCL.Execution_Budgets.Consumed or else
-           Program_Length (Regs.PC) >= Item.Content.Length
+           Program_Length (Regs.PC) >= Item.Content.Length or else
+           Regs.PC > Item.Content.Last_Instruction
          then
             Trap (Regs, State, Invalid_Bytecode);
          else
             declare
                Ins : constant Instruction := Item.Content.Code (Regs.PC);
             begin
+               --  Each arm ends asserting the loop's import-phase invariant:
+               --  one cut point per arm keeps each proof small.
                case Ins.Op is
                   when Push_Integer | Push_Boolean =>
                      if Program_Length (Regs.PC) + 1 >= Item.Content.Length then
@@ -469,17 +484,23 @@ is
                            Trap (Regs, State, Invalid_Bytecode);
                         end if;
                      end if;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Add_Integer | Subtract_Integer | Multiply_Integer | Divide_Integer | Modulo_Integer =>
                      Scalar_Ops.Run_Arithmetic (Item, State, Regs);
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean | Equal_Character |
                        Not_Boolean =>
                      Scalar_Ops.Run_Logic (Item, State, Regs);
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Drop =>
                      Runtime_Stacks.Pop (Regs.Stack, Right_Value, Stack_Result);
                      if Stack_Result /= Runtime_Stacks.Stack_Ok or else
@@ -489,16 +510,20 @@ is
                      else
                         Regs.PC := Regs.PC + 1;
                      end if;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Jump =>
                      if Ins.Target <= Regs.PC or else Program_Length (Ins.Target) >= Item.Content.Length then
                         Trap (Regs, State, Invalid_Bytecode);
                      else
                         Regs.PC := Ins.Target;
                      end if;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Jump_If_False =>
                      Runtime_Stacks.Pop (Regs.Stack, Right_Value, Stack_Result);
                      if Stack_Result /= Runtime_Stacks.Stack_Ok or else
@@ -513,8 +538,10 @@ is
                      else
                         Regs.PC := Regs.PC + 1;
                      end if;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Call_Function =>
                      --  The arguments stay on the stack as the callee's parameters.
                      if State.Frame_Count = Call_Depth'Last or else
@@ -528,8 +555,10 @@ is
                         State.Frame_Count := State.Frame_Count + 1;
                         Regs.PC := Item.Content.Functions (Operations.Function_Operand (Ins.Immediate)).Entry_PC;
                      end if;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Return_Function =>
                      --  Keep the result; drop the parameters beneath it.
                      if State.Frame_Count = 0 then
@@ -560,31 +589,43 @@ is
                            end if;
                         end;
                      end if;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Make_Variant | Equal_Variant | Switch_Variant | Copy_Stack | Drop_Under_Top |
                        Project_Field =>
                      Data_Ops.Run_Data (Item, State, Regs);
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Push_Text | Concat_Text | Text_Builtin | Length_Text | Equal_Text | Text_At |
                        Integer_To_Text | Variant_To_Text =>
                      Text_Ops.Run_Text (Item, State, Regs);
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when New_List | Fill_List | Length_List | List_At | List_Builtin | Make_Node | Check_Range =>
                      List_Ops.Run_List (Item, State, Regs);
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Make_Closure | Call_Value | List_Apply =>
                      Call_Ops.Run_Call (Item, State, Regs);
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Initialize_Local | Copy_Local | Move_Local | Drop_Local | Borrow_Local_RO |
                        Return_Local_RO | Borrow_Local_RW | Return_Local_RW | Apply_Local_Disposition =>
                      Local_Ops.Run_Local (Item, State, Regs);
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Halt =>
                      CCL.Ownership.Check_Scope (State.Ownership, Item.Content.Types, Own_Error);
                      if Own_Error /= CCL.Ownership.Ownership_Valid then
@@ -600,8 +641,10 @@ is
                      end if;
                      State.Terminal := True;
                      Regs.Done := True;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Push_Stream =>
                      if Program_Length (Regs.PC) + 1 >= Item.Content.Length then
                         Trap (Regs, State, Invalid_Bytecode);
@@ -616,8 +659,10 @@ is
                            Trap (Regs, State, Invalid_Bytecode);
                         end if;
                      end if;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Stream_View =>
                      --  Pop the stream (and a window's count), then suspend until
                      --  the host's reader answers (Complete_Stream_Call).
@@ -651,8 +696,10 @@ is
                         end if;
                         Regs.Done := True;
                      end;
-
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                   when Invoke_Import =>
                      declare
                         Import_Number : constant Import_Index := Ins.Import;
@@ -719,7 +766,10 @@ is
                         end if;
                         Regs.Done := True;
                      end;
-                  pragma Assert (Fuel_Limit (State) = Entry_Fuel);
+                     pragma Assert
+                       (Waiting_Owned or else CCL.Imports.Phase (State.Import_Lifecycle) not in
+                          CCL.Imports.Import_Offered | CCL.Imports.Import_Accepted);
+                     pragma Assert (Fuel_Limit (State) = Entry_Fuel);
                end case;
             end;
          end if;
@@ -747,14 +797,14 @@ is
    end Run;
 
    procedure Continue_Execution_For
-     (Item : Validated_Program; State : in out Sized_Machine_State;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine_State;
       Instructions : Natural; Result : out Execution_Result) is
    begin
       Run (Item, State, Instructions, Result);
    end Continue_Execution_For;
 
    procedure Continue_Execution
-     (Item   : Validated_Program;
+     (Item   : Sized_Validated_Program;
       State  : in out Sized_Machine_State;
       Result : out Execution_Result)
    is
@@ -775,7 +825,7 @@ is
        Status => State.Terminal_Status));
 
    procedure Inspect
-     (Item   : Validated_Program;
+     (Item   : Sized_Validated_Program;
       State  : Sized_Machine_State;
       Result : out Inspection_Snapshot)
    is
@@ -830,7 +880,7 @@ is
    end Stop;
 
    procedure Complete_Stream_Call
-     (Item : Validated_Program; State : in out Sized_Machine_State;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine_State;
       Response : Value; Failure : Execution_Status)
    is
       Stack_Result : Runtime_Stacks.Operation_Result;
@@ -864,7 +914,7 @@ is
    end Complete_Stream_Call;
 
    procedure Complete_Checked_Host_Call
-     (Item     : Validated_Program;
+     (Item     : Sized_Validated_Program;
       State    : in out Sized_Machine_State;
       Host_Response : Value;
       Accepted : Boolean;
@@ -936,14 +986,14 @@ is
    end Complete_Checked_Host_Call;
 
    procedure Complete_Host_Call
-     (Item : Validated_Program; State : in out Sized_Machine_State;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine_State;
       Response : Value; Accepted : Boolean) is
    begin
       Complete_Checked_Host_Call (Item, State, Response, Accepted, False);
    end Complete_Host_Call;
 
    procedure Acknowledge_Host_Submission
-     (Item     : Validated_Program;
+     (Item     : Sized_Validated_Program;
       State    : in out Sized_Machine_State;
       Accepted : Boolean)
    is
@@ -976,7 +1026,7 @@ is
    end Acknowledge_Host_Submission;
 
    procedure Execute
-     (Item   : Validated_Program;
+     (Item   : Sized_Validated_Program;
       Fuel   : Natural;
       Result : out Execution_Result)
    is

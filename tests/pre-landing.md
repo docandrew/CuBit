@@ -989,3 +989,48 @@ make -C kernel world CUBIT_COMPOSITOR_TIMING=on shutdown-test power
 bash tests/headless/run.sh --test shutdown-desktop --accel kvm
 bash tests/headless/run.sh --test shutdown-desktop-cancel --accel kvm
 ```
+
+## ccl-manifest-capacity (CCL storage sized by its input; no fixed program limit)
+
+The CCL front end, compiler and verifier size their storage by the program
+(CCL.Language.Analysis_Of and With_Analysis, CCL.Compiler.Compilation_Of;
+evaluation compiles in rooms that double until the program fits), and the
+manifest compiler reads files of any size. Only named ceilings remain, each
+refused with its typed error. The test:
+- analyses, compiles and verifies tests/large-manifest-probe's typed
+  manifest with its schema, past the old rooms (about 14 KiB of code, 531
+  syntax nodes, 587 instructions, 93 constants);
+- runs a plain program over twenty times past them (8191 nodes, 8192
+  instructions) to its value;
+- compiles that manifest and Desktop's typed one, and refuses a manifest
+  over a named ceiling (the launch table, the 16 access scopes) with its
+  typed error.
+
+Failed before: the old ccl-manifest refused files over 4096 bytes; CCL
+refused programs over 8192 bytes of source ("Source exceeds its size
+limit"), 512 syntax nodes, 256 instructions or 32 constants (PROGRAM_FULL).
+This manifest did not compile; Desktop's typed one and ccl-remote's and
+ccl-console's (with their metrics grants) compiled only with the MET-002
+stopgaps (512 instructions, 64 constants), which are gone.
+
+Passes after: all of it compiles, verifies and runs.
+
+```sh
+bash tests/ccl-manifest-capacity/run.sh
+```
+
+## large-manifest (a large typed manifest loads and launches)
+
+large-manifest-probe's manifest is past the old CCL limits (see
+ccl-manifest-capacity). procmgr loads its sections and launches it.
+
+Failed before: the manifest did not compile, so the program could not be
+built.
+
+Passes after: `procmgr: init launched: large-manifest-probe.app` and
+`large-manifest-probe: started with its large manifest PASS`.
+
+```sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on
+tests/headless/run.sh --test large-manifest --accel kvm
+```

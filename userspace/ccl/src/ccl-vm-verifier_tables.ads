@@ -8,8 +8,9 @@ private package CCL.VM.Verifier_Tables with SPARK_Mode => On is
    use CCL.VM.Verifier_State;
 
    --  Every table entry is well formed; Error is the first that is not.
-   procedure Check_Tables (Candidate : Program; Error : out Validation_Error)
-     with Global => null;
+   procedure Check_Tables (Candidate : Sized_Program; Error : out Validation_Error)
+     with Global => null,
+          Pre => Fits_Storage (Candidate);
 
    --  The deepest chain of named calls fits the machine's stack. Calls
    --  through function values are bounded when they run (the frame table
@@ -22,6 +23,7 @@ private package CCL.VM.Verifier_Tables with SPARK_Mode => On is
    --  The ownership pass over the main body; Switches holds each
    --  Switch_Variant's control flow as the sweep recorded it.
    procedure Check_Ownership
-     (Candidate : Program; Switches : Switch_Table; Error : out Validation_Error)
-     with Global => null;
+     (Candidate : Sized_Program; Switches : Switch_Table; Error : out Validation_Error)
+     with Global => null,
+          Pre => Switches'First = 0 and then Switches'Last = Candidate.Last_Instruction;
 end CCL.VM.Verifier_Tables;

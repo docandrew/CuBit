@@ -17,9 +17,6 @@
 #   mail     the host may use the mailbox
 (type Remote_Listen (enum Off LAN))
 (type Pairing_Display (enum Window Kernel_Console))
-# Compact: line breaks and indentation (comments' too) count against the
-# CCL source limit, which the manifest schema mostly fills; comments' text
-# does not. Hence no indentation below.
 (type Remote_Parameters (record (listen Remote_Listen) (display Pairing_Display)
 (work String) (files Boolean) (builds Boolean) (mail Boolean)))
 (Executable_Manifest

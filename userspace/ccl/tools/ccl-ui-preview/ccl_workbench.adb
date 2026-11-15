@@ -201,8 +201,9 @@ package body CCL_Workbench is
    Debug_Map_Valid : Boolean := False;
    Active_Debug_Entry : CCL.Debug_Maps.Debug_Entry;
    Has_Active_Debug_Entry : Boolean := False;
+   --  One per instruction of the workbench's (default-room) program.
    type Breakpoint_Array is
-     array (CCL.VM.Instruction_Index) of Boolean;
+     array (CCL.VM.Instruction_Index range 0 .. CCL.VM.DEFAULT_LAST_INSTRUCTION) of Boolean;
    Breakpoints : Breakpoint_Array := [others => False];
    Breakpoint_Paused : Boolean := False;
    Ignore_Current_Breakpoint : Boolean := False;
@@ -710,7 +711,7 @@ package body CCL_Workbench is
             Set_Result
               (case Result is
                   when CCL.Periodic_Programs.Source_Too_Long =>
-                     "Watch: source exceeds" & Natural'Image (CCL.Language.MAX_SOURCE_LENGTH) & " bytes",
+                     "Watch: source exceeds" & Natural'Image (CCL.Language.DEFAULT_SOURCE_ROOM) & " bytes",
                   when CCL.Periodic_Programs.Identity_Exhausted => "Watch: instance identities exhausted",
                   when others => "Watch: previous invocation is still active");
             return;

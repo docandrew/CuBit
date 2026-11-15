@@ -5,7 +5,7 @@ package body CCL.VM.Scalar_Ops with SPARK_Mode => On is
    use type Runtime_Stacks.Operation_Result;
    use type CCL.Checked_Arithmetic.Arithmetic_Error;
 
-   procedure Run_Arithmetic (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
+   procedure Run_Arithmetic (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Op : constant Op_Code := Item.Content.Code (Regs.PC).Op;
       Left_Value, Right_Value : Value;
       Popped, Pushed : Runtime_Stacks.Operation_Result;
@@ -60,7 +60,7 @@ package body CCL.VM.Scalar_Ops with SPARK_Mode => On is
       end if;
    end Run_Arithmetic;
 
-   procedure Run_Logic (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
+   procedure Run_Logic (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Op : constant Op_Code := Item.Content.Code (Regs.PC).Op;
       Left_Value, Right_Value : Value;
       Popped, Pushed : Runtime_Stacks.Operation_Result;

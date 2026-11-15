@@ -10,6 +10,10 @@ package body CCL.VM.Verifier_State with SPARK_Mode => On is
    begin
       if Error /= Valid then
          null;
+      elsif Target not in States'Range then
+         --  Past the program's storage (its targets are checked against its
+         --  length before this; storage is at least that long).
+         Error := Invalid_Jump_Target;
       elsif not States (Target).Seen then
          States (Target) := Source;
          States (Target).Seen := True;
@@ -69,7 +73,7 @@ package body CCL.VM.Verifier_State with SPARK_Mode => On is
       end if;
    end Pop_Kind;
 
-   function Region_Of (Candidate : Program; PC : Instruction_Index) return Region_Index is
+   function Region_Of (Candidate : Sized_Program; PC : Instruction_Index) return Region_Index is
       R : Region_Index := No_Region;
    begin
       for F in 1 .. Candidate.Functions_Length loop
@@ -90,7 +94,7 @@ package body CCL.VM.Verifier_State with SPARK_Mode => On is
      with Pre => Fits_After (Captures, P);
 
    function Matches_Signature
-     (Candidate : Program; F : Function_Index; T : CCL.Types.Type_Reference) return Boolean
+     (Candidate : Sized_Program; F : Function_Index; T : CCL.Types.Type_Reference) return Boolean
    is
       Types : CCL.Types.Registry renames Candidate.Data_Types;
       Fn : Function_Declaration renames Candidate.Functions (F);

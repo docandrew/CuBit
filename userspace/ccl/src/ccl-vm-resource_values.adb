@@ -1,6 +1,6 @@
 package body CCL.VM.Resource_Values with SPARK_Mode is
    procedure Complete
-     (Item : Validated_Program; State : in out Sized_Machine_State;
+     (Item : Sized_Validated_Program; State : in out Sized_Machine_State;
       Owner : CCL.Resources.Registry; Resource : CCL.Resources.Reference;
       Accepted : out Boolean)
    is

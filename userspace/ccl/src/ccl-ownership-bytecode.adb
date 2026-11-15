@@ -6,11 +6,16 @@ is
       Env  : Environment;
    end record;
 
-   type State_Table is array (Code_Index) of Abstract_State;
+   type State_Table is array (Code_Index range <>) of Abstract_State;
 
    function Next_Index (Item : Code_Index) return Code_Index is
      (Item + 1);
 
+   procedure Merge
+     (States : in out State_Table;
+      Target : Code_Index;
+      Source : Environment;
+      Result : in out Verification_Result);
    procedure Merge
      (States : in out State_Table;
       Target : Code_Index;
@@ -22,6 +27,11 @@ is
    begin
       if Result.Error /= Bytecode_Valid then
          null;
+      elsif Target not in States'Range then
+         --  Past the program's storage (targets are checked against its
+         --  length first, and Verify checks the length fits the storage).
+         Result.Error := Invalid_Target;
+         Result.Position := Target;
       elsif not States (Target).Seen then
          States (Target).Seen := True;
          States (Target).Env := Source;
@@ -41,7 +51,7 @@ is
      (Candidate : Program;
       Result    : out Verification_Result)
    is
-      States : State_Table := [others => (others => <>)];
+      States : State_Table (0 .. Candidate.Last) := [others => (others => <>)];
       Initial : Environment;
       Current : Environment;
       Success_State : Environment;
@@ -54,6 +64,11 @@ is
       Result := (others => <>);
       if Candidate.Length = 0 then
          Result.Error := Empty_Program;
+         return;
+      end if;
+      --  The code it says it holds must lie in its storage.
+      if Candidate.Length > Natural (Candidate.Last) + 1 then
+         Result.Error := Invalid_Target;
          return;
       end if;
 
@@ -79,7 +94,7 @@ is
       end if;
       States (0) := (Seen => True, Env => Initial);
 
-      for PC in Code_Index loop
+      for PC in Code_Index range 0 .. Candidate.Last loop
          exit when Natural (PC) >= Candidate.Length;
          exit when Result.Error /= Bytecode_Valid;
          Result.Position := PC;

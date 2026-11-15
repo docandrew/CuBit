@@ -4,9 +4,16 @@ with CCL.VM.Verifier_Flow;
 
 package body CCL.VM.Verifier_Sweep with SPARK_Mode => On is
 
-   procedure Enter (Candidate : Program; States : in out State_Table; Error : in out Validation_Error) is
+   procedure Enter (Candidate : Sized_Program; States : in out State_Table; Error : in out Validation_Error) is
       Branch : Abstract_State;
    begin
+      if 0 not in States'Range then
+         --  An earlier error stands (the post keeps it).
+         if Error = Valid then
+            Error := Exceeds_Storage;
+         end if;
+         return;
+      end if;
       States (0).Seen := True;
       --  A function's code starts with its parameters on the stack.
       for F in 1 .. Candidate.Functions_Length loop
@@ -18,12 +25,16 @@ package body CCL.VM.Verifier_Sweep with SPARK_Mode => On is
             Push_Kind (Branch, Candidate.Functions (F - 1).Kinds (P), Error,
                        Candidate.Functions (F - 1).Data_Types (P));
          end loop;
-         States (Candidate.Functions (F - 1).Entry_PC) := Branch;
+         if Candidate.Functions (F - 1).Entry_PC in States'Range then
+            States (Candidate.Functions (F - 1).Entry_PC) := Branch;
+         elsif Error = Valid then
+            Error := Invalid_Function;
+         end if;
       end loop;
    end Enter;
 
    procedure Step
-     (Candidate : Program; PC : Instruction_Index;
+     (Candidate : Sized_Program; PC : Instruction_Index;
       States : in out State_Table; Switches : in out Switch_Table;
       Own_Max : in out Region_Demands; Base_Max : in out Call_Demands; Calls : in out Call_Presence;
       Error : in out Validation_Error)

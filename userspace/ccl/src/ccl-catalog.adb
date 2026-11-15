@@ -553,7 +553,7 @@ is
      (Compiled.Binding = 0 and then CCL.Host_Values.Matches_Bytecode (Compiled, Declared, Types));
 
    function Resource_Layout_Matches
-     (Program : CCL.VM.Program; Catalog : Interface_Catalog) return Boolean
+     (Program : CCL.VM.Sized_Program; Catalog : Interface_Catalog) return Boolean
    is
       Roots : CCL.Resource_Policies.Selection := [others => False];
       Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
@@ -695,7 +695,7 @@ is
    procedure Link_Program
      (Grants  : Granted_Bindings;
       Linkage : Linkage_Table;
-      Program : in out CCL.VM.Program;
+      Program : in out CCL.VM.Sized_Program;
       Result  : out Link_Result;
       Schemas : Interface_Catalog := Empty_Catalog)
    is

@@ -372,7 +372,7 @@ begin
    -- Native scalar images use the same typed completion API but take no
    -- arena. Preflight observes state without executing it.
    for Boolean_Result in Boolean loop
-      Code := (Length => 3 * (SCALAR_CALLS + 1), Imports_Length => 1, others => <>);
+      Code := (Empty_Program with delta Length => 3 * (SCALAR_CALLS + 1), Imports_Length => 1);
       Code.Imports (0) := (Result => (if Boolean_Result then Boolean_Value else Integer_Value),
         Authority => Observe_Authority, Binding => 77, others => <>);
       for Call in 0 .. SCALAR_CALLS loop

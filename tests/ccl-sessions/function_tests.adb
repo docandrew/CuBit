@@ -122,7 +122,7 @@ begin
    Reject ("(define (f (a Integer) (b Integer) (c Integer) (d Integer) (e Integer) " &
            "(f Integer) (g Integer) (h Integer) (i Integer)) Integer a) 1", Too_Many_Parameters);
    declare
-      Source : String (1 .. MAX_SOURCE_LENGTH) := [others => ' '];
+      Source : String (1 .. DEFAULT_SOURCE_ROOM) := [others => ' '];
       Length : Natural := 0;
       procedure Add (S : String) is
       begin Source (Length + 1 .. Length + S'Length) := S; Length := Length + S'Length; end Add;
@@ -138,7 +138,7 @@ begin
    Evaluate ("(define (bad (x Integer)) Integer (/ x 0)) (bad 1)", 4096, Outcome);
    pragma Assert (Outcome.Status = Evaluation_Division_By_Zero);
    declare
-      Source : String (1 .. MAX_SOURCE_LENGTH) := [others => ' '];
+      Source : String (1 .. DEFAULT_SOURCE_ROOM) := [others => ' '];
       Length : Natural := 0;
       procedure Add (S : String) is
       begin Source (Length + 1 .. Length + S'Length) := S; Length := Length + S'Length; end Add;

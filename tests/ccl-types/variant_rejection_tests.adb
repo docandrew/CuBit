@@ -121,7 +121,7 @@ begin
    Reject ("missing retained result", Stack_Underflow);
    P := Good; P.Code (0).Data_Type := Ref; Reject ("metadata on scalar", Invalid_Data_Type);
    -- Nominal identities also participate in stack joins.
-   P := (others => <>); P.Data_Types := R; P.Length := 6;
+   P := Empty_Program; P.Data_Types := R; P.Length := 6;
    P.Code (0) := (Op => Push_Boolean, others => <>);
    P.Code (1) := (Op => Jump_If_False, Target => 4, others => <>);
    P.Code (2) := (Op => Make_Variant, Data_Type => Ref, Alternative => 2, others => <>);
@@ -129,7 +129,7 @@ begin
    P.Code (4) := (Op => Make_Variant, Data_Type => Other, Alternative => 1, others => <>);
    Reject ("nominal branch join", Inconsistent_Stack);
    -- Moving a restricted value onto the stack never grants a copy permission.
-   P := (others => <>); P.Data_Types := R; P.Length := 3;
+   P := Empty_Program; P.Data_Types := R; P.Length := 3;
    P.Types_Length := 1; P.Types (0).Mode := CCL.Ownership.Must_Handle;
    P.Locals_Length := 1;
    P.Code (0) := (Op => Move_Local, others => <>);
@@ -146,7 +146,7 @@ begin
    Reject ("launder resource through arithmetic", Invalid_Ownership);
    P.Code (2) := (Op => Drop_Under_Top, others => <>);
    Reject ("discard under result", Invalid_Ownership);
-   P := (others => <>); P.Length := MAX_STACK_DEPTH + 2;
+   P := Empty_Program; P.Length := MAX_STACK_DEPTH + 2;
    for I in 0 .. MAX_STACK_DEPTH - 1 loop
       P.Code (Instruction_Index (I)) := (Op => Push_Integer, others => <>);
    end loop;

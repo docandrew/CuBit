@@ -78,7 +78,7 @@ begin
          D.Identifier := CCL.Types.Named ("DifferentReading");
          CCL.Types.Define (Types, D, Other, Defined); Check (Defined = CCL.Types.Defined);
       end;
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Data_Types := Types;
       Candidate.Imports_Length := 1;
       Candidate.Imports (0) := (Argument => Variant_Value, Result => Variant_Value,
@@ -169,7 +169,7 @@ begin
       Granted : CCL.Catalog.Grant_Result;
       Linked : CCL.Catalog.Link_Result;
    begin
-      Candidate := (others => <>);
+      Candidate := Empty_Program;
       Candidate.Imports_Length := 1;
       CCL.Catalog.Intern (Links, Op, Index, Interned);
       Check (Interned = CCL.Catalog.Linkage_Added);

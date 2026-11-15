@@ -222,7 +222,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
    end Result_Text_Of;
 
    procedure Report
-     (Item : Validated_Program; State : Sized_Machine_State; Status : Execution_Status;
+     (Item : Sized_Validated_Program; State : Sized_Machine_State; Status : Execution_Status;
       Waiting, Waiting_Owned : Boolean; Result : out Execution_Result) is
    begin
       Result :=
@@ -293,7 +293,7 @@ package body CCL.VM.Results with SPARK_Mode => On is
    end Report;
 
    procedure Print_Literal
-     (Item : Validated_Program; State : Sized_Machine_State; Output : out String; Printed : out Boolean)
+     (Item : Sized_Validated_Program; State : Sized_Machine_State; Output : out String; Printed : out Boolean)
    is
       Too_Long : Boolean := False;
       Length : Literal_Length := 0;

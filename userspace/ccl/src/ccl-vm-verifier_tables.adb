@@ -5,7 +5,7 @@ package body CCL.VM.Verifier_Tables with SPARK_Mode => On is
    use type CCL.Ownership.Bytecode.Verification_Error;
    use type CCL.Imports.Transfer_Mode;
 
-   procedure Check_Tables (Candidate : Program; Error : out Validation_Error) is
+   procedure Check_Tables (Candidate : Sized_Program; Error : out Validation_Error) is
       Types : CCL.Types.Registry renames Candidate.Data_Types;
       D : CCL.Types.Description;
    begin
@@ -13,7 +13,7 @@ package body CCL.VM.Verifier_Tables with SPARK_Mode => On is
 
       --  Every text constant lies inside the pool's text.
       for I in 1 .. Candidate.Constants_Length loop
-         if not In_Pool (Candidate.Constants (I - 1)) then
+         if not In_Pool (Candidate.Constants (I - 1), Candidate.Text_Room) then
             Error := Invalid_Constant;
             return;
          end if;
@@ -136,11 +136,11 @@ package body CCL.VM.Verifier_Tables with SPARK_Mode => On is
    end Stack_Fits;
 
    procedure Check_Ownership
-     (Candidate : Program; Switches : Switch_Table; Error : out Validation_Error)
+     (Candidate : Sized_Program; Switches : Switch_Table; Error : out Validation_Error)
    is
       package B renames CCL.Ownership.Bytecode;
       Main_End : constant Program_Length := Region_End (Candidate, No_Region);
-      Ownership_Candidate : B.Program;
+      Ownership_Candidate : B.Program (Last => B.Code_Index (Candidate.Last_Instruction));
       Ownership_Result : B.Verification_Result;
    begin
       --  Only the main body can hold locals or ownership operations.
@@ -151,7 +151,7 @@ package body CCL.VM.Verifier_Tables with SPARK_Mode => On is
          Ownership_Candidate.Local_Types (Local_At (Position - 1)) := Candidate.Local_Types (Local_At (Position - 1));
       end loop;
       Ownership_Candidate.Types := Candidate.Types;
-      for PC in Instruction_Index loop
+      for PC in Instruction_Index range 0 .. Candidate.Last_Instruction loop
          exit when Program_Length (PC) >= Main_End;
          declare
             Ins : Instruction renames Candidate.Code (PC);

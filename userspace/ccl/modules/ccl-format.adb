@@ -277,7 +277,7 @@ is
       end Put_Integer;
       --  Names, the magic, digests and text constants.
       procedure Put_Bytes (Bytes : CBOR.Byte_Array)
-        with Pre => Bytes'First = 1 and then Bytes'Length <= MAX_CONSTANT_BYTES;
+        with Pre => Bytes'First = 1 and then Bytes'Length <= DEFAULT_CONSTANT_BYTES;
       procedure Put_Bytes (Bytes : CBOR.Byte_Array) is
          --  Byte string head (major type 2): the length in the head itself
          --  below 24, else in one following byte. Shortest form either way.
@@ -468,9 +468,9 @@ is
       for C in 0 .. Candidate.Constants_Length - 1 loop
          declare
             Item : constant Text_Constant := Candidate.Constants (C);
-            Bytes : CBOR.Byte_Array (1 .. MAX_CONSTANT_BYTES) := [others => 0];
+            Bytes : CBOR.Byte_Array (1 .. DEFAULT_CONSTANT_BYTES) := [others => 0];
          begin
-            if not In_Pool (Item) then
+            if not In_Pool (Item, Candidate.Text_Room) then
                Error := Invalid_Operand;
                return;
             end if;
@@ -740,7 +740,7 @@ is
          end if;
       end Get_Type;
    begin
-      Program := (others => <>);
+      Program := Empty_Program;
       CCL.Catalog.Initialize (Linkage);
       Limits := (others => 0);
       Error := Format_Valid;
@@ -920,7 +920,7 @@ is
          Get_Type (Candidate.Matches (M).Data_Type);
          Expect_Array (CCL.Types.Maximum_Components);
          for A in CCL.Types.Component_Index loop
-            Get_Unsigned (Value, MAX_INSTRUCTIONS - 1);
+            Get_Unsigned (Value, DEFAULT_INSTRUCTIONS - 1);
             if Error /= Format_Valid then
                if Error = Malformed_Encoding then Error := Invalid_Operand; end if;
                return;
@@ -1058,7 +1058,7 @@ is
             Parameters, Captures : Natural;
          begin
             Expect_Array (FUNCTION_FIELDS);
-            Get_Unsigned (Value, MAX_INSTRUCTIONS - 1);
+            Get_Unsigned (Value, DEFAULT_INSTRUCTIONS - 1);
             if Error /= Format_Valid then Error := Invalid_Function; return; end if;
             Candidate.Functions (F).Entry_PC := Instruction_Index (Value);
             Get_Natural (Captures, MAX_PARAMETERS);
@@ -1080,18 +1080,18 @@ is
       end loop;
 
       --  Text constants, packed into the pool in order.
-      Get_Array (Count, MAX_CONSTANTS);
+      Get_Array (Count, DEFAULT_CONSTANTS);
       if Error /= Format_Valid then return; end if;
       Candidate.Constants_Length := Constant_Count (Count);
       declare
-         Pool_Used : Natural range 0 .. MAX_CONSTANT_BYTES := 0;
-         Bytes : CBOR.Byte_Array (1 .. MAX_CONSTANT_BYTES);
+         Pool_Used : Natural range 0 .. DEFAULT_CONSTANT_BYTES := 0;
+         Bytes : CBOR.Byte_Array (1 .. DEFAULT_CONSTANT_BYTES);
          Used : Natural;
       begin
          for C in 0 .. Candidate.Constants_Length - 1 loop
-            Get_Bytes (Bytes, Used, MAX_CONSTANT_BYTES);
+            Get_Bytes (Bytes, Used, DEFAULT_CONSTANT_BYTES);
             if Error /= Format_Valid then return; end if;
-            if Used > MAX_CONSTANT_BYTES - Pool_Used then
+            if Used > DEFAULT_CONSTANT_BYTES - Pool_Used then
                Error := Invalid_Operand;
                return;
             end if;
@@ -1105,7 +1105,7 @@ is
       end;
 
       --  Code.
-      Get_Array (Count, MAX_INSTRUCTIONS);
+      Get_Array (Count, DEFAULT_INSTRUCTIONS);
       if Error /= Format_Valid then return; end if;
       Candidate.Length := Program_Length (Count);
       for I in 0 .. Count - 1 loop
@@ -1124,7 +1124,7 @@ is
             Get_Type (Data_Type);
             Get_Natural (Alternative, CCL.Types.Component_Count'Last);
             Get_Integer (Immediate);
-            Get_Unsigned (Target, MAX_INSTRUCTIONS - 1);
+            Get_Unsigned (Target, DEFAULT_INSTRUCTIONS - 1);
             Get_Unsigned (Import, MAX_IMPORTS - 1);
             if Error /= Format_Valid then Error := Invalid_Operand; return; end if;
             Candidate.Code (Instruction_Index (I)) :=
@@ -1177,7 +1177,7 @@ is
       if Error = Format_Valid then
          if CCL.Catalog.Length (Linkage) /= 0 then
             Error := Invalid_Linkage;
-            Verify ((others => <>), Program, Ignored_Validation);
+            Verify (Empty_Program, Program, Ignored_Validation);
          else
             Verify (Candidate, Program, Validation);
             if Validation /= Valid then
@@ -1185,7 +1185,7 @@ is
             end if;
          end if;
       else
-         Verify ((others => <>), Program, Ignored_Validation);
+         Verify (Empty_Program, Program, Ignored_Validation);
       end if;
    end Decode;
 end CCL.Format;

@@ -28,9 +28,10 @@ private package CCL.VM.Verifier_State with SPARK_Mode => On is
       Values : Abstract_Stacks.Stack;
    end record;
 
-   type State_Table is array (Instruction_Index) of Abstract_State;
+   --  Per instruction of the program being verified (0 .. its Last_Instruction).
+   type State_Table is array (Instruction_Index range <>) of Abstract_State;
    --  Each Switch_Variant's targets, for the ownership pass.
-   type Switch_Table is array (Instruction_Index) of CCL.Ownership.Bytecode.Instruction;
+   type Switch_Table is array (Instruction_Index range <>) of CCL.Ownership.Bytecode.Instruction;
 
    --  Functions: the region of a PC is the function whose code holds it,
    --  or the main body (No_Region), which comes first.
@@ -78,12 +79,12 @@ private package CCL.VM.Verifier_State with SPARK_Mode => On is
           Post => (if Error'Old /= Valid then Error = Error'Old);
 
    --  The function whose code holds PC, or No_Region.
-   function Region_Of (Candidate : Program; PC : Instruction_Index) return Region_Index
+   function Region_Of (Candidate : Sized_Program; PC : Instruction_Index) return Region_Index
      with Global => null,
           Post => Region_Of'Result = No_Region or else Region_Of'Result < Candidate.Functions_Length;
 
    --  Where region R's code ends.
-   function Region_End (Candidate : Program; R : Region_Index) return Program_Length is
+   function Region_End (Candidate : Sized_Program; R : Region_Index) return Program_Length is
      (if Candidate.Functions_Length = 0 then Candidate.Length
       elsif R = No_Region then Program_Length (Candidate.Functions (0).Entry_PC)
       elsif R + 1 < Candidate.Functions_Length then
@@ -106,6 +107,6 @@ private package CCL.VM.Verifier_State with SPARK_Mode => On is
    --  Whether function F is a value of the function type T: its parameters
    --  after the captures, and its result, are T's.
    function Matches_Signature
-     (Candidate : Program; F : Function_Index; T : CCL.Types.Type_Reference) return Boolean
+     (Candidate : Sized_Program; F : Function_Index; T : CCL.Types.Type_Reference) return Boolean
      with Global => null;
 end CCL.VM.Verifier_State;

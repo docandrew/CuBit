@@ -1,0 +1,14 @@
+with "../../userspace/ccl/ccl_manifest_abi.gpr";
+with "../../userspace/lib/tls/sparktls_host.gpr";
+--  The CCL front end and compiler with storage sized by their input
+--  (tests/ccl-manifest-capacity/run.sh).
+project Capacity_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/ccl/src");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("capacity_main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end Capacity_Tests;

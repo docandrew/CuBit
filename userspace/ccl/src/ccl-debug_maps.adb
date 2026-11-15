@@ -5,7 +5,7 @@ is
 
    procedure Initialize (Item : out Debug_Map) is
    begin
-      Item := (others => <>);
+      Item := (Last_Entry => Item.Last_Entry, others => <>);
    end Initialize;
 
    procedure Add
@@ -14,7 +14,7 @@ is
       Result : out Add_Result)
    is
    begin
-      if Item.Count = MAX_ENTRIES then
+      if Item.Count > Item.Last_Entry then
          Result := Map_Full;
       else
          Item.Entries (Entry_Index (Item.Count)) := New_Entry;
@@ -42,7 +42,8 @@ is
    begin
       Error := Debug_Map_Valid;
       if Item.Count > 0 then
-         for Index in 0 .. Item.Count - 1 loop
+         for Index in 0 .. Item.Last_Entry loop
+            exit when Index >= Item.Count;
             Current := Item.Entries (Index);
             if Current.First_PC >= Current.End_PC then
                Error := Empty_PC_Range;
@@ -75,7 +76,8 @@ is
       Match := (others => <>);
       Found := False;
       if Item.Count > 0 then
-         for Index in 0 .. Item.Count - 1 loop
+         for Index in 0 .. Item.Last_Entry loop
+            exit when Index >= Item.Count;
             Candidate := Item.Entries (Index);
             if Candidate.First_PC <= Position and then
               Position < Candidate.End_PC

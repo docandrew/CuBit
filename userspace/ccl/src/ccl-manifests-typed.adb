@@ -89,10 +89,10 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
    LOCAL_KEY : constant CCL.Objects.Schema_Key :=
      [16#4D41_4E49_4645_5354#, 16#2D4C_4F43_414C_0001#, 0, 0];
 
-   --  The schema without its comment lines and indentation, so that it
-   --  leaves the manifest most of the source limit (it is prepended to
-   --  every manifest; diagnostics point into the manifest only). Schema
-   --  lines hold no multi-line text.
+   --  The schema without its comment lines and indentation: it is prepended
+   --  to every manifest, and CCL sizes its storage by what it reads
+   --  (diagnostics point into the manifest only). Schema lines hold no
+   --  multi-line text.
    procedure Compact (Schema : String; Text : out String; Length : out Natural)
    with Pre => Text'First = 1 and then Text'Length >= Schema'Length;
    procedure Compact (Schema : String; Text : out String; Length : out Natural) is
@@ -124,16 +124,19 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
       end loop;
    end Compact;
 
-   procedure Compile_Compacted
-     (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result);
-   procedure Compile_Compacted
-     (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result) is
-      Program : constant String := Schema_Source & ASCII.LF & Source;
-      Checked : CCL.Language.Analysis_Result;
+   --  Program is the schema, then the manifest: one CCL program whose result
+   --  must be an Executable_Manifest. Checked is its analysis, in storage
+   --  sized by it (CCL.Language.Analysis_Of).
+   procedure Compile_Checked
+     (Source, Catalog_Source, Schema_Source, Program : String; Checked : CCL.Language.Sized_Analysis;
+      Result : out Compilation_Result);
+   procedure Compile_Checked
+     (Source, Catalog_Source, Schema_Source, Program : String; Checked : CCL.Language.Sized_Analysis;
+      Result : out Compilation_Result) is
       Manifest_Type : CCL.Types.Type_Reference;
       Decl : Declaration;
       Cat : Catalog_Model;
-      Catalog : CCL.Catalog.Interface_Catalog;
+      Catalog : constant CCL.Catalog.Interface_Catalog := CCL.Catalog.Empty_Catalog;
       Grants : CCL.Catalog.Granted_Bindings;
       Contract : CCL.Objects.Binding;
       Published, Captured : Boolean;
@@ -1177,8 +1180,6 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
       procedure Add_Typed_Parameters (Signature : Views.Cursor) is
          package PS renames CCL.Parameter_Signatures;
          use type PS.Refusal;
-         Schema_Checked : CCL.Language.Analysis_Result;
-         Schema_Catalog : CCL.Catalog.Interface_Catalog;
          Rendered : PS.Result;
       begin
          Locate ("parameters");
@@ -1195,10 +1196,13 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                then Line_Column (Offset_Of ("(type " & Name & " ")) & ": " else Where_Named);
          begin
             --  The schema's own types come first in the registry.
-            CCL.Catalog.Initialize (Schema_Catalog);
-            CCL.Language.Analyze (Schema_Source & ASCII.LF & "0", Schema_Catalog, Schema_Checked);
-            PS.Render (CCL.Language.Analysis_Types (Checked), Root_Name,
-                       CCL.Types."+" (CCL.Types.Last (CCL.Language.Analysis_Types (Schema_Checked)), 1), Rendered);
+            declare
+               Schema_Checked : constant CCL.Language.Sized_Analysis :=
+                 CCL.Language.Analysis_Of (Schema_Source & ASCII.LF & "0", CCL.Catalog.Empty_Catalog);
+            begin
+               PS.Render (CCL.Language.Analysis_Types (Checked), Root_Name,
+                          CCL.Types."+" (CCL.Types.Last (CCL.Language.Analysis_Types (Schema_Checked)), 1), Rendered);
+            end;
             declare
                Culprit : constant String := CCL.Types.Image (Rendered.Culprit_Type);
                Field : constant String := CCL.Types.Image (Rendered.Culprit_Field);
@@ -1422,11 +1426,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                "keep interfaces/executable-manifest.ccl beside the catalogs directory");
          return;
       end if;
-      CCL.Catalog.Initialize (Catalog);
       CCL.Catalog.Initialize (Grants);
-      --  The schema's declarations and definitions, then the manifest: one
-      --  CCL program whose result must be an Executable_Manifest.
-      CCL.Language.Analyze (Program, Catalog, Checked);
       if CCL.Language."/=" (CCL.Language.Analysis_Status_Of (Checked), CCL.Language.Analysis_Succeeded) then
          Explain_Checker_Failure
            ((if CCL.Language."=" (CCL.Language.Analysis_Status_Of (Checked), CCL.Language.Analysis_Type_Check_Failed)
@@ -1442,6 +1442,17 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          return;
       end if;
       Evaluate (Program, MANIFEST_FUEL, Catalog, Grants, Host, Contract, Value);
+      if Value.Status = CCL.Language.Evaluation_Object_Storage_Exhausted then
+         --  A named ceiling, reported as one: the manifest's value is read
+         --  from one native object image (CCL.Objects).
+         Fail (Value_Too_Large,
+               "the manifest's value needs more than one object image holds (" &
+               Natural'Image (CCL.Objects.Maximum_Cells) & " cells," &
+               Natural'Image (CCL.Objects.Maximum_Text_Bytes) & " text bytes, CCL.Objects)",
+               "shorten its lists or strings");
+         Result.Why.Why := CuBit.Failures.Exhausted;
+         return;
+      end if;
       if Value.Status /= CCL.Language.Succeeded or else not Value.Has_Value then
          Explain_Checker_Failure (Value.Status, Value.Diagnostic, Value.Diagnostic_Position, Value.Diagnostic_Subject);
          return;
@@ -1522,12 +1533,12 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             Result.Parameter_Signature_Length := Signature'Length;
          end if;
       end;
-   end Compile_Compacted;
+   end Compile_Checked;
 
    --  The manifest without its comments' text: each comment, '#' to the
    --  end of its line outside a string, is dropped but its line break kept,
    --  so every expression keeps its line and column (diagnostics stay
-   --  exact) and comments do not count against the CCL source limit.
+   --  exact) and comments' text never reaches CCL.
    procedure Strip_Comments (Source : String; Text : out String; Length : out Natural)
    with Pre => Text'First = 1 and then Text'Length >= Source'Length;
    procedure Strip_Comments (Source : String; Text : out String; Length : out Natural) is
@@ -1573,6 +1584,12 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
    begin
       Compact (Schema_Source, Schema_Text, Schema_Length);
       Strip_Comments (Source, Manifest_Text, Manifest_Length);
-      Compile_Compacted (Manifest_Text (1 .. Manifest_Length), Catalog_Source, Schema_Text (1 .. Schema_Length), Result);
+      declare
+         Program : constant String := Schema_Text (1 .. Schema_Length) & ASCII.LF & Manifest_Text (1 .. Manifest_Length);
+      begin
+         Compile_Checked
+           (Manifest_Text (1 .. Manifest_Length), Catalog_Source, Schema_Text (1 .. Schema_Length), Program,
+            CCL.Language.Analysis_Of (Program, CCL.Catalog.Empty_Catalog), Result);
+      end;
    end Compile;
 end CCL.Manifests.Typed;

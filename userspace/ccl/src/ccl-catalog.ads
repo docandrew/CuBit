@@ -258,7 +258,7 @@ is
    procedure Link_Program
      (Grants  : Granted_Bindings;
       Linkage : Linkage_Table;
-      Program : in out CCL.VM.Program;
+      Program : in out CCL.VM.Sized_Program;
       Result  : out Link_Result;
       Schemas : Interface_Catalog := Empty_Catalog);
    -- Typed imports require an explicit authorized schema view. The empty

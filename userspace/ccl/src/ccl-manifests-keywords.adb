@@ -28,9 +28,11 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
      (Source, Catalog_Source : String; Catalog_Only : Boolean;
       Result : out Compilation_Result; Catalog_Out : out Model.Catalog_Model)
    is
-      Text : String (1 .. MAX_DECLARATION_LENGTH) := [others => ' '];
-      Last : Natural range 0 .. MAX_DECLARATION_LENGTH := 0;
-      Cursor : Positive range 1 .. MAX_DECLARATION_LENGTH + 1 := 1;
+      --  Room for the longer of the two sources: sized by the input.
+      Room : constant Positive := Natural'Max (1, Natural'Max (Source'Length, Catalog_Source'Length));
+      Text : String (1 .. Room) := [others => ' '];
+      Last : Natural range 0 .. Room := 0;
+      Cursor : Positive range 1 .. Room + 1 := 1;
       Failed : Boolean := False;
       Decl : Model.Declaration;
       Cat : Model.Catalog_Model;
@@ -771,10 +773,6 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
       Result := (others => <>);
       Catalog_Out := (others => <>);
       Result.In_Catalog := True;
-      if Catalog_Source'Length > MAX_DECLARATION_LENGTH then
-         Fail (Source_Too_Long, 1);
-         return;
-      end if;
       Last := Catalog_Source'Length;
       Text (1 .. Last) := Catalog_Source;
       Catalog;
@@ -786,10 +784,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
       end if;
       Result.In_Catalog := False;
       Cursor := 1;
-      if Source'Length > MAX_DECLARATION_LENGTH then
-         Fail (Source_Too_Long, 1);
-         return;
-      end if;
+      Text := [others => ' '];
       Last := Source'Length;
       Text (1 .. Last) := Source;
       Header ("executable-manifest");

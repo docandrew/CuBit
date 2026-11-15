@@ -9,15 +9,16 @@ package body CCL.VM.Text_Ops with SPARK_Mode => On is
    use type Runtime_Stacks.Operation_Result;
 
    procedure Push_Constant
-     (Content : Program; Index : Constant_Index;
+     (Content : Sized_Program; Index : Constant_Index;
       Region  : in out Text_Regions.Stack; Item : out Value;
       Status  : out Text_Regions.Operation_Result)
    is
-      C : constant Text_Constant := Content.Constants (Index);
+      C : constant Text_Constant :=
+        (if Index <= Content.Last_Constant then Content.Constants (Index) else (others => <>));
    begin
       Item := (Kind => Text_Value, others => <>);
       Status := Text_Regions.Invalid_Bounds;
-      if not In_Pool (C) then
+      if Index > Content.Last_Constant or else not In_Pool (C, Content.Text_Room) then
          return;
       end if;
       Text_Regions.Allocate_String
@@ -195,7 +196,7 @@ package body CCL.VM.Text_Ops with SPARK_Mode => On is
       end case;
    end Run_Text_Builtin;
 
-   procedure Run_Text (Item : Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
+   procedure Run_Text (Item : Sized_Validated_Program; State : in out Sized_Machine_State; Regs : in out Registers) is
       Ins : constant Instruction := Item.Content.Code (Regs.PC);
       Left_Value, Right_Value, Joined : Value;
       Popped : Runtime_Stacks.Operation_Result;

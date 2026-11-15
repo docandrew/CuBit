@@ -176,7 +176,7 @@ procedure Run_Tests is
    end Check_Token_Exhaustion;
    procedure Compile_Sample (Name : String) is
       File : Ada.Text_IO.File_Type;
-      Source : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+      Source : String (1 .. CCL.Language.DEFAULT_SOURCE_ROOM);
       Last : Natural := 0;
       View : CCL.Language.Views.Conversion;
       Item : V.Validated_Program;
