@@ -33,8 +33,8 @@ project Desktop is
         when "on" => Backend_Suffix := Backend_Suffix & "-timing";
     end case;
 
-    --  Metrics are always on (MET-002): Desktop publishes through its
-    --  com.cubit-os.stdmetric outlet, which its launcher wires.
+    --  Metrics are always on (MET-002): Desktop publishes through the
+    --  com.cubit-os.stdmetric outlet its manifest declares.
     Manifest_Directory := "build";
 
     --  Test-only fault injection (Desktop_Fault_Policy): the headless

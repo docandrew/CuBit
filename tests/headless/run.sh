@@ -2039,12 +2039,15 @@ if [ -n "$INIT_PROFILE" ]; then
         done
     fi
     if [ "$TEST_NAME" = "metrics-latency" ]; then
-        # The series store (MET-002) and the remote endpoint that reads it.
-        for METRICS_IMAGE_NAME in metrics.svc ccl-remote.app clock.svc logstore.svc; do
+        # The series store (MET-002), the remote endpoint that reads it, and
+        # the outlet fixture with and without its manifest's declaration.
+        for METRICS_IMAGE_NAME in metrics.svc ccl-remote.app clock.svc logstore.svc \
+                                  metrics-declared.app metrics-undeclared.app; do
             debugfs -w -R "rm $METRICS_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$METRICS_IMAGE_NAME $METRICS_IMAGE_NAME" \
               "$TEMP_DISK" >/dev/null 2>&1; then
-                echo "headless: failed to install $METRICS_IMAGE_NAME (make -C kernel metricsvc ccl-remote)" >&2
+                echo "headless: failed to install $METRICS_IMAGE_NAME (make -C kernel metricsvc ccl-remote;" \
+                     "tests/metrics-latency/outlet-fixture/build.sh)" >&2
                 exit 1
             fi
         done
@@ -8345,6 +8348,8 @@ display: backend virtio-gpu
 calculator: first frame presented
 desktop: latency inputs=
 ccl-remote: a host paired
+metrics-fixture: entry=present
+metrics-fixture: entry=absent
 "
         ;;
     calculator)

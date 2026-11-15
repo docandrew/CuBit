@@ -16,6 +16,10 @@
   # what it prepared for that name): hda for mixer, the ramdisk for
   # filesystem.
   (service launcher-peer 30 read-write)
+  # metrics.svc's publisher endpoint: the startup entry a declared
+  # com.cubit-os.stdmetric outlet requests (MET-002). devmgr does not hold it
+  # yet, so a driver's outlet stays Absent.
+  (service metrics 24 read-write)
   # wifi.svc (docs/wifi.md): Wi-Fi drivers attach to it; the console joins,
   # leaves and stores passphrases through it.
   (service wifi 33 read-write)

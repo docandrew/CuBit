@@ -44,6 +44,9 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
 
    MANIFEST_FUEL : constant := 100_000;
    MAXIMUM_DISTANCE : constant := 2;
+   --  The catalog service a com.cubit-os.stdmetric outlet declaration
+   --  requests: metrics.svc's publisher role (CuBit.Metric_Protocol).
+   METRIC_PUBLISHER_SERVICE : constant String := "metrics";
 
    --  Edit distance, for "did you mean": names are at most 64 characters.
    function Distance (Left, Right : String) return Natural is
@@ -829,7 +832,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                         or else Signal /= PP.Stream)
             then
                Fail (Invalid_Connector, Name & " is a CuBit contract: an outlet streaming Metric_Records",
-                     "every program has it; declare it only to list it in the description");
+                     "declare (Outlet """ & PP.Metric_Outlet_Name & """ Element.Metric_Records)");
                return;
             elsif Element = PP.Metric_Records and then not Is_Contract (PP.Metric_Outlet_Name) then
                Fail (Invalid_Connector, "Metric_Records travel only on " & PP.Metric_Outlet_Name,
@@ -857,6 +860,54 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             S.Connectors (S.Connector_Total).Name (1 .. Name'Length) := Name;
             S.Connector_Total := S.Connector_Total + 1;
          end Add_One;
+
+         --  A declared com.cubit-os.stdmetric outlet requests metrics.svc's
+         --  publisher endpoint as the optional startup entry
+         --  PP.Metric_Outlet_Binding (CuBit.Metric_Outlet): the launcher
+         --  badges it for this program, or leaves it Absent while metrics.svc
+         --  is not running. Without the declaration the program has no outlet.
+         procedure Request_Metric_Outlet;
+         procedure Request_Metric_Outlet is
+            Item : Request;
+            Outlet_At : PP.Connector_Index;
+            Declared : Boolean;
+            Offered : Boolean := False;
+         begin
+            PP.Find_Connector (S, PP.Metric_Outlet_Name, Outlet_At, Declared);
+            if not Declared then
+               return;
+            end if;
+            for Entry_Binding of Cat.Services (1 .. Cat.Service_Count) loop
+               if Entry_Binding.Kind = Service_Request
+                 and then Entry_Binding.Name.Data (1 .. Entry_Binding.Name.Length) = METRIC_PUBLISHER_SERVICE
+               then
+                  Item.Service := Entry_Binding.ID;
+                  Item.Client := Entry_Binding.Client;
+                  Offered := True;
+               end if;
+            end loop;
+            if not Offered then
+               Fail (Unknown_Service,
+                     PP.Metric_Outlet_Name & " needs the catalog's service """ & METRIC_PUBLISHER_SERVICE &
+                     """ (metrics.svc's publisher endpoint), which this catalog does not name",
+                     "build with a catalog that names it, or remove the outlet");
+               return;
+            end if;
+            Item.Kind := Service_Request;
+            Item.Rights := Read_Write;
+            Item.Requirement := CuBit.Startup_Tables.Optional;
+            Set_Text (Item.Name, PP.Metric_Outlet_Binding);
+            for Existing of Decl.Requests (1 .. Decl.Count) loop
+               if Existing.Name = Item.Name then
+                  Fail (Reserved_Binding_Name,
+                        "binding """ & PP.Metric_Outlet_Binding & """ is the " & PP.Metric_Outlet_Name &
+                        " outlet's own startup entry",
+                        "give the request another binding name; the outlet requests this one");
+                  return;
+               end if;
+            end loop;
+            Store (Item);
+         end Request_Metric_Outlet;
       begin
          if Views.Length (Object, Outlets) + Views.Length (Object, Inlets) > PP.Maximum_Connectors then
             Fail (Invalid_Connector, "at most" & Natural'Image (PP.Maximum_Connectors) &
@@ -877,6 +928,8 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             Locate (Entry_Text ("inlets", Index));
             Add_One (Views.Element (Object, Inlets, Index), PP.Inlet);
          end loop;
+         if Failed then return; end if;
+         Request_Metric_Outlet;
          if Failed then return; end if;
          for Index in 1 .. Views.Length (Object, Descriptors) loop
             Locate (Entry_Text ("descriptors", Index));

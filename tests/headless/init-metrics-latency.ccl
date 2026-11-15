@@ -1,8 +1,10 @@
 # MET-002: the display-latency fixture (Desktop and the Calculator on
 # virtio-vga, key presses at swept refresh phases) with metrics.svc first,
-# so every later program's com.cubit-os.stdmetric outlet is wired to it, and
+# so Desktop's declared com.cubit-os.stdmetric outlet is wired to it, and
 # ccl-remote, through which the host reads the series back
-# (tests/headless/run.sh --test metrics-latency --accel kvm).
+# (tests/headless/run.sh --test metrics-latency --accel kvm). The outlet
+# fixture runs twice, once with the outlet declared and once without
+# (tests/metrics-latency/outlet-fixture).
 (startup v1
   (start "logstore.svc" (priority 5))
   (start "metrics.svc" (priority 5))
@@ -10,6 +12,8 @@
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4))
   (start "calculator.app" (priority 3))
+  (start "metrics-declared.app" (priority 3))
+  (start "metrics-undeclared.app" (priority 3))
   (start "ccl-remote.app" (priority 4) (network approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
       display => Pairing_Display.Kernel_Console work => "@system/work"

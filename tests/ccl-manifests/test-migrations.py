@@ -101,6 +101,15 @@ with tempfile.TemporaryDirectory(prefix='ccl-migrations.') as temporary:
                                       struct.pack('<BBHIQ', 2, 3, 26, 20, 0) +
                                       struct.pack('<BBHIQ', 2, 3, 25, 19, 0) + old_caps[8:])
             print('AUTHORITY UPDATE desktop: master-audio and read-clock endpoints', flush=True)
+            # MET-002: Desktop declares the com.cubit-os.stdmetric outlet (one
+            # outlet, Metric_Records, Stream, one page), which also requests the
+            # optional "stdmetric" startup entry (.cubit.caps/.cubit.startup are
+            # checked by test-manifests.py, not here).
+            assert '.cubit.description' not in expected
+            metric_outlet = b'com.cubit-os.stdmetric'
+            expected['.cubit.description'] = (b'PDSC' + struct.pack('<HBBBBH', 1, 0, 0, 1, 0, 0) +
+                                              bytes([2, 5, 1, 1, len(metric_outlet)]) + metric_outlet)
+            print('OUTLET UPDATE desktop: the com.cubit-os.stdmetric outlet', flush=True)
         # Outlets replaced streams (docs/ccl-launch-parameters.md, "Inlets and
         # outlets, not stdio"): the recorded stdout stream becomes one text outlet named
         # under the program's identity, in .cubit.description.

@@ -202,7 +202,8 @@ class Manifests(unittest.TestCase):
         """MET-002: a metrics read scope is (Scope.Metrics place), read
         only, a series-name prefix or every series (domain 3 in
         .cubit.access); com.cubit-os.stdmetric is an outlet streaming
-        Metric_Records, and Metric_Records travel on nothing else."""
+        Metric_Records, Metric_Records travel on nothing else, and a program
+        has the outlet's startup entry only by declaring the outlet."""
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
         source = self.TLS_TYPED.replace('(config [File_Right.Read] "tls.")',
                                         '(config [File_Right.Read] "tls.")\n    '
@@ -220,6 +221,27 @@ class Manifests(unittest.TestCase):
         outlet = self.TLS_TYPED.replace('  scopes =>', '  outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)]\n  scopes =>')
         result = self.compile(outlet, catalog)
         self.assertEqual(result.returncode, 0, result.stderr)
+        # The declaration, and only the declaration, requests metrics.svc's
+        # publisher service (role 24) as the optional startup entry
+        # "stdmetric": the endpoint the launcher badges for this program.
+        declared = self.sections(result.stdout)
+        _, entries = self.startup(declared['.cubit.startup'])
+        self.assertEqual(entries[-1], ('stdmetric', 1, 2, 1, 0))
+        caps = declared['.cubit.caps']
+        last = struct.unpack_from('<BBxxIQ', caps, len(caps) - 16)
+        self.assertEqual(last, (2, 3, 24, 0))
+        undeclared = self.sections(self.compile(self.TLS_TYPED, catalog).stdout)
+        _, entries = self.startup(undeclared['.cubit.startup'])
+        self.assertNotIn('stdmetric', [e[0] for e in entries])
+        self.assertNotIn(struct.pack('<BBxxIQ', 2, 3, 24, 0), undeclared['.cubit.caps'])
+        # The entry is implied: naming it optional is an unknown binding.
+        failed = self.compile(outlet.replace('  scopes =>', '  optional => ["stdmetric"]\n  scopes =>', 1), catalog)
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn('"stdmetric" is not the binding of a request', failed.stderr)
+        # A catalog without metrics.svc's publisher service cannot serve it.
+        failed = self.compile(outlet, catalog.replace('(service metrics 24 read-write)', ''))
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("com.cubit-os.stdmetric needs the catalog's service", failed.stderr)
         for old, new, message in [
                 ('Element.Metric_Records)', 'Element.Text)', 'com.cubit-os.stdmetric is a CuBit contract'),
                 ('"com.cubit-os.stdmetric"', '"com.example.metrics"', 'Metric_Records travel only on')]:
@@ -227,9 +249,20 @@ class Manifests(unittest.TestCase):
                 failed = self.compile(outlet.replace(old, new, 1), catalog)
                 self.assertEqual(failed.returncode, 1)
                 self.assertIn(message, failed.stderr)
-        # The launcher's stdmetric entry is reserved: no manifest declares it.
+        # No request takes the outlet's binding: not without the outlet, in
+        # either front end, and not beside it.
         reserved = self.TLS_TYPED.replace('"clock" "clock"', '"clock" "stdmetric"')
         failed = self.compile(reserved, catalog)
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn('RESERVED_BINDING_NAME', failed.stderr)
+        failed = self.compile(reserved.replace('"clock" "stdmetric"', '"metrics" "stdmetric"'), catalog)
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn('RESERVED_BINDING_NAME', failed.stderr)
+        failed = self.compile(outlet.replace('"clock" "clock"', '"clock" "stdmetric"'), catalog)
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("outlet's own startup entry", failed.stderr)
+        failed = self.compile('(executable-manifest v1 (identity "a") (version "1") '
+                              '(request-service-optional metrics read-write stdmetric))', catalog)
         self.assertEqual(failed.returncode, 1)
         self.assertIn('RESERVED_BINDING_NAME', failed.stderr)
 

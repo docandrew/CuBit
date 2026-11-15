@@ -56,8 +56,7 @@ package CuBit.Startup_Tables with Pure, SPARK_Mode is
    Format_Version : constant := 1;
 
    --  A manifest declares at most 32 requests (CCL.Manifests.MAX_BINDINGS);
-   --  the launcher adds the kernel's two self entries and the metric
-   --  outlet (Launcher_Entries); the rest is room.
+   --  the launcher adds the kernel's two self entries; the rest is room.
    Maximum_Entries    : constant := 40;
    Maximum_Name_Bytes : constant := 64;
 
@@ -196,16 +195,9 @@ package CuBit.Startup_Tables with Pure, SPARK_Mode is
    --  manifest may not declare them.
    Self_Text         : constant String := "self";
    Self_Process_Text : constant String := "self-process";
-   --  The program's metric outlet (com.cubit-os.stdmetric, CuBit.Metric_Outlet):
-   --  every launch gets it, wired to metrics.svc when one runs, so no
-   --  manifest declares it.
-   Metric_Outlet_Text : constant String := "stdmetric";
-   --  The entries a launcher appends after the declared ones.
-   Launcher_Entries : constant := 3;
 
    function Reserved_Name (Item : Name) return Boolean is
-     (Item = To_Name (Self_Text) or else Item = To_Name (Self_Process_Text)
-      or else Item = To_Name (Metric_Outlet_Text));
+     (Item = To_Name (Self_Text) or else Item = To_Name (Self_Process_Text));
 
    ---------------------------------------------------------------------------
    --  Tables

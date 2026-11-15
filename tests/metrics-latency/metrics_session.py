@@ -27,6 +27,13 @@ CODE = re.compile(rb"ccl-remote: pairing code ([0-9A-Z-]{31})")
 LISTENING = b"ccl-remote: listening on "
 REPORT = re.compile(rb"desktop: latency inputs=\d+ shown=(\d+)")
 STAGE = re.compile(rb"desktop: latency stage=(\w+) n=(\d+) p50=\d+ p90=\d+ p99=\d+ max=(\d+)")
+# The outlet fixture's report (tests/metrics-latency/outlet-fixture), once
+# per variant: with the outlet declared and without.
+FIXTURE = re.compile(rb"metrics-fixture: entry=(\w+) endpoint=(\w+) state=(\w+) drained=(\w+) lost (\d+)")
+FIXTURE_SERIES = "fixture.outlet.samples"
+FIXTURE_SAMPLES = 32
+DECLARED_SOURCE = "com.cubit.metrics-declared"
+UNDECLARED_SOURCE = "com.cubit.metrics-undeclared"
 #  Seconds kept for reading the store and quitting before run.sh's timeout.
 QUERY_RESERVE_S = 40
 #  Desktop's report interval (Desktop_Latency_Report), and one more.
@@ -166,6 +173,26 @@ def main():
     frames = cr.parse_list(text) if ok else None
     check(frames is not None and len(frames[1]) > 0, "desktop.frames.* series exist")
     print(cr.render_series(text), flush=True)
+
+    # The outlet only by declaration: the same program with and without
+    # (Outlet "com.cubit-os.stdmetric" ...) in its manifest.
+    reports = {m.group(1): m.groups() for m in FIXTURE.finditer(data)}
+    declared, undeclared = reports.get(b"present"), reports.get(b"absent")
+    check(declared == (b"present", b"present", b"OPEN", b"yes", b"0"),
+          "the declared fixture has its stdmetric entry and endpoint, and every sample went out: %s" % (declared,))
+    check(undeclared == (b"absent", b"absent", b"UNWIRED", b"no", str(FIXTURE_SAMPLES).encode()),
+          "the undeclared fixture has no stdmetric entry or endpoint, and counted every sample lost: %s"
+          % (undeclared,))
+    ok, text = cr.evaluate_whole(host, cr.series_expression(FIXTURE_SERIES, ""))
+    listed = cr.parse_list(text) if ok else None
+    rows = [dict(zip(cr.SERIES_FIELDS, cr.parse_fields(e)[1])) for e in listed[1]] if listed else []
+    check(ok and len(rows) == 1 and rows[0]["source"] == DECLARED_SOURCE and rows[0]["published"] == FIXTURE_SAMPLES,
+          "%s: one series, the declared fixture's, with all %d samples (%s)"
+          % (FIXTURE_SERIES, FIXTURE_SAMPLES, [(r["source"], r["published"]) for r in rows]))
+    ok, text = cr.evaluate_whole(host, cr.series_expression("", UNDECLARED_SOURCE))
+    listed = cr.parse_list(text) if ok else None
+    check(ok and listed is not None and len(listed[1]) == 0,
+          "the store holds no series from the undeclared fixture")
 
 
 try:

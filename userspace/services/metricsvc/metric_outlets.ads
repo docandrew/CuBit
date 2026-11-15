@@ -7,7 +7,7 @@ with Metric_Series;
 with Metric_Sources;
 private with Heap_Arrays;
 
---  metrics.svc's side of every program's com.cubit-os.stdmetric outlet
+--  metrics.svc's side of each declared com.cubit-os.stdmetric outlet
 --  (CuBit.Metric_Outlet, MET-002): each ring a program opens is accepted
 --  here and drained into the series store on every pass. A new series
 --  appears the first time a program describes it: no registration. Labels

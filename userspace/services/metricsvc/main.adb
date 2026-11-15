@@ -24,7 +24,7 @@ with Metric_Scopes;
 with Metric_Reads;
 
 --  metrics.svc (MET-001, MET-002): typed metric collection and the series
---  store. Every program's com.cubit-os.stdmetric outlet ring is accepted
+--  store. Each declared com.cubit-os.stdmetric outlet's ring is accepted
 --  here and drained into Metric_Series every Metric_Outlets.Drain_Interval_Ms;
 --  the launchers' registrar channels say who each publisher is
 --  (Metric_Sources); procmgr installs each reader's read scopes

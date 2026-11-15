@@ -3,10 +3,11 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Everyday metrics for every program (MET-002): series published through
---  the program's com.cubit-os.stdmetric outlet (CuBit.Metric_Outlet), which
---  its launcher wires to metrics.svc. Nothing to declare in the manifest,
---  nothing to bind:
+--  Everyday metrics for any program (MET-002): series published through
+--  the program's com.cubit-os.stdmetric outlet (CuBit.Metric_Outlet). The
+--  manifest declares the outlet, and nothing else is registered or bound:
+--
+--     outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)]
 --
 --     Frames : constant CuBit.Metrics.Series :=
 --       CuBit.Metrics.Series_Named ("myapp.frames", Counter, Count);
@@ -29,8 +30,8 @@
 --  against its series; the count and the shed samples' time range go out
 --  as one Loss element ahead of the series' next sample (or at Flush), and
 --  metrics.svc stores it as a typed gap. A program without the outlet (its
---  launcher had no metrics.svc to wire, or metrics.svc ended) counts every
---  sample as lost (Lost) and keeps going.
+--  manifest does not declare it, metrics.svc was not running at launch, or
+--  metrics.svc ended) counts every sample as lost (Lost) and keeps going.
 --
 --  One task per program: calls are serialized by the program's own loop,
 --  as for CuBit.Log. The series table grows on the process heap (CuAlloc)

@@ -17,4 +17,9 @@
     (service "device-manager" "device-manager")
     (service "filesystem" "firmware")
     (notification "gpu" Notify_Access.Manage "registration")]
-  optional => ["registration" "firmware" "device"])
+  optional => ["registration" "firmware" "device"]
+  # The flip timing series (intel-gpu.flip.slack_us, lag_us; MET-002). The
+  # outlet's startup entry stays Absent while devmgr launches the driver:
+  # devmgr does not hold metrics.svc's endpoint yet, so the driver counts its
+  # samples as lost (CuBit.Metrics.Lost) until it does.
+  outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)])

@@ -26,6 +26,7 @@ with CuBit.Handles.Control;
 with CuBit.Handles.Devices;
 with CuBit.Handles.Startup;
 with CuBit.Kernel_ABI;
+with CuBit.Metric_Outlet;
 with CuBit.Startup_State;
 with CuBit.Startup_Tables;
 with Startup;
@@ -57,10 +58,8 @@ procedure Main is
    Old_Slot_Count : constant := 64;
    --  The manifest's handle limit (Handle_Limit.At_Most 8).
    Handle_Limit   : constant := 8;
-   --  The launcher's entries (the two self entries and the metric outlet,
-   --  CuBit.Startup_Tables.Launcher_Entries); the self entries' handles,
-   --  and the outlet's when metrics.svc runs, count against the limit.
-   Self_Handles   : constant := 2;
+   --  The launcher's two self entries count against it.
+   Self_Entries   : constant := 2;
    ERROR_RESULT : constant Unsigned_64 := Unsigned_64'Last;
    --  INSPECT's answer for a live entry.
    Inspected    : constant Unsigned_64 := 0;
@@ -101,11 +100,6 @@ procedure Main is
    Self         : Endpoint;
    Self_Process : CuBit.Handles.Process;
    Self_Word    : Unsigned_64;
-
-   --  1 when the launcher wired the metric outlet (metrics.svc runs).
-   function Outlet_Handles return Natural;
-   function Outlet_Handles return Natural is
-     (if CuBit.Handles.Startup.Optional_Endpoint_Named (ST.Metric_Outlet_Text).Present then 1 else 0);
 
    procedure Check (Condition : Boolean; Name : String) is
    begin
@@ -201,10 +195,17 @@ begin
 
    --  The startup table holds exactly what the launcher gives every
    --  process (its manifest requests nothing).
-   Check (CuBit.Startup_State.Current.Count = ST.Launcher_Entries
+   Check (CuBit.Startup_State.Current.Count = Self_Entries
           and then CuBit.Startup_State.Current.Limit =
                    (Kind => ST.At_Most, Count => Handle_Limit),
           "startup table holds only the self entries, with the declared limit");
+   --  MET-002: no metric outlet entry for a program that does not declare
+   --  the com.cubit-os.stdmetric outlet, as this manifest does not (the
+   --  metrics-latency test checks the same with metrics.svc running).
+   Check (ST.Find (CuBit.Startup_State.Current, ST.To_Name (CuBit.Metric_Outlet.Startup_Binding)) = 0
+          and then not CuBit.Handles.Startup.Optional_Endpoint_Named
+                         (CuBit.Metric_Outlet.Startup_Binding).Present,
+          "no metric outlet without its declaration");
    Self := CuBit.Handles.Startup.Endpoint_Named (ST.Self_Text);
    Self_Process := CuBit.Handles.Startup.Process_Named (ST.Self_Process_Text);
    Self_Word := CuBit.Startup_State.Granted (ST.Self_Text, ST.Endpoint);
@@ -559,7 +560,7 @@ begin
             exit;
          end if;
       end loop;
-      Check (Count = Handle_Limit - Self_Handles - Outlet_Handles and then Refused_At_Limit,
+      Check (Count = Handle_Limit - Self_Entries and then Refused_At_Limit,
              "handle limit reached (Limit_Reached)" &
              (if Refused_At_Limit then "" else " got " & ABI.Refusal'Image (Last_Refusal)));
       Check (IPC.Describe (Self).Current, "the self entries survive the limit");

@@ -8,11 +8,12 @@
 --  way com.cubit.stdlog's records reach logstore (CuBit.Log_Publish_Rings).
 --
 --  @description
---  Every program has the outlet: its launcher wires it to metrics.svc and
---  hands the endpoint over as the startup entry Startup_Binding, so a
---  program publishes by calling CuBit.Metrics and declares nothing. A
---  manifest may still name it, (Outlet "com.cubit-os.stdmetric"
---  Element.Metric_Records), so that the program's description lists it.
+--  A program has the outlet only when its manifest declares it,
+--  (Outlet "com.cubit-os.stdmetric" Element.Metric_Records). The
+--  declaration requests metrics.svc's publisher endpoint as the optional
+--  startup entry Startup_Binding; the launcher badges it for this program
+--  alone, or leaves it Absent when metrics.svc is not running. Nothing else
+--  is registered: a series appears in the store with its first sample.
 --
 --  The ring is a Shed_Newest queue: a full ring drops the new element and
 --  the producer counts it against the element's series, then reports the
@@ -39,14 +40,13 @@ with Interfaces; use Interfaces;
 with CuBit.Channel_Contracts;
 with CuBit.Protocols;
 with CuBit.Program_Descriptions;
-with CuBit.Startup_Tables;
 
 package CuBit.Metric_Outlet with Pure, SPARK_Mode is
 
-   --  The outlet's qualified name, and the startup entry the launcher
-   --  gives every program (CuBit.Startup_Tables reserves it).
+   --  The outlet's qualified name, and the startup entry its declaration
+   --  requests.
    Outlet_Name : constant String := CuBit.Program_Descriptions.Metric_Outlet_Name;
-   Startup_Binding : constant String := CuBit.Startup_Tables.Metric_Outlet_Text;
+   Startup_Binding : constant String := CuBit.Program_Descriptions.Metric_Outlet_Binding;
 
    METRIC_ELEMENT_SCHEMA : constant CuBit.Protocols.Schema_Id := 16#4D45_5452_4943_0001#;
 

@@ -42,8 +42,10 @@
 # outlets, not stdio"): any number, each with a fully qualified name
 # (unix.stderr, com.cubit.stdlog), an element type, a signal kind and its
 # ring's size. A ported Unix program maps its file descriptors onto them
-# (porting glue). Every program has com.cubit-os.stdmetric (Metric_Records),
-# wired by its launcher; declaring it only lists it.
+# (porting glue). A program publishes metrics only through a declared
+# (Outlet "com.cubit-os.stdmetric" Element.Metric_Records): the declaration
+# requests metrics.svc's publisher endpoint as the optional startup entry
+# "stdmetric", a binding no request may take otherwise.
 (type Element (enum Text Raw_Bytes Integers Log_Records Metric_Records))
 (type Signal (enum Stream Level Edge))
 (type Outlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))

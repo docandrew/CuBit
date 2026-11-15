@@ -1,0 +1,30 @@
+--  The metrics-latency outlet fixture (MET-002), one program built per
+--  manifest: -XVARIANT=declared or undeclared (build.sh).
+project Metrics_Outlet_Fixture is
+   type Variant_Kind is ("declared", "undeclared");
+   Variant : Variant_Kind := external ("VARIANT", "declared");
+   for Languages use ("Ada");
+   for Object_Dir use "build/" & Variant;
+   for Source_Dirs use (".");
+   for Main use ("main.adb");
+   for Runtime ("Ada") use "../../../userspace/runtime";
+   package Builder is
+      for Executable ("main.adb") use "metrics-" & Variant & ".app";
+      for Default_Switches ("Ada") use ("-nostdlib");
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-fstack-usage",
+         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic",
+         "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=16777216",
+         "-lgnat-user", "-T", "../../../userspace/c/link.ld", "../../../userspace/c/build/crt0.o",
+         "build/" & Variant & "/manifest.o");
+   end Linker;
+end Metrics_Outlet_Fixture;

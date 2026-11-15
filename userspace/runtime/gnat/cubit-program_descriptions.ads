@@ -81,9 +81,13 @@ package CuBit.Program_Descriptions with Pure, SPARK_Mode is
    for Connector_Direction use (Inlet => 1, Outlet => 2);
    --  An element's type. Text: one element per line; Bytes: raw chunks;
    --  Log_Record: CuBit's structured log record (docs/typed-logging.md).
-   --  Metric_Record: a metric element (CuBit.Metric_Outlet), on the
-   --  outlet every program has, Metric_Outlet_Name, only.
-   Metric_Outlet_Name : constant String := "com.cubit-os.stdmetric";
+   --  Metric_Record: a metric element (CuBit.Metric_Outlet), on
+   --  Metric_Outlet_Name only. A program has that outlet only when its
+   --  manifest declares it; the declaration also requests metrics.svc's
+   --  publisher endpoint as the optional startup entry Metric_Outlet_Binding,
+   --  a name no request may take otherwise.
+   Metric_Outlet_Name    : constant String := "com.cubit-os.stdmetric";
+   Metric_Outlet_Binding : constant String := "stdmetric";
    type Element_Kind is (Text_Lines, Raw_Bytes, Integers, Log_Records, Metric_Records);
    for Element_Kind use
      (Text_Lines => 1, Raw_Bytes => 2, Integers => 3, Log_Records => 4, Metric_Records => 5);

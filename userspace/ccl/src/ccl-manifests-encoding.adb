@@ -10,11 +10,10 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
    use Model;
    package ST renames CuBit.Startup_Tables;
 
-   --  The startup table holds every request plus the launcher's entries
-   --  (the two self entries and the metric outlet), in a section of the
-   --  usual size.
+   --  The startup table holds every request plus the launcher's two self
+   --  entries, in a section of the usual size.
    pragma Compile_Time_Error
-     (MAX_REQUESTS + ST.Launcher_Entries > ST.Maximum_Entries or else MAX_NAME_TEXT > ST.Maximum_Name_Bytes
+     (MAX_REQUESTS + 2 > ST.Maximum_Entries or else MAX_NAME_TEXT > ST.Maximum_Name_Bytes
       or else ST.Maximum_Table_Bytes > MAX_SECTION_BYTES,
       "a manifest's startup table must fit CuBit.Startup_Tables and a section");
 
@@ -59,6 +58,19 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
             Result.Position := At_Position;
          end if;
       end Fail;
+
+      --  Whether the description declares the com.cubit-os.stdmetric outlet,
+      --  whose declaration alone requests the startup entry
+      --  CuBit.Program_Descriptions.Metric_Outlet_Binding.
+      function Declares_Metric_Outlet return Boolean;
+      function Declares_Metric_Outlet return Boolean is
+         Index : CuBit.Program_Descriptions.Connector_Index;
+         Found : Boolean;
+      begin
+         CuBit.Program_Descriptions.Find_Connector
+           (Decl.Description, CuBit.Program_Descriptions.Metric_Outlet_Name, Index, Found);
+         return Found;
+      end Declares_Metric_Outlet;
 
 
       procedure Append (Output : in out Section; N : Unsigned_64; Bytes : Positive) is
@@ -232,8 +244,12 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
             declare
                Name : constant String := Requests (Index).Name.Data (1 .. Requests (Index).Name.Length);
             begin
-               --  The launcher's own entries (self, self-process, stdmetric).
-               if Name'Length <= ST.Maximum_Name_Bytes and then ST.Reserved_Name (ST.To_Name (Name)) then
+               --  The launcher's own entries, and the metric outlet's entry,
+               --  which only the outlet's declaration requests.
+               if Name = ST.Self_Text or else Name = ST.Self_Process_Text
+                 or else (Name = CuBit.Program_Descriptions.Metric_Outlet_Binding
+                          and then not Declares_Metric_Outlet)
+               then
                   Fail (Reserved_Binding_Name, Cursor);
                   return;
                end if;

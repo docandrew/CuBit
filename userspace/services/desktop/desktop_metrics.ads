@@ -4,9 +4,9 @@ with Compositor_Latency;
 with Compositor_Stage_Metrics;
 with Compositor_Work_Metrics;
 
---  Desktop's metrics (MET-002): always on, published through Desktop's
---  com.cubit-os.stdmetric outlet (CuBit.Metrics), a copy into a ring with
---  no system call per sample and nothing to bind.
+--  Desktop's metrics (MET-002): always on, published through the
+--  com.cubit-os.stdmetric outlet Desktop's manifest declares (CuBit.Metrics),
+--  a copy into a ring with no system call per sample.
 --
 --  * The compositor families (Compositor_Stage_Metrics, _Work_Metrics,
 --    _Release_Metrics) as series under the names their declarations give.

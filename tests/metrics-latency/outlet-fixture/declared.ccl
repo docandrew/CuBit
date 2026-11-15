@@ -1,0 +1,6 @@
+# The metrics-latency test's declared outlet fixture (MET-002): the outlet,
+# and nothing else.
+(Executable_Manifest
+  identity => "com.cubit.metrics-declared"
+  version => "0.1.0"
+  outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)])

@@ -135,8 +135,9 @@ package body CuBit.Metrics is
       return (Key => Used);
    end Series_Named;
 
-   --  Open the ring to metrics.svc, once: through the launcher's stdmetric
-   --  entry, or Unwired when there is none or metrics.svc refuses.
+   --  Open the ring to metrics.svc, once: through the stdmetric entry the
+   --  manifest's outlet declaration requests, or Unwired when the table has
+   --  none (undeclared, or Absent) or metrics.svc refuses.
    procedure Open_Outlet;
    procedure Open_Outlet is
       Target : constant CuBit.Handles.Startup.Optional_Endpoint :=

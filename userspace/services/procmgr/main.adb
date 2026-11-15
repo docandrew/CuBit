@@ -569,6 +569,9 @@ procedure main is
       --  (stop-stage ...) or its Start_Child spec; a program another
       --  program launched is an app.
       Stage : CuBit.Child_Specs.Stop_Stage := CuBit.Child_Specs.Apps;
+      --  Its manifest declares the com.cubit-os.stdmetric outlet (MET-002):
+      --  metrics.svc hears who it is, at its start and its exit.
+      Metric_Outlet : Boolean := False;
    end record;
    Empty_Process_Record : constant Process_Record := (others => <>);
    package Records is new CuBit.Identity_Tables
@@ -609,7 +612,7 @@ procedure main is
                              Launcher => launcher, Started => syscall (SYSCALL_GETTIME),
                              Control => Control, Mailbox => Mailbox, Resumed => False, Held => False,
                              Stop_Grace => 0, Sequence => Next_Launch_Sequence,
-                             Stage => CuBit.Child_Specs.Apps);
+                             Stage => CuBit.Child_Specs.Apps, Metric_Outlet => False);
       if Next_Launch_Sequence < Unsigned_64'Last then
          Next_Launch_Sequence := Next_Launch_Sequence + 1;
       end if;
@@ -3483,35 +3486,6 @@ procedure main is
          end if;
       end Mint_Service;
 
-      --  Every program's metric outlet (MET-002, CuBit.Metric_Outlet: the
-      --  startup entry "stdmetric", which no manifest declares): metrics.svc's
-      --  endpoint badged with a fresh publisher tag, Read_Write and no Grant,
-      --  so the program can open its outlet ring and nothing else. No_Handle
-      --  (the entry is Absent) while metrics.svc is not registered, for
-      --  metrics.svc itself, at the issuance's end, or when the child's handle
-      --  limit is reached. Publishing needs no approval: it reveals nothing.
-      procedure Mint_Metric_Outlet (Handle : out Unsigned_64) is
-         Service : CuBit.Handles.Endpoint;
-         Outcome : SB.Mint_Outcome;
-      begin
-         Handle := ST.No_Handle;
-         if pkgId (1 .. pkgIdLen) = Metrics_Identity or else Next_Metric_Issuance = 0 then
-            return;
-         end if;
-         Service := providerFor (CuBit.Metric_Protocol.Publisher_Service_Role);
-         if not Valid (Service) then
-            return;
-         end if;
-         Install (Badged (Service, H.Read_Write,
-                          CuBit.Metric_Protocol.Publisher_Tag (Unsigned_64 (Next_Metric_Issuance))),
-                  Handle, Outcome);
-         Next_Metric_Issuance :=
-           (if Next_Metric_Issuance = Unsigned_32'Last then 0 else Next_Metric_Issuance + 1);
-         if Outcome /= SB.Granted then
-            Handle := ST.No_Handle;
-         end if;
-      end Mint_Metric_Outlet;
-
       --  A notification over one role: input publishers and focus consumers,
       --  and the registrations procmgr's policy approves for this identity.
       procedure Mint_Notification
@@ -3688,7 +3662,7 @@ procedure main is
             Data_Entries : constant Natural := (if ACPI_Data_Word /= ST.No_Handle then 1 else 0);
          begin
             ACPI_SCI_Asked := True;
-            if View.Declared.Count + ST.Launcher_Entries + ACPI_Window_Total + ACPI_Memory_Total
+            if View.Declared.Count + SB.Self_Entries + ACPI_Window_Total + ACPI_Memory_Total
                  + Data_Entries + 1 > ST.Maximum_Entries
             then
                Warnings.Warn ("procmgr: ACPI SCI refused for " & name &
@@ -3777,7 +3751,7 @@ procedure main is
          else
             Windows := acpiWindows;
             if Windows.Count > AHA.Maximum_IO_Windows
-              or else View.Declared.Count + ST.Launcher_Entries + Windows.Count > ST.Maximum_Entries
+              or else View.Declared.Count + SB.Self_Entries + Windows.Count > ST.Maximum_Entries
             then
                Outcome := SB.Limit_Reached;
                Warnings.Warn ("procmgr: ACPI hardware refused: " & name &
@@ -3857,7 +3831,7 @@ procedure main is
                               -- independently approved PCI-window endpoint.
                               Placed := SB.Not_Available;
                               Warnings.Warn ("procmgr: stage acpi-startup-memory fail PCI_PREGRANT_REFUSED");
-                           elsif View.Declared.Count + ST.Launcher_Entries + ACPI_Window_Total
+                           elsif View.Declared.Count + SB.Self_Entries + ACPI_Window_Total
                                    + ACPI_Memory_Total + 1 > ST.Maximum_Entries
                            then
                               Placed := SB.Limit_Reached;
@@ -3893,7 +3867,7 @@ procedure main is
                   declare
                      Placed : SB.Mint_Outcome := SB.Not_Available;
                   begin
-                     if View.Declared.Count + ST.Launcher_Entries + ACPI_Window_Total
+                     if View.Declared.Count + SB.Self_Entries + ACPI_Window_Total
                           + ACPI_Memory_Total + 1 > ST.Maximum_Entries
                      then
                         Placed := SB.Limit_Reached;
@@ -4080,20 +4054,6 @@ procedure main is
                end;
             end if;
          end loop;
-         --  The metric outlet every launch gets (Mint_Metric_Outlet): when
-         --  procmgr has started metrics.svc and it has not registered yet,
-         --  wait for it like an optional entry, so the program is wired.
-         if mayWait and then Count < Found'Last and then pkgId (1 .. pkgIdLen) /= Metrics_Identity then
-            classifyProvider (CuBit.Metric_Protocol.Publisher_Service_Role, Now, State, Provider, Deadline);
-            if State = Provider_Starting and then Provider /= No_Process then
-               Count := Count + 1;
-               Found (Count) :=
-                 (Label => ST.To_Name (ST.Metric_Outlet_Text), Role => CuBit.Metric_Protocol.Publisher_Service_Role,
-                  Provider => Provider, Deadline => Deadline, Required => False, Resolved => False);
-               debugPrint ("procmgr: launch of " & name & " waits for metrics.svc to register (its " &
-                           ST.Metric_Outlet_Text & " outlet)" & LF);
-            end if;
-         end if;
          if Count > 0 then
             Waits := new Awaited_Services'(Found (1 .. Count));
          end if;
@@ -4454,8 +4414,15 @@ procedure main is
       --  The package identity (.cubit.id) was parsed before the waits.
       noteProcess (newPID, requester, pkgId (1 .. pkgIdLen), Child.Control, Child.Mailbox);
       Sources.Started (newPID, pkgId (1 .. pkgIdLen), name);
-      Metric_Sources.Started (newPID, pkgId (1 .. pkgIdLen), name);
       Recorded := Records.Find (newPID) /= 0;
+      --  Only a program that declares the metric outlet publishes metrics;
+      --  only its identity is metrics.svc's to know.
+      if Recorded and then
+        ST.Find (View.Declared, ST.To_Name (CuBit.Program_Descriptions.Metric_Outlet_Binding)) /= 0
+      then
+         Records.Values (Records.Find (newPID)).Metric_Outlet := True;
+         Metric_Sources.Started (newPID, pkgId (1 .. pkgIdLen), name);
+      end if;
 
       --  A launched child asks only for services its launcher holds; note a
       --  render request (granted only after admission, below).
@@ -4759,13 +4726,11 @@ procedure main is
          Encoded_Length : ST.Table_Length;
          Envelope_Length : LE.Block_Length := Block_Length;
          Fits : Boolean;
-         Outlet_Handle : Unsigned_64;
          use type SB.Build_Status;
       begin
-         Mint_Metric_Outlet (Outlet_Handle);
          Build (Context, View.Declared,
                 HC.Table_Word (Child.Child_Self), HC.Table_Word (Child.Child_Self_Process),
-                Built, Result, Metric_Outlet_Handle => Outlet_Handle);
+                Built, Result);
          if Result.Status /= SB.Ready then
             Warnings.Warn
               ("procmgr: launch of " & name & " refused: startup table " &
@@ -7984,7 +7949,9 @@ begin
                        (Exited, Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0);
                      if Known /= 0 then
                         Sources.Exited (Exited);
-                        Metric_Sources.Exited (Exited);
+                        if Records.Values (Known).Metric_Outlet then
+                           Metric_Sources.Exited (Exited);
+                        end if;
                      end if;
                      for Registrant of Registrants loop
                         if Registrant = Exited then
