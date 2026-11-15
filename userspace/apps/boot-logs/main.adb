@@ -15,6 +15,7 @@ with Clipboard_Text;
 with CuBit.UI.State;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
+with Boot_Logs_Repaint;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    use type P.Status;
@@ -245,6 +246,16 @@ procedure Main is
    --  The records the filter shows, in order.
    Visible : array (1 .. 512) of Positive;
    Visible_Count : Natural := 0;
+   --  A page is anchored to the records it shows, not to positions: Anchor
+   --  is the number (since the viewer started) of its first record. Once
+   --  the viewer is full, each new record drops the oldest and shifts every
+   --  position; the page shown stays put (only the counts line changes)
+   --  until its own records are dropped or it turns.
+   Anchor : Unsigned_64 := 0;
+   --  The page's first row, as a position in Visible (Select_Visible).
+   Shown_First : Positive := 1;
+   function Number_Of (Index : Positive) return Unsigned_64 is
+     (Viewer_Dropped + Unsigned_64 (Index));
    procedure Select_Visible is
    begin
       Visible_Count := 0;
@@ -254,56 +265,108 @@ procedure Main is
             Visible (Visible_Count) := I;
          end if;
       end loop;
-      Page := Natural'Min (Page, (if Visible_Count = 0 then 0 else (Visible_Count - 1) / Rows));
+      Shown_First := 1;
+      while Shown_First <= Visible_Count and then Number_Of (Visible (Shown_First)) < Anchor loop
+         Shown_First := Shown_First + 1;
+      end loop;
+      if Shown_First > Visible_Count then
+         --  Every record at or after the anchor is gone: the last page.
+         Shown_First := (if Visible_Count = 0 then 1 else ((Visible_Count - 1) / Rows) * Rows + 1);
+      end if;
+      Page := (Shown_First - 1) / Rows;
    end Select_Visible;
 
-   procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
-      C : constant Canvas := CuBit.UI.App.Canvas (Win, Damage);
-      Colors : constant Theme := Current_Theme;
+   --  Where the counts line is drawn: its top, and the band repainted for
+   --  it (to the window's bottom edge).
+   COUNTS_FROM_BOTTOM : constant := 30;
+   function Counts_Text return String is
+     ("Page" & Natural'Image (Page + 1) &
+      "  Records" & Natural'Image (Visible_Count) & " of" & Natural'Image (Count) &
+      "  Service lost" & Unsigned_64'Image (Lost_Records) &
+      "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped));
+   function Counts_Rect (Win : CuBit.UI.App.Window) return Rect is
+     (0, Natural'Max (CuBit.UI.App.Height (Win), COUNTS_FROM_BOTTOM) - COUNTS_FROM_BOTTOM,
+      CuBit.UI.App.Width (Win), Natural'Min (CuBit.UI.App.Height (Win), COUNTS_FROM_BOTTOM));
+
+   --  Every line of the window above the counts line, in drawing order.
+   procedure Body_Lines
+     (Visit : not null access procedure (Y : Natural; Text : String; Danger : Boolean))
+   is
       First : Natural;
       --  Rows below the pinned summary (and its divider line).
       Top : constant Natural := 40 + (if Summary_Count = 0 then 0
                                       else (Summary_Count + 1) * Line_Height);
-      --  Every line elided to keep MARGIN clear of the right edge too.
-      Lines : constant Rect := (MARGIN, 0, Natural'Max (CuBit.UI.App.Width (Win), 2 * MARGIN) - 2 * MARGIN,
-                                CuBit.UI.App.Height (Win));
-      procedure Line (Y : Natural; Text : String; Ink : Color) is
-      begin
-         Draw_UI_Text_Fitted (C, Lines, MARGIN, Y, Text, Ink, Colors.panel);
-      end Line;
    begin
-      Fill_Rect (C, CuBit.UI.App.Full_Rect (Win), Colors.panel);
       Select_Visible;
-      First := Page * Rows + 1;
-      Line (10, "Boot diagnostics: " & Filter_Text & " (Tab: next source, B: bring-up); pages rotate every 8 s",
-            Colors.text);
-      Line (CuBit.UI.App.Height (Win) - 30, "Page" & Natural'Image (Page + 1) &
-        "  Records" & Natural'Image (Visible_Count) & " of" & Natural'Image (Count) & "  Service lost" & Unsigned_64'Image (Lost_Records) &
-        "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped), Colors.text);
+      First := Shown_First;
+      Visit (10, "Boot diagnostics: " & Filter_Text & " (Tab: next source, B: bring-up); pages rotate every 8 s",
+             False);
       if Status = P.Denied then
-         Line (36, "Log read authority denied", Colors.danger);
+         Visit (36, "Log read authority denied", True);
       elsif Status not in P.OK | P.Empty | P.Gap then
-         Line (36, "Logstore read failed: " & P.Status'Image (Status) &
-           " (retrying)", Colors.danger);
+         Visit (36, "Logstore read failed: " & P.Status'Image (Status) & " (retrying)", True);
       elsif Count = 0 then
-         Line (36, "Waiting for driver startup records via logstore...", Colors.text);
+         Visit (36, "Waiting for driver startup records via logstore...", False);
       else
          if Filter = All_Sources then
             for I in 1 .. Summary_Count loop
-               Line (40 + (I - 1) * Line_Height,
+               Visit (40 + (I - 1) * Line_Height,
                  CuBit.Log_Records.Text (Summary (I)),
-                 (if CuBit.Log_Records.Level (Summary (I)) >= CuBit.Log_Records.Warning
-                  then Colors.danger else Colors.text));
+                 CuBit.Log_Records.Level (Summary (I)) >= CuBit.Log_Records.Warning);
             end loop;
          end if;
          for I in 0 .. Rows - 1 loop
             if First + I <= Visible_Count then
-               Line ((if Filter = All_Sources then Top else 40) + I * Line_Height,
+               Visit ((if Filter = All_Sources then Top else 40) + I * Line_Height,
                  Shown_Text (Visible (First + I)),
-                 (if CuBit.Log_Records.Level (Records (Visible (First + I))) >= CuBit.Log_Records.Warning
-                  then Colors.danger else Colors.text));
+                 CuBit.Log_Records.Level (Records (Visible (First + I))) >= CuBit.Log_Records.Warning);
             end if;
          end loop;
+      end if;
+   end Body_Lines;
+
+   --  What the window shows now, and what it showed when last painted.
+   BODY_SNAPSHOT_BYTES : constant := 64 * 1024;
+   COUNTS_SNAPSHOT_BYTES : constant := 256;
+   Body_Now, Painted_Body : Boot_Logs_Repaint.Snapshot (BODY_SNAPSHOT_BYTES);
+   Counts_Now, Painted_Counts : Boot_Logs_Repaint.Snapshot (COUNTS_SNAPSHOT_BYTES);
+   procedure Add_Body_Line (Y : Natural; Text : String; Danger : Boolean) is
+   begin
+      Boot_Logs_Repaint.Add_Line (Body_Now, Y, Text, Danger);
+   end Add_Body_Line;
+   procedure Take_Snapshot is
+   begin
+      Boot_Logs_Repaint.Clear (Body_Now);
+      Body_Lines (Add_Body_Line'Access);
+      Boot_Logs_Repaint.Clear (Counts_Now);
+      Boot_Logs_Repaint.Add_Line (Counts_Now, 0, Counts_Text, False);
+   end Take_Snapshot;
+   function Covers (Outer, Inner : Rect) return Boolean is
+     (Outer.x <= Inner.x and then Outer.y <= Inner.y and then
+      Outer.x + Outer.w >= Inner.x + Inner.w and then Outer.y + Outer.h >= Inner.y + Inner.h);
+
+   procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
+      C : constant Canvas := CuBit.UI.App.Canvas (Win, Damage);
+      Colors : constant Theme := Current_Theme;
+      --  Every line elided to keep MARGIN clear of the right edge too.
+      Lines : constant Rect := (MARGIN, 0, Natural'Max (CuBit.UI.App.Width (Win), 2 * MARGIN) - 2 * MARGIN,
+                                CuBit.UI.App.Height (Win));
+      procedure Line (Y : Natural; Text : String; Danger : Boolean) is
+      begin
+         Draw_UI_Text_Fitted (C, Lines, MARGIN, Y, Text,
+                              (if Danger then Colors.danger else Colors.text), Colors.panel);
+      end Line;
+   begin
+      Fill_Rect (C, CuBit.UI.App.Full_Rect (Win), Colors.panel);
+      Body_Lines (Line'Access);
+      Line (Counts_Rect (Win).y, Counts_Text, False);
+      --  Remember what is on screen now, for the next change (Tick).
+      Take_Snapshot;
+      if Covers (Damage, CuBit.UI.App.Full_Rect (Win)) then
+         Painted_Body := Body_Now;
+      end if;
+      if Covers (Damage, Counts_Rect (Win)) then
+         Painted_Counts := Counts_Now;
       end if;
    end Render;
    --  What Ctrl+C copies (docs/clipboard.md): the summary and the page shown,
@@ -323,7 +386,7 @@ procedure Main is
    begin
       Clipboard_Text.Clear (Copy_Form);
       Select_Visible;
-      First := Page * Rows + 1;
+      First := Shown_First;
       if Filter = All_Sources then
          for I in 1 .. Summary_Count loop
             Line (CuBit.Log_Records.Text (Summary (I)));
@@ -357,10 +420,12 @@ procedure Main is
             Filter := All_Sources;
          end if;
          Page := 0;
+         Anchor := 0;
          Dirty := CuBit.UI.App.Full_Rect (Win);
       elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN and then Event.payload0 = KEY_B then
          Filter := (if Filter = Bring_Up then All_Sources else Bring_Up);
          Page := 0;
+         Anchor := 0;
          Dirty := CuBit.UI.App.Full_Rect (Win);
       elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
          Rows := Positive'Max (1, (CuBit.UI.App.Height (Win) - 80 -
@@ -370,12 +435,27 @@ procedure Main is
       end if;
    end Handle_Event;
    function Deadline return Unsigned_64 is (Due);
+   --  How many changes Tick repainted whole, as the counts line, or not.
+   DECIDED_REPORT_MS : constant := 10_000;
+   type Need_Counts is array (Boot_Logs_Repaint.Need) of Natural;
+   Decided : Need_Counts := [others => 0];
+   Decided_Report_Due : Unsigned_64 := 0;
+   Decision : Boot_Logs_Repaint.Need;
+   use type Boot_Logs_Repaint.Need;
+   --  The first line a whole repaint of the period changed (serial evidence).
+   type Example_Text is record
+      Length : Natural range 0 .. 96 := 0;
+      Text : String (1 .. 96) := [others => ' '];
+   end record;
+   Whole_Example : Example_Text;
    procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
       Event : P.Event;
       Lost : Unsigned_64;
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
       --  Sources were asked for this time already.
       Asked : Boolean := False;
+      --  Something shown may have changed: compare before repainting.
+      Changed : Boolean := False;
    begin
       Due := Now + 250;
       if Status not in P.OK | P.Empty | P.Gap then
@@ -386,7 +466,7 @@ procedure Main is
             CuBit.Logging.Read_Next (Reader, Event, Lost, Status);
             if Status = P.Gap then
                Lost_Records := Lost_Records + Lost;
-               Dirty := CuBit.UI.App.Full_Rect (Win);
+               Changed := True;
             end if;
             exit when Status /= P.OK;
             if Pinned (Event.Data) then
@@ -419,7 +499,7 @@ procedure Main is
                             then Label & ": " else "") & Text & ASCII.LF);
             end;
             Remember_Source (Count);
-            Dirty := CuBit.UI.App.Full_Rect (Win);
+            Changed := True;
          end loop;
       end if;
       --  Exits since the last look (and names logstore learned late).
@@ -427,19 +507,56 @@ procedure Main is
          Names_Due := Now + NAMES_MS;
          if Count > 0 then
             Refresh_Sources;
-            Dirty := CuBit.UI.App.Full_Rect (Win);
+            Changed := True;
          end if;
       end if;
       if Now >= Turn_Page then
          Select_Visible;
-         Page := (if Visible_Count = 0 then 0 else (Page + 1) mod ((Visible_Count + Rows - 1) / Rows));
+         --  The next page, after the last the first.
+         Anchor := (if Shown_First + Rows <= Visible_Count then Number_Of (Visible (Shown_First + Rows))
+                    else 0);
          Turn_Page := Now + 8000;
-         Dirty := CuBit.UI.App.Full_Rect (Win);
+         Changed := True;
       end if;
       if Status /= Reported_Status then
          debugPrint ("boot-logs: reader status=" & P.Status'Image (Status) & ASCII.LF);
          Reported_Status := Status;
-         Dirty := CuBit.UI.App.Full_Rect (Win);
+         Changed := True;
+      end if;
+      if Changed then
+         Take_Snapshot;
+         Decision := Boot_Logs_Repaint.Decide (Painted_Body, Body_Now, Painted_Counts, Counts_Now);
+         if Decision = Boot_Logs_Repaint.Whole and then Whole_Example.Length = 0 then
+            declare
+               Line : constant String := Boot_Logs_Repaint.First_Change (Painted_Body, Body_Now);
+               Kept : constant Natural := Natural'Min (Line'Length, Whole_Example.Text'Length);
+            begin
+               Whole_Example.Length := Kept;
+               Whole_Example.Text (1 .. Kept) := Line (Line'First .. Line'First + Kept - 1);
+            end;
+         end if;
+         Decided (Decision) := Decided (Decision) + 1;
+         case Decision is
+            when Boot_Logs_Repaint.Whole => Dirty := CuBit.UI.App.Full_Rect (Win);
+            when Boot_Logs_Repaint.Counts_Only => Dirty := Union_Rect (Dirty, Counts_Rect (Win));
+            when Boot_Logs_Repaint.Nothing => null;
+         end case;
+      end if;
+      --  Serial only (not logstore, so it feeds no viewer): the repaints of
+      --  the last period, each of which was a whole-window repaint before.
+      if Now >= Decided_Report_Due then
+         Decided_Report_Due := Now + DECIDED_REPORT_MS;
+         if Decided /= Need_Counts'[others => 0] then
+            debugPrint ("boot-logs: changes whole=" & Natural'Image (Decided (Boot_Logs_Repaint.Whole)) &
+                        " counts_only=" & Natural'Image (Decided (Boot_Logs_Repaint.Counts_Only)) &
+                        " nothing=" & Natural'Image (Decided (Boot_Logs_Repaint.Nothing)) &
+                        " in" & Natural'Image (DECIDED_REPORT_MS) & " ms" &
+                        (if Whole_Example.Length = 0 then ""
+                         else "; first whole change: " & Whole_Example.Text (1 .. Whole_Example.Length)) &
+                        ASCII.LF);
+            Decided := [others => 0];
+            Whole_Example.Length := 0;
+         end if;
       end if;
    end Tick;
    --  Run never blocks in a call to Desktop (Activity_Wait): its input

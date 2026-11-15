@@ -1,0 +1,10 @@
+project Test is
+   for Source_Dirs use (".", "../../userspace/apps/boot-logs");
+   for Source_Files use ("boot_logs_repaint.ads", "boot_logs_repaint.adb", "boot_logs_repaint_tests.adb");
+   for Object_Dir use external ("BOOT_LOGS_REPAINT_OBJECT_DIR", "build");
+   for Exec_Dir use external ("BOOT_LOGS_REPAINT_OBJECT_DIR", "build");
+   for Main use ("boot_logs_repaint_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Test;
