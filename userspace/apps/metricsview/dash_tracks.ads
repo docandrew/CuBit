@@ -61,6 +61,9 @@ package Dash_Tracks is
    --  copied): its fields change only under Dash_Sync's lock.
    type Track is limited record
       Panel : Dash_Model.Panel_Index := 1;
+      --  The panel's identity (Dash_Model.Panel.Id): edits move panels and
+      --  their tracks follow it.
+      Panel_Id : Natural := 0;
       --  Which of the panel's series specs, and which match of it (a
       --  prefix spec has several tracks).
       Spec_Index : Dash_Model.Series_Index := 1;
@@ -141,6 +144,9 @@ package Dash_Tracks is
    --  become final with no call.
    procedure Refresh
      (T : in out Track; F : in out Dash_Feeds.Feed'Class; V : Axis.Viewport; Now_Us, Budget_End_Us : Unsigned_64);
+
+   --  Give back T's rings and buffers (a track whose panel was removed).
+   procedure Release (T : in out Track);
 
    --  Start taking pushed samples (stamped From_Us and later).
    procedure Begin_Push (T : in out Track; From_Us : Unsigned_64);

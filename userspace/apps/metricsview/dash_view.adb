@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with Ada.Unchecked_Deallocation;
 with CuBit.UI_Metrics;
 with Charts_Buckets;
 with Charts_Columns;
@@ -6,6 +7,7 @@ with Charts_Format;
 with Charts_Palette;
 with Charts_Time_Axis;
 with Charts_Value_Axis;
+with Dash_Edit;
 with Dash_Labels;
 with Dash_Layers;
 with Dash_Pixels;
@@ -58,6 +60,7 @@ package body Dash_View is
    Bar_Gap : constant := M.Space_S;
    Spark_Height : constant := 3 * M.Base_Em;
    Minimum_Spark : constant := M.Base_Em + M.Space_S;
+   Minimum_Spark_Points : constant := 3;
    --  The mark over a sparkline value clipped at the lane's top.
    Clip_Mark : constant := 3;
    --  A short stat tile's sparkline lane, on the right: this share of it.
@@ -67,6 +70,14 @@ package body Dash_View is
    Tooltip_Row : constant := M.Line_Height;
    Tooltip_Swatch : constant := M.Space_M + M.Space_XS;
    Click_Slop : constant := 3;
+   --  The editor: the selection's outline, its resize grip (bottom right),
+   --  and the CCL overlay's inset from the grid.
+   Selection_Stroke : constant := 2;
+   Grip_Size : constant := M.Space_L;
+   Source_Inset : constant := 2 * M.Space_L;
+   Source_Indent : constant := 2;
+   Edit_Label : constant String := "Edit";
+   Done_Label : constant String := "Done";
    Status_Dot : constant := M.Space_M;
 
    --  Tints over the card (percent of the mark's colour).
@@ -106,7 +117,11 @@ package body Dash_View is
    type Viewport_List is array (Dash_Model.Panel_Index) of Axis.Viewport;
    type Flag_List is array (Dash_Model.Panel_Index) of Boolean;
 
-   type Track_Array is array (Positive range <>) of Dash_Tracks.Track;
+   --  Tracks by reference: an edit moves them between panels (the data
+   --  drawn follows the panel), and a removed panel's tracks wait in
+   --  Retired until the data thread is done with them.
+   type Track_Access is access Dash_Tracks.Track;
+   type Track_Array is array (Positive range <>) of Track_Access;
    type Track_Array_Access is access Track_Array;
    type Board_Access is access Dash_Model.Dashboard;
 
@@ -197,14 +212,42 @@ package body Dash_View is
    function Add_Rect (A, B : Rect) return Rect is
      (if Is_Empty (A) then B elsif Is_Empty (B) then A else Union_Rect (A, B));
 
+   --  The editor's CCL overlay is shown (over the grid, opaque).
+   Source_Shown : Boolean := False;
+   --  Where the overlay is.
+   function Source_Box return Rect is
+     ((Grid.x + Natural'Min (Source_Inset, Grid.w / 4), Grid.y + Natural'Min (Source_Inset, Grid.h / 4),
+       (if Grid.w > 2 * Source_Inset then Grid.w - 2 * Source_Inset else Grid.w),
+       (if Grid.h > 2 * Source_Inset then Grid.h - 2 * Source_Inset else Grid.h)));
+
+
+   function Inside (Outer, R : Rect) return Boolean is
+     (R.x >= Outer.x and then R.y >= Outer.y and then R.x + R.w <= Outer.x + Outer.w
+      and then R.y + R.h <= Outer.y + Outer.h);
+
    --  R changed: the retained frame redraws exactly R (Dash_Layers), the
    --  toolkit's frame grows by it.
-   procedure Mark (Damage : in out Rect; R : Rect);
-   procedure Mark (Damage : in out Rect; R : Rect) is
+   procedure Mark_Exactly (Damage : in out Rect; R : Rect);
+   procedure Mark_Exactly (Damage : in out Rect; R : Rect) is
    begin
       if not Is_Empty (R) then
          Damage := Add_Rect (Damage, R);
          Dash_Layers.Invalidate (R);
+      end if;
+   end Mark_Exactly;
+
+   --  While the CCL overlay is shown, what changes under it is not drawn
+   --  (closing it redraws the window), and a change that reaches into it
+   --  redraws it whole: its text is never cut at a damage edge.
+   procedure Mark (Damage : in out Rect; R : Rect);
+   procedure Mark (Damage : in out Rect; R : Rect) is
+   begin
+      if Source_Shown and then Intersects (R, Source_Box) then
+         if not Inside (Source_Box, R) then
+            Mark_Exactly (Damage, Add_Rect (R, Source_Box));
+         end if;
+      else
+         Mark_Exactly (Damage, R);
       end if;
    end Mark;
 
@@ -285,6 +328,10 @@ package body Dash_View is
    ---------------------------------------------------------------------------
    --  Layout
    ---------------------------------------------------------------------------
+   --  One grid column's and row's pixels, as last laid out (an editor's
+   --  drag resizes by them).
+   Grid_Unit_W, Grid_Unit_H : Natural := 0;
+
    procedure Lay_Out;
    procedure Lay_Out is
       --  Skyline packing on the 12-column grid: each panel, in order, at the
@@ -300,6 +347,8 @@ package body Dash_View is
       Total_Rows : Natural := 0;
       Unit_W, Unit_H : Natural;
    begin
+      Grid_Unit_W := 0;
+      Grid_Unit_H := 0;
       Toolbar := (Whole.x, Whole.y, Whole.w, Natural'Min (Toolbar_Height, Whole.h));
       Status := (Whole.x, (if Whole.h > Status_Height then Whole.y + Whole.h - Status_Height else Whole.y),
                  Whole.w, Natural'Min (Status_Height, Whole.h));
@@ -339,6 +388,8 @@ package body Dash_View is
       --  A grid unit is a cell plus one gap; cards are a unit less the gap.
       Unit_W := (Grid.w + Gap) / Dash_Model.Grid_Columns;
       Unit_H := Natural'Max (Minimum_Row_Unit, (if Total_Rows > 0 then (Grid.h + Gap) / Total_Rows else 0));
+      Grid_Unit_W := Unit_W;
+      Grid_Unit_H := Unit_H;
       for P in 1 .. Board.Panels_Used loop
          declare
             Item : constant Dash_Model.Panel := Board.Panels (P);
@@ -447,13 +498,17 @@ package body Dash_View is
             Count := Count + (if D.Panels (P).Series (S).Match = Dash_Model.Prefix then Prefix_Tracks else 1);
          end loop;
       end loop;
-      Tracks := new Track_Array (1 .. Count);
+      Tracks := new Track_Array'(1 .. Count => null);
+      for I in Tracks'Range loop
+         Tracks (I) := new Dash_Tracks.Track;
+      end loop;
       Count := 0;
       for P in 1 .. D.Panels_Used loop
          for S in 1 .. D.Panels (P).Series_Used loop
             for Match in 1 .. (if D.Panels (P).Series (S).Match = Dash_Model.Prefix then Prefix_Tracks else 1) loop
                Count := Count + 1;
                Tracks (Count).Panel := P;
+               Tracks (Count).Panel_Id := D.Panels (P).Id;
                Tracks (Count).Spec_Index := S;
                Tracks (Count).Match_Index := Match;
                Tracks (Count).Spec := D.Panels (P).Series (S);
@@ -461,6 +516,7 @@ package body Dash_View is
          end loop;
       end loop;
       Has_Port := [others => False];
+      Dash_Edit.Start (D);
    end Initialize;
 
    procedure Set_Bounds (V : in out View; Bounds : Rect; Numerator, Denominator : Positive := 1) is
@@ -666,7 +722,7 @@ package body Dash_View is
       for T of Tracks.all loop
          if T.State = Dash_Tracks.Resolved and then not T.Pushed then
             --  A series resolved since the subscription: pushed from now.
-            Dash_Tracks.Begin_Push (T, Unsigned_64'Max (Push_Since_Us, Feed.Now_Us));
+            Dash_Tracks.Begin_Push (T.all, Unsigned_64'Max (Push_Since_Us, Feed.Now_Us));
          end if;
       end loop;
       Dash_Sync.Unlock;
@@ -680,14 +736,14 @@ package body Dash_View is
                Pushed_Total := Pushed_Total + 1;
                for T of Tracks.all loop
                   if T.Pushed and then T.Info.Id = U.Series then
-                     Dash_Tracks.Accept_Sample (T, U.Time_Us, U.Value);
+                     Dash_Tracks.Accept_Sample (T.all, U.Time_Us, U.Value);
                   end if;
                end loop;
             elsif U.Series = Dash_Feeds.No_Series then
                --  The subscription itself lost samples: the query path
                --  makes those columns again.
                for T of Tracks.all loop
-                  Dash_Tracks.Push_Lost (T, U.First_Us, U.Last_Us);
+                  Dash_Tracks.Push_Lost (T.all, U.First_Us, U.Last_Us);
                end loop;
             end if;
          end loop;
@@ -696,10 +752,294 @@ package body Dash_View is
       end loop;
    end Take_Pushed;
 
+   --  On first open the span fits the data there is, up to the dashboard's
+   --  (so a young store is never a sliver at the right edge); it grows with
+   --  the data in the time ticks' steps and stops at the dashboard's span,
+   --  or at the first zoom, pan or range the person picks.
+   Auto_Fit : Boolean := False;
+   Selected_Span : Unsigned_64 := 0;
+   Minimum_Fit_Us : constant := 10 * Axis.Microseconds_Per_Second;
+   Fit_Margin_Divisor : constant := 10;
+
+   procedure Fit_Span (Damage : in out Rect);
+   procedure Fit_Span (Damage : in out Rect) is
+      Earliest : Unsigned_64 := Unsigned_64'Last;
+      Now : constant Unsigned_64 := Feed.Now_Us;
+      Candidate : Unsigned_64 := Selected_Span;
+   begin
+      for T of Tracks.all loop
+         if T.State = Dash_Tracks.Resolved and then T.Info.First_Us > 0 then
+            Earliest := Unsigned_64'Min (Earliest, T.Info.First_Us);
+         end if;
+      end loop;
+      if Earliest = Unsigned_64'Last or else Earliest > Now then
+         return;
+      end if;
+      declare
+         Want : constant Unsigned_64 :=
+           Unsigned_64'Max (Minimum_Fit_Us, (Now - Earliest) + (Now - Earliest) / Fit_Margin_Divisor);
+      begin
+         for I in Axis.Tick_Index loop
+            if Axis.Steps (I) >= Want then
+               Candidate := Unsigned_64'Min (Axis.Steps (I), Selected_Span);
+               exit;
+            end if;
+         end loop;
+      end;
+      if Candidate >= Selected_Span then
+         Candidate := Selected_Span;
+         Auto_Fit := False;
+      end if;
+      if Candidate /= Span then
+         Span := Unsigned_64'Max (Axis.Minimum_Span_Us, Candidate);
+         Update_Quantum;
+         Mark (Damage, Toolbar);
+      end if;
+   end Fit_Span;
+
    --  The state each track was last drawn in (a change redraws its panel).
    type State_List is array (Positive range <>) of Dash_Tracks.Track_State;
    type State_List_Access is access State_List;
    Drawn_States : State_List_Access;
+
+   ---------------------------------------------------------------------------
+   --  The editor
+   ---------------------------------------------------------------------------
+   Edit_Mode : Boolean := False;
+   Selected_Panel : Natural := 0;
+   Edit_Count : Natural := 0;
+   --  Saving: the edit last written (or given up on), the one being
+   --  written, when the last edit was made, and what the status bar says.
+   Saved_Generation : Natural := 0;
+   Save_Pending : Boolean := False;
+   Last_Edit_Us : Unsigned_64 := 0;
+   Shown_Save : Save_State := Unedited;
+   Save_Reason : Dash_Model.Text;
+   --  The data thread changed the save state: the status bar is redrawn
+   --  at the next refresh.
+   Save_Changed : Boolean := False;
+   --  Bumped whenever the panels are laid out again (an edit): the data
+   --  thread's step ends rather than walk a layout that changed under it.
+   Layout_Generation : Natural := 0 with Atomic;
+   --  Tracks of removed panels and the arrays they were in, given back by
+   --  the data thread (it may still hold one across a call).
+   type Retired_Item is record
+      Track : Track_Access;
+      List : Track_Array_Access;
+   end record;
+   type Retired_List is array (Positive range <>) of Retired_Item;
+   type Retired_Access is access Retired_List;
+   Retired : Retired_Access;
+   Retired_Used : Natural := 0;
+   procedure Free is new Ada.Unchecked_Deallocation (Dash_Tracks.Track, Track_Access);
+   procedure Free is new Ada.Unchecked_Deallocation (Track_Array, Track_Array_Access);
+   procedure Free is new Ada.Unchecked_Deallocation (Retired_List, Retired_Access);
+   procedure Free is new Ada.Unchecked_Deallocation (State_List, State_List_Access);
+
+   procedure Retire (Item : Retired_Item);
+   procedure Retire (Item : Retired_Item) is
+   begin
+      if Retired = null then
+         Retired := new Retired_List (1 .. 16);
+      elsif Retired_Used = Retired'Length then
+         declare
+            Grown : constant Retired_Access := new Retired_List (1 .. 2 * Retired'Length);
+         begin
+            Grown (1 .. Retired_Used) := Retired (1 .. Retired_Used);
+            Free (Retired);
+            Retired := Grown;
+         end;
+      end if;
+      Retired_Used := Retired_Used + 1;
+      Retired (Retired_Used) := Item;
+   end Retire;
+
+   --  The data thread, at the start of a step (under the lock): nothing it
+   --  holds is retired any more.
+   procedure Release_Retired;
+   procedure Release_Retired is
+   begin
+      for I in 1 .. Retired_Used loop
+         if Retired (I).Track /= null then
+            Dash_Tracks.Release (Retired (I).Track.all);
+            Free (Retired (I).Track);
+         end if;
+         if Retired (I).List /= null then
+            Free (Retired (I).List);
+         end if;
+      end loop;
+      Retired_Used := 0;
+   end Release_Retired;
+
+   --  D replaces the dashboard (an edit): panels are laid out again and each
+   --  keeps the tracks it had (by panel identity), so the data stays;
+   --  removed panels' tracks are retired. UI thread, under the lock.
+   procedure Apply_Dashboard (D : Dash_Model.Dashboard; Damage : in out Rect);
+   procedure Apply_Dashboard (D : Dash_Model.Dashboard; Damage : in out Rect) is
+      Count : Natural := 0;
+      Old : Track_Array_Access := Tracks;
+   begin
+      for P in 1 .. D.Panels_Used loop
+         for S in 1 .. D.Panels (P).Series_Used loop
+            Count := Count + (if D.Panels (P).Series (S).Match = Dash_Model.Prefix then Prefix_Tracks else 1);
+         end loop;
+      end loop;
+      Tracks := new Track_Array'(1 .. Count => null);
+      Count := 0;
+      for P in 1 .. D.Panels_Used loop
+         for S in 1 .. D.Panels (P).Series_Used loop
+            for Match in 1 .. (if D.Panels (P).Series (S).Match = Dash_Model.Prefix then Prefix_Tracks else 1) loop
+               Count := Count + 1;
+               for I in Old'Range loop
+                  if Old (I) /= null and then Old (I).Panel_Id = D.Panels (P).Id and then Old (I).Spec_Index = S
+                    and then Old (I).Match_Index = Match
+                  then
+                     Tracks (Count) := Old (I);
+                     Old (I) := null;
+                     exit;
+                  end if;
+               end loop;
+               if Tracks (Count) = null then
+                  Tracks (Count) := new Dash_Tracks.Track;
+                  Tracks (Count).Spec_Index := S;
+                  Tracks (Count).Match_Index := Match;
+                  Tracks (Count).Spec := D.Panels (P).Series (S);
+                  Tracks (Count).Panel_Id := D.Panels (P).Id;
+               end if;
+               Tracks (Count).Panel := P;
+            end loop;
+         end loop;
+      end loop;
+      for I in Old'Range loop
+         if Old (I) /= null then
+            Retire ((Track => Old (I), List => null));
+         end if;
+      end loop;
+      Retire ((Track => null, List => Old));
+      Board.all := D;
+      Layout_Generation := Layout_Generation + 1;
+      if Drawn_States /= null then
+         Free (Drawn_States);
+         Drawn_States := new State_List'(Tracks'Range => Dash_Tracks.Unresolved);
+      end if;
+      Lay_Out;
+      Update_Quantum;
+      Has_Port := [others => False];
+      Edit_Count := Edit_Count + 1;
+      Last_Edit_Us := Feed.Now_Us;
+      Shown_Save := Edited;
+      Mark (Damage, Whole);
+   end Apply_Dashboard;
+
+   procedure Edit (Op : Dash_Edit.Operation; Damage : in out Rect);
+   procedure Edit (Op : Dash_Edit.Operation; Damage : in out Rect) is
+      D : Dash_Model.Dashboard := Board.all;
+      Done : Boolean;
+      Selected : Natural;
+   begin
+      if Selected_Panel = 0 then
+         return;
+      end if;
+      Dash_Edit.Apply (D, Op, Selected_Panel, Done, Selected);
+      if Done then
+         Selected_Panel := Selected;
+         Apply_Dashboard (D, Damage);
+      end if;
+   end Edit;
+
+   procedure Undo_Redo (Forward : Boolean; Damage : in out Rect);
+   procedure Undo_Redo (Forward : Boolean; Damage : in out Rect) is
+      D : Dash_Model.Dashboard := Board.all;
+      Done : Boolean;
+   begin
+      if Forward then
+         Dash_Edit.Redo (D, Done);
+      else
+         Dash_Edit.Undo (D, Done);
+      end if;
+      if Done then
+         Selected_Panel := Natural'Min (Selected_Panel, D.Panels_Used);
+         Apply_Dashboard (D, Damage);
+      end if;
+   end Undo_Redo;
+
+   function Editing (V : View) return Boolean is
+      pragma Unreferenced (V);
+   begin
+      return Edit_Mode;
+   end Editing;
+
+   function Dashboard_Source (V : View) return String is
+      pragma Unreferenced (V);
+   begin
+      return (if Board = null then "" else Dash_Model.To_Source (Board.all));
+   end Dashboard_Source;
+
+   procedure Take_Save (V : in out View; Due : out Boolean; Generation : out Natural) is
+      pragma Unreferenced (V);
+   begin
+      Due := Board /= null and then not Save_Pending and then Edit_Count /= Saved_Generation
+        and then (not Edit_Mode or else Feed.Now_Us - Last_Edit_Us >= Autosave_Delay_Ms * Microseconds_Per_Millisecond);
+      Generation := Edit_Count;
+      if Due then
+         Save_Pending := True;
+         Shown_Save := Saving;
+         Save_Changed := True;
+      end if;
+   end Take_Save;
+
+   procedure End_Save (V : in out View; Generation : Natural; Saved : Boolean; Reason : String := "") is
+      pragma Unreferenced (V);
+   begin
+      Save_Pending := False;
+      --  A failure is not retried until the next edit (no loop of failing
+      --  writes); the status bar says why.
+      Saved_Generation := Generation;
+      Shown_Save := (if Edit_Count /= Generation then Edited elsif Saved then Dash_View.Saved else Not_Saved);
+      Save_Reason := Dash_Model.To_Text (Reason);
+      Save_Changed := True;
+   end End_Save;
+
+   function Save_Name (V : View) return String is
+      pragma Unreferenced (V);
+   begin
+      return (if Board = null then "" else Dash_Model.File_Name (Board.all));
+   end Save_Name;
+
+   function Saving_State (V : View) return Save_State is
+      pragma Unreferenced (V);
+   begin
+      return Shown_Save;
+   end Saving_State;
+
+   function Source_Showing (V : View) return Boolean is
+      pragma Unreferenced (V);
+   begin
+      return Source_Shown;
+   end Source_Showing;
+
+   function Edits (V : View) return Natural is
+      pragma Unreferenced (V);
+   begin
+      return Edit_Count;
+   end Edits;
+
+   --  The UI thread's waits for the lock, summed until taken.
+   UI_Waited_Us : Unsigned_64 := 0;
+   procedure Lock_UI;
+   procedure Lock_UI is
+      Waited : Unsigned_64;
+   begin
+      Dash_Sync.Lock_Waited (Waited);
+      UI_Waited_Us := UI_Waited_Us + Waited;
+   end Lock_UI;
+
+   procedure Take_Lock_Wait (V : View; Waited_Us : out Unsigned_64) is
+      pragma Unreferenced (V);
+   begin
+      Waited_Us := UI_Waited_Us;
+      UI_Waited_Us := 0;
+   end Take_Lock_Wait;
 
    procedure Data_Step (V : in out View) is
       pragma Unreferenced (V);
@@ -727,7 +1067,12 @@ package body Dash_View is
          Probe;
       end if;
       Dash_Sync.Lock;
+      Release_Retired;
+      declare
+         Generation : constant Natural := Layout_Generation;
+      begin
       for P in 1 .. Board.Panels_Used loop
+         exit when Layout_Generation /= Generation;
          if Has_Port (P) then
             declare
                --  The UI thread's viewport, as it was when the lock was
@@ -739,8 +1084,11 @@ package body Dash_View is
             begin
                Tracks_Of (P, First, Last);
                for I in First .. Last loop
+                  --  An edit (the UI thread) laid the dashboard out again
+                  --  while a call was out: this step ends, the next follows it.
+                  exit when Layout_Generation /= Generation;
                   declare
-                     T : Dash_Tracks.Track renames Tracks (I);
+                     T : Dash_Tracks.Track renames Tracks (I).all;
                   begin
                      if T.Columns /= null then
                         Dash_Tracks.Resolve (T, Feed.all, Started);
@@ -754,6 +1102,7 @@ package body Dash_View is
             end;
          end if;
       end loop;
+      end;
       Dash_Sync.Unlock;
       Last_Refresh_Cost := Feed.Now_Us - Started;
    end Data_Step;
@@ -766,8 +1115,18 @@ package body Dash_View is
       end if;
       if Drawn_States = null then
          Drawn_States := new State_List'(Tracks'Range => Dash_Tracks.Unresolved);
+         --  First frame: fit the span to the data while live.
+         Selected_Span := Span;
+         Auto_Fit := Live_Mode;
       end if;
-      Dash_Sync.Lock;
+      Lock_UI;
+      if Save_Changed then
+         Save_Changed := False;
+         Mark (Damage, Status);
+      end if;
+      if Auto_Fit then
+         Fit_Span (Damage);
+      end if;
       for P in 1 .. Board.Panels_Used loop
          declare
             Port : constant Axis.Viewport := Viewport_For (P);
@@ -779,7 +1138,7 @@ package body Dash_View is
             Tracks_Of (P, First, Last);
             for I in First .. Last loop
                declare
-                  T : Dash_Tracks.Track renames Tracks (I);
+                  T : Dash_Tracks.Track renames Tracks (I).all;
                begin
                   if T.Columns = null then
                      Dash_Tracks.Configure (T, Port, Item.Kind = Dash_Model.Histogram, Item.Buckets);
@@ -821,7 +1180,7 @@ package body Dash_View is
                   Any : Boolean;
                   Lo, Hi : Column_Number;
                begin
-                  Dash_Tracks.Take_Dirty (Tracks (I), Any, Lo, Hi);
+                  Dash_Tracks.Take_Dirty (Tracks (I).all, Any, Lo, Hi);
                   if Any then
                      case Item.Kind is
                         when Dash_Model.Time_Series => Mark (Damage, Column_Strip (P, Lo, Hi));
@@ -1134,7 +1493,7 @@ package body Dash_View is
    begin
       Tracks_Of (P, First, Last);
       if Last >= First then
-         U := Unit_Of (Tracks (First));
+         U := Unit_Of (Tracks (First).all);
       end if;
       Damaged_Columns (Plot, Damage, X0, X1);
       Draw_Value_Ticks (C, P, K, X0, X1, U, Intersects (Panels (P).Left_Axis, Damage));
@@ -1156,7 +1515,7 @@ package body Dash_View is
       end;
       for I in First .. Last loop
          declare
-            T : Dash_Tracks.Track renames Tracks (I);
+            T : Dash_Tracks.Track renames Tracks (I).all;
             Bins : Bin_Summaries (0 .. Natural (High_Bin - Low_Bin));
          begin
             if T.State = Dash_Tracks.Resolved and then T.Columns /= null then
@@ -1338,7 +1697,7 @@ package body Dash_View is
          end if;
          for I in First .. Last loop
             declare
-               T : Dash_Tracks.Track renames Tracks (I);
+               T : Dash_Tracks.Track renames Tracks (I).all;
             begin
                if (T.State = Dash_Tracks.Resolved or else T.Match_Index = 1) and then Row < Shown_Rows then
                   declare
@@ -1394,7 +1753,7 @@ package body Dash_View is
       then
          Text (C, Labels.x, Plot.y + Plot.h + M.Space_XS,
                Fit_UI_Text ("+" & Format.Decimal (Unsigned_64 (Row_Count - Plot.h / UI_Text_Height))
-                            & " rows: taller panel", Labels.w), K.Muted);
+                            & " rows", Labels.w), K.Muted);
       end if;
       Draw_Slices (C, P, K, X0, X1, Outline => True);
       Draw_Crosshair (C, P, K, X0, X1);
@@ -1488,7 +1847,7 @@ package body Dash_View is
          return;
       end if;
       declare
-         T : Dash_Tracks.Track renames Tracks (First);
+         T : Dash_Tracks.Track renames Tracks (First).all;
          S : constant Dash_Feeds.Window_Stats := T.Stats;
          Counter : constant Boolean := T.Info.Kind = Dash_Feeds.Counter;
          Counting : constant Boolean := Item.Shown in Dash_Model.Count | Dash_Model.Rate;
@@ -1568,6 +1927,25 @@ package body Dash_View is
             begin
                Fill_Rect (C, (Spark.x, Spark.y + Spark.h - 1, Spark.w, 1), K.Grid_Line);
                Copy_View (T, Port, Run);
+               --  Fewer than Minimum_Spark_Points bins with data read as a
+               --  stray dot: the lane stays empty until there is a shape.
+               declare
+                  Filled : Natural := 0;
+                  Bin_X : Natural := 0;
+               begin
+                  while Bin_X < Natural'Min (Spark.w, Port.Columns) loop
+                     for K2 in Bin_X .. Natural'Min (Bin_X + Bin, Natural'Min (Spark.w, Port.Columns)) - 1 loop
+                        if Run (K2 + 1).Origin /= Columns.Empty then
+                           Filled := Filled + 1;
+                           exit;
+                        end if;
+                     end loop;
+                     Bin_X := Bin_X + Bin;
+                  end loop;
+                  if Filled < Minimum_Spark_Points then
+                     X := Spark.w;
+                  end if;
+               end;
                --  Bins as the plots use, so a sparse series is a shape, not dust.
                while X < Natural'Min (Spark.w, Port.Columns) loop
                   declare
@@ -1623,7 +2001,7 @@ package body Dash_View is
                      Line_Index := Line_Index + 1;
                      if Used < Entries'Last then
                         declare
-                           L : constant String := Series_Label (Tracks (I)) & " " & Statistic_Name (Stat);
+                           L : constant String := Series_Label (Tracks (I).all) & " " & Statistic_Name (Stat);
                            N : constant Natural := Natural'Min (L'Length, Entries (1).Label'Length);
                         begin
                            Used := Used + 1;
@@ -1668,7 +2046,7 @@ package body Dash_View is
                Step_W : constant := M.Space_M + M.Space_XS;
                Strip : constant Natural := Palette.Ramp_Steps * Step_W;
                Top_Label : constant String := Format.Value_Text (Tops (P), (if Last >= First then
-                                                                  Unit_Of (Tracks (First)) else Format.Microseconds));
+                                                                  Unit_Of (Tracks (First).all) else Format.Microseconds));
                Over_Label : constant String := "over " & Format.Value_Text (Item.Budget, Format.Microseconds);
                X : Natural;
             begin
@@ -1689,7 +2067,7 @@ package body Dash_View is
                end loop;
                declare
                   Low_Label : constant String :=
-                    Format.Value_Text (Unsigned_64'Min (Lows (P), Tops (P)), (if Last >= First then Unit_Of (Tracks (First))
+                    Format.Value_Text (Unsigned_64'Min (Lows (P), Tops (P)), (if Last >= First then Unit_Of (Tracks (First).all)
                                                                                else Format.Microseconds));
                begin
                   Right := Right - M.Space_S - UI_Text_Width (Low_Label);
@@ -1789,6 +2167,16 @@ package body Dash_View is
       return (Last_Preset.x + Last_Preset.w + M.Space_M, Last_Preset.y, Live_Width, Segment_Height);
    end Live_Rect;
 
+   --  Edit (Done while editing), left of the range presets.
+   function Edit_Rect return Rect is
+      First_Preset : constant Rect := Preset_Rect (Preset_Index'First);
+      W : constant Natural :=
+        Natural'Max (UI_Text_Width (Edit_Label), UI_Text_Width (Done_Label)) + 2 * Segment_Padding;
+   begin
+      return ((if First_Preset.x > W + M.Space_M then First_Preset.x - W - M.Space_M else 0), First_Preset.y, W,
+              Segment_Height);
+   end Edit_Rect;
+
    procedure Draw_Toolbar (C : Canvas; K : Colors);
    procedure Draw_Toolbar (C : Canvas; K : Colors) is
       Text_Y : constant Natural := Toolbar.y + (Toolbar.h - UI_Text_Height) / 2;
@@ -1835,17 +2223,30 @@ package body Dash_View is
          end;
       end loop;
       Segment (Live_Rect, Live_Label, Live_Mode, True);
+      Segment (Edit_Rect, (if Edit_Mode then Done_Label else Edit_Label), Edit_Mode, False);
    end Draw_Toolbar;
 
    function Detail_Text return String;
 
    procedure Draw_Status (C : Canvas; K : Colors);
    procedure Draw_Status (C : Canvas; K : Colors) is
+      Save_Text : constant String :=
+        (case Shown_Save is
+           when Unedited => "",
+           when Edited => ", edited",
+           when Saving => ", saving",
+           when Saved => ", saved as " & Dash_Model.File_Name (Board.all),
+           when Not_Saved => ", not saved: " & Dash_Model.Image (Save_Reason));
       Right_Text : constant String :=
-        Format.Decimal (Unsigned_64 (Resolved_Tracks (View'(null record)))) & " of "
-        & Format.Decimal (Unsigned_64 (Track_Total (View'(null record)))) & " series live";
+        (if Edit_Mode then "panel " & Format.Decimal (Unsigned_64 (Selected_Panel)) & " of "
+           & Format.Decimal (Unsigned_64 (Board.Panels_Used)) & Save_Text
+         elsif Shown_Save in Saving | Not_Saved then Save_Text (Save_Text'First + 2 .. Save_Text'Last)
+         else Format.Decimal (Unsigned_64 (Resolved_Tracks (View'(null record)))) & " of "
+           & Format.Decimal (Unsigned_64 (Track_Total (View'(null record)))) & " series live");
       Left_Text : constant String :=
-        (if Detail_Valid then Detail_Text
+        (if Edit_Mode then "Editing: Tab selects, arrows move, Shift+arrows size, Delete removes, Insert copies, "
+           & "Ctrl+Z undoes, C shows the CCL, E or Esc is done"
+         elsif Detail_Valid then Detail_Text
          elsif Live_Mode then "Drag to pan, wheel to zoom, Shift+drag to select, click for the slice's logs"
          else "Paused: L or End returns to live");
       Y : constant Natural := Status.y + (Status.h - UI_Text_Height) / 2;
@@ -1940,6 +2341,95 @@ package body Dash_View is
       end loop;
    end Fill_Page;
 
+   --  The selected panel while editing: an outline and the resize grip.
+   function Grip_Rect (P : Dash_Model.Panel_Index) return Rect is
+      O : constant Rect := Panels (P).Outer;
+   begin
+      return ((if O.w > Grip_Size then O.x + O.w - Grip_Size else O.x),
+              (if O.h > Grip_Size then O.y + O.h - Grip_Size else O.y),
+              Natural'Min (Grip_Size, O.w), Natural'Min (Grip_Size, O.h));
+   end Grip_Rect;
+
+   procedure Draw_Selection (C : Canvas; K : Colors; P : Dash_Model.Panel_Index);
+   procedure Draw_Selection (C : Canvas; K : Colors; P : Dash_Model.Panel_Index) is
+      O : constant Rect := Panels (P).Outer;
+      G : constant Rect := Grip_Rect (P);
+   begin
+      for I in 0 .. Selection_Stroke - 1 loop
+         if O.w > 2 * I and then O.h > 2 * I then
+            Stroke_Rect (C, (O.x + I, O.y + I, O.w - 2 * I, O.h - 2 * I), K.Accent, K.Accent);
+         end if;
+      end loop;
+      --  The grip: a triangle in the corner.
+      for Row in 0 .. G.h - 1 loop
+         declare
+            Side : constant Natural := (Row + 1) * G.w / Natural'Max (1, G.h);
+         begin
+            Fill_Rect (C, (G.x + G.w - Side, G.y + Row, Side, 1), K.Accent);
+         end;
+      end loop;
+   end Draw_Selection;
+
+   procedure Draw_Source (C : Canvas; K : Colors);
+   procedure Draw_Source (C : Canvas; K : Colors) is
+      Box : constant Rect := Source_Box;
+      Line_H : constant Natural := Code_Text_Height + M.Space_XS;
+      Left : constant Natural := Box.x + Margin;
+      Width : constant Natural := (if Box.w > 2 * Margin then Box.w - 2 * Margin else 0);
+      Bottom : constant Natural := Box.y + Box.h - Margin;
+      Y : Natural := Box.y + Margin;
+      Indent : constant String (1 .. Source_Indent) := [others => ' '];
+      D : Dash_Model.Dashboard renames Board.all;
+      Header : constant String := Dash_Model.To_Source ((D with delta Panels_Used => 0));
+      --  The header without its closing "[])": the panels follow it.
+      Opening : constant String :=
+        (if Header'Length > 3 then Header (Header'First .. Header'Last - 2) else Header);
+      procedure Line (S : String; Ink : Color; Continued : Natural := 0) is
+         Rest_First : Natural := S'First;
+      begin
+         --  Long lines go on, indented, as many lines as they need.
+         loop
+            exit when Y + Line_H > Bottom;
+            declare
+               Lead : constant String := (if Rest_First = S'First then "" else Indent & Indent);
+               Prefix : constant String := (1 .. Continued => ' ') & Lead;
+               Room : constant Natural :=
+                 (if Width > Code_Text_Width (Prefix) then Width - Code_Text_Width (Prefix) else 0);
+               Rest : constant String := S (Rest_First .. S'Last);
+               Kept : constant Natural := Natural'Max (1, Kept_Code_Text (Rest, Room));
+               Shown : Natural := (if Code_Text_Width (Rest) <= Room then Rest'Length else Kept);
+            begin
+               --  A break at the last space that fits, when there is one.
+               if Shown < Rest'Length then
+                  for K in reverse Rest'First + 1 .. Rest'First + Shown - 1 loop
+                     if Rest (K) = ' ' then
+                        Shown := K - Rest'First + 1;
+                        exit;
+                     end if;
+                  end loop;
+               end if;
+               Draw_Code_Text_Transparent
+                 (C, Left + Code_Text_Width (Prefix), Y, Rest (Rest'First .. Rest'First + Shown - 1), Ink);
+               Y := Y + Line_H;
+               Rest_First := Rest_First + Shown;
+               exit when Rest_First > S'Last;
+            end;
+         end loop;
+      end Line;
+   begin
+      Fill_Rect (C, Box, K.Card);
+      Stroke_Rect (C, Box, K.Accent, K.Accent);
+      Strong (C, Left, Y, "The dashboard as CCL", K.Text);
+      Text_Right (C, Box.x + Box.w - Margin, Y, "Ctrl+C copies it, C or Esc closes", K.Muted);
+      Y := Y + UI_Text_Height + M.Space_M;
+      Line (Opening, K.Muted);
+      for P in 1 .. D.Panels_Used loop
+         Line (Dash_Model.Panel_Source (D.Panels (P)), (if P = Selected_Panel then K.Accent else K.Text),
+               Source_Indent);
+      end loop;
+      Line ("])", K.Muted);
+   end Draw_Source;
+
    procedure Paint (C : Canvas; Damage : Rect);
    procedure Paint (C : Canvas; Damage : Rect) is
       K : constant Colors := Current_Colors;
@@ -1947,6 +2437,11 @@ package body Dash_View is
         (Whole.x, Toolbar.y + Toolbar.h, Whole.w,
          (if Whole.h > Toolbar.h + Status.h then Whole.h - Toolbar.h - Status.h else 0));
    begin
+      if Board /= null and then Source_Shown and then Inside (Source_Box, Damage) then
+         --  All under the opaque overlay.
+         Draw_Source (With_Clip (C, Source_Box), K);
+         return;
+      end if;
       if Intersects (Damage, Content) then
          Fill_Page (C, K, Content);
       end if;
@@ -1961,10 +2456,17 @@ package body Dash_View is
             end if;
          end loop;
       end if;
+      if Board /= null and then Edit_Mode and then Selected_Panel in 1 .. Board.Panels_Used
+        and then Intersects (Panels (Selected_Panel).Outer, Damage)
+      then
+         Draw_Selection (With_Clip (C, Panels (Selected_Panel).Outer), K, Selected_Panel);
+      end if;
       if Intersects (Damage, Status) then
          Draw_Status (C, K);
       end if;
-      if Hover_Valid and then not Is_Empty (Tooltip) and then Intersects (Damage, Tooltip) then
+      if Board /= null and then Source_Shown and then Intersects (Damage, Source_Box) then
+         Draw_Source (With_Clip (C, Source_Box), K);
+      elsif Hover_Valid and then not Is_Empty (Tooltip) and then Intersects (Damage, Tooltip) then
          Draw_Tooltip (C, K);
       end if;
    end Paint;
@@ -1980,7 +2482,7 @@ package body Dash_View is
       --  the toolkit asked for is a copy.
       if Dash_Layers.Dirty_Count > 0 then
          --  The columns are read under the lock; the copy out needs none.
-         Dash_Sync.Lock;
+         Lock_UI;
          for I in 1 .. Dash_Layers.Dirty_Count loop
             declare
                R : constant Rect := Dash_Layers.Dirty (I);
@@ -2016,6 +2518,19 @@ package body Dash_View is
       return 0;
    end Panel_At;
 
+   --  The card under a point, any kind (the editor's).
+   function Card_At (X, Y : Natural) return Natural is
+   begin
+      if Board /= null then
+         for P in 1 .. Board.Panels_Used loop
+            if Point_In_Rect (X, Y, Panels (P).Outer) then
+               return P;
+            end if;
+         end loop;
+      end if;
+      return 0;
+   end Card_At;
+
    Tooltip_Lines : constant := 9;
 
    function Tooltip_Box return Rect is
@@ -2031,7 +2546,7 @@ package body Dash_View is
       for I in First .. Last loop
          if Tracks (I).State = Dash_Tracks.Resolved and then Lines < Tooltip_Lines then
             Lines := Lines + 1;
-            Widest := Natural'Max (Widest, UI_Text_Width (Series_Label (Tracks (I))));
+            Widest := Natural'Max (Widest, UI_Text_Width (Series_Label (Tracks (I).all)));
          end if;
       end loop;
       declare
@@ -2091,7 +2606,7 @@ package body Dash_View is
       Tracks_Of (P, First, Last);
       for I in First .. Last loop
          declare
-            T : Dash_Tracks.Track renames Tracks (I);
+            T : Dash_Tracks.Track renames Tracks (I).all;
          begin
             if T.State = Dash_Tracks.Resolved and then T.Columns /= null and then Y + Tooltip_Row <= Box.y + Box.h then
                declare
@@ -2216,6 +2731,25 @@ package body Dash_View is
       end;
    end Scroll_Plot;
 
+   function Is_Preset (S : Unsigned_64) return Boolean is (for some P of Presets => P = S);
+
+   --  The panel input works in: the hovered one, the pressed one, else the
+   --  first time-based one.
+   function Focus_Panel return Natural is
+   begin
+      if Hover_Panel /= 0 then
+         return Hover_Panel;
+      elsif Press_Panel /= 0 then
+         return Press_Panel;
+      end if;
+      for P in 1 .. Board.Panels_Used loop
+         if Panels_Kind (P) in Dash_Model.Time_Series | Dash_Model.Heatmap then
+            return P;
+         end if;
+      end loop;
+      return 1;
+   end Focus_Panel;
+
    procedure Set_Span (New_Span : Unsigned_64; Anchor : Unsigned_64; Damage : in out Rect);
    procedure Set_Span (New_Span : Unsigned_64; Anchor : Unsigned_64; Damage : in out Rect) is
       Clamped : constant Axis.Span :=
@@ -2228,17 +2762,23 @@ package body Dash_View is
            / Unsigned_64'Max (1, Span / Axis.Microseconds_Per_Millisecond);
          End_Us := Unsigned_64'Min (End_Us, Feed.Now_Us);
       end if;
+      --  The toolbar's span text; the presets only when one turns on or off.
+      Mark (Damage, (Toolbar.x, Toolbar.y, Natural'Max (Preset_Rect (1).x, Toolbar.x) - Toolbar.x, Toolbar.h));
+      if Is_Preset (Span) or else Is_Preset (Clamped) then
+         Mark (Damage, (Preset_Rect (1).x, Toolbar.y,
+                        Natural'Max (Live_Rect.x + Live_Rect.w, Preset_Rect (1).x) - Preset_Rect (1).x, Toolbar.h));
+      end if;
       Span := Clamped;
       Update_Quantum;
-      --  The toolbar's span text and the presets only, not the whole bar.
-      Mark (Damage, (Toolbar.x, Toolbar.y, Natural'Max (Preset_Rect (1).x, Toolbar.x) - Toolbar.x, Toolbar.h));
-      Mark (Damage, (Preset_Rect (1).x, Toolbar.y,
-                     Natural'Max (Live_Rect.x + Live_Rect.w, Preset_Rect (1).x) - Preset_Rect (1).x, Toolbar.h));
       --  Every track resamples at once (the preview the store's answer
       --  refines); each plot and its time axis are redrawn, its value axis
       --  only when its top changed, a stat's number when the store answers.
+      --  The panel the person works in follows in this frame; the others in
+      --  the next (Refresh sees their viewports moved), so an input's own
+      --  frame redraws one panel, not all of them.
       if Board /= null then
          for P in 1 .. Board.Panels_Used loop
+            if P = Focus_Panel then
             declare
                Port : constant Axis.Viewport := Viewport_For (P);
                Old_Top : constant Unsigned_64 := Tops (P);
@@ -2246,7 +2786,7 @@ package body Dash_View is
             begin
                Tracks_Of (P, First, Last);
                for I in First .. Last loop
-                  Dash_Tracks.Follow (Tracks (I), Port);
+                  Dash_Tracks.Follow (Tracks (I).all, Port);
                end loop;
                Ports (P) := Port;
                Has_Port (P) := Tracks /= null and then Last >= First;
@@ -2263,6 +2803,7 @@ package body Dash_View is
                   when others => Mark (Damage, Panels (P).Outer);
                end case;
             end;
+            end if;
          end loop;
       end if;
    end Set_Span;
@@ -2281,6 +2822,8 @@ package body Dash_View is
       Mark (Damage, (Toolbar.x, Toolbar.y, Natural'Max (Preset_Rect (1).x, Toolbar.x) - Toolbar.x, Toolbar.h));
       if Board /= null then
          for P in 1 .. Board.Panels_Used loop
+            --  As Set_Span: the focus now, the rest at the next frame.
+            if P = Focus_Panel then
             declare
                Port : constant Axis.Viewport := Viewport_For (P);
                Old : constant Axis.Viewport := Ports (P);
@@ -2288,7 +2831,7 @@ package body Dash_View is
             begin
                Tracks_Of (P, First, Last);
                for I in First .. Last loop
-                  Dash_Tracks.Follow (Tracks (I), Port);
+                  Dash_Tracks.Follow (Tracks (I).all, Port);
                end loop;
                Ports (P) := Port;
                --  The value axis follows at the next frame (Refresh), not
@@ -2300,6 +2843,7 @@ package body Dash_View is
                   when others => Mark (Damage, Panels (P).Outer);
                end case;
             end;
+            end if;
          end loop;
       end if;
    end Pan_To;
@@ -2343,12 +2887,136 @@ package body Dash_View is
       end if;
    end Set_Hover;
 
+   --  The editor's pointer: a press on a panel selects it; a drag moves it
+   --  (it takes the place of the panel under the pointer) or, from the
+   --  grip, sizes it by whole grid units. One drag undoes as one edit.
+   Edit_Drag : Boolean := False;
+   Edit_Resize : Boolean := False;
+   Drag_Width, Drag_Height : Natural := 0;
+
+   procedure Select_Panel (P : Natural; Damage : in out Rect);
+   procedure Select_Panel (P : Natural; Damage : in out Rect) is
+   begin
+      if Selected_Panel in 1 .. Board.Panels_Used then
+         Mark (Damage, Panels (Selected_Panel).Outer);
+      end if;
+      Selected_Panel := P;
+      if P in 1 .. Board.Panels_Used then
+         Mark (Damage, Panels (P).Outer);
+      end if;
+      Mark (Damage, Status);
+      if Source_Shown then
+         Mark_Exactly (Damage, Source_Box);
+      end if;
+   end Select_Panel;
+
+   procedure Set_Editing (On : Boolean; Damage : in out Rect);
+   procedure Set_Editing (On : Boolean; Damage : in out Rect) is
+      Hovered : constant Natural := (if Hover_Valid then Hover_Panel else 0);
+   begin
+      Edit_Mode := On;
+      if Hover_Valid then
+         --  No tooltip or crosshair while editing.
+         Mark (Damage, Tooltip);
+         Mark (Damage, Crosshair_Damage (Hover_Panel, Hover_Time));
+         Hover_Valid := False;
+      end if;
+      if On and then Selected_Panel not in 1 .. Board.Panels_Used then
+         Selected_Panel := (if Hovered /= 0 then Hovered else 1);
+      end if;
+      if not On then
+         if Source_Shown then
+            Source_Shown := False;
+            Mark (Damage, Whole);
+         end if;
+         Dash_Edit.End_Group;
+         Edit_Drag := False;
+      end if;
+      if Selected_Panel in 1 .. Board.Panels_Used then
+         Mark (Damage, Panels (Selected_Panel).Outer);
+      end if;
+      Mark (Damage, Toolbar);
+      Mark (Damage, Status);
+   end Set_Editing;
+
+   procedure Edit_Drag_To (X, Y : Natural; Damage : in out Rect);
+   procedure Edit_Drag_To (X, Y : Natural; Damage : in out Rect) is
+      function Units (Moved, Unit : Integer) return Integer is
+        (if Unit = 0 then 0 elsif Moved >= 0 then (Moved + Unit / 2) / Unit else -((Unit / 2 - Moved) / Unit));
+   begin
+      if Selected_Panel not in 1 .. Board.Panels_Used then
+         return;
+      end if;
+      if Edit_Resize then
+         declare
+            Want_W : constant Integer := Drag_Width + Units (X - Press_X, Grid_Unit_W);
+            Want_H : constant Integer := Drag_Height + Units (Y - Press_Y, Grid_Unit_H);
+         begin
+            while Board.Panels (Selected_Panel).Width < Integer'Min (Want_W, Dash_Model.Grid_Columns) loop
+               Edit (Dash_Edit.Wider, Damage);
+            end loop;
+            while Board.Panels (Selected_Panel).Width > Integer'Max (Want_W, 1) loop
+               Edit (Dash_Edit.Narrower, Damage);
+            end loop;
+            while Board.Panels (Selected_Panel).Height < Integer'Min (Want_H, Dash_Model.Maximum_Grid_Height) loop
+               Edit (Dash_Edit.Taller, Damage);
+            end loop;
+            while Board.Panels (Selected_Panel).Height > Integer'Max (Want_H, 1) loop
+               Edit (Dash_Edit.Shorter, Damage);
+            end loop;
+         end;
+      else
+         declare
+            Target : constant Natural := Card_At (X, Y);
+         begin
+            if Target /= 0 then
+               while Selected_Panel > Target loop
+                  Edit (Dash_Edit.Move_Earlier, Damage);
+               end loop;
+               while Selected_Panel < Target loop
+                  Edit (Dash_Edit.Move_Later, Damage);
+               end loop;
+            end if;
+         end;
+      end if;
+   end Edit_Drag_To;
+
+   --  A key while editing; False: not an editor key (the view's own then).
+   procedure Edit_Key (E : Event; Damage : in out Rect; Taken : out Boolean);
+   procedure Edit_Key (E : Event; Damage : in out Rect; Taken : out Boolean) is
+   begin
+      Taken := True;
+      case E.Pressed is
+         when Left => Edit ((if E.Shift then Dash_Edit.Narrower else Dash_Edit.Move_Earlier), Damage);
+         when Right => Edit ((if E.Shift then Dash_Edit.Wider else Dash_Edit.Move_Later), Damage);
+         when Up => Edit ((if E.Shift then Dash_Edit.Shorter else Dash_Edit.Move_Earlier), Damage);
+         when Down => Edit ((if E.Shift then Dash_Edit.Taller else Dash_Edit.Move_Later), Damage);
+         when Next_Panel =>
+            Select_Panel ((if E.Shift then (if Selected_Panel <= 1 then Board.Panels_Used else Selected_Panel - 1)
+                           else (if Selected_Panel >= Board.Panels_Used then 1 else Selected_Panel + 1)), Damage);
+         when Remove => Edit (Dash_Edit.Remove, Damage);
+         when Duplicate => Edit (Dash_Edit.Duplicate, Damage);
+         when Escape | Edit =>
+            if Source_Shown and then E.Pressed = Escape then
+               Source_Shown := False;
+               Mark (Damage, Whole);
+            else
+               Set_Editing (False, Damage);
+            end if;
+         when others => Taken := False;
+      end case;
+   end Edit_Key;
+
    procedure Handle_Locked (E : Event; Damage : in out Rect);
 
    procedure Handle (V : in out View; E : Event; Damage : in out Rect) is
       pragma Unreferenced (V);
    begin
-      Dash_Sync.Lock;
+      Lock_UI;
+      if E.Kind in Wheel | Key_Press | Pointer_Press then
+         --  The person's own range from here on.
+         Auto_Fit := False;
+      end if;
       Handle_Locked (E, Damage);
       Dash_Sync.Unlock;
    end Handle;
@@ -2363,6 +3031,12 @@ package body Dash_View is
             Set_Hover (0, 0, Damage);
             Hover_Valid := False;
          when Pointer_Move =>
+            if Edit_Mode then
+               if Edit_Drag then
+                  Edit_Drag_To (E.X, E.Y, Damage);
+               end if;
+               return;
+            end if;
             if Pressed and then Press_Panel /= 0 then
                declare
                   Port : constant Axis.Viewport := Ports (Press_Panel);
@@ -2393,6 +3067,27 @@ package body Dash_View is
                   return;
                end if;
             end loop;
+            if Point_In_Rect (E.X, E.Y, Edit_Rect) then
+               Set_Editing (not Edit_Mode, Damage);
+               return;
+            end if;
+            if Edit_Mode then
+               declare
+                  P : constant Natural := Card_At (E.X, E.Y);
+               begin
+                  if P /= 0 then
+                     Select_Panel (P, Damage);
+                     Edit_Drag := True;
+                     Edit_Resize := Point_In_Rect (E.X, E.Y, Grip_Rect (P));
+                     Drag_Width := Board.Panels (P).Width;
+                     Drag_Height := Board.Panels (P).Height;
+                     Press_X := E.X;
+                     Press_Y := E.Y;
+                     Dash_Edit.Begin_Group;
+                  end if;
+               end;
+               return;
+            end if;
             if Point_In_Rect (E.X, E.Y, Live_Rect) then
                if Live_Mode then
                   Pan_To (Current_End, Damage);
@@ -2413,6 +3108,11 @@ package body Dash_View is
                Select_To := Select_From;
             end if;
          when Pointer_Release =>
+            if Edit_Drag then
+               Edit_Drag := False;
+               Dash_Edit.End_Group;
+               return;
+            end if;
             if Pressed and then not Dragged and then Press_Panel /= 0 then
                --  A click: the drill-down slice (the column clicked).
                declare
@@ -2456,7 +3156,27 @@ package body Dash_View is
                Set_Hover (E.X, E.Y, Damage);
             end;
          when Key_Press =>
+            if Edit_Mode then
+               declare
+                  Taken : Boolean;
+               begin
+                  Edit_Key (E, Damage, Taken);
+                  if Taken then
+                     return;
+                  end if;
+               end;
+            end if;
             case E.Pressed is
+               when Edit => Set_Editing (True, Damage);
+               when Undo | Redo => Undo_Redo (E.Pressed = Redo, Damage);
+               when Show_Source =>
+                  Source_Shown := not Source_Shown;
+                  if Source_Shown then
+                     Hover_Valid := False;
+                     Mark_Exactly (Damage, Source_Box);
+                  else
+                     Mark (Damage, Whole);
+                  end if;
                when Left | Right =>
                   declare
                      Step : constant Unsigned_64 := Span / Pan_Fraction;
@@ -2470,6 +3190,10 @@ package body Dash_View is
                when Live | End_Key => Go_Live (Damage);
                when Home => Pan_To (Span, Damage);
                when Escape =>
+                  if Source_Shown then
+                     Source_Shown := False;
+                     Mark (Damage, Whole);
+                  end if;
                   Detail_Valid := False;
                   Selecting := False;
                   Mark_Plots (Damage);
@@ -2480,7 +3204,7 @@ package body Dash_View is
                when Range_4 => Set_Span (Presets (4), 0, Damage);
                when Range_5 => Set_Span (Presets (5), 0, Damage);
                when Range_6 => Set_Span (Presets (6), 0, Damage);
-               when Copy | No_Key => null;
+               when Up | Down | Next_Panel | Remove | Duplicate | Copy | No_Key => null;
             end case;
       end case;
    end Handle_Locked;
@@ -2500,7 +3224,7 @@ package body Dash_View is
          return Drill_Down_Expression (View'(null record));
       end if;
       declare
-         T : Dash_Tracks.Track renames Tracks (First);
+         T : Dash_Tracks.Track renames Tracks (First).all;
          S : constant Columns.Summary :=
            Columns.Get (T.Columns.all, Axis.Column_Of (Detail_From, T.Width_Us));
          U : constant Format.Unit := T.Info.Unit;

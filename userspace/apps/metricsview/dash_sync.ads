@@ -14,7 +14,12 @@
 --  On CuBit a futex lock (native/dash_sync.adb, CuBit.Futex_Locks); in the
 --  hosted tests, which run both sides on one thread, nothing.
 ------------------------------------------------------------------------------
+with Interfaces;
+
 package Dash_Sync is
    procedure Lock;
    procedure Unlock;
+   --  The UI thread's lock: how long it waited for the data thread (the
+   --  cost the split leaves on the input path), in microseconds.
+   procedure Lock_Waited (Waited_Us : out Interfaces.Unsigned_64);
 end Dash_Sync;

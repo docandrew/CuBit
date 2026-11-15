@@ -99,6 +99,7 @@ package body Dash_Query_Feeds is
                Unit => (if Unit in 1 .. 5 then Units (Natural (Unit)) else Charts_Format.Count),
                Last_Us => Word (Pages.Row_Last),
                Raw_From_Us => Word (Pages.Row_Raw_From),
+               First_Us => Word (Pages.Row_First),
                Published => Word (Pages.Row_Published));
          end;
       end loop;

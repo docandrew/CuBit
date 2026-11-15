@@ -18,12 +18,14 @@ with CuBit.Metric_Updates;
 with CuBit.UI;
 with CuBit.UI.Theme_CCL;
 with Charts_Format;
+with Dash_Edit;
 with Dash_Feeds;
 with Dash_Model;
 with Dash_View;
 with Synthetic_Feeds;
 
 procedure Metricsview_View_Tests is
+   use type Dash_View.Save_State;
    use type Ada.Calendar.Time;
    use type Dash_Model.Panel_Kind;
    BYTES_PER_PIXEL : constant := 4;
@@ -301,8 +303,78 @@ procedure Metricsview_View_Tests is
       U.Encode ((Kind => U.Sample, Series => 0, Time_Us => 1, Value => 1), Wire);
       Check (not U.Decode (Wire).Success, "a sample of no series is refused");
    end Update_Codec;
+   --  Dashboards round-trip through their CCL source, and edits undo.
+   procedure Model_Edits is
+      use type Dash_Model.Panel_Kind;
+      use type Dash_Model.Statistic_Set;
+      use type Dash_Model.Match_Kind;
+      Original, Again, Edited : Dash_Model.Dashboard;
+      Result : Dash_Model.Load_Result;
+      Done : Boolean;
+      Selected : Natural;
+      function Same (A, B : Dash_Model.Dashboard) return Boolean is
+      begin
+         if A.Panels_Used /= B.Panels_Used or else A.Span /= B.Span or else A.Live /= B.Live
+           or else Dash_Model.Image (A.Title) /= Dash_Model.Image (B.Title)
+         then
+            return False;
+         end if;
+         for P in 1 .. A.Panels_Used loop
+            declare
+               X : Dash_Model.Panel renames A.Panels (P);
+               Y : Dash_Model.Panel renames B.Panels (P);
+            begin
+               if Dash_Model.Image (X.Title) /= Dash_Model.Image (Y.Title) or else X.Kind /= Y.Kind
+                 or else X.Width /= Y.Width or else X.Height /= Y.Height or else X.Series_Used /= Y.Series_Used
+                 or else X.Lines /= Y.Lines or else X.Band /= Y.Band or else X.Budget /= Y.Budget
+               then
+                  return False;
+               end if;
+               for S in 1 .. X.Series_Used loop
+                  if Dash_Model.Image (X.Series (S).Name) /= Dash_Model.Image (Y.Series (S).Name)
+                    or else Dash_Model.Image (X.Series (S).Label) /= Dash_Model.Image (Y.Series (S).Label)
+                    or else X.Series (S).Match /= Y.Series (S).Match
+                  then
+                     return False;
+                  end if;
+               end loop;
+            end;
+         end loop;
+         return True;
+      end Same;
+   begin
+      Dash_Model.Load (Dash_Model.DEFAULT_SOURCE, Original, Result);
+      Dash_Model.Load (Dash_Model.To_Source (Original), Again, Result);
+      Check (Result.Success and then Same (Original, Again),
+             "a dashboard reads back from its own CCL source: " & Result.Message (1 .. Result.Message_Length));
+      Edited := Original;
+      Dash_Edit.Start (Edited);
+      Dash_Edit.Apply (Edited, Dash_Edit.Move_Later, 1, Done, Selected);
+      Check (Done and then Selected = 2 and then Dash_Model.Image (Edited.Panels (2).Title) = "Input to ready",
+             "a panel moves later");
+      Dash_Edit.Apply (Edited, Dash_Edit.Narrower, 2, Done, Selected);
+      Dash_Edit.Apply (Edited, Dash_Edit.Taller, 2, Done, Selected);
+      Check (Edited.Panels (2).Width = 8 and then Edited.Panels (2).Height = 6, "a panel resizes");
+      Dash_Edit.Apply (Edited, Dash_Edit.Remove, 3, Done, Selected);
+      Dash_Edit.Apply (Edited, Dash_Edit.Duplicate, 1, Done, Selected);
+      Check (Edited.Panels_Used = Original.Panels_Used and then Selected = 2, "remove, then duplicate");
+      Dash_Model.Load (Dash_Model.To_Source (Edited), Again, Result);
+      Check (Result.Success and then Same (Edited, Again), "an edited dashboard is still a Dashboard");
+      for I in 1 .. 5 loop
+         Dash_Edit.Undo (Edited, Done);
+      end loop;
+      Check (Same (Edited, Original) and then not Dash_Edit.Can_Undo, "five undos give the original back");
+      Dash_Edit.Redo (Edited, Done);
+      Check (Done and then Dash_Model.Image (Edited.Panels (2).Title) = "Input to ready", "redo");
+      Dash_Edit.Apply (Edited, Dash_Edit.Narrower, 1, Done, Selected);
+      Check (not Dash_Edit.Can_Redo, "an edit after undo drops the redo");
+      Edited.Panels (1).Width := 1;
+      Dash_Edit.Apply (Edited, Dash_Edit.Narrower, 1, Done, Selected);
+      Check (not Done, "a panel never narrower than one column");
+   end Model_Edits;
 begin
    Update_Codec;
+   Model_Edits;
    Install_Themes;
    CuBit.UI.Set_Color_Scheme (CuBit.Appearance.Alloy_Dark);
    Add_Series;
@@ -476,6 +548,118 @@ begin
    Repaint_All;
    Save_PPM ("07-light");
    CuBit.UI.Set_Color_Scheme (CuBit.Appearance.Alloy_Dark);
+
+   --  The editor: keys and the pointer edit the layout; the tracks (and
+   --  their data) follow their panels; undo gives the original back.
+   declare
+      Original : constant String := Dash_View.Dashboard_Source (View);
+      Parsed : Dash_Model.Dashboard;
+      function Key (K : Dash_View.Key; Shift : Boolean := False) return Dash_View.Event is
+        (Kind => Dash_View.Key_Press, Pressed => K, Shift => Shift, others => <>);
+      function Title_Of (P : Positive) return String is
+      begin
+         Dash_Model.Load (Dash_View.Dashboard_Source (View), Parsed, Loaded);
+         return (if Loaded.Success and then P <= Parsed.Panels_Used then Dash_Model.Image (Parsed.Panels (P).Title)
+                 else "");
+      end Title_Of;
+      First_Title : constant String := Title_Of (1);
+      Second_Title : constant String := Title_Of (2);
+      Width_First : constant Natural := Parsed.Panels (1).Width;
+      Panels_Before : constant Natural := Dash_View.Panel_Count (View);
+   begin
+      Interact (Key (Dash_View.Edit), "edit");
+      Check (Dash_View.Editing (View), "E starts editing");
+      Check (Dash_View.Save_Name (View) = "@system/Dashboards/display-latency.ccl", "a dashboard's file is its title");
+      Interact (Key (Dash_View.Right), "move later");
+      declare
+         Due : Boolean;
+         Generation : Natural;
+      begin
+         Dash_View.Take_Save (View, Due, Generation);
+         Check (not Due, "while editing, a save waits for the edits to settle");
+         Feed.Set_Clock (Now + Dash_View.Autosave_Delay_Ms * 1_000);
+         Dash_View.Take_Save (View, Due, Generation);
+         Check (Due and then Dash_View.Saving_State (View) = Dash_View.Saving, "settled edits are saved");
+         Dash_View.End_Save (View, Generation, Saved => True);
+         Check (Dash_View.Saving_State (View) = Dash_View.Saved, "saved");
+         Dash_View.Take_Save (View, Due, Generation);
+         Check (not Due, "saved once");
+         Feed.Set_Clock (Now);
+      end;
+      Check (Title_Of (1) = Second_Title and then Title_Of (2) = First_Title, "Right moves the panel later");
+      Check (Dash_View.Columns_With_Data (View) > 0 and then Dash_View.Resolved_Tracks (View)
+             = Dash_View.Track_Total (View), "the tracks (and their data) follow their panels");
+      Interact (Key (Dash_View.Right, Shift => True), "wider");
+      Check (Title_Of (2) = First_Title
+             and then (Parsed.Panels (2).Width = Width_First + 1 or else Width_First = Dash_Model.Grid_Columns),
+             "Shift+Right widens it");
+      Frame;
+      Check_Coherent ("edit-move");
+      Interact (Key (Dash_View.Remove), "remove");
+      Check (Dash_View.Panel_Count (View) = Panels_Before - 1, "Delete removes it");
+      Frame;
+      Check (Dash_View.Resolved_Tracks (View) = Dash_View.Track_Total (View), "removed: the rest still read");
+      Interact (Key (Dash_View.Duplicate), "duplicate");
+      Check (Dash_View.Panel_Count (View) = Panels_Before, "Insert copies it");
+      for I in 1 .. 3 loop
+         Frame;
+      end loop;
+      Check (Dash_View.Resolved_Tracks (View) = Dash_View.Track_Total (View), "a copy's series resolve");
+      Check_Coherent ("edit-remove-copy");
+      --  Size by the grip: a drag two columns left, one edit.
+      declare
+         R : constant CuBit.UI.Rect := Dash_View.Panel_Bounds (View, 1);
+         Unit : constant Natural := WIDTH / Dash_Model.Grid_Columns;
+         Width_1 : Natural;
+      begin
+         Width_1 := (if Title_Of (1)'Length > 0 then Parsed.Panels (1).Width else 0);
+         Interact ((Kind => Dash_View.Pointer_Press, X => R.x + R.w - 2, Y => R.y + R.h - 2, others => <>),
+                   "grip press");
+         Interact ((Kind => Dash_View.Pointer_Move, X => R.x + R.w - 2 - Unit, Y => R.y + R.h - 2, others => <>),
+                   "grip drag");
+         Interact ((Kind => Dash_View.Pointer_Move, X => R.x + R.w - 2 - 2 * Unit, Y => R.y + R.h - 2,
+                    others => <>), "grip drag");
+         Interact ((Kind => Dash_View.Pointer_Release, X => R.x + R.w - 2 - 2 * Unit, Y => R.y + R.h - 2,
+                    others => <>), "grip release");
+         Check (Title_Of (1)'Length > 0 and then Parsed.Panels (1).Width = Natural'Max (1, Width_1 - 2),
+                "the grip sizes the panel by grid units");
+         Interact (Key (Dash_View.Undo), "undo the drag");
+         Check (Title_Of (1)'Length > 0 and then Parsed.Panels (1).Width = Width_1, "a drag undoes as one edit");
+      end;
+      Frame;
+      Repaint_All;
+      Save_PPM ("09-edit");
+      Interact (Key (Dash_View.Show_Source), "show CCL");
+      --  Live data behind the overlay repaints parts of it.
+      for I in 1 .. 4 loop
+         Generate (Now, Now + 4 * FRAME_US, 0);
+         Now := Now + 4 * FRAME_US;
+         Frame;
+      end loop;
+      Check_Coherent ("edit-source-live");
+      Repaint_All;
+      Save_PPM ("10-edit-source");
+      Interact (Key (Dash_View.Show_Source), "hide CCL");
+      for I in 1 .. 4 loop
+         Interact (Key (Dash_View.Undo), "undo");
+      end loop;
+      Check (Dash_View.Dashboard_Source (View) = Original, "undo gives the original dashboard back");
+      Interact (Key (Dash_View.Escape), "done");
+      Check (not Dash_View.Editing (View), "Esc ends editing");
+      declare
+         Due : Boolean;
+         Generation : Natural;
+      begin
+         Dash_View.Take_Save (View, Due, Generation);
+         Check (Due, "ending the editor saves at once");
+         Dash_View.End_Save (View, Generation, Saved => False, Reason => "no filesystem");
+         Check (Dash_View.Saving_State (View) = Dash_View.Not_Saved, "a failed save is shown");
+         Dash_View.Take_Save (View, Due, Generation);
+         Check (not Due, "a failed save is not retried until the next edit");
+      end;
+      Frame;
+      Check_Coherent ("edit-undone");
+   end;
 
    --  Repaint cost of the whole window.
    declare

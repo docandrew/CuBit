@@ -123,6 +123,10 @@ package Dash_Model is
    subtype Grid_Height is Positive range 1 .. Maximum_Grid_Height;
 
    type Panel is record
+      --  The panel's identity while the app runs (not part of the CCL
+      --  value): edits move and resize panels, and the data drawn in them
+      --  follows by it.
+      Id : Natural := 0;
       Title : Text;
       Kind : Panel_Kind := Time_Series;
       Series : Series_List;
@@ -165,4 +169,18 @@ package Dash_Model is
    --  Source checked against Dashboard and read into Into. On failure Into
    --  is unchanged and Result says why.
    procedure Load (Source : String; Into : in out Dashboard; Result : out Load_Result);
+
+   --  The dashboard as CCL source that Load reads back to the same value
+   --  (what is saved, copied and shown): every panel as a Panel expression,
+   --  series as (series ...) or a full Panel_Series when it names a source
+   --  or a prefix.
+   function To_Source (D : Dashboard) return String;
+   --  One panel's expression.
+   function Panel_Source (P : Panel) return String;
+
+   --  Saved dashboards (PLAN-metricsview.md): one file a dashboard, named
+   --  for its title (lower case, words joined by '-') in this place.
+   Dashboards_Place : constant String := "@system/Dashboards/";
+   Dashboard_Suffix : constant String := ".ccl";
+   function File_Name (D : Dashboard) return String;
 end Dash_Model;

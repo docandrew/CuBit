@@ -39,6 +39,10 @@ package Dash_Runner is
    --  Ask it to end (the window closed).
    procedure Stop;
 
+   --  Write the dashboard if an edit made it due (the data thread after each
+   --  step; the UI thread when there is no data thread).
+   procedure Save_Step;
+
    --  One sample of Item from either thread (serialized under Dash_Sync).
    procedure Observe (Item : CuBit.Metrics.Series; Value : Unsigned_64);
 

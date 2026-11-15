@@ -465,6 +465,25 @@ package body Dash_Tracks is
       end if;
    end Fetch;
 
+   procedure Release (T : in out Track) is
+   begin
+      if T.Columns /= null then
+         Free (T.Columns);
+      end if;
+      if T.Spare /= null then
+         Free (T.Spare);
+      end if;
+      if T.Buckets /= null then
+         Free (T.Buckets);
+      end if;
+      if T.Recent_Times /= null then
+         Free (T.Recent_Times);
+      end if;
+      if T.Recent_Values /= null then
+         Free (T.Recent_Values);
+      end if;
+   end Release;
+
    procedure Begin_Push (T : in out Track; From_Us : Unsigned_64) is
    begin
       T.Pushed := True;

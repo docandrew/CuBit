@@ -90,7 +90,8 @@ package body Synthetic_Feeds is
                     (Id => Unsigned_64 (I), Name => F.Series (I).Name, Source => Dash_Model.To_Text ("desktop"),
                      Kind => F.Series (I).Kind, Unit => F.Series (I).Unit,
                      Last_Us => (if F.Series (I).Used > 0 then F.Series (I).Times (F.Series (I).Used) else 0),
-                     Raw_From_Us => 0, Published => Unsigned_64 (F.Series (I).Used));
+                     Raw_From_Us => 0, Published => Unsigned_64 (F.Series (I).Used),
+                     First_Us => (if F.Series (I).Used > 0 then F.Series (I).Times (1) else 0));
                end if;
             end if;
          end;
@@ -121,7 +122,8 @@ package body Synthetic_Feeds is
                     (Id => Unsigned_64 (I), Name => F.Series (I).Name, Source => Dash_Model.To_Text ("desktop"),
                      Kind => F.Series (I).Kind, Unit => F.Series (I).Unit,
                      Last_Us => (if F.Series (I).Used > 0 then F.Series (I).Times (F.Series (I).Used) else 0),
-                     Raw_From_Us => 0, Published => Unsigned_64 (F.Series (I).Used));
+                     Raw_From_Us => 0, Published => Unsigned_64 (F.Series (I).Used),
+                     First_Us => (if F.Series (I).Used > 0 then F.Series (I).Times (1) else 0));
                end if;
             end if;
          end;

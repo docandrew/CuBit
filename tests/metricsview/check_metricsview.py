@@ -62,6 +62,16 @@ else:
 check(bool(own) and own[-1][0] > 0, "the app's own input_to_render_us series read back from metrics.svc")
 for name, (n, p50, p99, top) in sorted(own_all.items()):
     print(f"metricsview: own {name} n={n} p50={p50} us p99={p99} us max={top} us (read back from metrics.svc)")
+# The editor's keys end in Esc, which saves the dashboard. This boot has no
+# @system volume, so a save there is refused NOT_FOUND; one with a system
+# volume says "saved". Either way the attempt is made and reported.
+LOADED = re.compile(r"metricsview: dashboard (from \S+|built-in \(\S+: \w+\))")
+SAVE = re.compile(r"metricsview: (saved|not saved) (\S+) bytes=(\d+) result=(\w+)")
+check(bool(LOADED.search(data)), "the saved dashboard looked for at launch")
+saves = SAVE.findall(data)
+check(bool(saves), "an edit ended by Esc saves the dashboard (or says why not)")
+for verdict, name, size, result in saves:
+    print(f"metricsview: {verdict} {name} ({size} bytes, {result})")
 if stages:
     print("desktop: input_to_ready (Desktop's reports, all inputs): "
           + "; ".join(f"n={s[0]} p50={s[1]} p99={s[3]} max={s[4]}" for s in stages[-3:]))

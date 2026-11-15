@@ -37,6 +37,8 @@ package Dash_Feeds is
       --  The newest sample's time, and the oldest raw sample still held
       --  (older ranges have only tier windows).
       Last_Us, Raw_From_Us : Unsigned_64 := 0;
+      --  The oldest sample the store holds of it (zero: none).
+      First_Us : Unsigned_64 := 0;
       --  Samples published so far: a change means something to fetch.
       Published : Unsigned_64 := 0;
    end record;

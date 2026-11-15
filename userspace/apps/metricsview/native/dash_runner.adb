@@ -9,6 +9,7 @@ with CuBit.Monotonic;
 with CuBit.Thread_Areas;
 with Charts_Format;
 with Dash_Feeds;
+with Dash_Files;
 with Dash_Model;
 with Dash_Sync;
 
@@ -65,8 +66,12 @@ package body Dash_Runner is
    Cost_Name : aliased constant String := "metricsview.input_cost_us";
    Update_Name : aliased constant String := "metricsview.update_us";
    Data_Name : aliased constant String := "metricsview.data_us";
-   Own_Names : constant array (1 .. 4) of Name_Access :=
-     [Input_Name'Access, Cost_Name'Access, Update_Name'Access, Data_Name'Access];
+   Render_Name : aliased constant String := "metricsview.render_us";
+   Handle_Name : aliased constant String := "metricsview.handle_us";
+   Wait_Name : aliased constant String := "metricsview.lock_wait_us";
+   Own_Names : constant array (1 .. 7) of Name_Access :=
+     [Input_Name'Access, Cost_Name'Access, Update_Name'Access, Data_Name'Access, Render_Name'Access,
+      Handle_Name'Access, Wait_Name'Access];
 
    procedure Report_Own;
    procedure Report_Own is
@@ -90,6 +95,48 @@ package body Dash_Runner is
          end if;
       end loop;
    end Report_Own;
+
+   --  An edited dashboard, written when it is due (Dash_View.Take_Save):
+   --  the value is copied under the lock and written without it.
+   Save_Deadline_Ms : constant := 2_000;
+
+   procedure Save_Step is
+      Due : Boolean;
+      Generation : Natural;
+   begin
+      Dash_Sync.Lock;
+      Dash_View.Take_Save (View, Due, Generation);
+      if not Due then
+         Dash_Sync.Unlock;
+         return;
+      end if;
+      declare
+         Source : constant String := Dash_View.Dashboard_Source (View) & ASCII.LF;
+         Name : constant String := Dash_View.Save_Name (View);
+         Result : Dash_Files.Outcome := Dash_Files.Unavailable;
+         use type Dash_Files.Outcome;
+      begin
+         Dash_Sync.Unlock;
+         if Dash_Files.Is_Open then
+            Dash_Files.Save (Name, Source, CuBit.Monotonic.Milliseconds + Save_Deadline_Ms, Result);
+         end if;
+         Dash_Sync.Lock;
+         Dash_View.End_Save
+           (View, Generation, Result = Dash_Files.Done,
+            (case Result is
+               when Dash_Files.Done => "",
+               when Dash_Files.Not_Found => "no " & Dash_Model.Dashboards_Place,
+               when Dash_Files.Not_Granted => "not granted",
+               when Dash_Files.Unavailable => "no filesystem",
+               when Dash_Files.Late => "the filesystem did not answer",
+               when Dash_Files.Too_Large | Dash_Files.Failed =>
+                 "reply " & Charts_Format.Decimal (Unsigned_64 (Dash_Files.Last_Reply))));
+         Dash_Sync.Unlock;
+         CuBit.Messages.debugPrint
+           ("metricsview: " & (if Result = Dash_Files.Done then "saved " else "not saved ") & Name & " bytes="
+            & Charts_Format.Decimal (Unsigned_64 (Source'Length)) & " result=" & Result'Image & ASCII.LF);
+      end;
+   end Save_Step;
 
    procedure Data_Loop (Argument : Unsigned_64) with Convention => C, No_Return;
    procedure Data_Loop (Argument : Unsigned_64) is
@@ -118,6 +165,7 @@ package body Dash_Runner is
             Step_Count := Step_Count + 1;
             Observe (Data_Cost, Taken);
          end;
+         Save_Step;
          if CuBit.Monotonic.Milliseconds >= Own_Due_Ms then
             Own_Due_Ms := CuBit.Monotonic.Milliseconds + Own_Report_Ms;
             Report_Own;

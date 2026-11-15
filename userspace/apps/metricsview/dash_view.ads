@@ -48,8 +48,12 @@ package Dash_View is
    procedure Refresh (V : in out View; Damage : in out Rect);
 
    type Key is
-     (No_Key, Left, Right, Home, End_Key, Escape, Zoom_In, Zoom_Out, Live, Copy,
-      Range_1, Range_2, Range_3, Range_4, Range_5, Range_6);
+     (No_Key, Left, Right, Up, Down, Home, End_Key, Escape, Zoom_In, Zoom_Out, Live, Copy,
+      Range_1, Range_2, Range_3, Range_4, Range_5, Range_6,
+      --  The editor (keyboard first): E toggles it; Tab selects the next
+      --  panel; arrows move it, Shift+arrows size it; Delete removes it,
+      --  Insert copies it; Ctrl+Z undoes, Ctrl+Y redoes; C shows its CCL.
+      Edit, Next_Panel, Remove, Duplicate, Undo, Redo, Show_Source);
    type Event_Kind is (Pointer_Move, Pointer_Press, Pointer_Release, Wheel, Key_Press, Pointer_Leave);
    type Event is record
       Kind : Event_Kind := Pointer_Move;
@@ -66,6 +70,26 @@ package Dash_View is
 
    --  R must be drawn again (a colour scheme change: the whole window).
    procedure Invalidate (V : in out View; R : Rect; Damage : in out Rect);
+
+   --  The editor: whether it is on, the dashboard as it stands (CCL
+   --  source), and how many edits so far (a change: save it).
+   function Editing (V : View) return Boolean;
+   function Dashboard_Source (V : View) return String;
+   function Edits (V : View) return Natural;
+   function Source_Showing (V : View) return Boolean;
+
+   --  Saving (the data thread's: Dash_Runner, never under the lock's I/O):
+   --  an edited dashboard is due Autosave_Delay_Ms after its last edit, or
+   --  at once when editing ends. Take_Save (under the lock) says whether one
+   --  is due and which edit it holds; the caller copies Dashboard_Source and
+   --  Save_Name in the same hold, writes the file without the lock, then
+   --  reports with End_Save (under the lock again).
+   Autosave_Delay_Ms : constant := 1_000;
+   procedure Take_Save (V : in out View; Due : out Boolean; Generation : out Natural);
+   procedure End_Save (V : in out View; Generation : Natural; Saved : Boolean; Reason : String := "");
+   function Save_Name (V : View) return String;
+   type Save_State is (Unedited, Edited, Saving, Saved, Not_Saved);
+   function Saving_State (V : View) return Save_State;
 
    --  The drill-down's CCL expression for the selected slice's logs
    --  ((logs.between (LogWindow "service" from to)), boot milliseconds),
@@ -87,6 +111,8 @@ package Dash_View is
    --  Samples the store pushed so far, and whether it pushes.
    function Pushed_Samples (V : View) return Unsigned_64;
    function Push_Active (V : View) return Boolean;
+   --  How long the UI thread waited for the shared lock since the last take.
+   procedure Take_Lock_Wait (V : View; Waited_Us : out Unsigned_64);
    --  Panel P's card and its plot (tests aim the pointer with these).
    function Panel_Count (V : View) return Natural;
    function Panel_Bounds (V : View; P : Positive) return Rect;

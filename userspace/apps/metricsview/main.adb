@@ -22,6 +22,7 @@ with CuBit.UI.State;
 with Clipboard_Chords;
 with Charts_Format;
 with Dash_Feeds;
+with Dash_Files;
 with Dash_Model;
 with Dash_Query_Feeds;
 with Dash_Runner;
@@ -56,6 +57,20 @@ procedure Main is
    KEY_LEFT : constant Unsigned_64 := 16#4B#;
    KEY_RIGHT : constant Unsigned_64 := 16#4D#;
    KEY_END : constant Unsigned_64 := 16#4F#;
+   --  A key event's modifiers: payload1's low word (KEYMOD_*).
+   --  A saved dashboard's largest file, and how long launch waits for it.
+   SAVED_BYTES : constant := 262_144;
+   LOAD_DEADLINE_MS : constant := 500;
+   KEY_MODIFIER_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
+   KEY_UP : constant Unsigned_64 := 16#48#;
+   KEY_DOWN : constant Unsigned_64 := 16#50#;
+   KEY_TAB : constant Unsigned_64 := 16#0F#;
+   KEY_E : constant Unsigned_64 := 16#12#;
+   KEY_C : constant Unsigned_64 := 16#2E#;
+   KEY_Y : constant Unsigned_64 := 16#15#;
+   KEY_Z : constant Unsigned_64 := 16#2C#;
+   KEY_INSERT : constant Unsigned_64 := 16#52#;
+   KEY_DELETE : constant Unsigned_64 := 16#53#;
 
    Input_To_Render : constant CuBit.Metrics.Series :=
      CuBit.Metrics.Series_Named ("metricsview.input_to_render_us", CuBit.Metrics.Distribution,
@@ -68,6 +83,11 @@ procedure Main is
    --  shows it), without the wait for the last frame to be retired.
    Input_Cost : constant CuBit.Metrics.Series :=
      CuBit.Metrics.Series_Named ("metricsview.input_cost_us", CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds);
+   --  The UI thread's waits for the data thread's lock during an input.
+   Lock_Wait : constant CuBit.Metrics.Series :=
+     CuBit.Metrics.Series_Named ("metricsview.lock_wait_us", CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds);
+   Handle_Cost : constant CuBit.Metrics.Series :=
+     CuBit.Metrics.Series_Named ("metricsview.handle_us", CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds);
    Frames : constant CuBit.Metrics.Series :=
      CuBit.Metrics.Series_Named ("metricsview.frames", CuBit.Metrics.Counter, CuBit.Metrics.Count);
 
@@ -79,6 +99,7 @@ procedure Main is
    --  The data thread runs; else the UI thread steps the data itself.
    Threaded : Boolean := False;
    Board : Dash_Model.Dashboard;
+   Saved_Source : String (1 .. SAVED_BYTES);
    Loaded : Dash_Model.Load_Result;
    Opened : Boolean;
    Due_Ms, Report_Due_Ms : Unsigned_64 := 0;
@@ -108,6 +129,13 @@ procedure Main is
          Last_Cost_Us := Input_Work_Us + (Now_Us - Started);
          Worst_Cost_Us := Unsigned_64'Max (Worst_Cost_Us, Last_Cost_Us);
          Dash_Runner.Observe (Input_Cost, Last_Cost_Us);
+         Dash_Runner.Observe (Handle_Cost, Input_Work_Us);
+         declare
+            Waited : Unsigned_64;
+         begin
+            Dash_View.Take_Lock_Wait (View, Waited);
+            Dash_Runner.Observe (Lock_Wait, Waited);
+         end;
          Input_Work_Us := 0;
          Last_Input_Us := Now_Us - Input_Started_Us;
          Worst_Input_Us := Unsigned_64'Max (Worst_Input_Us, Last_Input_Us);
@@ -127,8 +155,16 @@ procedure Main is
       Dash_View.Set_Bounds (View, CuBit.UI.App.Full_Rect (Win), C.densityNumerator, C.densityDenominator);
    end Set_Bounds;
 
+   --  Ctrl chords (no other modifier matters to them).
+   function Control_Key_Of (Code : Unsigned_64) return Dash_View.Key is
+     (if Code = KEY_Z then Dash_View.Undo elsif Code = KEY_Y then Dash_View.Redo else Dash_View.No_Key);
+
    function Key_Of (Code : Unsigned_64) return Dash_View.Key is
      (if Code = KEY_LEFT then Dash_View.Left elsif Code = KEY_RIGHT then Dash_View.Right
+      elsif Code = KEY_UP then Dash_View.Up elsif Code = KEY_DOWN then Dash_View.Down
+      elsif Code = KEY_TAB then Dash_View.Next_Panel elsif Code = KEY_E then Dash_View.Edit
+      elsif Code = KEY_C then Dash_View.Show_Source elsif Code = KEY_INSERT then Dash_View.Duplicate
+      elsif Code = KEY_DELETE then Dash_View.Remove
       elsif Code = KEY_HOME then Dash_View.Home elsif Code = KEY_END then Dash_View.End_Key
       elsif Code = KEY_ESCAPE then Dash_View.Escape elsif Code = KEY_EQUALS then Dash_View.Zoom_In
       elsif Code = KEY_MINUS then Dash_View.Zoom_Out elsif Code = KEY_L then Dash_View.Live
@@ -156,7 +192,11 @@ procedure Main is
       elsif Event.kind = I.INPUT_KEY_DOWN then
          if CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1) = Clipboard_Chords.Copy_Command then
             declare
-               Expression : constant String := Dash_View.Drill_Down_Expression (View);
+               --  Editing or showing the CCL: the dashboard; else the
+               --  drill-down's expression.
+               Expression : constant String :=
+                 (if Dash_View.Editing (View) or else Dash_View.Source_Showing (View)
+                  then Dash_View.Dashboard_Source (View) else Dash_View.Drill_Down_Expression (View));
                Result : CuBit.UI.Clipboard.Outcome;
             begin
                if Expression'Length > 0 then
@@ -165,9 +205,19 @@ procedure Main is
                   debugPrint ("metricsview: copied " & Expression & ASCII.LF);
                end if;
             end;
-         elsif Key_Of (Event.payload0) /= Dash_View.No_Key then
-            Dash_View.Handle (View, (Kind => Dash_View.Key_Press, Pressed => Key_Of (Event.payload0), others => <>),
-                              Dirty);
+         else
+            declare
+               Modifiers : constant Unsigned_64 := Event.payload1 and KEY_MODIFIER_MASK;
+               Control : constant Boolean := (Modifiers and CuBit.UI.App.KEYMOD_CTRL) /= 0;
+               Pressed : constant Dash_View.Key :=
+                 (if Control then Control_Key_Of (Event.payload0) else Key_Of (Event.payload0));
+            begin
+               if Pressed /= Dash_View.No_Key then
+                  Dash_View.Handle
+                    (View, (Kind => Dash_View.Key_Press, Pressed => Pressed,
+                            Shift => (Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0, others => <>), Dirty);
+               end if;
+            end;
          end if;
       elsif Event.kind in I.INPUT_POINTER_MOVE | I.INPUT_POINTER_DOWN | I.INPUT_POINTER_UP then
          Dash_View.Handle
@@ -252,6 +302,7 @@ procedure Main is
       begin
          if not Threaded then
             Dash_View.Data_Step (View);
+            Dash_Runner.Save_Step;
          end if;
          Dash_View.Refresh (View, Dirty);
          Last_Update_Us := Now_Us - Started;
@@ -277,6 +328,40 @@ begin
                   & ASCII.LF);
       return;
    end if;
+   --  The user's saved copy of the built-in dashboard, when there is one
+   --  and it checks; else the built-in (which is never written over).
+   declare
+      Ready : Boolean;
+      Name : constant String := Dash_Model.File_Name (Board);
+      Got : Natural;
+      Result : Dash_Files.Outcome;
+      Saved : Dash_Model.Dashboard;
+      Saved_Check : Dash_Model.Load_Result;
+      use type Dash_Files.Outcome;
+   begin
+      if Startup.Dashboards.Present then
+         Dash_Files.Open (Startup.Dashboards.Value, Ready);
+      else
+         Ready := False;
+      end if;
+      if not Ready then
+         debugPrint ("metricsview: dashboards unavailable: built-in, unsaved" & ASCII.LF);
+      else
+         Dash_Files.Load (Name, Saved_Source, Got, Now_Ms + LOAD_DEADLINE_MS, Result);
+         if Result = Dash_Files.Done then
+            Dash_Model.Load (Saved_Source (1 .. Got), Saved, Saved_Check);
+            if Saved_Check.Success then
+               Board := Saved;
+               debugPrint ("metricsview: dashboard from " & Name & ASCII.LF);
+            else
+               debugPrint ("metricsview: " & Name & " does not check, built-in: "
+                           & Saved_Check.Message (1 .. Saved_Check.Message_Length) & ASCII.LF);
+            end if;
+         else
+            debugPrint ("metricsview: dashboard built-in (" & Name & ": " & Result'Image & ")" & ASCII.LF);
+         end if;
+      end if;
+   end;
    Dash_Query_Feeds.Bind (Feed);
    debugPrint ("metricsview: dashboard """ & Dash_Model.Image (Board.Title) & """ panels="
                & Decimal (Unsigned_64 (Board.Panels_Used))

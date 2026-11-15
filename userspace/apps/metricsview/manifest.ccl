@@ -1,7 +1,8 @@
 # Metrics (MET-002's app): dashboards over metrics.svc's series. It reads
 # only the series its scopes name (IPC-008: the scope is the subscription
 # capability; procmgr installs it in metrics.svc), publishes its own latency
-# through its declared stdmetric outlet, and writes nothing else.
+# through its declared stdmetric outlet, and writes only its saved
+# dashboards (one CCL value a file, PLAN-metricsview.md).
 (Executable_Manifest
   identity => "com.cubit-os.metricsview"
   version => "0.1.0"
@@ -10,11 +11,16 @@
     (service "logstore" "logstore")
     (service "desktop" "desktop")
     # metrics.svc's reader role (startup plan or approval), in the scopes below.
-    (service "metrics-observer" "series")]
-  # Without the store the window still opens and says why it is empty.
-  optional => ["series"]
+    (service "metrics-observer" "series")
+    # Saved dashboards, in their place only (the scope below).
+    (service "filesystem" "dashboards")]
+  # Without the store the window still opens and says why it is empty;
+  # without the filesystem it shows the built-in dashboards, unsaved.
+  optional => ["series" "dashboards"]
   scopes => [
     # Desktop's display latency (LAT-002) and this app's own series.
     (Scope.Metrics (Scope_Place.Under "desktop."))
-    (Scope.Metrics (Scope_Place.Under "metricsview."))]
+    (Scope.Metrics (Scope_Place.Under "metricsview."))
+    # A save writes a hidden sibling and renames it over the file.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/Dashboards/")]
   outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)])

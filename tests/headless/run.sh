@@ -4062,6 +4062,24 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 sleep 3
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-end.ppm"
                 sleep 0.5
+                # The editor: select the next panel, move it, widen it, the
+                # CCL overlay, then done (which saves the dashboard).
+                printf 'sendkey e\n'
+                sleep 0.3
+                printf 'sendkey tab\n'
+                sleep 0.3
+                printf 'sendkey right\n'
+                sleep 0.3
+                printf 'sendkey shift-right\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-edit.ppm"
+                printf 'sendkey c\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-source.ppm"
+                printf 'sendkey c\n'
+                sleep 0.3
+                printf 'sendkey esc\n'
+                sleep 2
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         elif [ "$TEST_NAME" = "logs" ]; then
             # The Logs app: let boot records arrive, then a live frame, a
