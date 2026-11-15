@@ -27,9 +27,19 @@ with Devmgr_Memory_Claims;
 with Devmgr_Data_Windows;
 with Devmgr_Growable;
 with Devmgr_Heap;
+with Devmgr_ACPI_Windows;
+with Devmgr_Phase_Declarations;
 with CuBit.Firmware_Data_Exchange;
 with CuBit.Platform_Pool_Exchange;
 with CuBit.GPIO_Bootstrap_Exchange;
+with CuBit.Consumer_Initialization_Exchange;
+with CuBit.HID_Offer_Exchange;
+with HID_Offer_Payload;
+with Devmgr_HID_Offers;
+with CuBit.Child_Specs;
+with CuBit.Child_Starts;
+with GPIO_Admin_Wire;
+with GPIO_Control_Wire;
 with CuBit.Grant_References;
 with GPIO_Bootstrap_Payload;
 with Platform_Quirks.GPIO_Bootstrap_Admission;
@@ -43,6 +53,12 @@ with Platform_Quirks.Intel_GPIO_Communities;
 with Platform_Pool_ABI;
 with Capability_ABI;
 with CuBit.Firmware_Snapshot;
+with CuBit.Firmware_Snapshot.Whole_Tables;
+with CuBit.ACPI_SCI_Route;
+with CuBit.ACPI_Fixed_Windows;
+with CuBit.Handles.Lines;
+with Interrupt_Line_ABI;
+with Ada.Unchecked_Deallocation;
 with CuBit.Disk_Install;
 with CuBit.Block_Devices;
 with CuBit.Startup_Tables;
@@ -118,6 +134,8 @@ with Intel_GPU_PCI_IRQ_Disable;
 with Intel_GPU_GGTT_Access;
 with Intel_GPU_Broker_Request;
 with Intel_Render_Broker;
+with CuBit.System_Stops;
+with Devmgr_Driver_Stops;
 
 procedure main is
    use ASCII;
@@ -206,6 +224,7 @@ procedure main is
    --  hands out is a narrowed copy of one of them or of a SPAWN result.
    package H renames CuBit.Handles;
    package HC renames CuBit.Handles.Control;
+   package STP renames CuBit.System_Stops;
    package IPC renames CuBit.Handles.IPC;
    package DL renames Devmgr_Launches;
    package ST renames CuBit.Startup_Tables;
@@ -1780,7 +1799,10 @@ procedure main is
                                          Devmgr_Bindings.Platform_Name (M.Device) & " absent; " &
                                          Name & " not started");
                      end if;
-                  when DS.ACPI_ID | DS.USB_Class =>
+                  when DS.ACPI_ID =>
+                     debugPrint ("devmgr: " & Name & " declares " & Devmgr_Bindings.Image (M) &
+                                 ": launched when devmgr admits that ACPI device" & LF);
+                  when DS.USB_Class =>
                      debugPrint ("devmgr: " & Name & " declares " & Devmgr_Bindings.Image (M) &
                                  ": not enumerated by devmgr" & LF);
                   when DS.PCI_IDs | DS.PCI_Class =>
@@ -2581,22 +2603,161 @@ procedure main is
       end if;
    end Give_Registers;
 
-   --  Answer an interrupt binding of child with a legacy line (vector) and
-   --  route the line to it.
-   procedure Give_Line (child : DL.Child; Name : String; Vector : Unsigned_64;
-                        Level_Triggered, Active_Low : Boolean := False) is
-      ignore : Unsigned_64;
-      Copy : constant H.Derivation :=
-        H.Narrowed (Root.Legacy_Interrupts, H.Read_Only, Vector, 1);
+   ---------------------------------------------------------------------------
+   --  Legacy interrupt lines (Interrupt_Line_ABI): who devmgr gave each to.
+   --  A line routed to a driver is never the SCI's, and the SCI's line
+   --  (claimed for ACPI for the rest of the boot) is never a driver's: the
+   --  two would disagree on trigger mode and on who clears the source. The
+   --  table is the hardware's line set, not a capacity.
+   ---------------------------------------------------------------------------
+   package LA renames Interrupt_Line_ABI;
+   package SR renames CuBit.ACPI_SCI_Route;
+   use type LA.Route_Outcome;
+   use type SR.Refusal;
+   type Line_Holder is (Unclaimed, Driver_Line, ACPI_Line);
+   Line_Holders : array (LA.Line_Vector) of Line_Holder := [others => Unclaimed];
+
+   --  An interrupt route from devmgr's own sealed FADT and MADT: the SCI's
+   --  (SCI) or ISA IRQ IRQ's. Read False: a table could not be read.
+   type Firmware_Route (Read : Boolean := False) is record
+      case Read is
+         when True  => Result : SR.Resolution;
+         when False => null;
+      end case;
+   end record;
+
+   function Resolve_Line (SCI : Boolean; IRQ : SR.ISA_IRQ := 0) return Firmware_Route is
+      package WT renames CuBit.Firmware_Snapshot.Whole_Tables;
+      subtype Bytes_Type is CuBit.ACPI_Fixed_Windows.Byte_Array;
+      type Table_Access is access Bytes_Type;
+      procedure Free is new Ada.Unchecked_Deallocation (Bytes_Type, Table_Access);
+      use type WT.Read_Status;
+      Tables : constant CuBit.Firmware_Snapshot.Authority :=
+        CuBit.Firmware_Snapshot.Held (Root.Firmware_Snapshot_Root);
+
+      --  The whole table named Signature (sized from its own extent; empty
+      --  when there is none).
+      procedure Load (Signature : String; Into : out Table_Access; Status : out WT.Read_Status) is
+         Table : CuBit.Firmware_Snapshot.Table_ID;
+         Bytes : WT.Table_Bytes;
+      begin
+         WT.Find (Tables, Signature, Table, Bytes, Status);
+         if Status = WT.Found then
+            Into := new Bytes_Type (1 .. Bytes);
+            WT.Copy (Tables, Table, Into.all, Status);
+         else
+            Into := new Bytes_Type (1 .. 0);
+         end if;
+      end Load;
+
+      FADT, MADT : Table_Access;
+      FADT_Status : WT.Read_Status := WT.Absent;
+      MADT_Status : WT.Read_Status;
+      Result : Firmware_Route;
    begin
-      if Name'Length > 0 then
-         DL.Give (child, Name, Copy);
-      elsif not DL.Give_First (child, ST.Interrupt, Copy) then
-         debugPrint ("devmgr: manifest declares no interrupt binding" & LF);
+      if SCI then
+         Load (SR.FADT_Signature, FADT, FADT_Status);
+      else
+         FADT := new Bytes_Type (1 .. 0);
       end if;
-      ignore := enableIrq (Vector, DL.PID (child), 0, DL.Control (child),
-                           Root.Legacy_Interrupts, Level_Triggered, Active_Low);
+      Load (SR.MADT_Signature, MADT, MADT_Status);
+      if FADT_Status = WT.Read_Failed or else MADT_Status = WT.Read_Failed then
+         Result := (Read => False);
+      elsif FADT_Status = WT.Too_Large or else MADT_Status = WT.Too_Large then
+         Result := (Read => True, Result => (Routed => False, Why => SR.Too_Large, Seen => <>));
+      elsif SCI then
+         Result := (Read => True, Result => SR.Resolve_SCI (FADT.all, MADT.all));
+      else
+         Result := (Read => True, Result => SR.Resolve_ISA (MADT.all, IRQ, SCI => False));
+      end if;
+      Free (FADT);
+      Free (MADT);
+      return Result;
+   end Resolve_Line;
+
+   --  "GSI 9 level/active-low (override)": a route for the log.
+   function Route_Text (Item : SR.Line_Route) return String is
+     ("GSI" & Unsigned_32'Image (Item.GSI) & " " &
+      (case Item.Trigger is when LA.Level => "level", when LA.Edge => "edge") & "/" &
+      (case Item.Polarity is
+         when LA.Active_Low => "active-low", when LA.Active_High => "active-high") &
+      (if Item.Overridden then " (MADT override)" else " (default)"));
+
+   --  Answer an interrupt binding of child (Name, or its first one) with a
+   --  legacy line (vector) and route the line to it with Trigger and
+   --  Polarity. Never the SCI's line.
+   --  Routed: the line is the child's (Give_Line's outcome, for a caller
+   --  that tells the child so).
+   procedure Give_Line (child : DL.Child; Name : String; Vector : Unsigned_64;
+                        Trigger : LA.Trigger_Mode; Polarity : LA.Pin_Polarity;
+                        Routed : out Boolean) is
+      Outcome : LA.Route_Outcome;
+   begin
+      Routed := False;
+      if Vector not in LA.First_Vector .. LA.Last_Vector then
+         Warnings.Warn ("devmgr: interrupt vector" & Unsigned_64'Image (Vector) &
+                        " for " & (if Name'Length > 0 then Name else "an interrupt binding") &
+                        " is not a legacy line; not routed");
+         return;
+      elsif Line_Holders (LA.Line_Vector (Vector)) = ACPI_Line then
+         Warnings.Warn ("devmgr: legacy line" & Unsigned_64'Image (Vector) &
+                        " refused for " & Name & ": it is ACPI's SCI line");
+         return;
+      end if;
+      declare
+         Copy : constant H.Derivation :=
+           H.Narrowed (Root.Legacy_Interrupts, H.Read_Only, Vector, 1);
+      begin
+         if Name'Length > 0 then
+            DL.Give (child, Name, Copy);
+         elsif not DL.Give_First (child, ST.Interrupt, Copy) then
+            debugPrint ("devmgr: manifest declares no interrupt binding" & LF);
+         end if;
+      end;
+      Outcome := CuBit.Handles.Lines.Route
+        (LA.Line_Vector (Vector), DL.PID (child), 0, Trigger, Polarity,
+         DL.Control (child), Root.Legacy_Interrupts);
+      if Outcome = LA.Routed then
+         Line_Holders (LA.Line_Vector (Vector)) := Driver_Line;
+         Routed := True;
+      else
+         Warnings.Warn ("devmgr: legacy line" & Unsigned_64'Image (Vector) & " for " & Name &
+                        " not routed: " & LA.Route_Outcome'Image (Outcome));
+      end if;
    end Give_Line;
+
+   procedure Give_Line (child : DL.Child; Name : String; Vector : Unsigned_64;
+                        Trigger : LA.Trigger_Mode := LA.Edge;
+                        Polarity : LA.Pin_Polarity := LA.Active_High) is
+      Routed : Boolean;
+   begin
+      Give_Line (child, Name, Vector, Trigger, Polarity, Routed);
+   end Give_Line;
+
+   --  Answer an interrupt binding of child with ISA IRQ IRQ's line, where
+   --  the MADT's Interrupt Source Overrides put it (identity, edge, active
+   --  high without one). Without a MADT there is no I/O APIC: the IRQ is
+   --  the 8259's input of that number.
+   procedure Give_ISA_Line (child : DL.Child; Name : String; IRQ : SR.ISA_IRQ) is
+      Found : constant Firmware_Route := Resolve_Line (SCI => False, IRQ => IRQ);
+   begin
+      if not Found.Read then
+         Warnings.Warn ("devmgr: ISA IRQ" & Natural'Image (IRQ) & " for " & Name &
+                        " not routed: the firmware tables could not be read");
+      elsif Found.Result.Routed then
+         if Found.Result.Route.Overridden then
+            debugPrint ("devmgr: ISA IRQ" & Natural'Image (IRQ) & " for " & Name & " is " &
+                        Route_Text (Found.Result.Route) & LF);
+         end if;
+         Give_Line (child, Name, Unsigned_64 (Found.Result.Vector),
+                    Found.Result.Route.Trigger, Found.Result.Route.Polarity);
+      elsif Found.Result.Why = SR.No_MADT and then IRQ in LA.Line_Input then
+         Give_Line (child, Name, Unsigned_64 (LA.Vector_Of (IRQ)));
+      else
+         Warnings.Warn ("devmgr: ISA IRQ" & Natural'Image (IRQ) & " for " & Name &
+                        " not routed: " & SR.Refusal'Image (Found.Result.Why));
+      end if;
+   end Give_ISA_Line;
 
    --  Answer an I/O port binding of child.
    procedure Give_Ports (child : DL.Child; Name : String; First, Count : Unsigned_64) is
@@ -2683,6 +2844,68 @@ procedure main is
       end;
    end Give_ACPI_Memory_Window;
 
+   --  procmgr asks for ACPI's SCI line for a program its startup plan
+   --  approved for the ACPI hardware (CuBit.ACPI_Window_Exchange,
+   --  SCI_Request): resolved from devmgr's own sealed FADT and MADT, never
+   --  from the request; claimed for ACPI for the rest of the boot (the same
+   --  line again for a restarted backend), never a driver's line.
+   procedure Give_ACPI_SCI (From : Process_ID) is
+      package AX renames CuBit.ACPI_Window_Exchange;
+      use type AX.SCI_Refusal;
+      Read_Grant : constant H.Rights := (Read | Grant => True, others => False);
+      Found : constant Firmware_Route := Resolve_Line (SCI => True);
+
+      procedure Refuse_SCI (Why : AX.SCI_Refusal; Detail : SR.Refusal := SR.Refusal'First) is
+         ignore : Unsigned_64;
+      begin
+         Warnings.Warn ("devmgr: ACPI SCI refused: " & AX.SCI_Refusal'Image (Why) &
+                        (if Why = AX.Firmware_Refused then " " & SR.Refusal'Image (Detail)
+                           & (if Found.Read and then not Found.Result.Routed
+                                and then Found.Result.Seen.GSI /= 0
+                              then " (" & Route_Text (Found.Result.Seen) & ")" else "")
+                         else ""));
+         ignore := reply (From, (tag => (label => AX.Reply_Error, length => AX.SCI_Error_Words,
+                                         protocol => 0, ipc => <>, reserved => 0),
+                                 authorityTag => 0,
+                                 words => [AX.Reason_Word => AX.SCI_Refusal'Pos (Why),
+                                           AX.Detail_Word => SR.Refusal'Pos (Detail),
+                                           others => 0]));
+      end Refuse_SCI;
+   begin
+      if not Found.Read then
+         Refuse_SCI (AX.Tables_Unreadable);
+      elsif not Found.Result.Routed then
+         Refuse_SCI (AX.Firmware_Refused, Found.Result.Why);
+      elsif Line_Holders (Found.Result.Vector) = Driver_Line then
+         Warnings.Warn ("devmgr: ACPI SCI line" & Natural'Image (Found.Result.Vector) &
+                        " is routed to a driver");
+         Refuse_SCI (AX.Line_Held_By_Driver);
+      else
+         Line_Holders (Found.Result.Vector) := ACPI_Line;
+         declare
+            V : constant LA.Line_Vector := Found.Result.Vector;
+            R : constant SR.Line_Route := Found.Result.Route;
+         begin
+            if Answer_With
+              (From,
+               [AX.Vector_Word     => Unsigned_64 (V),
+                AX.Route_Word      => LA.Route_Word (0, R.Trigger, R.Polarity),
+                AX.GSI_Word        => Unsigned_64 (R.GSI),
+                AX.Overridden_Word => (if R.Overridden then 1 else 0),
+                others => 0],
+               AX.SCI_Reply_Words,
+               H.Narrowed (Root.Legacy_Interrupts, Read_Grant, Unsigned_64 (V), 1))
+            then
+               debugPrint ("devmgr: ACPI SCI is line" & Natural'Image (V) & ", " &
+                           Route_Text (R) & LF);
+            else
+               Warnings.Warn ("devmgr: ACPI SCI line" & Natural'Image (V) & " not transferred");
+            end if;
+         end;
+      end if;
+   end Give_ACPI_SCI;
+
+
    ---------------------------------------------------------------------------
    -- Setup the NVMe driver of inventory entry I: PCI config, DMA,
    -- capabilities, for that controller alone.
@@ -2741,7 +2964,7 @@ procedure main is
    -- Setup ATA driver: grant IOPORT + IRQ capabilities
    ---------------------------------------------------------------------------
    procedure setupAta is
-      IDE1_VECTOR       : constant Unsigned_64 := 46;
+      IDE1_IRQ          : constant := 14;   --  the primary channel's ISA IRQ
       ATA_COMMAND_BLOCK : constant Unsigned_64 := 16#1F0#;
       ATA_COMMAND_PORTS : constant Unsigned_64 := 8;
       ATA_CONTROL       : constant Unsigned_64 := 16#3F6#;
@@ -2754,7 +2977,7 @@ procedure main is
       --  line (IDE1), as its manifest's platform resources declare.
       Give_Ports (ataChild, "command-block", ATA_COMMAND_BLOCK, ATA_COMMAND_PORTS);
       Give_Ports (ataChild, "control", ATA_CONTROL, 1);
-      Give_Line (ataChild, "channel", IDE1_VECTOR);
+      Give_ISA_Line (ataChild, "channel", IDE1_IRQ);
 
       debugPrint ("devmgr: ATA setup complete" & LF);
    end setupAta;
@@ -3387,8 +3610,8 @@ procedure main is
    procedure setupPS2 is
       PS2_DATA       : constant Unsigned_64 := 16#60#;
       PS2_COMMAND    : constant Unsigned_64 := 16#64#;
-      KEYBOARD_VECTOR : constant Unsigned_64 := 33;
-      MOUSE_VECTOR    : constant Unsigned_64 := 44;
+      KEYBOARD_IRQ    : constant := 1;    --  the i8042's ISA IRQs
+      MOUSE_IRQ       : constant := 12;
    begin
       if ps2PID = No_Process then
          return;
@@ -3399,8 +3622,8 @@ procedure main is
       --  come from its manifest too.
       Give_Ports (ps2Child, "data", PS2_DATA, 1);
       Give_Ports (ps2Child, "command", PS2_COMMAND, 1);
-      Give_Line (ps2Child, "keyboard-line", KEYBOARD_VECTOR);
-      Give_Line (ps2Child, "mouse-line", MOUSE_VECTOR);
+      Give_ISA_Line (ps2Child, "keyboard-line", KEYBOARD_IRQ);
+      Give_ISA_Line (ps2Child, "mouse-line", MOUSE_IRQ);
       debugPrint ("devmgr: PS/2 setup complete" & LF);
    end setupPS2;
 
@@ -4836,6 +5059,120 @@ procedure main is
    Bootstrap_Answers : Bootstrap_Answer_Store.Store;
    GPIO_Bootstrap_Admitted : Boolean := False;
 
+   --  The ACPI devices devmgr verified for use (today the GPIO controller
+   --  of a GPIO bootstrap observation: its spans admitted, or exactly the
+   --  P2SB-derived community members already in the pool), with what
+   --  acpi.svc observed of them. Only these records launch drivers (and,
+   --  later, offer HIDs). Each gets one launch of the driver whose manifest
+   --  matches its _HID, deferred until acpi.svc reports that device
+   --  initialization is over (CuBit.Consumer_Initialization_Exchange: a
+   --  GPIO driver parks pins, which must not overlap _INI methods touching
+   --  GPIO), then made from the service loop (Launch_Pending_ACPI), never
+   --  inside a request (docs/device-matching.md "ACPI launch").
+   type ACPI_Launch_State is
+     (Awaiting_Initialization,  --  verified; no launch before Consumer_Initialization_Complete
+      Launch_Pending,           --  released; the service loop launches its driver
+      Driver_Launched,          --  its driver runs (awaiting or past its report)
+      Not_Launched);            --  no driver matched, or its launch was refused (logged)
+   --  How the record was verified.
+   type ACPI_Verification is
+     (Spans_Admitted,        --  a GPIO bootstrap admission inserted its spans
+      P2SB_Communities);     --  its spans are exactly the P2SB communities in the pool
+   type ACPI_Device is record
+      Sender   : Process_ID := No_Process;  --  who reported it (acpi.svc)
+      Observed : GPIO_Bootstrap_Payload.Request;
+      Spans    : Devmgr_ACPI_Windows.Admitted;
+      Verified : ACPI_Verification := Spans_Admitted;
+      State    : ACPI_Launch_State := Awaiting_Initialization;
+      PID      : Process_ID := No_Process;
+      Launched : DL.Child := DL.No_Child;   --  its launch record (its endpoint)
+      Waiting  : Boolean := False;          --  no OP_READY / OP_NOT_PRESENT yet
+      Ready    : Boolean := False;          --  it reported OP_READY (it registered)
+   end record;
+   package ACPI_Device_Store is new Devmgr_Growable
+     (ACPI_Device, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   ACPI_Devices : ACPI_Device_Store.Store;
+   pragma Compile_Time_Error
+     (GPIO_Bootstrap_Payload.Max_Spans /= Devmgr_ACPI_Windows.Max_Spans
+      or else GPIO_Bootstrap_Payload.Max_Spans /= LC.Maximum_ACPI_Windows
+      or else GPIO_Bootstrap_Payload.Max_Path_Segments /= LC.Maximum_ACPI_Segments,
+      "the GPIO bootstrap payload, the manifest's ACPI spans and Generic_ACPI disagree");
+
+   --  "\_SB_.GPI0": the device's namespace path, as ACPI writes it.
+   function ACPI_Path_Text (R : GPIO_Bootstrap_Payload.Request) return String is
+      Result : String (1 .. 1 + GPIO_Bootstrap_Payload.Max_Path_Segments *
+                                (GPIO_Bootstrap_Payload.Name_Segment_Bytes + 1)) :=
+        [others => ' '];
+      Length : Natural := 1;
+   begin
+      Result (1) := '\';
+      for K in 1 .. R.Segments loop
+         if K > 1 then
+            Length := Length + 1;
+            Result (Length) := '.';
+         end if;
+         Result (Length + 1 .. Length + GPIO_Bootstrap_Payload.Name_Segment_Bytes) := R.Path (K);
+         Length := Length + GPIO_Bootstrap_Payload.Name_Segment_Bytes;
+      end loop;
+      return Result (1 .. Length);
+   end ACPI_Path_Text;
+
+   --  The _HID without its NUL padding.
+   function HID_Text (R : GPIO_Bootstrap_Payload.Request) return String is
+      Length : Natural := 0;
+   begin
+      for C of R.HID loop
+         exit when C = ASCII.NUL;
+         Length := Length + 1;
+      end loop;
+      return R.HID (1 .. Length);
+   end HID_Text;
+
+   --  Record a controller verified for use; its launch waits for
+   --  Consumer_Initialization_Complete. One record per controller: a
+   --  second observation of a recorded path is not recorded again.
+   procedure Record_ACPI_Device
+     (From : Process_ID; R : GPIO_Bootstrap_Payload.Request; How : ACPI_Verification)
+   is
+      Item : ACPI_Device := (Sender => From, Observed => R, Verified => How, others => <>);
+      Room : ACPI_Device_Store.Capacity_Report;
+      use type ACPI_Device_Store.Growth_Status;
+      Why : constant String :=
+        (case How is
+           when Spans_Admitted   => "admitted",
+           when P2SB_Communities => "verified (its spans are the P2SB's community members)");
+   begin
+      --  Epoch 0 is no ACPI epoch: no Consumer_Initialization_Complete can
+      --  name it (Devmgr_Phase_Declarations), so such a record could never
+      --  launch. Not recorded.
+      if R.Epoch = Devmgr_Phase_Declarations.No_Epoch then
+         Warnings.Warn ("devmgr: acpi device " & HID_Text (R) & " " & ACPI_Path_Text (R) &
+                        " observed in epoch 0 (no ACPI epoch); not recorded, no driver launched");
+         return;
+      end if;
+      for K in 1 .. ACPI_Device_Store.Length (ACPI_Devices) loop
+         if ACPI_Path_Text (ACPI_Device_Store.Element_At (ACPI_Devices, K).Observed) = ACPI_Path_Text (R) then
+            Warnings.Warn ("devmgr: acpi device " & HID_Text (R) & " " & ACPI_Path_Text (R) &
+                           " is recorded already; not recorded again");
+            return;
+         end if;
+      end loop;
+      Item.Spans.Count := R.Spans;
+      for K in 1 .. R.Spans loop
+         Item.Spans.Items (K) := (Base => R.Items (K).Base, Length => R.Items (K).Length,
+                                  Writable => R.Items (K).Writable);
+      end loop;
+      ACPI_Device_Store.Append (ACPI_Devices, Item, Room);
+      if Room.Status /= ACPI_Device_Store.Grown then
+         Warnings.Warn ("devmgr: acpi device " & HID_Text (R) & " " & ACPI_Path_Text (R) & " " & Why &
+                        " but not recorded (the device list could not grow); no driver is launched for it");
+      else
+         Warnings.Inform ("devmgr: acpi device " & HID_Text (R) & " " & ACPI_Path_Text (R) & " " & Why &
+                          " with" & Natural'Image (R.Spans) & " spans (epoch" & Unsigned_64'Image (R.Epoch) &
+                          "); its driver launch waits for consumer initialization to complete");
+      end if;
+   end Record_ACPI_Device;
+
    procedure Serve_GPIO_Bootstrap (From : Process_ID; Msg : Message) is
       package GX renames CuBit.GPIO_Bootstrap_Exchange;
       package GP renames GPIO_Bootstrap_Payload;
@@ -4997,6 +5334,34 @@ procedure main is
          if D.Answer /= GX.Admitted then
             Settle (A, Gate_Line (A) & " hid=" & R.HID & " table=" & R.Table & ":" & R.Table_ID &
                     History_Note (R));
+            --  The P2SB path: devmgr inserted the communities itself. The
+            --  controller is verified for use only when its spans are
+            --  exactly those members; P2SB_AVAILABLE alone records nothing.
+            if D.Answer = GX.P2SB_Available
+              and then Sideband."=" (Sideband.Source, Sideband.P2SB_BAR)
+              and then Pool_Ranges_Whole
+            then
+               declare
+                  Communities : DW.Range_Array (1 .. Sideband.Community_Range_Count);
+                  Members : constant DW.Range_Array (1 .. Range_Store.Length (Pool_Ranges))
+                  with Import, Address => Range_Store.Block (Pool_Ranges);
+               begin
+                  for K in Communities'Range loop
+                     Communities (K) :=
+                       (First_Page => Sideband.Community_Range (K).Base / Devmgr_Platform_Pool.Page_Bytes,
+                        Pages => Sideband.Community_Range (K).Bytes / Devmgr_Platform_Pool.Page_Bytes);
+                  end loop;
+                  if GA.Matches_Communities (Platform_Quirks.Controller_Of (Platform), R,
+                                             Communities, Members)
+                  then
+                     Record_ACPI_Device (From, R, P2SB_Communities);
+                  else
+                     Warnings.Inform ("devmgr: gpio bootstrap: " & HID_Text (R) & " " & ACPI_Path_Text (R) &
+                                      " spans are not exactly the P2SB communities in the pool;" &
+                                      " not recorded, no driver launched");
+                  end if;
+               end;
+            end if;
             return;
          end if;
          if Natural (R.Spans) > Bootstrap_Room then
@@ -5061,8 +5426,160 @@ procedure main is
                  " table=" & R.Table & ":" & R.Table_ID &
                  " irq=" & (if R.IRQ.Present then Unsigned_32'Image (R.IRQ.GSI) else " none") &
                  History_Note (R) & " (facts only; no interrupt route)");
+         --  Remember the controller; its driver launch waits for
+         --  Consumer_Initialization_Complete (Serve_Consumer_Initialization).
+         Record_ACPI_Device (From, R, Spans_Admitted);
       end;
    end Serve_GPIO_Bootstrap;
+
+   --  CuBit.Consumer_Initialization_Exchange: how acpi.svc's startup AML
+   --  ended. The first declaration per (sender, epoch) is recorded; only a
+   --  first Completed releases every controller that sender reported and
+   --  devmgr verified for use to the deferred launch path
+   --  (Launch_Pending_ACPI, from the service loop). This handler only marks
+   --  them and replies. A repeated (sender, request id) gets the recorded
+   --  receipt; another status for a recorded (sender, epoch) is Conflicting.
+   type Completion_Receipt is record
+      Owner, Request : Unsigned_64 := 0;
+      Answer : CuBit.Consumer_Initialization_Exchange.Receipt :=
+        CuBit.Consumer_Initialization_Exchange.Malformed;
+      Released : Natural := 0;   --  driver launches this declaration released
+   end record;
+   package Completion_Store is new Devmgr_Growable
+     (Completion_Receipt, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   Completions : Completion_Store.Store;
+   --  The first declared status per (sender, epoch).
+   package Declaration_Store is new Devmgr_Growable
+     (Devmgr_Phase_Declarations.Declaration, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   Phase_Declarations : Declaration_Store.Store;
+
+   procedure Serve_Consumer_Initialization (From : Process_ID; Msg : Message) is
+      package CX renames CuBit.Consumer_Initialization_Exchange;
+      package PD renames Devmgr_Phase_Declarations;
+      use type CX.Receipt;
+      Request : constant Unsigned_64 := Msg.words (CX.Request_Word);
+      Epoch   : constant Unsigned_64 := Msg.words (CX.Epoch_Word);
+      Status  : constant Unsigned_64 := Msg.words (CX.Status_Word);
+      Owner   : constant Unsigned_64 := To_Word (From);
+      A : Completion_Receipt := (Owner => Owner, Request => Request, others => <>);
+      V : PD.Verdict;
+      Released : Natural := 0;
+      ignore : Unsigned_64;
+
+      procedure Answer (Item : Completion_Receipt) is
+      begin
+         ignore := reply
+           (From, (tag => (label => CX.Consumer_Initialization_Complete, length => CX.Reply_Words,
+                           protocol => 0, ipc => <>, reserved => 0),
+                   authorityTag => 0,
+                   words => [CX.Reply_Request_Word => Item.Request,
+                             CX.Receipt_Word       => CX.Receipt'Enum_Rep (Item.Answer),
+                             CX.Released_Word      => Unsigned_64 (Item.Released),
+                             others => 0]));
+      end Answer;
+
+      function Frame_Words return PD.Word_Array is
+         Result : PD.Word_Array (Msg.words'Range);
+      begin
+         for K in Msg.words'Range loop
+            Result (K) := Msg.words (K);
+         end loop;
+         return Result;
+      end Frame_Words;
+   begin
+      --  The frame first: anything not canonical (another length, flags,
+      --  an offered capability, reserved bits, stray words) is refused
+      --  before any receipt lookup or approval, and is not recorded, so it
+      --  can never declare completion.
+      if not PD.Canonical
+        (Natural (Msg.tag.length), Unsigned_8 (Msg.tag.protocol), Msg.tag.ipc = No_IPC_Flags,
+         Msg.tag.reserved, Frame_Words)
+      then
+         Warnings.Warn ("devmgr: consumer initialization complete: request" & Unsigned_64'Image (Request) &
+                        " from " & Hex (Owner) & " MALFORMED frame (length" &
+                        Natural'Image (Natural (Msg.tag.length)) &
+                        (if Msg.tag.ipc.Capability_Offered then ", a capability offered" else "") &
+                        "); not recorded, 0 driver launches queued");
+         Answer ((Owner => Owner, Request => Request, Answer => CX.Malformed, Released => 0));
+         return;
+      end if;
+      for K in 1 .. Completion_Store.Length (Completions) loop
+         declare
+            Before : constant Completion_Receipt := Completion_Store.Element_At (Completions, K);
+         begin
+            if Before.Owner = Owner and then Before.Request = Request then
+               Answer (Before);
+               return;
+            end if;
+         end;
+      end loop;
+      declare
+         Known : constant PD.Declaration_Array (1 .. Declaration_Store.Length (Phase_Declarations))
+         with Import, Address => Declaration_Store.Block (Phase_Declarations);
+      begin
+         V := PD.Decide (Known, Msg.authorityTag = FDX.Authority_Tag, Owner, Request, Epoch, Status);
+      end;
+      A.Answer := V.Answer;
+      if V.Record_It then
+         declare
+            Room : Declaration_Store.Capacity_Report;
+            use type Declaration_Store.Growth_Status;
+         begin
+            Declaration_Store.Append
+              (Phase_Declarations, (Owner => Owner, Epoch => Epoch, Status => V.Status), Room);
+            if Room.Status /= Declaration_Store.Grown then
+               A.Answer := CX.Capacity;
+            end if;
+         end;
+      end if;
+      --  Only a first Completed releases, and only that sender's records
+      --  observed in exactly this epoch.
+      if V.Release and then A.Answer = CX.Received then
+         for K in 1 .. ACPI_Device_Store.Length (ACPI_Devices) loop
+            declare
+               Item : ACPI_Device := ACPI_Device_Store.Element_At (ACPI_Devices, K);
+            begin
+               if Item.State = Awaiting_Initialization
+                 and then PD.Releases (To_Word (Item.Sender), Item.Observed.Epoch, Owner, Epoch)
+               then
+                  Item.State := Launch_Pending;
+                  ACPI_Device_Store.Set_At (ACPI_Devices, K, Item);
+                  Released := Released + 1;
+                  Warnings.Inform ("devmgr: acpi device " & HID_Text (Item.Observed) & " " &
+                                   ACPI_Path_Text (Item.Observed) & ": its driver launch is queued " &
+                                   "(observed in epoch" & Unsigned_64'Image (Item.Observed.Epoch) & ")");
+               end if;
+            end;
+         end loop;
+      end if;
+      A.Released := Released;
+      declare
+         Room : Completion_Store.Capacity_Report;
+         use type Completion_Store.Growth_Status;
+      begin
+         Completion_Store.Append (Completions, A, Room);
+         if Room.Status /= Completion_Store.Grown then
+            Warnings.Warn ("devmgr: consumer initialization: receipt list could not grow; a repeat of request" &
+                           Unsigned_64'Image (Request) & " is decided again (nothing is launched twice)");
+         end if;
+      end;
+      declare
+         Line : constant String :=
+           "devmgr: consumer initialization complete: request" & Unsigned_64'Image (Request) & " from " &
+           Hex (Owner) & " " & CX.Name (A.Answer) & " epoch" & Unsigned_64'Image (Epoch) &
+           " status" & Unsigned_64'Image (Status) &
+           (if CX.Valid_Status (Status) then " " & CX.Name (V.Status) else "") &
+           (if V.Conflict then " (declared " & CX.Name (V.Earlier) & ")" else "") &
+           ";" & Natural'Image (Released) & " driver launches queued";
+      begin
+         if A.Answer = CX.Received then
+            Warnings.Inform (Line);
+         else
+            Warnings.Warn (Line);
+         end if;
+      end;
+      Answer (A);
+   end Serve_Consumer_Initialization;
 
    ---------------------------------------------------------------------------
    --  ACPI-POOL-001 step 3 (future work: the ACPI service and devmgr): the
@@ -5215,6 +5732,1023 @@ procedure main is
          end if;
       end loop;
    end Launch_Pending_Generic;
+
+   ---------------------------------------------------------------------------
+   --  The ACPI launch (docs/device-matching.md "ACPI launch"): the driver
+   --  whose manifest declares an admitted ACPI device's _HID
+   --  ((Device_Match.ACPI_ID "...")) is launched from that manifest and the
+   --  admission record alone. Its K-th device-memory request names an
+   --  admitted span by index, in _CRS order, and gets a capability narrowed
+   --  to exactly that span (at most its max_bytes); every request is met or
+   --  the launch is refused whole, with the reason logged
+   --  (Devmgr_ACPI_Windows.Plan). Where the windows are, and who the device
+   --  is, reach it as a Generic_ACPI launch configuration. Like a generic
+   --  PCI driver it gets its "device-manager" endpoint and a logstore
+   --  publisher, and reports OP_READY or OP_NOT_PRESENT to the service loop
+   --  (ACPI_Report); devmgr never waits for it.
+   ---------------------------------------------------------------------------
+   --  Each ACPI driver's log publications, after the generic PCI drivers'.
+   ACPI_Log_Issuance_First : constant CuBit.Log_Protocol.Publication_Issuance :=
+     Generic_Log_Issuance_First + Generic_Capacity;
+
+   procedure Launch_Generic_ACPI (Device : in out ACPI_Device; Ordinal : Positive) is
+      package AW renames Devmgr_ACPI_Windows;
+      use type AW.Outcome;
+      R : GPIO_Bootstrap_Payload.Request renames Device.Observed;
+      Who : constant String := HID_Text (R) & " " & ACPI_Path_Text (R);
+      B : DI.Binding;
+      Child : DL.Child;
+      Plan : AW.Plan_Result;
+      Config : LC.Generic_ACPI_Configuration;
+   begin
+      Device.State := Not_Launched;
+      Devmgr_Bindings.Bind_ACPI (R.HID, B);
+      case B.Kind is
+         when DI.Unbound =>
+            Warnings.Inform ("devmgr: match acpi " & Who & " -> unmatched");
+            return;
+         when DI.Ambiguous =>
+            Warnings.Warn ("devmgr: match acpi " & Who & " -> ambiguous: " &
+                           Devmgr_Bindings.Name_Of (B.Driver) & " and " &
+                           Devmgr_Bindings.Name_Of (B.Rival) & " match equally; neither started");
+            return;
+         when DI.Bound =>
+            null;
+      end case;
+      declare
+         Name : constant String := Devmgr_Bindings.Name_Of (B.Driver);
+         procedure Refuse (Why : String) is
+         begin
+            Warnings.Warn ("devmgr: " & Name & " for acpi " & Who & " not started: " & Why);
+         end Refuse;
+      begin
+         Warnings.Inform ("devmgr: match acpi " & Who & " -> " & Name & " (" &
+                          Devmgr_Bindings.Image (Devmgr_Bindings.Index.Drivers (B.Driver).Matches.Entries
+                                                   (B.At_Entry)) & ")");
+         if Has_Driver_Setup (Name) then
+            Refuse ("devmgr has a dedicated setup for it, not an ACPI launch");
+            return;
+         end if;
+         Child := spawnFromBootStorage (Name, 5);
+         if Child = DL.No_Child then
+            Refuse ("not spawned");
+            return;
+         end if;
+         --  Every device-memory request met from the admission record, or none.
+         Plan := AW.Plan (Device.Spans, DL.Resources_Of (Child));
+         if Plan.Status /= AW.Granted then
+            Refuse (AW.Outcome_Name (Plan.Status) &
+                    (if Plan.Request /= 0 then " (resource request" & Natural'Image (Plan.Request) & ")"
+                     else "") & "; admitted spans:" & Natural'Image (Device.Spans.Count));
+            DL.Abandon (Child);
+            return;
+         end if;
+         for K in 1 .. Plan.Total loop
+            declare
+               W : constant AW.Window := Plan.Windows (K);
+            begin
+               if not DL.Give_Nth (Child, ST.Device_Memory, K,
+                                   Devmgr_Authority.Device_Copy
+                                     (W.First, W.Bytes, (if W.Read_Only then H.Read_Only else H.Read_Write)))
+               then
+                  Refuse ("its device-memory request" & Natural'Image (K) &
+                          " could not be given span" & Natural'Image (W.From_Span) & " " &
+                          Hex (W.First) & " +" & Hex (W.Bytes));
+                  DL.Abandon (Child);
+                  return;
+               end if;
+               Config.Windows (K) := (First => W.First, Bytes => W.Bytes);
+               Warnings.Inform ("devmgr: " & Name & " window" & Natural'Image (K) & " = span" &
+                                Natural'Image (W.From_Span) & " " & Hex (W.First) & " +" & Hex (W.Bytes) &
+                                (if W.Read_Only then " read-only" else " read-write"));
+            end;
+         end loop;
+         Config.Window_Total := Plan.Total;
+         --  The parent line (a GPIO controller's): routed when the manifest
+         --  asks it and the observation names a legacy line; otherwise the
+         --  binding stays empty and the driver serves without events.
+         if Plan.Parent_Line then
+            declare
+               IRQ : GPIO_Bootstrap_Payload.Interrupt renames R.IRQ;
+               use type GPIO_Bootstrap_Payload.Trigger;
+               use type GPIO_Bootstrap_Payload.Polarity;
+               use type GPIO_Bootstrap_Payload.Sharing;
+               use type LA.Trigger_Mode, LA.Pin_Polarity;
+               Trigger  : constant LA.Trigger_Mode :=
+                 (if IRQ.Mode = GPIO_Bootstrap_Payload.Level then LA.Level else LA.Edge);
+               Polarity : constant LA.Pin_Polarity :=
+                 (if IRQ.Level_Of = GPIO_Bootstrap_Payload.Active_Low then LA.Active_Low
+                  else LA.Active_High);
+               Routed : Boolean := False;
+            begin
+               if not IRQ.Present then
+                  Warnings.Warn ("devmgr: " & Name & " parent line not routed: _CRS has no interrupt");
+               elsif IRQ.GSI not in LA.First_Input .. LA.Last_Input then
+                  Warnings.Warn ("devmgr: " & Name & " parent line not routed: GSI" &
+                                 Unsigned_32'Image (IRQ.GSI) & " is not a legacy line");
+               else
+                  Give_Line (Child, "", Unsigned_64 (LA.Vector_Of (Natural (IRQ.GSI))),
+                             Trigger, Polarity, Routed);
+               end if;
+               if Routed then
+                  Config.Line :=
+                    (Present  => True,
+                     Vector   => LA.Vector_Of (Natural (IRQ.GSI)),
+                     Trigger  => Trigger,
+                     Polarity => Polarity,
+                     Shared   => IRQ.Share = GPIO_Bootstrap_Payload.Shared,
+                     GSI      => IRQ.GSI);
+                  Warnings.Inform ("devmgr: " & Name & " parent line routed GSI" &
+                                   Unsigned_32'Image (IRQ.GSI) & " vector" &
+                                   Natural'Image (Config.Line.Vector) & " " &
+                                   (if Trigger = LA.Level then "level" else "edge") & "/" &
+                                   (if Polarity = LA.Active_Low then "active-low" else "active-high") &
+                                   (if Config.Line.Shared then " shared" else " exclusive"));
+               end if;
+            end;
+         end if;
+         Config.HID := R.HID;
+         Config.UID_Type :=
+           (case R.UID_Type is
+              when GPIO_Bootstrap_Payload.No_UID      => LC.No_UID,
+              when GPIO_Bootstrap_Payload.Integer_UID => LC.Integer_UID,
+              when GPIO_Bootstrap_Payload.String_UID  => LC.String_UID);
+         Config.UID := R.UID;
+         Config.Epoch := R.Epoch;
+         Config.Segments := R.Segments;
+         for K in 1 .. R.Segments loop
+            Config.Path (K) := R.Path (K);
+         end loop;
+         if not LC.Valid_Generic_ACPI (Config) then
+            Refuse ("its identity does not fit a Generic_ACPI configuration");
+            DL.Abandon (Child);
+            return;
+         end if;
+         assignCPU (Child, Name);
+         if H.Valid (Logstore_Endpoint) then
+            DL.Give_Service (Child, Unsigned_32 (DRIVER_LOGSTORE),
+              H.Badged (Logstore_Endpoint, H.Read_Write,
+                CuBit.Log_Protocol.Publisher_Tag
+                  (Driver_Log_Budget, ACPI_Log_Issuance_First + Unsigned_64 (Ordinal))));
+         end if;
+         DL.Set_Payload (Child, LC.Encode (Config));
+         --  PWR-003: a driver of a device acpi.svc reported serves its AML
+         --  (a GPIO controller's region): the root stop's Power_Tail, which a
+         --  power-off keeps until the firmware's last step. A fact devmgr
+         --  states at launch.
+         DL.Set_Power_Tail (Child);
+         if not DL.Start (Child) then
+            Refuse ("not started");
+            DL.Abandon (Child);
+            return;
+         end if;
+         Device.State := Driver_Launched;
+         Device.PID := DL.PID (Child);
+         Device.Launched := Child;
+         Device.Waiting := True;
+         Warnings.Inform ("devmgr: " & Name & " launched for acpi " & Who & " with" &
+                          Natural'Image (Plan.Total) & " of" & Natural'Image (Device.Spans.Count) &
+                          " admitted spans (ACPI launch)");
+      end;
+   end Launch_Generic_ACPI;
+
+   --  Launch the driver of every admitted ACPI device still pending, once
+   --  logstore runs (as the generic PCI drivers): from the service loop,
+   --  never inside the request that admitted the device.
+   procedure Launch_Pending_ACPI is
+   begin
+      if not H.Valid (Logstore_Endpoint) then
+         return;
+      end if;
+      for K in 1 .. ACPI_Device_Store.Length (ACPI_Devices) loop
+         declare
+            Item : ACPI_Device := ACPI_Device_Store.Element_At (ACPI_Devices, K);
+         begin
+            if Item.State = Launch_Pending then
+               Launch_Generic_ACPI (Item, K);
+               ACPI_Device_Store.Set_At (ACPI_Devices, K, Item);
+            end if;
+         end;
+      end loop;
+   end Launch_Pending_ACPI;
+
+   --  An ACPI driver's OP_READY or OP_NOT_PRESENT.
+   function ACPI_Report (From : Process_ID; Msg : Message) return Boolean is
+      Ignore : Unsigned_64;
+   begin
+      for K in 1 .. ACPI_Device_Store.Length (ACPI_Devices) loop
+         declare
+            Item : ACPI_Device := ACPI_Device_Store.Element_At (ACPI_Devices, K);
+         begin
+            if Item.Waiting and then Item.PID = From
+              and then Msg.tag.label in OP_READY | OP_NOT_PRESENT
+            then
+               Item.Waiting := False;
+               Item.Ready := Msg.tag.label = OP_READY;
+               ACPI_Device_Store.Set_At (ACPI_Devices, K, Item);
+               Warnings.Inform ("devmgr: acpi driver " &
+                                (if Msg.tag.label = OP_READY then "ready for " else "declined ") &
+                                HID_Text (Item.Observed) & " " & ACPI_Path_Text (Item.Observed));
+               Ignore := reply (From, NULL_MESSAGE);
+               return True;
+            end if;
+         end;
+      end loop;
+      return False;
+   end ACPI_Report;
+
+   ---------------------------------------------------------------------------
+   --  HID offers (CuBit.HID_Offer_Exchange, 16#0252#; wire
+   --  docs/hid-offer-wire.md): acpi.svc offers each HID-over-I2C candidate
+   --  (_CID PNP0C50) it observed after device initialization, in a
+   --  read-only grant. Served only through the firmware-data badge, like
+   --  the GPIO bootstrap admission and Consumer_Initialization_Complete.
+   --  The handler (Serve_HID_Offer) checks the frame, the badge and the
+   --  request words, copies the payload into a zeroed buffer (the sender as
+   --  the expected owner), returns the acquisition, then decodes it; only
+   --  then is the receipt key (sender, epoch, request id) known. A new key
+   --  is decided by Devmgr_HID_Offers.Decide on devmgr's own facts: its PCI
+   --  inventory and drivers for the I2C controller, the GPIO controllers it
+   --  verified for use (ACPI_Devices) for the GpioInt, the offers it queued
+   --  for duplicates. The answer is recorded before the offer is queued.
+   --  The handler launches nothing and waits for nothing: the service loop
+   --  (Launch_Pending_HID) takes each queued offer on once the GPIO
+   --  controller's driver and the I2C controller's driver have registered.
+   ---------------------------------------------------------------------------
+   package HO renames Devmgr_HID_Offers;
+
+   --  Where a queued offer stands on the deferred launch path.
+   type HID_Offer_State is
+     (Offer_Waiting,       --  queued; its drivers have not both registered
+      Offer_Unsupported,   --  both registered; no driver, or two, declare PNP0C50 (logged)
+      Offer_Abandoned,     --  a driver it needs declined (logged); nothing launched
+      Offer_Starting,      --  Start_Child submitted to procmgr; its receipt not in yet
+      Offer_Releasing,     --  held; its GPIO sink admitted (or not); Release submitted
+      Offer_Started,       --  procmgr started the HID driver, supervised by devmgr
+      Offer_Refused);      --  procmgr refused the start, or it could not be asked (logged)
+   type HID_Offer is record
+      Owner, Epoch, Request : Unsigned_64 := 0;
+      Offer      : HID_Offer_Payload.Request;
+      Controller : Natural := 0;   --  inventory index of its I2C controller
+      GPIO       : Natural := 0;   --  ACPI_Devices index of its GPIO controller
+      I2C_Badge, GPIO_Badge : Unsigned_64 := 0;
+      State      : HID_Offer_State := Offer_Waiting;
+      Step       : HO.Launch_Step := HO.Await_GPIO_Driver;   --  the last step logged
+      Token      : Unsigned_64 := 0;            --  its Start_Child's completion token
+      Driver     : Process_ID := No_Process;    --  the HID driver procmgr started
+      Admitted   : Boolean := False;            --  its GPIO sink admitted: Release Run, else Withdraw
+      Waiting    : Boolean := False;            --  no OP_READY / OP_NOT_PRESENT from it yet
+   end record;
+   package HID_Receipt_Store is new Devmgr_Growable
+     (HO.Receipt, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   package HID_Queued_Store is new Devmgr_Growable
+     (HO.Queued_Offer, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   package HID_Offer_Store is new Devmgr_Growable
+     (HID_Offer, Devmgr_Heap.Allocate, Devmgr_Heap.Release);
+   HID_Receipts : HID_Receipt_Store.Store;
+   --  The queue: HID_Queued (Duplicate_Device's facts) and HID_Offers stay
+   --  index for index.
+   HID_Queued : HID_Queued_Store.Store;
+   HID_Offers : HID_Offer_Store.Store;
+
+   --  "\_SB_.PC00.I2C1.TPD0".
+   function Canonical_Path_Text (P : HID_Offer_Payload.Canonical_Path) return String is
+      Result : String (1 .. 1 + HID_Offer_Payload.Max_Path_Segments *
+                                (HID_Offer_Payload.Name_Segment_Bytes + 1)) := [others => ' '];
+      Length : Natural := 1;
+   begin
+      Result (1) := '\';
+      for K in 1 .. P.Count loop
+         if K > 1 then
+            Length := Length + 1;
+            Result (Length) := '.';
+         end if;
+         Result (Length + 1 .. Length + HID_Offer_Payload.Name_Segment_Bytes) := P.Names (K);
+         Length := Length + HID_Offer_Payload.Name_Segment_Bytes;
+      end loop;
+      return Result (1 .. Length);
+   end Canonical_Path_Text;
+
+   --  A recorded GPIO controller as Decide compares it.
+   function GPIO_Record_Of (Item : ACPI_Device) return HO.GPIO_Record is
+      R : GPIO_Bootstrap_Payload.Request renames Item.Observed;
+      Result : HO.GPIO_Record :=
+        (Owner => To_Word (Item.Sender), Epoch => R.Epoch, HID => R.HID,
+         UID_Kind => (case R.UID_Type is
+                        when GPIO_Bootstrap_Payload.No_UID      => HID_Offer_Payload.No_UID,
+                        when GPIO_Bootstrap_Payload.Integer_UID => HID_Offer_Payload.Integer_UID,
+                        when GPIO_Bootstrap_Payload.String_UID  => HID_Offer_Payload.String_UID),
+         UID => R.UID, Path => <>);
+   begin
+      Result.Path.Count := R.Segments;
+      for K in 1 .. R.Segments loop
+         Result.Path.Names (K) := R.Path (K);
+      end loop;
+      return Result;
+   end GPIO_Record_Of;
+   pragma Compile_Time_Error
+     (GPIO_Bootstrap_Payload.Max_Path_Segments > HID_Offer_Payload.Max_Path_Segments,
+      "a GPIO bootstrap path must fit a HID offer's canonical path");
+
+   procedure Serve_HID_Offer (From : Process_ID; Msg : Message) is
+      package HX renames CuBit.HID_Offer_Exchange;
+      package HP renames HID_Offer_Payload;
+      use type HX.Disposition;
+      use type HP.Decode_Status;
+      Request  : constant Unsigned_64 := Msg.words (HX.Request_Word);
+      Ref_Word : constant Unsigned_64 := Msg.words (HX.Reference_Word);
+      Length   : constant Unsigned_64 := Msg.words (HX.Length_Word);
+      Owner    : constant Unsigned_64 := To_Word (From);
+      ignore : Unsigned_64;
+
+      procedure Answer (Item : HO.Receipt) is
+      begin
+         ignore := reply
+           (From, (tag => (label => HX.Offer_Request, length => HX.Reply_Words,
+                           protocol => 0, ipc => <>, reserved => 0),
+                   authorityTag => 0,
+                   words => [HX.Reply_Request_Word => Item.Request,
+                             HX.Disposition_Word   => HX.Disposition'Enum_Rep (Item.Answer),
+                             HX.Detail_Word        => Item.Detail,
+                             HX.Queue_Position_Word => Item.Position,
+                             others => 0]));
+      end Answer;
+
+      function Line (Item : HO.Receipt; Note : String) return String is
+        ("devmgr: hid offer: request" & Unsigned_64'Image (Item.Request) & " from " & Hex (Owner) &
+         " " & HX.Disposition'Image (Item.Answer) & " detail" & Unsigned_64'Image (Item.Detail) &
+         " epoch" & Unsigned_64'Image (Item.Epoch) & Note);
+
+      --  An answer that decides nothing: not recorded.
+      procedure Refuse (Answer_Is : HX.Disposition; Detail : Unsigned_64; Note : String) is
+         A : constant HO.Receipt := (Owner => Owner, Epoch => 0, Request => Request,
+                                     Answer => Answer_Is, Detail => Detail, Position => 0);
+      begin
+         Warnings.Warn (Line (A, Note & "; not recorded"));
+         Answer (A);
+      end Refuse;
+
+      function Frame_Words return HO.Word_Array is
+         Result : HO.Word_Array (Msg.words'Range);
+      begin
+         for K in Msg.words'Range loop
+            Result (K) := Msg.words (K);
+         end loop;
+         return Result;
+      end Frame_Words;
+   begin
+      --  The frame first, before any receipt lookup or approval.
+      if not HO.Canonical
+        (Natural (Msg.tag.length), Unsigned_8 (Msg.tag.protocol), Msg.tag.ipc = No_IPC_Flags,
+         Msg.tag.reserved, Frame_Words)
+      then
+         Refuse (HX.Malformed, 0, " (frame: length" & Natural'Image (Natural (Msg.tag.length)) &
+                 (if Msg.tag.ipc.Capability_Offered then ", a capability offered" else "") & ")");
+         return;
+      elsif Msg.authorityTag /= FDX.Authority_Tag then
+         Refuse (HX.Not_Approved, 0, " (no acpi-firmware-data approval)");
+         return;
+      end if;
+      declare
+         Words : constant HO.Words_Verdict :=
+           HO.Check_Words (Request, CuBit.Grant_References.Valid_Wire (Ref_Word), Length);
+      begin
+         if not Words.Valid then
+            Refuse (HX.Malformed, Words.Detail, " (request words: length" & Unsigned_64'Image (Length) & ")");
+            return;
+         end if;
+      end;
+      declare
+         Bytes : HP.Byte_Array (0 .. Natural (Length) - 1) := [others => 0];
+         Grant : constant CuBit.Grant_References.Reference := CuBit.Grant_References.Decode (Ref_Word);
+         Address : System.Address;
+         Acquired, Returned : Boolean;
+         R : HP.Request;
+         Decoded : HP.Decode_Result;
+         Before : Natural;
+         V : HO.Verdict;
+         A : HO.Receipt;
+      begin
+         --  Copy before validate: the sender's page is read once.
+         CuBit.Memory_Grants.Acquire
+           (Grant, From, 0, Length, CuBit.Memory_Grants.Read_Access, Address, Acquired);
+         if not Acquired then
+            Refuse (HX.Copy_Failed, 0, " (grant not acquired)");
+            return;
+         end if;
+         declare
+            Shared : constant HP.Byte_Array (Bytes'Range)
+            with Import, Address => Address, Volatile;
+         begin
+            for K in Bytes'Range loop
+               Bytes (K) := Shared (K);
+            end loop;
+         end;
+         CuBit.Memory_Grants.Return_Acquisition (Grant, Returned);
+         if not Returned then
+            Refuse (HX.Copy_Failed, 0, " (acquisition not returned)");
+            return;
+         end if;
+         HP.Decode (Bytes, R, Decoded);
+         if Decoded.Status /= HP.Decoded then
+            Refuse (HX.Malformed, Unsigned_64 (Decoded.At_Byte), " (payload byte" &
+                    Natural'Image (Decoded.At_Byte) & ")");
+            return;
+         end if;
+         --  The receipt key: a repeat gets the recorded answer, never a
+         --  second decision.
+         declare
+            Known : constant HO.Receipt_Array (1 .. HID_Receipt_Store.Length (HID_Receipts))
+            with Import, Address => HID_Receipt_Store.Block (HID_Receipts);
+         begin
+            Before := HO.Find_Receipt (Known, Owner, R.Epoch, Request);
+            if Before /= 0 then
+               debugPrint ("devmgr: hid offer: repeated request" & Unsigned_64'Image (Request) &
+                           ": the recorded " & HX.Disposition'Image (Known (Before).Answer) & LF);
+               Answer (Known (Before));
+               return;
+            end if;
+         end;
+         --  Decide on devmgr's own facts.
+         declare
+            Inventory_Facts : HO.PCI_Function_Array (1 .. inventoryCount);
+            GPIO_Facts : HO.GPIO_Record_Array (1 .. ACPI_Device_Store.Length (ACPI_Devices));
+            Queued : constant HO.Queued_Offer_Array (1 .. HID_Queued_Store.Length (HID_Queued))
+            with Import, Address => HID_Queued_Store.Block (HID_Queued);
+         begin
+            for I in Inventory_Facts'Range loop
+               Inventory_Facts (I) :=
+                 (Location => (Segment => 0, Bus => inventory (I).location.bus,
+                               Device => HP.PCI_Device_Number (inventory (I).location.slot),
+                               Func => HP.PCI_Function_Number (inventory (I).location.func)),
+                  Driver_Bound => deviceBindings (I).Kind = DI.Bound);
+            end loop;
+            for K in GPIO_Facts'Range loop
+               GPIO_Facts (K) := GPIO_Record_Of (ACPI_Device_Store.Element_At (ACPI_Devices, K));
+            end loop;
+            V := HO.Decide (R, Owner, Inventory_Facts, GPIO_Facts, Queued);
+         end;
+         A := (Owner => Owner, Epoch => R.Epoch, Request => Request, Answer => V.Answer,
+               Detail => V.Detail, Position => 0);
+         if V.Answer = HX.Malformed then
+            Refuse (HX.Malformed, V.Detail, " (its I2C target or GPIO input is no channel)");
+            return;
+         end if;
+         --  Room first: the receipt, and for a queued offer its queue
+         --  entries, so a recorded Queued is always queued.
+         declare
+            Room : HID_Receipt_Store.Capacity_Report;
+            Queue_Room : HID_Queued_Store.Capacity_Report;
+            Offer_Room : HID_Offer_Store.Capacity_Report;
+            use type HID_Receipt_Store.Growth_Status;
+            use type HID_Queued_Store.Growth_Status;
+            use type HID_Offer_Store.Growth_Status;
+            Next : constant Natural := HID_Offer_Store.Length (HID_Offers) + 1;
+         begin
+            HID_Receipt_Store.Reserve (HID_Receipts, HID_Receipt_Store.Length (HID_Receipts) + 1, Room);
+            if V.Answer = HX.Queued then
+               HID_Queued_Store.Reserve (HID_Queued, Next, Queue_Room);
+               HID_Offer_Store.Reserve (HID_Offers, Next, Offer_Room);
+            end if;
+            if Room.Status /= HID_Receipt_Store.Grown
+              or else Queue_Room.Status /= HID_Queued_Store.Grown
+              or else Offer_Room.Status /= HID_Offer_Store.Grown
+            then
+               Refuse (HX.Capacity, 0, " (the receipt or offer records could not grow; would be " &
+                       HX.Disposition'Image (V.Answer) & ")");
+               return;
+            end if;
+            if V.Answer = HX.Queued then
+               A.Position := Unsigned_64 (Next);
+            end if;
+            --  Recorded, then queued.
+            HID_Receipt_Store.Append (HID_Receipts, A, Room);
+            if V.Answer = HX.Queued then
+               HID_Queued_Store.Append
+                 (HID_Queued, (Owner => Owner, Epoch => R.Epoch, Device_Path => R.Device_Path), Queue_Room);
+               HID_Offer_Store.Append
+                 (HID_Offers, (Owner => Owner, Epoch => R.Epoch, Request => Request, Offer => R,
+                               Controller => V.Controller, GPIO => V.GPIO,
+                               I2C_Badge => V.I2C_Badge, GPIO_Badge => V.GPIO_Badge, others => <>),
+                  Offer_Room);
+            end if;
+         end;
+         declare
+            Facts : constant String :=
+              " device " & Canonical_Path_Text (R.Device_Path) &
+              " i2c " & Canonical_Path_Text (R.I2C_Path) & " pci " &
+              (if HP.Fully_Resolved (R.PCI) and then HP.Valid_PCI (R.PCI)
+               then Hex (R.PCI.SEG) & ":" & Hex (R.PCI.BBN) & ":" & Hex (R.PCI.ADR)
+               else "unresolved") &
+              (if V.Controller /= 0 then " (" & Device_Text (inventory (V.Controller)) & ")" else "") &
+              " gpio " & R.GPIO_HID & " " & Canonical_Path_Text (R.GPIO_Path) &
+              " pin" & Unsigned_16'Image (R.Pin) &
+              (if V.Answer = HX.Queued then
+                 " i2c-badge " & Hex (V.I2C_Badge) & " gpio-badge " & Hex (V.GPIO_Badge) &
+                 " queue position" & Unsigned_64'Image (A.Position)
+               else "");
+         begin
+            if V.Answer = HX.Queued then
+               Warnings.Inform (Line (A, Facts));
+            else
+               Warnings.Warn (Line (A, Facts));
+            end if;
+         end;
+         Answer (A);
+      end;
+   end Serve_HID_Offer;
+
+   --  Where the driver of a recorded GPIO controller stands.
+   function GPIO_Driver_Report (Index : Natural) return HO.Driver_Report is
+   begin
+      if Index not in 1 .. ACPI_Device_Store.Length (ACPI_Devices) then
+         return HO.Declined;
+      end if;
+      declare
+         Item : constant ACPI_Device := ACPI_Device_Store.Element_At (ACPI_Devices, Index);
+      begin
+         return (case Item.State is
+                   when Awaiting_Initialization | Launch_Pending => HO.Not_Started,
+                   when Driver_Launched =>
+                     (if Item.Waiting then HO.Starting
+                      elsif Item.Ready then HO.Serving
+                      else HO.Declined),
+                   when Not_Launched => HO.Declined);
+      end;
+   end GPIO_Driver_Report;
+
+   --  Where the generic driver of an I2C controller (inventory entry I)
+   --  stands; the generic launch (Launch_Pending_Generic) starts it.
+   function Controller_Driver_Report (I : Natural) return HO.Driver_Report is
+   begin
+      if I not in 1 .. inventoryCount or else deviceBindings (I).Kind /= DI.Bound
+        or else Has_Driver_Setup (Devmgr_Bindings.Name_Of (deviceBindings (I).Driver))
+      then
+         return HO.Declined;
+      end if;
+      for J in 1 .. Generic_Total loop
+         if Same_Location (Generic_Children (J).Device.location, inventory (I).location) then
+            return (if Generic_Children (J).Waiting then HO.Starting
+                    elsif Generic_Children (J).Serving then HO.Serving
+                    else HO.Declined);
+         end if;
+      end loop;
+      --  Started but not recorded: its launch was refused (logged).
+      return (if Generic_Started (I) then HO.Declined else HO.Not_Started);
+   end Controller_Driver_Report;
+
+   ---------------------------------------------------------------------------
+   --  The HID driver's start (SUP-001): devmgr is its supervisor, but
+   --  procmgr is the only process creator. devmgr submits Start_Child
+   --  (CuBit.Child_Starts) without waiting, since procmgr calls devmgr
+   --  synchronously and the IPC graph must stay a DAG; procmgr's receipt
+   --  comes back as a completion (HID_Start_Receipt). The spec names the
+   --  class (PNP0C50), whose launch block in the startup plan gives the
+   --  policy parameters; devmgr gives only the facts it read from the
+   --  device's offer (the HID descriptor register) and the badges of the
+   --  driver's "i2c" and "gpio" endpoints (the I2C target, the GPIO input).
+   --  The child's exit reaches devmgr from the kernel (Log_Child_Exits).
+   --
+   --  Each binding names its provider (Provider_At): the I2C controller
+   --  driver devmgr launched for THIS offer's controller (two controllers
+   --  serve role i2c on the laptop), and the GPIO controller's driver.
+   --
+   --  The GPIO sink. gpio.drv admits an interrupt input only when its
+   --  launcher (devmgr) offers, with OP_GPIO_ADMIT_SINK, a Write-only
+   --  endpoint to the client badged as the input (it reads owner and badge
+   --  with Describe). That endpoint is the HID driver's own, which only
+   --  procmgr holds: so the driver is started Held, the receipt carries the
+   --  sink (an endpoint to it, badged with the GPIO input), devmgr offers it
+   --  to the GPIO driver, and only once the input is admitted does it
+   --  release the driver (Release_Operation, also submitted, never waited
+   --  on). hid-i2c's first GPIO request thus always finds its channel live;
+   --  if the admission fails the driver is withdrawn before it ever runs.
+   ---------------------------------------------------------------------------
+   --  Completion tokens of HID starts: this base plus the offer's index
+   --  (the GPU broker's are 16#4750_1000# .. 16#4750_1FFF#); releases use
+   --  their own base.
+   HID_Start_Token_Base : constant Unsigned_64 := 16#5354_4152_0000_0000#;
+   HID_Release_Token_Base : constant Unsigned_64 := 16#5354_4152_0001_0000#;
+   pragma Compile_Time_Error
+     (HID_Release_Token_Base - HID_Start_Token_Base < 2 ** 16,
+      "HID start and release tokens must not overlap");
+   --  How long devmgr waits, in its one synchronous call to the GPIO
+   --  driver, for the sink's admission: gpio.drv's own admission window
+   --  (GPIO_Native_Policy timing.admission, 1000 ms) plus its 10 ms poll
+   --  period, with margin. devmgr calls down to its own child (the IPC
+   --  graph stays a DAG); the GPIO driver never calls devmgr after its
+   --  readiness report.
+   HID_Sink_Admission_Ms : constant := 1_500;
+   --  The driver's graceful-stop window, and its priority (as the generic
+   --  ACPI launch's drivers).
+   HID_Stop_Grace_Ms : constant CuBit.Child_Specs.Grace_Ms := 5_000;
+   HID_Driver_Priority : constant CuBit.Child_Specs.Priority_Value := 5;
+   --  The fact and binding names hid-i2c's manifest declares
+   --  (HID_Parameters.descriptor_register; (service "i2c" "i2c"),
+   --  (service "gpio" "gpio")).
+   HID_Descriptor_Fact : constant String := "descriptor_register";
+   HID_I2C_Binding     : constant String := "i2c";
+   HID_GPIO_Binding    : constant String := "gpio";
+   HID_Start_Outstanding : Boolean := False;
+   --  A report (OP_READY / OP_NOT_PRESENT) from a process devmgr does not
+   --  know yet, while a HID start is outstanding: the child may run and
+   --  report before procmgr's receipt reaches devmgr. Acknowledged at once
+   --  (it grants nothing) and matched by identity when the receipt comes.
+   HID_Early_Reporter : Process_ID := No_Process;
+   HID_Early_Ready    : Boolean := False;
+
+   --  The class an offer names: its compatible ID without the NUL padding.
+   function HID_Class return String is
+      Text : constant String := HID_Offer_Payload.Compatible_ID;
+   begin
+      for K in Text'Range loop
+         if Text (K) = ASCII.NUL then
+            return Text (Text'First .. K - 1);
+         end if;
+      end loop;
+      return Text;
+   end HID_Class;
+
+   --  The launch records of the generic PCI drivers, as Provider_At reads
+   --  them.
+   function Generic_Drivers return HO.Launched_Driver_Array is
+      Result : HO.Launched_Driver_Array (1 .. Generic_Total);
+   begin
+      for J in Result'Range loop
+         Result (J) :=
+           (Process  => (if Generic_Children (J).Launched /= DL.No_Child then To_Word (Generic_Children (J).PID)
+                         else HO.No_Process_Word),
+            Location => (Segment => 0, Bus => Generic_Children (J).Device.location.bus,
+                         Device => HID_Offer_Payload.PCI_Device_Number (Generic_Children (J).Device.location.slot),
+                         Func => HID_Offer_Payload.PCI_Function_Number (Generic_Children (J).Device.location.func)),
+            Serving  => Generic_Children (J).Serving);
+      end loop;
+      return Result;
+   end Generic_Drivers;
+
+   --  The driver serving inventory entry I (its PCI function), or none.
+   function Controller_Provider (I : Natural) return Unsigned_64 is
+     (if I not in 1 .. inventoryCount then HO.No_Process_Word
+      else HO.Provider_At
+             (Generic_Drivers,
+              (Segment => 0, Bus => inventory (I).location.bus,
+               Device => HID_Offer_Payload.PCI_Device_Number (inventory (I).location.slot),
+               Func => HID_Offer_Payload.PCI_Function_Number (inventory (I).location.func))));
+
+   --  The driver of recorded GPIO controller K, if it serves.
+   function GPIO_Provider (K : Natural) return Unsigned_64 is
+   begin
+      if K not in 1 .. ACPI_Device_Store.Length (ACPI_Devices) then
+         return HO.No_Process_Word;
+      end if;
+      declare
+         Item : constant ACPI_Device := ACPI_Device_Store.Element_At (ACPI_Devices, K);
+      begin
+         return (if Item.State = Driver_Launched and then Item.Ready and then Item.Launched /= DL.No_Child
+                 then To_Word (Item.PID) else HO.No_Process_Word);
+      end;
+   end GPIO_Provider;
+
+   --  devmgr's endpoint to a driver it launched that serves its device
+   --  (a generic PCI driver or an ACPI driver that reported ready): what
+   --  procmgr asks for to badge a binding's provider. Nothing else.
+   function Provider_Mailbox (Process : Process_ID) return H.Endpoint is
+   begin
+      if Process = No_Process then
+         return H.No_Endpoint;
+      end if;
+      for J in 1 .. Generic_Total loop
+         if Generic_Children (J).Serving and then Generic_Children (J).Launched /= DL.No_Child
+           and then Generic_Children (J).PID = Process
+         then
+            return DL.Mailbox (Generic_Children (J).Launched);
+         end if;
+      end loop;
+      for K in 1 .. ACPI_Device_Store.Length (ACPI_Devices) loop
+         declare
+            Item : constant ACPI_Device := ACPI_Device_Store.Element_At (ACPI_Devices, K);
+         begin
+            if Item.State = Driver_Launched and then Item.Ready and then Item.Launched /= DL.No_Child
+              and then Item.PID = Process
+            then
+               return DL.Mailbox (Item.Launched);
+            end if;
+         end;
+      end loop;
+      return H.No_Endpoint;
+   end Provider_Mailbox;
+
+   function Procmgr_Endpoint return H.Endpoint is
+     (if procmgrPID /= No_Process then DL.Mailbox (procmgrChild) else H.No_Endpoint);
+
+   procedure Start_HID_Driver (Item : in out HID_Offer; K : Positive; Name : String; Who : String) is
+      package CST renames CuBit.Child_Starts;
+      Spec : CuBit.Child_Specs.Spec :=
+        CST.Child (Name, CuBit.Child_Specs.Temporary, HID_Stop_Grace_Ms, HID_Driver_Priority);
+      Sent : Boolean := False;
+      I2C_Provider : constant Unsigned_64 := Controller_Provider (Item.Controller);
+      GPIO_Driver : constant Unsigned_64 := GPIO_Provider (Item.GPIO);
+   begin
+      if I2C_Provider = HO.No_Process_Word or else GPIO_Driver = HO.No_Process_Word then
+         Item.State := Offer_Refused;
+         Warnings.Warn (Who & ": " & Name & " not started: no single serving " &
+                        (if I2C_Provider = HO.No_Process_Word
+                         then "I2C controller driver at " & Device_Text (inventory (Item.Controller))
+                         else "GPIO controller driver"));
+         return;
+      end if;
+      --  SHUTDOWN STAGE (merge point for the shutdown work): the one place
+      --  devmgr builds a Start_Child spec for a driver of a device acpi.svc
+      --  reported. When CuBit.Child_Specs gains Stop_Stage, set it to
+      --  Power_Tail here, so shutdown keeps the driver up past _PTS.
+      CST.Give_Class (Spec, HID_Class);
+      CST.Add_Fact (Spec, HID_Descriptor_Fact, Integer_64 (Item.Offer.Descriptor_Register));
+      CST.Add_Binding (Spec, HID_I2C_Binding, Item.I2C_Badge, I2C_Provider);
+      CST.Add_Binding (Spec, HID_GPIO_Binding, Item.GPIO_Badge, GPIO_Driver);
+      --  Held, with its sink in the receipt: the GPIO input is admitted
+      --  before the driver's first instruction.
+      CST.Hold (Spec);
+      CST.Want_Sink (Spec, Item.GPIO_Badge);
+      Item.Token := HID_Start_Token_Base + Unsigned_64 (K);
+      if H.Valid (Procmgr_Endpoint) then
+         CST.Submit (CST.Using_Endpoint (Procmgr_Endpoint), Spec, Item.Token, Sent);
+      end if;
+      if Sent then
+         Item.State := Offer_Starting;
+         HID_Start_Outstanding := True;
+         Warnings.Inform (Who & ": starting " & Name & " held through procmgr's Start_Child (class " & HID_Class &
+                          ", fact " & HID_Descriptor_Fact & " =" &
+                          Unsigned_64'Image (Unsigned_64 (Item.Offer.Descriptor_Register)) &
+                          ", " & HID_I2C_Binding & " on pid " & Hex (I2C_Provider) & " at " &
+                          Device_Text (inventory (Item.Controller)) &
+                          ", " & HID_GPIO_Binding & " on pid " & Hex (GPIO_Driver) & ", with its GPIO sink)");
+      else
+         Item.State := Offer_Refused;
+         Warnings.Warn (Who & ": " & Name & " not started: Start_Child could not be sent to procmgr" &
+                        (if not CuBit.Child_Specs.Valid (Spec) then " (the spec is not valid)" else ""));
+      end if;
+   end Start_HID_Driver;
+
+   --  Offer the held HID driver's sink to the GPIO controller's driver
+   --  (OP_GPIO_ADMIT_SINK: zero words, one Write-only endpoint). True when
+   --  it answered Completed: the input is live, bound to the driver.
+   function Admit_GPIO_Sink
+     (Item : HID_Offer; Sink : H.Endpoint; Who : String) return Boolean
+   is
+      package GA renames GPIO_Admin_Wire;
+      use type GA.Decode_Status;
+      use type GPIO_Control_Wire.Completion_Status;
+      GPIO_Driver : constant Process_ID := From_Word (GPIO_Provider (Item.GPIO));
+      Target : constant H.Endpoint := Provider_Mailbox (GPIO_Driver);
+      Request : Message := NULL_MESSAGE;
+      Tag : MessageTag;
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   begin
+      if not H.Valid (Target) or else not H.Valid (Sink) then
+         Warnings.Warn (Who & ": GPIO sink not admitted: " &
+                        (if H.Valid (Sink) then "the GPIO driver no longer serves" else "procmgr gave no sink"));
+         return False;
+      end if;
+      Request.tag := (label => GA.OP_GPIO_ADMIT_SINK, length => 0,
+                      protocol => Protocol_Flags (GA.Protocol_Version), ipc => <>, reserved => 0);
+      Tag := IPC.Call_Offering (Target, Request, Now + HID_Sink_Admission_Ms, H.Copy (Sink, H.Write_Only));
+      declare
+         Words : GPIO_Control_Wire.Message_Words (0 .. Natural (Tag.length) - 1);
+      begin
+         for K in Words'Range loop
+            Words (K) := Request.words (K);
+         end loop;
+         declare
+            Reply : constant GA.Reply_Decoding :=
+              GA.Decode_Reply (Tag.label, Unsigned_64 (Tag.protocol), Words);
+         begin
+            if Reply.Status = GA.Decoded and then Reply.Value = GPIO_Control_Wire.Completed then
+               Warnings.Inform (Who & ": GPIO input " & Hex (Item.GPIO_Badge) & " admitted at the GPIO driver (pid " &
+                                Hex (To_Word (GPIO_Driver)) & ")");
+               return True;
+            end if;
+            Warnings.Warn (Who & ": GPIO sink not admitted: " &
+                           (if Reply.Status = GA.Decoded
+                            then GPIO_Control_Wire.Completion_Status'Image (Reply.Value)
+                            else "reply " & GA.Decode_Status'Image (Reply.Status) &
+                                 " label " & Hex (Unsigned_64 (Tag.label))));
+            return False;
+         end;
+      end;
+   end Admit_GPIO_Sink;
+
+   --  procmgr's receipt for a HID start or release, if Completion is one.
+   function HID_Start_Receipt (Completion : CompletionEntry) return Boolean is
+      package CST renames CuBit.Child_Starts;
+   begin
+      if Completion.token > HID_Release_Token_Base
+        and then Completion.token - HID_Release_Token_Base <= Unsigned_64 (HID_Offer_Store.Length (HID_Offers))
+      then
+         declare
+            K : constant Positive := Positive (Completion.token - HID_Release_Token_Base);
+            Item : HID_Offer := HID_Offer_Store.Element_At (HID_Offers, K);
+            Answer : constant CST.Release_Receipt := CST.Release_Receipt_Of (Completion);
+            Who : constant String := "devmgr: hid offer " & Canonical_Path_Text (Item.Offer.Device_Path) &
+                                     " (request" & Unsigned_64'Image (Item.Request) & ")";
+            use type CST.Release_Kind;
+         begin
+            if Item.State /= Offer_Releasing then
+               return True;   --  ours, but stale
+            end if;
+            HID_Start_Outstanding := False;
+            if Answer.Kind = CST.Released and then Item.Admitted then
+               Item.State := Offer_Started;
+               Warnings.Inform (Who & ": hid driver pid " & Hex (To_Word (Item.Driver)) &
+                                " released by procmgr; it runs with its GPIO input live");
+            else
+               Item.State := Offer_Refused;
+               Item.Waiting := False;
+               Warnings.Warn (Who & ": hid driver pid " & Hex (To_Word (Item.Driver)) &
+                              (if Item.Admitted then " not released: " & CST.Image (Answer)
+                               else " withdrawn (" & CST.Image (Answer) & ")"));
+            end if;
+            HID_Offer_Store.Set_At (HID_Offers, K, Item);
+            return True;
+         end;
+      end if;
+      if Completion.token <= HID_Start_Token_Base
+        or else Completion.token - HID_Start_Token_Base > Unsigned_64 (HID_Offer_Store.Length (HID_Offers))
+      then
+         return False;
+      end if;
+      declare
+         K : constant Positive := Positive (Completion.token - HID_Start_Token_Base);
+         Item : HID_Offer := HID_Offer_Store.Element_At (HID_Offers, K);
+         Answer : constant CST.Receipt := CST.Receipt_Of (Completion);
+         Who : constant String := "devmgr: hid offer " & Canonical_Path_Text (Item.Offer.Device_Path) &
+                                  " (request" & Unsigned_64'Image (Item.Request) & ")";
+         B : DI.Binding;
+         use type CST.Receipt_Kind;
+      begin
+         if Item.State /= Offer_Starting or else Item.Token /= Completion.token then
+            if H.Valid (Answer.Sink) then
+               declare
+                  Ignore : constant IPC.Close_Result := IPC.Close (Answer.Sink);
+               begin
+                  null;
+               end;
+            end if;
+            return True;   --  ours, but stale: nothing waits for it
+         end if;
+         Devmgr_Bindings.Bind_ACPI (HID_Offer_Payload.Compatible_ID, B);
+         declare
+            Name : constant String :=
+              (if B.Kind = DI.Bound then Devmgr_Bindings.Name_Of (B.Driver) else "the HID driver");
+            Sent : Boolean := False;
+         begin
+            if Answer.Kind = CST.Started then
+               Item.Driver := Answer.Child;
+               Devmgr_Children.Remember (Answer.Child, Name);
+               Sources.Started (Answer.Child, "", Name);
+               Warnings.Inform (Who & ": " & Name & " " & CST.Image (Answer) &
+                                " (Start_Child, held), supervised by devmgr");
+               --  The sink first, then the release; the receipt's sink is
+               --  devmgr's to close once the GPIO driver holds its copy.
+               Item.Admitted := Admit_GPIO_Sink (Item, Answer.Sink, Who);
+               if H.Valid (Answer.Sink) then
+                  declare
+                     Ignore : constant IPC.Close_Result := IPC.Close (Answer.Sink);
+                  begin
+                     null;
+                  end;
+               end if;
+               if H.Valid (Procmgr_Endpoint) then
+                  CST.Submit_Release
+                    (CST.Using_Endpoint (Procmgr_Endpoint), Answer.Child,
+                     (if Item.Admitted then CuBit.Child_Specs.Run else CuBit.Child_Specs.Withdraw),
+                     HID_Release_Token_Base + Unsigned_64 (K), Sent);
+               end if;
+               if Sent then
+                  Item.State := Offer_Releasing;
+                  --  Once released it may report before the release's
+                  --  receipt reaches devmgr (HID_Report matches it).
+                  Item.Waiting := Item.Admitted;
+               else
+                  HID_Start_Outstanding := False;
+                  Item.State := Offer_Refused;
+                  Warnings.Warn (Who & ": " & Name & " held, but its release could not be sent to procmgr");
+               end if;
+            else
+               HID_Start_Outstanding := False;
+               Item.State := Offer_Refused;
+               Warnings.Warn (Who & ": " & Name & " not started: Start_Child " & CST.Image (Answer));
+            end if;
+         end;
+         HID_Early_Reporter := No_Process;
+         HID_Early_Ready := False;
+         HID_Offer_Store.Set_At (HID_Offers, K, Item);
+         return True;
+      end;
+   end HID_Start_Receipt;
+
+   --  A started HID driver's OP_READY or OP_NOT_PRESENT.
+   function HID_Report (From : Process_ID; Msg : Message) return Boolean is
+      Ignore : Unsigned_64;
+   begin
+      for K in 1 .. HID_Offer_Store.Length (HID_Offers) loop
+         declare
+            Item : HID_Offer := HID_Offer_Store.Element_At (HID_Offers, K);
+         begin
+            if Item.Waiting and then Item.Driver = From
+              and then Msg.tag.label in OP_READY | OP_NOT_PRESENT
+            then
+               Item.Waiting := False;
+               HID_Offer_Store.Set_At (HID_Offers, K, Item);
+               Warnings.Inform ("devmgr: hid driver " &
+                                (if Msg.tag.label = OP_READY then "ready for " else "declined ") &
+                                Canonical_Path_Text (Item.Offer.Device_Path));
+               Ignore := reply (From, NULL_MESSAGE);
+               return True;
+            end if;
+         end;
+      end loop;
+      --  Perhaps the HID driver whose receipt has not arrived yet: one at a
+      --  time, as there is one outstanding start.
+      if HID_Start_Outstanding and then HID_Early_Reporter = No_Process
+        and then From /= No_Process and then Msg.tag.label in OP_READY | OP_NOT_PRESENT
+      then
+         HID_Early_Reporter := From;
+         HID_Early_Ready := Msg.tag.label = OP_READY;
+         Ignore := reply (From, NULL_MESSAGE);
+         return True;
+      end if;
+      return False;
+   end HID_Report;
+
+   --  The deferred launch of each queued HID offer, from the service loop:
+   --  the GPIO controller's driver registers first (its pins parked), then
+   --  the I2C controller's driver; then the HID driver would launch with
+   --  the I2C-target badge on the controller driver's endpoint and the
+   --  GPIO-input badge on the GPIO driver's. Each step is logged once.
+   procedure Launch_Pending_HID is
+      package HP renames HID_Offer_Payload;
+      use type HO.Launch_Step;
+      use type HO.Driver_Report;
+   begin
+      for K in 1 .. HID_Offer_Store.Length (HID_Offers) loop
+         declare
+            Item : HID_Offer := HID_Offer_Store.Element_At (HID_Offers, K);
+            Step : HO.Launch_Step;
+            Who : constant String := "devmgr: hid offer " & Canonical_Path_Text (Item.Offer.Device_Path) &
+                                     " (request" & Unsigned_64'Image (Item.Request) & ")";
+         begin
+            if Item.State = Offer_Waiting then
+               Step := HO.Next_Step (GPIO_Driver_Report (Item.GPIO), Controller_Driver_Report (Item.Controller));
+               --  One Start_Child at a time (its spec travels in one lent
+               --  buffer): a second offer waits for the first's receipt.
+               if Step = HO.Launch_HID and then HID_Start_Outstanding then
+                  null;
+               elsif Step /= Item.Step or else Step in HO.Launch_HID | HO.Abandon then
+                  case Step is
+                     when HO.Await_GPIO_Driver =>
+                        null;   --  the initial step
+                     when HO.Await_Controller_Driver =>
+                        Warnings.Inform (Who & ": the GPIO driver for " &
+                                         Canonical_Path_Text (Item.Offer.GPIO_Path) &
+                                         " registered; waiting for the I2C controller's driver at " &
+                                         Device_Text (inventory (Item.Controller)));
+                     when HO.Abandon =>
+                        Item.State := Offer_Abandoned;
+                        Warnings.Warn (Who & ": the " &
+                                       (if GPIO_Driver_Report (Item.GPIO) = HO.Declined then "GPIO"
+                                        else "I2C controller") &
+                                       " driver declined or was not launched; nothing launched for it");
+                     when HO.Launch_HID =>
+                        declare
+                           B : DI.Binding;
+                        begin
+                           Devmgr_Bindings.Bind_ACPI (HP.Compatible_ID, B);
+                           Warnings.Inform
+                             (Who & ": the GPIO driver and the I2C controller's driver (" &
+                              Devmgr_Bindings.Name_Of (deviceBindings (Item.Controller).Driver) &
+                              " at " & Device_Text (inventory (Item.Controller)) & ") registered;" &
+                              " i2c-target badge " & Hex (Item.I2C_Badge) &
+                              " gpio-input badge " & Hex (Item.GPIO_Badge) &
+                              " descriptor register " & Hex (Unsigned_64 (Item.Offer.Descriptor_Register)) &
+                              (case B.Kind is
+                                 when DI.Unbound => "; no driver declares ACPI_ID PNP0C50: nothing launched",
+                                 when DI.Ambiguous => "; ACPI_ID PNP0C50 is ambiguous: nothing launched",
+                                 when DI.Bound => ""));
+                           if B.Kind = DI.Bound then
+                              Start_HID_Driver (Item, K, Devmgr_Bindings.Name_Of (B.Driver), Who);
+                           else
+                              Item.State := Offer_Unsupported;
+                           end if;
+                        end;
+                  end case;
+                  Item.Step := Step;
+                  HID_Offer_Store.Set_At (HID_Offers, K, Item);
+               end if;
+            end if;
+         end;
+      end loop;
+   end Launch_Pending_HID;
+
 
    ---------------------------------------------------------------------------
    -- Main entry point
@@ -6399,8 +7933,21 @@ begin
       Forward_Launch_Refusals;
       Warnings.Pump;
       Sources.Pump;
-      Log_Child_Exits (Launch_Now);
-      if Poll_Completion (Launch_Receipt'Address) = 1 then
+      --  PWR-003: the root stop's driver stage takes its children's exits
+      --  itself (they are not logged twice), and nothing starts after it.
+      Devmgr_Driver_Stops.Step (Launch_Now);
+      if STP."=" (Devmgr_Driver_Stops.Phase, STP.Not_Asked) then
+         Log_Child_Exits (Launch_Now);
+      end if;
+      if STP."=" (Devmgr_Driver_Stops.Phase, STP.Not_Asked) then
+         --  Admitted ACPI devices' drivers (Launch_Pending_ACPI): here, between
+         --  requests, never inside the request that admitted the device.
+         Launch_Pending_ACPI;
+         --  Queued HID offers (Launch_Pending_HID): the same, never inside
+         --  the offer's request.
+         Launch_Pending_HID;
+      end if;
+      if Poll_Completion (Launch_Receipt'Address) = 1 and then not HID_Start_Receipt (Launch_Receipt) then
          GPU_Launch.Complete
            (GPU_Launches, Launch_Receipt, Launch_Now, Receipt_Consumed);
          if not Receipt_Consumed then
@@ -6416,17 +7963,24 @@ begin
          if not GPU_Launch.Runnable (GPU_Launches) and then
            not Intel_Allocation_Growth.Pending (Intel_Allocations) then
             Launch_Activity := Wait_For_Activity_Until
-              (if Warnings.Pending and then
-                  Launch_Now <= Unsigned_64'Last - Warnings.Pump_Interval_Ms
-               then Unsigned_64'Min (GPU_Launch.Next_Deadline (GPU_Launches),
-                                     Launch_Now + Warnings.Pump_Interval_Ms)
-               else GPU_Launch.Next_Deadline (GPU_Launches));
+              (Unsigned_64'Min
+                 ((if Devmgr_Driver_Stops.Wake_At = 0 then Unsigned_64'Last
+                   else Devmgr_Driver_Stops.Wake_At),
+                  (if Warnings.Pending and then
+                      Launch_Now <= Unsigned_64'Last - Warnings.Pump_Interval_Ms
+                   then Unsigned_64'Min (GPU_Launch.Next_Deadline (GPU_Launches),
+                                         Launch_Now + Warnings.Pump_Interval_Ms)
+                   else GPU_Launch.Next_Deadline (GPU_Launches))));
             if Launch_Activity = Unavailable then
                -- Exceptional kernel failure, not periodic broker polling.
                ret := syscall (SYSCALL_SLEEP, 1);
             end if;
          end if;
       elsif Generic_Report (from, msg) then
+         null;
+      elsif ACPI_Report (from, msg) then
+         null;
+      elsif HID_Report (from, msg) then
          null;
       elsif msg.tag.label = Intel_GPU_Broker_Request.Label then
          declare
@@ -6458,6 +8012,40 @@ begin
                             msg.words (3), msg.words (1)]));
             end if;
          end;
+      elsif msg.tag.label in STP.Driver_Stop_Operation | STP.Driver_Status_Operation
+        and then procmgrPID /= No_Process and then from = procmgrPID
+        and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
+      then
+         --  PWR-003: procmgr's root stop asks devmgr to stop its drivers
+         --  (answered at once), then polls how far it is.
+         declare
+            Answer : Message := NULL_MESSAGE;
+            Asked : Natural := 0;
+            Receipt : STP.Driver_Receipt := STP.Driver_Malformed;
+         begin
+            Answer.tag := (label => msg.tag.label, length => STP.Driver_Reply_Words,
+                           protocol => 0, ipc => <>, reserved => 0);
+            Answer.words (STP.Reply_Request_Word) := msg.words (STP.Request_Word);
+            if msg.tag.label = STP.Driver_Stop_Operation then
+               if msg.tag.length = STP.Driver_Request_Words
+                 and then msg.words (STP.Request_Word) /= 0
+                 and then STP.Valid_Grace (msg.words (STP.Driver_Grace_Word))
+               then
+                  Devmgr_Driver_Stops.Begin_Stop
+                    (STP.Grace_Ms (msg.words (STP.Driver_Grace_Word)), procmgrPID,
+                     msg.words (STP.Keep_Tail_Word) = STP.Keep_Tail,
+                     syscall (SYSCALL_GETTIME), Asked, Receipt);
+               end if;
+               debugPrint ("devmgr: shutdown: procmgr asks to stop the drivers: " &
+                           STP.Driver_Receipt'Image (Receipt) & "," & Natural'Image (Asked) & " asked" & LF);
+               Answer.words (STP.Receipt_Word) := STP.Driver_Receipt'Enum_Rep (Receipt);
+               Answer.words (STP.Asked_Word) := Unsigned_64 (Asked);
+            else
+               Answer.words (STP.Phase_Word) := STP.Driver_Phase'Enum_Rep (Devmgr_Driver_Stops.Phase);
+               Answer.words (STP.Driver_Counts_Word) := Devmgr_Driver_Stops.Counts_Word;
+            end if;
+            ret := reply (from, Answer);
+         end;
       elsif msg.tag = (label => CuBit.Service_Exchange.Endpoint_Request, length => 1, protocol => 0, ipc => Accepting, reserved => 0)
         and then procmgrPID /= No_Process and then from = procmgrPID
         and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
@@ -6475,6 +8063,30 @@ begin
             if not H.Valid (Provider) or else
               not Answer_With (from, [Role, 0, 0, 0], 1, H.Copy (Provider, Read_Write_Grant))
             then
+               Refuse (from, Answered => H.Valid (Provider));
+            end if;
+         end;
+      elsif msg.tag = (label => CuBit.Service_Exchange.Endpoint_Request,
+                       length => CuBit.Service_Exchange.Provider_Request_Words, protocol => 0,
+                       ipc => Accepting, reserved => 0)
+        and then procmgrPID /= No_Process and then from = procmgrPID
+        and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
+      then
+         --  procmgr asks for one named provider's endpoint (a Start_Child
+         --  binding devmgr gave, SUP-001): only a driver devmgr launched
+         --  that serves its device (Provider_Mailbox).
+         declare
+            Role : constant Unsigned_64 := msg.words (CuBit.Service_Exchange.Role_Word);
+            Provider : constant H.Endpoint :=
+              Provider_Mailbox (From_Word (msg.words (CuBit.Service_Exchange.Provider_Word)));
+         begin
+            if not H.Valid (Provider) or else
+              not Answer_With (from, [Role, 0, 0, 0], 1, H.Copy (Provider, Read_Write_Grant))
+            then
+               Warnings.Warn ("devmgr: procmgr asked for the endpoint of provider " &
+                              Hex (msg.words (CuBit.Service_Exchange.Provider_Word)) & " (role" &
+                              Unsigned_64'Image (Role) & "): " &
+                              (if H.Valid (Provider) then "not given" else "no serving driver of devmgr's"));
                Refuse (from, Answered => H.Valid (Provider));
             end if;
          end;
@@ -6509,6 +8121,13 @@ begin
         and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
       then
          Give_ACPI_Memory_Window (from, msg);
+      elsif msg.tag = (label => CuBit.ACPI_Window_Exchange.SCI_Request,
+                       length => CuBit.ACPI_Window_Exchange.SCI_Request_Words, protocol => 0,
+                       ipc => Accepting, reserved => 0)
+        and then procmgrPID /= No_Process and then from = procmgrPID
+        and then msg.authorityTag = Intel_GPU_Broker_Request.Authority_Tag
+      then
+         Give_ACPI_SCI (from);
       elsif msg.tag = (label => FDX.Data_Window_Request,
                        length => FDX.Request_Words, protocol => 0,
                        ipc => Accepting, reserved => 0)
@@ -6523,6 +8142,14 @@ begin
         and then msg.tag.length = CuBit.GPIO_Bootstrap_Exchange.Request_Words
       then
          Serve_GPIO_Bootstrap (from, msg);
+      elsif msg.tag.label = CuBit.Consumer_Initialization_Exchange.Consumer_Initialization_Complete then
+         --  Every frame with this label: the handler refuses a
+         --  non-canonical one (Devmgr_Phase_Declarations.Canonical).
+         Serve_Consumer_Initialization (from, msg);
+      elsif msg.tag.label = CuBit.HID_Offer_Exchange.Offer_Request then
+         --  Every frame with this label: the handler refuses a
+         --  non-canonical one (Devmgr_HID_Offers.Canonical).
+         Serve_HID_Offer (from, msg);
       elsif msg.tag = (label => CuBit.Disk_Install.Open_Disk,
                        length => CuBit.Disk_Install.Open_Words, protocol => 0,
                        ipc => Accepting, reserved => 0)

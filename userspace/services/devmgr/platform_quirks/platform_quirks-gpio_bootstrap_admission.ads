@@ -150,4 +150,26 @@ package Platform_Quirks.GPIO_Bootstrap_Admission with Pure, SPARK_Mode is
                       | GX.Straddles
                     then Decide'Result.Span in 1 .. R.Spans);
 
+   --  Verified for use without an admission (devmgr read the P2SB this
+   --  boot, so the answer is P2SB_Available): the proposal names this
+   --  platform's controller, present and enabled, and its spans are
+   --  exactly the GPIO community ranges devmgr derived from the P2SB and
+   --  already inserted as pool members: as many spans as ranges, each span
+   --  equal to one range and to one inserted member. Nothing is admitted
+   --  by it; it only lets devmgr record the controller (and launch its
+   --  driver) as if it had admitted those spans.
+   function Matches_Communities
+     (Controller : Platform_Quirks.GPIO_Controller; R : GP.Request;
+      Communities, Members : DW.Range_Array) return Boolean
+   is (Controller_Matches (Controller, R.HID)
+       and then Present_And_Enabled (R.STA)
+       and then Shapes_Valid (R)
+       and then Spans_Disjoint (R)
+       and then R.Spans = Communities'Length
+       and then (for all I in 1 .. R.Spans =>
+                   (for some C of Communities => DW."=" (C, Pages_Of (R.Items (I))))
+                   and then (for some M of Members => DW."=" (M, Pages_Of (R.Items (I))))))
+   with Pre => GP.Valid (R) and then DW.Ranges_Valid (Communities)
+               and then DW.Ranges_Valid (Members);
+
 end Platform_Quirks.GPIO_Bootstrap_Admission;

@@ -1,0 +1,15 @@
+--  Hosted tests of Start_Child's pure parts (SUP-001): the spec codec
+--  (CuBit.Child_Specs), the fact/policy merge (Child_Parameters) checked
+--  by CCL's type checker as procmgr checks it, the plan's class launch
+--  blocks (CCL.Configurations), and the supervision edges
+--  (Supervision_Edges). run.sh links the units into build/links.
+with "../../userspace/ccl/cubit_shared.gpr";
+project Supervision_Tests is
+   for Source_Dirs use (".", "build/links", "../../userspace/ccl/src");
+   for Object_Dir use "build/tests";
+   for Exec_Dir use "build/tests";
+   for Main use ("supervision_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g", "-O1");
+   end Compiler;
+end Supervision_Tests;

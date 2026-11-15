@@ -159,14 +159,21 @@ begin
       LM.Press (S, Items, LM.Up, Result, Chosen);
       LM.Press (S, Items, LM.Up, Result, Chosen);
       LM.Press (S, Items, LM.Up, Result, Chosen);
-      Check (S.Row = 5, "Up wraps among the categories (Power takes no keys)");
+      Check (S.Row = LM.Shut_Down_Row (Items), "Up wraps to Shut Down... (the disabled Restart... takes no keys)");
+      LM.Press (S, Items, LM.Up, Result, Chosen);
+      Check (S.Row = 5, "Up from Shut Down... skips Restart... to the last category");
+      LM.Press (S, Items, LM.Down, Result, Chosen);
+      LM.Press (S, Items, LM.Enter, Result, Chosen);
+      Check (Result = LM.Shut_Down, "Enter on Shut Down... chooses it");
+      LM.Press (S, Items, LM.Down, Result, Chosen);
+      Check (S.Row = 1, "Down from Shut Down... wraps to the first category");
       LM.Press (S, Items, LM.Escape, Result, Chosen);
       Check (Result = LM.Close, "Escape at the top closes the menu");
       LM.Reset (S);
       LM.Hover_Row (S, Items, 4);
       Check (S.Open = 4 and then not S.In_Submenu, "hovering Games opens it at once");
-      LM.Hover_Row (S, Items, LM.Power_Row (Items));
-      Check (S.Open = 0, "hovering Power closes the submenu");
+      LM.Hover_Row (S, Items, LM.Shut_Down_Row (Items));
+      Check (S.Open = 0, "hovering Shut Down... closes the submenu");
       LM.Hover_Row (S, Items, 4);
       LM.Hover_Item (S, 2);
       LM.Press (S, Items, LM.Enter, Result, Chosen);
@@ -177,8 +184,10 @@ begin
          LM.Locate (Items, 2, Row, Index);
          Check (Row = 4 and then Index = 1, "DOOM is Games' first entry");
       end;
-      LM.Click_Row (S, Items, LM.Power_Row (Items), Result);
-      Check (Result = LM.Power, "a click on Power chooses it");
+      LM.Click_Row (S, Items, LM.Shut_Down_Row (Items), Result);
+      Check (Result = LM.Shut_Down, "a click on Shut Down... chooses it");
+      LM.Click_Row (S, Items, LM.Restart_Row (Items), Result);
+      Check (Result = LM.Nothing and then not LM.Restart_Enabled, "Restart... is disabled: a click does nothing");
    end;
    if Failures > 0 then
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);

@@ -39,6 +39,12 @@ package Devmgr_Bindings with SPARK_Mode => On is
 
    procedure Bind (F : DS.PCI_Function; Result : out DI.Binding);
 
+   --  The driver an ACPI device binds by its _HID (NUL-padded, as acpi.svc
+   --  reports it): Unbound when HID is not a valid ACPI ID or no driver
+   --  declares it, Ambiguous when two do (CCL.Device_Index.Bind_ACPI).
+   procedure Bind_ACPI (HID : String; Result : out DI.Binding)
+   with Pre => HID'Length <= DS.ACPI_ID_MAX;
+
    --  The first driver declaring platform device P, or 0.
    function Platform_Driver (P : DS.Platform_Device) return DI.Driver_Count;
 

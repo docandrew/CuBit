@@ -64,7 +64,7 @@ procedure Main is
    Inspected    : constant Unsigned_64 := 0;
    --  One generation step in a handle word (generation << 32 | slot).
    Generation_Step : constant Unsigned_64 := 2 ** ABI.Slot_Field_Bits;
-   --  The ACPI hardware grant's binding name in acpi-backend.svc's manifest
+   --  The ACPI hardware grant's binding name in acpi.svc's manifest
    --  (its windows are "hardware-io-K" and "hardware-mem-K").
    ACPI_Binding : constant String := "hardware";
    --  A firmware page (the BIOS ROM area) and where a mapping of it would go.

@@ -169,4 +169,19 @@ package Devmgr_Launches is
    procedure Abandon (Item : Child)
    with Pre => Item /= No_Child;
 
+   --  The children devmgr spawned (PWR-003: the root stop's driver stage
+   --  stops each). Used: the slot names a child devmgr spawned (it may
+   --  have ended since); Name_Of: its program's name, for logs.
+   function Used (Item : Child) return Boolean
+   with Pre => Item /= No_Child;
+   --  Its root-stop stage is Power_Tail (devmgr states it at launch: the
+   --  driver of an ACPI device acpi.svc reported, which AML may use until
+   --  the firmware's last step).
+   procedure Set_Power_Tail (Item : Child)
+   with Pre => Item /= No_Child;
+   function Power_Tail (Item : Child) return Boolean
+   with Pre => Item /= No_Child;
+   function Name_Of (Item : Child) return String
+   with Pre => Item /= No_Child;
+
 end Devmgr_Launches;

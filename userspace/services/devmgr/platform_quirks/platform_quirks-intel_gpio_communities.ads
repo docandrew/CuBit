@@ -53,6 +53,11 @@ package Platform_Quirks.Intel_GPIO_Communities with Pure, SPARK_Mode is
    --  The ACPI _HID of Alder Lake-N's GPIO controller.
    ADL_N_GPIO_Controller_HID : constant String := "INTC1057";
 
+   --  The gpio-launch test profile's controller _HID (a CuBit test ID,
+   --  no real device's): what its stand-in for acpi.svc reports, and what
+   --  its fixture driver declares (tests/gpio-launch).
+   Test_GPIO_Controller_HID : constant String := "CBIT1057";
+
    function Port_Block (Window : Block; Port : Port_ID) return Block
    with Pre  => Window.Status = Found and then Whole_Pages (Window)
                 and then Window.Bytes = Intel_P2SB.SBREG_Bytes,

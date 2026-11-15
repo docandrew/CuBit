@@ -160,6 +160,40 @@ procedure Main is
       Check (Q.Sideband_Of (QEMU) = Q.Test_Stand_In and then Q.Communities_Of (QEMU) = Q.Test_Community
              and then Q.Controller_Of (QEMU) = Q.No_Controller,
              "QEMU q35 + edu: the test stand-in, no bootstrap controller");
+      --  The gpio-launch profile: the same q35 + edu, with the test OEM
+      --  identity (QEMU x-oem-id / x-oem-table-id): P2SB discovery (which
+      --  does not find on q35), four bootstrap spans of room, the test
+      --  controller; only for exactly that identity.
+      declare
+         Test_GPIO : Q.Observed_Platform := QEMU;
+         Test_FADT : PI.Byte_Array (0 .. PI.Header_Bytes - 1) := [others => 0];
+      begin
+         for I in 1 .. 4 loop
+            Test_FADT (PI.Signature_Offset + I - 1) := Character'Pos (PI.FADT_Signature (I));
+         end loop;
+         for I in 1 .. PI.OEM_ID_Bytes loop
+            Test_FADT (PI.OEM_ID_Offset + I - 1) := Character'Pos (Q.Test_GPIO_OEM_ID (I));
+         end loop;
+         for I in 1 .. PI.OEM_Table_ID_Bytes loop
+            Test_FADT (PI.OEM_Table_ID_Offset + I - 1) := Character'Pos (Q.Test_GPIO_OEM_Table_ID (I));
+         end loop;
+         Test_GPIO.Firmware := PI.From_Header (Test_FADT);
+         Check (Q.Sideband_Of (Test_GPIO) = Q.P2SB_SBREG
+                and then Q.Communities_Of (Test_GPIO) = Q.ADL_N_Communities
+                and then Q.Controller_Of (Test_GPIO) = Q.Test_CBIT1057,
+                "QEMU q35 + edu + the CBTEST/GPIOBOOT identity: P2SB discovery, the test controller");
+         Check (A.Controller_Matches (Q.Test_CBIT1057, "CBIT1057")
+                and then not A.Controller_Matches (Q.Test_CBIT1057, "INTC1057")
+                and then not A.Controller_Matches (Q.ADL_N_INTC1057, "CBIT1057"),
+                "the test controller is CBIT1057 only, INTC1057 stays Alder Lake-N's");
+         Test_GPIO.Firmware := Id;
+         Check (Q.Controller_Of (Test_GPIO) = Q.No_Controller,
+                "QEMU q35 + edu with another identity: no bootstrap controller");
+         Test_GPIO.Bridge := PP.Bridge_Of (16#8086#, 16#29C0#, Test_Profile => False);
+         Test_GPIO.Firmware := PI.From_Header (Test_FADT);
+         Check (Q.Controller_Of (Test_GPIO) = Q.No_Controller,
+                "the test identity without the edu test profile: no bootstrap controller");
+      end;
       Other := (Bridge => PP.Bridge_Of (16#1022#, 16#1480#, Test_Profile => False), Firmware => Id);
       Check (Q.Sideband_Of (Other) = Q.No_Sideband and then Q.Controller_Of (Other) = Q.No_Controller,
              "an unknown host bridge: no quirk applies");
@@ -390,11 +424,61 @@ procedure Main is
       Check (D.Answer = GX.Admitted, "the laptop's spans with the run-time view: admitted");
    end Admission;
 
+   ---------------------------------------------------------------------------
+   --  Verified for use on the P2SB path (Matches_Communities): the proposal
+   --  is the four communities devmgr read from the P2SB and inserted, in
+   --  any order; anything else records nothing.
+   procedure Verified_By_P2SB is
+      Communities : DW.Range_Array (1 .. 4);
+      Members : DW.Range_Array (1 .. 5);
+      R : GP.Request := Laptop_GPI0;
+   begin
+      for I in 1 .. 4 loop
+         Communities (I) := Pages (Laptop_SBRG + Community_Offsets (I), GC.GPIO_Community_Bytes);
+         Members (I + 1) := Communities (I);
+      end loop;
+      Members (1) := Pages (16#FEDC_0000#, 16#2_0000#);   --  MCHBAR, another member
+      Check (A.Matches_Communities (Q.ADL_N_INTC1057, R, Communities, Members),
+             "the P2SB-derived communities, inserted: verified for use");
+      R.Items (1) := Laptop_GPI0.Items (4);
+      R.Items (4) := Laptop_GPI0.Items (1);
+      Check (A.Matches_Communities (Q.ADL_N_INTC1057, R, Communities, Members),
+             "the same spans in another _CRS order: verified");
+      R := Laptop_GPI0;
+      Check (not A.Matches_Communities (Q.No_Controller, R, Communities, Members),
+             "no controller for this platform: not verified");
+      Check (not A.Matches_Communities (Q.Test_CBIT1057, R, Communities, Members),
+             "another platform's controller: not verified");
+      R.STA := 0;
+      Check (not A.Matches_Communities (Q.ADL_N_INTC1057, R, Communities, Members),
+             "_STA absent: not verified");
+      R := Laptop_GPI0;
+      Check (not A.Matches_Communities (Q.ADL_N_INTC1057, R, Communities, Members (1 .. 4)),
+             "a community that was not inserted: not verified");
+      R.Items (2).Length := 2 * GC.GPIO_Community_Bytes;
+      Check (not A.Matches_Communities (Q.ADL_N_INTC1057, R, Communities, Members),
+             "a span larger than its community: not verified");
+      R := Laptop_GPI0;
+      R.Items (2).Base := R.Items (2).Base + Page;
+      Check (not A.Matches_Communities (Q.ADL_N_INTC1057, R, Communities, Members),
+             "a span shifted by a page: not verified");
+      R := Laptop_GPI0;
+      R.Spans := 3;
+      R.Items (4) := (others => <>);
+      Check (not A.Matches_Communities (Q.ADL_N_INTC1057, R, Communities, Members),
+             "three of four communities: not verified");
+      R := Laptop_GPI0;
+      R.Items (2) := R.Items (1);
+      Check (not A.Matches_Communities (Q.ADL_N_INTC1057, R, Communities, Members),
+             "a community named twice: not verified");
+   end Verified_By_P2SB;
+
 begin
    Identity_And_Table;
    P2SB_Steps;
    Codec;
    Admission;
+   Verified_By_P2SB;
    Put_Line ("platform-quirks:" & Natural'Image (Checks) & " checks," & Natural'Image (Failures) & " failures");
    if Failures /= 0 then
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);

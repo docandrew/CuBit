@@ -7,6 +7,7 @@ with Interfaces; use Interfaces;
 with Launch_Configuration; use Launch_Configuration;
 with System_Publications;
 with Round_Trips;
+with Interrupt_Line_ABI;
 
 procedure Main is
    pragma Warnings (Off, "condition is always True");
@@ -258,6 +259,115 @@ begin
       Check (not OK, "an unknown delivery refused");
       Decode (E.Words (1 .. E.Length - 1), D, OK);
       Check (not OK, "a short generic block refused");
+   end;
+
+   --  Generic_ACPI: what a driver launched for an admitted ACPI device
+   --  receives (identity, path, its spans); decoding the encoder's output
+   --  returns it, and windows past the count, an unknown UID type, a
+   --  path segment past the count, or a bad character are refused.
+   declare
+      Value : Generic_ACPI_Configuration :=
+        (HID => "INTC1057", UID_Type => Integer_UID, UID => 0, Epoch => 7, Segments => 2,
+         Path => [1 => "_SB_", 2 => "GPI0", others => [others => ASCII.NUL]],
+         Windows => [1 => (16#FD6E_0000#, 16#1_0000#), 2 => (16#FD6D_0000#, 16#1_0000#),
+                     others => (0, 0)],
+         Window_Total => 2, Line => <>);
+      E : constant Encoded := Encode (Value);
+      W : Word_Array (1 .. E.Length);
+      D : Generic_ACPI_Configuration; OK : Boolean;
+      --  Words: 4 HID, 5 UID type, 8 segment count, 9 .. 12 the path,
+      --  13 the window count, 14 .. 45 the windows.
+      PATH_FIRST : constant := 9;
+      WINDOW_COUNT_WORD : constant := 13;
+      THIRD_WINDOW_FIRST : constant := 18;
+   begin
+      Decode (E.Words (1 .. E.Length), D, OK);
+      Check (OK and then D = Value, "generic ACPI round trip");
+      Check (E.Length = Header_Words + Field_Count (Generic_ACPI) and then E.Length = Maximum_Words,
+             "generic ACPI length (the largest fixed kind)");
+      W := E.Words (1 .. E.Length);
+      W (THIRD_WINDOW_FIRST) := 16#9000_0000#;
+      Decode (W, D, OK);
+      Check (not OK, "an ACPI window past the count is refused");
+      W := E.Words (1 .. E.Length);
+      W (WINDOW_COUNT_WORD) := Maximum_ACPI_Windows + 1;
+      Decode (W, D, OK);
+      Check (not OK, "too many ACPI windows refused");
+      W := E.Words (1 .. E.Length);
+      W (5) := 3;
+      Decode (W, D, OK);
+      Check (not OK, "an unknown UID type refused");
+      W := E.Words (1 .. E.Length);
+      W (PATH_FIRST + 1) := 16#3054_4F47#;   --  "GOT0" as segment 3, past the count
+      Decode (W, D, OK);
+      Check (not OK, "a path segment past the count refused");
+      W := E.Words (1 .. E.Length);
+      W (PATH_FIRST) := W (PATH_FIRST) or 16#20#;   --  segment 1's "_" becomes DEL
+      Decode (W, D, OK);
+      Check (not OK, "a path character outside NameSeg refused");
+      W := E.Words (1 .. E.Length);
+      W (4) := 0;
+      Decode (W, D, OK);
+      Check (OK and then D.HID = [1 .. ACPI_HID_Bytes => ASCII.NUL], "an empty HID decodes as NULs");
+      Value.Window_Total := Maximum_ACPI_Windows;
+      for K in ACPI_Window_Index loop
+         Value.Windows (K) := (Unsigned_64 (K) * 16#1_0000#, 16#1000#);
+      end loop;
+      Value.UID_Type := String_UID;
+      Value.UID := 16#3130_5047#;
+      Decode (Encode (Value).Words (1 .. E.Length), D, OK);
+      Check (OK and then D = Value, "sixteen ACPI windows round trip");
+      Decode (E.Words (1 .. E.Length - 1), D, OK);
+      Check (not OK, "a short generic ACPI block refused");
+   end;
+
+   --  The parent line (a GPIO controller's GSI 14, level, active low,
+   --  shared): round trips; without it every line field is zero; a vector
+   --  that is not the GSI's, a GSI past the legacy lines, a stray facts bit
+   --  and a line's facts without Present are refused.
+   declare
+      package LA renames Interrupt_Line_ABI;
+      GSI : constant := 14;
+      Value : Generic_ACPI_Configuration :=
+        (HID => "INTC1057", UID_Type => Integer_UID, UID => 0, Epoch => 7, Segments => 2,
+         Path => [1 => "_SB_", 2 => "GPI0", others => [others => ASCII.NUL]],
+         Windows => [1 => (16#FD6E_0000#, 16#1_0000#), others => (0, 0)],
+         Window_Total => 1,
+         Line => (Present => True, Vector => LA.Vector_Of (GSI), Trigger => LA.Level,
+                  Polarity => LA.Active_Low, Shared => True, GSI => GSI));
+      E : constant Encoded := Encode (Value);
+      W : Word_Array (1 .. E.Length);
+      D : Generic_ACPI_Configuration; OK : Boolean;
+      FACTS_WORD : constant Positive := Header_Words + Field_Count (Generic_ACPI) - 1;
+      VECTOR_WORD : constant Positive := FACTS_WORD + 1;
+   begin
+      Decode (E.Words (1 .. E.Length), D, OK);
+      Check (OK and then D = Value and then D.Line.Vector = 46, "the parent line round trips");
+      Check (E.Words (FACTS_WORD) = 16#0000_000E_0101_0101# and then E.Words (VECTOR_WORD) = 46,
+             "the parent line's words");
+      W := E.Words (1 .. E.Length);
+      W (VECTOR_WORD) := 47;
+      Decode (W, D, OK);
+      Check (not OK and then D = (others => <>), "a parent vector that is not the GSI's is refused");
+      W := E.Words (1 .. E.Length);
+      W (FACTS_WORD) := 16#0000_0010_0101_0101#;
+      W (VECTOR_WORD) := 48;
+      Decode (W, D, OK);
+      Check (not OK, "a parent GSI past the legacy lines is refused");
+      W := E.Words (1 .. E.Length);
+      W (FACTS_WORD) := W (FACTS_WORD) or 2;
+      Decode (W, D, OK);
+      Check (not OK, "a stray parent-line facts bit is refused");
+      W := E.Words (1 .. E.Length);
+      W (FACTS_WORD) := W (FACTS_WORD) and not 1;
+      Decode (W, D, OK);
+      Check (not OK, "parent-line facts without Present are refused");
+      Value.Line := (others => <>);
+      Decode (Encode (Value).Words (1 .. E.Length), D, OK);
+      Check (OK and then not D.Line.Present
+             and then Encode (Value).Words (FACTS_WORD) = 0
+             and then Encode (Value).Words (VECTOR_WORD) = 0,
+             "no parent line: both words zero");
    end;
 
    --  Refusals: header and field corruption.

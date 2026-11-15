@@ -1,0 +1,7 @@
+# shutdown-stubborn (tests/headless shutdown, PWR-003): a service that
+# hangs: it sees Stop and does not end, so procmgr ends it after its grace
+# and reports it FORCED.
+(Executable_Manifest
+  identity => "com.cubit.test.shutdown-stubborn"
+  version => "1"
+  requests_none => true)

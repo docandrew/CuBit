@@ -1,0 +1,9 @@
+# shutdown-cooperative (tests/headless shutdown, PWR-003): a service that
+# obeys Stop: it says so, takes quiesce_ms to finish, and exits 0.
+(type Quiesce_Ms (range 0 10000))
+(type Cooperative_Parameters (record (quiesce_ms Quiesce_Ms)))
+(Executable_Manifest
+  identity => "com.cubit.test.shutdown-cooperative"
+  version => "1"
+  requests_none => true
+  parameters => (Parameter_Signature.Declared "Cooperative_Parameters"))

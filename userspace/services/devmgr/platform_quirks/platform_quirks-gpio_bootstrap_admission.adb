@@ -8,7 +8,9 @@ package body Platform_Quirks.GPIO_Bootstrap_Admission with SPARK_Mode is
      (case Controller is
         when Platform_Quirks.No_Controller  => False,
         when Platform_Quirks.ADL_N_INTC1057 =>
-          HID = Platform_Quirks.Intel_GPIO_Communities.ADL_N_GPIO_Controller_HID);
+          HID = Platform_Quirks.Intel_GPIO_Communities.ADL_N_GPIO_Controller_HID,
+        when Platform_Quirks.Test_CBIT1057 =>
+          HID = Platform_Quirks.Intel_GPIO_Communities.Test_GPIO_Controller_HID);
 
    --  The first span (1-based) whose shape is wrong, or 0.
    function First_Bad_Shape (R : GP.Request) return GP.Span_Count

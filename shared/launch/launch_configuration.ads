@@ -35,6 +35,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with Interrupt_Line_ABI;
 
 package Launch_Configuration with Pure, SPARK_Mode is
 
@@ -47,9 +48,9 @@ package Launch_Configuration with Pure, SPARK_Mode is
    Magic : constant Unsigned_64 := 16#4746_4354_4942_5543#;  --  "CUBITCFG"
    Word_Bytes   : constant := 8;
    Header_Words : constant := 3;
-   --  The most fields of a fixed-length kind (Generic_PCI's), and of
+   --  The most fields of a fixed-length kind (Generic_ACPI's), and of
    --  devmgr's configuration before its roots.
-   Maximum_Fields : constant := 23;
+   Maximum_Fields : constant := 44;
    Maximum_Words  : constant := Header_Words + Maximum_Fields;
    --  The largest block: the kernel's ceiling on a launch configuration
    --  (Process_Launch, 64 KiB). A named ceiling, not a count of anything.
@@ -95,7 +96,7 @@ package Launch_Configuration with Pure, SPARK_Mode is
    type Configuration_Kind is
      (Device_Manager, Process_Manager, Boot_Image_Reader, NVMe_Controller,
       HDA_Controller, Virtio_Input, Virtio_GPU, Generic_PCI, Network_Device,
-      XHCI_Controller);
+      XHCI_Controller, Generic_ACPI);
    for Configuration_Kind use
      (Device_Manager    => 1,
       Process_Manager   => 2,
@@ -106,7 +107,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Virtio_GPU        => 8,
       Generic_PCI       => 9,
       Network_Device    => 10,
-      XHCI_Controller   => 11);
+      XHCI_Controller   => 11,
+      Generic_ACPI      => 12);
 
    --  The kinds whose configuration is a Controller_Configuration.
    function Is_Controller (Kind : Configuration_Kind) return Boolean is
@@ -365,6 +367,88 @@ package Launch_Configuration with Pure, SPARK_Mode is
 
    function Valid_Span (Span : Physical_Span) return Boolean is
      (Span.Bytes <= Byte_Count'Last - Span.First);
+
+   --  devmgr to a driver it launched for an ACPI device whose memory spans
+   --  it admitted (docs/device-matching.md "ACPI launch"): the device's
+   --  identity as acpi.svc observed it, and where the spans are. As for
+   --  Generic_PCI, authority is never here: each window's device-memory
+   --  capability is the driver's startup entry for the K-th device-memory
+   --  request of its manifest, narrowed to exactly that admitted span (at
+   --  most the request's max_bytes), and Windows (K) says where it is.
+   --  The request's index names the span, in _CRS order.
+   --  The most spans devmgr admits for one device (GPIO_Bootstrap_Payload.
+   --  Max_Spans and CCL.Resource_Sections.MAX_ACPI_SPANS; devmgr checks the
+   --  three are equal when it is compiled), and the deepest namespace path.
+   Maximum_ACPI_Windows : constant := 16;
+   Maximum_ACPI_Segments : constant := 8;
+   subtype ACPI_Window_Count is Natural range 0 .. Maximum_ACPI_Windows;
+   subtype ACPI_Window_Index is Positive range 1 .. Maximum_ACPI_Windows;
+   type ACPI_Window_Array is array (ACPI_Window_Index) of Physical_Span;
+   subtype ACPI_Segment_Count is Natural range 0 .. Maximum_ACPI_Segments;
+   subtype ACPI_Segment_Index is Positive range 1 .. Maximum_ACPI_Segments;
+   --  The _HID (NUL-padded) and NameSegs of the device's path from the root.
+   ACPI_HID_Bytes : constant := 8;
+   ACPI_Segment_Bytes : constant := 4;
+   subtype ACPI_HID_Text is String (1 .. ACPI_HID_Bytes);
+   subtype ACPI_Name_Segment is String (1 .. ACPI_Segment_Bytes);
+   type ACPI_Name_Path is array (ACPI_Segment_Index) of ACPI_Name_Segment;
+   --  _UID's type (ACPI 6.5 section 6.1.12), as GPIO_Bootstrap_Payload.
+   type ACPI_UID_Kind is (No_UID, Integer_UID, String_UID);
+   for ACPI_UID_Kind use (No_UID => 0, Integer_UID => 1, String_UID => 2);
+
+   --  The first interrupt descriptor of the device's _CRS, as devmgr
+   --  routed it (GPIO_Bootstrap_Payload's IRQ facts): Present exactly when
+   --  the driver's "parent" interrupt binding holds the line Vector names,
+   --  routed with Trigger and Polarity. Vector is what the owner passes to
+   --  CuBit.Handles.Lines.Acknowledge; GSI and Shared are facts for its log.
+   --  Not Present: every field at its default.
+   subtype Parent_Line_Vector is Natural range 0 .. Interrupt_Line_ABI.Last_Vector;
+   No_Parent_Line_Vector : constant Parent_Line_Vector := 0;
+   type ACPI_Parent_Line is record
+      Present  : Boolean := False;
+      Vector   : Parent_Line_Vector := No_Parent_Line_Vector;
+      Trigger  : Interrupt_Line_ABI.Trigger_Mode := Interrupt_Line_ABI.Edge;
+      Polarity : Interrupt_Line_ABI.Pin_Polarity := Interrupt_Line_ABI.Active_High;
+      Shared   : Boolean := False;
+      GSI      : Unsigned_32 := 0;
+   end record;
+   function Valid_Parent_Line (Line : ACPI_Parent_Line) return Boolean is
+     (if Line.Present
+      then Line.GSI in Interrupt_Line_ABI.First_Input .. Interrupt_Line_ABI.Last_Input
+           and then Line.Vector = Interrupt_Line_ABI.Vector_Of (Natural (Line.GSI))
+      else Line = (others => <>));
+
+   type Generic_ACPI_Configuration is record
+      HID       : ACPI_HID_Text := [others => ASCII.NUL];
+      UID_Type  : ACPI_UID_Kind := No_UID;
+      --  The integer, or up to 8 ASCII bytes little-endian; 0 for No_UID.
+      UID       : Unsigned_64 := 0;
+      --  The ACPI namespace epoch the observation was made in.
+      Epoch     : Unsigned_64 := 0;
+      Segments  : ACPI_Segment_Count := 0;
+      Path      : ACPI_Name_Path := [others => [others => ASCII.NUL]];
+      Windows   : ACPI_Window_Array := [others => (0, 0)];
+      Window_Total : ACPI_Window_Count := 0;
+      --  The device's parent interrupt line (a GPIO controller's), when
+      --  devmgr routed it to the driver's "parent" interrupt binding.
+      Line      : ACPI_Parent_Line;
+   end record;
+
+   function HID_Character (C : Character) return Boolean is
+     (C in '!' .. '~');
+   function Segment_Character (C : Character) return Boolean is
+     (C in 'A' .. 'Z' | '0' .. '9' | '_');
+   function Valid_Generic_ACPI (Value : Generic_ACPI_Configuration) return Boolean is
+     ((for all C of Value.HID => HID_Character (C) or else C = ASCII.NUL)
+      and then (Value.UID_Type /= No_UID or else Value.UID = 0)
+      and then (for all K in ACPI_Segment_Index =>
+                  (if K <= Value.Segments
+                   then (for all C of Value.Path (K) => Segment_Character (C))
+                   else (for all C of Value.Path (K) => C = ASCII.NUL)))
+      and then (for all K in ACPI_Window_Index =>
+                  Valid_Span (Value.Windows (K))
+                  and then (if K > Value.Window_Total then Value.Windows (K) = (0, 0)))
+      and then Valid_Parent_Line (Value.Line));
    function Valid_Vectors (Delivery : Interrupt_Delivery; Vectors : Vector_Count)
      return Boolean is
      (case Delivery is
@@ -390,7 +474,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
          when Virtio_GPU        => 10,
          when Generic_PCI       => 5 + 1 + 2 * Maximum_Windows + 3 + 2,
          when Network_Device    => 2,
-         when XHCI_Controller   => 3)
+         when XHCI_Controller   => 3,
+         --  HID, UID type, UID, epoch, segment count, the path (two
+         --  segments a word), window count, (first, bytes) per window,
+         --  then the parent line (its facts, its vector).
+         when Generic_ACPI      =>
+            5 + Maximum_ACPI_Segments / 2 + 1 + 2 * Maximum_ACPI_Windows + 2)
    with Post => Field_Count'Result <= Maximum_Fields;
 
    --  Words (1 .. Length) is a header for fixed-length Kind with the
@@ -518,6 +607,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
                 and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
                                        Generic_PCI);
 
+   function Encode (Value : Generic_ACPI_Configuration) return Encoded
+   with Pre  => Valid_Generic_ACPI (Value),
+        Post => Encode'Result.Length = Header_Words + Field_Count (Generic_ACPI)
+                and then Header_Valid (Encode'Result.Words (1 .. Encode'Result.Length),
+                                       Generic_ACPI);
+
    --  Decoders: Valid exactly when Words is a header for the kind followed
    --  by in-range fields; then Value holds the fields.
    procedure Decode
@@ -607,4 +702,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
      (Words : Word_Array; Value : out Generic_PCI_Configuration; Valid : out Boolean)
    with Post => (if Valid then Header_Valid (Words, Generic_PCI)
                                and then Valid_Generic (Value));
+   procedure Decode
+     (Words : Word_Array; Value : out Generic_ACPI_Configuration; Valid : out Boolean)
+   with Post => (if Valid then Header_Valid (Words, Generic_ACPI)
+                               and then Valid_Generic_ACPI (Value));
 end Launch_Configuration;

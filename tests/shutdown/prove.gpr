@@ -1,0 +1,18 @@
+--  gnatprove (level 2) over the root stop's pure parts: procmgr's stop
+--  machine (Shutdown_Sequences: only the current unit is open, it precedes
+--  every unit of its phase still pending, a unit is ended only after its
+--  grace, every phase passed is settled, Finished means every unit is kept
+--  or decided), power.svc's decisions, and the wire codecs.
+project Prove is
+   for Source_Dirs use ("build/links", "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("cubit.ads", "cubit-system_stops.ads", "cubit-power_requests.ads", "cubit-power_event_exchange.ads", "cubit-close_policies.ads",
+      "shutdown_sequences.ads", "shutdown_sequences.adb", "power_decisions.ads", "power_decisions.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Prove;

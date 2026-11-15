@@ -5,7 +5,9 @@ project Devmgr is
     for Object_Dir use "build";
 
     for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display", "../../lib/logging", "../../../shared/acpi", "../../../shared/firmware",
-       "platform_quirks", "../../../shared/platform");
+       "platform_quirks", "../../../shared/platform", "../../lib/i2c-admission", "../../lib/gpio-admission",
+       --  gpio.drv's admin wire (OP_GPIO_ADMIT_SINK), used read-only.
+       "../gpio/lib");
 
     for Main use ("main.adb");
 
@@ -17,6 +19,8 @@ project Devmgr is
        "source_notices.ads", "source_notices.adb",
        --  Children by name, for their exit lines.
        "devmgr_children.ads", "devmgr_children.adb",
+       --  The root stop's driver stage (PWR-003).
+       "devmgr_driver_stops.ads", "devmgr_driver_stops.adb",
        --  Message-signaled interrupts (docs/msi-interrupts.md).
        "pci_message_interrupts.ads", "pci_message_interrupts.adb",
        "pci_message_functions.ads", "pci_message_functions.adb",
@@ -28,6 +32,18 @@ project Devmgr is
        "driver_manifests.ads", "driver_manifests.adb",
        --  Devices bound by their drivers' declared matches (HW-002).
        "devmgr_bindings.ads", "devmgr_bindings.adb", "devmgr_windows.ads",
+       --  Which spans an ACPI-matched driver gets (docs/device-matching.md "ACPI launch").
+       "devmgr_acpi_windows.ads", "devmgr_acpi_windows.adb",
+       --  How a Consumer_Initialization_Complete is decided.
+       "devmgr_phase_declarations.ads", "devmgr_phase_declarations.adb",
+       --  How a HID offer (16#0252#) is decided, and its channel badges.
+       "devmgr_hid_offers.ads", "devmgr_hid_offers.adb",
+       "hid_offer_payload.ads", "hid_offer_payload.adb",
+       "i2c_channel_badges.ads", "i2c_channel_badges.adb",
+       "gpio_channel_badges.ads", "gpio_channel_badges.adb",
+       --  The GPIO sink admission devmgr offers the GPIO driver (SUP-001).
+       "gpio_admin_wire.ads", "gpio_admin_wire.adb",
+       "gpio_control_wire.ads", "gpio_control_wire.adb",
        "ccl-device_sections.ads", "ccl-device_sections.adb",
        "ccl-device_index.ads", "ccl-device_index.adb",
        "intel_gpu_adln_devices.ads",
@@ -151,7 +167,7 @@ project Devmgr is
        "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-typed_values.ads", "ccl-typed_values.adb", "ccl-diagnostics.ads", "ccl-diagnostics.adb",
        "ccl-setting_codecs.ads", "ccl-setting_codecs-launch_entry.ads", "ccl-setting_codecs-launch_entry.adb", "ccl-setting_kinds.ads", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-desktop_display.ads", "ccl-interfaces.ads",
        "ccl-interfaces-desktop_launch.ads", "ccl-interfaces-desktop_launch-icons.ads",
-       "ccl-interfaces-calc_types.ads", "ccl-interfaces-net_interface.ads");
+       "ccl-interfaces-calc_types.ads", "ccl-interfaces-net_interface.ads", "ccl-interfaces-log_retention.ads");
 
     for Runtime ("Ada") use "../../runtime";
 

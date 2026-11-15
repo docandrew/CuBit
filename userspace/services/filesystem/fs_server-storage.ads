@@ -37,4 +37,11 @@ private package Fs_Server.Storage is
    --  harvested, and each volume's journal commits its dirty blocks.
    procedure commitTick;
 
+   --  The root stop's storage stage (PWR-003, CuBit.System_Stops.
+   --  Storage_Operation), only from procmgr: every client's buffered
+   --  writes, then each admitted writable volume committed and detached (an
+   --  ext3 journal emptied, needs_recovery cleared), and its writes refused
+   --  from then on. Answered when done.
+   procedure handleStorageStop (sender : Process_ID; msg : Message);
+
 end Fs_Server.Storage;

@@ -212,6 +212,44 @@ begin
       Check (B.Kind = DI.Unbound, "an empty slot binds nothing");
    end;
 
+   --  ACPI binding (docs/device-matching.md "ACPI launch"): the one driver
+   --  declaring the _HID, exactly; a second one is ambiguous.
+   declare
+      function ACPI (Text : String) return DS.Device_Match is
+         M : DS.Device_Match := (Kind => DS.ACPI_ID, ID_Length => Text'Length, others => <>);
+      begin
+         for K in Text'Range loop
+            M.ID (K - Text'First + 1) := Text (K);
+         end loop;
+         return M;
+      end ACPI;
+      INTC : constant DS.ACPI_Text := ['I', 'N', 'T', 'C', '1', '0', '5', '7'];
+      Other_ID : constant DS.ACPI_Text := ['I', 'N', 'T', 'C', '1', '0', '5', '6'];
+      Short : constant DS.ACPI_Text := ['I', 'N', 'T', 'C', '1', '0', '5', ASCII.NUL];
+      GPIO : constant DI.Driver :=
+        (Named ("gpio.drv"), (Count => 2, Entries => [1 => ACPI ("INTC1056"), 2 => ACPI ("INTC1057"),
+                                                       others => <>]));
+      Touch : constant DI.Driver := (Named ("hid-i2c.drv"), One (ACPI ("PNP0C50")));
+      Rival : constant DI.Driver := (Named ("gpio2.drv"), One (ACPI ("INTC1057")));
+      PCI_Driver : constant DI.Driver := (Named ("i2c-dw.drv"), One (PCI_IDs (16#8086#, 16#54E8#, 16#54E9#)));
+      I : DI.Index := (Count => 3, Drivers => [1 => PCI_Driver, 2 => Touch, 3 => GPIO, others => <>]);
+   begin
+      DI.Bind_ACPI (I, INTC, 8, B);
+      Check (B.Kind = DI.Bound and then B.Driver = 3 and then B.At_Entry = 2,
+             "INTC1057 binds the driver declaring it, at that entry");
+      DI.Bind_ACPI (I, Other_ID, 8, B);
+      Check (B.Kind = DI.Bound and then B.Driver = 3 and then B.At_Entry = 1, "INTC1056 binds the same driver");
+      DI.Bind_ACPI (I, Short, 7, B);
+      Check (B.Kind = DI.Unbound, "a prefix of a declared ID binds nothing");
+      I.Drivers (4) := Rival;
+      I.Count := 4;
+      DI.Bind_ACPI (I, INTC, 8, B);
+      Check (B.Kind = DI.Ambiguous and then B.Driver = 3 and then B.Rival = 4,
+             "two drivers declaring INTC1057 are ambiguous");
+      DI.First_Ambiguity (I, Found, Left, Right, Left_Entry, Right_Entry);
+      Check (Found and then Left = 3 and then Right = 4, "the image check refuses them");
+   end;
+
    --  Round trip, then robustness.
    declare
       Bytes : DI.Index_Bytes;

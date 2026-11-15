@@ -77,7 +77,8 @@ package Platform_Quirks with Pure, SPARK_Mode is
    --  sideband window could not be read (GPIO_Bootstrap_Admission).
    type GPIO_Controller is
      (No_Controller,
-      ADL_N_INTC1057);     --  Intel_GPIO_Communities.ADL_N_GPIO_Controller_HID
+      ADL_N_INTC1057,      --  Intel_GPIO_Communities.ADL_N_GPIO_Controller_HID
+      Test_CBIT1057);      --  Intel_GPIO_Communities.Test_GPIO_Controller_HID
 
    type Effect is record
       Sideband    : Sideband_Source := No_Sideband;
@@ -91,7 +92,13 @@ package Platform_Quirks with Pure, SPARK_Mode is
    type Quirk is
      (Intel_ADL_N_P2SB_Sideband,     --  read the sideband window from the P2SB
       Intel_ADL_N_GPIO_Bootstrap,    --  ... or admit GPI0's _CRS spans before _INI
+      QEMU_Q35_Test_GPIO_Bootstrap,  --  the gpio-launch test profile (before the next row)
       QEMU_Q35_Test_Sideband);       --  the headless test profile
+
+   --  The firmware identity of the gpio-launch test profile (QEMU's
+   --  -machine x-oem-id / x-oem-table-id, written into every table's header).
+   Test_GPIO_OEM_ID       : constant PI.OEM_ID_Text := "CBTEST";
+   Test_GPIO_OEM_Table_ID : constant PI.OEM_Table_ID_Text := "GPIOBOOT";
 
    package Tables is new Platform_Quirk_Tables.Tables
      (Quirk => Quirk, Key => Platform_Key, Effect => Effect,
@@ -108,6 +115,19 @@ package Platform_Quirks with Pure, SPARK_Mode is
          Changes    => (Sideband => No_Sideband, Communities => ADL_N_Communities,
                         Controller => ADL_N_INTC1057),
          Source     => Platform_Quirk_Tables.Firmware_Tables),
+      --  The headless gpio-launch profile: the edu test profile whose
+      --  firmware says Test_GPIO_OEM_ID / Test_GPIO_OEM_Table_ID (QEMU's
+      --  x-oem-id and x-oem-table-id). It behaves as an Alder Lake-N whose
+      --  P2SB stays hidden: discovery runs (q35 has no 00:1F.1, so it does
+      --  not find), which opens the GPIO bootstrap admission for the test
+      --  controller (four spans of room, as Alder Lake-N).
+      QEMU_Q35_Test_GPIO_Bootstrap =>
+        (Applies_To => (Bridge => PP.QEMU_Q35_Test,
+                        Firmware => (Kind => PI.OEM_Table, OEM_ID => Test_GPIO_OEM_ID,
+                                     OEM_Table_ID => Test_GPIO_OEM_Table_ID, others => <>)),
+         Changes    => (Sideband => P2SB_SBREG, Communities => ADL_N_Communities,
+                        Controller => Test_CBIT1057),
+         Source     => Platform_Quirk_Tables.CuBit_Hardware_Log),
       QEMU_Q35_Test_Sideband =>
         (Applies_To => (Bridge => PP.QEMU_Q35_Test, Firmware => (Kind => PI.Any_Firmware, others => <>)),
          Changes    => (Sideband => Test_Stand_In, Communities => Test_Community,
@@ -123,6 +143,9 @@ package Platform_Quirks with Pure, SPARK_Mode is
           "IdeaPad Slim 3i DSDT GPI0._HID INTC1057 / _CRS four Memory32Fixed 64 KiB at " &
           "SBRG+0x6E/6D/6A/69_0000; Linux pinctrl-alderlake.c binds INTC1057 from _CRS; " &
           "laptop images 11/12: P2SB unhide ignored",
+        when QEMU_Q35_Test_GPIO_Bootstrap =>
+          "headless gpio-launch test profile: QEMU q35, edu, -machine x-oem-id=CBTEST," &
+          "x-oem-table-id=GPIOBOOT; q35 has no P2SB at 00:1F.1",
         when QEMU_Q35_Test_Sideband =>
           "headless platform-pool test profile: QEMU q35 with the edu device (docs/specs/edu.rst)");
 

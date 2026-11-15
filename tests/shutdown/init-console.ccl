@@ -1,0 +1,19 @@
+# PWR-003 slice 1 (tests/headless shutdown-console): (power-off) at the
+# CCL console, through the console's own requester badge on power.svc
+# (catalog role power-console, granted from this plan). The Desktop session
+# stops with the rest, in reverse order; shutdown-standin is the TEST
+# STAND-IN for acpi.svc's S5 (q35: \_S5 is 0).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "shutdown-standin.app" (priority 5) (stop-stage power-tail)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (arguments (Standin_Parameters s5_sleep_type => 0)))
+  (start "clock.svc" (priority 5) (stop-grace-ms 300))
+  (start "display.svc" (priority 5) (stop-grace-ms 500))
+  (start "desktop.svc" (priority 4) (stop-grace-ms 500))
+  (start "shutdown-stubborn.app" (priority 3) (stop-grace-ms 500))
+  (start "power.svc" (priority 5)
+    (arguments (Power_Parameters undeclared_grace_ms => 300 storage_deadline_ms => 10000
+                                 driver_grace_ms => 1000 button => Button_Policy.Ignore)))
+  (start "ccl-console.app" (priority 3))
+)

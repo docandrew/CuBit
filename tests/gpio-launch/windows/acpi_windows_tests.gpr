@@ -1,0 +1,29 @@
+--  Hosted tests of which register windows an ACPI-matched driver gets
+--  (Devmgr_ACPI_Windows) and of when its launch is released
+--  (Devmgr_Phase_Declarations), docs/device-matching.md "ACPI launch"; run.sh.
+project ACPI_Windows_Tests is
+   for Source_Dirs use (".", "../../../userspace/services/devmgr", "../../../userspace/ccl/src",
+                        "../../../userspace/runtime/gnat", "../../../shared/platform",
+                        "../../../userspace/lib/i2c-admission", "../../../userspace/lib/gpio-admission");
+   for Source_Files use
+     ("main.adb", "ccl.ads", "ccl-resource_sections.ads", "ccl-resource_sections.adb",
+      "ccl-scheduling_limits.ads",
+      "devmgr_acpi_windows.ads", "devmgr_acpi_windows.adb",
+      "cubit.ads", "cubit-consumer_initialization_exchange.ads",
+      "devmgr_phase_declarations.ads", "devmgr_phase_declarations.adb",
+      "cubit-hid_offer_exchange.ads", "hid_offer_payload.ads", "hid_offer_payload.adb",
+      "i2c_channel_badges.ads", "i2c_channel_badges.adb",
+      "gpio_channel_badges.ads", "gpio_channel_badges.adb",
+      "devmgr_hid_offers.ads", "devmgr_hid_offers.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use
+        ("--level=2", "--checks-as-errors=on", "--report=fail", "-j2");
+   end Prove;
+end ACPI_Windows_Tests;

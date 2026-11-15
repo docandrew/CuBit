@@ -5,7 +5,7 @@
 --  @summary
 --  Who holds which I/O ports: devmgr's record of the port ranges it has
 --  handed out (or the kernel keeps), so the ACPI windows it grants for
---  acpi-backend.svc and its drivers' ports never overlap
+--  acpi.svc and its drivers' ports never overlap
 --  (CuBit.ACPI_Window_Exchange, coordination/acpi-region-boundary.md).
 --
 --  @description

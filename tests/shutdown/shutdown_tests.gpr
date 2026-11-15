@@ -1,0 +1,15 @@
+--  Hosted tests of the root stop's pure parts (PWR-003 slice 1). run.sh
+--  links the units into build/links.
+project Shutdown_Tests is
+   for Source_Dirs use (".", "build/links", "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("shutdown_tests.adb", "cubit.ads", "cubit-system_stops.ads", "cubit-power_requests.ads",
+      "cubit-power_event_exchange.ads", "cubit-close_policies.ads", "shutdown_sequences.ads", "shutdown_sequences.adb",
+      "power_decisions.ads", "power_decisions.adb");
+   for Object_Dir use "build/tests";
+   for Exec_Dir use "build/tests";
+   for Main use ("shutdown_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g", "-O1");
+   end Compiler;
+end Shutdown_Tests;

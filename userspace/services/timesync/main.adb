@@ -11,6 +11,7 @@ with CuBit.Settings;
 with CuBit.Clocks;
 with CuBit.Clock_Control; use CuBit.Clock_Control;
 with CuBit.Clock_Control.Client;
+with CuBit.Control_Events;
 with SNTP;
 with Server_List;
 with Nonces;
@@ -230,6 +231,67 @@ procedure Main is
       return Result = Stepped;
    end Poll;
 
+   --  Between polls: sleep until Wait_Seconds from now, but wake for the
+   --  event lane. procmgr's Stop (a kernel control event; LIVE-002) ends
+   --  timesync: it holds nothing worth keeping (the next instance polls
+   --  again) and has no clients, so its startup entry may be (replace
+   --  transparent). A Stop that arrives during a poll is read once the
+   --  poll's bounded queries end. Other events are not timesync's: dropped.
+   --  A kernel notice (publisher No_Process) that is procmgr's Stop.
+   function Is_Stop (Item : Message) return Boolean is
+      use type CuBit.Control_Events.Event_Kind;
+      use type CuBit.Control_Events.Control_Kind;
+      Event : constant CuBit.Control_Events.Event :=
+        CuBit.Control_Events.Decode
+          (Item.tag.label, Item.tag.length, Item.words (0), Item.words (1), Item.words (2));
+   begin
+      return Event.Kind = CuBit.Control_Events.Control
+        and then Event.Control = CuBit.Control_Events.Stop;
+   end Is_Stop;
+
+   function Stop_Requested_Within (Wait_Seconds : Unsigned_64) return Boolean is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Until_Ms : constant Unsigned_64 :=
+        (if Now = Unsigned_64'Last or else Now > Unsigned_64'Last - 1 - Wait_Seconds * 1_000
+         then Unsigned_64'Last - 1 else Now + Wait_Seconds * 1_000);
+      Event, Stray : Message;
+      Publisher, From : Process_ID;
+      Found : Boolean;
+   begin
+      loop
+         while Poll_Event (Event, Publisher) loop
+            if Publisher = No_Process and then Is_Stop (Event) then
+               return True;
+            end if;
+         end loop;
+         --  Anything else that could keep the wait below from sleeping (a
+         --  stray message or completion; timesync has no role, so nobody
+         --  calls it) is consumed and dropped.
+         loop
+            Poll_Any_Ipc (From, Stray, Found);
+            exit when not Found;
+            --  An event that arrived after the drain above comes this way.
+            if From = No_Process and then Is_Stop (Stray) then
+               return True;
+            end if;
+         end loop;
+         declare
+            Clock_Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         begin
+            exit when Clock_Now = Unsigned_64'Last or else Clock_Now >= Until_Ms;
+         end;
+         if Wait_For_Activity_Until (Until_Ms) = Unavailable then
+            --  No activity wait: the plain sleep it replaced.
+            declare
+               Ignore : constant Unsigned_64 := syscall (SYSCALL_SLEEP, Wait_Seconds * 1_000);
+            begin
+               exit;
+            end;
+         end if;
+      end loop;
+      return False;
+   end Stop_Requested_Within;
+
    Ignore : Unsigned_64;
    Wait_Seconds : Unsigned_64;
 begin
@@ -267,6 +329,9 @@ begin
          Wait_Seconds := Unsigned_64'Min
            (Poll_Seconds, First_Retry_Seconds * 2 ** Natural'Min (Failures - 1, 10));
       end if;
-      Ignore := syscall (SYSCALL_SLEEP, Wait_Seconds * 1_000);
+      if Stop_Requested_Within (Wait_Seconds) then
+         CuBit.Log.Info ("timesync: stop requested; exiting");
+         return;
+      end if;
    end loop;
 end Main;

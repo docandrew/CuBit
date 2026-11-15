@@ -1,0 +1,9 @@
+# Start_Child (SUP-001, docs/otp-supervision-study.md): supervision-check
+# is a supervisor whose start-children scope is its may_launch list. It
+# has procmgr start supervision-child.app with typed parameters, takes the
+# child's exit event, checks procmgr's typed refusals, then ends with a
+# child still running, which procmgr must reap.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "supervision-check.app" (priority 3))
+)

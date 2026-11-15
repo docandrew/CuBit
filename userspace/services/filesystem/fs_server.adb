@@ -17,6 +17,7 @@ package body Fs_Server is
      renames Storage.mountBootImage;
    procedure Register_Volumes (OK : out Boolean) renames Storage.registerVolumes;
    procedure Attach_Storage (Sender : Process_ID; Msg : Message) renames Storage.handleAttach;
+   procedure Stop_Storage (Sender : Process_ID; Msg : Message) renames Storage.handleStorageStop;
    procedure Service_Client_Queues renames Client_Queues.serviceClientQueues;
    procedure Settle_Watches renames Watches.settleWatches;
    procedure Run_Copies renames Copies.runCopies;

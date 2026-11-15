@@ -26,6 +26,8 @@ with CuBit.Driver_Readiness;
 with CuBit.Logging;
 with CuBit.Log_Records;
 with Startup;
+with Fixture_Probe;
+with CuBit.Kernel_ABI;
 
 procedure Main is
    package LC renames Launch_Configuration;
@@ -290,11 +292,34 @@ begin
          Line ("generic-check: bring-up complete", CuBit.Log_Records.Information);
       end if;
    end;
+   --  Serve the gpio-launch fixtures' probe (Fixture_Probe): which
+   --  function this driver was launched for, and the badge a request
+   --  reached it with. Nothing else is answered.
    loop
       declare
-         Ignore : constant Activity_Result := Wait_For_Activity_Until (Unsigned_64'Last);
+         From : Process_ID;
+         Request : Message;
+         Found : Boolean;
+         Ignore : Unsigned_64;
+         Waited : Activity_Result;
       begin
-         null;
+         Poll_Service_Request (From, Request, Found);
+         if Found and then Request.tag.label = Fixture_Probe.Where_Label
+           and then Request.tag.length = Fixture_Probe.Request_Words
+         then
+            Ignore := reply
+              (From, (tag => (label => CuBit.Kernel_ABI.Reply_OK, length => Fixture_Probe.Reply_Words, protocol => 0,
+                              ipc => <>, reserved => 0),
+                      authorityTag => 0,
+                      words => [Fixture_Probe.Location_Word => Config.Location,
+                                Fixture_Probe.Badge_Word => Request.authorityTag, others => 0]));
+            Line ("generic-check: probed at " & LC.Location_Image (Config.Location) &
+                  " badge=" & Hex (Request.authorityTag), CuBit.Log_Records.Information);
+         elsif Found then
+            Ignore := reply (From, NULL_MESSAGE);
+         else
+            Waited := Wait_For_Activity_Until (Unsigned_64'Last);
+         end if;
       end;
    end loop;
 end Main;

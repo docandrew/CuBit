@@ -6,6 +6,8 @@ pragma Ada_2022;
 
 package body Launch_Configuration with SPARK_Mode is
 
+   use type Interrupt_Line_ABI.Trigger_Mode, Interrupt_Line_ABI.Pin_Polarity;
+
    function Header (Kind : Configuration_Kind) return Encoded
    with Pre  => Kind /= Device_Manager,
         Post => Header'Result.Length = Header_Words + Field_Count (Kind)
@@ -348,6 +350,151 @@ package body Launch_Configuration with SPARK_Mode is
       Value.Delivery := Delivery;
       Value.Vectors := Words (GENERIC_DELIVERY + 1);
       Valid := Valid_Generic (Value);
+      if not Valid then
+         Value := (others => <>);
+      end if;
+   end Decode;
+
+   --  Generic_ACPI words: 4 HID (8 bytes little-endian), 5 UID type, 6 UID,
+   --  7 epoch, 8 segment count, then the path two NameSegs a word (the
+   --  lower-numbered segment in the low half), then the window count and
+   --  (first, bytes) per window.
+   ACPI_HID_WORD        : constant := 4;
+   ACPI_UID_TYPE_WORD   : constant := 5;
+   ACPI_UID_WORD        : constant := 6;
+   ACPI_EPOCH_WORD      : constant := 7;
+   ACPI_SEGMENTS_WORD   : constant := 8;
+   ACPI_PATH_WORDS      : constant := 9;
+   SEGMENTS_PER_WORD    : constant := 2;
+   ACPI_WINDOW_TOTAL_WORD    : constant := ACPI_PATH_WORDS + Maximum_ACPI_Segments / SEGMENTS_PER_WORD;
+   ACPI_FIRST_WINDOW_WORD    : constant := ACPI_WINDOW_TOTAL_WORD + 1;
+   --  The parent line: its facts word (bit 0 present, bit 8 level trigger,
+   --  bit 16 active low, bit 24 shared, the GSI in the high half; no other
+   --  bit), then its vector.
+   ACPI_LINE_FACTS_WORD      : constant := ACPI_FIRST_WINDOW_WORD + 2 * Maximum_ACPI_Windows;
+   ACPI_LINE_VECTOR_WORD     : constant := ACPI_LINE_FACTS_WORD + 1;
+   LINE_PRESENT_BIT  : constant Unsigned_64 := 2 ** 0;
+   LINE_LEVEL_BIT    : constant Unsigned_64 := 2 ** 8;
+   LINE_LOW_BIT      : constant Unsigned_64 := 2 ** 16;
+   LINE_SHARED_BIT   : constant Unsigned_64 := 2 ** 24;
+   LINE_GSI_SHIFT    : constant := 32;
+   LINE_FLAG_BITS    : constant Unsigned_64 :=
+     LINE_PRESENT_BIT or LINE_LEVEL_BIT or LINE_LOW_BIT or LINE_SHARED_BIT;
+   LINE_LOW_HALF     : constant Unsigned_64 := 2 ** LINE_GSI_SHIFT - 1;
+   BYTE_BITS            : constant := 8;
+   SEGMENT_BITS         : constant := ACPI_Segment_Bytes * BYTE_BITS;
+   BYTE_MASK            : constant := 16#FF#;
+
+   function Pack (Text : String) return Unsigned_64
+   with Pre => Text'Length <= Word_Bytes;
+
+   function Pack (Text : String) return Unsigned_64 is
+      Result : Unsigned_64 := 0;
+   begin
+      for I in reverse Text'Range loop
+         Result := Shift_Left (Result, BYTE_BITS) or Unsigned_64 (Character'Pos (Text (I)));
+      end loop;
+      return Result;
+   end Pack;
+
+   function Unpack_Byte (Word : Unsigned_64; Index : Natural) return Character is
+     (Character'Val (Shift_Right (Word, Index * BYTE_BITS) and BYTE_MASK))
+   with Pre => Index < Word_Bytes;
+
+   function Encode (Value : Generic_ACPI_Configuration) return Encoded is
+      Result : Encoded := Header (Generic_ACPI);
+   begin
+      Result.Words (ACPI_HID_WORD) := Pack (Value.HID);
+      Result.Words (ACPI_UID_TYPE_WORD) := ACPI_UID_Kind'Enum_Rep (Value.UID_Type);
+      Result.Words (ACPI_UID_WORD) := Value.UID;
+      Result.Words (ACPI_EPOCH_WORD) := Value.Epoch;
+      Result.Words (ACPI_SEGMENTS_WORD) := Unsigned_64 (Value.Segments);
+      for W in 0 .. Maximum_ACPI_Segments / SEGMENTS_PER_WORD - 1 loop
+         Result.Words (ACPI_PATH_WORDS + W) :=
+           Pack (Value.Path (SEGMENTS_PER_WORD * W + 1))
+           or Shift_Left (Pack (Value.Path (SEGMENTS_PER_WORD * W + 2)), SEGMENT_BITS);
+      end loop;
+      Result.Words (ACPI_WINDOW_TOTAL_WORD) := Unsigned_64 (Value.Window_Total);
+      for K in ACPI_Window_Index loop
+         Result.Words (ACPI_FIRST_WINDOW_WORD + 2 * (K - 1)) := Value.Windows (K).First;
+         Result.Words (ACPI_FIRST_WINDOW_WORD + 2 * (K - 1) + 1) := Value.Windows (K).Bytes;
+      end loop;
+      Result.Words (ACPI_LINE_FACTS_WORD) :=
+        (if Value.Line.Present then LINE_PRESENT_BIT else 0)
+        or (if Value.Line.Trigger = Interrupt_Line_ABI.Level then LINE_LEVEL_BIT else 0)
+        or (if Value.Line.Polarity = Interrupt_Line_ABI.Active_Low then LINE_LOW_BIT else 0)
+        or (if Value.Line.Shared then LINE_SHARED_BIT else 0)
+        or Shift_Left (Unsigned_64 (Value.Line.GSI), LINE_GSI_SHIFT);
+      Result.Words (ACPI_LINE_VECTOR_WORD) := Unsigned_64 (Value.Line.Vector);
+      return Result;
+   end Encode;
+
+   procedure Decode
+     (Words : Word_Array; Value : out Generic_ACPI_Configuration; Valid : out Boolean)
+   is
+      Known : Boolean := False;
+   begin
+      Value := (others => <>);
+      Valid := False;
+      if not Header_Valid (Words, Generic_ACPI)
+        or else Words (ACPI_SEGMENTS_WORD) > Maximum_ACPI_Segments
+        or else Words (ACPI_WINDOW_TOTAL_WORD) > Maximum_ACPI_Windows
+      then
+         return;
+      end if;
+      for U in ACPI_UID_Kind loop
+         if ACPI_UID_Kind'Enum_Rep (U) = Words (ACPI_UID_TYPE_WORD) then
+            Value.UID_Type := U;
+            Known := True;
+         end if;
+      end loop;
+      if not Known then
+         return;
+      end if;
+      for I in ACPI_HID_Text'Range loop
+         Value.HID (I) := Unpack_Byte (Words (ACPI_HID_WORD), I - 1);
+      end loop;
+      for W in 0 .. Maximum_ACPI_Segments / SEGMENTS_PER_WORD - 1 loop
+         for Half in 0 .. SEGMENTS_PER_WORD - 1 loop
+            for I in ACPI_Name_Segment'Range loop
+               Value.Path (SEGMENTS_PER_WORD * W + Half + 1) (I) :=
+                 Unpack_Byte (Words (ACPI_PATH_WORDS + W), Half * ACPI_Segment_Bytes + I - 1);
+            end loop;
+         end loop;
+      end loop;
+      for K in ACPI_Window_Index loop
+         if Words (ACPI_FIRST_WINDOW_WORD + 2 * (K - 1)) not in Physical_Address
+           or else Words (ACPI_FIRST_WINDOW_WORD + 2 * (K - 1) + 1) not in Byte_Count
+         then
+            return;
+         end if;
+         Value.Windows (K) := (First => Words (ACPI_FIRST_WINDOW_WORD + 2 * (K - 1)),
+                               Bytes => Words (ACPI_FIRST_WINDOW_WORD + 2 * (K - 1) + 1));
+      end loop;
+      Value.UID := Words (ACPI_UID_WORD);
+      Value.Epoch := Words (ACPI_EPOCH_WORD);
+      Value.Segments := ACPI_Segment_Count (Words (ACPI_SEGMENTS_WORD));
+      Value.Window_Total := ACPI_Window_Count (Words (ACPI_WINDOW_TOTAL_WORD));
+      declare
+         Facts : constant Unsigned_64 := Words (ACPI_LINE_FACTS_WORD);
+      begin
+         if (Facts and LINE_LOW_HALF and not LINE_FLAG_BITS) /= 0
+           or else Words (ACPI_LINE_VECTOR_WORD) > Unsigned_64 (Parent_Line_Vector'Last)
+         then
+            Value := (others => <>);
+            return;
+         end if;
+         Value.Line :=
+           (Present  => (Facts and LINE_PRESENT_BIT) /= 0,
+            Vector   => Parent_Line_Vector (Words (ACPI_LINE_VECTOR_WORD)),
+            Trigger  => (if (Facts and LINE_LEVEL_BIT) /= 0 then Interrupt_Line_ABI.Level
+                         else Interrupt_Line_ABI.Edge),
+            Polarity => (if (Facts and LINE_LOW_BIT) /= 0 then Interrupt_Line_ABI.Active_Low
+                         else Interrupt_Line_ABI.Active_High),
+            Shared   => (Facts and LINE_SHARED_BIT) /= 0,
+            GSI      => Unsigned_32 (Shift_Right (Facts, LINE_GSI_SHIFT)));
+      end;
+      Valid := Valid_Generic_ACPI (Value);
       if not Valid then
          Value := (others => <>);
       end if;

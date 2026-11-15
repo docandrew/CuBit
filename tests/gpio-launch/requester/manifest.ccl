@@ -1,0 +1,11 @@
+# The ACPI launch regression's stand-in for acpi.svc (tests/headless,
+# gpio-launch): the validated com.cubit.acpi identity, approved for
+# acpi-hardware and acpi-firmware-data (devmgr's "hardware-data" endpoint,
+# over which the GPIO bootstrap admission is asked). No policy widening.
+(Executable_Manifest
+  identity => "com.cubit.acpi"
+  version => "0.1.0"
+  requests => [
+    (Request.Firmware_Snapshot "tables")
+    (Request.ACPI_Hardware "hardware")
+    (service "device-manager" "device-manager")])

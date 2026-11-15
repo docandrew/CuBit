@@ -15,6 +15,7 @@ with Fs_Server.Access_Control; use Fs_Server.Access_Control;
 with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Watches; use Fs_Server.Watches;
+with CuBit.System_Stops;
 
 package body Fs_Server.Storage is
 
@@ -463,5 +464,79 @@ package body Fs_Server.Storage is
          end if;
       end loop;
    end commitTick;
+
+   procedure handleStorageStop (sender : Process_ID; msg : Message) is
+      package STP renames CuBit.System_Stops;
+      Committed, Failed, Passed : Natural := 0;
+      Outcome : STP.Storage_Outcome := STP.Storage_Refused;
+      Answer : Message := NULL_MESSAGE;
+      Ignore : Unsigned_64;
+      status : Ext2.Flush_Status;
+   begin
+      if sender /= No_Process and then sender = Registered_Driver (DRIVER_PROCMGR)
+        and then msg.tag.length = STP.Storage_Request_Words
+        and then msg.words (STP.Request_Word) /= 0
+      then
+         --  Every client's buffered writes, as the periodic commit takes
+         --  them, before anything is committed.
+         for q in clientQueues'Range loop
+            if clientQueues (q).owner /= No_Process then
+               harvestOwner (q);
+            end if;
+         end loop;
+         for slot in files'Range loop
+            if files (slot).active and then files (slot).objectKind = FILE_OBJECT then
+               reportModified (slot);
+            end if;
+         end loop;
+         settleWatches;
+         for V in 1 .. Volume_List.Count (Volumes) loop
+            if Contexts (V).Status = Admitted then
+               declare
+                  fs : Ext2.Filesystem renames Contexts (V).Fs;
+                  Name : constant String := Volume_List.Name (Volumes, V);
+               begin
+                  if fs.writeQuarantined
+                    or else CuBit.Block_Devices.Is_Read_Only (fs.device.description)
+                    or else not CuBit.Block_Devices.Can_Persist (fs.device.description)
+                  then
+                     --  Nothing it holds can be made durable here.
+                     Passed := Passed + 1;
+                     debugPrint ("FS: stop: " & Name & " passed over (read-only or volatile)" & LF);
+                  else
+                     Ext2.Detach (fs, status);
+                     if status = Ext2.Flush_Complete then
+                        Committed := Committed + 1;
+                        --  Detached: nothing more is written to it.
+                        fs.writeQuarantined := True;
+                        debugPrint ("FS: stop: " & Name & " committed and detached" &
+                                    (if (fs.sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0
+                                     then " (journal empty, needs_recovery clear)" else "") & LF);
+                     else
+                        Failed := Failed + 1;
+                        debugPrint ("FS: stop: " & Name & " commit FAILED (" &
+                                    Ext2.Flush_Status'Image (status) & "); its journal replays at the next boot" &
+                                    LF);
+                     end if;
+                  end if;
+               end;
+            end if;
+         end loop;
+         Outcome := (if Failed > 0 then STP.Partly_Committed
+                     elsif Committed = 0 then STP.Nothing_Written
+                     else STP.Committed);
+         debugPrint ("FS: stop: storage " & STP.Name (Outcome) & ":" & Natural'Image (Committed) &
+                     " committed," & Natural'Image (Failed) & " failed," & Natural'Image (Passed) &
+                     " passed over" & LF);
+      else
+         debugPrint ("FS: stop refused (not procmgr, or malformed)" & LF);
+      end if;
+      Answer.tag := (label => STP.Storage_Operation, length => STP.Storage_Reply_Words,
+                     protocol => 0, ipc => <>, reserved => 0);
+      Answer.words (STP.Reply_Request_Word) := msg.words (STP.Request_Word);
+      Answer.words (STP.Storage_Status_Word) := STP.Storage_Outcome'Enum_Rep (Outcome);
+      Answer.words (STP.Volumes_Word) := STP.Counts_Word (Committed, Failed, Passed, 0);
+      Ignore := reply (sender, Answer);
+   end handleStorageStop;
 
 end Fs_Server.Storage;

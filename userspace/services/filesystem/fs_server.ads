@@ -53,6 +53,8 @@ package Fs_Server is
    procedure Register_Volumes (OK : out Boolean);
    --  devmgr attaches a block driver's endpoint (Fs_Attachments).
    procedure Attach_Storage (Sender : Process_ID; Msg : Message);
+   --  procmgr's root stop: commit and detach every volume (PWR-003).
+   procedure Stop_Storage (Sender : Process_ID; Msg : Message);
 
    --  The loop's steps: queued requests first, then watches and copies;
    --  block only when nothing waits (Arm_Client_Queues False), without

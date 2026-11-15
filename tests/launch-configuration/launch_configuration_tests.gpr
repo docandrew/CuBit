@@ -2,7 +2,7 @@
 --  system publication layouts (run.sh).
 project Launch_Configuration_Tests is
    for Source_Dirs use (".", "../../shared/launch", "../../shared/publications",
-                        "../../shared/time");
+                        "../../shared/time", "../../shared/interrupts");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");

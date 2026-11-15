@@ -1,0 +1,18 @@
+# PWR-003 (tests/headless shutdown-desktop, shutdown-desktop-cancel): Shut
+# Down... in Desktop's Apps menu, by keyboard: Super, Up (to Shut Down...),
+# Enter, then Enter (Shut Down) or Escape (Cancel) at the confirmation.
+# Desktop asks power.svc with its own requester badge (power-desktop).
+# shutdown-standin is the TEST STAND-IN for acpi.svc's S5.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "shutdown-standin.app" (priority 5) (stop-stage power-tail)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (arguments (Standin_Parameters s5_sleep_type => 0)))
+  # Before Desktop: Desktop's power-desktop request resolves at its launch.
+  (start "power.svc" (priority 5)
+    (arguments (Power_Parameters undeclared_grace_ms => 300 storage_deadline_ms => 10000
+                                 driver_grace_ms => 1000 button => Button_Policy.Ignore)))
+  (start "display.svc" (priority 5) (stop-grace-ms 500))
+  (start "desktop.svc" (priority 4) (stop-grace-ms 2000))
+  (start "shutdown-stubborn.app" (priority 3) (stop-grace-ms 500))
+)

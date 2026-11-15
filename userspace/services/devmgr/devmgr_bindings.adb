@@ -36,6 +36,22 @@ package body Devmgr_Bindings with SPARK_Mode => On is
       DI.Bind (Index, F, Result);
    end Bind;
 
+   procedure Bind_ACPI (HID : String; Result : out DI.Binding) is
+      ID : DS.ACPI_Text := [others => ASCII.NUL];
+      Length : DS.ACPI_Length := 0;
+   begin
+      Result := (others => <>);
+      --  The text up to its first NUL.
+      for C of HID loop
+         exit when C = ASCII.NUL;
+         Length := Length + 1;
+         ID (Length) := C;
+      end loop;
+      if DS.Valid_ID (ID, Length) then
+         DI.Bind_ACPI (Index, ID, Length, Result);
+      end if;
+   end Bind_ACPI;
+
    function Platform_Driver (P : DS.Platform_Device) return DI.Driver_Count is
    begin
       for D in 1 .. Loaded_Index.Count loop

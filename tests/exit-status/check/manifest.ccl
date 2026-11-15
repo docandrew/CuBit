@@ -1,0 +1,9 @@
+# exit-status-check (tests/exit-status, headless test exit-status; LIVE-002):
+# ends the way its typed parameter says, so procmgr's exit lines show the
+# status the user runtime gives each ending.
+(type Exit_Ending (enum Returns Sets_Failure Raises))
+(type Exit_Status_Parameters (record (ending Exit_Ending)))
+(Executable_Manifest
+  identity => "com.cubit.exit-status-check"
+  version => "1"
+  parameters => (Parameter_Signature.Declared "Exit_Status_Parameters"))

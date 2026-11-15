@@ -130,12 +130,21 @@ package body Devmgr_Launches is
       Payload     : LC.Encoded;
       Name        : String (1 .. Devmgr_Children.Name_Bytes) := [others => ' '];
       Name_Length : Natural range 0 .. Devmgr_Children.Name_Bytes := 0;
+      --  PWR-003: its declared root-stop stage is Power_Tail.
+      Tail        : Boolean := False;
    end record;
 
    Launches : array (Child range 1 .. Child'Last) of Launch;
 
    function Name_Of (Item : Child) return String is
      (Launches (Item).Name (1 .. Launches (Item).Name_Length));
+
+   function Used (Item : Child) return Boolean is (Launches (Item).Used);
+   procedure Set_Power_Tail (Item : Child) is
+   begin
+      Launches (Item).Tail := True;
+   end Set_Power_Tail;
+   function Power_Tail (Item : Child) return Boolean is (Launches (Item).Tail);
 
    procedure Configure (Process_Root : H.Process; Notifications : H.Notification) is
    begin

@@ -6,20 +6,15 @@
  * the shared one (userspace/runtime/start/cubit_start.S), which keeps the
  * launch block's lengths and calls __cubit_language_start below. That
  * zeroes BSS, installs the main thread's thread area, runs the C
- * constructors, calls main(), then exits with main's return value. An Ada main is a procedure: when Ada.Command_Line
- * set an exit status, that is the exit code instead of main's RAX.
+ * constructors, calls main(), then exits with main's return value. An Ada
+ * program's main is the binder's function, which returns the status
+ * Ada.Command_Line holds (Success unless the program set another; LIVE-002,
+ * userspace/runtime/gnat/system.ads Exit_Status_Supported).
  */
 
     .intel_syntax noprefix
     .include "cubit_start.S"
     .att_syntax prefix
-
-.section .bss
-.balign 8
-.global __cubit_exit_status
-.global __cubit_exit_status_set
-__cubit_exit_status:             .quad 0
-__cubit_exit_status_set:         .quad 0
 
 .section .text
 .global __cubit_language_start
@@ -72,12 +67,9 @@ __cubit_language_start:
     xorq    %rsi, %rsi      /* argv = NULL */
     call    main
 
-    /* Exit with return value from main (in %eax), or the recorded status */
-    movq    %rax, %rdi
-    cmpq    $0, __cubit_exit_status_set(%rip)
-    je      .exit_now
-    movq    __cubit_exit_status(%rip), %rdi
-.exit_now:
+    /* Exit with main's return value (an int in %eax; the kernel keeps
+     * the low 8 bits). */
+    movl    %eax, %edi
     call    _exit
 
 _exit:

@@ -1,2 +1,4 @@
 (Component name => "generic-check" kind => Kind.Driver
-  source => (Source.Ada (Ada_Source language => Ada_Language.Ada_2022)))
+  source => (Source.Ada (Ada_Source
+    sources => ["tests/gpio-launch/common"]
+    language => Ada_Language.Ada_2022)))
