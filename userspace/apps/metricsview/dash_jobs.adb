@@ -1,6 +1,5 @@
 pragma Ada_2022;
 with Ada.Unchecked_Deallocation;
-with Dash_Model;
 with Dash_Sync;
 
 package body Dash_Jobs is
@@ -17,7 +16,6 @@ package body Dash_Jobs is
    package body Worker is
       type Bytes_Access is access String;
       Buffer : Bytes_Access;
-      Opened : access Dash_Model.Dashboard;
 
       procedure Step (V : in out Dash_View.View) is
          J : Dash_View.Job;
@@ -48,25 +46,17 @@ package body Dash_Jobs is
                   end;
                when Dash_View.Open_File =>
                   declare
-                     Got : Natural;
+                     Got : Natural := 0;
                      Result : File_Result;
-                     Checked : Dash_Model.Load_Result;
                   begin
                      if Buffer = null then
                         Buffer := new String (1 .. Maximum_File_Bytes);
-                        Opened := new Dash_Model.Dashboard;
                      end if;
                      Read (Leaf, Buffer.all, Got, Result);
-                     if Result = File_Done then
-                        Dash_Model.Load (Buffer (1 .. Got), Opened.all, Checked);
-                     end if;
                      Dash_Sync.Lock;
                      Dash_View.End_Open
-                       (V, Leaf, Opened.all, Result = File_Done and then Checked.Success,
-                        (if Result /= File_Done then "can't read it: " & Reason_For (Result)
-                         elsif not Checked.Success
-                         then Checked.Message (1 .. Checked.Message_Length)
-                         else ""));
+                       (V, Leaf, Buffer (1 .. (if Result = File_Done then Got else 0)), Result = File_Done,
+                        (if Result /= File_Done then "can't read it: " & Reason_For (Result) else ""));
                      Dash_Sync.Unlock;
                   end;
                when Dash_View.Save_New_File =>

@@ -5,9 +5,8 @@
 --  @summary
 --  The dashboards folder's work (MET-002's app), on the data thread: the
 --  window's requests (a listing, a dashboard opened, the dashboard saved as
---  a new file) done with the lock let go, and answered. A dashboard opened
---  is checked against the Dashboard type here (CCL, never a hand-written
---  reader); one that does not check is refused with the checker's message.
+--  a new file) done with the lock let go, and answered. The window checks
+--  a dashboard opened against its type (Dash_View.End_Open).
 --
 --  @description
 --  Platform-free: CuBit's filesystem queue (native/dash_runner) and the

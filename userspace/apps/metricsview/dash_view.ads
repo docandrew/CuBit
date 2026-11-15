@@ -143,9 +143,11 @@ package Dash_View is
       Ready : Boolean := False;
    end record;
    procedure End_List (V : in out View; Listing : Folder_Listing);
-   --  Open_File's answer: D checked (Opened), or why not (the checker's
-   --  message when it does not check); the window's dashboard stays then.
-   procedure End_Open (V : in out View; Leaf : String; D : Dash_Model.Dashboard; Opened : Boolean; Reason : String);
+   --  Open_File's answer: the file's bytes (Read), or why not. The window
+   --  checks them against the Dashboard type at its next refresh (the
+   --  checker wants more stack than the data thread has), shows the
+   --  checker's message when they do not check, and keeps its dashboard.
+   procedure End_Open (V : in out View; Leaf : String; Source : String; Read : Boolean; Reason : String);
    --  Save_New_File's: the source written as Leaf (Save_Source, taken in
    --  the same hold as the job), or why not.
    procedure End_Save_New (V : in out View; Leaf : String; Saved : Boolean; Reason : String);

@@ -370,6 +370,7 @@ package body Dash_View is
    List_Answer : Folder_Listing;
    List_Answered, Open_Answered, Open_Done, Save_Answered, Save_Done : Boolean := False;
    Open_Board : Board_Access_Answer;
+   Open_Source : Caption_Access;
    Open_Leaf, Save_Leaf : Files.File_Name;
    Answer_Reason : String (1 .. Maximum_Notice) := [others => ' '];
    Answer_Reason_Length : Natural range 0 .. Maximum_Notice := 0;
@@ -2644,9 +2645,13 @@ package body Dash_View is
                declare
                   L : constant String := "n = " & Format.Value_Text (Tracks (First).Stats.Count, Format.Count);
                begin
-                  Right := Right - UI_Text_Width (L);
-                  Text (C, Right, Y, L, K.Muted);
-                  Right := Right - Legend_Gap;
+                  --  Only beside the title, never over it.
+                  if Right > H.x + UI_Text_Width (L) + Legend_Gap + Emphasis_Text_Width (Dash_Model.Image (Item.Title))
+                  then
+                     Right := Right - UI_Text_Width (L);
+                     Text (C, Right, Y, L, K.Muted);
+                     Right := Right - Legend_Gap;
+                  end if;
                end;
             end if;
             if Item.Budget > 0 then
@@ -3995,7 +4000,6 @@ package body Dash_View is
       Selected_Series, Selected_View : Natural := 0;
       Shown : Dash_Choices.View_Choice;
       Shown_Found : Boolean;
-      Last_Group : Dash_Model.Text;
       procedure Add_Series (Source : Dash_Choices.Source_Choice; Caption : String) is
       begin
          if Series_Model.Count < CB.Max_Choices then
@@ -4034,9 +4038,13 @@ package body Dash_View is
             Name : constant String := Dash_Model.Image (Catalog (K).Name);
             Group : constant String := Dash_Choices.Group_Of (Name);
          begin
-            --  A group of two or more, before its first member.
-            if Group'Length > 0 and then Dash_Model.Image (Last_Group) /= Group and then Group_Size (Group) > 1 then
-               Last_Group := Dash_Model.To_Text (Group);
+            --  A group of two or more, once, before its first member (the
+            --  names are sorted, but a deeper group can come between two
+            --  members of a shallower one).
+            if Group'Length > 0 and then Group_Size (Group) > 1
+              and then (for all J in 1 .. K - 1 =>
+                          Dash_Choices.Group_Of (Dash_Model.Image (Catalog (J).Name)) /= Group)
+            then
                Add_Series ((Name => Dash_Model.To_Text (Group), Match => Dash_Model.Prefix),
                            Dash_Choices.Caption (Dash_Choices.Source_Choice'(Dash_Model.To_Text (Group),
                                                                              Dash_Model.Prefix))
@@ -4623,6 +4631,13 @@ package body Dash_View is
       end case;
    end Run_Command;
 
+   procedure Keep_Reason (Reason : String);
+   procedure Keep_Reason (Reason : String) is
+   begin
+      Answer_Reason_Length := Natural'Min (Reason'Length, Maximum_Notice);
+      Answer_Reason (1 .. Answer_Reason_Length) := Reason (Reason'First .. Reason'First + Answer_Reason_Length - 1);
+   end Keep_Reason;
+
    --  The data thread's answers, taken at the UI thread's refresh.
    procedure Take_Answers (Damage : in out Rect) is
    begin
@@ -4690,6 +4705,20 @@ package body Dash_View is
       end if;
       if Open_Answered then
          Open_Answered := False;
+         if Open_Done and then Open_Source /= null then
+            --  Checked against the Dashboard type here (CCL, never a
+            --  hand-written reader).
+            declare
+               Checked : Dash_Model.Load_Result;
+            begin
+               Dash_Model.Load (Open_Source.all, Open_Board.all, Checked);
+               Free (Open_Source);
+               if not Checked.Success then
+                  Open_Done := False;
+                  Keep_Reason (Checked.Message (1 .. Checked.Message_Length));
+               end if;
+            end;
+         end if;
          if Open_Done then
             if Dialogs.Is_Open (Dialog) then
                Close_Dialog (Damage);
@@ -4998,13 +5027,6 @@ package body Dash_View is
       end if;
    end Take_Job;
 
-   procedure Keep_Reason (Reason : String);
-   procedure Keep_Reason (Reason : String) is
-   begin
-      Answer_Reason_Length := Natural'Min (Reason'Length, Maximum_Notice);
-      Answer_Reason (1 .. Answer_Reason_Length) := Reason (Reason'First .. Reason'First + Answer_Reason_Length - 1);
-   end Keep_Reason;
-
    procedure End_List (V : in out View; Listing : Folder_Listing) is
       pragma Unreferenced (V);
    begin
@@ -5012,15 +5034,17 @@ package body Dash_View is
       List_Answered := True;
    end End_List;
 
-   procedure End_Open (V : in out View; Leaf : String; D : Dash_Model.Dashboard; Opened : Boolean; Reason : String)
-   is
+   procedure End_Open (V : in out View; Leaf : String; Source : String; Read : Boolean; Reason : String) is
       pragma Unreferenced (V);
       Accepted : Boolean;
    begin
       Files.Set (Open_Leaf, Leaf, Accepted);
-      Open_Done := Opened;
-      if Opened then
-         Open_Board.all := D;
+      Open_Done := Read;
+      if Open_Source /= null then
+         Free (Open_Source);
+      end if;
+      if Read then
+         Open_Source := new String'(Source);
       end if;
       Keep_Reason (Reason);
       Open_Answered := True;
@@ -5501,10 +5525,22 @@ package body Dash_View is
       return N;
    end Resolved_Tracks;
 
+   --  A prefix keeps Prefix_Tracks places; those past the series under it
+   --  (Missing beyond the first) are room, not series.
    function Track_Total (V : View) return Natural is
       pragma Unreferenced (V);
+      N : Natural := 0;
    begin
-      return (if Tracks = null then 0 else Tracks'Length);
+      if Tracks /= null then
+         for T of Tracks.all loop
+            if not (T.Spec.Match = Dash_Model.Prefix and then T.Match_Index > 1
+                    and then T.State = Dash_Tracks.Missing)
+            then
+               N := N + 1;
+            end if;
+         end loop;
+      end if;
+      return N;
    end Track_Total;
 
    function Columns_With_Data (V : View) return Natural is

@@ -370,6 +370,11 @@ procedure Metricsview_View_Tests is
       Feed.Add_Series ("metricsview.input_to_render_us", Dash_Feeds.Distribution, Charts_Format.Microseconds);
       Feed.Add_Series ("metricsview.update_us", Dash_Feeds.Distribution, Charts_Format.Microseconds);
       Feed.Add_Series ("metricsview.render_us", Dash_Feeds.Distribution, Charts_Format.Microseconds);
+      --  Two series of a shallow group ("desktop.") on either side of the
+      --  deeper groups (the picker lists each group once).
+      Feed.Add_Series ("desktop.completion_dispatch", Dash_Feeds.Distribution, Charts_Format.Microseconds);
+      Feed.Add_Series ("desktop.input_dispatch", Dash_Feeds.Distribution, Charts_Format.Microseconds);
+      Feed.Add_Series ("desktop.frames.presented", Dash_Feeds.Counter, Charts_Format.Count);
    end Add_Series;
 
    Loaded : Dash_Model.Load_Result;
@@ -1071,6 +1076,12 @@ begin
              and then Choice_Index (Dash_View.Series_Field, "desktop.latency.*  (10 series)") /= 0,
              "the picker lists the store's series and their groups:"
              & Dash_View.Picker_Choices (View, Dash_View.Series_Field)'Image);
+      Check ((for all I in 1 .. Dash_View.Picker_Choices (View, Dash_View.Series_Field) =>
+                (for all J in I + 1 .. Dash_View.Picker_Choices (View, Dash_View.Series_Field) =>
+                   Dash_View.Picker_Choice (View, Dash_View.Series_Field, I)
+                   /= Dash_View.Picker_Choice (View, Dash_View.Series_Field, J)))
+             and then Choice_Index (Dash_View.Series_Field, "desktop.*  (14 series)") /= 0,
+             "each series and group is listed once");
       Check_Coherent ("picker-open");
       Repaint_All;
       Save_PPM ("14-picker");
@@ -1092,6 +1103,16 @@ begin
       Check (Dash_View.Resolved_Tracks (View) = Dash_View.Track_Total (View)
              and then Dash_View.Columns_With_Data (View) > 0, "the re-sourced panel reads its series");
       Check_Coherent ("picker-picked");
+      --  A group of three: the panel reads all three, and the places a
+      --  prefix keeps beyond them are not counted as series.
+      Choose (Dash_View.Series_Field, "metricsview.*  (3 series)");
+      for I in 1 .. 3 loop
+         Frame;
+      end loop;
+      Check (Dash_View.Resolved_Tracks (View) = Dash_View.Track_Total (View),
+             "a picked group reads every series under it:" & Dash_View.Resolved_Tracks (View)'Image & " of"
+             & Dash_View.Track_Total (View)'Image);
+      Interact (Key (Dash_View.Undo, Control => True), "picker undo group");
       Interact (Key (Dash_View.Next_Panel), "picker tab");
       Interact (Key (Dash_View.Down), "picker view down");
       declare

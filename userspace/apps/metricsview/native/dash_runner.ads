@@ -27,7 +27,8 @@ package Dash_Runner is
    --  How often the data thread looks at the pushed ring when nothing
    --  wakes it: well inside a frame, and a ring read costs no call.
    Data_Poll_Ms : constant := 4;
-   --  The data thread's stack.
+   --  The data thread's stack. (It never runs the CCL checker, whose
+   --  frames take megabytes: the UI thread checks opened dashboards.)
    Data_Stack_Bytes : constant := 1_048_576;
 
    --  Start the data thread. False: it could not be made (the UI thread
