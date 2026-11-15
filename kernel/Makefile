@@ -1994,6 +1994,17 @@ calculator: ccl-build user_runtime ccl-manifest ui-fonts-native
 	$(CCL_BUILD) ../userspace/apps/calculator/component.ccl
 	cp ../userspace/apps/calculator/build/calculator.app isodir/boot/calculator.app
 
+.PHONY : metricsview
+# Metrics (MET-002's app): dashboards over metrics.svc's series; the charts
+# core in userspace/lib/charts.
+metricsview: ccl-build user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/metricsview/build
+	$(CCL_BUILD) ../userspace/apps/metricsview/component.ccl
+	cp ../userspace/apps/metricsview/build/metricsview.app isodir/boot/metricsview.app
+
+isodir/boot/metricsview.app: metricsview
+	@test -s $@
+
 # The dictionary, thesaurus and spelling service (docs/lexicon.md): it reads
 # the lexicon asset package and answers Lexicon_Channel channels.
 .PHONY : lexicon
@@ -2508,7 +2519,7 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app isodir/boot/text.app \
 	isodir/boot/calculator.app isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
-	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/trace-viewer.app isodir/boot/config-storage.svc \
+	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/metricsview.app isodir/boot/trace-viewer.app isodir/boot/config-storage.svc \
 	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/bible.app \
 	$(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
