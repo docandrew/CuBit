@@ -1,5 +1,5 @@
 pragma Ada_2022;
-with CuBit.Grant_References;
+with CuBit.Control_Events;
 with CuBit.Messages;
 with CuBit.Process_IDs;
 with GPIO_Native_Client;
@@ -26,14 +26,13 @@ with Startup;
 procedure Main is
    package W renames I2C_Transfer_Wire;
    package D renames HID_I2C_Descriptors;
-   package G renames CuBit.Grant_References;
    package P renames CuBit.Process_IDs;
    package Clock renames HID_Native_Clock;
    package Startup_Policy renames HID_Startup_Readiness;
    use type W.Word, D.Byte_Count;
    Raw : constant Parameters.HID_Parameters_Value := Parameters.Value;
    -- Compiled resource ceilings, not claims about the attached hardware.
-   Report_Bytes : constant D.Byte_Count := D.Byte_Count (G.Page_Bytes);
+   Report_Bytes : constant D.Byte_Count := 4096;
    Input_Bytes : constant D.Byte_Count := 1024;
    Output_Bytes : constant D.Byte_Count := 1024;
    Transfer_Bytes : constant W.Capacity := W.Capacity
@@ -77,7 +76,9 @@ procedure Main is
    package Native is new HID_Touchpad_Native (Reset, App, Live, GPIO_Badge);
    package Publication is new HID_Touchpad_Native_Publication (App, Startup.Mouse_Events, Output_Burst);
    package Log is new HID_Native_Log (Startup.Logstore);
-   package Events is new HID_Native_System_Events (Log.Grant_Notice);
+   procedure Grant_Notice (Item : CuBit.Control_Events.Event) is
+   begin Memory.Grant_Notice (Item); Log.Grant_Notice (Item); end Grant_Notice;
+   package Events is new HID_Native_System_Events (Grant_Notice);
    package Pump is new HID_Touchpad_Pump (Native, Publication.Output, Queue_Rounds,
       Clock.Sample_Time, Clock.Cache_Time, HID_Native_Queues.Poll_Completion,
       HID_Native_Queues.Poll_Event, HID_Native_Queues.Drain_Request, Events.Handle);
@@ -98,7 +99,7 @@ procedure Main is
    Progress : Pump.Report;
    Activity : CuBit.Messages.Activity_Result;
    Closed : Memory.Client.Close_Result := Memory.Client.Still_Owned;
-   Close_Attempted : Boolean := False;
+   Channel_Wait_Ready : Boolean := False;
    function Coordinate_Details return String is
       Geometry : constant App.Source.Reports.Coordinate_Report := App.Admission.Binding.Coordinates;
    begin
@@ -159,6 +160,7 @@ begin
       Live.Request_Stop (Now, Available);
    end if;
    loop
+      Memory.Resume;
       declare Dispatch_Limit : constant W.Word :=
         (if Startup_Limit.Available then Startup_Policy.Wake_Deadline
            (Readiness, Startup_Limit.Limit, Pump.No_Startup_Deadline)
@@ -199,14 +201,13 @@ begin
             " gpio=" & Live.Owner.Failure'Image (Live.Observe.Reason));
          Log.Summary;
          if Live.Quiescent then
-            if not Close_Attempted then
-               Close_Attempted := True; App.Close (Closed);
-            end if;
+            -- App.Close initiates once, then only polls its typed receipt.
+            App.Close (Closed);
             if Closed = Memory.Client.Closed and then Native.Drained then
                Log.Disable;
                if Log.Detached then return; end if;
             end if;
-            -- Failed/uncertain close is retained, never retried implicitly.
+            -- Pending retirement is retained; no close/revoke is resent.
          end if;
       end if;
       -- Main may have submitted cleanup after Pump chose its wait. Recompute
@@ -235,6 +236,8 @@ begin
             end if;
          end;
       end if;
+      Memory.Prepare_Wait (Channel_Wait_Ready);
+      if not Channel_Wait_Ready then Progress.Wait_For := Pump.Immediate; end if;
       Waiter.Await (Progress, Waiter.Backoff_Milliseconds (Raw.timing.idle_backoff), Activity);
    end loop;
 end Main;

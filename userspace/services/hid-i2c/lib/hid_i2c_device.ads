@@ -61,10 +61,6 @@ package HID_I2C_Device with SPARK_Mode is
    procedure Start (S : in out State; Sender : CuBit.Process_IDs.Process_ID;
       Descriptor_Register : D.Register_Number; Deadline : W.Millisecond;
       Now : W.Word; Clock_Available : Boolean; Result : out Request_Result);
-   procedure Receive (S : in out State; Token : W.Word; Sender : CuBit.Process_IDs.Process_ID;
-      Delivery : T.Delivery_Status; Label : W.Operation; Protocol : W.Word;
-      Words : W.Message_Words; Now : W.Word; Clock_Available : Boolean;
-      Result : out T.Completion_Result);
    procedure Step (S : in out State; Now : W.Word; Clock_Available : Boolean);
    procedure Reset_Interrupt (S : in out State; Ticket : W.Word; Result : out Interrupt_Result);
    procedure Request_Input (S : in out State; Deadline : W.Millisecond;

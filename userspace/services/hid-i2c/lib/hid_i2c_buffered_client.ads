@@ -1,77 +1,69 @@
 pragma Ada_2022;
-with I2C_Transfer_Wire;
-with HID_I2C_Grant_Creation;
-with HID_I2C_Descriptors;
-with HID_I2C_Transactions;
-with CuBit.Grant_References;
-with CuBit.Process_IDs;
+with I2C_Transfer_Wire; with I2C_Channel_Wire;
+with HID_I2C_Descriptors; with HID_I2C_Channel_Lifetime; with CuBit.Process_IDs;
 generic
    Maximum_Transfer : I2C_Transfer_Wire.Capacity;
-   with procedure Allocate (Bytes : I2C_Transfer_Wire.Word; Address : out I2C_Transfer_Wire.Word; OK : out Boolean);
-   with procedure Release (Address, Bytes : I2C_Transfer_Wire.Word; OK : out Boolean);
-   with procedure Clear (Address, Bytes : I2C_Transfer_Wire.Word);
-   with procedure Store (Address : I2C_Transfer_Wire.Word; Data : HID_I2C_Descriptors.Bytes);
-   with procedure Load (Address : I2C_Transfer_Wire.Word; Data : out HID_I2C_Descriptors.Bytes);
-   with procedure Create (Address, Pages : I2C_Transfer_Wire.Word; Writable : Boolean;
-                         Reference : out CuBit.Grant_References.Reference; Status : out HID_I2C_Grant_Creation.Status);
-   with procedure Submit (Item : I2C_Transfer_Wire.Request; Token : I2C_Transfer_Wire.Word; Accepted : out Boolean);
-   with procedure Revoke (Item : CuBit.Grant_References.Reference; Accepted : out Boolean);
-   with function Retired (Item : CuBit.Grant_References.Reference) return Boolean;
+   -- One session bound to the admitted endpoint/expected peer. Open may wait
+   -- only down-layer and only until this explicit finite startup deadline.
+   with procedure Open_Channel (Expected_Peer : CuBit.Process_IDs.Process_ID;
+      Deadline : I2C_Transfer_Wire.Millisecond; Ready : out Boolean);
+   with procedure Store_Write (Data : HID_I2C_Descriptors.Bytes; Stored : out Boolean);
+   with procedure Load_Read (Data : out HID_I2C_Descriptors.Bytes; Loaded : out Boolean);
+   with procedure Submit_Header (Header : I2C_Channel_Wire.Raw_Request;
+      Token : I2C_Transfer_Wire.Word; Accepted : out Boolean);
+   with procedure Poll_Answer (Token : I2C_Transfer_Wire.Word;
+      Words : out I2C_Transfer_Wire.Completion_Words; Available, Ended : out Boolean);
+   -- Available and Ended are mutually exclusive. Answers come only from the
+   -- expected peer's channel mapping, copied before interpreting any field.
+   with procedure Close_Channel;
+   with function Retirement_Confirmed return Boolean;
+   -- Close_Channel captures the typed receipt once. Its query is authoritative
+   -- kernel retirement of that session's own region, not Is_Open=False.
 package HID_I2C_Buffered_Client with SPARK_Mode is
-   use type I2C_Transfer_Wire.Word;
    package W renames I2C_Transfer_Wire;
    package D renames HID_I2C_Descriptors;
    package P renames CuBit.Process_IDs;
-   package G renames CuBit.Grant_References;
-   package Transactions is new HID_I2C_Transactions (Submit, Revoke, Retired);
+   package Transactions is new HID_I2C_Channel_Lifetime (Submit_Header);
    use type Transactions.Phase, W.Count;
    Transfer_Capacity : constant W.Capacity := Maximum_Transfer;
-   Page_Bytes : constant W.Word := G.Page_Bytes;
-   Page_Count : constant W.Word := (W.Word (Maximum_Transfer) + Page_Bytes - 1) / Page_Bytes;
-   Allocation_Bytes : constant W.Word := Page_Count * Page_Bytes;
-   type Setup_Result is (Buffers_Ready, Already_Initialized, Client_Quarantined, Not_Idle, Invalid_Sender,
-      Input_Allocation_Failed, Output_Allocation_Failed, Invalid_Allocation);
+   type Setup_Result is (Buffers_Ready, Already_Initialized, Client_Quarantined,
+      Not_Idle, Invalid_Sender, Channel_Refused);
    type Start_Result is (Submitted, Request_Rejected, Client_Not_Ready, Client_Busy,
-      Input_Grant_Refused, Output_Grant_Refused, Input_Grant_Uncertain, Output_Grant_Uncertain, Transaction_Refused, Submit_Draining);
-   type Close_Result is (Closed, Still_Owned, Release_Refused);
+      Channel_Uncertain, Transaction_Refused);
+   type Close_Result is (Closed, Still_Owned);
    type State is limited private;
    function Ready (S : State) return Boolean;
    function Observe (S : State) return Transactions.Report;
    function Succeeded (S : State) return Boolean;
    function Data_Ready (S : State) return Boolean;
    function Rejection (S : State) return Transactions.Reason;
-   procedure Initialize (S : in out State; Sender : P.Process_ID; Result : out Setup_Result);
-   -- Allocate two disjoint private, whole-page spans, once. Allocator returns
-   -- fresh owned zero-filled pages (or zero/False). Never derive addresses from
-   -- references; Create is bound to the same admitted endpoint as Submit.
-   -- Callbacks only touch the explicitly allocated span and never reenter.
+   procedure Initialize (S : in out State; Sender : P.Process_ID;
+      Deadline : W.Millisecond; Result : out Setup_Result);
    procedure Start (S : in out State; Write_Data : D.Bytes; Read_Count : W.Count;
       Token, Now : W.Word; Deadline : W.Millisecond; Clock_Available : Boolean;
       Result : out Start_Result);
-   -- Reuse allocations only after old grants retire and caller acknowledges.
-   -- Fresh per-request input grant is read-only; output grant is writable.
-   procedure Receive (S : in out State; Token : W.Word; Sender : P.Process_ID;
-      Delivery : Transactions.Delivery_Status; Label : W.Operation; Protocol : W.Word;
-      Words : W.Message_Words; Now : W.Word; Clock_Available : Boolean;
-      Result : out Transactions.Completion_Result);
    procedure Step (S : in out State; Now : W.Word; Clock_Available : Boolean);
    procedure Read (S : State; Data : out D.Bytes; OK : out Boolean);
-   -- Exact successful read count only, after authoritative grant retirement.
-   -- Failure returns an all-zero destination; this method never acknowledges.
-   procedure Acknowledge (S : in out State) with Pre => Observe (S).At_Phase = Transactions.Finished;
+   -- One bounded private snapshot, exact successful count only. No implicit
+   -- acknowledgment; next Start remains blocked while the result is held.
+   procedure Acknowledge (S : in out State)
+     with Pre => Observe (S).At_Phase = Transactions.Finished;
    procedure Close (S : in out State; Result : out Close_Result);
-   -- Close refuses in-flight/retiring work, frees only retired/unloaned own
-   -- allocations and retains any allocation whose release is refused.
+   -- Idempotent close initiates teardown at most once, then polls its receipt.
+   -- A timeout/transport fault also closes once and retains until confirmed.
+   -- Exactly one State may claim the backend in this generic instance. A
+   -- second State cannot open or close the first State's session.
+   -- This client never reallocates, creates grants, clears a whole area,
+   -- retries a command, reconnects, or changes its admitted endpoint/peer.
 private
    type State is limited record
       Owner : Transactions.State;
-      Input_Address, Output_Address : W.Word := 0;
       Sender : P.Process_ID := P.No_Process;
-      Configured, Poisoned : Boolean := False;
+      Attempted, Configured, Closing, Close_Attempted, Close_Confirmed : Boolean := False;
       Expected_Reads : W.Count := 0;
       Last_Rejection : Transactions.Reason := Transactions.None;
    end record;
-   function Ready (S : State) return Boolean is (S.Configured and then not S.Poisoned);
+   function Ready (S : State) return Boolean is (S.Configured and then not S.Closing);
    function Observe (S : State) return Transactions.Report is (Transactions.Observe (S.Owner));
    function Succeeded (S : State) return Boolean is (Ready (S) and then Transactions.Succeeded (S.Owner));
    function Data_Ready (S : State) return Boolean is (Succeeded (S) and then S.Expected_Reads > 0);

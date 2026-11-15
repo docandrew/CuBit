@@ -1,0 +1,413 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "shared/capabilities/capability_abi.ads",
+      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc",
+      "kind": "production"
+    },
+    {
+      "path": "shared/capabilities/capability_abi.adb",
+      "sha256": "f280df7b0e8291913387a6bd4607a7e18b3025d5cb512c07f102ad90b682af20",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/configuration_tests.adb",
+      "sha256": "b0754959dfc2ff31e4aa43035ad83e5a8460d06b0adc56c4e25e00ded6af6b10",
+      "kind": "test"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/host/cubit-handles.ads",
+      "sha256": "98947d14587952d7c3d7ac3b24de0a378a6079407160c53e49b5d444675f00e0",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/host/cubit-messages.ads",
+      "sha256": "42ca5f0e82528af16cff56a147ceb6dfe13c6a5641346322e7e6b8a323458075",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/host/cubit-messages.adb",
+      "sha256": "0c40c4fdd62f4fdde8aebc5592cce1465203e2a4d6d50d81e182b20f864b6c55",
+      "kind": "model"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.ads",
+      "sha256": "d012ffd2942827ef674e11921492508bfc46f0787553c94fb1c745cdcbe5d48a",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.adb",
+      "sha256": "0670a89f145f4ae0006e7f4014d9c9c6e28e6e7cc4cae29c54edf205d5ff2478",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c",
+      "kind": "runtime"
+    },
+    {
+      "path": "shared/interrupts/device_vector_abi.ads",
+      "sha256": "17fa4428ad923275802c8c4cd7a717d2c6d88f6e407ed35cc8ea42ec56718bff",
+      "kind": "production"
+    },
+    {
+      "path": "shared/interrupts/device_vector_abi.adb",
+      "sha256": "398722304032c2d6a5a4b2e19634c8aac18520e612e8b0df5417f09a42cf3569",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/setup/dw_i2c_configuration.ads",
+      "sha256": "587cebd90a4fa540fe6ba261cfd944da52d4ad14851b771bf055cb513deb02e1",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/setup/dw_i2c_configuration.adb",
+      "sha256": "c5b5cf95ceb053bfcbb4aa8ea1cf722aeaf28e2393f07e725109d049c8a64a47",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_interrupt_policy.ads",
+      "sha256": "84b9e2d693dba2707061d6ec90422437b131c55e46abf4e7c86ac4fd85bb2d44",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_interrupt_policy.adb",
+      "sha256": "d7472400c735b7c119b8a0c9cea38a00ff50c59c7eb8e34c4455577f5e9e62d5",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/owner/dw_i2c_owner.ads",
+      "sha256": "a4965adc95e64abefed774772ac1d12132aeb5f9650ddc2d480879a9e5a07376",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/owner/dw_i2c_owner.adb",
+      "sha256": "3503a3d71e2aefd80d3ac820b7eb0bd9a99d1c7b2ce6310b99a2f9d552c18b2a",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/owner/dw_i2c_payload.ads",
+      "sha256": "57f78992976c09a804337c012ee673f12372d2880958183c2424982738380f51",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/owner/dw_i2c_payload.adb",
+      "sha256": "b68598bdd60d40a65f63fc82feb8b106b4482fe23ac7e53b517c91dfb1474b92",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads",
+      "sha256": "bc489efad780b31a556acc96fec29822de8ae364a16ae4fdff357b749b6c411d",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb",
+      "sha256": "835982d2793c24b6f27ed7a07f09cfa0f4b3f845b0c77e599b8e240548c75707",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads",
+      "sha256": "39742ccc16ea7dac9538e19decba057bfa3b63ad223898596499ec55dddda660",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb",
+      "sha256": "afabf29664adf2c19266bfe135cd65a1a3c4aee46bdbfff62b109409539eb665",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/frame_tests.adb",
+      "sha256": "4149b0acf9bd0a96a52c17e1e0f226b7456261523a6c2364d6a3eec43671ceb3",
+      "kind": "test"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_interrupt_binding.ads",
+      "sha256": "57824f83e19c4421cebd0c2da30114ffe677b303c5299b443f8e186dcd378844",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_interrupt_binding.adb",
+      "sha256": "e58babbda146de176d2a3d6aaa47de03e928d224156f10ab72fc215b57ba2500",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.ads",
+      "sha256": "770750ca0e04a827d9257de048b33702d14662addcfa2bebb3b1b247cad6fad9",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.adb",
+      "sha256": "14a2642b2af890a8a2f5ca47ed21465b67d882fa7b3c9b5bb1a9cf6f31ea13a8",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.ads",
+      "sha256": "cfc0f6288c52dcda9f4c8b512802df76df2eede27559eb26c96d191478341b20",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.adb",
+      "sha256": "897e6184ee73e50b6e6230eaefdd7a8d11f4141c94cfe15db184821c477298e6",
+      "kind": "production"
+    },
+    {
+      "path": "shared/interrupts/interrupt_line_abi.ads",
+      "sha256": "22eec501f76fc61c11b47b0548d592cfc4c5a650035c9f445e0259474cbf56b7",
+      "kind": "production"
+    },
+    {
+      "path": "shared/interrupts/interrupt_line_abi.adb",
+      "sha256": "321aec5ca82166190674a8c0b7382587a1af62d954c17b85fbd010e92ccc8151",
+      "kind": "production"
+    },
+    {
+      "path": "shared/launch/launch_configuration.ads",
+      "sha256": "c107c322fefaf11f6179134ebdb0f31d2ef1ddf11aeee07aef8f83e5aaf2f97b",
+      "kind": "production"
+    },
+    {
+      "path": "shared/launch/launch_configuration.adb",
+      "sha256": "5c462efca43e088b75efec4ea8b7ac029c7471808f54693fee697bf9c32dddfc",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/lpss_tests.adb",
+      "sha256": "221891347e28f88308579dd62f5ec97cffcf2c4b0664a38f18b5eb29192f0cbf",
+      "kind": "test"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/register_tests.adb",
+      "sha256": "4b92cf3dec2ddc0d1fbf05eb88597b8c7b1b111f4416ad2e9bc81e6db17be6a6",
+      "kind": "test"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/tests.adb",
+      "sha256": "32cbdb6489b54f6a3ce0cfd71f47008c3d0a167c385e2d869269e033efb4439c",
+      "kind": "test"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/transfer_tests.adb",
+      "sha256": "793928662879ca5289f509a85bd00d8dd4fcc34bcfd3f80920a815c4d11d7e18",
+      "kind": "test"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_contracts.ads",
+      "sha256": "0e8a8dff2110eee87f7280c179369bdfd52eed67b81d66e8f3c4e0b85b11ce8d",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_contracts.adb",
+      "sha256": "578a023b2579a021e571690ce66d5166de84445cff0bbf8b9c08d850bfa8a532",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_rings.ads",
+      "sha256": "94ca5b5057c120d751ee59f98dbdd9913333cec0bea87cc2dd9db295e46254a4",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_rings.adb",
+      "sha256": "2e2e118dee7b42c375ef8dc1a00f9e9edbdd99c73e88d6b4f1ddb554ac5a41af",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-control_events.ads",
+      "sha256": "9917bc1c897c36acaac0b8968d7fa6be527bd1bd5cefe42d3d92eadec04b6511",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-grant_references.ads",
+      "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-protocols.ads",
+      "sha256": "eaa9989bb4cd8c8c59da36a1e468ec6405db1887188daf6099c9a68ec4ebf382",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-request_channels.ads",
+      "sha256": "743a0337642b85f42d3e5c952161abbcf775acfdd1e5c717eea06f1330664f15",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-request_channels.adb",
+      "sha256": "226bd16157b481608f04e70d5428033e8b51317be733f46ff9486ae101e54d75",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-slot_rings.ads",
+      "sha256": "e06fcd777b33b586ac0bdb241f8adbb9a700aeb74e57c5bd5c025fbee64515ce",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-slot_rings.adb",
+      "sha256": "e7174ad4a2e406ad52dfec31650e5c8830f0d47dd686c51ab8e4d62b46aa23e3",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-submission_queues.ads",
+      "sha256": "d3625bfd8c669aa6cf3348c259b93eb35416891ca9f7e70924f98df1604fc964",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-submission_queues.adb",
+      "sha256": "df972bfd80032bf1f477d34ebc447875adcb533040a846ae401248ec68f25371",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel.ads",
+      "sha256": "f9d86f998c5afd821b5f8e17db6edcab28a7d323b3decca960c53c97180bd73b",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel_badges.ads",
+      "sha256": "e6ac1559f8a052c12de21f8f2afc06f2cd0b2821430f0959dd4428f11c5a9ce5",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel_badges.adb",
+      "sha256": "1a9447f272ec1ad54b4755407786810cbf512a52713cb17ee5475cf6ed582dbd",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_channel_controller.ads",
+      "sha256": "c049e24ff36534adf663f588387bb5e891b08369cc205d72c4e6cb49e257d450",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_channel_controller.adb",
+      "sha256": "760165f741674cd39f944b8af5c701f7131aa3ac38ca36c43a3bf7b9b3ea71dd",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_channel_turn.ads",
+      "sha256": "10add107cbec58beb9aead0046cfe40f0e8876bd563c99bf637571c5a2faef07",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_channel_turn.adb",
+      "sha256": "e56879b8adbbe972b2151ca826f4dbbdd37c70ed2d48d23bab6d07410b675c73",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel_wire.ads",
+      "sha256": "288286b90c722069e145721897e8bd3922f042f7faecb95929d1836a589dc4a1",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel_wire.adb",
+      "sha256": "99caa878906e0cf8f97342a011be3b8bc0c6f192ada9523f43a587a83e64710b",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_native_channel_payload.ads",
+      "sha256": "582bf4112982d1e386e271bf6e41bb27789db25d501e488b6aef970ec01eb687",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_native_channel_payload.adb",
+      "sha256": "0e487062659ce9e48ec4a36b162980a564b58ea9b4f455935d2bd4dab3255b51",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_transfer_wire.ads",
+      "sha256": "afdfc3acb95f5827b9d70657ab08f2910e89f24d002d8c5ee6e85fdbdde5f601",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_transfer_wire.adb",
+      "sha256": "4aa574887fed3794f54970adfc10e7f0934608f20104e57d6f561cc42b0faf7c",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_work_policy.ads",
+      "sha256": "77486f38a6f52d589efc6f92ed022dc615c8d35307bb9ae4276bea19d029fddc",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_work_policy.adb",
+      "sha256": "30939ad4415312b40f9dc64a60b67f6637b95c6a63aecb1a11bbbb6eefc824ee",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/channel_tests.adb",
+      "sha256": "001b3f713ffa8386c39461bdb1b0e7b4e715679125bb9c81d41944cb8de105bf",
+      "kind": "test"
+    },
+    {
+      "path": "tests/i2c-interrupt-wait/demand_tests.adb",
+      "sha256": "97b5ebc8ce2a404b9cb1c981dd47286ba985876de20f32d2df88ba3f0265add2",
+      "kind": "test"
+    }
+  ],
+  "native_context_inputs": [
+    {
+      "path": "userspace/services/i2c-dw/manifest.ccl",
+      "sha256": "cf5dd55338ce3b0a36295920a45fa60a2364a7164f74b6325d52957f121d025e",
+      "kind": "native-context"
+    },
+    {
+      "path": "userspace/services/i2c-dw/component.ccl",
+      "sha256": "f8cdaa8d13c91239d6b1ffce89eb4c685875024041a9d3a1a28a92ca47fa1b1c",
+      "kind": "native-context"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-messages.ads",
+      "sha256": "5821c8bfe49dca95b486dc76b93d4a43377edc3f9bf8a62c1d07d023c9eac2b2",
+      "kind": "native-context"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-device_interrupts.ads",
+      "sha256": "69c4ccd110c461a15f08b11f0ddd5a8948c9559688dfb8f67f4850e4c587c4d8",
+      "kind": "native-context"
+    }
+  ],
+  "tests": [
+    {
+      "main": "demand_tests",
+      "label": "I2C interrupt demand checks",
+      "checks": 350
+    },
+    {
+      "main": "tests",
+      "label": "I2C owner interrupt wait checks",
+      "checks": 350
+    },
+    {
+      "main": "frame_tests",
+      "label": "I2C interrupt binding checks",
+      "checks": 1383053
+    },
+    {
+      "main": "channel_tests",
+      "label": "I2C composed owner checks",
+      "checks": 364986
+    },
+    {
+      "main": "transfer_tests",
+      "label": "DesignWare transfer checks",
+      "checks": 61056
+    },
+    {
+      "main": "register_tests",
+      "label": "DesignWare register checks",
+      "checks": 196742
+    },
+    {
+      "main": "configuration_tests",
+      "label": "DesignWare configuration checks",
+      "checks": 5148
+    },
+    {
+      "main": "lpss_tests",
+      "label": "LPSS I2C checks",
+      "checks": 3995445
+    }
+  ],
+  "scope": "Hosted I2C interrupt owner, planner-demand binding and channel-turn regression suite. Uses actual owner/controller/turn, planner/configuration/reset/byte adapters and runtime ring bodies with modeled MMIO/FIFO/clock and message syscall declarations. Includes 24 startup/wait failure scenarios, binding/vector/message matrix, original transfer/register/configuration/LPSS checks and composed channel lifecycle. No AML changes or ACPICA oracle are involved; these are transport tests.",
+  "newProof": false,
+  "nativeExecuted": false,
+  "hardwareValidated": false
+}

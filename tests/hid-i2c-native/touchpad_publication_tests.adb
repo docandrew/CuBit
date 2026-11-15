@@ -15,95 +15,77 @@ with GPIO_Channel_Badges;
 with CuBit.Messages;
 with GPIO_Client_Controls;
 with GPIO_Control_Wire;
-with HID_I2C_Grant_Creation;
+with I2C_HID_Channel_Model;
+with DW_I2C_Transfer;
+with I2C_Channel_Wire;
+with GNAT.Source_Info;
 with HID_I2C_Buffered_Client;
 with HID_I2C_Touchpad;
 with Input_Pending;
 with Pointer_Pending;
 with HID_I2C_Descriptors;
 with I2C_Transfer_Wire;
-with CuBit.Grant_References;
 with CuBit.Process_IDs;
 procedure Touchpad_Publication_Tests is
    package W renames I2C_Transfer_Wire;
    package D renames HID_I2C_Descriptors;
-   package G renames CuBit.Grant_References;
    package P renames CuBit.Process_IDs;
-   use type W.Word, W.Count, D.Bytes, D.Byte_Count, G.Reference;
-   Input_Address : constant W.Word := 16#10_0000#;
-   Output_Address : constant W.Word := 16#20_0000#;
+   use type W.Word, W.Count, W.Completion_Status, D.Bytes, D.Byte_Count;
    Maximum : constant W.Capacity := 512;
    Input_Page, Output_Page : D.Bytes (0 .. 4095) := [others => 0];
-   Expected_Bytes : constant W.Word := 4096; Expected_Pages : constant W.Word := 1;
-   Input_Allocated, Output_Allocated : Boolean := False;
-   Allow_Output_Allocation, Allow_Input_Grant, Allow_Output_Grant, Allow_Submit, Allow_Release : constant Boolean := True;
-   Uncertain_Output : constant Boolean := False;
-   Input_Retired, Output_Retired : Boolean := False;
-   Input_Reference : G.Reference := (24, 1); Output_Reference : G.Reference := (25, 1);
-   Allocate_Calls, Free_Calls, Create_Calls, Submit_Calls, Revoke_Calls, Clear_Calls, Read_Calls : Natural := 0;
+   Opens, Close_Calls, Submit_Calls, Read_Calls : Natural := 0;
+   Session_Open, Payload_In_Use, Answer_Ready : Boolean := False;
    Checks : Natural := 0;
-   Last_Request : W.Request; Last_Token : W.Word := 0;
-   procedure Check (OK : Boolean) is
-   begin Checks := Checks + 1; if not OK then raise Program_Error with Natural'Image (Checks); end if; end Check;
-   procedure Allocate (Bytes : W.Word; Address : out W.Word; OK : out Boolean) is
+   Last_Request : I2C_Channel_Wire.Request;
+   Last_Token : W.Word := 0;
+   Queued_Answer : W.Completion := (W.Invalid_Frame, 0, False, False, 0, 0);
+   procedure Check (OK : Boolean; Location : String := GNAT.Source_Info.Source_Location) is
+   begin Checks := Checks + 1; if not OK then raise Program_Error with Natural'Image (Checks) & " " & Location; end if; end Check;
+   procedure Read_Input (Index : DW_I2C_Transfer.Count; Value : out DW_I2C_Transfer.Byte; Accepted : out Boolean) is
    begin
-      Check (Bytes = Expected_Bytes); Allocate_Calls := Allocate_Calls + 1;
-      OK := True;
-      if not Input_Allocated then Address := Input_Address; Input_Allocated := True;
-      elsif Allow_Output_Allocation then Address := Output_Address; Output_Allocated := True;
-      else Address := 0; OK := False; end if;
-   end Allocate;
-   procedure Release (Address, Bytes : W.Word; OK : out Boolean) is
+      Check (Payload_In_Use); Value := DW_I2C_Transfer.Byte (Input_Page (Natural (Index) - 1)); Accepted := True;
+   end Read_Input;
+   procedure Write_Output (Index : DW_I2C_Transfer.Count; Value : DW_I2C_Transfer.Byte; Accepted : out Boolean) is
    begin
-      Check (Bytes = Expected_Bytes); Free_Calls := Free_Calls + 1; OK := Allow_Release;
-      if not OK then return; end if;
-      if Address = Input_Address then Input_Allocated := False;
-      elsif Address = Output_Address then Output_Allocated := False;
-      else raise Program_Error; end if;
-   end Release;
-   procedure Clear (Address, Bytes : W.Word) is
+      Check (Payload_In_Use); Output_Page (Natural (Index) - 1) := D.Byte (Value); Accepted := True;
+   end Write_Output;
+   package Bus is new I2C_HID_Channel_Model (Read_Input, Write_Output);
+   procedure Open_Channel (Expected : P.Process_ID; Deadline : W.Millisecond; Ready : out Boolean) is
    begin
-      Check (Bytes = Expected_Bytes); Clear_Calls := Clear_Calls + 1;
-      if Address = Input_Address then Check (Input_Retired or else Create_Calls = 0); Input_Page (0 .. Natural (Bytes) - 1) := [others => 0];
-      elsif Address = Output_Address then Check (Output_Retired or else Create_Calls = 0); Output_Page (0 .. Natural (Bytes) - 1) := [others => 0];
-      else raise Program_Error; end if;
-   end Clear;
-   procedure Store (Address : W.Word; Data : D.Bytes) is
-   begin Check (Address = Input_Address); Input_Page (0 .. Data'Length - 1) := Data; end Store;
-   procedure Load (Address : W.Word; Data : out D.Bytes) is
-   begin Check (Address = Output_Address and then Output_Retired); Read_Calls := Read_Calls + 1; Data := Output_Page (0 .. Data'Length - 1); end Load;
-   procedure Create (Address, Pages : W.Word; Writable : Boolean; Reference : out G.Reference; Status : out HID_I2C_Grant_Creation.Status) is
-      OK : Boolean;
+      Check (not Session_Open and P.To_Word (Expected) = 16#F123_4567_0000_1234# and Deadline = 1000);
+      Opens := Opens + 1; Session_Open := True; Ready := True;
+   end Open_Channel;
+   procedure Store (Data : D.Bytes; Stored : out Boolean) is
    begin
-      Check (Pages = Expected_Pages); Create_Calls := Create_Calls + 1; Reference := (others => <>);
-      if Address = Input_Address then
-         Check (not Writable); OK := Allow_Input_Grant;
-         if OK then Input_Reference.generation := Input_Reference.generation + 1; Reference := Input_Reference; Input_Retired := False; end if;
-      elsif Address = Output_Address then
-         Check (Writable); OK := Allow_Output_Grant;
-         if OK then Output_Reference.generation := Output_Reference.generation + 1; Reference := Output_Reference; Output_Retired := False; end if;
-      else raise Program_Error; end if;
-      Status := (if OK then HID_I2C_Grant_Creation.Created else HID_I2C_Grant_Creation.Refused);
-      if Address = Output_Address and then Uncertain_Output then
-         Status := HID_I2C_Grant_Creation.Uncertain; Output_Retired := False;
-      end if;
-   end Create;
-   procedure Submit (Item : W.Request; Token : W.Word; Accepted : out Boolean) is
+      Check (Session_Open and not Payload_In_Use); Input_Page (0 .. Data'Length - 1) := Data; Stored := True;
+   end Store;
+   procedure Load (Data : out D.Bytes; Loaded : out Boolean) is
    begin
-      Check (Token > 0); Submit_Calls := Submit_Calls + 1; Last_Request := Item; Last_Token := Token; Accepted := Allow_Submit;
-      Check ((Item.Read_Count = 0 or else not Output_Retired) and then (Item.Write_Count = 0 or else not Input_Retired));
+      Check (Session_Open and not Payload_In_Use); Read_Calls := Read_Calls + 1;
+      Data := Output_Page (0 .. Data'Length - 1); Loaded := True;
+      Output_Page := [others => 16#EE#];
+   end Load;
+   procedure Submit (Header : I2C_Channel_Wire.Raw_Request; Token : W.Word; Accepted : out Boolean) is
+      Raw : constant I2C_Channel_Wire.Decoding := I2C_Channel_Wire.Decode (Header, Maximum);
+      use type I2C_Channel_Wire.Decode_Status;
+   begin
+      Check (Session_Open and not Payload_In_Use and Token > 0 and Raw.Status = I2C_Channel_Wire.Decoded);
+      Last_Request := Raw.Value; Last_Token := Token; Submit_Calls := Submit_Calls + 1;
+      Payload_In_Use := True; Bus.Submit (Header, Token, Accepted); Check (Accepted);
    end Submit;
-   procedure Revoke (Item : G.Reference; Accepted : out Boolean) is
+   procedure Poll (Token : W.Word; Words : out W.Completion_Words; Available, Ended : out Boolean) is
    begin
-      Check (Item = Input_Reference or else Item = Output_Reference); Revoke_Calls := Revoke_Calls + 1; Accepted := True;
-   end Revoke;
-   function Retired (Item : G.Reference) return Boolean is
-   begin
-      if Item = Input_Reference then return Input_Retired;
-      elsif Item = Output_Reference then return Output_Retired;
-      else raise Program_Error; end if;
-   end Retired;
-   package C is new HID_I2C_Buffered_Client (Maximum, Allocate, Release, Clear, Store, Load, Create, Submit, Revoke, Retired);
+      Check (Token = Last_Token); Words := W.Encode_Completion (Queued_Answer);
+      Available := Answer_Ready; Ended := False;
+      if Available then Answer_Ready := False; Payload_In_Use := False; end if;
+   end Poll;
+   procedure Close_Channel is
+   begin Check (Session_Open); Session_Open := False; Close_Calls := Close_Calls + 1; end Close_Channel;
+   function Retired return Boolean is (not Bus.Faulted);
+   package C is new HID_I2C_Buffered_Client (Maximum, Open_Channel, Store, Load, Submit, Poll, Close_Channel, Retired);
+   package C_Ambiguous is new HID_I2C_Buffered_Client (Maximum, Open_Channel, Store, Load, Submit, Poll, Close_Channel, Retired);
+   package C_Budgeted is new HID_I2C_Buffered_Client (Maximum, Open_Channel, Store, Load, Submit, Poll, Close_Channel, Retired);
+   package C_Small is new HID_I2C_Buffered_Client (Maximum, Open_Channel, Store, Load, Submit, Poll, Close_Channel, Retired);
    Token_Counter : W.Word := 0;
    procedure Next_Token (Token : out W.Word; Available : out Boolean) is
    begin Token_Counter := Token_Counter + 1; Token := Token_Counter; Available := True; end Next_Token;
@@ -261,21 +243,24 @@ procedure Touchpad_Publication_Tests is
       Check (Event_Result = Native.Input_Buffered); App_Step (Now, True);
       Check (App.Observe.At_Phase = App.Device.Read_Input and then Live.Observe.At_Phase = Live.Owner.Reading);
    end Read_Event;
-   package Ambiguous is new HID_I2C_Touchpad (C, 512, 32, 0, 5, 2, 8, 16, 32, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
-   package Budgeted is new HID_I2C_Touchpad (C, 512, 32, 0, 5, 2, 8, 16, 32, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
-   package Too_Small is new HID_I2C_Touchpad (C, 512, 32, 0, 5, 2, 8, 16, 1, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
+   package Ambiguous is new HID_I2C_Touchpad (C_Ambiguous, 512, 32, 0, 5, 2, 8, 16, 32, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
+   package Budgeted is new HID_I2C_Touchpad (C_Budgeted, 512, 32, 0, 5, 2, 8, 16, 32, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
+   package Too_Small is new HID_I2C_Touchpad (C_Small, 512, 32, 0, 5, 2, 8, 16, 1, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
    use type App.Start_Result, App.Admission_Status, App.Device.Failure;
    use type App.Source.Status, App.Schema.Count;
    use type Ambiguous.Start_Result, Ambiguous.Admission_Status;
    use type Budgeted.Start_Result, Budgeted.Admission_Status, Budgeted.Bindings.Work_Count;
    use type Too_Small.Start_Result, Too_Small.Admission_Status, Too_Small.Schema.Status, Too_Small.Schema.Count;
-   use type C.Close_Result, C.Transactions.Completion_Result, C.Transactions.Delivery_Status;
+   use type C.Close_Result, C_Ambiguous.Close_Result, C_Budgeted.Close_Result, C_Small.Close_Result;
    use type Input_Pending.Item;
    Settings : App.Configuration := (5, 100_000, (0, 4095), (0, 4095), (1, 4), (1, 4),
       App.Source.Pointer.As_Reported, App.Source.Pointer.Reversed, App.Source.Pointer.Require_Confident,
       [App.Source.Primary_Button, App.Source.Ignore, App.Source.Secondary_Button], App.Source.Caller_Bounds);
    Started : App.Start_Result;
    Closed : C.Close_Result;
+   Ambiguous_Closed : C_Ambiguous.Close_Result;
+   Budgeted_Closed : C_Budgeted.Close_Result;
+   Small_Closed : C_Small.Close_Result;
    Server : constant P.Process_ID := P.From_Word (16#F123_4567_0000_1234#);
    Descriptor : D.Bytes (0 .. 511) := [others => 0]; Used : Natural := 0;
    Header : D.Bytes (0 .. 29) := [30, 0, 0, 1, 0, 0, 16#22#, 0, 16#24#, 0, 32, 0, 0, 0, 0, 0, 16#30#, 0, 16#32#, 0, others => 0];
@@ -318,52 +303,36 @@ procedure Touchpad_Publication_Tests is
       Output_Page (9 .. 12) := [1, 100, 0, Buttons];
    end Packet;
    generic
-      with procedure Receive (Token : W.Word; Sender : P.Process_ID; Delivery : C.Transactions.Delivery_Status;
-         Label : W.Operation; Protocol : W.Word; Words : W.Message_Words; Now : W.Word;
-         Clock_Available : Boolean; Result : out C.Transactions.Completion_Result);
       with procedure Step (Now : W.Word; Clock_Available : Boolean);
-   procedure Complete (Data : D.Bytes; Now : W.Word; Retire : Boolean := True);
-   procedure Complete (Data : D.Bytes; Now : W.Word; Retire : Boolean := True) is
-      Completion : constant W.Completion := (W.Completed, 77, True, True, Last_Request.Write_Count, Last_Request.Read_Count);
-      Received : C.Transactions.Completion_Result;
+   procedure Complete (Data : D.Bytes; Now : W.Word; Publish_Now : Boolean := True);
+   procedure Complete (Data : D.Bytes; Now : W.Word; Publish_Now : Boolean := True) is
+      FIFO : constant D.Bytes := Data;
+      Token : W.Word;
+      Available : Boolean;
    begin
       Check (W.Word (Data'Length) <= W.Word (Last_Request.Read_Count));
-      if Last_Request.Read_Count > 0 then Output_Page (0 .. Natural (Last_Request.Read_Count) - 1) := [others => 0]; end if;
-      if Data'Length > 0 then Output_Page (0 .. Data'Length - 1) := Data; end if;
-      Receive (Last_Token, Server, C.Transactions.Delivered, W.Transfer_Reply_Operation,
-         W.Protocol_Version, W.Encode_Completion (Completion), Now, True, Received);
-      Check (Received = C.Transactions.Accepted);
-      if Retire then Input_Retired := True; Output_Retired := True; end if;
+      if Last_Request.Read_Count > 0 then Output_Page (0 .. Natural (Last_Request.Read_Count) - 1) := [others => 16#EE#]; end if;
+      Bus.Serve (Now, FIFO, Token, Queued_Answer, Available);
+      Check (Token = Last_Token);
+      Check (Available and Queued_Answer.Status = W.Completed and Queued_Answer.Hardware_Succeeded);
+      Answer_Ready := Publish_Now;
       Step (Now, True);
    end Complete;
-   procedure Native_Receive (Token : W.Word; Sender : P.Process_ID; Delivery : C.Transactions.Delivery_Status;
-      Label : W.Operation; Protocol : W.Word; Words : W.Message_Words; Now : W.Word;
-      Clock_Available : Boolean; Result : out C.Transactions.Completion_Result) is
-      Entry_Value : M.CompletionEntry := M.NULL_COMPLETION;
-      Received : Native.Completion_Report;
-   begin
-      Check (Delivery = C.Transactions.Delivered);
-      Cached_Now := Now; Entry_Value.valid := True; Entry_Value.token := Token; Entry_Value.from := P.To_Word (Sender);
-      Entry_Value.msg.tag.label := Label; Entry_Value.msg.tag.protocol := M.Protocol_Flags (Protocol);
-      Entry_Value.msg.tag.length := Words'Length;
-      for Index in Words'Range loop Entry_Value.msg.words (Index - Words'First) := Words (Index); end loop;
-      Native.Receive_Completion (Entry_Value, Now, Clock_Available, Received);
-      Check (Received.Frame_Valid and then Received.Routed_To = Native.I2C_Transfer); Result := Received.I2C_Result;
-   end Native_Receive;
-   procedure App_Complete is new Complete (Native_Receive, App_Step);
-   procedure Ambiguous_Complete is new Complete (Ambiguous.Receive, Ambiguous.Step);
-   procedure Budgeted_Complete is new Complete (Budgeted.Receive, Budgeted.Step);
-   procedure Small_Complete is new Complete (Too_Small.Receive, Too_Small.Step);
+   procedure App_Complete is new Complete (App_Step);
+   procedure Ambiguous_Complete is new Complete (Ambiguous.Step);
+   procedure Budgeted_Complete is new Complete (Budgeted.Step);
+   procedure Small_Complete is new Complete (Too_Small.Step);
    procedure Payload (Buttons : Pointer_Pending.Button_State; X, Y : Pointer_Pending.Displacement := 0) is
    begin Check (App.Count > 0); Check (App.Head.Payload = Pointer_Pending.Encode ((Buttons, X, Y, 0, 0))); end Payload;
 begin
    Check (Ada.Command_Line.Argument_Count = 0 or else
       (Ada.Command_Line.Argument_Count = 1 and then Ada.Command_Line.Argument (1) in "startup-cutoff" | "startup-after-cutoff"));
+   Bus.Initialize;
    Build;
    Settings.Binding_Budget := 0; App.Start (Server, 16#20#, Settings, 1000, 1, True, Started);
-   Check (Started = App.Invalid_Budget and then Allocate_Calls = 0);
+   Check (Started = App.Invalid_Budget and then Opens = 0);
    Settings.Binding_Budget := 100_000; Settings.X_Gain := (1, 1);
-   App.Start (Server, 16#20#, Settings, 1000, 1, True, Started); Check (Started = App.Invalid_Calibration and then Allocate_Calls = 0);
+   App.Start (Server, 16#20#, Settings, 1000, 1, True, Started); Check (Started = App.Invalid_Calibration and then Opens = 0);
    Settings.X_Gain := (1, 4); Settings.Coordinates := App.Source.Report_Bounds;
    Settings.X_Range := (0, 0); Settings.Y_Range := (0, 0);
    App.Start (Server, 16#20#, Settings, 1000, 1, True, Started);
@@ -427,8 +396,8 @@ begin
    Read_Event (70);
    Packet (100, 200);
    declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 71, False); end;
-   Check (App.Count = 0 and then App.Wake_Deadline (71, 5000) = 72 and then GPIO_Request.Kind = GW.Arm);
-   Input_Retired := True; Output_Retired := True; App_Step (72, True);
+   Check (App.Count = 0 and then App.Wake_Deadline (71, 5000) = 170 and then GPIO_Request.Kind = GW.Arm);
+   Answer_Ready := True; App_Step (72, True);
    Check (GPIO_Request.Kind = GW.Acknowledge and then Live.Observe.At_Phase = Live.Owner.Acknowledging); GPIO_Complete (73);
    Check (App.Ready and then App.Input_Observation.Outcome = App.Source.Input_Updated); Payload (1);
    Check (App.Head.Observed_Ms = 72 and then not App.Head.Recover); Saved := App.Head; Flush (73, True); Check_Wire (Saved);
@@ -460,7 +429,7 @@ begin
    Check (not App.Ready and then App.Observe.Reason = App.Device.Unexpected_Device_Reset and then App.Quiescent);
    Check (not Live.Ready and then not Live.Quiescent and then GPIO_Request.Kind = GW.Release_Pin);
    GPIO_Complete (112); Check (Live.Quiescent and then Live.Control_Token = 0);
-   Payload (0); App.Close (Closed); Check (Closed = C.Closed and then not Input_Allocated and then not Output_Allocated);
+   Payload (0); App.Close (Closed); Check (Closed = C.Closed and then not Session_Open);
    Check (not Native.Drained);
    Current_Consumer := P.No_Process; Flush (112, True);
    Check (Published.No_Consumer and then not Native.Drained);
@@ -481,7 +450,7 @@ begin
       Ambiguous_Complete ([], 230); Ambiguous.Step (240, True); Ambiguous_Complete ([0, 0], 250);
       Ambiguous_Complete (Descriptor (0 .. Used - 1), 260);
       Check (not Ambiguous.Ready and then Ambiguous.Admission.Outcome = Ambiguous.Touchpad_Ambiguous and then Ambiguous.Quiescent);
-      Ambiguous.Close (Closed); Check (Closed = C.Closed);
+      Ambiguous.Close (Ambiguous_Closed); Check (Ambiguous_Closed = C_Ambiguous.Closed);
    end;
    Build;
    declare Config : constant Budgeted.Configuration := (5, 1, (0, 4095), (0, 4095), (1, 4), (1, 4),
@@ -495,7 +464,7 @@ begin
       Budgeted_Complete (Descriptor (0 .. Used - 1), 360);
       Check (not Budgeted.Ready and then Budgeted.Admission.Outcome = Budgeted.Root_Budget_Exhausted
          and then Budgeted.Admission.Root_Charge = 1 and then Budgeted.Admission.Binding_Charge = 0);
-      Budgeted.Close (Closed); Check (Closed = C.Closed);
+      Budgeted.Close (Budgeted_Closed); Check (Budgeted_Closed = C_Budgeted.Closed);
    end;
    declare Config : constant Too_Small.Configuration := (5, 100_000, (0, 4095), (0, 4095), (1, 4), (1, 4),
       Too_Small.Source.Pointer.As_Reported, Too_Small.Source.Pointer.Reversed, Too_Small.Source.Pointer.Require_Confident,
@@ -508,9 +477,9 @@ begin
       Small_Complete (Descriptor (0 .. Used - 1), 460);
       Check (not Too_Small.Ready and then Too_Small.Admission.Outcome = Too_Small.Parser_Refused
          and then Too_Small.Admission.Parser = Too_Small.Schema.Need_Capacity and then Too_Small.Admission.Fields_Required > 1);
-      Too_Small.Close (Closed); Check (Closed = C.Closed);
+      Too_Small.Close (Small_Closed); Check (Small_Closed = C_Small.Closed);
    end;
-   Check (not Input_Allocated and then not Output_Allocated and then Submit_Calls > 0 and then Free_Calls = 8);
+   Check (not Session_Open and then Submit_Calls > 0 and then Opens = 4 and then Close_Calls = 4);
    Check (GPIO_Calls = 10 and then Publication_Attempts > 0);
    -- The actual parser/device/GPIO composition is now stopped. Exercise fair
    -- queue scheduling without replacing its lifecycle with a policy mock.

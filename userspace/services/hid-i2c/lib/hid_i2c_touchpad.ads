@@ -78,10 +78,6 @@ package HID_I2C_Touchpad with SPARK_Mode is
    procedure Acknowledge with Pre => Count > 0;
    procedure Consumer_Changed (Now : W.Word);
    function Wake_Deadline (Now, Otherwise : W.Word) return W.Word;
-   procedure Receive (Token : W.Word; Sender : CuBit.Process_IDs.Process_ID;
-      Delivery : Bus.Transactions.Delivery_Status; Label : W.Operation; Protocol : W.Word;
-      Words : W.Message_Words; Now : W.Word; Clock_Available : Boolean;
-      Result : out Bus.Transactions.Completion_Result);
    procedure Step (Now : W.Word; Clock_Available : Boolean);
    procedure Reset_Interrupt (Ticket : W.Word; Result : out Device.Interrupt_Result);
    procedure Request_Input (Deadline : W.Millisecond; Now : W.Word; Clock_Available : Boolean;

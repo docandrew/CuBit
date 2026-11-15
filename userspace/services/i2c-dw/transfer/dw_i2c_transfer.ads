@@ -41,6 +41,19 @@ package DW_I2C_Transfer with SPARK_Mode is
    function Sent (S : State) return Count with Pre => Valid (S);
    function Received (S : State) return Count;
    function Pending (S : State) return Boolean;
+   type Wake_Requirement is record
+      Active, TX_Empty, RX_Full, Stop_Detected : Boolean := False;
+   end record;
+   function Wake_Sources (S : State) return Wake_Requirement
+     with Pre => Valid (S),
+          Post => (if not Wake_Sources'Result.Active then
+                     not Wake_Sources'Result.TX_Empty and then
+                     not Wake_Sources'Result.RX_Full and then
+                     not Wake_Sources'Result.Stop_Detected);
+   -- Read-only interrupt demand for an exclusive controller owner. No source
+   -- is eligible while an action is pending. The owner may arm these only
+   -- after Poll returned No_Action with an otherwise active, valid planner.
+   -- This query neither acknowledges status nor proves hardware quiescence.
    procedure Submit
      (S : in out State; Write_Count, Read_Count : Count; Byte_Limit : Limit;
       TX_Depth, RX_Depth : FIFO_Depth; Now, Deadline : Tick;

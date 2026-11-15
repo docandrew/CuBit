@@ -12,8 +12,8 @@ package Main_Model is
    package W renames GPIO_Control_Wire;
    package P renames CuBit.Process_IDs;
    package U renames Ada.Strings.Unbounded;
-   type Scenario is (Happy, Invalid_Launcher, Clock_Loss, Map_Refused, Role_Refused,
-      Readiness_Refused, Early_Stop, Parking_Unknown, Wait_Failure, Stop_During_Admission, Missing_Community);
+   type Scenario is (Happy, No_Parent, Wrong_Parent_Vector, Initial_ACK_Refused, Invalid_Launcher, Wrong_Launcher_Kind, Unreadable_Launcher, Zero_Launcher_ID, Clock_Loss, Map_Refused, Role_Refused,
+      Readiness_Refused, Early_Stop, Parking_Unknown, Wait_Failure, Stop_During_Admission, Missing_Community, Missing_Configuration, Wrong_Controller, Invalid_Launch_Path, Wrong_Window_Count, Late_Window_Mismatch, Late_Read_Only, Overlapping_Community, Unaligned_Community, Zero_Launch_Epoch);
    Current : Scenario := Happy;
    Driver_ID : constant P.Process_ID := P.From_Word (16#F123_4567_0000_0011#);
    Launcher_ID : constant P.Process_ID := P.From_Word (16#F234_5678_0000_0022#);
@@ -32,6 +32,8 @@ package Main_Model is
    Last_Event : W.Event := (1, 1);
    Ready_ACK, Stop_Queued, Offered, Saved, Sink_Closed : Boolean := False;
    Request_Stage : Natural := 0;
+   Parent_ACKs, Event_Unavailable : Natural := 0;
+   IRQ_Queued : Boolean := False;
    Logs : U.Unbounded_String;
    Test_Complete : exception;
    procedure Check (OK : Boolean; Why : String);

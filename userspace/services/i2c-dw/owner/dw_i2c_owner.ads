@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with DW_I2C_Transfer;
+with DW_I2C_Payload;
 with DW_I2C_Registers;
 with DW_I2C_Configuration;
 with Intel_LPSS_I2C_Reset;
@@ -26,6 +27,13 @@ generic
    with procedure Data_Write
      (ID : DW_I2C_Registers.Write_Register; Value : DW_I2C_Registers.Word;
       Status : out DW_I2C_Registers.Access_Status);
+   Borrowed_Payload : Boolean := False;
+   with procedure Payload_Read
+     (Index : DW_I2C_Transfer.Count; Value : out DW_I2C_Transfer.Byte;
+      Accepted : out Boolean) is DW_I2C_Payload.Read_Refused;
+   with procedure Payload_Write
+     (Index : DW_I2C_Transfer.Count; Value : DW_I2C_Transfer.Byte;
+      Accepted : out Boolean) is DW_I2C_Payload.Write_Refused;
 package DW_I2C_Owner with SPARK_Mode is
    package T renames DW_I2C_Transfer;
    package R renames DW_I2C_Registers;
@@ -43,7 +51,7 @@ package DW_I2C_Owner with SPARK_Mode is
    type Failure is (None, Timing_Refused, Reset_Failed, Probe_Failed,
       Configuration_Failed, Clock_Unavailable, Clock_Reversed, Deadline_Expired,
       Budget_Exhausted, Register_Refused, Register_Indeterminate,
-      Transfer_Failed, Controller_Not_Quiescent, Abort_During_Quiescence, Accounting_Failed);
+      Transfer_Failed, Controller_Not_Quiescent, Abort_During_Quiescence, Accounting_Failed, Payload_Access_Failed, Interrupt_Mask_Mismatch, Interrupt_Wait_Failed);
    type Admission is (Accepted, Busy, Invalid_Resource, Invalid_Timing,
       Clock_Refused, Expired, Empty_Transfer, Capacity_Refused, Tickets_Exhausted);
    type Startup is record
@@ -75,6 +83,10 @@ package DW_I2C_Owner with SPARK_Mode is
       Last_Owner_Status : C.Access_Status := C.Access_OK;
       Owner_Access_Attempted : Boolean := False;
       Controller_May_Be_Enabled : Boolean := True;
+      Waiting_For_Hardware : Boolean := False;
+      Interrupt_Mode_Prepared : Boolean := False;
+      Interrupts_May_Be_Enabled : Boolean := True;
+      Last_Interrupt_Mask : T.Word := 0;
       Startup_Effects_Possible : Boolean := False;
       Startup_Value_Available : Boolean := False;
       Startup_Last_Value : T.Word := 0;
@@ -87,6 +99,19 @@ package DW_I2C_Owner with SPARK_Mode is
    function Observe (S : State) return Report;
    procedure Start (S : in out State; Parameters : Startup; Result : out Admission);
    procedure Advance (S : in out State);
+   type Interrupt_Result is (Armed, Already_Armed, Quiet, Not_Waiting, Refused);
+   procedure Prepare_Interrupt_Mode
+     (S : in out State; Deadline : T.Tick; Result : out Interrupt_Result);
+   procedure Reject_Interrupt_Wait (S : in out State);
+   procedure Arm_Interrupt_Wait (S : in out State; Result : out Interrupt_Result);
+   procedure Disarm_Interrupt_Wait (S : in out State; Result : out Interrupt_Result);
+   function Waiting_Deadline (S : State) return T.Tick;
+   -- One exclusive event-loop owner. Arm only after an actual No_Action
+   -- transfer sample. Each mask write/readback consumes the same request budget and
+   -- deadline. Advance first masks an armed source, then returns; a later
+   -- Advance resumes normal work. No destructive clear occurs in these hooks.
+   -- Refused/uncertain writes or clocks fault and retain; no automatic retry.
+   -- These hooks install no vector, wait on no event, and mint no authority.
    -- Non-blocking owner for per-request admitted targets on ONE exclusively owned
    -- controller, initially using bounded polling. Startup touches no target or
    -- timing registers; successful requests configure only after disabled/idle
@@ -98,7 +123,17 @@ package DW_I2C_Owner with SPARK_Mode is
       Write_Data : Bytes; Read_Count : T.Count;
       Deadline : T.Tick; Step_Budget : Work_Limit;
       ID : out T.Ticket; Result : out Admission);
+   -- No arrays are copied/cleared in borrowed mode. Counts are validated before
+   -- the byte providers can run; each successful FIFO byte is accessed once.
+   procedure Submit_Borrowed
+     (S : in out State; Target : C.Address; Speed_Limit : P.Hertz;
+      Write_Count, Read_Count : T.Count; Deadline : T.Tick; Step_Budget : Work_Limit;
+      ID : out T.Ticket; Result : out Admission);
+   type Payload_Lifetime is (Not_Borrowed, In_Use, Returnable, Retain_For_Supervision);
+   function Payload_Status (S : State) return Payload_Lifetime;
    type Collection is (Collected, Not_Ready, Insufficient_Capacity);
+   procedure Take_Borrowed_Completion
+     (S : in out State; Item : out Completion; Result : out Collection);
    procedure Take_Completion
      (S : in out State; Read_Data : out Bytes; Item : out Completion;
       Required : out T.Count; Result : out Collection);
@@ -110,6 +145,7 @@ package DW_I2C_Owner with SPARK_Mode is
    -- outside this internal owner. No client chooses BAR, target or raw registers.
 private
    package Port is new R.Port (Clock, Data_Read, Data_Write);
+   Buffer_Capacity : constant T.Count := (if Borrowed_Payload then 0 else Capacity);
    type State is limited record
       Info : Report;
       Reset_State : L.State;
@@ -120,12 +156,14 @@ private
       Timing : P.Timing;
       Vendor, Device : P.PCI_ID := 0;
       Target : C.Address := 0;
-      Write_Buffer, Read_Buffer : Bytes (1 .. Capacity) := [others => 0];
+      Write_Buffer, Read_Buffer : Bytes (1 .. Buffer_Capacity) := [others => 0];
       Writes, Reads : T.Count := 0;
       Deadline, Last_Time : T.Tick := 0;
       Remaining : Work_Count := 0;
       Config_Budget : T.Limit := T.Limit'First;
       Sequence : T.Ticket := T.No_Ticket;
       Request_Active : Boolean := False;
+      Payload_Used : Boolean := False;
+      Interrupt_Prepare_Attempted : Boolean := False;
    end record;
 end DW_I2C_Owner;

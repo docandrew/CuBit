@@ -3,10 +3,10 @@ with Interfaces;
 with CuBit.Messages;
 with CuBit.Process_IDs;
 with CuBit.Handles;
-with CuBit.Handles.Startup;
 with CuBit.Handles.IPC;
 with CuBit.Driver_Readiness;
-with Parameters;
+with GPIO_Native_Policy;
+with GPIO_Native_Launch;
 with Startup;
 with Intel_ADLN_GPIO;
 with Intel_GPIO_IRQ;
@@ -21,7 +21,11 @@ with GPIO_Native_Wait;
 with GPIO_Controller_Resources;
 with GPIO_Mapping_Policy;
 with GPIO_Loop_Time;
-with GPIO_Polling_Loop;
+with GPIO_IRQ_Turn;
+with GPIO_IRQ_Sweep;
+with CuBit.Handles.Lines;
+with Interrupt_Line_ABI;
+with Launch_Configuration;
 with GPIO_Startup_Readiness;
 procedure Main is
    package M renames CuBit.Messages;
@@ -31,7 +35,7 @@ procedure Main is
    package Time renames GPIO_Loop_Time;
    package Resources renames GPIO_Native_Resources;
    package Mapping renames GPIO_Mapping_Policy;
-   Raw : constant Parameters.GPIO_Parameters_Value := Parameters.Value;
+   Raw : constant GPIO_Native_Policy.Settings := GPIO_Native_Policy.Value;
    use type Interfaces.Unsigned_64, M.MessageTag, M.Activity_Result;
    use type I.Tick, Resources.Outcome, Mapping.Address;
    use type GPIO_Native_Communities.Resource_Count;
@@ -43,18 +47,19 @@ procedure Main is
    function Startup_Parked return Boolean is (Parking.Observe (Parking_State).At_Phase = Parking.Ready);
    package Driver is new GPIO_Native_Driver
      (GPIO_Controller_Resources.Pin_Limit (Raw.capacity), I.Limit (Raw.operation_budget),
-      Startup.Launcher, Startup_Parked);
+      Startup.Ready, Startup_Parked);
    package Log is new GPIO_Native_Log (Startup.Logstore);
    package Native is new GPIO_Native_Pump
      (Driver, Positive (Raw.work.events), Positive (Raw.work.requests), Positive (Raw.work.steps),
       I.Tick (Raw.timing.admission), I.Tick (Raw.timing.cleanup), Log.Disable);
-   package Scheduler is new GPIO_Polling_Loop
-     (Native.Pump, GPIO_Native_Clock.Read, Time.Duration (Raw.timing.poll_interval),
-      Time.Duration (Raw.timing.poll_window), Time.Duration (Raw.timing.progress));
+   package LA renames Interrupt_Line_ABI;
    use type Driver.Admin.Phase;
    State : Driver.Admin.State;
-   Frame : Scheduler.Turn_Report;
+   use type Driver.Registry.Channel_ID;
+   Frame : Native.Pump.Turn_Report;
    Resource_Report : Resources.Report;
+   Launch_Report : GPIO_Native_Launch.Report;
+   use type GPIO_Native_Launch.Outcome;
    GPIO_Role : constant Interfaces.Unsigned_64 := 34;
    Registration_Refused : constant Interfaces.Unsigned_64 := Interfaces.Unsigned_64'Last;
    -- Dedicated process-local MMIO arena, separate from the image/heap convention.
@@ -68,16 +73,40 @@ procedure Main is
    package Readiness renames GPIO_Startup_Readiness;
    Readiness_State : Readiness.State;
    use type Readiness.Choice, CuBit.Handles.ABI.Kind;
-   Stop_Latched, Wait_Failure_Noted : Boolean := False;
+   Stop_Latched, Wait_Failure_Noted, IRQ_Failure_Noted : Boolean := False;
    Hold_Resources : Boolean := False;
    Now, Startup_Deadline : I.Tick;
    Clock_OK, Accepted, Resources_OK, Ready_OK, Found : Boolean;
    Wait_Result : M.Activity_Result;
-   function Authority (Item : CuBit.Handles.Startup.Optional_Device_Memory) return CuBit.Handles.Device_Memory is
-     (if Item.Present then Item.Value else CuBit.Handles.No_Device_Memory);
+   Parent_Present : Boolean := False;
+   Parent_Vector : LA.Line_Vector := LA.First_Vector;
+   package Sweep is new GPIO_IRQ_Sweep (Driver.Registry, Native.Hold_Requests, Native.Requests_Held);
+   Sweep_State : Sweep.State;
+   use type Sweep.Phase;
+   procedure IRQ_Clock (Sample : out Interfaces.Unsigned_64; Available : out Boolean) is
+      Value : I.Tick;
+   begin GPIO_Native_Clock.Read (Value, Available); Sample := Interfaces.Unsigned_64 (Value); end IRQ_Clock;
+   procedure IRQ_Start (Deadline : Interfaces.Unsigned_64; Started : out Boolean) is
+   begin Sweep.Start (Sweep_State, I.Tick (Deadline), Started); end IRQ_Start;
+   procedure IRQ_Advance is
+   begin Native.Pump.Turn (State, Frame); Sweep.Advance (Sweep_State); end IRQ_Advance;
+   procedure IRQ_Inspect (Clear, Uncertain : out Boolean) is
+   begin Clear := Sweep.Current (Sweep_State) = Sweep.Source_Clear;
+      Uncertain := Sweep.Current (Sweep_State) = Sweep.Uncertain; end IRQ_Inspect;
+   procedure IRQ_ACK (Acknowledged : out Boolean) is
+   begin
+      Acknowledged := False;
+      if Parent_Present and then Startup.Parent.Present then
+         Acknowledged := CuBit.Handles.Lines.Acknowledge (Startup.Parent.Value, Parent_Vector).Accepted;
+      end if;
+      Sweep.Finish (Sweep_State, Acknowledged);
+   end IRQ_ACK;
+   package IRQ is new GPIO_IRQ_Turn (IRQ_Clock, IRQ_Start, IRQ_Advance, IRQ_Inspect, IRQ_ACK,
+      Time.Duration (Raw.timing.sweep), Time.Duration (Raw.timing.progress));
+   IRQ_State : IRQ.State;
+   use type IRQ.Phase;
    Caps : constant Resources.Authorities :=
-     [Authority (Startup.Community0), Authority (Startup.Community1),
-      Authority (Startup.Community4), Authority (Startup.Community5)];
+     [Startup.Community0, Startup.Community1, Startup.Community4, Startup.Community5];
    procedure Wait (Plan : Time.Wait_Plan) is
       Ignored : Interfaces.Unsigned_64;
    begin
@@ -131,8 +160,47 @@ procedure Main is
          Interfaces.Unsigned_64 (Time.After (Sample, I.Tick (Raw.timing.readiness))));
       Acknowledged := Selected = Readiness.Report_Ready and then Reply = M.NULL_TAG;
       Log.Stage (Log.Readiness, Acknowledged,
-         (if Reply = M.NULL_TAG then (if Selected = Readiness.Report_Ready then "acknowledged-polled-no-parent-irq" else "declined") else "report-refused"));
+         (if Reply = M.NULL_TAG then (if Selected = Readiness.Report_Ready then (if Parent_Present then "acknowledged-parent-irq" else "acknowledged-events-unavailable") else "declined") else "report-refused"));
    end Report_Once;
+   procedure Configure_Parent (Ready : out Boolean) is
+      Configured : Boolean;
+      Reason : String (1 .. 32) := [others => ' '];
+      Last : Natural := 0;
+      procedure Why (Text : String) is
+      begin Reason (1 .. Text'Length) := Text; Last := Text'Length; end Why;
+   begin
+      Ready := True;
+      if not Launch_Configuration.Valid_Parent_Line (Launch_Report.Parent) then
+         Ready := False; Why ("invalid-description");
+      elsif not Launch_Report.Parent.Present then
+         if Startup.Parent.Present then Ready := False; Why ("unexpected-authority");
+         else Why ("not-routed"); end if;
+      elsif not Startup.Parent.Present then Ready := False; Why ("missing-authority");
+      else
+         declare D : constant CuBit.Handles.IPC.Description := CuBit.Handles.IPC.Describe (Startup.Parent.Value); begin
+            if D.Current and then D.Kind = CuBit.Handles.ABI.Interrupt and then D.Held.Read and then
+               D.Object = Interfaces.Unsigned_64 (Launch_Report.Parent.Vector) and then D.Parameter = 1
+            then
+               Parent_Vector := LA.Line_Vector (Launch_Report.Parent.Vector);
+               Parent_Present := True; Why ("validated");
+            else Ready := False; Why ("authority-mismatch"); end if;
+         end;
+      end if;
+      Native.Configure_Parent (Parent_Present, Configured);
+      if not Configured then Ready := False; Why ("configuration-repeated"); end if;
+      if Parent_Present and Configured then
+         -- Release any parent delivery that preceded registration. Startup
+         -- parking and the sealed registry establish the initial quiet source.
+         IRQ.Note (IRQ_State, True);
+         for N in 1 .. Positive (Raw.work.steps) loop
+            IRQ.Turn (IRQ_State);
+            exit when IRQ.Observe (IRQ_State).At_Phase in IRQ.Idle | IRQ.Faulted;
+         end loop;
+         Ready := IRQ.Observe (IRQ_State).At_Phase = IRQ.Idle;
+         if not Ready then Why ("initial-ack-unconfirmed"); end if;
+      end if;
+      Log.Parent_Line (Parent_Present and Ready, Natural (Launch_Report.Parent.Vector), Reason (1 .. Last));
+   end Configure_Parent;
    procedure Startup_Queues is
    begin
       for N in 1 .. Positive (Raw.work.events) loop
@@ -152,13 +220,19 @@ procedure Main is
       Hold_Resources := Keep_Resources; Request_Stop;
    end Decline;
 begin
-   declare Launcher : constant CuBit.Handles.IPC.Description := CuBit.Handles.IPC.Describe (Startup.Launcher); begin
-      if not Launcher.Current or else Launcher.Kind /= CuBit.Handles.ABI.Process or else
-         not PID.Is_Process (PID.From_Word (Launcher.Object)) then
+   declare Launcher : constant CuBit.Handles.IPC.Description := CuBit.Handles.IPC.Describe (Startup.Ready); begin
+      if not Launcher.Current or else Launcher.Kind /= CuBit.Handles.ABI.Endpoint or else
+         not Launcher.Held.Read or else not PID.Is_Process (PID.From_Word (Launcher.Object)) then
          Log.Stage (Log.Identify, False, "launcher-lifetime-refused"); Decline (False); return;
       end if;
    end;
-   Log.Stage (Log.Identify, True, G.Target_HID, " mode=polled parent-irq=unbound");
+   GPIO_Native_Launch.Validate (Caps, Launch_Report);
+   if Launch_Report.Status /= GPIO_Native_Launch.Validated then
+      Log.Stage (Log.Identify, False, "launch-" & Launch_Report.Status'Image,
+         " resource=" & Launch_Report.At_Resource'Image);
+      Decline (False); return;
+   end if;
+   Log.Stage (Log.Identify, True, G.Target_HID, " mode=irq-or-events-unavailable");
    GPIO_Native_Clock.Read (Now, Clock_OK);
    if not Clock_OK then
       Log.Stage (Log.Resources, False, "clock-unavailable"); Decline (False); return;
@@ -166,7 +240,8 @@ begin
    Startup_Deadline := Time.After (Now, I.Tick (Raw.timing.startup));
    Resources.Setup (Caps, Register_VA_First, Register_VA_Limit, Mapping.Address (Raw.pages_per_resource),
       Startup_Deadline, Resource_Report);
-   Resources_OK := Resource_Report.Ready_Count > 0 and then not Resource_Report.Repeated;
+   Resources_OK := Resource_Report.Ready_Count = GPIO_Native_Communities.Resource_Count
+     (Integer (G.Memory_Resource_Ordinal'Last) + 1) and then not Resource_Report.Repeated;
    for Ordinal in G.Memory_Resource_Ordinal loop
       Log.Community (Ordinal, Resource_Report.Resources (Ordinal));
       if CuBit.Handles.Valid (Caps (Ordinal)) and then Resource_Report.Resources (Ordinal).Status /= Resources.Ready then
@@ -206,8 +281,10 @@ begin
          Driver.Registry.Seal (Accepted);
          if not Accepted then Log.Stage (Log.Registration, False, "geometry-seal-refused"); Decline (True);
          else
+            Configure_Parent (Accepted);
+            if not Accepted then Hold_Resources := True; Request_Stop; end if;
             declare Registered : constant Interfaces.Unsigned_64 := M.registerDriver (GPIO_Role, Startup.Registration); begin
-               Ready_OK := PID.Is_Process (M.Own_Process) and then Registered /= Registration_Refused and then
+               Ready_OK := not Stop_Latched and then PID.Is_Process (M.Own_Process) and then Registered /= Registration_Refused and then
                   Registered = PID.To_Word (M.Own_Process);
             end;
             Log.Stage (Log.Registration, Ready_OK, (if Ready_OK then "primary" else "role-refused"));
@@ -217,11 +294,35 @@ begin
       end if;
    end if;
    loop
-      Scheduler.Turn (State, Frame);
-      if Frame.Supervision_Required or else Wait_Failure_Noted then
+      for N in 1 .. Positive (Raw.work.steps) loop
+         declare Notice : Boolean; begin
+            Native.Take_Parent_Notice (Notice); IRQ.Note (IRQ_State, Notice);
+            if IRQ.Observe (IRQ_State).Needs_Progress then IRQ.Turn (IRQ_State);
+            else Native.Pump.Turn (State, Frame); end if;
+            Native.Take_Parent_Notice (Notice); IRQ.Note (IRQ_State, Notice);
+         end;
+         exit when not IRQ.Observe (IRQ_State).Needs_Progress and then not Driver.Needs_Step (State);
+      end loop;
+      if IRQ.Observe (IRQ_State).At_Phase = IRQ.Faulted or else
+         Driver.Controller.Observe.Faulted or else Driver.Registry.Observe.Layout_Changed or else
+         Driver.Registry.Observe.Unresolved /= 0 or else Driver.Admin.Observe (State).At_Phase = Driver.Admin.Quarantined or else
+         Wait_Failure_Noted
+      then
+         if not IRQ_Failure_Noted then
+            IRQ_Failure_Noted := True;
+            Log.Stage (Log.Readiness, False, "runtime-supervision-required",
+               " irq=" & IRQ.Observe (IRQ_State).Reason'Image);
+         end if;
          Hold_Resources := True; Request_Stop;
       end if;
-      exit when Frame.Work.Terminal and then Frame.Work.Quiescent and then not Hold_Resources;
-      Wait ((if Hold_Resources then (Time.Relative_Delay, Time.Duration (Raw.timing.progress)) else Frame.Wait_For));
+      if Driver.Registry.Observe.Stopping then Request_Stop; end if;
+      exit when Driver.Registry.Terminal and then Driver.Registry.Quiescent and then Driver.Admin.Quiescent (State)
+         and then not IRQ.Observe (IRQ_State).Parent_Held and then not Native.Requests_Held and then not Hold_Resources;
+      if Hold_Resources then Wait ((Time.Relative_Delay, Time.Duration (Raw.timing.progress)));
+      elsif IRQ.Observe (IRQ_State).Needs_Progress or else Driver.Needs_Step (State) or else Native.Requests_Held then
+         GPIO_Native_Clock.Read (Now, Clock_OK);
+         if not Clock_OK or else Now >= Time.Finite_Time'Last then Hold_Resources := True; Request_Stop;
+         else Wait ((Time.Until_Time, Time.After (Now, I.Tick (Raw.timing.progress)))); end if;
+      else Wait ((Kind => Time.Activity)); end if;
    end loop;
 end Main;

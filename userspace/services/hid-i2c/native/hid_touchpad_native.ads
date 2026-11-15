@@ -16,12 +16,11 @@ generic
 package HID_Touchpad_Native is
    package W renames App.W;
    package C renames Reset.Controls;
-   type Destination is (Invalid_Envelope, GPIO_Reset_Control, GPIO_Input_Control, I2C_Transfer);
+   type Destination is (Invalid_Envelope, GPIO_Reset_Control, GPIO_Input_Control, Unrelated_Completion);
    type Completion_Report is record
       Routed_To : Destination := Invalid_Envelope;
       Frame_Valid : Boolean := False;
       GPIO_Result : C.Receive_Result := C.Unrelated;
-      I2C_Result : App.Bus.Transactions.Completion_Result := App.Bus.Transactions.Unrelated;
    end record;
    procedure Receive_Completion (Entry_Value : CuBit.Messages.CompletionEntry;
       Now : W.Word; Clock_Available : Boolean; Result : out Completion_Report);

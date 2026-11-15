@@ -2,13 +2,27 @@ pragma Ada_2022;
 with Main_Model;
 with GPIO_Admin_Wire;
 with GPIO_Loop_Time;
+with GPIO_IRQ_Notices;
 package body GPIO_Native_Pump is
    package B renames Main_Model;
    package A renames GPIO_Admin_Wire;
    package W renames B.W;
    use type B.Scenario, W.Completion_Status, B.I.Word;
+   Notices : GPIO_IRQ_Notices.State;
+   procedure Configure_Parent (Present : Boolean; Accepted : out Boolean) is
+   begin GPIO_IRQ_Notices.Configure (Notices, Present, Accepted); end Configure_Parent;
+   procedure Take_Parent_Notice (Pending : out Boolean) is
+   begin GPIO_IRQ_Notices.Take (Notices, Pending); end Take_Parent_Notice;
+   procedure Hold_Requests (Held : Boolean) is
+   begin GPIO_IRQ_Notices.Hold (Notices, Held); end Hold_Requests;
+   function Requests_Held return Boolean is (GPIO_IRQ_Notices.Requests_Held (Notices));
    procedure Poll_Event (S : in out Driver.Admin.State; Found : out Boolean) is
    begin
+      if B.IRQ_Queued then
+         B.IRQ_Queued := False;
+         GPIO_IRQ_Notices.Note (Notices, B.P.No_Process, True, True, Found);
+         return;
+      end if;
       Found := B.Stop_Queued; if not Found then return; end if;
       B.Stop_Queued := False;
       Driver.Registry.Request_Stop (GPIO_Loop_Time.After (Driver.Controller.I.Tick (B.Clock), Cleanup_Window));
@@ -21,6 +35,7 @@ package body GPIO_Native_Pump is
       Cleanup : constant Driver.Controller.I.Tick := GPIO_Loop_Time.After (Driver.Controller.I.Tick (B.Clock), Cleanup_Window);
    begin
       Found := False;
+      if Requests_Held then return; end if;
       if not B.Ready_ACK or else Driver.Admin.Observe (S).Stopping then return; end if;
       case B.Request_Stage is
          when 0 =>
@@ -30,6 +45,9 @@ package body GPIO_Native_Pump is
             if B.Current = B.Stop_During_Admission then
                if B.Saved_Answers = 0 then B.Stop_Queued := True; end if;
             elsif Driver.Admin.Quiescent (S) and then B.Last_Admin = W.Completed then
+               if not GPIO_IRQ_Notices.Parent_Present (Notices) then
+                  B.Event_Unavailable := B.Event_Unavailable + 1; B.Stop_Queued := True; return;
+               end if;
                Driver.Registry.Offer (B.Client_ID, B.Badge, (W.Arm, (W.Within, W.Millisecond (Setup))), 2, Taken);
                B.Check (Taken, "real registry accepts modeled arm"); B.Request_Stage := 2; Found := True;
             end if;
@@ -40,7 +58,7 @@ package body GPIO_Native_Pump is
                   B.Memory (L.Resource) (Natural (L.Status_Register) / 4) :=
                      B.Memory (L.Resource) (Natural (L.Status_Register) / 4) or L.Interrupt_Mask;
                end;
-               B.Request_Stage := 3;
+               B.IRQ_Queued := True; B.Request_Stage := 3;
             end if;
          when 3 =>
             if B.Event_Deliveries = 1 then

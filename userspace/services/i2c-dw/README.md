@@ -1,67 +1,67 @@
-# DesignWare I2C service
+The native entry is main.adb. Its component.ccl declares an Intel Alder Lake-N
+I2C0/I2C1 PCI driver. Devmgr supplies immutable Generic_PCI_Configuration, the
+named register authority, readiness endpoint and an optional one-vector MSI
+controller authority. The native mapping adapter checks kind, rights, range
+and the launch BAR before mapping one register page.
 
-`main.adb` is the native entry point. `component.ccl` declares a driver; devmgr
-matches the Intel Alder Lake-N I2C0/I2C1 PCI IDs and supplies an immutable
-`Generic_PCI_Configuration`, the named register grant and readiness endpoint.
-Only one register page is mapped after the native adapter checks the grant's
-kind, rights, range and correspondence with the launch BAR. This driver does
-not receive PCI configuration-port authority.
+Startup runs finite reset/configuration/work budgets and leaves the controller
+disabled and idle. MSI startup additionally reads back a zero source mask under
+a finite clock deadline before reporting Ready. Missing MSI selects the named
+1 ms polling fallback; inconsistent delivery/vector/authority bindings refuse
+startup before mapping. Client service begins after the Ready acknowledgement.
+Each instance owns one physical controller; optional role registration names
+the primary instance.
 
-Startup uses the owner's finite reset/configuration/work budgets. It leaves the
-controller disabled and idle, without selecting a peripheral address or speed.
-The loop reports Ready or Not_Present through the existing generic devmgr
-protocol; it serves clients only after a Ready acknowledgement. Optional role
-registration is for the primary instance. Other controller instances use
-endpoints minted by the launcher. There is no configure RPC or separate I2C
-launch kind.
+Clients open the persistent com.cubit-os.i2c-transfer request channel. The
+kernel-stamped admitted badge fixes the target/address mode and speed ceiling.
+The finite absolute deadline, write/read counts and reserved fields are checked
+in the channel header. Payload views come from the established channel mapping.
+One active transfer borrows those views through the same controller owner until
+independent quiet evidence permits returning them. No client field supplies a
+physical address, grant identity, target or speed. Full Process_ID identities
+remain opaque. Ownership uncertainty retains the mappings and publishes no
+completion that would permit recycling them; there is no automatic replay.
 
-Incoming requests use `Poll_Service_Request`; a successful `Save_Reply` retains
-the exact request's reply authority while the controller progresses. Sender
-identity stays an opaque `Process_ID`. The kernel-stamped channel badge supplies
-the target/address mode and speed ceiling. No payload field can replace them.
-The four-word transfer codec validates operation, protocol version, canonical
-generation-bearing input/output grant references, 16-bit counts, combined
-capacity and an explicit absolute-millisecond or Forever deadline. Each copy
-acquires the requested slice with that exact sender as expected owner and
-returns the acquisition before continuing.
+Main serializes request admission, bounded channel turns and hardware progress.
+It polls at most eight events per turn. A successful hardware No_Action sample
+ends that turn. In MSI mode the owner derives TX-empty/RX-full/STOP/error sources
+from the actual transfer planner, writes and reads back the mask, and Main waits
+on the kernel event lane using the original finite request deadline. An armed
+owner masks and verifies readback before the next FIFO work. Software progress
+continues in bounded turns. The 1 ms sleep applies only to active polled mode;
+idle service uses a finite health deadline. Failed masking, uncertain access,
+clock/deadline failure or an unavailable kernel wait retains the physical owner
+and borrowed mappings for supervision.
 
-The native loop serializes admission, disabled configuration, transfer and
-quiescence. Main advances a bounded work burst between request polls and yields
-between active bursts. `i2c_work_policy` scales the finite work allowance with
-the selected timing counters. This is a resource policy, not a guarantee of
-success under unlimited clock stretching; caller deadlines remain independent.
-Completion227 carries a status, full-width ticket, hardware-success and
-effects-possible flags, requested-write count and delivered-read count. A write
-count is not evidence of bytes acknowledged on the bus. Uncertain accesses or
-grant retirement stop the loop rather than replaying work.
+Kernel IRQ notices require canonical envelope fields and the admitted vector's
+pending bit. Main also validates the common lifecycle-notice envelope before
+forwarding control/grant events. Stop closes admission and drains the existing
+request under its original work/deadline limits. Mapping retirement and a clean
+stopped state require actual controller quiescence. A drain fault remains
+retained. Process exit alone is not evidence of hardware quiescence. The power
+service lifecycle acknowledgement remains future integration work.
 
 Stage, failure and periodic health lines use the existing logger and serial
-output. Safe register evidence is logged once on startup failure when a sample
-exists. FIFO payload bytes are never logged. Main polls at most eight events
-per turn alongside service requests and bounded hardware work. It routes kernel
-channel wakes through the runtime registry. A grant lifetime notice disconnects
-the opaque logger publisher before further writes; serial diagnostics remain.
-The shared logger is unchanged.
+output. Startup identifies the hardware and msi-channel or polled-channel mode;
+MSI readiness logs msi-masked-ready, and polling logs its interval. FIFO payload
+bytes are never logged. Grant lifetime notices disconnect the existing opaque
+logger publisher according to its established lifetime rules.
 
-A kernel Stop notice closes admission immediately. The existing request drains
-under its original work allowance/deadline and keeps its original saved reply.
-An idle controller can stop immediately without MMIO. A successful stopped state
-requires independent disabled/idle evidence; a fault during drain remains a
-fault with possible hardware effects. Main does not replay or reset uncertain
-hardware to manufacture a clean stop. The power-service lifecycle acknowledgement
-protocol and interrupts/MSI/EOI remain future integration work. Process exit by
-itself must not be treated as proof that hardware is quiescent.
+The source boundaries are transfer/ (planner/register protocol), setup/
+(disabled configuration), lpss/ (Intel reset/timing profile), owner/ (controller
+lifecycle and borrowed byte views), native/ (channel service, IRQ binding and
+kernel/runtime adapters), and requests/ (existing serialized request helpers).
+Shared wire/admission codecs used by HID clients live in userspace/lib/i2c-admission.
 
-The ownership boundaries are `transfer/` (planner/register protocol), `setup/`
-(disabled configuration), `lpss/` (Intel reset/timing profile), `owner/`
-(controller lifecycle), `requests/` (serialized client/grant ownership), and
-`native/` (kernel/runtime adapters and loop). Shared pure wire codecs are in
-`userspace/lib/i2c-admission` because HID and other clients need them.
-
-Validation scope: hosted planner/owner/loop and wire tests, plus semantic-only
-compilation against the current runtime. These do not establish native boot,
-electrical timing or laptop functionality. The 133MHz root-clock and electrical
-timing profile still require hardware validation. Stateful driver proofs, native
-execution, catalog publication and
-HID/GPIO integration remain incomplete. No touchpad address, GPIO pin, polarity
-or HID descriptor register is guessed from a synthetic fixture.
+Run tests/i2c-interrupt-wait for the actual owner/controller/channel-turn,
+planner-demand and binding regressions. tests/i2c-msi-entry executes the actual
+Main with explicitly modeled controller/service/syscall boundaries; it covers
+startup refusal, finite waits, polling fallback, IPC wake/reply, Stop, retention,
+bounded event batches and malformed notices. Existing stack, native-helper and
+GPIO/HID interoperation suites remain separate checks. These hosted results and
+native semantic/object compilation do not establish native execution, electrical
+timing, working MSI delivery or laptop touchpad behavior. New stateful and IRQ
+changes are tested, without a renewed SPARK proof claim. The 133 MHz root clock,
+electrical profile, native bring-up, timing instrumentation and formal milestone
+proofs still need validation. Laptop touchpad metadata comes from firmware;
+synthetic fixtures do not establish its address, GPIO pin/polarity or HID register.

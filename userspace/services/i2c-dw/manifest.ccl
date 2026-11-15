@@ -1,12 +1,18 @@
-# Per-controller generic PCI launch. No interrupt is requested until MSI/EOI
-# is implemented. Client endpoint badges supply the admitted target and speed.
+# Per-controller generic PCI launch. Optional MSI; one named polling fallback.
+# Client endpoint badges supply the admitted target and speed.
 (Executable_Manifest
   identity => "com.cubit.i2c-dw"
   version => "0.1.0"
   drives => [(Device_Match.PCI_IDs (PCI_IDs 0x8086 0x54E8 0x54E9))]
   requests => [
     (device-memory "registers" 0 4096 Access.Read_Write)
+    (interrupt "controller" Interrupt_Mode.MSI 1)
     (notification "i2c" Notify_Access.Manage "registration")
     (service "device-manager" "ready")
     (service "logstore" "logstore")]
-  optional => ["registration" "logstore"])
+  optional => ["controller" "registration" "logstore"]
+  channels => [
+    (Channel_Offer contract => "com.cubit-os.i2c-transfer"
+      per_client => (Channel_Limit.At_Most 4)
+      total => (Channel_Limit.At_Most 64)
+      class => Channel_Class.Interactive)])

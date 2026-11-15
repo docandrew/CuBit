@@ -12,6 +12,10 @@ package GPIO_Native_Pump is
       Events, Ignored_Events, Requests : Interfaces.Unsigned_64 := 0;
    end record;
    function Observe return Statistics;
+   procedure Configure_Parent (Present : Boolean; Accepted : out Boolean);
+   procedure Take_Parent_Notice (Pending : out Boolean);
+   procedure Hold_Requests (Held : Boolean);
+   function Requests_Held return Boolean;
    procedure Poll_Event (S : in out Driver.Admin.State; Found : out Boolean);
    procedure Poll_Request (S : in out Driver.Admin.State; Found : out Boolean);
    package Pump is new GPIO_Service_Pump

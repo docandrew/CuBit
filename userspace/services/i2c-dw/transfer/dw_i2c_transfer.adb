@@ -10,6 +10,18 @@ package body DW_I2C_Transfer with SPARK_Mode is
    function Received (S : State) return Count is (S.Drained);
    function Pending (S : State) return Boolean is
      (S.In_Flight.Kind /= No_Action);
+   function Wake_Sources (S : State) return Wake_Requirement is
+   begin
+      if S.At_Phase /= Active or else Pending (S) then
+         return (others => False);
+      end if;
+      return (Active => True,
+         TX_Empty => S.Queued_Writes < S.Writes or else
+           (S.Queued_Reads < S.Reads and then
+            S.Queued_Reads - S.Drained < Count (S.RX_Size)),
+         RX_Full => S.Queued_Reads > S.Drained,
+         Stop_Detected => not S.Stop_Seen);
+   end Wake_Sources;
    function Valid (S : State) return Boolean is
      (S.Queued_Writes <= S.Writes and then S.Queued_Reads <= S.Reads
       and then S.Drained <= S.Queued_Reads

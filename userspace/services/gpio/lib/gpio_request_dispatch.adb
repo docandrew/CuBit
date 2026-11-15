@@ -3,7 +3,7 @@ package body GPIO_Request_Dispatch with SPARK_Mode is
    use type W.Operation, W.Decode_Status, W.Control_Kind;
    procedure Handle (Caller : P.Process_ID; Badge : W.Word;
       Label : W.Operation; Protocol : W.Word; Words : W.Message_Words;
-      Frame_Valid : Boolean; Result : out Report) is
+      Frame_Valid : Boolean; Result : out Report; Events_Available : Boolean := True) is
       Parsed : W.Request_Decoding;
       Reply : Reply_Authority;
       Saved, Delivered, Taken : Boolean;
@@ -22,6 +22,11 @@ package body GPIO_Request_Dispatch with SPARK_Mode is
          if Parsed.Status = W.Decoded then Rejection.Status := W.Busy; end if;
          Answer_Current (Caller, Label, Rejection, Delivered);
       elsif Parsed.Status /= W.Decoded then
+         Answer_Saved (Reply, Label, Rejection, Delivered);
+      elsif not Events_Available and then Parsed.Value.Kind /= W.Release_Pin then
+         Rejection.Status := W.Unsupported_Channel;
+         Rejection.Lease := (if Parsed.Value.Kind = W.Acknowledge then Parsed.Value.Lease_To_Ack else 0);
+         Rejection.Generation := (if Parsed.Value.Kind = W.Acknowledge then Parsed.Value.Generation_To_Ack else 0);
          Answer_Saved (Reply, Label, Rejection, Delivered);
       else
          Offer (Caller, Badge, Parsed.Value, Reply, Taken);

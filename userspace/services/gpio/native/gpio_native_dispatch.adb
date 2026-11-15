@@ -5,7 +5,7 @@ package body GPIO_Native_Dispatch is
    package W renames Dispatch.W;
    use type Interfaces.Unsigned_16, M.IPC_Flags;
    procedure Handle (Caller : M.Process_ID; Message : M.Message;
-      Result : out Dispatch.Report) is
+      Result : out Dispatch.Report; Events_Available : Boolean := True) is
       Length : Natural := Natural (Message.tag.length);
       Frame_Valid : constant Boolean := Length <= Message.words'Length
          and then Message.tag.reserved = 0 and then Message.tag.ipc = M.No_IPC_Flags;
@@ -14,7 +14,7 @@ package body GPIO_Native_Dispatch is
       declare Words : W.Message_Words (1 .. Length); begin
          for Index in Words'Range loop Words (Index) := Message.words (Index - 1); end loop;
          Dispatch.Handle (Caller, Message.authorityTag, Message.tag.label,
-            W.Word (Message.tag.protocol), Words, Frame_Valid, Result);
+            W.Word (Message.tag.protocol), Words, Frame_Valid, Result, Events_Available);
       end;
    end Handle;
 end GPIO_Native_Dispatch;

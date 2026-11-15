@@ -81,14 +81,6 @@ package body HID_I2C_Touchpad with SPARK_Mode is
    begin Source.Consumer_Changed (Signal, Now, Input_Info); end Consumer_Changed;
    function Wake_Deadline (Now, Otherwise : W.Word) return W.Word is
      (Source.Wake_Deadline (Signal, Now, Device.Wake_Deadline (Core, Now, Otherwise)));
-   procedure Receive (Token : W.Word; Sender : CuBit.Process_IDs.Process_ID;
-      Delivery : Bus.Transactions.Delivery_Status; Label : W.Operation; Protocol : W.Word;
-      Words : W.Message_Words; Now : W.Word; Clock_Available : Boolean;
-      Result : out Bus.Transactions.Completion_Result) is
-   begin
-      Current_Time := Now;
-      Device.Receive (Core, Token, Sender, Delivery, Label, Protocol, Words, Now, Clock_Available, Result);
-   end Receive;
    procedure Step (Now : W.Word; Clock_Available : Boolean) is
    begin Current_Time := Now; Device.Step (Core, Now, Clock_Available); end Step;
    procedure Reset_Interrupt (Ticket : W.Word; Result : out Device.Interrupt_Result) is

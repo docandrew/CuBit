@@ -10,7 +10,7 @@ export TMPDIR=/home/doc/cubit-build-tmp
 nix develop --command bash tests/gpio-hid-interop/run.sh
 ```
 
-`--validate-only` checks the30production input hashes and test hash without
+`--validate-only` checks the64selected portable input hashes and test hash without
 execution. `--source-root DIR` selects a checkout explicitly. Both checked
 (-gnata/-gnato) and release (-gnatp) profiles run, with compiler ALI switch audits.
 Each build is bounded to180seconds and each scenario to30seconds, nice19/j1,
@@ -44,3 +44,5 @@ It does not exercise dynamic admin registration, I2C transfers, the full HID
 Device/input/report pipeline, parent IRQs or real touchpad reset. Those have
 separate partial tests/integration work; passing this gate is not end-to-end
 native touchpad acceptance or whole ACPI/AML proof.
+
+The hosted source inventory selects portable GPIO/I2C/HID units plus opaque process/grant identity types and uses the Nix host runtime. It excludes unrelated guest GNAT runtime sources, including the retired s-memory.adb entry. The seven scenario bodies and assertions are unchanged; the checked/release ALI dependency audit identifies the actual compiled production closure. This does not validate native kernel transport, parent IRQ delivery or hardware.

@@ -68,6 +68,15 @@ package body GPIO_Native_Log is
             " probe=" & T.Header_Outcome'Image (Item.Header.Status) & " sample=unavailable", not OK);
       end if;
    end Community;
+   Parent_Reported : Boolean := False;
+   procedure Parent_Line (Ready : Boolean; Vector : Natural; Reason : String) is
+      Text : constant String := Natural'Image (Vector);
+   begin
+      if Parent_Reported then Repeat; return; end if;
+      Parent_Reported := True;
+      Line ("parent line " & (if Ready then "armed vector=" else "unavailable vector=") &
+         Text (Text'First + 1 .. Text'Last) & " reason=" & Reason, not Ready);
+   end Parent_Line;
    procedure Summary is
       All_Good : constant Boolean := (for all Item in Bringup_Stage => Success (Item) and not Failure (Item));
    begin

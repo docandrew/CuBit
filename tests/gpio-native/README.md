@@ -22,11 +22,12 @@ release profiles and audits compiler ALI switches. Expected checks per profile:
 
 | Suite | Checks | Scope |
 | --- | ---: | --- |
-| main | 9,904 | Actual Main; 11 startup/lifecycle/failure scenarios |
-| registry | 10,775 | Dynamic admission/retirement; 35 cases |
+| main | 13,880 | Actual IRQ-driven Main; 26 startup/lifecycle/failure scenarios |
+| registry | 14,414 | Dynamic admission/retirement and joined IRQ turn; 45 cases |
 | slots | 5,129 | Controller arbitration and released-slot retarget/reuse |
 | park | 2,580,955 | Whole GPIO pin-domain enumeration, parking and 27 I/O fault cases |
-| total | 2,606,763 | 182 build/runtime commands across both profiles |
+| irq | 388 | Notice authentication/hold, absent-parent dispatch, bounded turn |
+| total | 2,614,766 | Checked and release profiles; explicit modeled hardware/kernel boundaries |
 
 Large counts include repeated enumeration assertions and are not a percentage of
 hardware, AML or independent test coverage. The Main model uses ordinary register
@@ -60,8 +61,14 @@ No end-to-end controller/registry/IPC/Main/AML proof, native kernel/MMIO executi
 SCI/GPE/parent-IRQ delivery or real laptop acceptance is established here. No new
 ACPICA result is claimed: these gates test GPIO code, not AML conformance.
 
-`integration-draft/` contains the pending CCL component/manifest/policy proposals.
-They are not build-registered declarations and depend on launcher/runtime work.
-Native adapter semantic evidence is carried separately by exact source hashes;
-its Startup fixture and pending Close(Carried) runtime overlay are not a working
-native executable.
+The actual component/manifest now live in userspace/services/gpio. Main uses
+required typed memory handles, the described devmgr endpoint identity and
+compiled named policy; the obsolete ACPI-memory/process/typed-parameter draft
+is removed. Launch preflight reads the actual Generic_ACPI_Configuration and
+checks all four handles before any map/probe/register access. Missing or
+mismatched later windows refuse the whole startup. The hosted kernel and
+launch-block boundaries remain models. Actual generated Startup/native SDK
+semantic checks are in tests/gpio-native-entry; no native execution or hardware
+acceptance is established by either hosted suite.
+
+The IRQ additions are hosted-tested, not newly proved. The existing scoped proof gate covers its listed low-level units; it does not establish the new parent-line handoff, native queue/ABI/clock/ACK behavior, or whole-service correctness. Native preflight in tests/gpio-native-entry regenerates the real optional parent Startup and checks the component against the coordinator schema; it does not link or boot a guest.

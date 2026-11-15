@@ -1,87 +1,126 @@
 pragma Ada_2022;
-with System.Address_To_Access_Conversions;
-with System.Storage_Elements;
-with CuBit.Memory_Grants;
-with CuBit.Process_IDs;
-with Interfaces;
+with System; with System.Storage_Elements;
+with CuBit.Handles.IPC; with CuBit.Channel_Clients; with CuBit.Channel_Protocol;
+with CuBit.Deadlines; with I2C_Channel;
 package body HID_I2C_Native_Buffers is
-   package M renames CuBit.Messages;
-   package G renames CuBit.Grant_References;
-   package Addresses renames System.Storage_Elements;
-   package Access_Bytes is new System.Address_To_Access_Conversions (D.Byte);
-   use type W.Word, Interfaces.Unsigned_16, M.IPC_Flags;
-   Maximum_Pages : constant W.Word := (W.Word (W.Count'Last) + G.Page_Bytes - 1) / G.Page_Bytes;
-   procedure Allocate (Bytes : W.Word; Address : out W.Word; OK : out Boolean) is
-      Raw : W.Word;
-   begin
-      Address := 0; OK := False;
-      if Bytes = 0 or else Bytes mod G.Page_Bytes /= 0 or else Bytes > Maximum_Pages * G.Page_Bytes then return; end if;
-      Raw := M.syscall (M.SYSCALL_ALLOCATE_OWNED_MEMORY, Bytes);
-      if Raw = 0 or else Raw = W.Word'Last then return; end if;
-      Address := Raw; OK := True;
-   end Allocate;
-   procedure Release (Address, Bytes : W.Word; OK : out Boolean) is
-   begin OK := M.syscall (M.SYSCALL_RELEASE_OWNED_MEMORY, Address, Bytes) = 0; end Release;
-   procedure Clear (Address, Bytes : W.Word) is
-   begin
-      if Bytes = 0 then return; end if;
-      for N in W.Word range 0 .. Bytes - 1 loop
-         Access_Bytes.To_Pointer (Addresses.To_Address (Addresses.Integer_Address (Address + N))).all := 0;
-      end loop;
-   end Clear;
-   procedure Store (Address : W.Word; Data : D.Bytes) is
-      Offset : W.Word := 0;
-   begin
-      for B of Data loop
-         Access_Bytes.To_Pointer (Addresses.To_Address (Addresses.Integer_Address (Address + Offset))).all := B;
-         Offset := Offset + 1;
-      end loop;
-   end Store;
-   procedure Load (Address : W.Word; Data : out D.Bytes) is
-      Offset : W.Word := 0;
-   begin
-      for B of Data loop
-         B := Access_Bytes.To_Pointer (Addresses.To_Address (Addresses.Integer_Address (Address + Offset))).all;
-         Offset := Offset + 1;
-      end loop;
-   end Load;
-   procedure Create (Address, Pages : W.Word; Writable : Boolean;
-                     Reference : out G.Reference; Status : out HID_I2C_Grant_Creation.Status) is
-      OK : Boolean;
-   begin
-      Reference := (others => <>); Status := HID_I2C_Grant_Creation.Refused;
-      if Pages not in 1 .. Maximum_Pages then return; end if;
-      CuBit.Memory_Grants.Create_Via_Capability (Controller,
-        Addresses.To_Address (Addresses.Integer_Address (Address)), Natural (Pages),
-        Writable, Reference, OK, notify => False);
-      Status := (if OK then HID_I2C_Grant_Creation.Created else HID_I2C_Grant_Creation.Uncertain);
-   end Create;
-   procedure Receive
-     (S : in out Client.State; Entry_Value : M.CompletionEntry;
-      Now : W.Word; Clock_Available : Boolean;
-      Result : out Client.Transactions.Completion_Result)
-   is
-      Delivery : Client.Transactions.Delivery_Status;
-      Length : Natural := Natural (Entry_Value.msg.tag.length);
-   begin
-      Result := Client.Transactions.Unrelated;
-      if not Entry_Value.valid then return; end if;
-      case Entry_Value.status is
-         when M.COMPLETION_OK => Delivery := Client.Transactions.Delivered;
-         when M.COMPLETION_TARGET_DIED => Delivery := Client.Transactions.Target_Died;
-         when M.COMPLETION_CANCELLED => Delivery := Client.Transactions.Cancelled;
-         when M.COMPLETION_QUEUE_OVERFLOW => Delivery := Client.Transactions.Queue_Overflow;
-         when others => Delivery := Client.Transactions.Transport_Error;
-      end case;
-      if Length > Entry_Value.msg.words'Length or else Entry_Value.msg.tag.reserved /= 0 or else Entry_Value.msg.tag.ipc /= M.No_IPC_Flags then Length := 0; end if;
-      declare
-         Words : W.Message_Words (1 .. Length);
+   use System.Storage_Elements;
+   use type P.Process_ID, CuBit.Handles.ABI.Kind, System.Address, W.Word;
+   package Channels is new CuBit.Channel_Clients (I2C_Channel.RC, I2C_Channel.Element);
+   use type Channels.Open_Outcome, Channels.Submit_Result, Channels.Take_Outcome;
+   Channel : Channels.Client;
+   Receipt : Channels.Retirement_Receipt;
+   Attempted, Transport_Attempted, Closing, Armed, Have_Tag : Boolean := False;
+   Pending_Tag : Channels.Tag := Channels.Tags.No_Tag;
+   Pending_Token : W.Word := 0;
+   package body Endpoint_Client is
+      Cache_Attempted : Boolean := False;
+      Cached : Binding;
+      function Resolve return Binding is
+         Sender : P.Process_ID;
       begin
-         for N in Words'Range loop Words (N) := Entry_Value.msg.words (N - 1); end loop;
-         Client.Receive (S, Entry_Value.token,
-           CuBit.Process_IDs.From_Word (Entry_Value.from), Delivery,
-           Entry_Value.msg.tag.label, W.Word (Entry_Value.msg.tag.protocol),
-           Words, Now, Clock_Available, Result);
-      end;
-   end Receive;
+         if Cache_Attempted then return Cached; end if;
+         Cache_Attempted := True;
+         declare Description : constant CuBit.Handles.IPC.Description := CuBit.Handles.IPC.Describe (Controller); begin
+            if not Description.Current then Cached := (Endpoint_Refused, Description.Why);
+            elsif Description.Kind /= CuBit.Handles.ABI.Endpoint then Cached := (Status => Wrong_Endpoint_Kind);
+            else
+               Sender := P.From_Word (Description.Object);
+               Cached := (if P.Is_Process (Sender) then (Endpoint_Resolved, Sender)
+                          else (Status => Invalid_Endpoint_Identity));
+            end if;
+         end;
+         return Cached;
+      end Resolve;
+   end Endpoint_Client;
+   procedure Open_Channel (Expected_Peer : P.Process_ID; Deadline : W.Millisecond; Ready : out Boolean) is
+      Binding : constant Endpoint_Client.Binding := Endpoint_Client.Resolve;
+      Outcome : Channels.Open_Outcome;
+      Refusal : CuBit.Channel_Protocol.Open_Refusal;
+      use type Endpoint_Client.Binding_Status;
+   begin
+      Ready := False; if Attempted then return; end if;
+      Attempted := True;
+      if Binding.Status /= Endpoint_Client.Endpoint_Resolved or else Binding.Sender /= Expected_Peer then return; end if;
+      Transport_Attempted := True;
+      Channels.Open (Channel, Controller, CuBit.Deadlines.At_Monotonic (Deadline), Outcome, Refusal);
+      Ready := Outcome = Channels.Connected;
+   end Open_Channel;
+   procedure Store_Write (Data : D.Bytes; Stored : out Boolean) is
+      View : constant I2C_Channel.RC.Payload_View := Channels.Write_Payload (Channel);
+      Offset : Storage_Offset := 0;
+   begin
+      Stored := False;
+      if Closing or else not Channels.Is_Open (Channel) or else not View.Writable
+        or else View.Base = System.Null_Address or else Data'Length > Natural (Maximum_Transfer)
+        or else Data'Length > View.Bytes then return; end if;
+      for B of Data loop
+         declare Item : D.Byte with Import, Volatile, Address => View.Base + Offset; begin Item := B; end;
+         Offset := Offset + 1;
+      end loop;
+      Stored := True;
+   end Store_Write;
+   procedure Load_Read (Data : out D.Bytes; Loaded : out Boolean) is
+      View : constant I2C_Channel.RC.Payload_View := Channels.Read_Payload (Channel);
+      Offset : Storage_Offset := 0;
+   begin
+      Loaded := False;
+      if Closing or else not Channels.Is_Open (Channel) or else View.Writable
+        or else View.Base = System.Null_Address or else Data'Length > Natural (Maximum_Transfer)
+        or else Data'Length > View.Bytes then Data := [others => 0]; return; end if;
+      for B of Data loop
+         declare Item : D.Byte with Import, Volatile, Address => View.Base + Offset; begin B := Item; end;
+         Offset := Offset + 1;
+      end loop;
+      Loaded := True;
+   end Load_Read;
+   procedure Submit_Header (Header : I2C_Channel_Wire.Raw_Request; Token : W.Word; Accepted : out Boolean) is
+      Result : Channels.Submit_Result;
+      Number : Channels.Tag;
+   begin
+      Accepted := False;
+      if Closing or else Have_Tag or else Token = 0 then return; end if;
+      Channels.Submit (Channel, Header, Number, Result);
+      if Result = Channels.Queued then
+         Pending_Tag := Number; Pending_Token := Token; Have_Tag := True; Accepted := True;
+      end if;
+   end Submit_Header;
+   procedure Poll_Answer (Token : W.Word; Words : out W.Completion_Words; Available, Ended : out Boolean) is
+      Outcome : Channels.Take_Outcome;
+   begin
+      Words := [others => 0]; Available := False; Ended := False;
+      if Closing or else not Channels.Is_Open (Channel) or else not Have_Tag or else Token /= Pending_Token then
+         Ended := True; return;
+      end if;
+      Channels.Try_Take (Channel, Pending_Tag, Words, Outcome);
+      case Outcome is
+         when Channels.Answered => Have_Tag := False; Available := True;
+         when Channels.Ended => Ended := True;
+         when Channels.Pending => null;
+      end case;
+   end Poll_Answer;
+   procedure Resume is
+   begin if Armed then Channels.Disarm (Channel); Armed := False; end if; end Resume;
+   procedure Prepare_Wait (Ready : out Boolean) is
+   begin
+      Ready := True;
+      if Closing or else not Have_Tag then return; end if;
+      if not Channels.Is_Open (Channel) then Ready := False; return; end if;
+      if Armed then Ready := False; return; end if;
+      Channels.Arm (Channel, Armed); Ready := Armed;
+   end Prepare_Wait;
+   procedure Close_Channel is
+   begin
+      if Closing then return; end if;
+      Closing := True; Resume;
+      Channels.Close (Channel, Receipt);
+   end Close_Channel;
+   function Retirement_Confirmed return Boolean is
+     (Closing and then (not Transport_Attempted or else Channels.Retirement_Confirmed (Receipt)));
+   procedure Grant_Notice (Item : CuBit.Control_Events.Event) is
+      Ended : Boolean;
+   begin
+      Channels.Handle_Event (Channel, Item, Ended);
+      -- Close_Channel subsequently captures the helper's retained receipt,
+      -- even if this authenticated event already detached the channel views.
+   end Grant_Notice;
 end HID_I2C_Native_Buffers;

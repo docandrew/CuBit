@@ -4,6 +4,8 @@ with CuBit.Channel_Bells;
 with GPIO_Admin_Wire;
 with GPIO_Event_Policy;
 with GPIO_Native_Clock;
+with GPIO_IRQ_Notices;
+with CuBit.Device_Interrupts;
 package body GPIO_Native_Pump is
    package M renames CuBit.Messages;
    package I renames Driver.Controller.I;
@@ -12,6 +14,14 @@ package body GPIO_Native_Pump is
    use type Interfaces.Unsigned_64, Interfaces.Unsigned_16;
    use type M.Protocol_Flags, M.IPC_Flags, I.Tick;
    Counts : Statistics;
+   Notices : GPIO_IRQ_Notices.State;
+   procedure Configure_Parent (Present : Boolean; Accepted : out Boolean) is
+   begin GPIO_IRQ_Notices.Configure (Notices, Present, Accepted); end Configure_Parent;
+   procedure Take_Parent_Notice (Pending : out Boolean) is
+   begin GPIO_IRQ_Notices.Take (Notices, Pending); end Take_Parent_Notice;
+   procedure Hold_Requests (Held : Boolean) is
+   begin GPIO_IRQ_Notices.Hold (Notices, Held); end Hold_Requests;
+   function Requests_Held return Boolean is (GPIO_IRQ_Notices.Requests_Held (Notices));
    function Observe return Statistics is (Counts);
    procedure Increment (Value : in out Interfaces.Unsigned_64) is
    begin if Value < Interfaces.Unsigned_64'Last then Value := Value + 1; end if; end Increment;
@@ -39,6 +49,9 @@ package body GPIO_Native_Pump is
    begin
       Found := M.Poll_Event (Event, Publisher); if not Found then return; end if;
       Increment (Counts.Events);
+      GPIO_IRQ_Notices.Note (Notices, Publisher, CuBit.Device_Interrupts.Is_Doorbell (Event),
+         Event.tag.protocol = 0 and then Event.tag.ipc = M.No_IPC_Flags and then Event.tag.reserved = 0, Noted);
+      if Noted then return; end if;
       if Event.tag.protocol = 0 and then Event.tag.ipc = M.No_IPC_Flags and then Event.tag.reserved = 0 then
          Action := EP.Classify (Publisher, Event.tag.label, Event.tag.length,
             Event.words (0), Event.words (1), Event.words (2));
@@ -61,13 +74,16 @@ package body GPIO_Native_Pump is
       Result : Driver.Client.Report;
       Setup, Cleanup : I.Tick;
    begin
+      Found := False;
+      if Requests_Held then return; end if;
       M.Poll_Service_Request (Caller, Message, Found); if not Found then return; end if;
       Increment (Counts.Requests);
       if Message.tag.label in A.OP_GPIO_ADMIT_SINK | A.OP_GPIO_RETIRE_SINK then
          Limits (Setup, Cleanup);
          Driver.Native_Admin.Handle (S, Caller, Message, Setup, Cleanup);
       else
-         Driver.Native_Client.Handle (Caller, Message, Result);
+         Driver.Native_Client.Handle (Caller, Message, Result,
+            Events_Available => GPIO_IRQ_Notices.Parent_Present (Notices));
       end if;
    end Poll_Request;
 end GPIO_Native_Pump;

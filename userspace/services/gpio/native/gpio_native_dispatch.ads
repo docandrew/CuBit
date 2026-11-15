@@ -11,7 +11,7 @@ generic
       Answer_Current => GPIO_Native_Request_IO.Answer_Current, others => <>);
 package GPIO_Native_Dispatch is
    procedure Handle (Caller : CuBit.Messages.Process_ID; Message : CuBit.Messages.Message;
-      Result : out Dispatch.Report);
+      Result : out Dispatch.Report; Events_Available : Boolean := True);
    -- Feed only Poll_Service_Request output. Never Poll_Any_Ipc, events or
    -- completions. Kernel-stamped authorityTag is the badge; caller is separate
    -- inbox metadata. Reject all reserved/IPC flag fields and oversized frames.

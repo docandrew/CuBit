@@ -5,7 +5,6 @@ package body HID_Touchpad_Native is
    package M renames CuBit.Messages;
    package P renames CuBit.Process_IDs;
    package GW renames GPIO_Control_Wire;
-   package T renames App.Bus.Transactions;
    package Frames renames GPIO_Native_Event_Frames;
    use type Interfaces.Unsigned_16, Interfaces.Unsigned_64, M.IPC_Flags;
    use type Live.Owner.Phase, App.Device.Interrupt_Result;
@@ -14,7 +13,6 @@ package body HID_Touchpad_Native is
       Now : W.Word; Clock_Available : Boolean; Result : out Completion_Report) is
       Length : Natural := Natural (Entry_Value.msg.tag.length);
       GPIO_Delivery : C.Delivery_Status;
-      I2C_Delivery : T.Delivery_Status;
    begin
       Result := (others => <>); if not Entry_Value.valid then return; end if;
       Result.Frame_Valid := Length <= Entry_Value.msg.words'Length and then
@@ -37,19 +35,8 @@ package body HID_Touchpad_Native is
             end if;
          end;
       else
-         Result.Routed_To := I2C_Transfer;
-         case Entry_Value.status is
-            when M.COMPLETION_OK => I2C_Delivery := T.Delivered;
-            when M.COMPLETION_TARGET_DIED => I2C_Delivery := T.Target_Died;
-            when M.COMPLETION_CANCELLED => I2C_Delivery := T.Cancelled;
-            when M.COMPLETION_QUEUE_OVERFLOW => I2C_Delivery := T.Queue_Overflow;
-            when others => I2C_Delivery := T.Transport_Error;
-         end case;
-         declare Words : W.Message_Words (1 .. Length); begin
-            for Index in Words'Range loop Words (Index) := Entry_Value.msg.words (Index - 1); end loop;
-            App.Receive (Entry_Value.token, P.From_Word (Entry_Value.from), I2C_Delivery,
-               Entry_Value.msg.tag.label, W.Word (Entry_Value.msg.tag.protocol), Words, Now, Clock_Available, Result.I2C_Result);
-         end;
+         -- I2C answers are polled from its persistent channel by Bus.Step.
+         Result.Routed_To := Unrelated_Completion;
       end if;
    end Receive_Completion;
    procedure Receive_Event (Publisher : P.Process_ID; Message : M.Message; Result : out Event_Result) is

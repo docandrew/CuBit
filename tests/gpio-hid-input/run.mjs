@@ -31,6 +31,11 @@ for(const entry of catalog.local){
 }
 function verify(){for(const[f,h]of Object.entries(pins))if(sha(f)!==h)throw Error('Input drift: '+f);}
 verify();
+for(const metadataEntry of catalog.prerequisites??[]){
+ const metadataPath=path.resolve(root,metadataEntry.path);
+ if(!metadataPath.startsWith(root+path.sep)||fs.lstatSync(metadataPath).isSymbolicLink()||fs.realpathSync(metadataPath)!==metadataPath||crypto.createHash('sha256').update(fs.readFileSync(metadataPath)).digest('hex')!==metadataEntry.sha256)throw Error('Prerequisite pin '+metadataEntry.path);
+ pins[metadataPath]=metadataEntry.sha256;
+}
 if(validateOnly){console.log(JSON.stringify({mode:'validate-only',inputs:catalog.inputs.length,local:catalog.local.length,executed:false}));process.exit(0);}
 if(process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Set TMPDIR before Nix');
 const compiler=fs.realpathSync(process.env.PATH.split(':').map(d=>d+'/gprbuild').find(fs.existsSync));

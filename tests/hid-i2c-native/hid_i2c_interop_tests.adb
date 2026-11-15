@@ -1,21 +1,9 @@
 pragma Ada_2022;
-with Ada.Text_IO;
-with I2C_Channel_Badges;
-with I2C_Transfer_Wire;
-with I2C_Native_Results;
-with HID_I2C_Buffered_Client;
-with HID_I2C_Grant_Creation;
-with HID_I2C_Descriptors;
-with CuBit.Process_IDs;
-with CuBit.Grant_References;
-with DW_I2C_Requests;
-with DW_I2C_Request_Types;
-with DW_I2C_Owner;
-with DW_I2C_Transfer;
-with DW_I2C_Registers;
-with DW_I2C_Configuration;
-with Intel_LPSS_I2C_Reset;
-with Intel_LPSS_I2C_Profile;
+with Ada.Text_IO; with I2C_Channel_Controller; with I2C_Channel; with I2C_Channel_Wire;
+with HID_I2C_Buffered_Client; with HID_I2C_Descriptors; with I2C_Transfer_Wire;
+with CuBit.Process_IDs; with I2C_Channel_Badges;
+with DW_I2C_Transfer; with DW_I2C_Registers; with DW_I2C_Configuration;
+with Intel_LPSS_I2C_Reset; with Intel_LPSS_I2C_Profile; with System;
 procedure HID_I2C_Interop_Tests is
    package T renames DW_I2C_Transfer;
    package R renames DW_I2C_Registers;
@@ -25,7 +13,7 @@ procedure HID_I2C_Interop_Tests is
    use type T.Word;
    use type T.Count;
    use type T.Byte;
-   use type C.Register_ID;
+   use type C.Register_ID, R.Outcome;
    Checks : Natural := 0;
    procedure Check (OK : Boolean; Context : String) is
    begin
@@ -119,292 +107,209 @@ procedure HID_I2C_Interop_Tests is
       if Inject_Abort then Raw_IRQ := Raw_IRQ or R.Abort_Interrupt; Abort_Source := 8; end if;
       if Lose_Clock_On_Data then Clock_OK := False; end if;
    end Data_Write;
-   package O is new DW_I2C_Owner
-     (16, Clock, Reset_Read, Reset_Write, Config_Read, Config_Write, Data_Read, Data_Write);
-   use type O.Phase;
-   use type O.Admission;
-   Parameters : constant O.Startup :=
-     (P.Intel_Vendor, P.Alder_Lake_N_I2C1, 16#1234_5678_9000#, 4096,
-      30, 40, 100);
-   procedure Startup (S : in out O.State) is
-      Result : O.Admission;
-      Iterations : Natural := 0;
-   begin
-      O.Start (S, Parameters, Result); Check (Result = O.Accepted, "owner startup accepted");
-      while O.Observe (S).At_Phase not in O.Available | O.Faulted loop
-         Iterations := Iterations + 1; Check (Iterations < 100, "startup progress");
-         O.Advance (S);
-      end loop;
-      Check (O.Observe (S).At_Phase = O.Available, "actual composition reaches available");
-      Check (Registers (Index (16#6C#)) = 0 and then not O.Observe (S).Controller_May_Be_Enabled,
-             "available means disabled controller");
-      Check (Registers (Index (16#1C#)) = 0 and then Registers (Index (16#20#)) = 0,
-             "startup no target timing");
-      Check (Registers (Index (16#7C#)) = 0 and then Registers (Index (16#04#)) = 0,
-             "startup no invented target");
-   end Startup;
-   package Q renames DW_I2C_Request_Types;
+
    package W renames I2C_Transfer_Wire;
-   package G renames CuBit.Grant_References;
-   package PID renames CuBit.Process_IDs;
+   package CW renames I2C_Channel_Wire;
    package D renames HID_I2C_Descriptors;
-   package BC renames I2C_Channel_Badges;
-   use type G.Reference, PID.Process_ID, W.Word, W.Count, W.Decode_Status, W.Request, W.Completion_Status;
-   use type Q.Copy_Result, Q.Reason;
-   Caller : constant PID.Process_ID := PID.From_Word (16#F123_0000_4567_9876#);
-   Server : constant PID.Process_ID := PID.From_Word (16#E234_0000_1234_5678#);
-   Badge : constant W.Word := BC.Canonical ((BC.Seven_Bit, 16#15#, 400_000));
-   Input_Address : constant W.Word := 16#1000_0000_0000#;
-   Output_Address : constant W.Word := 16#2000_0000_0000#;
-   type Page is array (Natural range 0 .. G.Page_Bytes - 1) of T.Byte;
-   Input_Page, Output_Page : Page := [others => 0];
-   Input_Reference : G.Reference := (24, 1);
-   Output_Reference : G.Reference := (25, 1);
-   Allocated, Released, Revokes, Replies, Submissions, Input_Copies, Output_Copies : Natural := 0;
-   Retired : Boolean := True;
-   Authority_OK, Reply_OK : Boolean := True;
-   Input_Status, Output_Status : Q.Copy_Result := Q.Copied;
-   Have_Response : Boolean := False;
-   Response : Q.Response;
-   Saved_Token : W.Word := 0;
-   function Authorized (Who : PID.Process_ID; Tag : W.Word) return Boolean is
-     (Authority_OK and then Who = Caller and then Tag = Badge);
-   procedure Copy_Input (Who : PID.Process_ID; Grant : G.Reference; Data : out O.Bytes;
-      Result : out Q.Copy_Result) is
-   begin
-      Check (Who = Caller and then Grant = Input_Reference, "exact full-width input owner/reference");
-      Input_Copies := Input_Copies + 1; Data := [others => 0]; Result := Input_Status;
-      if Result = Q.Copied then
-         for I in Data'Range loop Data (I) := Input_Page (Natural (I - Data'First)); end loop;
-      end if;
-   end Copy_Input;
-   procedure Copy_Output (Who : PID.Process_ID; Grant : G.Reference; Data : O.Bytes;
-      Result : out Q.Copy_Result) is
-   begin
-      Check (Who = Caller and then Grant = Output_Reference, "same original full-width output owner/reference");
-      Output_Copies := Output_Copies + 1; Result := Output_Status;
-      if Result in Q.Copied | Q.Uncertain then
-         for I in Data'Range loop Output_Page (Natural (I - Data'First)) := Data (I); end loop;
-      end if;
-   end Copy_Output;
-   procedure Answer (Token : W.Word; Item : Q.Response; Delivered : out Boolean) is
-   begin
-      Check (not Have_Response and then Token = Saved_Token, "one retained reply, exact asynchronous token");
-      Replies := Replies + 1; Have_Response := True; Response := Item; Delivered := Reply_OK;
-      -- Queue only. Never call the peer back inside its Submit callback.
-   end Answer;
-   package Broker is new DW_I2C_Requests (O, 16, PID.Process_ID, G.Reference,
-      W.Word, Authorized, Copy_Input, Copy_Output, Answer);
-   procedure Allocate (Bytes : W.Word; Address : out W.Word; OK : out Boolean) is
-   begin
-      Check (Bytes = G.Page_Bytes, "whole owned page allocation");
-      Allocated := Allocated + 1; OK := True;
-      Address := (if Allocated = 1 then Input_Address else Output_Address);
-      Check (Allocated <= 2, "buffers allocated once");
-   end Allocate;
-   procedure Release (Address, Bytes : W.Word; OK : out Boolean) is
-   begin
-      Check (Retired and then Bytes = G.Page_Bytes and then
-        Address in Input_Address | Output_Address, "release only known own retired spans");
-      Released := Released + 1; OK := True;
-   end Release;
-   procedure Clear (Address, Bytes : W.Word) is
-   begin
-      Check (Bytes = G.Page_Bytes, "bounded own-page clear");
-      if Address = Input_Address then Input_Page := [others => 0];
-      elsif Address = Output_Address then Output_Page := [others => 0];
-      else raise Program_Error with "foreign clear"; end if;
-   end Clear;
-   procedure Store (Address : W.Word; Data : D.Bytes) is
-   begin
-      Check (Address = Input_Address, "client writes own input page");
-      for I in Data'Range loop Input_Page (I - Data'First) := T.Byte (Data (I)); end loop;
-   end Store;
-   procedure Load (Address : W.Word; Data : out D.Bytes) is
-   begin
-      Check (Retired and then Address = Output_Address, "client reads only retired own output page");
-      for I in Data'Range loop Data (I) := D.Byte (Output_Page (I - Data'First)); end loop;
-   end Load;
-   procedure Create (Address, Pages : W.Word; Writable : Boolean;
-      Ref : out G.Reference; Status : out HID_I2C_Grant_Creation.Status) is
-   begin
-      Check (Pages = 1, "one explicit span, no reference arithmetic");
-      if Address = Input_Address then
-         Check (not Writable, "input loan is read-only"); Ref := Input_Reference;
-      else
-         Check (Address = Output_Address and then Writable, "output loan is writable"); Ref := Output_Reference;
-      end if;
-      Retired := False; Status := HID_I2C_Grant_Creation.Created;
-   end Create;
-   procedure Revoke (Ref : G.Reference; Accepted : out Boolean) is
-   begin
-      Check (Ref = Input_Reference or else Ref = Output_Reference, "revoke only exact issued grant");
-      Revokes := Revokes + 1; Accepted := True;
-      -- Accepted revoke is deliberately not retirement confirmation.
-   end Revoke;
-   function Retirement_Confirmed (Ref : G.Reference) return Boolean is
-   begin
-      Check (Ref = Input_Reference or else Ref = Output_Reference, "query exact issued grant");
-      return Retired;
-   end Retirement_Confirmed;
+   package PID renames CuBit.Process_IDs;
+   package B renames I2C_Channel_Badges;
+   use type W.Word, W.Count, W.Completion_Status, CW.Decode_Status;
    procedure Run_Case (Which : Positive) is
-      Device : O.State;
-      Requests : Broker.State;
-      Writes : constant Natural := (if Which in 3 | 12 then 0 elsif Which = 11 then 16
-        elsif Which = 2 then 5 else 2);
-      Reads : constant W.Count := (if Which in 2 | 11 then 0 elsif Which = 12 then 16
-        elsif Which = 13 then 14
-        elsif Which = 3 then 5 else 3);
-      Data : D.Bytes (1 .. Writes);
-      Steps : Natural := 0;
-      procedure Submit (Item : W.Request; Token : W.Word; Accepted : out Boolean) is
-         Encoded : constant W.Request_Words := W.Encode (Item);
-         Decoded : constant W.Decoding := W.Decode
-           (W.Transfer_Operation, W.Protocol_Version, Encoded, 16);
-         Request : Broker.Request;
+      package Bridge is new I2C_Channel_Controller
+        (Clock, Reset_Read, Reset_Write, Config_Read, Config_Write, Data_Read, Data_Write);
+      package O renames Bridge.Controller;
+      package RC renames I2C_Channel.RC;
+      use type O.Phase, O.Admission, O.Collection, O.Failure, Bridge.Submission, Bridge.Releasing, T.Ticket;
+      type Area is array (Natural range <>) of D.Byte with Component_Size => 8;
+      Payload_Bytes : constant := I2C_Channel.Payload_Pages * RC.Page_Bytes;
+      Input : aliased Area (0 .. Payload_Bytes - 1) := [others => 16#CD#] with Alignment => 4096;
+      Output : aliased Area (0 .. Payload_Bytes - 1) := [others => 16#CD#] with Alignment => 4096;
+      Input_View : RC.Payload_View := (Input'Address, Payload_Bytes, False);
+      Output_View : RC.Payload_View := (Output'Address, Payload_Bytes, True);
+      Peer : constant PID.Process_ID := PID.From_Word (16#E234_0000_1234_5678#);
+      Opens, Stores, Loads, Submissions, Answers, Closes : Natural := 0;
+      Queued, Available, Lost, Retired : Boolean := False;
+      Header : CW.Raw_Request;
+      Saved_Token : W.Word := 0;
+      Response : W.Completion := (W.Invalid_Frame, 0, False, False, 0, 0);
+      procedure Open_Channel (Expected : PID.Process_ID; Deadline : W.Millisecond; Ready : out Boolean) is
+         use type PID.Process_ID;
       begin
-         Check (Decoded.Status = W.Decoded, "real client wire decoded by server");
-         Check (Decoded.Value = Item, "all counts/deadline/generations round trip");
-         Saved_Token := Token; Submissions := Submissions + 1;
-         Request := (Decoded.Value.Input, Decoded.Value.Output,
-           T.Count (Decoded.Value.Write_Count), T.Count (Decoded.Value.Read_Count),
-           T.Tick (Decoded.Value.Limit.At_Millisecond), 80);
-         Broker.Submit (Requests, Device, Caller, Badge, Token, Request);
-         Accepted := True;
+         Check (Expected = Peer and Deadline = 1000, "full peer and finite open deadline");
+         Opens := Opens + 1; Ready := True;
+      end Open_Channel;
+      procedure Store (Data : D.Bytes; Stored : out Boolean) is
+      begin
+         Check (not Queued and not Bridge.Has_Payload, "client writes only before publication");
+         for I in Data'Range loop Input (I - Data'First) := Data (I); end loop;
+         Stores := Stores + 1; Stored := True;
+      end Store;
+      procedure Load (Data : out D.Bytes; Loaded : out Boolean) is
+      begin
+         Check (not Bridge.Has_Payload, "snapshot only after owner releases payload");
+         for I in Data'Range loop Data (I) := Output (I - Data'First); end loop;
+         Output := [others => 16#EE#]; Loads := Loads + 1; Loaded := True;
+      end Load;
+      procedure Submit (Raw : CW.Raw_Request; Token : W.Word; Accepted : out Boolean) is
+      begin
+         Check (not Queued and Token > 0, "one deferred request");
+         Header := Raw; Saved_Token := Token; Queued := True;
+         Submissions := Submissions + 1; Accepted := True;
       end Submit;
+      procedure Poll (Token : W.Word; Words : out W.Completion_Words; Ready, Ended : out Boolean) is
+      begin
+         Check (Token = Saved_Token, "exact channel token"); Words := W.Encode_Completion (Response);
+         Ready := Available; Ended := Lost;
+         if Ready then Available := False; end if;
+      end Poll;
+      procedure Close_Channel is
+      begin Closes := Closes + 1; Check (Closes = 1, "close exactly once"); end Close_Channel;
+      function Retirement_Confirmed return Boolean is (Retired and not Bridge.Has_Payload);
       package Client is new HID_I2C_Buffered_Client
-        (16, Allocate, Release, Clear, Store, Load, Create, Submit, Revoke, Retirement_Confirmed);
-      use type Client.Setup_Result, Client.Start_Result, Client.Close_Result;
-      use type Client.Transactions.Phase, Client.Transactions.Reason,
-        Client.Transactions.Completion_Result;
-      S : Client.State;
-      Setup : Client.Setup_Result;
-      Started : Client.Start_Result;
-      Finished : Client.Transactions.Completion_Result;
-      Closed : Client.Close_Result;
-      Reply : W.Completion_Words;
-      Result : D.Bytes (1 .. Natural (Reads));
-      OK : Boolean;
-      Token : constant W.Word := W.Word (Which);
-      Success : constant Boolean := Which in 1 .. 3 | 11 .. 13;
+        (16, Open_Channel, Store, Load, Submit, Poll, Close_Channel, Retirement_Confirmed);
+      package Life renames Client.Transactions;
+      use type Client.Setup_Result, Client.Start_Result, Client.Close_Result, Life.Phase;
+      S : Client.State; Setup : Client.Setup_Result; Started : Client.Start_Result; Closed : Client.Close_Result;
+      Writes : constant Natural := (if Which in 3 | 12 then 0 elsif Which = 11 then 16 elsif Which = 2 then 5 else 2);
+      Reads : constant W.Count := (if Which in 2 | 11 then 0 elsif Which = 12 then 16 elsif Which = 13 then 14 elsif Which = 3 then 5 else 3);
+      Data : D.Bytes (1 .. Writes); Result : D.Bytes (1 .. Natural (Reads)); OK : Boolean;
+      Admission : O.Admission; Submitted : Bridge.Submission; Released : Bridge.Releasing;
+      Collection : O.Collection; Item : O.Completion; ID, Refused : T.Ticket;
+      Badge : B.Word := B.Canonical ((B.Seven_Bit, 16#15#, 400_000));
+      Steps : Natural := 0;
+      Hardware_Fault : constant Boolean := Which in 8 | 14 .. 19;
+      Clean_Refusal : constant Boolean := Which in 4 .. 6 | 9 .. 10 | 20 .. 24;
+      Success : constant Boolean := not Hardware_Fault and not Clean_Refusal and Which /= 7;
+      Before : Natural;
    begin
-      Reset_Model; Startup (Device);
-      Allocated := 0; Released := 0; Revokes := 0; Replies := 0; Submissions := 0;
-      Input_Copies := 0; Output_Copies := 0; Retired := True;
-      Authority_OK := Which /= 6; Reply_OK := Which /= 7;
-      Input_Status := (if Which = 5 then Q.Uncertain elsif Which = 10 then Q.Refused else Q.Copied);
-      Output_Status := (if Which = 4 then Q.Refused elsif Which = 9 then Q.Uncertain else Q.Copied);
-      Input_Reference.generation := G.Generation (Which + 10);
-      Output_Reference.generation := G.Generation (Which + 20);
-      Have_Response := False; Inject_Abort := Which = 8;
-      for I in Data'Range loop Data (I) := D.Byte (16#10# + I); end loop;
-      Client.Initialize (S, Server, Setup); Check (Setup = Client.Buffers_Ready, "client setup");
-      Client.Start (S, Data, Reads, Token, 1, 100, True, Started);
-      Check (Started = Client.Submitted and then Submissions = 1, "one asynchronous client submission");
-      while Broker.Observe (Requests).Active loop
-         Steps := Steps + 1; Check (Steps < 150, "bounded server progress");
-         Broker.Advance (Requests, Device);
+      Reset_Model;
+      Bridge.Start ((P.Intel_Vendor, P.Alder_Lake_N_I2C1, 16#1234_5678_9000#, 4096, 30, 40, 100), Admission);
+      Check (Admission = O.Accepted, "actual controller startup admitted");
+      while Bridge.Observe.At_Phase not in O.Available | O.Faulted loop
+         Steps := Steps + 1; Check (Steps < 100, "bounded startup"); Bridge.Advance;
       end loop;
-      Check (Have_Response and then Replies = 1, "one actual request-handler response");
-      Check (Broker.Observe (Requests).Last_Reply_Delivered = Reply_OK, "saved reply delivery observation");
-      Reply := W.Encode_Completion (I2C_Native_Results.To_Wire (Response));
-      Client.Receive (S, Token + 100, Server, Client.Transactions.Delivered,
-        W.Transfer_Reply_Operation, W.Protocol_Version, Reply, 1, True, Finished);
-      Check (Finished = Client.Transactions.Unrelated and then Revokes = 0, "foreign token has no effect");
-      Client.Receive (S, Token, Caller, Client.Transactions.Delivered,
-        W.Transfer_Reply_Operation, W.Protocol_Version, Reply, 1, True, Finished);
-      Check (Finished = Client.Transactions.Wrong_Sender and then Revokes = 0, "wrong full-width peer has no effect");
-      Client.Receive (S, Token, Server,
-        (if Reply_OK then Client.Transactions.Delivered else Client.Transactions.Transport_Error),
-        W.Transfer_Reply_Operation, W.Protocol_Version, Reply, 1, True, Finished);
-      Check (Finished = Client.Transactions.Accepted and then
-        Client.Observe (S).At_Phase = Client.Transactions.Retiring, "response enters retirement");
-      Check (Revokes = (if Writes = 0 or Reads = 0 then 1 else 2), "each used grant revoked once");
-      Client.Read (S, Result, OK); Check (not OK, "no access before retirement");
-      Client.Close (S, Closed); Check (Closed = Client.Still_Owned and then Released = 0, "no free before retirement");
-      Client.Step (S, 1, True); Check (Client.Observe (S).At_Phase = Client.Transactions.Retiring,
-        "successful revoke is insufficient to reuse pages");
-      Retired := True; Client.Step (S, 1, True);
-      Check (Client.Observe (S).At_Phase = Client.Transactions.Finished, "authoritative retirement completes");
-      Check (Client.Succeeded (S) = Success, "actual server/client agree on success");
-      Client.Read (S, Result, OK); Check (OK = (Success and then Reads > 0), "only successful read exposed");
-      if OK then
-         for I in Result'Range loop Check (Result (I) = D.Byte (16#A0# + I), "actual FIFO bytes reach client"); end loop;
-      elsif not Success then
-         Check ((for all B of Result => B = 0), "failure exposes no output payload");
-      end if;
-      if Success then
-         Check (Response.Status = Q.Completed and then Response.Hardware_Succeeded,
-           "successful hardware completion survives actual wire adapter");
-         Check (Commands = Writes + Natural (Reads), "exact combined transfer commands");
-         Check ((Command_Log (Commands) and T.Stop_Command_Bit) /= 0, "final command stops transfer");
-         for I in Data'Range loop Check ((Command_Log (I) and 16#FF#) = T.Word (Data (I)), "exact client write bytes"); end loop;
-      elsif Which in 5 | 6 | 10 then
-         Check (Commands = 0 and then Output_Copies = 0, "refusal before hardware has no data effects");
-         Check (Broker.Observe (Requests).Faulted = (Which = 5), "uncertain input quarantines server");
-      end if;
+      Check (Bridge.Observe.At_Phase = O.Available and not Bridge.Observe.Controller_May_Be_Enabled,
+         "startup confirms disabled controller");
+      for I in Data'Range loop Data (I) := D.Byte (16#10# + I); end loop;
+      Client.Initialize (S, Peer, 1000, Setup); Check (Setup = Client.Buffers_Ready, "client session ready");
+      Client.Start (S, Data, Reads, W.Word (Which), 1, 100, True, Started);
+      Check (Started = Client.Submitted and Submissions = 1, "one asynchronous request");
+      Client.Read (S, Result, OK); Check (not OK and Loads = 0, "no early snapshot");
+      Client.Close (S, Closed); Check (Closed = Client.Still_Owned and Closes = 0, "no close while active");
       case Which is
-         when 1 .. 3 | 11 .. 13 =>
-            Check (Client.Observe (S).Outcome = Client.Transactions.Transfer_Complete,
-              "successful typed completion reaches HID");
-            Check (Registers (Index (16#04#)) = 16#15#, "target comes from admitted badge");
-            if Writes > 0 and then Reads > 0 then
-               Check ((Command_Log (Writes + 1) and T.Restart_Command_Bit) /= 0 and then
-                 (Command_Log (Writes + 1) and T.Read_Command_Bit) /= 0,
-                 "combined write/read uses repeated START");
-            end if;
-         when 4 | 9 =>
-            Check (Response.Status = (if Which = 4 then Q.Output_Refused else Q.Output_Uncertain)
-              and then Response.Hardware_Succeeded and then Response.Read_Count = 0,
-              "successful hardware is distinct from failed output copy");
-            Check (Client.Observe (S).Completion.Status =
-              (if Which = 4 then W.Output_Refused else W.Output_Uncertain) and then
-              Client.Observe (S).Outcome = Client.Transactions.Transfer_Refused,
-              "typed output-copy failure survives actual adapter");
-            Check (Broker.Observe (Requests).Faulted = (Which = 9), "uncertain output quarantines server");
-         when 5 | 10 =>
-            Check (Response.Status = (if Which = 5 then Q.Input_Uncertain else Q.Input_Refused),
-              "exact input-copy failure reason");
-            Check (Client.Observe (S).Completion.Status =
-              (if Which = 5 then W.Input_Uncertain else W.Input_Refused) and then
-              Client.Observe (S).Outcome = Client.Transactions.Transfer_Refused,
-              "typed input-copy failure survives actual adapter");
-         when 6 =>
-            Check (Response.Status = Q.Unauthorized and then Input_Copies = 0,
-              "authorization refusal precedes any client grant acquisition");
-            Check (Client.Observe (S).Completion.Status = W.Unauthorized and then
-              Client.Observe (S).Outcome = Client.Transactions.Transfer_Refused,
-              "typed unauthorized completion reaches HID");
-         when 7 =>
-            Check (Response.Status = Q.Completed and then Response.Hardware_Succeeded,
-              "lost reply does not erase hardware completion");
-            Check (Client.Observe (S).Outcome = Client.Transactions.Transport_Failed and then
-              not Client.Observe (S).Have_Completion, "lost delivery is not a trusted completion");
-         when 8 =>
-            Check (Response.Status = Q.Completed and then not Response.Hardware_Succeeded,
-              "abort preserves request response semantics");
-            Check (Client.Observe (S).Outcome = Client.Transactions.Inconsistent_Completion,
-              "HID requires positive hardware success");
-         when others => raise Program_Error;
+         when 4 => Output_View.Bytes := Payload_Bytes - 1;
+         when 5 => Output_View.Base := Input_View.Base;
+         when 6 => Badge := 0;
+         when 8 => Inject_Abort := True;
+         when 9 => Output_View.Writable := False;
+         when 10 => Input_View.Writable := True;
+         when 14 => Unknown_Cleanup := True;
+         when 15 => Dirty_TX := True;
+         when 16 => Late_Abort := True;
+         when 17 => Lose_Clock_On_Data := True;
+         when 18 => Fail_Command := 1; Fail_Status := R.Denied;
+         when 19 => Fail_Command := 1; Fail_Status := R.Unknown_Effect;
+         when 20 => Current_Time := 100;
+         when 21 => Header.Reserved_A := 1;
+         when 22 => Badge := B.Canonical ((B.Ten_Bit, 1023, 400_000));
+         when 23 => Input_View.Base := System.Null_Address;
+         when 24 => Badge := B.Canonical ((B.Seven_Bit, 16#15#, B.Hertz'Last));
+         when others => null;
       end case;
-      if Which = 8 then
-         Check (Broker.Observe (Requests).Faulted and then
-           O.Observe (Device).At_Phase = O.Faulted and then
-           O.Observe (Device).Controller_May_Be_Enabled,
-           "hardware abort quarantines owner without claiming quiescence");
+      Before := IO_Count;
+      Check (Queued and CW.Decode (Header, 16).Status = (if Which = 21 then CW.Reserved_Header else CW.Decoded), "copied metadata validated");
+      Queued := False;
+      Bridge.Submit (Badge, Header, Input_View, Output_View, ID, Submitted, Admission);
+      if Clean_Refusal then
+         Check (Submitted /= Bridge.Accepted and not Bridge.Has_Payload and IO_Count = Before,
+            "refusal before register or payload access");
+         Response := ((case Submitted is when Bridge.Invalid_Metadata => W.Invalid_Frame,
+            when Bridge.Invalid_Channel => W.Invalid_Channel, when Bridge.Unsupported_Channel => W.Unsupported_Channel,
+            when Bridge.Invalid_Views => W.Input_Refused, when others => W.Admission_Refused), 0, False, False, 0, 0);
+         Check (ID = T.No_Ticket and Response.Status =
+            (case Which is when 4 | 5 | 9 | 10 | 23 => W.Input_Refused,
+             when 6 => W.Invalid_Channel, when 20 => W.Admission_Refused,
+             when 21 => W.Invalid_Frame, when 22 | 24 => W.Unsupported_Channel,
+             when others => W.Invalid_Frame), "exact clean refusal kind without hardware ticket");
+         Available := True; Answers := Answers + 1;
       else
-         Check (not O.Observe (Device).Controller_May_Be_Enabled,
-           "successful transfer or pre-hardware refusal leaves controller disabled");
+         Check (Submitted = Bridge.Accepted and Bridge.Has_Payload, "actual owner borrows persistent views");
+         Steps := 0;
+         while not Bridge.Observe.Completion_Pending loop
+            Steps := Steps + 1; Check (Steps < 200, "bounded composed transfer"); Bridge.Advance;
+         end loop;
+         Bridge.Take_Completion (Item, Collection);
+         Check (Collection = O.Collected and Item.ID = ID, "exact actual ticket");
+         Bridge.Release (Released);
+         if Hardware_Fault then
+            Check (not Item.Successful and Released = Bridge.Retained and Bridge.Has_Payload,
+               "hardware failure never permits buffer reuse");
+            Check (Bridge.Observe.At_Phase = O.Faulted, "fault remains sticky after collection");
+            Check (Item.Reason = (case Which is
+               when 14 => O.Register_Indeterminate, when 15 => O.Controller_Not_Quiescent,
+               when 16 => O.Abort_During_Quiescence,
+               when others => O.Transfer_Failed), "exact retained failure kind " & Which'Image & " " & Item.Reason'Image);
+            if Which in 17 .. 19 then
+               Check (Bridge.Observe.Port_Status.Status =
+                  (case Which is when 17 => R.Clock_Unavailable, when 18 => R.Register_Refused,
+                   when others => R.Register_Indeterminate), "precise port diagnostic retained");
+            end if;
+            Before := IO_Count;
+            Bridge.Submit (Badge, Header, Input_View, Output_View, Refused, Submitted, Admission);
+            Check (Submitted = Bridge.Retained and Refused = T.No_Ticket and IO_Count = Before,
+               "retained owner refuses next command without IO");
+         else
+            Check (Item.Successful and Released = Bridge.Released and not Bridge.Has_Payload,
+               "success returns views before publishing completion");
+            Check (Bridge.Observe.At_Phase = O.Available and not Bridge.Observe.Controller_May_Be_Enabled,
+               "successful controller verified disabled and idle");
+            Response := (W.Completed, W.Word (Item.ID), True, Item.Effects_Possible,
+               W.Count (Item.Write_Count), W.Count (Item.Read_Count));
+            Available := Which /= 7; Lost := Which = 7; Answers := Answers + 1;
+            Check (Commands = Writes + Natural (Reads), "exact command count");
+            Check ((Command_Log (Commands) and T.Stop_Command_Bit) /= 0, "STOP on final command");
+            for I in Data'Range loop Check ((Command_Log (I) and 16#FF#) = T.Word (Data (I)), "exact client write bytes"); end loop;
+            if Writes > 0 and Reads > 0 then
+               Check ((Command_Log (Writes + 1) and T.Restart_Command_Bit) /= 0, "repeated START on combined read");
+            end if;
+            Check (Registers (Index (16#04#)) = 16#15#, "target comes only from admitted badge");
+         end if;
       end if;
-      declare Before : constant Natural := IO_Count; begin
-         Broker.Advance (Requests, Device);
-         Check (IO_Count = Before and then Replies = 1, "completed/faulted request is not replayed");
-      end;
-      Check (Submissions = 1 and then Replies = 1, "no replay after failure or delivery loss");
+      Check (Input (Input'Last) = 16#CD# and Output (Output'Last) = 16#CD#,
+         "controller does not clear or touch unused payload tail");
+      Client.Step (S, 10, True);
+      if Hardware_Fault then
+         Check (Answers = 0 and Client.Observe (S).At_Phase = Life.In_Flight, "no recycling completion on fault");
+         Client.Step (S, 100, True);
+         Check (Client.Observe (S).At_Phase = Life.Retiring and Closes = 1, "client deadline initiates retirement once");
+         Retired := True;
+         for Turn in 1 .. 4 loop Client.Step (S, 101, True); end loop;
+         Check (Client.Observe (S).At_Phase = Life.Retiring and Bridge.Has_Payload, "physical retained payload prevents false retirement");
+         Client.Read (S, Result, OK); Check (not OK and Loads = 0, "failed input never exposed");
+         Client.Close (S, Closed); Check (Closed = Client.Still_Owned and Closes = 1, "retained buffers cannot close");
+         return;
+      elsif Which = 7 then
+         Check (Client.Observe (S).At_Phase = Life.Retiring and not Client.Succeeded (S), "lost channel does not trust successful hardware");
+         Client.Read (S, Result, OK); Check (not OK and Loads = 0, "lost completion exposes no output");
+         Retired := True; Client.Step (S, 11, True);
+      end if;
+      Check (Client.Observe (S).At_Phase = Life.Finished and Client.Succeeded (S) = Success, "client and controller outcome agree");
+      Client.Read (S, Result, OK); Check (OK = (Success and Reads > 0), "only completed input snapshot allowed");
+      if OK then
+         for I in Result'Range loop Check (Result (I) = D.Byte (16#A0# + I), "FIFO bytes preserved after shared output mutates"); end loop;
+      end if;
+      Before := IO_Count;
+      for Turn in 1 .. 3 loop Client.Step (S, 12, True); end loop;
+      Check (IO_Count = Before and Submissions = 1 and Answers = 1, "no command replay");
       Client.Acknowledge (S); Client.Close (S, Closed);
-      Check (Closed = Client.Closed and then Released = 2, "both own allocations close after acknowledgement");
+      if Which /= 7 then
+         Check (Closed = Client.Still_Owned and Closes = 1, "close waits for exact session retirement");
+         Retired := True; Client.Close (S, Closed);
+      end if;
+      Check (Closed = Client.Closed and Closes = 1 and Opens = 1, "one session lifetime");
+      Check (Stores = (if Writes = 0 then 0 else 1), "no whole payload clear or extra store");
    end Run_Case;
 begin
-   for Which in 1 .. 13 loop Run_Case (Which); end loop;
-   Ada.Text_IO.Put_Line ("HID I2C actual-handler interoperability checks" & Checks'Image);
+   for Which in 1 .. 24 loop Run_Case (Which); end loop;
+   Ada.Text_IO.Put_Line ("HID I2C channel interoperability checks" & Checks'Image);
 end HID_I2C_Interop_Tests;

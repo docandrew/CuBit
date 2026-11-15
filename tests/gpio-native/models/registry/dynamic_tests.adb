@@ -6,6 +6,9 @@ with GPIO_Service_Loop;
 with GPIO_Admin_Owner;
 with GPIO_Service_Pump;
 with GPIO_Polling_Loop;
+with GPIO_IRQ_Sweep;
+with GPIO_IRQ_Turn;
+with Interfaces;
 with GPIO_Loop_Time;
 with GPIO_Controller_Resources;
 with GPIO_Admin_Wire;
@@ -215,14 +218,40 @@ procedure Dynamic_Tests is
          if Stop_Event then Service.Request_Stop (1000); Admin.Request_Stop (State); Stop_Event := False; end if;
       end if;
    end Poll_Event;
+   IRQ_Held : Boolean := False;
+   procedure Hold_Requests (Hold : Boolean) is begin IRQ_Held := Hold; end Hold_Requests;
+   function Requests_Held return Boolean is (IRQ_Held);
+   package IRQ is new GPIO_IRQ_Sweep (Service, Hold_Requests, Requests_Held);
+   IRQ_State : IRQ.State;
+   use type IRQ.Phase;
    procedure Poll_Request (State : in out Admin.State; Found : out Boolean) is
       pragma Unreferenced (State);
    begin
-      Found := Request_Queue > 0;
+      Found := not IRQ_Held and then Request_Queue > 0;
       if Found then Request_Queue := Request_Queue - 1; end if;
    end Poll_Request;
    package Pump is new GPIO_Service_Pump (Admin, 3, 2, 1, Poll_Event, Poll_Request);
    Turn : Pump.Turn_Report;
+   Parent_ACKs : Natural := 0;
+   procedure Parent_Clock (Now : out Interfaces.Unsigned_64; Available : out Boolean) is
+   begin Now := Interfaces.Unsigned_64 (Clock_Sample); Available := Clock_Available; end Parent_Clock;
+   procedure Parent_Start (Deadline : Interfaces.Unsigned_64; Accepted : out Boolean) is
+   begin IRQ.Start (IRQ_State, I.Tick (Deadline), Accepted); end Parent_Start;
+   procedure Parent_Advance is
+   begin Pump.Turn (S, Turn); IRQ.Advance (IRQ_State); end Parent_Advance;
+   procedure Parent_Inspect (Clear, Uncertain : out Boolean) is
+   begin Clear := IRQ.Current (IRQ_State) = IRQ.Source_Clear;
+      Uncertain := IRQ.Current (IRQ_State) = IRQ.Uncertain; end Parent_Inspect;
+   procedure Parent_ACK (Accepted : out Boolean) is
+   begin
+      Check (IRQ.Current (IRQ_State) = IRQ.Source_Clear and IRQ_Held,
+         "parent ACK only at actual source-clear barrier with inbox held");
+      Parent_ACKs := Parent_ACKs + 1;
+      Accepted := Case_Name /= "root-ack-refused"; IRQ.Finish (IRQ_State, Accepted);
+   end Parent_ACK;
+   package Parent is new GPIO_IRQ_Turn (Parent_Clock, Parent_Start, Parent_Advance, Parent_Inspect, Parent_ACK, 100, 1);
+   Parent_State : Parent.State;
+   use type Parent.Phase;
    package Scheduled is new GPIO_Polling_Loop (Pump, Clock, 10, 100, 5);
    use type Scheduled.Clock_Condition, GPIO_Loop_Time.Wait_Kind;
    Schedule : Scheduled.Turn_Report;
@@ -241,7 +270,7 @@ procedure Dynamic_Tests is
    begin Admin.Handle (S, Launcher, A.OP_GPIO_RETIRE_SINK, 1,
       A.Encode ((A.Retire_Sink, Badge_A, Who)), True, False, 1000, 1000); end Retire;
 begin
-   Check (Case_Name in "happy" | "save-failed" | "invalid-offer" | "retained-offer" |
+   Check (Case_Name in "root-backpressure" | "root-coalesced" | "root-ack-refused" | "root-uncertain" | "irq-backpressure" | "irq-controls" | "irq-uncertain" | "irq-ack-refused" | "irq-hold-lost" | "irq-stop" | "happy" | "save-failed" | "invalid-offer" | "retained-offer" |
       "take-refused" | "nomap" | "lost-admit" | "lost-retire" | "close-failed" |
       "uncertain" | "stop-admit" | "retire-save-failed" | "layout-change" | "parked-start" | "parked-uncertain" | "startup-owner" | "startup-duplicate" | "startup-invalid" | "startup-uncertain" | "startup-empty" | "startup-capacity" | "startup-missing" | "startup-expired" | "polled-loop" | "polled-clock-loss" | "polled-clock-reverse" | "polled-clock-exhausted" | "polled-mmio-uncertain" | "replacement-pins" | "mode-conflict" | "capacity" | "stop-registration" | "registration-unknown" | "registration-denied" | "registration-expired", "known case");
    Event_Queue := 10; Request_Queue := 10;
@@ -435,6 +464,91 @@ begin
    Check (Service.Needs_Step, "saved client arm requires progress"); Drive;
    Check (not Service.Needs_Step, "settled arm waits for IRQ or control input");
    Check (Reply_Count = 1 and then Last_Authority = 100, "actual client control completion delivered separately");
+   if Case_Name in "root-backpressure" | "root-coalesced" | "root-ack-refused" | "root-uncertain" then
+      Allow_Event := False; Request_Queue := 4;
+      Memory (Index (Plan_A.Selected.Status_Register)) := Plan_A.Selected.Interrupt_Mask;
+      if Case_Name = "root-uncertain" then Fault_Pause := True; end if;
+      Parent.Note (Parent_State, False); Parent.Turn (Parent_State);
+      Check (Parent_ACKs = 0 and not IRQ_Held, "untrusted parent notice does no registry work");
+      Parent.Note (Parent_State, True);
+      if Case_Name = "root-coalesced" then
+         Parent.Turn (Parent_State); Parent.Note (Parent_State, True);
+      end if;
+      for N in 1 .. 128 loop
+         Parent.Turn (Parent_State);
+         exit when Parent.Observe (Parent_State).At_Phase in Parent.Idle | Parent.Faulted;
+      end loop;
+      Check (Request_Queue = 4, "joined controller never consumes client inbox before parent ACK");
+      if Case_Name in "root-backpressure" | "root-coalesced" then
+         Check (Parent.Observe (Parent_State).At_Phase = Parent.Idle and Parent_ACKs = 1 and not IRQ_Held,
+            "joined turn acknowledges once and releases inbox");
+         Check (Service.Needs_Step and Events_Accepted = 0 and Event_Attempts > 0,
+            "client backpressure survives completed parent ACK");
+         Check (not C.Observe_Pin (Pin_A).Report.Pin_May_Be_Enabled and
+            Memory (Index (Plan_A.Selected.Status_Register)) = 0,
+            "joined ACK follows pin mask/status clear, not client ACK");
+      else
+         Check (Parent.Observe (Parent_State).At_Phase = Parent.Faulted and
+            Parent.Observe (Parent_State).Parent_Held and IRQ_Held,
+            "joined failure retains both parent obligation and inbox freeze");
+         Check (Parent_ACKs = (if Case_Name = "root-ack-refused" then 1 else 0),
+            "uncertainty forbids ACK, refused ACK is attempted once");
+      end if;
+      declare Before : constant Natural := Accesses + Parent_ACKs; begin
+         Parent.Turn (Parent_State); Check (Before = Accesses + Parent_ACKs, "settled or faulted turn never replays");
+      end;
+      Ada.Text_IO.Put_Line ("GPIO IRQ registry checks" & Checks'Image); return;
+   end if;
+   if Case_Name in "irq-backpressure" | "irq-controls" | "irq-uncertain" | "irq-ack-refused" | "irq-hold-lost" | "irq-stop" then
+      Allow_Event := False;
+      Memory (Index (Plan_A.Selected.Status_Register)) := Plan_A.Selected.Interrupt_Mask;
+      if Case_Name = "irq-controls" then
+         Service.Offer (Owner, Badge_A, (Wire.Release_Pin, (Wire.Within, 1000), Last_Reply.Lease), 101, Taken);
+         Check (Taken, "pre-IRQ control accepted");
+      end if;
+      IRQ.Start (IRQ_State, 1000, OK); Check (OK and IRQ_Held, "sweep freezes native request consumption");
+      IRQ.Start (IRQ_State, 2000, OK); Check (not OK, "duplicate start cannot replace sweep");
+      Request_Queue := 4;
+      if Case_Name = "irq-uncertain" then Fault_Pause := True;
+      elsif Case_Name = "irq-hold-lost" then IRQ_Held := False;
+      elsif Case_Name = "irq-stop" then Service.Request_Stop (1000); Admin.Request_Stop (S);
+      end if;
+      for N in 1 .. 128 loop
+         Pump.Turn (S, Turn); IRQ.Advance (IRQ_State);
+         exit when IRQ.Current (IRQ_State) in IRQ.Source_Clear | IRQ.Uncertain;
+      end loop;
+      if Case_Name in "irq-uncertain" | "irq-hold-lost" then
+         Check (IRQ.Current (IRQ_State) = IRQ.Uncertain, "fault never becomes parent ACK permission");
+         declare Before : constant Natural := Accesses; begin
+            IRQ.Advance (IRQ_State); Check (Accesses = Before, "fault observation never replays MMIO");
+         end;
+      else
+         Check (IRQ.Current (IRQ_State) = IRQ.Source_Clear, "actual registry sweep reaches hardware-clear barrier");
+         Check (Request_Queue = 4, "client inbox stays queued throughout parent sweep");
+         if Case_Name in "irq-backpressure" | "irq-ack-refused" then
+            Check (Service.Needs_Step and then Event_Attempts > 0 and then Events_Accepted = 0,
+               "retained client event remains pending independently");
+            Check (C.Observe_Pin (Pin_A).Report.At_Phase = C.Engine.Event_Ready and then
+               not C.Observe_Pin (Pin_A).Report.Pin_May_Be_Enabled and then
+               Memory (Index (Plan_A.Selected.Status_Register)) = 0,
+               "parent barrier follows actual mask/readback/status-clear");
+         elsif Case_Name = "irq-stop" then
+            Check (Service.Terminal and then Service.Quiescent, "stop drains registry while inbox frozen");
+         elsif Case_Name = "irq-controls" then
+            Check (Reply_Count = 2 and then Last_Reply.Status = Wire.Completed and then
+               C.Observe_Pin (Pin_A).Report.At_Phase = C.Engine.Held_Masked,
+               "accepted control finishes before sweep barrier");
+         end if;
+         IRQ.Finish (IRQ_State, Case_Name /= "irq-ack-refused");
+         Check (IRQ_Held = (Case_Name = "irq-ack-refused"), "only accepted parent ACK releases client inbox");
+         Check (IRQ.Current (IRQ_State) = (if Case_Name = "irq-ack-refused" then IRQ.Uncertain else IRQ.Idle),
+            "parent ACK failure retained for supervision");
+         if Case_Name /= "irq-ack-refused" then
+            Pump.Turn (S, Turn); Check (Request_Queue = 2, "normal bounded request pump resumes after ACK");
+         end if;
+      end if;
+      Ada.Text_IO.Put_Line ("GPIO IRQ registry checks" & Checks'Image); return;
+   end if;
    if Case_Name in "polled-clock-loss" | "polled-clock-reverse" | "polled-clock-exhausted" then
       declare Before : constant Natural := Accesses; begin
          if Case_Name = "polled-clock-loss" then Clock_Available := False;

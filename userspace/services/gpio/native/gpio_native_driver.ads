@@ -20,7 +20,7 @@ with GPIO_Native_Admin_Dispatch;
 generic
    Capacity : GPIO_Controller_Resources.Pin_Limit;
    Operation_Budget : Intel_GPIO_IRQ.Limit;
-   Launcher : CuBit.Handles.Process;
+   Launcher : CuBit.Handles.Endpoint;
    with function Startup_Parked return Boolean;
 package GPIO_Native_Driver is
    pragma Elaborate_Body;
@@ -46,7 +46,7 @@ package GPIO_Native_Driver is
    package Native_Admin is new GPIO_Native_Admin_Dispatch (Admin);
    function Needs_Step (S : Admin.State) return Boolean;
    -- Actual native composition, not a permissive fixture. Main supplies its
-   -- typed Startup.launcher, explicit budget/capacity and admitted resources.
+   -- typed Startup.Ready endpoint, explicit budget/capacity and admitted resources.
    -- Startup parks host-owned GPIOs and freezes community geometry before
    -- readiness. Authenticated runtime admission supplies each exact pin/mode.
    -- No IRQ binding/enabling is performed here; parent stays disabled pending

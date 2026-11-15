@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with DW_I2C_Interrupt_Policy;
 package body DW_I2C_Owner with SPARK_Mode is
    use type T.Tick;
    use type T.Count;
@@ -36,10 +37,17 @@ package body DW_I2C_Owner with SPARK_Mode is
       Result.Engine_Reason := T.Reason (S.Engine);
       return Result;
    end Observe;
+   function Payload_Status (S : State) return Payload_Lifetime is
+     (if not Borrowed_Payload or else not S.Payload_Used then Not_Borrowed
+      elsif S.Info.At_Phase = Faulted or else
+        (S.Info.At_Phase in Available | Completion_Ready and then S.Info.Interrupts_May_Be_Enabled)
+      then Retain_For_Supervision
+      elsif S.Info.At_Phase in Available | Completion_Ready then Returnable
+      else In_Use);
    procedure Fail (S : in out State; Why : Failure) is
    begin
       S.Info.Reason := Why; S.Info.Failed_At := S.Info.At_Phase;
-      S.Info.At_Phase := Faulted;
+      S.Info.At_Phase := Faulted; S.Info.Waiting_For_Hardware := False;
       S.Read_Buffer := [others => 0];
       if S.Request_Active then
          S.Info.Completion_Pending := True;
@@ -76,6 +84,112 @@ package body DW_I2C_Owner with SPARK_Mode is
       else S.Last_Time := Now; OK := True;
       end if;
    end Check_Time;
+   function Waiting_Deadline (S : State) return T.Tick is
+     (if S.Info.Waiting_For_Hardware and then S.Request_Active and then
+         S.Info.At_Phase = Transferring then S.Deadline else 0);
+   procedure Write_Interrupt_Mask
+     (S : in out State; Value : T.Word; Result : out Interrupt_Result) is
+      OK : Boolean;
+      Status : C.Access_Status;
+      Readback : T.Word;
+      Mask_Work : constant Work_Count := 2;
+   begin
+      Result := Refused;
+      S.Info.Owner_Access_Attempted := False;
+      if S.Remaining < Mask_Work then Fail (S, Budget_Exhausted); return; end if;
+      Check_Time (S, OK); if not OK then return; end if;
+      S.Remaining := S.Remaining - Mask_Work;
+      Config_Write (C.Interrupt_Mask, Value, Status);
+      S.Info.Last_Owner_Register := C.Interrupt_Mask;
+      S.Info.Last_Owner_Value := Value; S.Info.Last_Owner_Status := Status;
+      S.Info.Owner_Access_Attempted := True;
+      S.Info.Completion_Data.Effects_Possible :=
+        S.Info.Completion_Data.Effects_Possible or else Status in C.Access_OK | C.Unknown_Effect;
+      if Value /= 0 and then Status in C.Access_OK | C.Unknown_Effect then
+         S.Info.Interrupts_May_Be_Enabled := True;
+
+      end if;
+      if Status /= C.Access_OK then
+         Fail (S, (if Status = C.Unknown_Effect then Register_Indeterminate else Register_Refused)); return;
+      end if;
+      Check_Time (S, OK); if not OK then return; end if;
+      Config_Read (C.Interrupt_Mask, Readback, Status);
+      S.Info.Last_Owner_Value := Readback; S.Info.Last_Owner_Status := Status;
+      if Status /= C.Access_OK then
+         Fail (S, (if Status = C.Unknown_Effect then Register_Indeterminate else Register_Refused)); return;
+      end if;
+      if Readback /= Value then Fail (S, Interrupt_Mask_Mismatch); return; end if;
+      S.Info.Last_Interrupt_Mask := Value;
+      S.Info.Interrupts_May_Be_Enabled := Value /= 0;
+      Check_Time (S, OK); if not OK then return; end if;
+      Result := (if Value = 0 then Quiet else Armed);
+   end Write_Interrupt_Mask;
+   procedure Prepare_Interrupt_Mode
+     (S : in out State; Deadline : T.Tick; Result : out Interrupt_Result) is
+      Value : T.Word;
+      Status : C.Access_Status;
+      OK : Boolean;
+      procedure Check_Prepare_Time is
+         Now : T.Tick;
+         Available : Boolean;
+      begin
+         OK := False; Clock (Now, Available);
+         if not Available then Fail (S, Clock_Unavailable);
+         elsif Now < S.Last_Time then Fail (S, Clock_Reversed);
+         elsif Deadline = T.Tick'Last or else Now >= Deadline then Fail (S, Deadline_Expired);
+         else S.Last_Time := Now; OK := True;
+         end if;
+      end Check_Prepare_Time;
+   begin
+      Result := Not_Waiting;
+      if S.Info.At_Phase /= Available or else S.Request_Active or else S.Sequence /= T.No_Ticket then return; end if;
+      if S.Info.Interrupt_Mode_Prepared then Result := Quiet; return; end if;
+      Result := Refused;
+      if S.Interrupt_Prepare_Attempted then return; end if;
+      S.Interrupt_Prepare_Attempted := True;
+      S.Info.Interrupts_May_Be_Enabled := True;
+      S.Info.Owner_Access_Attempted := False;
+      if S.Remaining = 0 then Fail (S, Budget_Exhausted); return; end if;
+      Check_Prepare_Time; if not OK then return; end if;
+      S.Remaining := S.Remaining - 1;
+      Config_Read (C.Interrupt_Mask, Value, Status);
+      S.Info.Owner_Access_Attempted := True; S.Info.Last_Owner_Register := C.Interrupt_Mask;
+      S.Info.Last_Owner_Value := Value; S.Info.Last_Owner_Status := Status;
+      if Status /= C.Access_OK then
+         Fail (S, (if Status = C.Unknown_Effect then Register_Indeterminate else Register_Refused)); return;
+      end if;
+      if Value /= 0 then Fail (S, Interrupt_Mask_Mismatch); return; end if;
+      S.Info.Interrupts_May_Be_Enabled := False; S.Info.Last_Interrupt_Mask := 0;
+      Check_Prepare_Time; if not OK then return; end if;
+      S.Info.Interrupt_Mode_Prepared := True; Result := Quiet;
+   end Prepare_Interrupt_Mode;
+   procedure Arm_Interrupt_Wait (S : in out State; Result : out Interrupt_Result) is
+      Wanted : T.Word;
+   begin
+      Result := Not_Waiting;
+      if S.Info.At_Phase /= Transferring or else not S.Request_Active or else
+        not S.Info.Interrupt_Mode_Prepared or else not S.Info.Waiting_For_Hardware then return; end if;
+      Wanted := DW_I2C_Interrupt_Policy.Wanted (T.Wake_Sources (S.Engine), True);
+      if Wanted = 0 then return; end if;
+      if S.Info.Interrupts_May_Be_Enabled then Result := Already_Armed; return; end if;
+      Write_Interrupt_Mask (S, Wanted, Result);
+   end Arm_Interrupt_Wait;
+   procedure Disarm_Interrupt_Wait (S : in out State; Result : out Interrupt_Result) is
+   begin
+      Result := Quiet;
+      if not S.Info.Interrupts_May_Be_Enabled then return; end if;
+      Result := Refused;
+      if S.Info.At_Phase /= Transferring or else not S.Request_Active then return; end if;
+      S.Info.Waiting_For_Hardware := False;
+      Write_Interrupt_Mask (S, 0, Result);
+   end Disarm_Interrupt_Wait;
+   procedure Reject_Interrupt_Wait (S : in out State) is
+      Result : Interrupt_Result;
+   begin
+      if not S.Request_Active or else S.Info.At_Phase = Faulted then return; end if;
+      Disarm_Interrupt_Wait (S, Result);
+      if Result = Quiet or else S.Info.At_Phase /= Faulted then Fail (S, Interrupt_Wait_Failed); end if;
+   end Reject_Interrupt_Wait;
    procedure Do_Work (S : in out State) is
       Config_Result : C.Admission;
       Settings : C.Configuration;
@@ -86,6 +200,7 @@ package body DW_I2C_Owner with SPARK_Mode is
       Matched, Retired : Boolean;
       Value : T.Word := 0;
       Status : C.Access_Status;
+      Payload_OK : Boolean;
       ID : C.Register_ID := C.Controller_Status;
       procedure Startup_Read
         (Register : R.Read_Register; Data : out R.Word; Result : out R.Access_Status) is
@@ -146,9 +261,15 @@ package body DW_I2C_Owner with SPARK_Mode is
             if not Sample.Ready then Fail (S, Transfer_Failed); return; end if;
             T.Poll (S.Engine, S.Last_Time, Sample.Hardware, Action);
             if T.Current_Phase (S.Engine) = T.Failed then Fail (S, Transfer_Failed); return; end if;
+            S.Info.Waiting_For_Hardware := Action.Kind = T.No_Action and then
+              T.Current_Phase (S.Engine) = T.Active;
             if Action.Kind /= T.No_Action then
                if Action.Kind = T.Send_Command and then not Action.Read_Request then
-                  Data := S.Write_Buffer (Action.Index);
+                  if Borrowed_Payload then
+                     Payload_Read (Action.Index, Data, Payload_OK);
+                     if not Payload_OK then Fail (S, Payload_Access_Failed); return; end if;
+                  else Data := S.Write_Buffer (Action.Index);
+                  end if;
                end if;
                Port.Execute (S.Access_Owner, Action, Data, S.Deadline,
                              Read_Value, Access_Result, S.Info.Port_Status);
@@ -159,7 +280,11 @@ package body DW_I2C_Owner with SPARK_Mode is
                T.Finish_Access (S.Engine, Action.ID, Access_Result, Matched);
                if not Matched then Fail (S, Accounting_Failed); return; end if;
                if Action.Kind = T.Receive_Byte and then Access_Result = T.Succeeded then
-                  S.Read_Buffer (Action.Index) := Read_Value;
+                  if Borrowed_Payload then
+                     Payload_Write (Action.Index, Read_Value, Payload_OK);
+                     if not Payload_OK then Fail (S, Payload_Access_Failed); return; end if;
+                  else S.Read_Buffer (Action.Index) := Read_Value;
+                  end if;
                end if;
                if S.Info.Port_Status.Status /= R.Success or else
                  T.Current_Phase (S.Engine) = T.Failed
@@ -202,7 +327,10 @@ package body DW_I2C_Owner with SPARK_Mode is
                Fail (S, (if Status = C.Unknown_Effect then Register_Indeterminate else Register_Refused)); return;
             end if;
             case S.Info.At_Phase is
-               when Mask_Interrupts => S.Info.At_Phase := Disable_Controller;
+               when Mask_Interrupts =>
+                  S.Info.Interrupts_May_Be_Enabled := False;
+                  S.Info.Last_Interrupt_Mask := 0;
+                  S.Info.At_Phase := Disable_Controller;
                when Disable_Controller => S.Info.At_Phase := Wait_Disabled;
                when Enable_Controller => S.Info.At_Phase := Wait_Enabled;
                when Wait_Disabled =>
@@ -240,8 +368,15 @@ package body DW_I2C_Owner with SPARK_Mode is
    procedure Advance (S : in out State) is
       OK : Boolean;
       Worked_At : constant Phase := S.Info.At_Phase;
+      Disarmed : Interrupt_Result;
    begin
       if S.Info.At_Phase in Cold | Available | Completion_Ready | Faulted then return; end if;
+      if S.Request_Active and then S.Info.Interrupts_May_Be_Enabled then
+         Disarm_Interrupt_Wait (S, Disarmed);
+         if Disarmed /= Quiet and then S.Info.At_Phase /= Faulted then Fail (S, Register_Refused); end if;
+         return;
+      end if;
+      S.Info.Waiting_For_Hardware := False;
       S.Info.Owner_Access_Attempted := False;
       if S.Remaining = 0 then Fail (S, Budget_Exhausted); return; end if;
       S.Remaining := S.Remaining - 1;
@@ -252,21 +387,20 @@ package body DW_I2C_Owner with SPARK_Mode is
          if not OK then S.Info.Failed_At := Worked_At; end if;
       end if;
    end Advance;
-   procedure Submit
+   procedure Admit_Request
      (S : in out State; Target : C.Address; Speed_Limit : P.Hertz;
-      Write_Data : Bytes; Read_Count : T.Count;
+      Write_Count, Read_Count : T.Count;
       Deadline : T.Tick; Step_Budget : Work_Limit;
       ID : out T.Ticket; Result : out Admission) is
       Now : T.Tick;
       Clock_OK : Boolean;
       Core_Result : T.Admission;
-      Position : T.Count := 0;
       Timing : P.Timing;
    begin
       ID := T.No_Ticket;
       if S.Info.At_Phase /= Available then Result := Busy; return; end if;
-      if Write_Data'Length = 0 and then Read_Count = 0 then Result := Empty_Transfer; return; end if;
-      if Write_Data'Length > Capacity or else Read_Count > Capacity - T.Count (Write_Data'Length)
+      if Write_Count = 0 and then Read_Count = 0 then Result := Empty_Transfer; return; end if;
+      if Write_Count > Capacity or else Read_Count > Capacity - Write_Count
       then Result := Capacity_Refused; return; end if;
       Timing := P.Derive (S.Vendor, S.Device, Speed_Limit);
       if Timing.Status /= P.Calculated then Result := Invalid_Timing; return; end if;
@@ -274,24 +408,67 @@ package body DW_I2C_Owner with SPARK_Mode is
       Clock (Now, Clock_OK);
       if not Clock_OK or else Now < S.Last_Time then Result := Clock_Refused; return; end if;
       if Now >= Deadline then Result := Expired; return; end if;
-      T.Submit (S.Engine, T.Count (Write_Data'Length), Read_Count, Capacity,
+      T.Submit (S.Engine, Write_Count, Read_Count, Capacity,
                 S.Capabilities.TX_Depth, S.Capabilities.RX_Depth, Now, Deadline, Core_Result);
       if Core_Result /= T.Accepted then Result := Busy; return; end if;
-      S.Write_Buffer := [others => 0]; S.Read_Buffer := [others => 0];
-      for Byte of Write_Data loop Position := Position + 1; S.Write_Buffer (Position) := Byte; end loop;
       S.Target := Target; S.Timing := Timing;
-      S.Writes := T.Count (Write_Data'Length); S.Reads := Read_Count;
+      S.Writes := Write_Count; S.Reads := Read_Count;
       S.Deadline := Deadline; S.Last_Time := Now; S.Remaining := Step_Budget;
       S.Sequence := S.Sequence + 1; ID := S.Sequence;
       S.Info.Completion_Data := (ID, False, None, S.Writes, S.Reads, False);
       S.Request_Active := True; S.Info.At_Phase := Prepare_Configuration; Result := Accepted;
+   end Admit_Request;
+   procedure Submit
+     (S : in out State; Target : C.Address; Speed_Limit : P.Hertz;
+      Write_Data : Bytes; Read_Count : T.Count;
+      Deadline : T.Tick; Step_Budget : Work_Limit;
+      ID : out T.Ticket; Result : out Admission) is
+      Position : T.Count := 0;
+   begin
+      ID := T.No_Ticket;
+      if Borrowed_Payload then
+         Result := Invalid_Resource;
+      else
+      if S.Info.At_Phase /= Available then Result := Busy; return; end if;
+      if Write_Data'Length > Capacity then Result := Capacity_Refused; return; end if;
+      Admit_Request (S, Target, Speed_Limit, T.Count (Write_Data'Length), Read_Count,
+                     Deadline, Step_Budget, ID, Result);
+      if Result /= Accepted then return; end if;
+      S.Write_Buffer := [others => 0]; S.Read_Buffer := [others => 0];
+      for Byte of Write_Data loop Position := Position + 1; S.Write_Buffer (Position) := Byte; end loop;
+      end if;
    end Submit;
+   procedure Submit_Borrowed
+     (S : in out State; Target : C.Address; Speed_Limit : P.Hertz;
+      Write_Count, Read_Count : T.Count; Deadline : T.Tick; Step_Budget : Work_Limit;
+      ID : out T.Ticket; Result : out Admission) is
+   begin
+      ID := T.No_Ticket;
+      if not Borrowed_Payload then Result := Invalid_Resource; return; end if;
+      Admit_Request (S, Target, Speed_Limit, Write_Count, Read_Count,
+                     Deadline, Step_Budget, ID, Result);
+      if Result = Accepted then S.Payload_Used := True; end if;
+   end Submit_Borrowed;
+   procedure Take_Borrowed_Completion
+     (S : in out State; Item : out Completion; Result : out Collection) is
+   begin
+      Item := (others => <>);
+      if not Borrowed_Payload or else not S.Info.Completion_Pending then Result := Not_Ready; return; end if;
+      Item := S.Info.Completion_Data;
+      S.Info.Completion_Pending := False; S.Request_Active := False;
+      if S.Info.At_Phase = Completion_Ready then S.Info.At_Phase := Available; end if;
+      -- Faulted retains its payload lifetime even after the error is collected.
+      Result := Collected;
+   end Take_Borrowed_Completion;
    procedure Take_Completion
      (S : in out State; Read_Data : out Bytes; Item : out Completion;
       Required : out T.Count; Result : out Collection) is
       Position : T.Count := 0;
    begin
       Read_Data := [others => 0]; Item := (others => <>); Required := 0;
+      if Borrowed_Payload then
+         Result := Not_Ready;
+      else
       if not S.Info.Completion_Pending then Result := Not_Ready; return; end if;
       Item := S.Info.Completion_Data;
       Required := (if Item.Successful then S.Reads else 0);
@@ -305,5 +482,6 @@ package body DW_I2C_Owner with SPARK_Mode is
       S.Write_Buffer := [others => 0]; S.Read_Buffer := [others => 0];
       if S.Info.At_Phase = Completion_Ready then S.Info.At_Phase := Available; end if;
       Result := Collected;
+      end if;
    end Take_Completion;
 end DW_I2C_Owner;

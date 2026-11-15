@@ -17,13 +17,22 @@ begin
    begin Main; exception when B.Test_Complete => Quarantined := True; end;
    B.Check (B.Ready_Reports + B.Decline_Reports = 1, "exactly one actual Main readiness attempt");
    B.Check (Has ("bring-up "), "actual bring-up logger emitted summary");
-   if B.Current in B.Happy | B.Stop_During_Admission | B.Missing_Community then
+   if B.Current = B.No_Parent then
+      B.Check (not Quarantined and B.Ready_Reports = 1 and B.Parent_ACKs = 0 and B.Event_Unavailable = 1 and
+         B.Control_Answers = 0 and B.Sink_Closes = 1, "absent parent keeps service ready but never arms or polls event pin");
+      B.Check (Has ("parent line unavailable") and Has ("acknowledged-events-unavailable"), "absent parent is copied into logs");
+   elsif B.Current in B.Wrong_Parent_Vector | B.Initial_ACK_Refused then
+      B.Check (Quarantined and B.Decline_Reports = 1 and B.Ready_Reports = 0 and B.Control_Answers = 0,
+         "inconsistent/refused parent retains resources for supervision without serving events");
+      B.Check (B.Parent_ACKs = (if B.Current = B.Initial_ACK_Refused then 1 else 0), "refused ACK is never retried");
+   elsif B.Current in B.Happy | B.Stop_During_Admission then
       B.Check (not Quarantined and then B.Role_Attempts = 1 and then B.Ready_Reports = 1 and then B.Decline_Reports = 0,
          "actual Main reports Ready after parking/registration then terminates cleanly");
       B.Check (B.Sink_Closes = 1 and then not B.Saved and then B.Sink_Closed, "actual owner drain closes sink and consumes saved reply");
-      if B.Current in B.Happy | B.Missing_Community then
+      if B.Current in B.Happy then
          B.Check (B.Saved_Answers = 2 and then B.Control_Answers = 2 and then B.Event_Deliveries = 1 and then B.Request_Stage = 6,
-            "actual Main drives admit/arm/poll/event/ACK/retire/shutdown through actual stateful owners");
+            "actual Main drives admit/arm/IRQ/event/ACK/retire/shutdown through actual stateful owners");
+         B.Check (B.Parent_ACKs = 2 and Has ("parent line armed vector="), "initial quiet ACK plus actual IRQ ACK recorded");
       else
          B.Check (B.Saved_Answers = 1 and then B.Last_Admin = W.Refused and then B.Control_Answers = 0,
             "stop during runtime admission drains before refused reply, with no client arm");
@@ -46,19 +55,16 @@ begin
       else
          B.Check (B.Ready_Reports = 0 and then B.Decline_Reports = 1, "startup failure sends decline only");
       end if;
-      if B.Current in B.Invalid_Launcher | B.Clock_Loss then
+      if B.Current in B.Invalid_Launcher | B.Wrong_Launcher_Kind | B.Unreadable_Launcher | B.Zero_Launcher_ID then
          B.Check (B.Metadata_Inspections = 0 and then B.Register_Writes = 0, "invalid launcher/clock fails before mapping or MMIO");
       end if;
       B.Check (not Has ("bring-up complete"), "refusal summary cannot claim success");
    end if;
-   if B.Current = B.Missing_Community then
-      B.Check (B.Metadata_Inspections = 3 and then B.Binds = 3 and then B.Probes = 3,
-         "optional missing community has no inspect/map/probe attempts");
-      B.Check (Has ("stage community-4 ok not-present") and then not Has ("stage community-4 fail"),
-         "optional absence is an informational stage, not a false hardware failure");
-      for Offset in B.Register_Array'Range loop
-         B.Check (B.Memory (2) (Offset) = B.Initial_Memory (2) (Offset), "ungranted community stays completely untouched");
-      end loop;
+   if B.Current in B.Missing_Community | B.Missing_Configuration | B.Wrong_Controller | B.Invalid_Launch_Path | B.Wrong_Window_Count | B.Late_Window_Mismatch | B.Late_Read_Only | B.Overlapping_Community | B.Unaligned_Community | B.Zero_Launch_Epoch then
+      B.Check(B.Binds=0 and B.Probes=0 and B.Register_Reads=0 and B.Register_Writes=0,
+         "invalid launch/late authority refuses before ANY map, probe or register access");
+      B.Check(B.Role_Attempts=0 and B.Decline_Reports=1 and B.Ready_Reports=0,
+         "invalid complete binding never registers or announces ready");
    end if;
    for Pin in G.ACPI_Pin range 0 .. 359 loop
       declare L : constant G.Location := G.Locate (Pin); begin

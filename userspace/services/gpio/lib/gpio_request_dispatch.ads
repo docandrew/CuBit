@@ -27,7 +27,7 @@ package GPIO_Request_Dispatch with SPARK_Mode is
    end record;
    procedure Handle (Caller : P.Process_ID; Badge : W.Word;
       Label : W.Operation; Protocol : W.Word; Words : W.Message_Words;
-      Frame_Valid : Boolean; Result : out Report);
+      Frame_Valid : Boolean; Result : out Report; Events_Available : Boolean := True);
    -- Only authentic service-request inbox entries may enter here. Caller/badge
    -- are kernel metadata, never words. Authorized must match an existing bound
    -- channel/opaque owner; badge geometry alone is insufficient authority.

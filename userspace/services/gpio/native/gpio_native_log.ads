@@ -9,6 +9,7 @@ package GPIO_Native_Log is
    procedure Stage (Item : Bringup_Stage; OK : Boolean; Reason : String; Details : String := "");
    procedure Community (Ordinal : GPIO_Native_Resources.G.Memory_Resource_Ordinal;
       Item : GPIO_Native_Resources.Resource_Report);
+   procedure Parent_Line (Ready : Boolean; Vector : Natural; Reason : String);
    procedure Summary;
    procedure Disable (Reason : String);
    function Hex (Key : String; Value : Interfaces.Unsigned_64) return String;

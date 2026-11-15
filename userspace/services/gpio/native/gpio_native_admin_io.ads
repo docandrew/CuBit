@@ -6,7 +6,7 @@ with GPIO_Control_Wire;
 with GPIO_Native_Transport;
 with GPIO_Native_Request_IO;
 generic
-   Launcher : CuBit.Handles.Process;
+   Launcher : CuBit.Handles.Endpoint;
 package GPIO_Native_Admin_IO is
    subtype Offer_Receipt is CuBit.Handles.IPC.Carried;
    function Authorized (Caller : CuBit.Process_IDs.Process_ID) return Boolean;
@@ -21,7 +21,7 @@ package GPIO_Native_Admin_IO is
       Label : GPIO_Control_Wire.Operation; Status : GPIO_Control_Wire.Completion_Status; Delivered : out Boolean);
    procedure Answer_Current (Caller : CuBit.Process_IDs.Process_ID;
       Label : GPIO_Control_Wire.Operation; Status : GPIO_Control_Wire.Completion_Status; Delivered : out Boolean);
-   -- Launcher is Startup.launcher Process authority. No raw handle constructor
-   -- or raw-capability syscall. Close(Carried) requires coordinator's pending
-   -- runtime overload; retained receipts remain owned when closure is refused.
+   -- Launcher is the readable devmgr endpoint Startup.Ready. Describe supplies
+   -- its full process identity; no process-control capability is needed.
+   -- IPC.Close(Carried) is available; refused closure retains receipt ownership.
 end GPIO_Native_Admin_IO;

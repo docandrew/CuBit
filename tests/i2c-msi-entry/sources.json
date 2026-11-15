@@ -1,0 +1,433 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "shared/capabilities/capability_abi.ads",
+      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc",
+      "kind": "production"
+    },
+    {
+      "path": "shared/capabilities/capability_abi.adb",
+      "sha256": "f280df7b0e8291913387a6bd4607a7e18b3025d5cb512c07f102ad90b682af20",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-channel_bells.ads",
+      "sha256": "03390872cf6f6841b8424256bed7b5ba4a29e26d2ffd784dccbc1b430ecb0495",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-channel_bells.adb",
+      "sha256": "30ea68323d3fdd2ef87af0e8371fc09a3653a36d3597365ff34de6d62810cc07",
+      "kind": "model"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_contracts.ads",
+      "sha256": "0e8a8dff2110eee87f7280c179369bdfd52eed67b81d66e8f3c4e0b85b11ce8d",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_contracts.adb",
+      "sha256": "578a023b2579a021e571690ce66d5166de84445cff0bbf8b9c08d850bfa8a532",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_rings.ads",
+      "sha256": "94ca5b5057c120d751ee59f98dbdd9913333cec0bea87cc2dd9db295e46254a4",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_rings.adb",
+      "sha256": "2e2e118dee7b42c375ef8dc1a00f9e9edbdd99c73e88d6b4f1ddb554ac5a41af",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-control_events.ads",
+      "sha256": "9917bc1c897c36acaac0b8968d7fa6be527bd1bd5cefe42d3d92eadec04b6511",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-deadlines.ads",
+      "sha256": "adba0acbff5d75303d6f9ae017ff70c6e7214e5909db90de792d5afddfc52af9",
+      "kind": "runtime"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-device_interrupts.ads",
+      "sha256": "e9b705bc36bb014ce82e97dc04ef5d3eb4e1134f0d5468eadfc9416001a5a161",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-device_interrupts.adb",
+      "sha256": "526cb01515db785a9254eff749c3abf70f9e065018fa19101739f8f16fa52b7d",
+      "kind": "model"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-driver_readiness.ads",
+      "sha256": "db19b4dcf221ec3ae0a5cf65a450a0f9cace8d6e7920933df2f845655b350e80",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-grant_references.ads",
+      "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e",
+      "kind": "runtime"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-handles.ads",
+      "sha256": "360379038e4d0bf7dc88481bf75f2df94e1ef41fed29a6bdda42670268e89568",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-launch_configurations.ads",
+      "sha256": "77f9983d98b24f27c32007784c1e7fc8ac9e7f1276aaf2ca14864bfa588a07c2",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-launch_configurations.adb",
+      "sha256": "a7981ac1fb5e9b67698a815eb2b67e5bed54a6bf11ded624f17bd7bb8b83c1e4",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-messages.ads",
+      "sha256": "07728657d3b8844adc6989d8b0b4022585c862039b29f8bddc707b8519e671ce",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-messages.adb",
+      "sha256": "09d16b8fabb3e575ff96e3adf362de18a708a0da99b03ab0a8de3674a0fbfa0e",
+      "kind": "model"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.ads",
+      "sha256": "d012ffd2942827ef674e11921492508bfc46f0787553c94fb1c745cdcbe5d48a",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.adb",
+      "sha256": "0670a89f145f4ae0006e7f4014d9c9c6e28e6e7cc4cae29c54edf205d5ff2478",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-protocols.ads",
+      "sha256": "eaa9989bb4cd8c8c59da36a1e468ec6405db1887188daf6099c9a68ec4ebf382",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-request_channels.ads",
+      "sha256": "743a0337642b85f42d3e5c952161abbcf775acfdd1e5c717eea06f1330664f15",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-request_channels.adb",
+      "sha256": "226bd16157b481608f04e70d5428033e8b51317be733f46ff9486ae101e54d75",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-slot_rings.ads",
+      "sha256": "e06fcd777b33b586ac0bdb241f8adbb9a700aeb74e57c5bd5c025fbee64515ce",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-slot_rings.adb",
+      "sha256": "e7174ad4a2e406ad52dfec31650e5c8830f0d47dd686c51ab8e4d62b46aa23e3",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-submission_queues.ads",
+      "sha256": "d3625bfd8c669aa6cf3348c259b93eb35416891ca9f7e70924f98df1604fc964",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-submission_queues.adb",
+      "sha256": "df972bfd80032bf1f477d34ebc447875adcb533040a846ae401248ec68f25371",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c",
+      "kind": "runtime"
+    },
+    {
+      "path": "shared/interrupts/device_vector_abi.ads",
+      "sha256": "17fa4428ad923275802c8c4cd7a717d2c6d88f6e407ed35cc8ea42ec56718bff",
+      "kind": "production"
+    },
+    {
+      "path": "shared/interrupts/device_vector_abi.adb",
+      "sha256": "398722304032c2d6a5a4b2e19634c8aac18520e612e8b0df5417f09a42cf3569",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/setup/dw_i2c_configuration.ads",
+      "sha256": "587cebd90a4fa540fe6ba261cfd944da52d4ad14851b771bf055cb513deb02e1",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/setup/dw_i2c_configuration.adb",
+      "sha256": "c5b5cf95ceb053bfcbb4aa8ea1cf722aeaf28e2393f07e725109d049c8a64a47",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_interrupt_policy.ads",
+      "sha256": "84b9e2d693dba2707061d6ec90422437b131c55e46abf4e7c86ac4fd85bb2d44",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_interrupt_policy.adb",
+      "sha256": "d7472400c735b7c119b8a0c9cea38a00ff50c59c7eb8e34c4455577f5e9e62d5",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/owner/dw_i2c_owner.ads",
+      "sha256": "a4965adc95e64abefed774772ac1d12132aeb5f9650ddc2d480879a9e5a07376",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/owner/dw_i2c_owner.adb",
+      "sha256": "3503a3d71e2aefd80d3ac820b7eb0bd9a99d1c7b2ce6310b99a2f9d552c18b2a",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/owner/dw_i2c_payload.ads",
+      "sha256": "57f78992976c09a804337c012ee673f12372d2880958183c2424982738380f51",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/owner/dw_i2c_payload.adb",
+      "sha256": "b68598bdd60d40a65f63fc82feb8b106b4482fe23ac7e53b517c91dfb1474b92",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads",
+      "sha256": "bc489efad780b31a556acc96fec29822de8ae364a16ae4fdff357b749b6c411d",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb",
+      "sha256": "835982d2793c24b6f27ed7a07f09cfa0f4b3f845b0c77e599b8e240548c75707",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads",
+      "sha256": "39742ccc16ea7dac9538e19decba057bfa3b63ad223898596499ec55dddda660",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb",
+      "sha256": "afabf29664adf2c19266bfe135cd65a1a3c4aee46bdbfff62b109409539eb665",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/fixture.ads",
+      "sha256": "4e7d81d64cb790082f3740d8b88b3b879ffad157dca05b59057ce197e1758828",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/fixture.adb",
+      "sha256": "01e2794033eef3d29afa577c005ada11b98b7c3dcc85ad809114d0a1d0583642",
+      "kind": "model"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel.ads",
+      "sha256": "f9d86f998c5afd821b5f8e17db6edcab28a7d323b3decca960c53c97180bd73b",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel_badges.ads",
+      "sha256": "e6ac1559f8a052c12de21f8f2afc06f2cd0b2821430f0959dd4428f11c5a9ce5",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel_badges.adb",
+      "sha256": "1a9447f272ec1ad54b4755407786810cbf512a52713cb17ee5475cf6ed582dbd",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_channel_controller.ads",
+      "sha256": "c049e24ff36534adf663f588387bb5e891b08369cc205d72c4e6cb49e257d450",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_channel_controller.adb",
+      "sha256": "33bfdcff7b27da8ea0b7a599e0f75cf1b9b3a89eb57d1dc28d8b7998e7d1f68e",
+      "kind": "model"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel_wire.ads",
+      "sha256": "288286b90c722069e145721897e8bd3922f042f7faecb95929d1836a589dc4a1",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_channel_wire.adb",
+      "sha256": "99caa878906e0cf8f97342a011be3b8bc0c6f192ada9523f43a587a83e64710b",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_interrupt_binding.ads",
+      "sha256": "57824f83e19c4421cebd0c2da30114ffe677b303c5299b443f8e186dcd378844",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_interrupt_binding.adb",
+      "sha256": "e58babbda146de176d2a3d6aaa47de03e928d224156f10ab72fc215b57ba2500",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_log.ads",
+      "sha256": "b3f6166c059b59ec67f291dfb48a541d4747a19c155de623e606d2284e75ff2b",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_log.adb",
+      "sha256": "2b30d373bd8808841476a21ec2508876c6f317be79d10f093a5ebc36ca678769",
+      "kind": "model"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_mapping_policy.ads",
+      "sha256": "849a37ab6eb519e892b7f0cc05c0efbeba2844fcc960d0d3f60009be022eff02",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_mapping_policy.adb",
+      "sha256": "fabdd0d8e3c9d1bfc1a752fd8d96c01622f3c4b0055bdc128ce62fc79cb6977d",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_native_channel_service.ads",
+      "sha256": "640b38084623df2a8e9d1019dbe557731e6ad6b43e0583d064d6b3d6c0ac2cf6",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_native_channel_service.adb",
+      "sha256": "f89c253592deb78d15559afa57be1aae0246d57a0dda67805fc0f5309e65f750",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_native_clock.ads",
+      "sha256": "1cd1c45cb2e9672eeba8befef5bab51a3bbc0d50df9946345894192ba9de38d3",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_native_clock.adb",
+      "sha256": "d00d68f6a30a47efaa7fc1a21bab7f29fa68d912d1d9868fbf05c9d9a0d13473",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_native_registers.ads",
+      "sha256": "ff67d2c1a5da1e5001a7a11290d28cc0d20c7a1fefd1a8aaa84a15808a508d83",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/i2c_native_registers.adb",
+      "sha256": "ebe927df3f68eebfae9bf30ab364ba0fb9fec58a9f77296826badb048e06fb2e",
+      "kind": "model"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_transfer_wire.ads",
+      "sha256": "afdfc3acb95f5827b9d70657ab08f2910e89f24d002d8c5ee6e85fdbdde5f601",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/i2c-admission/i2c_transfer_wire.adb",
+      "sha256": "4aa574887fed3794f54970adfc10e7f0934608f20104e57d6f561cc42b0faf7c",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_work_policy.ads",
+      "sha256": "77486f38a6f52d589efc6f92ed022dc615c8d35307bb9ae4276bea19d029fddc",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/native/i2c_work_policy.adb",
+      "sha256": "30939ad4415312b40f9dc64a60b67f6637b95c6a63aecb1a11bbbb6eefc824ee",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.ads",
+      "sha256": "770750ca0e04a827d9257de048b33702d14662addcfa2bebb3b1b247cad6fad9",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/lpss/intel_lpss_i2c_profile.adb",
+      "sha256": "14a2642b2af890a8a2f5ca47ed21465b67d882fa7b3c9b5bb1a9cf6f31ea13a8",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.ads",
+      "sha256": "cfc0f6288c52dcda9f4c8b512802df76df2eede27559eb26c96d191478341b20",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/lpss/intel_lpss_i2c_reset.adb",
+      "sha256": "897e6184ee73e50b6e6230eaefdd7a8d11f4141c94cfe15db184821c477298e6",
+      "kind": "production"
+    },
+    {
+      "path": "shared/interrupts/interrupt_line_abi.ads",
+      "sha256": "22eec501f76fc61c11b47b0548d592cfc4c5a650035c9f445e0259474cbf56b7",
+      "kind": "production"
+    },
+    {
+      "path": "shared/interrupts/interrupt_line_abi.adb",
+      "sha256": "321aec5ca82166190674a8c0b7382587a1af62d954c17b85fbd010e92ccc8151",
+      "kind": "production"
+    },
+    {
+      "path": "shared/launch/launch_configuration.ads",
+      "sha256": "c107c322fefaf11f6179134ebdb0f31d2ef1ddf11aeee07aef8f83e5aaf2f97b",
+      "kind": "production"
+    },
+    {
+      "path": "shared/launch/launch_configuration.adb",
+      "sha256": "5c462efca43e088b75efec4ea8b7ac029c7471808f54693fee697bf9c32dddfc",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/i2c-dw/main.adb",
+      "sha256": "a3320a3e6785914ac6f9512e399a6d7d310d0c7498cc5c6ae855855eab7b036a",
+      "kind": "production"
+    },
+    {
+      "path": "tests/i2c-msi-entry/main_tests.adb",
+      "sha256": "d250797220f0f3ddb3f91ff24e92a38fc1e0677d2b210a42594e6e8cf00ecb64",
+      "kind": "test"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/startup.ads",
+      "sha256": "6f01d888b018daa9a1d8d5b2fda8e0152fc171e0024ca7506c85bfea3f526d72",
+      "kind": "model"
+    }
+  ],
+  "native_context_inputs": [
+    {
+      "path": "userspace/services/i2c-dw/manifest.ccl",
+      "sha256": "cf5dd55338ce3b0a36295920a45fa60a2364a7164f74b6325d52957f121d025e",
+      "kind": "native-context"
+    },
+    {
+      "path": "userspace/services/i2c-dw/component.ccl",
+      "sha256": "f8cdaa8d13c91239d6b1ffce89eb4c685875024041a9d3a1a28a92ca47fa1b1c",
+      "kind": "native-context"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-messages.ads",
+      "sha256": "5821c8bfe49dca95b486dc76b93d4a43377edc3f9bf8a62c1d07d023c9eac2b2",
+      "kind": "native-context"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-device_interrupts.ads",
+      "sha256": "69c4ccd110c461a15f08b11f0ddd5a8948c9559688dfb8f67f4850e4c587c4d8",
+      "kind": "native-context"
+    }
+  ],
+  "tests": [
+    {
+      "main": "main_tests",
+      "label": "I2C native Main checks",
+      "checks": 138
+    }
+  ],
+  "scope": "Hosted execution of the unchanged actual native I2C Main with modeled controller facade, channel service, startup handles, logging and syscall boundaries. Actual binding decoder, control-event decoder and launch types are used. 23 cases cover MSI finite waits, polling fallback, startup refusal/retention, IPC wake/reply, Stop dispatch, bounded event batches, idle deadlines and malformed notice envelopes. This suite does not execute the actual controller/service bodies; tests/i2c-interrupt-wait covers that separate composition.",
+  "newProof": false,
+  "nativeExecuted": false,
+  "hardwareValidated": false
+}

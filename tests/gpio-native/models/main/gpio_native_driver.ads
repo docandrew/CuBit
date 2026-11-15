@@ -16,11 +16,11 @@ with Main_Model;
 generic
    Capacity : GPIO_Controller_Resources.Pin_Limit;
    Operation_Budget : Intel_GPIO_IRQ.Limit;
-   Launcher : CuBit.Handles.Process;
+   Launcher : CuBit.Handles.Endpoint;
    with function Startup_Parked return Boolean;
 package GPIO_Native_Driver is
    pragma Elaborate_Body;
-   use type CuBit.Handles.Process;
+   use type CuBit.Handles.Endpoint;
    function Authorized (Caller : Main_Model.P.Process_ID) return Boolean is
      (Launcher = 1 and then Main_Model.Authorized (Caller));
    package Controller is new Intel_GPIO_Controller

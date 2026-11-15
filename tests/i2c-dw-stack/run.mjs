@@ -45,8 +45,8 @@ if(mode==='proof') {
    if(log.trim()!==main.label+' '+main.checks)throw Error('Test count mismatch');artifacts[profile+'/bin/'+main.name]=sha(out+'/'+profile+'/bin/'+main.name);
   }
   const alis=fs.readdirSync(out+'/'+profile+'/obj').filter(n=>n.endsWith('.ali')&&!n.startsWith('b__'));
-  const expected=['dw_i2c_transfer','dw_i2c_registers','dw_i2c_configuration',
-   'intel_lpss_i2c_profile','intel_lpss_i2c_reset','dw_i2c_owner',
+  const expected=['dw_i2c_interrupt_policy','dw_i2c_transfer','dw_i2c_registers','dw_i2c_configuration',
+   'intel_lpss_i2c_profile','intel_lpss_i2c_reset','dw_i2c_owner','dw_i2c_payload',
    ...inventory.mains.map(m=>m.name)].map(n=>n+'.ali').sort();
   if(JSON.stringify([...alis].sort())!==JSON.stringify(expected))throw Error('Unexpected unit closure');
   for(const ali of alis) {

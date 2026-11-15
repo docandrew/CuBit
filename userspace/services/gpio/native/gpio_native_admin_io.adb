@@ -12,7 +12,7 @@ package body GPIO_Native_Admin_IO is
    function Authorized (Caller : P.Process_ID) return Boolean is
       D : constant IPC.Description := IPC.Describe (Launcher);
    begin
-      return P.Is_Process (Caller) and then D.Current and then D.Kind = CuBit.Handles.ABI.Process
+      return P.Is_Process (Caller) and then D.Current and then D.Kind = CuBit.Handles.ABI.Endpoint and then D.Held.Read
          and then Caller = P.From_Word (D.Object);
    end Authorized;
    procedure Take_Offer (Caller : P.Process_ID; Receipt : out Offer_Receipt; Owned : out Boolean) is

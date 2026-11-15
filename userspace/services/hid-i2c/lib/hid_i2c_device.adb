@@ -1,7 +1,7 @@
 pragma Ada_2022;
 package body HID_I2C_Device with SPARK_Mode is
    use type W.Word, D.Decode_Status, D.Capacity_Status;
-   use type Bus.Setup_Result, Bus.Start_Result, Wire.Frame_Status, L.Completion_Status;
+   use type Bus.Setup_Result, Bus.Start_Result, Bus.Close_Result, Wire.Frame_Status, L.Completion_Status;
    function Wake_Deadline (S : State; Now, Otherwise : W.Word) return W.Word is
       Retry : constant W.Word := (if Now = W.Word'Last then Now else Now + 1);
       Bound : W.Word := Otherwise;
@@ -91,7 +91,7 @@ package body HID_I2C_Device with SPARK_Mode is
       S.Info.At_Phase := At_Phase;
       Bus.Start (S.Client, Data, W.Count (Reads), Token, Now, S.Deadline, Clock_Available, S.Info.Last_Start);
       if S.Info.Last_Start /= Bus.Submitted then
-         S.Info.Memory_Uncertain := S.Info.Last_Start in Bus.Input_Grant_Uncertain | Bus.Output_Grant_Uncertain;
+         S.Info.Memory_Uncertain := S.Info.Last_Start = Bus.Channel_Uncertain;
          Fail (S, Submit_Refused);
       end if;
    end Submit;
@@ -120,19 +120,14 @@ package body HID_I2C_Device with SPARK_Mode is
       Result := Busy; if S.Info.At_Phase /= Cold then return; end if;
       S.Deadline := Deadline; Check_Time (S, Now, Clock_Available, OK);
       Result := Not_Ready; if not OK then return; end if;
-      Bus.Initialize (S.Client, Sender, Setup);
+      Bus.Initialize (S.Client, Sender, Deadline, Setup);
       if Setup not in Bus.Buffers_Ready | Bus.Already_Initialized then
-         S.Info.Memory_Uncertain := Setup in Bus.Invalid_Allocation | Bus.Client_Quarantined;
+         S.Info.Memory_Uncertain := Setup in Bus.Channel_Refused | Bus.Client_Quarantined;
          Fail (S, Buffer_Setup_Failed); return;
       end if;
       Submit (S, Wire.Select_Register (Descriptor_Register), D.Byte_Count (D.Descriptor_Bytes), Fetch_HID, Now, Clock_Available);
       if S.Info.At_Phase = Fetch_HID then Result := Accepted; end if;
    end Start;
-   procedure Receive (S : in out State; Token : W.Word; Sender : CuBit.Process_IDs.Process_ID;
-      Delivery : T.Delivery_Status; Label : W.Operation; Protocol : W.Word;
-      Words : W.Message_Words; Now : W.Word; Clock_Available : Boolean;
-      Result : out T.Completion_Result) is
-   begin Bus.Receive (S.Client, Token, Sender, Delivery, Label, Protocol, Words, Now, Clock_Available, Result); end Receive;
    procedure Step (S : in out State; Now : W.Word; Clock_Available : Boolean) is
       OK, Compiled : Boolean;
       Reply : L.Reply;
@@ -232,7 +227,13 @@ package body HID_I2C_Device with SPARK_Mode is
    procedure Close (S : in out State; Result : out Bus.Close_Result) is
    begin
       Result := Bus.Still_Owned;
-      if not Quiescent (S) then return; end if;
+      -- Cleanup must be able to resolve memory uncertainty itself. The
+      -- transfer and GPIO owners still have to be drained before close.
+      if S.Info.At_Phase not in Stopped | Faulted or else
+        Bus.Observe (S.Client).At_Phase not in T.Idle | T.Finished or else
+        S.Info.Pending_Control /= L.No_Control or else S.Info.Reset_Still_Armed or else S.Info.Latch_Uncertain
+      then return; end if;
       Bus.Close (S.Client, Result);
+      S.Info.Memory_Uncertain := Result /= Bus.Closed;
    end Close;
 end HID_I2C_Device;
