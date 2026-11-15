@@ -18,8 +18,11 @@ with CuBit.Metric_Updates;
 with CuBit.UI;
 with CuBit.UI.Theme_CCL;
 with Charts_Format;
+with Ada.Real_Time;
 with Dash_Edit;
 with Dash_Feeds;
+with Dash_Layers;
+with Perf_Probe;
 with Dash_Model;
 with Dash_View;
 with Synthetic_Feeds;
@@ -31,8 +34,11 @@ procedure Metricsview_View_Tests is
    BYTES_PER_PIXEL : constant := 4;
    CHANNEL_BITS : constant := 8;
    CHANNEL_MASK : constant := 16#FF#;
-   WIDTH : constant := 1440;
-   HEIGHT : constant := 900;
+   --  METRICSVIEW_WIDTH / METRICSVIEW_HEIGHT: another window size, for
+   --  timings only (PERF-011: per-pixel figures compare at one size; the
+   --  scripted checks assume the default).
+   WIDTH : constant Positive := Positive'Value (Ada.Environment_Variables.Value ("METRICSVIEW_WIDTH", "1440"));
+   HEIGHT : constant Positive := Positive'Value (Ada.Environment_Variables.Value ("METRICSVIEW_HEIGHT", "900"));
    MINUTE : constant := 60_000_000;
    NOW_START : constant Unsigned_64 := 30 * MINUTE;
    FRAME_US : constant := 16_667;
@@ -788,6 +794,34 @@ begin
       end;
       Put_Line ("full redraw:" & Natural'Image (Elapsed_Us (Started) / Rounds) & " us at"
                 & Natural'Image (WIDTH) & "x" & Natural'Image (HEIGHT));
+      --  The native probe redraws once every report, after the app was idle:
+      --  caches and predictors cold. The same here, for a like comparison.
+      declare
+         Took : Unsigned_64;
+         Probe_Started : Ada.Calendar.Time;
+         IDLE : constant Duration := 0.2;
+         COLD_ROUNDS : constant := 5;
+         Cold : array (1 .. COLD_ROUNDS) of Unsigned_64;
+         Swap : Unsigned_64;
+      begin
+         for I in Cold'Range loop
+            delay IDLE;
+            Probe_Started := Ada.Calendar.Clock;
+            Dash_View.Probe_Full_Redraw (View, Took);
+            Cold (I) := Unsigned_64 (Elapsed_Us (Probe_Started));
+         end loop;
+         for I in Cold'Range loop
+            for J in I + 1 .. Cold'Last loop
+               if Cold (J) < Cold (I) then
+                  Swap := Cold (I);
+                  Cold (I) := Cold (J);
+                  Cold (J) := Swap;
+               end if;
+            end loop;
+         end loop;
+         Put_Line ("full redraw after 200 ms idle (cold, as the native probe): median" & Cold (3)'Image
+                   & " us, best" & Cold (1)'Image & " us");
+      end;
       declare
          Fill_Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
       begin
@@ -838,6 +872,32 @@ begin
          end;
       end loop;
    end;
+
+   --  PERF-011: the platform probe the native app runs (PERF011=1).
+   if Ada.Environment_Variables.Value ("PERF011", "0") = "1" then
+      declare
+         use type Ada.Real_Time.Time;
+         Epoch : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+         function Probe_Now return Unsigned_64 is
+           (Unsigned_64 (Ada.Real_Time.To_Duration (Ada.Real_Time.Clock - Epoch) * 1_000_000.0));
+         procedure Probe_Redraw is
+            Took : Unsigned_64;
+         begin
+            Dash_View.Probe_Full_Redraw (View, Took);
+         end Probe_Redraw;
+         procedure Probe_Print (Line : String) is
+         begin
+            Put_Line (Line);
+         end Probe_Print;
+         procedure Probe_Sleep (Ms : Natural) is
+         begin
+            delay Duration (Ms) / 1000.0;
+         end Probe_Sleep;
+         package Probe is new Perf_Probe (Probe_Now, Probe_Redraw, Probe_Print, Probe_Sleep);
+      begin
+         Probe.Run (Dash_Layers.Canvas);
+      end;
+   end if;
 
    --  A series outside the reader's scope.
    declare

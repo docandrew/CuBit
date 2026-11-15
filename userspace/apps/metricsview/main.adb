@@ -321,13 +321,19 @@ procedure Main is
    begin
       if Probes_Done < PROBES then
          declare
-            Took : Unsigned_64;
+            Took, Again, Warm : Unsigned_64;
             B : constant Rect := Dash_View.Bounds (View);
          begin
+            --  The first redraw after the app was idle (caches and predictors
+            --  cold), then the best of two more at once (warm): the hosted
+            --  bench prints both (PERF-011).
             Dash_View.Probe_Full_Redraw (View, Took);
+            Dash_View.Probe_Full_Redraw (View, Warm);
+            Dash_View.Probe_Full_Redraw (View, Again);
+            Warm := Unsigned_64'Min (Warm, Again);
             Probes_Done := Probes_Done + 1;
             debugPrint ("metricsview: full redraw " & Decimal (Took) & " us at " & Decimal (Unsigned_64 (B.w)) & "x"
-                        & Decimal (Unsigned_64 (B.h)) & ASCII.LF);
+                        & Decimal (Unsigned_64 (B.h)) & " (cold), " & Decimal (Warm) & " us warm" & ASCII.LF);
          end;
       end if;
       Dash_Sync.Lock;
