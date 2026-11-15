@@ -7,7 +7,7 @@ package body ACPI_Bootstrap.Power_Sources with SPARK_Mode is
    use type Driver.Identification_Outcome;
    use type AML_Execute.Execution_Status;
    function Ready (Session : State) return Boolean is
-     (Session.Stage = Complete and then Session.Device_Data.Stage = Devices_Completed);
+     (Device_Walk_Finished (Session));
    procedure Find (Session : in out State; Budget : Natural;
       Item : out Binding; Report : out Discovery_Report) is
       type Descriptors is array (N.Node_ID) of C.Node_Descriptor;

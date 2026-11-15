@@ -161,8 +161,8 @@ procedure Bank_Access_Tests is
      Maximum_Bindings => 3, Authorize_Target => Authorize);
    Service : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Context;
-   Items : F.Binding_Set;
-   Direct_Items, Read_Items : F.Binding_Set;
+   Items : F.Binding_Set(F.Default_Binding_Capacity);
+   Direct_Items, Read_Items : F.Binding_Set(F.Default_Binding_Capacity);
    Stage : C.Stage_Status;
    Freeze : C.Freeze_Status;
    Status : C.Values.Access_Status;
@@ -387,7 +387,7 @@ begin
    -- may be wider than the AML declaration; rebasing must preserve that exact
    -- datum and stay within the declaration. No provider operation is issued.
    declare
-      Fresh : F.Binding_Set;
+      Fresh : F.Binding_Set(F.Default_Binding_Capacity);
       Saved_Calls : constant Natural := IO.Calls;
       Saved_Bank_Writes : constant Natural := IO.Bank_Writes;
    begin
@@ -401,7 +401,7 @@ begin
       IO.Geometry := Matching;
    end;
    for Mode in Geometry_Mode range Wrong_Space .. Crossing_End loop
-      declare Fresh : F.Binding_Set; begin
+      declare Fresh : F.Binding_Set(F.Default_Binding_Capacity); begin
          F.Clear (Fresh); IO.Geometry := Mode;
          F.Add_Region_Register (Service, IO, Region, (IO.Owner, 7, 1, IDs (Data_Zero)), True, True, Fresh, Status);
          Check (Status /= C.Values.Available, "reject inadmissible catalog geometry " & Mode'Image);
@@ -429,7 +429,7 @@ begin
    Expect ("DYNB", 16#C3#);
    Check (IO.Trace (1 .. IO.Calls) = "Br", "capacity failure preserves existing catalog entries");
    declare
-      Fresh : F.Binding_Set;
+      Fresh : F.Binding_Set(F.Default_Binding_Capacity);
       Saved : constant F.Binding_Set := Items;
       Owner : constant AML_Identity.Identity := IO.Owner;
       Another : AML_Identity.Identity;
@@ -477,7 +477,7 @@ begin
       C.Initialize_Members (Other, Init, Status); Check (Status = C.Values.Available, "other arena initialization");
       C.Find_Child (Other, C.Namespace.Root, "REG0", Node, Status);
       C.Describe_Node (Other, Node, Other_Region, Status); Check (Status = C.Values.Available, "other arena region");
-      declare Catalog_Only : F.Binding_Set; begin
+      declare Catalog_Only : F.Binding_Set(F.Default_Binding_Capacity); begin
          F.Clear (Catalog_Only);
          F.Add_Region_Register (Service, IO, Other_Region, (IO.Owner, 7, 1, IDs (Extra_Port)), True, False, Catalog_Only, Status);
          Check (Status /= C.Values.Available, "foreign region descriptor rejected with catalog capacity available");
@@ -602,7 +602,7 @@ begin
       Limited_Service : aliased C.State
         (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Bus : Context;
-      Bindings : Limited_IO.Binding_Set;
+      Bindings : Limited_IO.Binding_Set(Limited_IO.Default_Binding_Capacity);
       Region_Node : C.Node_Descriptor;
       procedure Limited_Expect (Name : AML_Names.Segment; Want : AML_Execute.Execution_Status) is
          Node : C.Namespace.Node_ID;

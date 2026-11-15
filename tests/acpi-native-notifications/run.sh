@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-: "${TMPDIR:?Set TMPDIR before entering Nix}"
+export TMPDIR=/home/doc/cubit-build-tmp
 ulimit -s 65536
 ulimit -c 0
-exec node "$(dirname -- "${BASH_SOURCE[0]}")/run.mjs" "$@"
+here=$(cd -- "$(dirname -- "$0")" && pwd)
+exec nice -n 19 "${CUBIT_TEST_NODE:-node}" "$here/run.mjs" "$@"

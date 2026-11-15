@@ -4708,7 +4708,8 @@ package body AML_Execute with SPARK_Mode is
                   end;
                else
                if Code (Code'First + Offset) in 16#21# | 16#22# then
-                  if Loading_Effects_Restricted then Body_Result := Failure (Unsupported, Charged); return; end if;
+                  -- Waiting changes elapsed time, not transactional namespace state.
+                  -- The configured provider still owns admission and its finite deadline.
                   declare
                      Kind : constant AML_Delays.Delay_Kind :=
                        (if Code (Code'First + Offset) = 16#22# then AML_Delays.Sleep_Delay else AML_Delays.Stall_Delay);

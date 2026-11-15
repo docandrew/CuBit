@@ -125,7 +125,7 @@ begin
          Check (Accepted and then Init.Observe (Run).Stage = Init.Awaiting_Regions,
            "root compound return ignored and data retype allowed");
          Check (C.Current_Binding (Service, Before), "binding survives retype");
-         Check (not C.Current_Node (Service, Before), "kind-sensitive descriptor remains strict");
+         Check (C.Current_Node (Service, Before), "metadata begin does not retype data");
          Init.Begin_Initialization (Run, Service, 1000, Accepted);
          Check (not Accepted, "begin replay rejected");
          Init.Complete_Initialization (Run, Service, Accepted);
@@ -134,11 +134,13 @@ begin
             when ACPI_Device_Policy.Regions_Connected | ACPI_Device_Policy.No_Regions_Required =>
                Check (Init.Observe (Run).Stage = Init.Completed and then
                  Init.Observe (Run).Errors = 0, "completed without false topology error");
-            when ACPI_Device_Policy.Regions_Unavailable =>
+            when ACPI_Device_Policy.Regions_Unavailable | ACPI_Device_Policy.Regions_Prepared =>
                Check (Init.Observe (Run).Stage = Init.Incomplete, "unavailable incomplete");
             when ACPI_Device_Policy.Region_Initialization_Failed =>
                Check (Init.Observe (Run).Stage = Init.Failed, "region failure explicit");
          end case;
+         Check (C.Current_Binding (Service, Before), "initializer retype preserves binding");
+         Check (C.Current_Node (Service, Before) = (Barrier not in ACPI_Device_Policy.Regions_Connected | ACPI_Device_Policy.No_Regions_Required | ACPI_Device_Policy.Regions_Prepared), "descriptor kind changes only after eligible root initialization");
          C.Find_Child (Service, C.Namespace.Root, "DONE", Node, Access_Result);
          C.Observe_Named_Value (Service, Node, Value, Access_Result);
          Check (Access_Result = C.Values.Available and then Value.Status = AML_Execute.Returned

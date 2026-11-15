@@ -39,7 +39,7 @@ procedure Device_Traversal_Tests is
       Check (Access_Result = C.Values.Available, "region marker lookup");
       C.Observe_Named_Value (Service, Node, Value, Access_Result);
       Check (Access_Result = C.Values.Available and then Value.Status = AML_Execute.Returned
-        and then Value.Number = Expected_Barrier_Marker, "root then SB before barrier");
+        and then Value.Number = Expected_Barrier_Marker, "physical preparation before root and SB");
       Region_Calls := Region_Calls + 1;
       Charged := 0;
       if Attempt_Structural_Mutation then
@@ -148,10 +148,10 @@ begin
           Method ("_INI", Set_Root ("ORDR", 2) & Tick ("SBCT")) &
           Device ("DEV0", Method ("_INI", Set_Root ("ORDR", 3) & Tick ("DEVC"))));
    begin
-      Prepare (Service, Code); Expected_Barrier_Marker := 2;
+      Prepare (Service, Code); Expected_Barrier_Marker := 0;
       Init.Begin_Initialization (Run, Service, 1000, Accepted);
       Check (Accepted and then Init.Observe (Run).Stage = Init.Awaiting_Regions, "ordered begin");
-      Expect (Service, "ROOT", 1); Expect (Service, "SBCT", 1); Expect (Service, "DEVC", 0);
+      Expect (Service, "ROOT", 0); Expect (Service, "SBCT", 0); Expect (Service, "DEVC", 0);
       Init.Complete_Initialization (Run, Service, Accepted);
       Check (Accepted and then Init.Observe (Run).Stage = Init.Completed, "ordered completion");
       Expect (Service, "ORDR", 3); Expect (Service, "ROOT", 1); Expect (Service, "SBCT", 1);
@@ -200,12 +200,13 @@ begin
          Prepare (Service, Name ("ORDR", [0]) &
            Method ("_INI", Tick ("ORDR") & Tick ("ORDR") & Tick ("ORDR")));
          Init.Begin_Initialization (Run, Service, Fuel, Accepted);
-         Check (Accepted and then Init.Observe (Run).Stage = Init.Incomplete,
-           "budget incomplete");
+         Check (Accepted and then Init.Observe (Run).Stage = Init.Awaiting_Regions, "metadata begin consumes no AML budget");
+         Init.Complete_Initialization (Run, Service, Accepted);
+         Check (Accepted and then Init.Observe (Run).Stage = Init.Incomplete, "budget incomplete during completion");
          Check (Init.Observe (Run).Charged <= Fuel and then Init.Observe (Run).Errors = 1
            and then Init.Observe (Run).First_Error = AML_Execute.Budget_Exceeded, "budget report");
          Init.Complete_Initialization (Run, Service, Accepted);
-         Check (not Accepted and then Region_Calls = Calls, "budget no region execution");
+         Check (not Accepted and then Region_Calls = Calls + 1, "physical preparation consumed once before budget failure");
       end;
    end loop;
    -- Physical descriptor credentials cannot be replayed in another live arena.

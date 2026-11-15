@@ -125,7 +125,8 @@ package body ACPI_Native_Server.With_EC_Events is
          end if;
       end Route_Event;
       package Loop_Driver is new ACPI_Native_Server.With_Dispatch
-        (Dispatch_Message, Handle_Event => Route_Event, Advance_Owner => Advance);
+        (Dispatch_Message, Handle_Event => Route_Event, Advance_Owner => Advance,
+         Maintain_Owner => Maintain_Owner);
       procedure Serve (Server : in out ACPI_Requests.State; Reason : out Stop_Reason) is
          Decision : Stop_Result;
       begin
@@ -134,7 +135,9 @@ package body ACPI_Native_Server.With_EC_Events is
          In_Serve := True; Stop_Denied := False;
          Loop_Driver.Serve (Server, Reason);
          if Stop_Denied then Reason := Owner_Work_Refused;
-         elsif Reason = Unexpected_Completion then Request_Stop (Decision);
+         elsif Reason in Unexpected_Completion | Owner_Maintenance_Stopped then
+            Request_Stop (Decision);
+            if Decision = Operation_Incomplete then Reason := Owner_Work_Refused; end if;
          end if;
          In_Serve := False;
       end Serve;

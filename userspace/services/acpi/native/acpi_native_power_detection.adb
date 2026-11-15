@@ -7,21 +7,28 @@ with ACPI_Requests.Power_Sources;
 with ACPI_Battery;
 with ACPI_Battery_Information;
 with ACPI_Battery_Information_Reader;
+with ACPI_Battery_Legacy_Information;
+with ACPI_Battery_Legacy_Information_Reader;
+with ACPI_Battery_Information_Selection;
 with ACPI_Battery_Observation;
 with ACPI_Requests.Battery_Observations;
 with ACPI_Native_Log;
 with ACPI_Requests.Sleep_Registers;
 with AML_Execute;
-with ACPI_Native_Evaluation;
+with ACPI_One_Service;
 package body ACPI_Native_Power_Detection is
    package Core renames ACPI_Service;
-   package Lid_Driver is new ACPI_Lid (Core, ACPI_Native_Evaluation.Evaluate_Named);
-   package Source_Driver is new ACPI_Power_Source (Core, ACPI_Native_Evaluation.Evaluate_Named);
+   package Lid_Driver is new ACPI_Lid (Core, ACPI_One_Service.Root.Evaluation.Evaluate_Named);
+   package Source_Driver is new ACPI_Power_Source (Core, ACPI_One_Service.Root.Evaluation.Evaluate_Named);
    package Lids is new ACPI_Requests.Lids (Lid_Driver);
    package Sources is new ACPI_Requests.Power_Sources (Source_Driver);
    package Format is new ACPI_Battery_Information;
-   package Dynamic is new ACPI_Battery (Core, ACPI_Native_Evaluation.Evaluate_Named);
-   package Static_Info is new ACPI_Battery_Information_Reader (Core, Format, ACPI_Native_Evaluation.Evaluate_Named);
+   package Dynamic is new ACPI_Battery (Core, ACPI_One_Service.Root.Evaluation.Evaluate_Named);
+   package Extended_Info is new ACPI_Battery_Information_Reader (Core, Format, ACPI_One_Service.Root.Evaluation.Evaluate_Named);
+   package Legacy_Format is new ACPI_Battery_Legacy_Information;
+   package Legacy_Info is new ACPI_Battery_Legacy_Information_Reader (Core, Legacy_Format, ACPI_One_Service.Root.Evaluation.Evaluate_Named);
+   package Static_Info is new ACPI_Battery_Information_Selection
+     (Core, Format, Legacy_Format, Extended_Info, Legacy_Info);
    package Collector is new ACPI_Battery_Observation (Core, Format, Dynamic, Static_Info);
    package Batteries is new ACPI_Requests.Battery_Observations (Dynamic, Collector);
    use type Lids.Controller.Sampling_Outcome, Sources.Controller.Sampling_Outcome;
@@ -80,6 +87,7 @@ package body ACPI_Native_Power_Detection is
               " lid-failed=" & Boolean'Image (Saved.Lid_Query_Failed) &
               " ac-failed=" & Boolean'Image (Saved.Source_Query_Failed) &
               " sampled=" & Saved.Sampled_Batteries'Image &
+              " battery-failed=" & Saved.Failed_Batteries'Image &
               " recovery=" & Boolean'Image (Saved.Recovery_Needed));
          end if;
          Result := Saved;
@@ -178,6 +186,7 @@ package body ACPI_Native_Power_Detection is
             when Batteries.Controller.No_Match =>
                Finish (if Saved.Lid_Query_Failed then Lid_Failed
                  elsif Saved.Source_Query_Failed then Source_Failed
+                 elsif Saved.Failed_Batteries /= 0 then Battery_Failed
                  elsif not Saved.Lid_Observed and not Saved.Source_Observed and Saved.Batteries = 0
                  then No_Devices else Finished); return;
             when Batteries.Controller.Not_Ready => Finish (Not_Ready); return;
@@ -187,7 +196,7 @@ package body ACPI_Native_Power_Detection is
                ACPI_Native_Log.Warning ("acpi: stage battery-discovery fail " & Search.Outcome'Image &
                  " identity=" & Search.Last_Identity.Outcome'Image &
                  " execution=" & Search.Last_Identity.Execution'Image);
-               Finish (Battery_Failed); return;
+               Finish (Battery_Search_Failed); return;
          end case;
          Saved.Batteries := Saved.Batteries + 1;
          Stage := Battery_Sampling;
@@ -196,7 +205,8 @@ package body ACPI_Native_Power_Detection is
          Saved.Charged := Saved.Charged + Battery.Charged;
          Saved.Recovery_Needed := Battery.Status in Collector.Cleanup_Failed | Collector.Provider_Contract_Error
            or else Uncertain (Battery.Identity.Execution) or else Uncertain (Battery.Before_Presence.Execution)
-           or else Uncertain (Battery.Static_Data.Execution) or else Uncertain (Battery.Dynamic_Data.Execution)
+           or else Uncertain (Battery.Static_Data.Extended_Data.Execution) or else
+           Uncertain (Battery.Static_Data.Legacy_Data.Execution) or else Uncertain (Battery.Dynamic_Data.Execution)
            or else Uncertain (Battery.After_Presence.Execution);
          if Saved.Recovery_Needed then Finish (Recovery_Required); return; end if;
          if not Admitted then Finish (Not_Ready); return; end if;
@@ -210,12 +220,24 @@ package body ACPI_Native_Power_Detection is
               " flow=" & Battery.Value.Status.Flow'Image &
               " remaining-known=" & Boolean'Image (Battery.Value.Status.Remaining_Capacity.Known) &
               " remaining=" & Battery.Value.Status.Remaining_Capacity.Value'Image &
-              " units=" & Battery.Value.Information.Units'Image);
+              " units=" & Static_Info.Common (Battery.Value.Information).Units'Image &
+              " information-source=" & (case Battery.Value.Information.Source is
+                when Static_Info.Extended_Reported => "bix", when Static_Info.Legacy_Reported => "bif",
+                when Static_Info.None_Reported => "unavailable"));
          else
             ACPI_Native_Log.Warning ("acpi: stage battery-observation fail " & Battery.Status'Image &
-              " phase=" & Battery.Reached'Image & " information=" & Battery.Static_Data.Outcome'Image &
+              " phase=" & Battery.Reached'Image & " information=" & Battery.Static_Data.Status'Image &
               " dynamic=" & Battery.Dynamic_Data.Outcome'Image);
-            Finish (Battery_Failed); return;
+            case Battery.Status is
+               when Collector.Not_Battery | Collector.Identification_Failed |
+                 Collector.Presence_Failed | Collector.Information_Failed |
+                 Collector.Status_Failed | Collector.Presence_Changed =>
+                  -- This device has no usable sample. Its owned results are
+                  -- settled above; keep the failure visible and visit the next
+                  -- battery under the same remaining budget, without replay.
+                  Saved.Failed_Batteries := Saved.Failed_Batteries + 1;
+               when others => Finish (Battery_Failed); return;
+            end case;
          end if;
          if Saved.Batteries = Limits.Batteries then Finish (Battery_Limit); return; end if;
          Cursor := Device;

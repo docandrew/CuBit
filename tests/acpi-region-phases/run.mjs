@@ -1,0 +1,4 @@
+import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
+const d=import.meta.dirname,tree=path.resolve(d,'../..'),sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),c=JSON.parse(fs.readFileSync(d+'/sources.json'));
+for(const row of c.inputs)if(sha(tree+'/'+row.path)!==row.sha256)throw Error('Production source drift '+row.path);for(const row of c.tests)if(sha(d+'/'+row.path)!==row.sha256)throw Error('Test source drift '+row.path);
+if(process.argv.length===3&&process.argv[2]==='--validate-only'){console.log(JSON.stringify({validated:true,production:c.inputs.length,tests:c.tests.length,executed:false}));}else{if(process.argv.length!==2)throw Error('Usage: run.sh [--validate-only]');if(process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Export TMPDIR before Nix');for(const n of ['run-phases.mjs','run-real.mjs','run-policy.mjs'])await import('./'+n);}

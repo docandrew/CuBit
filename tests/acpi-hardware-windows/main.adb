@@ -95,6 +95,21 @@ begin
    declare
       T : Byte_Array := Q35;
    begin
+      --  SMI_CMD (q35: 0xB2) is one more window, exactly one port: where
+      --  acpi.svc writes ACPI_ENABLE when the firmware left legacy mode.
+      Put (T, SMI_Command_Offset, 16#B2#, 4);
+      Compute (T, No_Table, L);
+      Check (L.Count = 5 and then L.Windows (1) = (16#B2#, 1) and then Well_Formed (L),
+             "SMI_CMD is a one-port window");
+      --  SMI_CMD zero: no transition port, no window.
+      Put (T, SMI_Command_Offset, 0, 4);
+      Compute (T, No_Table, L);
+      Check (Equals (L, Q35_Windows, 4), "SMI_CMD zero gives no window");
+   end;
+
+   declare
+      T : Byte_Array := Q35;
+   begin
       --  The 64-bit timer block wins when present and in the I/O space.
       Put_GAS (T, X_PM_Timer_Offset, SystemIO, 16#B008#);
       Compute (T, No_Table, L);

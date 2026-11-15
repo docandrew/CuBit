@@ -2,13 +2,13 @@ with ACPI_Service_Core;
 with ACPI_Battery;
 with ACPI_Battery_Status;
 with ACPI_Battery_Information;
-with ACPI_Battery_Information_Reader;
+with ACPI_Battery_Information_Selection;
 generic
    with package Core is new ACPI_Service_Core (<>);
    with package Format is new ACPI_Battery_Information (<>);
    with package Dynamic is new ACPI_Battery (Core => Core, others => <>);
-   with package Static_Info is new ACPI_Battery_Information_Reader
-     (Core => Core, Format => Format, others => <>);
+   with package Static_Info is new ACPI_Battery_Information_Selection
+     (Core => Core, Extended_Format => Format, others => <>);
 package ACPI_Battery_Observation with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
    type Phase is (Identification, Presence, Information, Dynamic_Status,
@@ -18,7 +18,7 @@ package ACPI_Battery_Observation with SPARK_Mode is
       Status_Failed, Presence_Changed, Budget_Exhausted,
       Cleanup_Failed, Provider_Contract_Error);
    type Observation is record
-      Information : Format.Information := Format.Empty_Information;
+      Information : Static_Info.Information;
       Status : ACPI_Battery_Status.Sample := ACPI_Battery_Status.Empty_Sample;
    end record;
    Empty_Observation : constant Observation := (others => <>);
@@ -31,7 +31,7 @@ package ACPI_Battery_Observation with SPARK_Mode is
       Value : Observation := Empty_Observation;
       Identity : Dynamic.Identification_Report;
       Before_Presence, After_Presence : Dynamic.Presence_Report;
-      Static_Data : Static_Info.Query_Report;
+      Static_Data : Static_Info.Report;
       Dynamic_Data : Dynamic.Query_Report;
    end record;
    -- Service-owner API, never an observer's arbitrary AML evaluation endpoint.

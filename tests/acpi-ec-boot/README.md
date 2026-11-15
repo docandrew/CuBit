@@ -37,3 +37,5 @@ claimed. The full verified userspace ACPI/AML goal remains incomplete.
 
 Normative layout: ACPI6.6 section5.2.15:
 https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#embedded-controller-boot-resources-table-ecdt
+
+Zero suffix padding after a terminated identifier is preserved and accepted for byte-register compatibility. The table checksum/extent still applies to every padding byte, and unknown nonzero suffix data still requires review. Permanent vectors cover padding lengths1..32. Captured laptop compatibility is separately recorded in the private EC enrollment checkpoint; these pure parsing checks create no hardware authority.

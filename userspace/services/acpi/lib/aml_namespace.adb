@@ -3617,6 +3617,7 @@ package body Owned with SPARK_Mode is
    function Initialized (A : Arena) return Boolean is
      (A.Token /= AML_Identity.No_Identity);
    function Generation (A : Arena) return AML_Identity.Identity is (A.Token);
+   function Context_Identity (A : Arena) return AML_Identity.Identity is (A.Token);
    function Model (A : Arena) return AML_Objects.State is (A.Tree.Values);
    function Matches (A : Arena; R : Reference) return Boolean is
      (AML_References.Belongs_To (R, A.Token) and then
@@ -7853,7 +7854,7 @@ package body Owned with SPARK_Mode is
          Accepted : Boolean;
          Census_Status : R.Result_Status;
          Updated : Frame_Pins.Result_Status;
-         use type Frame_Pins.Result_Status, R.Result_Status;
+         use type Frame_Pins.Result_Status;
       begin
          R.Begin_Build (Roots,E.Token,Census_Status);
          if not Initialized (E) then R.Reject (Roots);
@@ -10965,6 +10966,8 @@ package body Owned with SPARK_Mode is
          and then AML_Namespace.Table_Initialization_Frame (Current.Tree, Prior.Tree, Input));
       function Generation (A : Arena) return AML_Identity.Identity is
         (Owned.Generation (A.Inner.all));
+      function Context_Identity (A : Arena) return AML_Identity.Identity is
+        (Owned.Context_Identity (A.Inner.all));
       function Observe_Usage (A : Arena) return Usage_Description is
         (Nodes => Owned.Node_Count (A.Inner.all), Values => Owned.Values_Used (A.Inner.all),
          Methods => Owned.Methods_Used (A.Inner.all), Pending => Owned.Pending_Members (A.Inner.all));
@@ -12301,7 +12304,7 @@ package body Owned with SPARK_Mode is
          end Bind;
          procedure Clear (Items : out Binding_Set) is
          begin
-            Items := (others => <>);
+            Items := (Capacity => Items.Capacity, others => <>);
          end Clear;
          procedure Add_Region_Register
            (A : Arena; IO : IO_Context; Region : Node_Descriptor;
@@ -12318,7 +12321,7 @@ package body Owned with SPARK_Mode is
             Status := Admission (A); if Status /= Available then return; end if;
             Status := Invalid_Value;
             if (not Allow_Read and then not Allow_Write)
-              or else Items.Register_Count = Binding_Count'Last
+              or else Items.Register_Count = Items.Capacity
               or else A.Inner.Field_Uncertain.Present or else Pending (IO)
               or else not Current_Node (A, Region)
               or else Region.Tag /= Operation_Region_Object
@@ -12363,7 +12366,7 @@ package body Owned with SPARK_Mode is
          begin
             Status := Admission (A); if Status /= Available then return; end if;
             Status := Invalid_Value;
-            if Items.Count = Binding_Count'Last then return; end if;
+            if Items.Count = Items.Capacity then return; end if;
             if (Items.Count /= 0 or else Items.Register_Count /= 0) and then
               (Items.Owner /= A.Inner.Token or else Items.Provider /= Target.Provider)
             then return; end if;
@@ -12388,7 +12391,7 @@ package body Owned with SPARK_Mode is
          begin
             Status := Admission (A); if Status /= Available then return; end if;
             Status := Invalid_Value;
-            if Count = 0 or else Items.Count = Binding_Count'Last
+            if Count = 0 or else Items.Count = Items.Capacity
               or else A.Inner.Field_Uncertain.Present or else Pending (IO)
               or else not Field_Key_Matches (A, Key)
             then return; end if;
@@ -12428,7 +12431,7 @@ package body Owned with SPARK_Mode is
            (A : Arena; IO : IO_Context; Key : Field_Key;
             Targets : AML_Field_Targets.Vector; Count : AML_Field_Plans.Datum_Count;
             Items : in out Binding_Set; Status : out Access_Status) is
-            Candidate : Binding_Set := Items;
+            Candidate : Binding_Set (1);
             Allowed : Boolean;
          begin
             Add_Read_Binding (A, IO, Key, Targets, Count, Candidate, Status);
@@ -12452,8 +12455,16 @@ package body Owned with SPARK_Mode is
                   end;
                end loop;
             end;
-            Candidate.Entries (Candidate.Count).Writes_Enabled := True;
-            Items := Candidate; Status := Available;
+            if Items.Count=Items.Capacity then return;end if;
+            if (Items.Count/=0 or else Items.Register_Count/=0) and then
+              (Items.Owner/=Candidate.Owner or else Items.Provider/=Candidate.Provider) then return;end if;
+            for I in Binding_Count range 1..Items.Count loop
+               if Items.Entries(I).Field=Candidate.Entries(1).Field then return;end if;
+            end loop;
+            Candidate.Entries(1).Writes_Enabled:=True;
+            Items.Entries(Items.Count+1):=Candidate.Entries(1);
+            Items.Count:=Items.Count+1;Items.Owner:=Candidate.Owner;Items.Provider:=Candidate.Provider;
+            Status:=Available;
          end Add_Write_Binding;
          function Uncertain (A : Arena) return AML_Field_Access.Observation is
            (A.Inner.Field_Uncertain);
@@ -13474,6 +13485,46 @@ package body Owned with SPARK_Mode is
             Run_Workspace (Temporary.all);
             Free_Workspace (Temporary);
          end Perform_Composed_Field;
+         procedure Note_Field_Operation
+           (E : Owned.Arena; Items : Binding_Set; Ref : Reference; For_Write : Boolean;
+            At_Point : AML_Field_Notes.Boundary;
+            Result : AML_Execute.Execution_Status := AML_Execute.Unsupported_Value) is
+            Item : AML_Field_Notes.Event :=
+              (At_Point => At_Point, For_Write => For_Write, Status => Result,
+               Locked_Fields_Enabled => Allow_Locked_Fields, others => <>);
+         begin
+            if not Field_Notes_Enabled then return; end if;
+            if AML_References.Kind (Ref) = AML_References.Named_Cell
+              and then Named_Identity_Matches (E, Ref)
+            then
+               declare N : constant Node_ID := Node_ID (AML_References.Named_Node (Ref)); begin
+                  if E.Tree.Items (N).Object_Type = Region_Field_Object then
+                     declare F : Region_Field_Attributes renames E.Tree.Items (N).Region_Field_Info; begin
+                        Item.Known_Field := True; Item.Field := AML_Field_Notes.Node_Position (N);
+                        Item.Region := AML_Field_Notes.Node_Position (F.Region);
+                        Item.Flags := F.Raw_Flags;
+                        Item.Bit_Offset := AML_Decode.Integer_Value (F.Offset);
+                        Item.Bit_Length := AML_Decode.Integer_Value (F.Bits);
+                        if F.Region /= Root and then F.Region <= E.Tree.Used and then
+                          E.Tree.Items (F.Region).Object_Type = Operation_Region_Object
+                        then
+                           Item.Known_Region := True;
+                           Item.Space := AML_Decode.Byte (E.Tree.Items (F.Region).Operation_Info.Space);
+                        end if;
+                     end;
+                     for I in Binding_Count range 1 .. Items.Count loop
+                        if Items.Entries (I).Field = Ref then
+                           Item.Direct_Binding := True;
+                           Item.Writes_Enabled := Items.Entries (I).Writes_Enabled;
+                           Item.Read_Datums := Natural (Items.Entries (I).Read_Count);
+                           exit;
+                        end if;
+                     end loop;
+                  end if;
+               end;
+            end if;
+            Observe_Field (Item);
+         end Note_Field_Operation;
          procedure Perform_Bound_Field
            (E : in out Owned.Arena; Context : in out IO_Context; Items : Binding_Set; Ref : Reference;
             Width : AML_Decode.Integer_Width; For_Write : Boolean;
@@ -13484,6 +13535,9 @@ package body Owned with SPARK_Mode is
             Lock_Mask : constant AML_Decode.Byte := 16#10#;
             Requires_Lock : Boolean := False;
             Accepted : Boolean;
+            procedure Note (At_Point : AML_Field_Notes.Boundary;
+               Result : AML_Execute.Execution_Status := AML_Execute.Unsupported_Value) is
+            begin Note_Field_Operation (E, Items, Ref, For_Write, At_Point, Result); end Note;
             procedure Run_Field is
             begin
             if AML_References.Kind (Ref) = AML_References.Named_Cell
@@ -13500,10 +13554,11 @@ package body Owned with SPARK_Mode is
             Perform_Direct_Field (E, Context, Items, Ref, Width, For_Write, Value, Status, Remaining);
             end Run_Field;
          begin
+            Note (AML_Field_Notes.Requested);
             if E.Field_Uncertain.Present or else Pending (Context) then
-               Status := AML_Execute.Field_Indeterminate; return;
+               Status := AML_Execute.Field_Indeterminate; Note (AML_Field_Notes.Pending_Refused, Status); return;
             end if;
-            if Work_Allowance = 0 then Status := AML_Execute.Value_Limit; return; end if;
+            if Work_Allowance = 0 then Status := AML_Execute.Value_Limit; Note (AML_Field_Notes.Work_Refused, Status); return; end if;
             if AML_References.Kind (Ref) = AML_References.Named_Cell
               and then Named_Identity_Matches (E, Ref)
             then
@@ -13517,20 +13572,334 @@ package body Owned with SPARK_Mode is
                end;
             end if;
             if Requires_Lock and then not Allow_Locked_Fields and then (For_Write or else not Allow_Locked_NVS_Reads) then
-               Status := AML_Execute.Unsupported_Value; return;
+               Status := AML_Execute.Unsupported_Value; Note (AML_Field_Notes.Lock_Policy_Refused, Status); return;
             end if;
             Accepted := not Requires_Lock;
             Begin_Field (Context, Requires_Lock, For_Write, Accepted);
             if not Accepted then
                Status := (if Pending (Context) then AML_Execute.Field_Indeterminate
                  else AML_Execute.Unsupported_Value);
+               Note (AML_Field_Notes.Entry_Refused, Status);
                return;
             end if;
             Run_Field;
             Accepted := True;
             End_Field (Context, Accepted);
             if not Accepted then Status := AML_Execute.Field_Indeterminate; end if;
+            Note (AML_Field_Notes.Finished, Status);
          end Perform_Bound_Field;
+      procedure Perform_Resolved_Field
+        (E : in out Owned.Arena; Context : in out IO_Context; Ref : Reference;
+         Width : AML_Decode.Integer_Width; For_Write : Boolean;
+         Value : in out AML_Execute.Datum; Status : out AML_Execute.Execution_Status;
+         Targets : Module_Target_Set; Count : Module_Target_Count;
+         Provider_May_Have_Effects : in out Boolean;
+         Loads : AML_Definition_Loads.State; Input : aliased AML_Table_Backing.State) is
+         Prepared : Binding_Set (Maximum_Bindings);
+         Good : Boolean := False;
+         Root_Node : Node_ID;
+         Work : AML_Execution_Limits.Field_Work_Count := Maximum_Work;
+         use type AML_Execution_Limits.Field_Work_Count;
+         use type AML_Field_Datums.Datum_Index;
+         Scalar_Bits : constant Positive := AML_Integers.Bit_Width (AML_Decode.Bits_64);
+         Needed : array (Node_ID) of Boolean := [others => False];
+         procedure Charge (Allowed : out Boolean) is
+         begin
+            Allowed := Work > 0;
+            Work := AML_Execution_Limits.Charged_Field_Work (Work);
+            if not Allowed then Status := AML_Execute.Value_Limit; end if;
+         end Charge;
+         procedure Select_Provider (Target : AML_Field_Access.Target; Allowed : out Boolean) is
+         begin
+            if Prepared.Count = 0 and then Prepared.Register_Count = 0 then
+               Prepared.Owner := E.Token; Prepared.Provider := Target.Provider;
+               Allowed := True; return;
+            end if;
+            Allowed := Prepared.Owner = E.Token and then Prepared.Provider = Target.Provider;
+         end Select_Provider;
+         procedure Resolve_Datum
+           (Region_Node : Node_ID; Desired : AML_Field_Layout.Register_Geometry;
+            Target : out AML_Field_Access.Target;
+            Geometry : out AML_Field_Layout.Register_Geometry; Allowed : out Boolean) is
+            Current : Boolean;
+         begin
+            Target := AML_Field_Access.No_Target; Geometry := (others => <>); Allowed := False;
+            Charge (Current); if not Current then return; end if;
+            Resolve_Module_Target (Context, Desired, Target, Allowed);
+            if not Allowed and then not Pending (Context)
+              and then (Enable_Startup_Firmware_Resolution or else Enable_Startup_Platform_Resolution)
+              and then Region_Node > Root and then Region_Node <= E.Tree.Used
+              and then E.Tree.Items (Region_Node).Alive
+              and then E.Tree.Items (Region_Node).Object_Type = Operation_Region_Object
+              and then not E.Tree.Items (Region_Node).Initializing
+            then
+               declare
+                  R : constant Operation_Region_Attributes := E.Tree.Items (Region_Node).Operation_Info;
+               begin
+                  if R.Space = Region_Space_ID (AML_Field_Layout.Memory_Space)
+                    and then R.Length > 0
+                    and then (Enable_Startup_Platform_Resolution or else
+                      (R.Syntax.Address_Is_Literal and then R.Syntax.Length_Is_Literal))
+                    and then R.Origin.Known
+                    and then Has_Definition (R.Origin.Definition)
+                    and then Definition_Of (E.Tree.all, Region_Node) = R.Origin.Definition
+                    and then Natural (R.Origin.Table) <= Input.Count
+                    and then Natural (R.Origin.Table) <= Loads.Capacity
+                    and then AML_Table_Backing.Valid_Span (Input, Positive (R.Origin.Table))
+                    and then AML_Definition_Loads.Phase (Loads, Positive (R.Origin.Table)) in
+                      AML_Definition_Loads.Loading | AML_Definition_Loads.Loaded
+                    and then AML_Definition_Loads.Definition (Loads, Positive (R.Origin.Table)) =
+                      R.Origin.Definition
+                  then
+                     Charge (Current); if not Current then return; end if;
+                     Target := AML_Field_Access.No_Target;
+                     -- Grant requests can have effects even when no Field
+                     -- data operation ran. Preserve the owner from here.
+                     Provider_May_Have_Effects := True;
+                     if Enable_Startup_Platform_Resolution then
+                        if Desired.Region.Space = AML_Field_Layout.Memory_Space
+                          and then not Desired.Region.PCI.Known
+                          and then Desired.Region.Base = R.Address
+                          and then Desired.Region.Length = R.Length
+                          and then AML_Register_Views.Valid_Register (Desired)
+                        then
+                           Resolve_Startup_Platform_Target (Context,R,
+                             E.Tree.Items (Region_Node).Part,Region_Node,Desired,Target,Allowed);
+                        end if;
+                     else
+                        Resolve_Startup_Firmware_Target (Context, R, Desired, Target, Allowed);
+                     end if;
+                  end if;
+               end;
+            end if;
+            if Pending (Context) then
+               Allowed := False; Status := AML_Execute.Field_Indeterminate; return;
+            end if;
+            if not Allowed or else Target = AML_Field_Access.No_Target then Allowed := False; return; end if;
+            Describe_Target (Context, Target, Geometry, Current);
+            Allowed := Current and then AML_Register_Views.Same_Transaction (Geometry, Desired);
+         end Resolve_Datum;
+         procedure Bind_Direct (Node : Node_ID; Allowed : out Boolean) is
+            Key : Field_Key := No_Field_Key;
+            Candidate, Selected : Binding;
+            Bound : Access_Status;
+            Found, Matched, Current : Boolean := False;
+            Geometry : AML_Field_Layout.Register_Geometry;
+            Field : AML_Field_Layout.Field_Geometry;
+            Plan : AML_Field_Plans.Plan;
+            Region : constant Node_ID := E.Tree.Items (Node).Region_Field_Info.Region;
+         begin
+            Allowed := False;
+            if Region = Root or else Region > E.Tree.Used then return; end if;
+            Make_Named_Identity (E, Natural (Node), Key.Field, Current);
+            if not Current then return; end if;
+            Make_Named_Identity (E, Natural (Region), Key.Region, Current);
+            if not Current or else not Key_Matches (E, Key) then return; end if;
+            for Position in Module_Target_Position loop
+               exit when Module_Target_Count (Position) > Count;
+               Charge (Current); if not Current then return; end if;
+               Bind_Owned (E, Context, Key, Targets (Position), Candidate, Bound);
+               if Bound = Available then
+                  if Found then return; end if;
+                  Selected := Candidate; Found := True;
+               end if;
+            end loop;
+            if not Found then
+               Field := Geometry_Of (E, Key); Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads, Allow_Locked_Fields);
+               if not AML_Field_Plans.Valid (Plan) then return; end if;
+               Selected := No_Binding;
+               Selected.Field := Key.Field; Selected.Region := Key.Region;
+               Selected.Read_Count := AML_Field_Plans.Count (Plan);
+               Selected.Read_Field := Field; Selected.Writes_Enabled := True;
+               for Datum in AML_Field_Plans.Datum_Position range 1 .. Selected.Read_Count loop
+                  Matched := False;
+                  for Position in Module_Target_Position loop
+                     exit when Module_Target_Count (Position) > Count;
+                     Charge (Current); if not Current then return; end if;
+                     Describe_Target (Context, Targets (Position), Geometry, Current);
+                     if Current and then AML_Field_Plans.Matches (Plan, Datum, Geometry) then
+                        if Matched then return; end if;
+                        Matched := True;
+                        Selected.Read_Targets (Datum) := Targets (Position);
+                        Selected.Read_Geometries (Datum) := Geometry;
+                     end if;
+                  end loop;
+                  if not Matched then
+                     declare D : constant AML_Field_Datums.Datum := AML_Field_Plans.Datum_At (Plan, Datum); begin
+                        Resolve_Datum (Region, (Field.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
+                          Selected.Read_Targets (Datum), Selected.Read_Geometries (Datum), Matched);
+                     end;
+                  end if;
+                  if not Matched or else Selected.Read_Targets (Datum).Provider /=
+                    Selected.Read_Targets (AML_Field_Plans.Datum_Position'First).Provider then return; end if;
+               end loop;
+               Selected.Target := Selected.Read_Targets (AML_Field_Plans.Datum_Position'First);
+               Selected.Geometry := Selected.Read_Geometries (AML_Field_Plans.Datum_Position'First);
+            end if;
+            if Prepared.Count = Prepared.Capacity then Status := AML_Execute.Value_Limit; return; end if;
+            Select_Provider (Selected.Target, Current); if not Current then return; end if;
+            Prepared.Count := Prepared.Count + 1;
+            Prepared.Entries (Prepared.Count) := Selected;
+            Allowed := True;
+         end Bind_Direct;
+         procedure Bind_Region (Node : Node_ID; Allowed : out Boolean) is
+            Info : constant Region_Field_Attributes := E.Tree.Items (Node).Region_Field_Info;
+            Geometry : AML_Field_Layout.Field_Geometry;
+            Probe : AML_Field_Layout.Field_Geometry;
+            Register : AML_Field_Layout.Register_Geometry;
+            Plan : AML_Field_Datums.Plan;
+            Access_Plan : AML_Field_Plans.Plan;
+            Region : Reference;
+            Chosen : AML_Field_Access.Target;
+            Chosen_Geometry : AML_Field_Layout.Register_Geometry;
+            Found, Current, Readable, Writable, Duplicate : Boolean;
+         begin
+            Allowed := False;
+            if Info.Region = Root or else Info.Region > E.Tree.Used
+              or else E.Tree.Items (Info.Region).Object_Type /= Operation_Region_Object
+              or else E.Tree.Items (Info.Region).Incarnation /= Info.Incarnation
+              or else E.Tree.Items (Info.Region).Initializing then return; end if;
+            Make_Named_Identity (E, Natural (Info.Region), Region, Current);
+            if not Current then return; end if;
+            declare R : constant Operation_Region_Attributes := E.Tree.Items (Info.Region).Operation_Info; begin
+               Geometry := (Region => (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length, PCI => R.PCI),
+                  Bit_Offset => AML_Decode.Integer_Value (Info.Offset), Bit_Length => AML_Decode.Integer_Value (Info.Bits),
+                  Flags => Info.Raw_Flags, Effective_Access => Info.Access_Type,
+                  Attribute => Info.Attribute, Access_Length => Info.Access_Length, others => <>);
+            end;
+            Probe := Geometry;
+            Probe.Bit_Length := AML_Decode.Integer_Value'Min (Probe.Bit_Length, AML_Field_Plans.Maximum_Bits);
+            Access_Plan := AML_Field_Plans.Prepare (Probe, Allow_Locked_Fields => Allow_Locked_Fields);
+            if not AML_Field_Plans.Valid (Access_Plan) then return; end if;
+            Plan := AML_Field_Datums.Prepare (Geometry.Region.Base, Geometry.Region.Length,
+               AML_Field_Datums.Bit_Position (Geometry.Bit_Offset), AML_Field_Datums.Bit_Length (Geometry.Bit_Length),
+               AML_Field_Plans.Datum_At (Access_Plan, AML_Field_Plans.Datum_Position'First).Access_Width);
+            if not AML_Field_Datums.Valid (Plan) then return; end if;
+            for Datum in AML_Field_Datums.Datum_Index range 0 .. AML_Field_Datums.Count (Plan) - 1 loop
+               declare D : constant AML_Field_Datums.Datum := AML_Field_Datums.At_Index (Plan, Datum); begin
+                  Found := False; Chosen := AML_Field_Access.No_Target;
+                  for Position in Module_Target_Position loop
+                     exit when Module_Target_Count (Position) > Count;
+                     Charge (Current); if not Current then return; end if;
+                     Describe_Target (Context, Targets (Position), Register, Current);
+                     if Current and then AML_Register_Views.Same_Transaction
+                       (Register, (Geometry.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width)) then
+                        if Found then return; end if;
+                        Found := True; Chosen := Targets (Position); Chosen_Geometry := Register;
+                     end if;
+                  end loop;
+                  if not Found then
+                     Resolve_Datum (Info.Region, (Geometry.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
+                       Chosen, Chosen_Geometry, Found);
+                  end if;
+                  if not Found then return; end if;
+                  Select_Provider (Chosen, Current); if not Current then return; end if;
+                  Duplicate := False;
+                  for Position in Binding_Count range 1 .. Prepared.Register_Count loop
+                     if Prepared.Registers (Position).Region = Region
+                       and then Prepared.Registers (Position).Target = Chosen then
+                        if Prepared.Registers (Position).Geometry /= Chosen_Geometry then return; end if;
+                        Duplicate := True;
+                     end if;
+                  end loop;
+                  if not Duplicate then
+                     if Prepared.Register_Count = Prepared.Capacity then Status := AML_Execute.Value_Limit; return; end if;
+                     Authorize_Target (Context, Chosen, False, Readable);
+                     Authorize_Target (Context, Chosen, True, Writable);
+                     Prepared.Register_Count := Prepared.Register_Count + 1;
+                     Prepared.Registers (Prepared.Register_Count) :=
+                        (Region, Chosen, Chosen_Geometry, Readable, Writable);
+                  end if;
+               end;
+            end loop;
+            Allowed := True;
+         end Bind_Region;
+         procedure Require_Source (Parent, Child : Node_ID;
+            Incarnation : AML_References.Node_Incarnation; Allowed : out Boolean) is
+         begin
+            Allowed := Child > Root and then Child < Parent
+              and then E.Tree.Items (Child).Object_Type = Region_Field_Object
+              and then E.Tree.Items (Child).Incarnation = Incarnation
+              and then not E.Tree.Items (Child).Initializing;
+            if Allowed then Needed (Child) := True; end if;
+         end Require_Source;
+      begin
+         Status := AML_Execute.Unsupported_Value;
+         if E.Field_Uncertain.Present or else Pending (Context) then
+            Status := AML_Execute.Field_Indeterminate; return;
+         end if;
+         if AML_References.Kind (Ref) /= AML_References.Named_Cell
+           or else not Named_Identity_Matches (E, Ref) then return; end if;
+         Root_Node := Node_ID (AML_References.Named_Node (Ref));
+         if E.Tree.Items (Root_Node).Object_Type /= Region_Field_Object then return; end if;
+         Needed (Root_Node) := True;
+         -- Dependencies bind earlier field incarnations. A descending walk
+         -- visits the complete reachable graph without recursion or AML.
+         for Node in reverse Node_ID range Root + 1 .. Root_Node loop
+            Charge (Good); if not Good then return; end if;
+            if Needed (Node) then
+               if E.Tree.Items (Node).Initializing then return; end if;
+               declare Info : constant Region_Field_Attributes := E.Tree.Items (Node).Region_Field_Info; begin
+                  if Info.Organization = Indexed_Register_Field then
+                     Require_Source (Node, Info.Index_Register, Info.Index_Incarnation, Good);
+                     if not Good then return; end if;
+                     Require_Source (Node, Info.Data_Register, Info.Data_Incarnation, Good);
+                     if not Good then return; end if;
+                  else
+                     if Info.Organization = Banked_Region_Field then
+                        Require_Source (Node, Info.Bank_Register, Info.Bank_Incarnation, Good);
+                        if not Good then return; end if;
+                     end if;
+                     if Info.Organization = Direct_Region_Field and then Info.Bits <= Scalar_Bits then
+                        Bind_Direct (Node, Good);
+                     else Bind_Region (Node, Good); end if;
+                     if not Good then return; end if;
+                  end if;
+               end;
+            end if;
+         end loop;
+         -- The existing executor preflights all concrete directions before
+         -- selector/data IO, then rechecks rights/geometry on each access.
+         Provider_May_Have_Effects := True;
+         Perform_Bound_Field (E, Context, Prepared, Ref, Width, For_Write, Value, Status, Work);
+      end Perform_Resolved_Field;
+      procedure Perform_Runtime_Field
+        (E : in out Owned.Arena; Context : in out IO_Context; Items : Binding_Set; Ref : Reference;
+         Width : AML_Decode.Integer_Width; For_Write : Boolean;
+         Value : in out AML_Execute.Datum; Status : out AML_Execute.Execution_Status;
+         Loads : AML_Definition_Loads.State; Input : aliased AML_Table_Backing.State) is
+         Found : Boolean := False;
+         Effects : Boolean := False;
+         Empty_Targets : constant Module_Target_Set := [others => AML_Field_Access.No_Target];
+      begin
+         -- Never retry after a bound access failed: it may already have
+         -- changed a selector/data register. A field with NO direct cached
+         -- binding can use the same preflight resolver as module AML. With
+         -- dynamic region resolution enabled, resolve the complete composed
+         -- dependency graph BEFORE any selector/data operation. Legacy
+         -- providers retain their existing cached-composition path.
+         for I in Binding_Count range 1 .. Items.Count loop
+            if Items.Entries (I).Field = Ref then Found := True; exit; end if;
+         end loop;
+         if not Found and then AML_References.Kind (Ref) = AML_References.Named_Cell
+           and then Named_Identity_Matches (E,Ref)
+         then
+            declare N : constant Node_ID := Node_ID (AML_References.Named_Node (Ref)); begin
+               if E.Tree.Items (N).Object_Type = Region_Field_Object
+                 and then ((E.Tree.Items (N).Region_Field_Info.Organization = Direct_Region_Field
+                   and then E.Tree.Items (N).Region_Field_Info.Bits <=
+                     Encoded_Field_Bits (AML_Integers.Bit_Width (AML_Decode.Bits_64)))
+                   or else Enable_Startup_Firmware_Resolution
+                   or else Enable_Startup_Platform_Resolution) then
+                  Note_Field_Operation (E, Items, Ref, For_Write, AML_Field_Notes.Resolving);
+                  Perform_Resolved_Field (E,Context,Ref,Width,For_Write,Value,Status,Empty_Targets,0,Effects,Loads,Input);
+                  Note_Field_Operation (E, Items, Ref, For_Write, AML_Field_Notes.Resolution_Finished, Status);
+                  return;
+               end if;
+            end;
+         end if;
+         Perform_Bound_Field (E,Context,Items,Ref,Width,For_Write,Value,Status);
+      end Perform_Runtime_Field;
       procedure Execute_Registered_Modules
         (A : in out Arena; IO : in out IO_Context;
          Targets : Module_Target_Set; Count : Module_Target_Count;
@@ -13544,260 +13913,8 @@ package body Owned with SPARK_Mode is
            (E : in out Owned.Arena; Context : in out IO_Context; Ref : Reference;
             Width : AML_Decode.Integer_Width; For_Write : Boolean;
             Value : in out AML_Execute.Datum; Status : out AML_Execute.Execution_Status) is
-            Prepared : Binding_Set;
-            Good : Boolean := False;
-            Root_Node : Node_ID;
-            Work : AML_Execution_Limits.Field_Work_Count := Maximum_Work;
-            use type AML_Execution_Limits.Field_Work_Count;
-            use type AML_Field_Datums.Datum_Index;
-            Scalar_Bits : constant Positive := AML_Integers.Bit_Width (AML_Decode.Bits_64);
-            Needed : array (Node_ID) of Boolean := [others => False];
-            procedure Charge (Allowed : out Boolean) is
-            begin
-               Allowed := Work > 0;
-               Work := AML_Execution_Limits.Charged_Field_Work (Work);
-               if not Allowed then Status := AML_Execute.Value_Limit; end if;
-            end Charge;
-            procedure Select_Provider (Target : AML_Field_Access.Target; Allowed : out Boolean) is
-            begin
-               if Prepared.Count = 0 and then Prepared.Register_Count = 0 then
-                  Prepared.Owner := E.Token; Prepared.Provider := Target.Provider;
-                  Allowed := True; return;
-               end if;
-               Allowed := Prepared.Owner = E.Token and then Prepared.Provider = Target.Provider;
-            end Select_Provider;
-            procedure Resolve_Datum
-              (Region_Node : Node_ID; Desired : AML_Field_Layout.Register_Geometry;
-               Target : out AML_Field_Access.Target;
-               Geometry : out AML_Field_Layout.Register_Geometry; Allowed : out Boolean) is
-               Current : Boolean;
-            begin
-               Target := AML_Field_Access.No_Target; Geometry := (others => <>); Allowed := False;
-               Charge (Current); if not Current then return; end if;
-               Resolve_Module_Target (Context, Desired, Target, Allowed);
-               if not Allowed and then not Pending (Context)
-                 and then Enable_Startup_Firmware_Resolution
-                 and then Region_Node > Root and then Region_Node <= E.Tree.Used
-                 and then E.Tree.Items (Region_Node).Alive
-                 and then E.Tree.Items (Region_Node).Object_Type = Operation_Region_Object
-                 and then not E.Tree.Items (Region_Node).Initializing
-               then
-                  declare
-                     R : constant Operation_Region_Attributes := E.Tree.Items (Region_Node).Operation_Info;
-                  begin
-                     if R.Space = Region_Space_ID (AML_Field_Layout.Memory_Space)
-                       and then R.Syntax.Address_Is_Literal
-                       and then R.Syntax.Length_Is_Literal and then R.Length > 0
-                       and then R.Origin.Known
-                       and then Has_Definition (R.Origin.Definition)
-                       and then Definition_Of (E.Tree.all, Region_Node) = R.Origin.Definition
-                       and then Natural (R.Origin.Table) <= Input.Count
-                       and then Natural (R.Origin.Table) <= Loads.Capacity
-                       and then AML_Table_Backing.Valid_Span (Input, Positive (R.Origin.Table))
-                       and then AML_Definition_Loads.Phase (Loads, Positive (R.Origin.Table)) in
-                         AML_Definition_Loads.Loading | AML_Definition_Loads.Loaded
-                       and then AML_Definition_Loads.Definition (Loads, Positive (R.Origin.Table)) =
-                         R.Origin.Definition
-                     then
-                        Charge (Current); if not Current then return; end if;
-                        Target := AML_Field_Access.No_Target;
-                        -- Grant requests can have effects even when no Field
-                        -- data operation ran. Preserve the owner from here.
-                        Provider_May_Have_Effects := True;
-                        Resolve_Startup_Firmware_Target (Context, R, Desired, Target, Allowed);
-                     end if;
-                  end;
-               end if;
-               if Pending (Context) then
-                  Allowed := False; Status := AML_Execute.Field_Indeterminate; return;
-               end if;
-               if not Allowed or else Target = AML_Field_Access.No_Target then Allowed := False; return; end if;
-               Describe_Target (Context, Target, Geometry, Current);
-               Allowed := Current and then AML_Register_Views.Same_Transaction (Geometry, Desired);
-            end Resolve_Datum;
-            procedure Bind_Direct (Node : Node_ID; Allowed : out Boolean) is
-               Key : Field_Key := No_Field_Key;
-               Candidate, Selected : Binding;
-               Bound : Access_Status;
-               Found, Matched, Current : Boolean := False;
-               Geometry : AML_Field_Layout.Register_Geometry;
-               Field : AML_Field_Layout.Field_Geometry;
-               Plan : AML_Field_Plans.Plan;
-               Region : constant Node_ID := E.Tree.Items (Node).Region_Field_Info.Region;
-            begin
-               Allowed := False;
-               if Region = Root or else Region > E.Tree.Used then return; end if;
-               Make_Named_Identity (E, Natural (Node), Key.Field, Current);
-               if not Current then return; end if;
-               Make_Named_Identity (E, Natural (Region), Key.Region, Current);
-               if not Current or else not Key_Matches (E, Key) then return; end if;
-               for Position in Module_Target_Position loop
-                  exit when Module_Target_Count (Position) > Count;
-                  Charge (Current); if not Current then return; end if;
-                  Bind_Owned (E, Context, Key, Targets (Position), Candidate, Bound);
-                  if Bound = Available then
-                     if Found then return; end if;
-                     Selected := Candidate; Found := True;
-                  end if;
-               end loop;
-               if not Found then
-                  Field := Geometry_Of (E, Key); Plan := AML_Field_Plans.Prepare (Field, Allow_Locked_NVS_Reads, Allow_Locked_Fields);
-                  if not AML_Field_Plans.Valid (Plan) then return; end if;
-                  Selected := No_Binding;
-                  Selected.Field := Key.Field; Selected.Region := Key.Region;
-                  Selected.Read_Count := AML_Field_Plans.Count (Plan);
-                  Selected.Read_Field := Field; Selected.Writes_Enabled := True;
-                  for Datum in AML_Field_Plans.Datum_Position range 1 .. Selected.Read_Count loop
-                     Matched := False;
-                     for Position in Module_Target_Position loop
-                        exit when Module_Target_Count (Position) > Count;
-                        Charge (Current); if not Current then return; end if;
-                        Describe_Target (Context, Targets (Position), Geometry, Current);
-                        if Current and then AML_Field_Plans.Matches (Plan, Datum, Geometry) then
-                           if Matched then return; end if;
-                           Matched := True;
-                           Selected.Read_Targets (Datum) := Targets (Position);
-                           Selected.Read_Geometries (Datum) := Geometry;
-                        end if;
-                     end loop;
-                     if not Matched then
-                        declare D : constant AML_Field_Datums.Datum := AML_Field_Plans.Datum_At (Plan, Datum); begin
-                           Resolve_Datum (Region, (Field.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
-                             Selected.Read_Targets (Datum), Selected.Read_Geometries (Datum), Matched);
-                        end;
-                     end if;
-                     if not Matched or else Selected.Read_Targets (Datum).Provider /=
-                       Selected.Read_Targets (AML_Field_Plans.Datum_Position'First).Provider then return; end if;
-                  end loop;
-                  Selected.Target := Selected.Read_Targets (AML_Field_Plans.Datum_Position'First);
-                  Selected.Geometry := Selected.Read_Geometries (AML_Field_Plans.Datum_Position'First);
-               end if;
-               if Prepared.Count = Binding_Count'Last then Status := AML_Execute.Value_Limit; return; end if;
-               Select_Provider (Selected.Target, Current); if not Current then return; end if;
-               Prepared.Count := Prepared.Count + 1;
-               Prepared.Entries (Prepared.Count) := Selected;
-               Allowed := True;
-            end Bind_Direct;
-            procedure Bind_Region (Node : Node_ID; Allowed : out Boolean) is
-               Info : constant Region_Field_Attributes := E.Tree.Items (Node).Region_Field_Info;
-               Geometry : AML_Field_Layout.Field_Geometry;
-               Probe : AML_Field_Layout.Field_Geometry;
-               Register : AML_Field_Layout.Register_Geometry;
-               Plan : AML_Field_Datums.Plan;
-               Access_Plan : AML_Field_Plans.Plan;
-               Region : Reference;
-               Chosen : AML_Field_Access.Target;
-               Chosen_Geometry : AML_Field_Layout.Register_Geometry;
-               Found, Current, Readable, Writable, Duplicate : Boolean;
-            begin
-               Allowed := False;
-               if Info.Region = Root or else Info.Region > E.Tree.Used
-                 or else E.Tree.Items (Info.Region).Object_Type /= Operation_Region_Object
-                 or else E.Tree.Items (Info.Region).Incarnation /= Info.Incarnation
-                 or else E.Tree.Items (Info.Region).Initializing then return; end if;
-               Make_Named_Identity (E, Natural (Info.Region), Region, Current);
-               if not Current then return; end if;
-               declare R : constant Operation_Region_Attributes := E.Tree.Items (Info.Region).Operation_Info; begin
-                  Geometry := (Region => (Space => AML_Decode.Byte (R.Space), Base => R.Address, Length => R.Length, PCI => R.PCI),
-                     Bit_Offset => AML_Decode.Integer_Value (Info.Offset), Bit_Length => AML_Decode.Integer_Value (Info.Bits),
-                     Flags => Info.Raw_Flags, Effective_Access => Info.Access_Type,
-                     Attribute => Info.Attribute, Access_Length => Info.Access_Length, others => <>);
-               end;
-               Probe := Geometry;
-               Probe.Bit_Length := AML_Decode.Integer_Value'Min (Probe.Bit_Length, AML_Field_Plans.Maximum_Bits);
-               Access_Plan := AML_Field_Plans.Prepare (Probe, Allow_Locked_Fields => Allow_Locked_Fields);
-               if not AML_Field_Plans.Valid (Access_Plan) then return; end if;
-               Plan := AML_Field_Datums.Prepare (Geometry.Region.Base, Geometry.Region.Length,
-                  AML_Field_Datums.Bit_Position (Geometry.Bit_Offset), AML_Field_Datums.Bit_Length (Geometry.Bit_Length),
-                  AML_Field_Plans.Datum_At (Access_Plan, AML_Field_Plans.Datum_Position'First).Access_Width);
-               if not AML_Field_Datums.Valid (Plan) then return; end if;
-               for Datum in AML_Field_Datums.Datum_Index range 0 .. AML_Field_Datums.Count (Plan) - 1 loop
-                  declare D : constant AML_Field_Datums.Datum := AML_Field_Datums.At_Index (Plan, Datum); begin
-                     Found := False; Chosen := AML_Field_Access.No_Target;
-                     for Position in Module_Target_Position loop
-                        exit when Module_Target_Count (Position) > Count;
-                        Charge (Current); if not Current then return; end if;
-                        Describe_Target (Context, Targets (Position), Register, Current);
-                        if Current and then AML_Register_Views.Same_Transaction
-                          (Register, (Geometry.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width)) then
-                           if Found then return; end if;
-                           Found := True; Chosen := Targets (Position); Chosen_Geometry := Register;
-                        end if;
-                     end loop;
-                     if not Found then
-                        Resolve_Datum (Info.Region, (Geometry.Region, AML_Decode.Integer_Value (D.Offset), D.Access_Width),
-                          Chosen, Chosen_Geometry, Found);
-                     end if;
-                     if not Found then return; end if;
-                     Select_Provider (Chosen, Current); if not Current then return; end if;
-                     Duplicate := False;
-                     for Position in Binding_Count range 1 .. Prepared.Register_Count loop
-                        if Prepared.Registers (Position).Region = Region
-                          and then Prepared.Registers (Position).Target = Chosen then
-                           if Prepared.Registers (Position).Geometry /= Chosen_Geometry then return; end if;
-                           Duplicate := True;
-                        end if;
-                     end loop;
-                     if not Duplicate then
-                        if Prepared.Register_Count = Binding_Count'Last then Status := AML_Execute.Value_Limit; return; end if;
-                        Authorize_Target (Context, Chosen, False, Readable);
-                        Authorize_Target (Context, Chosen, True, Writable);
-                        Prepared.Register_Count := Prepared.Register_Count + 1;
-                        Prepared.Registers (Prepared.Register_Count) :=
-                           (Region, Chosen, Chosen_Geometry, Readable, Writable);
-                     end if;
-                  end;
-               end loop;
-               Allowed := True;
-            end Bind_Region;
-            procedure Require_Source (Parent, Child : Node_ID;
-               Incarnation : AML_References.Node_Incarnation; Allowed : out Boolean) is
-            begin
-               Allowed := Child > Root and then Child < Parent
-                 and then E.Tree.Items (Child).Object_Type = Region_Field_Object
-                 and then E.Tree.Items (Child).Incarnation = Incarnation
-                 and then not E.Tree.Items (Child).Initializing;
-               if Allowed then Needed (Child) := True; end if;
-            end Require_Source;
          begin
-            Status := AML_Execute.Unsupported_Value;
-            if E.Field_Uncertain.Present or else Pending (Context) then
-               Status := AML_Execute.Field_Indeterminate; return;
-            end if;
-            if AML_References.Kind (Ref) /= AML_References.Named_Cell
-              or else not Named_Identity_Matches (E, Ref) then return; end if;
-            Root_Node := Node_ID (AML_References.Named_Node (Ref));
-            if E.Tree.Items (Root_Node).Object_Type /= Region_Field_Object then return; end if;
-            Needed (Root_Node) := True;
-            -- Dependencies bind earlier field incarnations. A descending walk
-            -- visits the complete reachable graph without recursion or AML.
-            for Node in reverse Node_ID range Root + 1 .. Root_Node loop
-               Charge (Good); if not Good then return; end if;
-               if Needed (Node) then
-                  if E.Tree.Items (Node).Initializing then return; end if;
-                  declare Info : constant Region_Field_Attributes := E.Tree.Items (Node).Region_Field_Info; begin
-                     if Info.Organization = Indexed_Register_Field then
-                        Require_Source (Node, Info.Index_Register, Info.Index_Incarnation, Good);
-                        if not Good then return; end if;
-                        Require_Source (Node, Info.Data_Register, Info.Data_Incarnation, Good);
-                        if not Good then return; end if;
-                     else
-                        if Info.Organization = Banked_Region_Field then
-                           Require_Source (Node, Info.Bank_Register, Info.Bank_Incarnation, Good);
-                           if not Good then return; end if;
-                        end if;
-                        if Info.Organization = Direct_Region_Field and then Info.Bits <= Scalar_Bits then
-                           Bind_Direct (Node, Good);
-                        else Bind_Region (Node, Good); end if;
-                        if not Good then return; end if;
-                     end if;
-                  end;
-               end if;
-            end loop;
-            -- The existing executor preflights all concrete directions before
-            -- selector/data IO, then rechecks rights/geometry on each access.
-            Provider_May_Have_Effects := True;
-            Perform_Bound_Field (E, Context, Prepared, Ref, Width, For_Write, Value, Status, Work);
+            Perform_Resolved_Field (E,Context,Ref,Width,For_Write,Value,Status,Targets,Count,Provider_May_Have_Effects,Loads,Input);
          end Perform;
          procedure Run is new Execute_Modules_With_Context (IO_Context, Perform, Keep_Tree);
       begin
@@ -13873,7 +13990,10 @@ package body Owned with SPARK_Mode is
                Width : AML_Decode.Integer_Width; For_Write : Boolean;
                Value : in out AML_Execute.Datum; Status : out AML_Execute.Execution_Status) is
             begin
-               Perform_Bound_Field (E, Context, Items, Ref, Width, For_Write, Value, Status);
+               if Registered then
+                  Perform_Runtime_Field (E,Context,Items,Ref,Width,For_Write,Value,Status,Loads,Input);
+               else Perform_Bound_Field (E,Context,Items,Ref,Width,For_Write,Value,Status);
+               end if;
             end Perform;
             procedure Run is new Invoke_Context_Retained (IO_Context, Perform, Collect_Before);
             procedure Run_Registered is new Invoke_Registered_Context_Retained (IO_Context, Perform, Collect_Before);
@@ -13963,7 +14083,7 @@ package body Owned with SPARK_Mode is
          Input : aliased AML_Table_Backing.State; Node : Node_ID;
          Args : Arguments; Count : Argument_Count; Budget : Natural;
          Outcome : out Result; Status : out Access_Status) is
-         Items : Binding_Set;
+         Items : Binding_Set (Maximum_Bindings);
       begin
          -- Preserve singleton entry admission; effects use the common engine.
          Outcome := (Status => AML_Execute.No_Return, Charged => 0);
@@ -13983,7 +14103,7 @@ package body Owned with SPARK_Mode is
          Input : aliased AML_Table_Backing.State; Node : Node_ID;
          Args : Arguments; Count : Argument_Count; Budget : Natural;
          Outcome : out Result; Status : out Access_Status) is
-         Items : Binding_Set;
+         Items : Binding_Set (Maximum_Bindings);
       begin
          -- Preserve singleton entry admission; effects use the common engine.
          Outcome := (Status => AML_Execute.No_Return, Charged => 0);
@@ -14047,7 +14167,7 @@ package body Owned with SPARK_Mode is
             Ref : Reference; Integer_Width : AML_Decode.Integer_Width;
             Value : in out AML_Execute.Datum; Read_Status : out AML_Execute.Execution_Status) is
          begin
-            Perform_Bound_Field (E, Context, Items, Ref, Integer_Width, False, Value, Read_Status);
+            Perform_Runtime_Field (E,Context,Items,Ref,Integer_Width,False,Value,Read_Status,Loads,Input);
          end Region_Value;
          procedure Read_Registered_Table
            (Tree : in out State; Backing : aliased AML_Table_Backing.State; Scope : Natural;

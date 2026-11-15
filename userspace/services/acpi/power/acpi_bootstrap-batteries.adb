@@ -4,7 +4,7 @@ package body ACPI_Bootstrap.Batteries with SPARK_Mode is
    package N renames C.Namespace;
    use type N.Object_Kind, Identity.Identification_Outcome;
    function Ready (Session : State) return Boolean is
-     (Session.Stage = Complete and then Session.Device_Data.Stage = Devices_Completed
+     (Device_Walk_Finished (Session)
       and then Notifications_Enabled (Session));
    procedure Find
      (Session : in out State; After : N.Node_ID; Budget : Natural;

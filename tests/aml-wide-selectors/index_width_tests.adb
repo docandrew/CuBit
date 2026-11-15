@@ -123,7 +123,7 @@ procedure Index_Width_Tests is
       Raw : constant AML_Decode.Bytes := (if Revision = 1 then Index_Width_Oracle.Table32 else Index_Width_Oracle.Table64);
       Service : aliased C.State (1, Raw'Length, Raw'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : Context;
-      Items : F.Binding_Set;
+      Items : F.Binding_Set(F.Default_Binding_Capacity);
       Status : C.Values.Access_Status;
       Staged : C.Stage_Status;
       Frozen : C.Freeze_Status;

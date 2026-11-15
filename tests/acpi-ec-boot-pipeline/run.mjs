@@ -22,6 +22,11 @@ function checked(base,entry){
 const inputs=catalog.inputs.map(e=>checked(root,e)),tests=catalog.tests.map(e=>checked(here,e));
 const names=[...inputs,...tests].map(f=>path.basename(f));
 if(new Set(names).size!==names.length)throw Error('Duplicate source basename');
+for(const metadataEntry of catalog.prerequisites??[]){
+ const metadataPath=path.resolve(root,metadataEntry.path);
+ if(!metadataPath.startsWith(root+path.sep)||fs.lstatSync(metadataPath).isSymbolicLink()||fs.realpathSync(metadataPath)!==metadataPath||crypto.createHash('sha256').update(fs.readFileSync(metadataPath)).digest('hex')!==metadataEntry.sha256)throw Error('Prerequisite pin '+metadataEntry.path);
+ pins[metadataPath]=metadataEntry.sha256;
+}
 if(validateOnly){console.log(JSON.stringify({validated:true,inputs:inputs.length,tests:tests.length,executed:false}));process.exit(0);}
 if(process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Set TMPDIR before Nix');
 const out=fs.mkdtempSync(process.env.TMPDIR+'/acpi-ec-boot-pipeline-');console.log(out);fs.mkdirSync(out+'/source');

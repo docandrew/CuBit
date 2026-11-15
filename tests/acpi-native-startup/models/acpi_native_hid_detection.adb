@@ -19,4 +19,10 @@ package body ACPI_Native_HID_Detection is
         Recovery_Needed => T.Selected = T.Detection_Recovery,
         Cleanup_Required => T.Selected = T.Detection_Cleanup, others => <>);
    end Run;
+   procedure Run_With_Policy (Server : in out ACPI_Requests.State;
+      Result : out Report; Limits : Policy := (others => <>)) is
+      pragma Unreferenced (Server, Result, Limits, Check_Candidate);
+   begin
+      raise Program_Error with "unexpected filtered discovery invocation in report model";
+   end Run_With_Policy;
 end ACPI_Native_HID_Detection;

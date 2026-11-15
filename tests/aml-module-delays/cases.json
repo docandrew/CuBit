@@ -1,0 +1,290 @@
+[
+  {
+    "scenario": "stall",
+    "width": 1,
+    "provider": "completed",
+    "checks": 16
+  },
+  {
+    "scenario": "stall",
+    "width": 1,
+    "provider": "unavailable",
+    "checks": 14
+  },
+  {
+    "scenario": "stall",
+    "width": 1,
+    "provider": "failed",
+    "checks": 14
+  },
+  {
+    "scenario": "stall",
+    "width": 2,
+    "provider": "completed",
+    "checks": 16
+  },
+  {
+    "scenario": "stall",
+    "width": 2,
+    "provider": "unavailable",
+    "checks": 14
+  },
+  {
+    "scenario": "stall",
+    "width": 2,
+    "provider": "failed",
+    "checks": 14
+  },
+  {
+    "scenario": "sleep",
+    "width": 1,
+    "provider": "completed",
+    "checks": 16
+  },
+  {
+    "scenario": "sleep",
+    "width": 1,
+    "provider": "unavailable",
+    "checks": 14
+  },
+  {
+    "scenario": "sleep",
+    "width": 1,
+    "provider": "failed",
+    "checks": 14
+  },
+  {
+    "scenario": "sleep",
+    "width": 2,
+    "provider": "completed",
+    "checks": 16
+  },
+  {
+    "scenario": "sleep",
+    "width": 2,
+    "provider": "unavailable",
+    "checks": 14
+  },
+  {
+    "scenario": "sleep",
+    "width": 2,
+    "provider": "failed",
+    "checks": 14
+  },
+  {
+    "scenario": "sequence",
+    "width": 1,
+    "provider": "completed",
+    "checks": 16
+  },
+  {
+    "scenario": "sequence",
+    "width": 1,
+    "provider": "unavailable",
+    "checks": 14
+  },
+  {
+    "scenario": "sequence",
+    "width": 1,
+    "provider": "failed",
+    "checks": 14
+  },
+  {
+    "scenario": "sequence",
+    "width": 2,
+    "provider": "completed",
+    "checks": 16
+  },
+  {
+    "scenario": "sequence",
+    "width": 2,
+    "provider": "unavailable",
+    "checks": 14
+  },
+  {
+    "scenario": "sequence",
+    "width": 2,
+    "provider": "failed",
+    "checks": 14
+  },
+  {
+    "scenario": "nested",
+    "width": 1,
+    "provider": "completed",
+    "checks": 16
+  },
+  {
+    "scenario": "nested",
+    "width": 1,
+    "provider": "unavailable",
+    "checks": 14
+  },
+  {
+    "scenario": "nested",
+    "width": 1,
+    "provider": "failed",
+    "checks": 14
+  },
+  {
+    "scenario": "nested",
+    "width": 2,
+    "provider": "completed",
+    "checks": 16
+  },
+  {
+    "scenario": "nested",
+    "width": 2,
+    "provider": "unavailable",
+    "checks": 14
+  },
+  {
+    "scenario": "nested",
+    "width": 2,
+    "provider": "failed",
+    "checks": 14
+  },
+  {
+    "scenario": "invalid",
+    "width": 1,
+    "provider": "completed",
+    "checks": 12
+  },
+  {
+    "scenario": "invalid",
+    "width": 1,
+    "provider": "unavailable",
+    "checks": 12
+  },
+  {
+    "scenario": "invalid",
+    "width": 1,
+    "provider": "failed",
+    "checks": 12
+  },
+  {
+    "scenario": "invalid",
+    "width": 2,
+    "provider": "completed",
+    "checks": 12
+  },
+  {
+    "scenario": "invalid",
+    "width": 2,
+    "provider": "unavailable",
+    "checks": 12
+  },
+  {
+    "scenario": "invalid",
+    "width": 2,
+    "provider": "failed",
+    "checks": 12
+  },
+  {
+    "scenario": "timer",
+    "width": 1,
+    "provider": "completed",
+    "checks": 12
+  },
+  {
+    "scenario": "timer",
+    "width": 1,
+    "provider": "unavailable",
+    "checks": 12
+  },
+  {
+    "scenario": "timer",
+    "width": 1,
+    "provider": "failed",
+    "checks": 12
+  },
+  {
+    "scenario": "timer",
+    "width": 2,
+    "provider": "completed",
+    "checks": 12
+  },
+  {
+    "scenario": "timer",
+    "width": 2,
+    "provider": "unavailable",
+    "checks": 12
+  },
+  {
+    "scenario": "timer",
+    "width": 2,
+    "provider": "failed",
+    "checks": 12
+  },
+  {
+    "scenario": "debug",
+    "width": 1,
+    "provider": "completed",
+    "checks": 12
+  },
+  {
+    "scenario": "debug",
+    "width": 1,
+    "provider": "unavailable",
+    "checks": 12
+  },
+  {
+    "scenario": "debug",
+    "width": 1,
+    "provider": "failed",
+    "checks": 12
+  },
+  {
+    "scenario": "debug",
+    "width": 2,
+    "provider": "completed",
+    "checks": 12
+  },
+  {
+    "scenario": "debug",
+    "width": 2,
+    "provider": "unavailable",
+    "checks": 12
+  },
+  {
+    "scenario": "debug",
+    "width": 2,
+    "provider": "failed",
+    "checks": 12
+  },
+  {
+    "scenario": "budget",
+    "width": 1,
+    "provider": "completed",
+    "checks": 12
+  },
+  {
+    "scenario": "budget",
+    "width": 1,
+    "provider": "unavailable",
+    "checks": 12
+  },
+  {
+    "scenario": "budget",
+    "width": 1,
+    "provider": "failed",
+    "checks": 12
+  },
+  {
+    "scenario": "budget",
+    "width": 2,
+    "provider": "completed",
+    "checks": 12
+  },
+  {
+    "scenario": "budget",
+    "width": 2,
+    "provider": "unavailable",
+    "checks": 12
+  },
+  {
+    "scenario": "budget",
+    "width": 2,
+    "provider": "failed",
+    "checks": 12
+  }
+]

@@ -1,8 +1,8 @@
 pragma Ada_2022;
 with ACPI_Backend_Firmware_Native;
-with ACPI_Backend_NVS_Native;
 with ACPI_Backend_FACS_Binding;
 with ACPI_Backend_Global_Signal;
+with ACPI_Backend_Sleep_Entry_Native;
 with ACPI_Backend_Global_Lock;
 with ACPI_Global_Lock_Scoped_Sessions;
 with ACPI_Global_Lock_Requests;
@@ -33,6 +33,12 @@ package body ACPI_Local_Hardware is
       if not Available or else Now < Last_Startup_Time or else Now >= Until_Time then return False; end if;
       Last_Startup_Time := Now; return True;
    end Startup_Time_Remains;
+   package Sleep_Native is new ACPI_Backend_Sleep_Entry_Native (Catalog);
+   package Sleep_Driver renames Sleep_Native.Owner;
+   Sleep_State : Sleep_Driver.State;
+   Sleep_Report : Sleep_Driver.Report;
+   Sleep_Working, Sleep_Uncertain : Boolean := False;
+   use type Sleep_Driver.Outcome, Sleep_Driver.Register_Name, ACPI_Sleep_Entry.Completion;
    Bound : Bindings.Owner.Report;
       type Memory_Facts is array (1 .. CuBit.ACPI_Windows.Maximum_Memory_Windows)
         of Firmware.Policy.Accepted_Memory;
@@ -61,12 +67,7 @@ package body ACPI_Local_Hardware is
          end loop;
          return False;
       end Is_NVS;
-      package NVS_Native is new ACPI_Backend_NVS_Native
-        (Catalog, Hardware, Is_NVS, CuBit.ACPI_Windows.Maximum_Memory_Windows);
-      package NVS renames NVS_Native.Records;
       use type NVS.Outcome;
-      NVS_State : NVS.Context;
-      NVS_Status : NVS.Outcome;
       type Lock_Scope is new Unsigned_64;
       procedure Lock_Clock (Value : out Unsigned_64; Good : out Boolean) is
          Raw : B.Tick;
@@ -265,25 +266,113 @@ package body ACPI_Local_Hardware is
            when Lock_Owner.Signal_Indeterminate => ACPI_Global_Lock_Protocol.Signal_Indeterminate,
            when Lock_Owner.Reentered => ACPI_Global_Lock_Protocol.Reentered);
 
+   -- Retained IO window selection for fixed sleep controls. Current memory
+   -- grants are NVS, cached FACS/control or read-only PCI configuration:
+   -- none authorizes uncached sleep MMIO. Do not repurpose those classes.
+   function Sleep_Port_Window (Address : Word; Length : Positive; Reading : Boolean)
+      return Catalog.W.Window_ID is
+      Selected : Catalog.W.Window_ID := Catalog.W.No_Window;
+   begin
+      if Address > Word (Unsigned_16'Last)
+        or else Word (Length - 1) > Word (Unsigned_16'Last) - Address
+      then return Catalog.W.No_Window; end if;
+      for I in 1 .. Grant.IO_Used loop
+         if not Startup_Time_Remains then return Catalog.W.No_Window; end if;
+         declare
+            ID : constant Catalog.W.Window_ID := Catalog.W.Window_ID (I);
+            Current : B.Description;
+            Retained : constant Catalog.W.Window_Result := Catalog.Describe_Window (Hardware, ID);
+         begin
+            Catalog.Describe_Ports (Grant.IO (I).Ports, Current);
+            if Sleep_Driver.Port_Window_Matches (Current, Retained,
+              Grant.IO (I).First, Unsigned_32 (Grant.IO (I).Count), Address, Word (Length), Reading)
+            then
+               if Selected /= Catalog.W.No_Window then return Catalog.W.No_Window; end if;
+               Selected := ID;
+            end if;
+         end;
+      end loop;
+      return Selected;
+   end Sleep_Port_Window;
+   procedure Prepare_Sleep_Controls is
+      Held : Sleep_Driver.Windows := Sleep_Driver.No_Windows;
+      package R renames ACPI_FADT.Registers;
+      use type R.Status, R.Space_Kind;
+   begin
+      if ACPI_FADT.Hardware_Reduced (Facts) then
+         for Name in Sleep_Driver.Reduced_Control .. Sleep_Driver.Reduced_Status loop
+            declare Gas : constant ACPI_FADT.Optional_Address :=
+              (if Name = Sleep_Driver.Reduced_Control then Facts.Sleep_Control else Facts.Sleep_Status); begin
+               if Gas.Present and then Gas.Value.Space = 1 and then Gas.Value.Address /= 0 then
+                  Held (Name) := Sleep_Port_Window (Gas.Value.Address, 1, False);
+               end if;
+            end;
+         end loop;
+      else
+         for Name in Sleep_Driver.Control_A .. Sleep_Driver.GPE1_Block loop
+            declare
+               Kind : constant ACPI_FADT.Block_Kind :=
+                 (case Name is when Sleep_Driver.Control_A => ACPI_FADT.PM1A_Control,
+                  when Sleep_Driver.Control_B => ACPI_FADT.PM1B_Control,
+                  when Sleep_Driver.Status_A => ACPI_FADT.PM1A_Event,
+                  when Sleep_Driver.Status_B => ACPI_FADT.PM1B_Event,
+                  when Sleep_Driver.GPE0_Block => ACPI_FADT.GPE0, when others => ACPI_FADT.GPE1);
+               Block : constant R.Block_Result := R.Describe (Facts, Kind, Word'Last);
+            begin
+               if Block.Code = R.Described and then Block.Space = R.System_IO then
+                  Held (Name) := Sleep_Port_Window (Block.Base, Block.Length,
+                    Name in Sleep_Driver.Control_A | Sleep_Driver.Control_B);
+               end if;
+            end;
+         end loop;
+      end if;
+      Sleep_Driver.Prepare (Sleep_State, Hardware, Facts, Held, Sleep_Report);
+      if Sleep_Report.Status = Sleep_Driver.Prepared then
+         ACPI_Native_Log.Info ("acpi: stage sleep-controls ok model=" & Sleep_Report.Model'Image);
+      else
+         ACPI_Native_Log.Info ("acpi: stage sleep-controls unavailable reason=" & Sleep_Report.Status'Image &
+           " register=" & Sleep_Report.At_Register'Image);
+      end if;
+   end Prepare_Sleep_Controls;
    Issued_Nonce : Word := 0;
    function Observe return Report is (Info);
    function Pending return Boolean is
       Engine : constant Lock_Owner.Statistics := Lock_Requests.Observe (Lock_State).Engine;
    begin
-      return Catalog.Observe (Hardware).Working or else Catalog.Observe (Hardware).Pending /= 0
+      return Sleep_Working or else Sleep_Uncertain
+        or else Catalog.Observe (Hardware).Working or else Catalog.Observe (Hardware).Pending /= 0
         or else Engine.Working or else Engine.Stage in Lock_Owner.Held | Lock_Owner.Acquire_Uncertain |
            Lock_Owner.Release_Uncertain | Lock_Owner.Signal_Uncertain;
    end Pending;
    function Admitting return Boolean is
       Engine : constant Lock_Owner.Statistics := Lock_Requests.Observe (Lock_State).Engine;
    begin
-      return State = Ready and then not Catalog.Observe (Hardware).Working
+      return State = Ready and then not Sleep_Working and then not Sleep_Uncertain
+        and then not Catalog.Observe (Hardware).Working
         and then Catalog.Observe (Hardware).Pending = 0 and then not Catalog.Observe (Hardware).Quarantined
         and then not Engine.Working and then Engine.Stage in Lock_Owner.Fresh | Lock_Owner.Ready;
    end Admitting;
    function May_Exit return Boolean is
-     (Lock_Requests.May_Exit (Lock_State) and then not Catalog.Observe (Hardware).Working
+     (not Sleep_Working and then not Sleep_Uncertain
+      and then Lock_Requests.May_Exit (Lock_State) and then not Catalog.Observe (Hardware).Working
       and then Catalog.Observe (Hardware).Pending = 0);
+   function Sleep_Register_Model return ACPI_Sleep_Entry.Register_Model is
+     (if Admitting and then Sleep_Report.Status in Sleep_Driver.Prepared | Sleep_Driver.Transferred
+      then Sleep_Report.Model else ACPI_Sleep_Entry.No_Registers);
+   procedure Sleep_Action (Command : ACPI_Sleep_Entry.Command;
+      Deadline_Microseconds : Word; Output : out ACPI_Sleep_Entry.Control_Word;
+      Result : out ACPI_Sleep_Entry.Completion) is
+   begin
+      Output := 0; Result := ACPI_Sleep_Entry.Not_Attempted;
+      if not Admitting then return; end if;
+      Sleep_Working := True;
+      Sleep_Driver.Execute (Sleep_State, Hardware, Command, Deadline_Microseconds, Output, Sleep_Report);
+      Result := Sleep_Report.Completion;
+      Sleep_Uncertain := Sleep_Uncertain or Result = ACPI_Sleep_Entry.Indeterminate;
+      Sleep_Working := False;
+      -- No logger/channel opening inside final entry. The enclosing owner
+      -- records the copied report only after a safe boundary.
+   end Sleep_Action;
    procedure Claim_Unused_Arena (First, Limit : out Word; Accepted : out Boolean) is
    begin
       First := 0; Limit := 0; Accepted := False;
@@ -365,6 +454,8 @@ package body ACPI_Local_Hardware is
       if not Startup_Time_Remains then Fail (Deadline_Stopped); return; end if;
       Prepare_Lock;
       if not Startup_Time_Remains then Fail (Deadline_Stopped); return; end if;
+      Prepare_Sleep_Controls;
+      if not Startup_Time_Remains then Fail (Deadline_Stopped); return; end if;
       Info.Registers := Catalog.Observe (Hardware).Registers;
       Info.NVS_Records := NVS.Observe (NVS_State).Records;
       Info.Lock_Ready := Lock_Requests.Observe (Lock_State).Configured;
@@ -445,7 +536,7 @@ package body ACPI_Local_Hardware is
       Lock_Maintenance.Run (Lock_Schedule,Lock_State,Last_Lock);
       ACPI_Native_Lock_Notes.Finish_Maintenance (To_Lock_Outcome (Last_Lock.Cleanup));
       declare Engine : constant Lock_Owner.Statistics := Lock_Requests.Observe (Lock_State).Engine; begin
-         ACPI_Native_Lock_Notes.Flush (not Engine.Working
+         ACPI_Native_Lock_Notes.Flush (not Sleep_Working and then not Sleep_Uncertain and then not Engine.Working
             and then Engine.Stage in Lock_Owner.Fresh | Lock_Owner.Ready | Lock_Owner.Signal_Pending
             and then not Catalog.Observe (Hardware).Working and then Catalog.Observe (Hardware).Pending = 0);
       end;

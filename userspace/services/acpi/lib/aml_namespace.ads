@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Field_Notes;
 with AML_Profile_Events;
 with AML_Child_Indices;
 with AML_Work_Kinds;
@@ -589,6 +590,9 @@ package Owned with SPARK_Mode is
 
    function Invocation_Count (A : Arena) return AML_Frame_Handles.Invocation_Serial with Pre => Valid (A);
    function Generation (A : Arena) return AML_Identity.Identity with Pre => Valid (A), Ghost;
+   -- Runtime equality-only context observation; available before node metadata.
+   function Context_Identity (A : Arena) return AML_Identity.Identity
+     with Global => null, Pre => Valid (A), Post => Context_Identity'Result = Generation (A);
    function Initialized (A : Arena) return Boolean with Pre => Valid (A),
      Post => Initialized'Result = (Generation (A) /= AML_Identity.No_Identity);
    function Model (A : Arena) return AML_Objects.State with Pre => Valid (A), Ghost;
@@ -1579,6 +1583,9 @@ package Owned with SPARK_Mode is
       function Table_Initialization_Frame
         (Current, Prior : Audit_Value; Input : AML_Table_Backing.State) return Boolean with Ghost;
       function Generation (A : Arena) return AML_Identity.Identity with Pre => Valid (A), Ghost;
+   -- Runtime equality-only context observation; available before node metadata.
+   function Context_Identity (A : Arena) return AML_Identity.Identity
+     with Global => null, Pre => Valid (A), Post => Context_Identity'Result = Generation (A);
       type Usage_Description is record
          Nodes : Node_ID := Root;
          Values : AML_Objects.Usage := (others => 0);
@@ -1873,6 +1880,18 @@ package Owned with SPARK_Mode is
       -- Explicit whole-Field lock provider, with per-datum admission.
       -- Separate from the existing read-only named-NVS policy.
       Allow_Locked_Fields : Boolean := False;
+      -- Independent computed SystemMemory fallback. Disabled unless a real
+      -- platform-pool owner is installed; it supersedes the literal fallback.
+      Enable_Startup_Platform_Resolution : Boolean := False;
+      with procedure Resolve_Startup_Platform_Target
+        (IO : in out IO_Context; Declaration : Operation_Region_Attributes;
+         Name : AML_Names.Segment; Node : Node_ID;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+      -- Trusted normally-returning observer: copied metadata only, no IO,
+      -- reentry, retained aliases or mutation of any existing owner.
+      with procedure Observe_Field (Item : AML_Field_Notes.Event) is null;
+   Field_Notes_Enabled : Boolean := False;
       package Field_IO is
          pragma Unevaluated_Use_Of_Old (Allow);
          type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
@@ -1898,7 +1917,8 @@ package Owned with SPARK_Mode is
              Post => Valid (A) and then Report.Charged <= Budget;
          type Binding is private;
          No_Binding : constant Binding;
-         type Binding_Set is private;
+         Default_Binding_Capacity : constant Positive := Maximum_Bindings;
+      type Binding_Set (Capacity : Positive) is private;
          procedure Clear (Items : out Binding_Set);
          -- Trusted explicit whole-register authority for runtime banked fields.
          -- Existing field associations never implicitly populate this catalog.
@@ -1987,24 +2007,24 @@ package Owned with SPARK_Mode is
             Read_Targets : AML_Field_Targets.Vector := [others => AML_Field_Access.No_Target];
             Read_Geometries : Geometry_Vector := [others => <>];
          end record;
-         type Binding_Count is new Natural range 0 .. Maximum_Bindings;
-         subtype Binding_Slot is Binding_Count range 1 .. Binding_Count'Last;
-         type Binding_Array is array (Binding_Slot) of Binding;
+         subtype Binding_Count is Natural;
+         subtype Binding_Slot is Positive;
+         type Binding_Array is array (Binding_Slot range <>) of Binding;
          type Region_Register is record
             Region : Reference := AML_References.No_Reference;
             Target : AML_Field_Access.Target;
             Geometry : AML_Field_Layout.Register_Geometry;
             Allow_Read, Allow_Write : Boolean := False;
          end record;
-         type Region_Register_Array is array (Binding_Slot) of Region_Register;
+         type Region_Register_Array is array (Binding_Slot range <>) of Region_Register;
          -- Membership is private; identities are checked again only when used.
-         type Binding_Set is record
+         type Binding_Set (Capacity : Positive) is record
             Count : Binding_Count := 0;
             Owner : AML_Identity.Identity := AML_Identity.No_Identity;
             Provider : AML_Identity.Identity := AML_Identity.No_Identity;
-            Entries : Binding_Array;
+            Entries : Binding_Array (1 .. Capacity);
             Register_Count : Binding_Count := 0;
-            Registers : Region_Register_Array;
+            Registers : Region_Register_Array (1 .. Capacity);
          end record;
          No_Binding : constant Binding := (others => <>);
       end Field_IO;

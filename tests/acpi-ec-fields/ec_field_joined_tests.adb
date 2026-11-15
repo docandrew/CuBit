@@ -111,7 +111,7 @@ procedure EC_Field_Joined_Tests is
       Provider.Reconciled, Authorize_Target => Provider.Authorize);
    Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Provider.Context;
-   Reads, Writes : Fields.Binding_Set;
+   Reads, Writes : Fields.Binding_Set(Fields.Default_Binding_Capacity);
    procedure Evaluate
      (State : aliased in out C.State; Item : C.Node_Descriptor; Budget : Natural;
       Result : out C.Values.Result; Status : out C.Values.Access_Status) is
@@ -243,7 +243,7 @@ begin
    Fields.Invoke_Scalar (Service, IO, Reads, C.Values.Position (Find (C.Values.Position (EC_Device), "STOR")),
                          [others => 0], 1, 1000, Result);
    Check (Result.Status = AML_Execute.Unsupported and IO_Count = Before);
-   declare Rejected : Fields.Binding_Set; begin
+   declare Rejected : Fields.Binding_Set(Fields.Default_Binding_Capacity); begin
       C.Read_Field_Descriptor (Service, C.Values.Position (Find (C.Values.Position (EC_Device), "LCKD")), Field, Key, Status);
       Check (Status = C.Values.Available);
       Fields.Add_Read_Binding (Service, IO, Key, Targets, 1, Rejected, Status);

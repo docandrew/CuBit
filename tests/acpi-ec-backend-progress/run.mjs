@@ -5,11 +5,12 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
-let root=path.resolve(here,'../..'),validateOnly=false;
+let root=path.resolve(here,'../..'),validateOnly=false,profileSelection='all';
 for(let i=2;i<process.argv.length;i++){
  if(process.argv[i]==='--validate-only')validateOnly=true;
  else if(process.argv[i]==='--source-root'&&process.argv[i+1])root=path.resolve(process.argv[++i]);
- else throw Error('Usage: run.sh [--source-root DIR] [--validate-only]');
+ else if(process.argv[i]==='--profile'&&['all','checked','release'].includes(process.argv[i+1]))profileSelection=process.argv[++i];
+ else throw Error('Usage: run.sh [--source-root DIR] [--validate-only] [--profile all|checked|release]');
 }
 const catalog=JSON.parse(fs.readFileSync(here+'/sources.json'));
 if(catalog.version!==1)throw Error('Catalog version');
@@ -22,6 +23,11 @@ function checked(base,entry){
 const inputs=catalog.inputs.map(e=>checked(root,e)),tests=catalog.tests.map(e=>checked(here,e));
 const names=[...inputs,...tests].map(f=>path.basename(f));
 if(new Set(names).size!==names.length)throw Error('Duplicate source basename');
+for(const metadataEntry of catalog.prerequisites??[]){
+ const metadataPath=path.resolve(root,metadataEntry.path);
+ if(!metadataPath.startsWith(root+path.sep)||fs.lstatSync(metadataPath).isSymbolicLink()||fs.realpathSync(metadataPath)!==metadataPath||crypto.createHash('sha256').update(fs.readFileSync(metadataPath)).digest('hex')!==metadataEntry.sha256)throw Error('Prerequisite pin '+metadataEntry.path);
+ pins[metadataPath]=metadataEntry.sha256;
+}
 if(validateOnly){console.log(JSON.stringify({validated:true,inputs:inputs.length,tests:tests.length,executed:false}));process.exit(0);}
 if(process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Set TMPDIR before Nix');
 const out=fs.mkdtempSync(process.env.TMPDIR+'/acpi-ec-fields-');console.log(out);fs.mkdirSync(out+'/source');
@@ -39,7 +45,8 @@ function run(label,args,seconds){
  if(r.status!==0||r.signal||r.error||Buffer.byteLength(log)>1048576)throw Error('Failed '+label+'; '+out);return log;
 }
 run('iasl',[tools.iasl,'-p',out+'/ec-fields',out+'/source/ec_fields.asl'],5);pins[out+'/ec-fields.aml']=sha(out+'/ec-fields.aml');
-for(const profile of ['checked','release']){
+const selectedProfiles=profileSelection==='all'?['checked','release']:[profileSelection];
+for(const profile of selectedProfiles){
  counts[profile]={};const flags=['-gnat2022','-gnatwa','-gnatwe',...(profile==='checked'?['-gnata','-gnato','-O2']:['-gnatp','-O3'])];
  for(const kind of ['geometry','joined']){
   const dir=out+'/'+profile+'/'+kind;fs.mkdirSync(dir,{recursive:true});const main='ec_field_'+kind+'_tests.adb',project=dir+'/ec_fields.gpr';
@@ -54,6 +61,6 @@ for(const profile of ['checked','release']){
   for(const name of alis){const lines=fs.readFileSync(dir+'/obj/'+name,'utf8').split('\n');for(const flag of flags.filter(f=>f.startsWith('-gnat')))if(!lines.includes('A '+flag))throw Error('ALI profile '+name);}
  }
 }
-if(JSON.stringify(counts.checked)!==JSON.stringify(counts.release))throw Error('Profiles disagree');verify();
+if(selectedProfiles.length===2&&JSON.stringify(counts.checked)!==JSON.stringify(counts.release))throw Error('Profiles disagree');verify();
 fs.writeFileSync(out+'/inputs.json',JSON.stringify(pins,null,2)+'\n');
 fs.writeFileSync(out+'/COMPLETE.json',JSON.stringify({counts,commands:commands.length,actual_AML_remote_provider_EC_owner:true,hardware_IPC_clock_reservation_modeled:true,locked_fields_supported:false,new_proof:false,native_executed:false,hardware_validated:false},null,2)+'\n');console.log(JSON.stringify(counts));

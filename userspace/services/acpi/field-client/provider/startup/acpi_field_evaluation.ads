@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with AML_Names;
+with Interfaces;with System;with ACPI_Fallible_Heap;
 with AML_Execute;
 with ACPI_Service_Core;
 with ACPI_Field_Provider_View;
@@ -16,10 +18,32 @@ generic
      (IO : in out Provider.Context; Declaration : Core.Namespace.Operation_Region_Attributes;
       Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+   Enable_Startup_Platform_Resolution : Boolean := False;
+   with procedure Resolve_Startup_Platform_Target
+     (IO : in out Provider.Context; Declaration : Core.Namespace.Operation_Region_Attributes;
+      Name : AML_Names.Segment; Node : Core.Namespace.Node_ID;
+      Geometry : AML_Field_Layout.Register_Geometry;
+      Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+   with function Reserve_Cache(Bytes,Alignment:Interfaces.Unsigned_64) return System.Address
+      is ACPI_Fallible_Heap.Reserve;
 package ACPI_Field_Evaluation is
    package Bindings is new ACPI_Field_Bindings (Core, Provider, Maximum_Bindings, Enable_Startup_Firmware_Resolution,
-      Resolve_Startup_Firmware_Target);
-   type Context is limited private;
+      Resolve_Startup_Firmware_Target, Enable_Startup_Platform_Resolution,
+      Resolve_Startup_Platform_Target);
+   Default_Capacity : constant Positive := Maximum_Bindings;
+   type Context (Capacity : Positive) is limited private;
+   type Context_Access is access all Context;
+   type Allocation_Outcome is (Allocated,Size_Unavailable,Capacity_Exceeded,Allocation_Refused);
+   type Allocation_Report is record
+      Status:Allocation_Outcome:=Size_Unavailable;
+      Capacity:Natural:=0;
+      Bytes,Allocated_Bytes:Interfaces.Unsigned_64:=0;
+   end record;
+   -- Trusted process-lifetime owner allocation; no AML/Field IO or retry.
+   -- Caller keeps the pointer through all borrowers and uncertain cleanup.
+   procedure Allocate(Service:Core.State;IO:Provider.Context;
+      Capacity_Ceiling:Positive;Byte_Ceiling:Interfaces.Unsigned_64;
+      Run:out Context_Access;Report:out Allocation_Report);
    function Observe (Run : Context) return Bindings.Report;
    -- Adapter for the trusted Device_Initialization evaluator callback. Build
    -- the metadata cache once, after Initialize_Members and before the first
@@ -53,7 +77,7 @@ package ACPI_Field_Evaluation is
       Status : out Core.Values.Access_Status)
      with Pre => Core.Valid (Service) and then not Result'Constrained;
 private
-   type Context is limited record
-      Cache : Bindings.Context;
+   type Context (Capacity : Positive) is limited record
+      Cache : Bindings.Context (Capacity);
    end record;
 end ACPI_Field_Evaluation;

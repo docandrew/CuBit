@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/backend/acpi_local_shutdown.ads",
+      "kind": "ada",
+      "sha256": "13cfe9251585d87029b023004ed25ab50091ed40af3c20db8f8a35c68763775a"
+    },
+    {
+      "path": "userspace/services/acpi/backend/acpi_local_shutdown.adb",
+      "kind": "ada",
+      "sha256": "4a511a718616d6c09136c87b85b663ca29767b3a5e465c1b3ff92f33e88a8c25"
+    },
+    {
+      "path": "tests/acpi-local-shutdown-proof/shutdown_model.ads",
+      "kind": "ada",
+      "sha256": "846b0e7e3e99c79800615de6e8304fb30046c053975dedea11a224eb1164685c"
+    },
+    {
+      "path": "tests/acpi-local-shutdown-proof/shutdown_model.adb",
+      "kind": "ada",
+      "sha256": "457bed35c9b3588b86447606d15b55a769f7c04dd8c9a2da2835ed1e0b552ad9"
+    },
+    {
+      "path": "tests/acpi-local-shutdown-proof/shutdown_instance.ads",
+      "kind": "ada",
+      "sha256": "94b09ff1ac9726d34638f3f735b7d6eac9e204cae29dcc4e44c4f463c325cee8"
+    },
+    {
+      "path": "tests/acpi-local-shutdown-proof/run.mjs",
+      "kind": "audit",
+      "sha256": "4491158d8466833d49f62b9e65dab3b60d4ea461bc4a47fa6cccdd741c986647"
+    },
+    {
+      "path": "tests/acpi-local-shutdown-proof/run.sh",
+      "kind": "audit",
+      "sha256": "f6cb71956c3d79a61ce6ca6a813be2a523657493a801c1d32786f71712cf773a"
+    },
+    {
+      "path": "tests/acpi-local-shutdown-proof/README.md",
+      "kind": "audit",
+      "sha256": "0cccf4b1fbbcbea859e0880a14f5fb3abce1d70025100c1ed70c58d45b6ce804"
+    }
+  ]
+}

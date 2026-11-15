@@ -19,7 +19,8 @@ package body ACPI_Device_Status with SPARK_Mode is
       procedure Run is
       begin
          if not Core.Current_Node (Service, Device)
-           or else V.Node_Kind (Device) /= N.Device_Object then return; end if;
+           or else V.Node_Kind (Device) not in N.Device_Object | N.Processor_Object | N.Thermal_Zone_Object
+         then return; end if;
          if Budget = 0 then Report.Outcome := Budget_Exhausted; return; end if;
          Core.Find_Object (Service, V.Position (Device), STA_Member, Found, Report.Access_Result);
          if Report.Access_Result /= V.Available then Report.Outcome := Lookup_Failed; return; end if;

@@ -46,3 +46,15 @@ This is hosted evidence with modeled physical callbacks. The selected proofs
 cover runtime checks and existing pure contracts; they do not prove physical
 FACS access, native wrappers, full AML semantics, the service event loop or
 hardware behavior. No native execution or usable-driver claim is made here.
+
+Current-Field registration refresh (2026-11-12): Namespace source hash now
+selects the tested runtime bank/index resolver. Current Core dependencies and
+the hosted allocator closure are explicit, with audit witnesses separated
+from compiled candidates. This refresh reruns functional hosted tests only;
+no --with-proof run or fresh proof claim. Earlier proof artifacts retain their
+original exact source scope. Core remains -O0 -gnatp; small policy tests run
+checked/release. No native/hardware validation is established by this suite.
+
+Required I/O-window follow-up: every Field, including unlocked data, now has a separate mandatory finite owner-window inspector. Lock availability remains independent; lock deadlines clamp to that owner window. Model callbacks explicitly supply the same stable deadline. Scope tests cover closure/replacement/refusal/clamping and cleanup after closure; actual-Core window-stop variants close admission after the first completed byte write and require no further effects, no replay and balanced ownership. The full completion4 composed/unknown-completion corpus is retained. No new proof/native/hardware claim.
+
+The run.sh wrapper works inside nix develop even when ACPICA is absent from PATH: it resolves the repository flake-pinned acpica-tools, offline, without a global install, lockfile write or native build. TMPDIR is exported before Nix. Existing tool paths remain pinned by the test receipt; cached dependency resolution must be available for offline use.

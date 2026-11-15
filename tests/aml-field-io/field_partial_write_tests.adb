@@ -117,7 +117,7 @@ procedure Field_Partial_Write_Tests is
       Any_Field : Boolean := False; IO_Space : Boolean := False) is
       S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : P.Context;
-      Items, Read_Only : F.Binding_Set;
+      Items, Read_Only : F.Binding_Set(F.Default_Binding_Capacity);
       Targets : AML_Field_Targets.Vector := [others => A.No_Target];
       IDs : constant array (Positive range 1 .. 9) of A.Register_ID :=
         [16#8000_0000_0000_0041#,16#FFFF_FFFF_FFFF_FF97#,16#71#,

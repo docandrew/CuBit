@@ -60,6 +60,7 @@ package CuBit.Messages is
       Completion : Unsigned_64 := 0;
       Reply_Result : Unsigned_64 := 1;
       Wake_Credits : Natural := 0;
+      Spurious_Wakes : Natural := 0;
       Offer_OK : Boolean := True;
       Offers_Taken : Natural := 0;
       Debug_Count : Natural := 0;

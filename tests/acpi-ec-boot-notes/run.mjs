@@ -1,10 +1,15 @@
 import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';import {spawnSync} from 'node:child_process';
 const here=path.dirname(new URL(import.meta.url).pathname),root=path.resolve(here,'../..'),hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),catalog=JSON.parse(fs.readFileSync(here+'/sources.json'));
 const pins={[here+'/sources.json']:hash(here+'/sources.json')},names=new Set();
-if(catalog.version!==1||catalog.inputs.length!==168||Object.keys(catalog.expected).length!==12)throw Error('catalog scope');
+if(catalog.version!==1||catalog.inputs.length!==387||Object.keys(catalog.expected).length!==12)throw Error('catalog scope');
 for(const row of catalog.inputs){const p=path.resolve(root,row.path);if(!p.startsWith(root+'/')||fs.realpathSync(p)!==p||!fs.lstatSync(p).isFile()||hash(p)!==row.sha256||names.has(path.basename(p)))throw Error('source pin '+row.path);names.add(path.basename(p));pins[p]=row.sha256;}
 for(const row of catalog.tests){const p=path.resolve(here,row.path);if(!p.startsWith(here+'/')||hash(p)!==row.sha256)throw Error('test pin');pins[p]=row.sha256;}
 for(const name of ['run.sh','run.mjs'])pins[here+'/'+name]=hash(here+'/'+name);
+for(const metadataEntry of catalog.prerequisites??[]){
+ const metadataPath=path.resolve(root,metadataEntry.path);
+ if(!metadataPath.startsWith(root+path.sep)||fs.lstatSync(metadataPath).isSymbolicLink()||fs.realpathSync(metadataPath)!==metadataPath||crypto.createHash('sha256').update(fs.readFileSync(metadataPath)).digest('hex')!==metadataEntry.sha256)throw Error('Prerequisite pin '+metadataEntry.path);
+ pins[metadataPath]=metadataEntry.sha256;
+}
 if(process.argv.length===3&&process.argv[2]==='--validate-only'){console.log(JSON.stringify({source_rows:catalog.inputs.length,fixture_rows:catalog.tests.length,executed:false}));process.exit(0);}
 if(process.argv.length!==2||process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Usage: run.sh [--validate-only], with TMPDIR set before Nix');
 const out=fs.mkdtempSync(process.env.TMPDIR+'/acpi-ec-boot-notes-');fs.mkdirSync(out+'/source');fs.mkdirSync(out+'/fixtures');console.log(out);

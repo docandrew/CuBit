@@ -14,7 +14,7 @@ package ACPI_Native_Power_Detection is
    type Lid_State is (Unknown, Closed, Open);
    type Source_State is (Unknown, Offline, Online);
    type Outcome is (Not_Attempted, Not_Ready, No_Devices, Finished,
-      Budget_Exhausted, Lid_Failed, Source_Failed, Battery_Failed,
+      Budget_Exhausted, Lid_Failed, Source_Failed, Battery_Failed, Battery_Search_Failed,
       Battery_Limit, Recovery_Required, Owner_Error);
    type Report is record
       Status : Outcome := Not_Attempted;
@@ -23,7 +23,7 @@ package ACPI_Native_Power_Detection is
       Lid_Query_Failed, Source_Query_Failed : Boolean := False;
       Lid : Lid_State := Unknown;
       Source : Source_State := Unknown;
-      Batteries, Sampled_Batteries, Absent_Batteries : Battery_Count := 0;
+      Batteries, Sampled_Batteries, Absent_Batteries, Failed_Batteries : Battery_Count := 0;
       Charged : Natural := 0;
       Recovery_Needed : Boolean := False;
    end record;
@@ -36,7 +36,10 @@ package ACPI_Native_Power_Detection is
    -- Ordinary lid/source refusals preserve their failure flags and permit the
    -- independent later families to run within the remaining total budget.
    -- If all later work finishes, Status reports the first such family failure.
-   -- Budget, readiness, battery failure and uncertain effects remain terminal.
+   -- Known ordinary battery query failures are counted and permit later batteries.
+   -- Battery_Failed after the final search means completed enumeration with
+   -- known device errors. Battery_Search_Failed means enumeration did not end.
+   -- Budget, readiness, search failure and uncertain effects remain terminal.
    procedure Run (Server : in out ACPI_Requests.State; Result : out Report;
       Limits : Policy := (others => <>));
 end ACPI_Native_Power_Detection;

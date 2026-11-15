@@ -57,7 +57,7 @@ procedure HID_Query_Tests is
       pragma Unreferenced (Item, Target, For_Write);
    begin Accepted := False; end Authorize;
    package F is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirm, Authorize_Target => Authorize);
-   Bindings : F.Binding_Set;
+   Bindings : F.Binding_Set(F.Default_Binding_Capacity);
    Invokes : Natural := 0;
    Budgets, Charges : array (1 .. 2) of Natural := [others => 0];
    procedure Invoke_Bound

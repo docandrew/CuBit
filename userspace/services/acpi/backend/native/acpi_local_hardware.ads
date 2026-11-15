@@ -5,11 +5,13 @@ with CuBit.ACPI_Windows;
 with CuBit.ACPI_Memory_Classes;
 with CuBit.Handles;
 with ACPI_FADT;
+with ACPI_Sleep_Entry;
 with ACPI_Backend_Binding_Types;
 with ACPI_Backend_Mapping_Startup;
 with ACPI_Backend_Kernel_Handles;
 with ACPI_Backend_Native_Catalog;
 with ACPI_Backend_Startup_Native;
+with ACPI_Backend_NVS_Native;
 with ACPI_Global_Lock_Protocol;
 generic
    Virtual_First, Virtual_Limit : Interfaces.Unsigned_64;
@@ -37,6 +39,14 @@ package ACPI_Local_Hardware is
    function Observe return Report;
    function Admitting return Boolean;
    function Pending return Boolean;
+   -- Final S5 local owner: no AML, IPC, caller address or new mapping. The
+   -- endpoint supplies only a command from the validated local sequencer.
+   -- Same retained catalog/handles as Fields and the Global Lock. An unknown
+   -- write pins retirement; another attempt cannot replay it.
+   function Sleep_Register_Model return ACPI_Sleep_Entry.Register_Model;
+   procedure Sleep_Action (Command : ACPI_Sleep_Entry.Command;
+      Deadline_Microseconds : Word; Output : out ACPI_Sleep_Entry.Control_Word;
+      Result : out ACPI_Sleep_Entry.Completion);
    procedure Initialize (Input : aliased in CuBit.ACPI_Windows.Grant;
       FADT : ACPI_FADT.Description; Deadline : B.Tick; Result : out Report);
    -- FADT is parsed from this service's already-copied immutable table view
@@ -86,6 +96,13 @@ private
    package Catalog renames Native.Owner;
    package Bindings is new ACPI_Backend_Startup_Native (Catalog);
    Hardware : Catalog.Context;
+   function Is_NVS (Window : Catalog.W.Window_ID) return Boolean;
+   package NVS_Native is new ACPI_Backend_NVS_Native
+     (Catalog,Hardware,Is_NVS,CuBit.ACPI_Windows.Maximum_Memory_Windows);
+   package NVS renames NVS_Native.Records;
+   NVS_State : NVS.Context;
+   NVS_Status : NVS.Outcome;
+
    Bound_Run : Bindings.Owner.Context;
    Grant : aliased CuBit.ACPI_Windows.Grant;
    Facts : ACPI_FADT.Description;

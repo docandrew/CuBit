@@ -22,3 +22,5 @@ tests/acpi-native-startup/boundary/acpi_native_startup_timing.ads	userspace/serv
 tests/acpi-native-startup/models/cubit-control_events.ads	userspace/runtime/gnat/cubit-control_events.ads
 tests/acpi-native-startup/models/cubit-process_ids.adb	userspace/runtime/gnat/cubit-process_ids.adb
 tests/acpi-native-startup/models/cubit-process_ids.ads	userspace/runtime/gnat/cubit-process_ids.ads
+tests/acpi-native-startup/boundary/acpi_startup_phase_trace.ads\tuserspace/services/acpi/native/acpi_startup_phase_trace.ads
+tests/acpi-native-startup/boundary/acpi_startup_phase_trace.adb\tuserspace/services/acpi/native/acpi_startup_phase_trace.adb

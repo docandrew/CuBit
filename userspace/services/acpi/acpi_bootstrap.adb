@@ -1,6 +1,8 @@
 pragma Ada_2022;
 with ACPI_Unprovisioned_Regions;
 package body ACPI_Bootstrap with SPARK_Mode is
+   function Retained_Results_Pending (Session : State) return Boolean is
+     (Natural (ACPI_Service.Retained_Results (Session.Core)) > 0);
    use type Devices.Phase;
    package Unconfigured is new ACPI_Unprovisioned_Regions (ACPI_Service);
    procedure Unconfigured_Regions
@@ -10,6 +12,12 @@ package body ACPI_Bootstrap with SPARK_Mode is
    function Module_Errors (Session : State) return ACPI_Service.Module_Error_Observation is
      (ACPI_Service.Module_Errors (Session.Core));
    function Device_Completion (Session : State) return Device_Report is (Session.Device_Data);
+   function Device_Walk_Finished (Session : State) return Boolean is
+     (Session.Stage = Complete
+      and then Session.Device_Data.Stage in Devices_Completed | Devices_Completed_With_Errors
+      and then not Session.Device_Data.Fatal.Present
+      and then Session.Device_Data.Regions_Attempted
+      and then Session.Device_Data.Region_Status in ACPI_Device_Policy.Regions_Connected | ACPI_Device_Policy.No_Regions_Required);
    function Fatal_Diagnostic (Session : State) return ACPI_Fatal_Diagnostics.Observation is
    begin
       if Session.Completion_Data.Execution.Modules.Fatal.Present then
@@ -289,4 +297,12 @@ package body ACPI_Bootstrap with SPARK_Mode is
       Complete (Session, Budget);
    end Finish;
    end With_Driver;
+   package body With_Metadata_Continuation is
+      procedure Advance (Session : State; Completed : out Boolean) is
+      begin
+         Completed := False;
+         if not Session.Begun or else Session.Stage = Receiving then return; end if;
+         Advance_Metadata (Session.Core,Completed);
+      end Advance;
+   end With_Metadata_Continuation;
 end ACPI_Bootstrap;

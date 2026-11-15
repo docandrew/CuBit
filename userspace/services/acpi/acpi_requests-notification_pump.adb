@@ -5,7 +5,6 @@ package body ACPI_Requests.Notification_Pump with SPARK_Mode is
    procedure Run (Server : in out State; Limit : Batch_Limit; Result : out Report) is
       Reply : Response;
       ID : Receipt_Number;
-      use type ACPI_Bootstrap.Device_Phase;
       procedure Stop (Status : Outcome) is
       begin
          Result.Status := Status;
@@ -13,8 +12,7 @@ package body ACPI_Requests.Notification_Pump with SPARK_Mode is
       end Stop;
    begin
       Result := (others => <>);
-      if Current (Server) /= Complete
-        or else ACPI_Bootstrap.Device_Completion (Server.Boot).Stage /= ACPI_Bootstrap.Devices_Completed
+      if not Device_Walk_Finished (Server)
         or else not ACPI_Bootstrap.Notifications_Enabled (Server.Boot) then
          Stop (Not_Ready); return;
       end if;

@@ -1,0 +1,9 @@
+# Explicit observer-only serving
+
+Export TMPDIR=/home/doc/cubit-build-tmp before Nix, then run `tests/acpi-observer-serving/run.sh`. All inputs are copied/hashed into a unique output directory; failed runs retain logs and snapshots.
+
+The actual one-shot serving policy runs in checked and release profiles. All combinations of14 admission facts and physical-retirement acknowledgment are exercised, including refusal consumption and attempted mode changes. The actual native endpoint, observer protocol, request core and copied AML catalog run in a hosted -O0 -gnatp build. Tests cover not-serving/local-runtime/observer-only metrics; full-width sender IDs; malformed length/flags/reserved/unused words; a badge placed in payload instead of the kernel-stamped authority field; all snapshot and notification mutation labels; and continued read-only access to catalog metrics, table metadata and copied bytes. Every dispatch must preserve revision, Core metrics and result ownership.
+
+The native message representation and refusal logging are fixtures. Physical retirement acknowledgment and eligibility facts are modeled. These tests do not execute One.Retire, native service registration, hardware, SCI or the real kernel receive loop. The actual native startup branch has separate SDK semantic checks. No new SPARK proof or native/hardware result is claimed.
+
+The retirement runner additionally exercises the actual local shutdown controller with modeled bounded callbacks: immediate quiescence, retained/waiting outcomes, full-width deadlines, failed closure, repeated stop, cleanup retention and refusal to promote a rejected serving declaration. This validates controller behavior, not execution of native One.Try_Retire or kernel event queues. Native Try_Retire performs one advance without invoking the post-serving message-draining loop.

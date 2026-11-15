@@ -162,7 +162,7 @@ procedure Bank_Access_Tests is
      Maximum_Bindings => 4, Authorize_Target => Authorize);
    Service : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Context;
-   Items : F.Binding_Set;
+   Items : F.Binding_Set(F.Default_Binding_Capacity);
    Stage : C.Stage_Status;
    Freeze : C.Freeze_Status;
    Status : C.Values.Access_Status;
@@ -306,7 +306,7 @@ begin
             package Budgeted_IO is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
               Maximum_Bindings => 4, Authorize_Target => Authorize,
               Maximum_Work => (if Trial = Exhausted_Work then 1 else 64));
-            Bindings : Budgeted_IO.Binding_Set;
+            Bindings : Budgeted_IO.Binding_Set(Budgeted_IO.Default_Binding_Capacity);
             procedure Budget_Expect (Name : AML_Names.Segment; Expected : AML_Decode.Integer_Value;
               Want : AML_Execute.Execution_Status) is
                Node : C.Namespace.Node_ID;
@@ -380,7 +380,7 @@ begin
          declare
             package Budgeted_IO is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
               Maximum_Bindings => 4, Authorize_Target => Authorize, Maximum_Work => Limit);
-            Bindings : Budgeted_IO.Binding_Set;
+            Bindings : Budgeted_IO.Binding_Set(Budgeted_IO.Default_Binding_Capacity);
          begin
             Budgeted_IO.Clear (Bindings);
             for S in Slot loop

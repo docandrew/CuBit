@@ -174,7 +174,7 @@ procedure Index_Width_Tests is
       Raw : constant AML_Decode.Bytes := (if Revision = 1 then Index_Width_Oracle.Table32 else Index_Width_Oracle.Table64);
       Service : aliased C.State (1, Raw'Length, Raw'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : Context;
-      Items : F.Binding_Set;
+      Items : F.Binding_Set(F.Default_Binding_Capacity);
       Staged : C.Stage_Status;
       Frozen : C.Freeze_Status;
       Status : C.Values.Access_Status;
@@ -447,8 +447,8 @@ procedure Index_Width_Tests is
          end loop;
       end Exercise_Revocation;
       procedure Exercise_Budgets is
-         Work_Items : Low_Work.Binding_Set;
-         Request_Items : Low_Requests.Binding_Set;
+         Work_Items : Low_Work.Binding_Set(Low_Work.Default_Binding_Capacity);
+         Request_Items : Low_Requests.Binding_Set(Low_Requests.Default_Binding_Capacity);
          Node : C.Namespace.Node_ID;
          Item : C.Node_Descriptor;
          Description : C.Values.Field_Description;

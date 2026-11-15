@@ -27,6 +27,8 @@ package ACPI_HID_I2C_Resolved with SPARK_Mode is
       I2C, GPIO : Sources.Report;
       Value : Observation := Empty_Observation;
    end record;
+   -- Pure description failures, excluding invalid/stale provider context.
+   function Ordinary_Error (Item : Report) return Boolean with Global => null;
    -- Fixed local owner composition: current device + exact copied _CRS +
    -- trusted descriptor-register observation. Own bytes, then resolve BOTH
    -- sources in that original context without executing AML. No partially

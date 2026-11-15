@@ -1,0 +1,11 @@
+# Runtime delay admission
+
+Run `node tests/acpi-runtime-delays/run.mjs` inside the pinned Nix environment, with TMPDIR=/home/doc/cubit-build-tmp set before Nix. Use `--validate-only` for input hashes and the explicit selected source list. Builds use one job, 180s limits; executables have 30s limits. The surrounding hosted runner supplies nice19, 64MiB stack and no cores.
+
+186 checks in each checked (-gnata/-gnato) and release (-gnatp) build: 131 lifecycle boundary checks and 55 checks across seven independent actual-adapter processes. Both profiles must have identical case output and fourteen non-binder ALIs with the expected flags. Test reports, command logs and artifact hashes are written to a new private TMPDIR directory.
+
+The real ACPI_Native_Delays, ACPI_Delay_Waits, ACPI_Delay_Domains and AML delay/decoder dependencies execute on Linux. Clock, syscall and passive timing boundaries are models; this is neither CuBit execution nor an ABI check. The tests cover startup consumption, transfer before close, idle refusal, events after the old startup deadline, no nested deadline extension, expiry, clock loss/reversal including catch-up during a wait, reentry and stop during a wait. Stop preserves an outstanding callback until it returns. No reset/replay API exists.
+
+These changes do not connect the native EC receiver, keep the field provider open, or make runtime AML usable yet. The current native entry still closes startup terminally. A trusted serialized runtime owner must explicitly transfer delay ownership before that close, coordinate field/evaluator ownership, admit authenticated source events, and stop all owners together. Policy clock values are trusted inputs, not proof of real clock accuracy. No new SPARK proof is claimed.
+
+Window-observation extension:55 further checks/profile inspect the existing finite startup/event deadline using the native clock adapter. Inspection cannot open or extend a window; clock loss/reversal/expiry stops it, idle/fresh/stopped refuse, and inspection during a wait preserves the pending return obligation. This is deadline observation, not hardware authority or a universal Field admission gate. Total241checks/profile,482total,15non-binder ALIs. No new proof or native/hardware validation is claimed.

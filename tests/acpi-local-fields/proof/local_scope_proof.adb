@@ -3,6 +3,8 @@ package body Local_Scope_Proof with SPARK_Mode is
    use type Interfaces.Unsigned_64;
    function Admission return Boolean is (True);
    function Due (Item : Lease) return Boolean is (Item.Prepared);
+   procedure Inspect_Time (Deadline : out Interfaces.Unsigned_64; Available : out Boolean) is
+   begin Deadline := 100; Available := True; end Inspect_Time;
    procedure Window (Deadline : out Interfaces.Unsigned_64; Budget : out P.Attempt_Budget;
       Available : out Boolean) is
    begin Deadline := 100; Budget := P.Attempt_Budget'First; Available := True; end Window;

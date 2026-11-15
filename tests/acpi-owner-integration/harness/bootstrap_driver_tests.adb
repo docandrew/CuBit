@@ -82,7 +82,7 @@ procedure Bootstrap_Driver_Tests is
    package Fields is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
      Authorize_Target => Authorize);
    IO : Context;
-   Items : Fields.Binding_Set;
+   Items : Fields.Binding_Set(Fields.Default_Binding_Capacity);
    function Handler_Ready (Ctx : Context; Region : C.Node_Descriptor;
      Data : C.Namespace.Operation_Region_Attributes) return Boolean is
       pragma Unreferenced (Data);

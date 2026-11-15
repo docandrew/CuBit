@@ -32,7 +32,7 @@ for(const[base,rows]of [[root,catalog.inputs],[here,catalog.helpers]])for(const 
   const p=inside(base,entry.path);
   if(seenPaths.has(p)||sha(p)!==entry.sha256)throw Error('Source baseline '+entry.path);
   seenPaths.add(p);pins[p]=entry.sha256;
-  if(/\.ad[bs]$/.test(p)){
+  if(/\.ad[bs]$/.test(p)&&entry.kind!=='audit'){
     const name=path.basename(p);
     if(sources.has(name))throw Error('Ambiguous unit filename '+name);
     sources.set(name,p);
@@ -75,12 +75,12 @@ function project(profile,main){
  for Exec_Dir use "bin";
  for Excluded_Source_Files use ("acpi_target_heap.adb");
  package Naming is for Body ("ACPI_Target_Heap") use "acpi_target_heap_host.adb"; end Naming;
- package Compiler is for Default_Switches ("Ada") use ("-O2","-gnat2022",${checks.map(x=>'"'+x+'"').join(',')}); end Compiler;
+ package Compiler is for Default_Switches ("Ada") use ("${profile==='core-release'?'-O0':'-O2'}","-gnat2022",${checks.map(x=>'"'+x+'"').join(',')}); end Compiler;
 end Test;
 `);pins[p]=sha(p);return p;
 }
 console.log('Hosted ACPI local Field logs: '+out);
-const cases=['normal','reentry','repeated','capacity','child-failure','zero-window','forever-window','unavailable-window','closed-admission','acquire-late','acquire-unknown','acquire-refused','contradictory-acquire','expire-read','expire-end','data-failure','cleanup-parent','release-unknown','signal-deferred','contradictory-release','unsolicited-end'];
+const cases=['io-zero-window','io-forever-window','io-unavailable-window','unlocked-window-closed','unlocked-window-changed','unlocked-window-nested','lock-window-clamped','window-release-unknown','normal','reentry','repeated','capacity','child-failure','zero-window','forever-window','unavailable-window','closed-admission','acquire-late','acquire-unknown','acquire-refused','contradictory-acquire','expire-read','expire-end','data-failure','cleanup-parent','release-unknown','signal-deferred','contradictory-release','unsolicited-end'];
 for(const profile of ['release','checked']){
   run(profile+'-build',[gprbuild,'-q','-p','-j1','-P',project(profile,'local_scope_tests.adb')],180);
   for(const scenario of cases){
@@ -102,7 +102,7 @@ if(!scopeOnly){
       const bytes=[...fs.readFileSync(name+'.aml')].map(x=>'16#'+x.toString(16).padStart(2,'0').toUpperCase()+'#');
       fs.writeFileSync(p,'with Firmware_Tables;\npackage '+unit+' is\nData : constant Firmware_Tables.Bytes := ['+bytes.join(',')+'];\nend '+unit+';\n');pins[p]=sha(p);
     }
-    const output=run('acpica-'+mode+'-'+width,[prlimit,'--cpu=5',acpiexec,'-b','evaluate RD00; evaluate DAT1; execute WRW0 0x12345678; execute PART 0x0A; execute BRW0 0xAB; execute IRW0 0xCD',name+'.aml'],5,128*1024**2);
+    const output=run('acpica-'+mode+'-'+width,[prlimit,'--cpu=5','--stack=2097152',acpiexec,'-b','evaluate RD00; evaluate DAT1; execute WRW0 0x12345678; execute PART 0x0A; execute BRW0 0xAB; execute IRW0 0xCD',name+'.aml'],5,128*1024**2);
     const values=[...output.matchAll(/\[Integer\]\s*=\s*([0-9A-Fa-f]+)/g)].map(m=>BigInt('0x'+m[1]).toString(16));
     const expected=width==='32'?['42','43','7a','ab','cd']:['42','43','12345678','7a','ab','cd'];
     if(JSON.stringify(values)!==JSON.stringify(expected)||(width==='32'&&!/\[Buffer\] Length 08[^\n]*0000:\s+78 56 34 12 00 00 00 00/.test(output)))throw Error('ACPICA typed result mismatch '+mode+'-'+width);
@@ -114,6 +114,10 @@ if(!scopeOnly){
     const output=run('core-'+mode+'-'+width,[out+'/core-release/bin/local_field_core_tests',width,mode]);
     if(!/^LOCAL FIELD CORE width=(32|64) mode=(unlocked|locked) checks\s+\d+\s*$/.test(output.trim()))throw Error('Missing Core marker');
   }
+}
+if(!scopeOnly)for(const mode of ['unlocked','locked'])for(const width of ['32','64']){
+  const output=run('core-window-'+mode+'-'+width,[out+'/core-release/bin/local_field_core_tests',width,mode,'window-stop']);
+  if(!/^LOCAL FIELD WINDOW width=(32|64) mode=(unlocked|locked) checks\s+\d+\s*$/.test(output.trim()))throw Error('Missing window-stop marker');
 }
 if(withProof){
   const p=out+'/proof.gpr';fs.writeFileSync(p,'project Proof is for Source_Dirs use("source");for Object_Dir use "proof-obj";for Excluded_Source_Files use("acpi_target_heap.adb");package Naming is for Body("ACPI_Target_Heap") use "acpi_target_heap_host.adb";end Naming;package Compiler is for Default_Switches("Ada") use("-gnat2022");end Compiler;end Proof;\n');pins[p]=sha(p);
@@ -131,4 +135,4 @@ if(withProof){
   }
 }
 verify();save(true);
-console.log('Hosted ACPI local Field checks passed: '+JSON.stringify({smallCases:cases.length,profiles:2,coreVariants:scopeOnly?0:4,acpicaTypedResults:scopeOnly?0:24,proofLevels:proofs.length,result:out+'/RESULT.json',nativeExecuted:false}));
+console.log('Hosted ACPI local Field checks passed: '+JSON.stringify({smallCases:cases.length,profiles:2,coreVariants:scopeOnly?0:8,acpicaTypedResults:scopeOnly?0:24,proofLevels:proofs.length,result:out+'/RESULT.json',nativeExecuted:false}));

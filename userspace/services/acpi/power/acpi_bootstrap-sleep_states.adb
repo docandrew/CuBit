@@ -11,7 +11,7 @@ package body ACPI_Bootstrap.Sleep_States with SPARK_Mode is
          Result.Items (Kind).Kind := Kind;
          Result.Items (Kind).Registers := Registers;
       end loop;
-      if Session.Stage /= Complete or else Session.Device_Data.Stage /= Devices_Completed then return; end if;
+      if not Device_Walk_Finished (Session) then return; end if;
       for Kind in Driver.System_State loop
          pragma Loop_Invariant (Result.Charged <= Budget);
          if Budget - Result.Charged < Host_Query_Cost then

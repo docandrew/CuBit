@@ -51,6 +51,8 @@ package ACPI_EC_Boot_Table with SPARK_Mode, Pure is
    type Register_Status is (Byte_Registers_Described, Invalid_Description,
       Unsupported_Revision, Unrecognized_Suffix, Unsupported_Space,
       Unsupported_Access, IO_Address_Too_Wide, Aliased_Registers);
+   --  Zero padding after the terminated path is accepted and preserved. Any
+   --  nonzero suffix still requires review.
    --  Byte-transaction compatibility only, not platform ownership validation.
    --  ECDT gives no Global Lock/sharing fact; its absence cannot imply exclusive
    --  ownership. Native use still needs independently reserved named resources.

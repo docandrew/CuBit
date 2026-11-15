@@ -69,6 +69,19 @@ procedure Observer_Tests is
    end Advance;
    package Owner_Loop is new ACPI_Native_Server.With_Dispatch
      (ACPI_Native_Endpoint.Dispatch, Advance_Owner => Advance);
+
+   Maintain_Calls : Natural := 0;
+   Keep_Serving : Boolean := True;
+   Stable_Deadline : constant Unsigned_64 := 120;
+   procedure Maintain (Wake_Deadline_Milliseconds : out Unsigned_64; May_Continue : out Boolean) is
+   begin
+      Check (Owner_Calls = Maintain_Calls+1, "maintenance follows one owner batch");
+      Maintain_Calls := Maintain_Calls+1;
+      May_Continue := Keep_Serving;
+      Wake_Deadline_Milliseconds := (if M.Test.Now < Stable_Deadline then Stable_Deadline else M.Wait_Forever);
+   end Maintain;
+   package Maintained_Loop is new ACPI_Native_Server.With_Dispatch
+     (ACPI_Native_Endpoint.Dispatch,Advance_Owner => Advance,Maintain_Owner => Maintain);
    procedure Prepare is
       DSDT : Firmware_Tables.Bytes (1 .. 37) := [others => 0];
       Sum : Firmware_Tables.Byte := 0;
@@ -309,5 +322,56 @@ begin
       Check (Owner_Calls = 2 and M.Test.Reply_Count = 1 and M.Test.Wait_Count = 1,
         "event and owner work and IPC share the same turn");
    end;
+
+   -- Hardware waiting is idle local work with a finite deadline; spurious
+   -- wakeups must not extend it or create another provider request.
+   M.Reset; Expected_Events := 0; Owner_Calls := 0; Owner_Turns := 0; Maintain_Calls := 0;
+   M.Test.Spurious_Wakes := 2; M.Test.Wake_Credits := 1;
+   Maintained_Loop.Serve (Server,Reason);
+   Check (Reason = ACPI_Native_Server.Wait_Unavailable and M.Test.Wait_Count = 4,
+      "two spurious wakes, one finite deadline, then idle wait");
+   Check (M.Test.Deadlines (1) = Stable_Deadline and M.Test.Deadlines (2) = Stable_Deadline
+      and M.Test.Deadlines (3) = Stable_Deadline and M.Test.Deadlines (4) = M.Wait_Forever,
+      "absolute deadline remains unchanged until maintenance finishes");
+   Check (Owner_Calls = 4 and Maintain_Calls = 4 and M.Test.Poll_Count = 4,
+      "maintenance and IPC get one turn on every wake");
+   Check (M.Test.Clock_Count = 0, "loop neither converts nor resamples owner clock");
+
+   M.Reset; Owner_Calls := 0; Maintain_Calls := 0; Owner_Turns := 3;
+   M.Enqueue (High_Process,Native_Request);
+   Maintained_Loop.Serve (Server,Reason);
+   Check (Owner_Calls = 4 and Maintain_Calls = 4 and M.Test.Wait_Count = 1,
+      "pending local batches maintain hardware without sleeping");
+   Check (M.Test.Taken = 1 and M.Test.Reply_Count = 1 and M.Test.Poll_Count = 4,
+      "finite maintenance preserves request fairness");
+   Check (M.Test.Deadlines (1) = Stable_Deadline,"idle waits use retained maintenance deadline");
+
+   M.Reset; Owner_Calls := 0; Maintain_Calls := 0; Owner_Turns := 0; Keep_Serving := False;
+   M.Enqueue (High_Process,Native_Request);
+   Maintained_Loop.Serve (Server,Reason);
+   Check (Reason = ACPI_Native_Server.Owner_Maintenance_Stopped and Maintain_Calls = 1,
+      "maintenance stop has a distinct terminal reason");
+   Check (M.Test.Poll_Count = 0 and M.Test.Taken = 0 and M.Test.Queued = 1
+      and M.Test.Reply_Count = 0 and M.Test.Wait_Count = 0,
+      "maintenance stop retains queued request without dispatch or waiting");
+   Keep_Serving := True;
+
+   M.Reset; Owner_Calls := 0; Maintain_Calls := 0; Refuse_Owner := True;
+   Maintained_Loop.Serve (Server,Reason);
+   Check (Reason = ACPI_Native_Server.Owner_Work_Refused and Maintain_Calls = 0,
+      "refused owner work precedes maintenance cleanup"); Refuse_Owner := False;
+   declare Event : M.Message := M.NULL_MESSAGE; begin
+      Event.tag.label := CuBit.Control_Events.Control_Label;
+      Event.tag.length := CuBit.Control_Events.Control_Words;
+      Event.words (0) := CuBit.Control_Events.Control_Kind'Enum_Rep (CuBit.Control_Events.Stop);
+      M.Reset; Owner_Calls := 0; Maintain_Calls := 0; M.Enqueue_Event (M.No_Process,Event);
+      Maintained_Loop.Serve (Server,Reason);
+      Check (Reason = ACPI_Native_Server.Stop_Requested and Owner_Calls = 0 and Maintain_Calls = 0,
+         "stop event precedes owner maintenance");
+   end;
+   M.Reset; Owner_Calls := 0; Maintain_Calls := 0; M.Test.Completion := 1;
+   Maintained_Loop.Serve (Server,Reason);
+   Check (Reason = ACPI_Native_Server.Unexpected_Completion and Owner_Calls = 0 and Maintain_Calls = 0,
+      "unexpected completion precedes maintenance");
    Put_Line ("Observer and native runner checks" & Checks'Image);
 end Observer_Tests;

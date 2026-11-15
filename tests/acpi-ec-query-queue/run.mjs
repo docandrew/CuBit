@@ -6,6 +6,11 @@ const catalog=JSON.parse(fs.readFileSync(dir+'/sources.json'));
 if(catalog.version!==1)throw Error('catalog version');
 const pins={[dir+'/sources.json']:sha(dir+'/sources.json'),[dir+'/run.mjs']:sha(dir+'/run.mjs')},origins={};
 for(const row of catalog.inputs){const p=path.resolve(root,row.path);if(!p.startsWith(root+path.sep)||fs.realpathSync(p)!==p||sha(p)!==row.sha256)throw Error('source pin '+row.path);pins[p]=row.sha256;const name=path.basename(p);if(origins[name])throw Error('duplicate unit');origins[name]=p;}
+for(const metadataEntry of catalog.prerequisites??[]){
+ const metadataPath=path.resolve(root,metadataEntry.path);
+ if(!metadataPath.startsWith(root+path.sep)||fs.lstatSync(metadataPath).isSymbolicLink()||fs.realpathSync(metadataPath)!==metadataPath||crypto.createHash('sha256').update(fs.readFileSync(metadataPath)).digest('hex')!==metadataEntry.sha256)throw Error('Prerequisite pin '+metadataEntry.path);
+ pins[metadataPath]=metadataEntry.sha256;
+}
 if(validate){console.log(JSON.stringify({validated:true,sources:catalog.inputs.length,executed:false}));process.exit(0);}
 if(process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('TMPDIR before Nix');
 const out=fs.mkdtempSync(process.env.TMPDIR+'/ec-query-queue-');console.log(out);fs.mkdirSync(out+'/source');

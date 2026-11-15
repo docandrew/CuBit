@@ -2,11 +2,11 @@ package body ACPI_Bootstrap.Lids.Cached with SPARK_Mode is
    package C renames ACPI_Service;
    use type C.Namespace.Object_Kind;
    use type C.Namespace.Notification_Target_Kind;
-   use type Driver.Query_Outcome;
+   use type Driver.Query_Outcome,Driver.Device_Status.Status_Outcome;
    use type Samples.Publication_Result;
    use type Samples.Cache_Status;
    function Ready (Session : State) return Boolean is
-     (Current (Session) = Complete and then Device_Completion (Session).Stage = Devices_Completed
+     (Device_Walk_Finished (Session)
       and then Notifications_Enabled (Session));
    function Current (Data : Cache; Session : State) return Boolean is
      (Data.Bound and then C.Current_Node (Session.Core, Data.Item.Device)
@@ -18,6 +18,7 @@ package body ACPI_Bootstrap.Lids.Cached with SPARK_Mode is
    begin
       Invalidate (Data); Data.Item := No_Binding; Data.Bound := False;
       Data.Pending := False; Data.Query := (others => <>); Data.Admission := Not_Ready;
+      Data.Device_Status := (others => <>); Data.Charged := 0;
    end Forget;
    procedure Bind (Data : in out Cache; Session : in out State; Budget : Natural;
       Report : out Discovery_Report) is
@@ -41,8 +42,25 @@ package body ACPI_Bootstrap.Lids.Cached with SPARK_Mode is
       if not Ready (Session) then Report.Status := Not_Ready; return; end if;
       if not Current (Data, Session) then Forget (Data); Report.Status := Invalid_Binding; return; end if;
       Data.Expected := Samples.Revision (Data.Values);
-      Query (Session, Data.Item, Budget, Data.Admission, Data.Query);
-      Report := (Collected, Data.Admission, Data.Query, Samples.Not_Pending);
+      Data.Query := (others => <>); Data.Admission := Not_Ready;
+      Driver.Device_Status.Observe_Status(Session.Core,Data.Item.Device,Budget,Data.Device_Status);
+      if Data.Device_Status.Charged > Budget then
+         -- Preserve the raw report for diagnosis;do not overflow or allow a
+         -- query after an invalid charge. The owner sees the explicit fault.
+         Data.Device_Status.Outcome := Driver.Device_Status.Provider_Contract_Error;
+         Data.Charged := Budget;
+      else
+         Data.Charged := Data.Device_Status.Charged;
+         if Driver.Device_Status.Usable(Data.Device_Status) then
+            Query(Session,Data.Item,Budget-Data.Charged,Data.Admission,Data.Query);
+            if Data.Query.Charged > Budget-Data.Charged then
+               Data.Query.Outcome := Driver.Provider_Contract_Error;
+               Data.Charged := Budget;
+            else Data.Charged := Data.Charged+Data.Query.Charged;
+            end if;
+         end if;
+      end if;
+      Report := (Collected,Data.Admission,Data.Query,Samples.Not_Pending,Data.Device_Status,Data.Charged);
       Data.Pending := True;
    end Prepare;
    procedure Observe_Notification (Data : in out Cache; Session : State;
@@ -60,19 +78,23 @@ package body ACPI_Bootstrap.Lids.Cached with SPARK_Mode is
       Kind : Samples.Publication := Samples.Acquisition_Failed;
       Value : Sample := Empty_Sample;
    begin
-      Report := (Publication_Refused, Data.Admission, Data.Query, Samples.Not_Pending);
+      Report := (Publication_Refused,Data.Admission,Data.Query,Samples.Not_Pending,Data.Device_Status,Data.Charged);
       if not Data.Pending then return; end if;
       Data.Pending := False;
       if not Events_Healthy or else Pending_Notifications (Session) /= 0 then Invalidate (Data); Report.Status := Routing_Failed;
       elsif not Ready (Session) then Invalidate (Data); Report.Status := Not_Ready;
       elsif not Current (Data, Session) then Forget (Data); Report.Status := Invalid_Binding;
       else
-         if Data.Admission = Admitted and then Data.Query.Outcome = Driver.Sampled then
+         if Data.Device_Status.Outcome=Driver.Device_Status.Status_Available
+           and then not Data.Device_Status.Present then
+            Kind := Samples.Known_Absent;
+         elsif Data.Admission = Admitted and then Data.Query.Outcome = Driver.Sampled then
             Kind := Samples.Sampled; Value := (Data.Query.State, Data.Query.Raw);
          end if;
          Samples.Publish (Data.Values, Data.Expected, Kind, Value, At_Time, Report.Publication);
          if Report.Publication = Samples.Published then Report.Status := Updated; end if;
       end if;
       Data.Query := (others => <>); Data.Admission := Not_Ready;
+      Data.Device_Status := (others => <>); Data.Charged := 0;
    end Publish;
 end ACPI_Bootstrap.Lids.Cached;

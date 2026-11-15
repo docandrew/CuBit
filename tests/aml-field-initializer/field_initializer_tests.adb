@@ -117,7 +117,7 @@ procedure Field_Initializer_Tests is
       use type C.Namespace.Notification_Class;
       S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : P.Context;
-      Items : F.Binding_Set;
+      Items : F.Binding_Set(F.Default_Binding_Capacity);
       Status : C.Values.Access_Status;
       Staged : C.Stage_Status;
       Frozen : C.Freeze_Status;
@@ -372,7 +372,7 @@ begin
          declare
             S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             IO, Other : P.Context;
-            Items : F.Binding_Set;
+            Items : F.Binding_Set(F.Default_Binding_Capacity);
             Targets : array (Register_Index) of A.Target;
             Status : C.Values.Access_Status;
             Staged : C.Stage_Status;

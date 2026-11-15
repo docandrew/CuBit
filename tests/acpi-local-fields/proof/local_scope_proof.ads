@@ -13,5 +13,6 @@ package Local_Scope_Proof with SPARK_Mode is
       Budget : P.Attempt_Budget; Result : out P.Lock_Outcome) with Global => null;
    procedure Validate (Item : Lease; Result : out P.Lock_Outcome) with Global => null;
    procedure Release (Item : in out Lease; Result : out P.Lock_Outcome) with Global => null;
-   package Scope is new ACPI_Local_Field_Scope (Lease,Admission,Due,Window,Acquire,Validate,Release,4);
+   procedure Inspect_Time (Deadline : out Interfaces.Unsigned_64; Available : out Boolean) with Global => null;
+   package Scope is new ACPI_Local_Field_Scope (Lease,Admission,Due,Window,Acquire,Validate,Release,4,Inspect_Time);
 end Local_Scope_Proof;

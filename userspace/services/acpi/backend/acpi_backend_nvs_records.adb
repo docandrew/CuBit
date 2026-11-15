@@ -97,6 +97,36 @@ package body ACPI_Backend_NVS_Records with SPARK_Mode is
       end if;
       State.Working := False;
    end Describe;
+   procedure Stop (State : in out Context) is
+   begin State.Stage := Failed; end Stop;
+   procedure Select_Write
+     (State : in out Context; Scope : Word; Epoch : Epoch_Number;
+      ID : Record_ID; Index : Word; Width : T.Access_Width;
+      View : out Write_View; Result : out Outcome) is
+      Bytes : constant Word := Word (T.Octets (Width));
+   begin
+      View := (Allowed => False,Space => Catalog.W.P.Memory_Space);
+      Admit (State,Scope,Result); if Result /= Ready then return; end if;
+      if Epoch /= Epoch_Number (State.Revision) then Result := Stale; return; end if;
+      for I in 1 .. State.Count loop
+         if State.Items (I).ID = ID then
+            if Index >= State.Items (I).Length or else Index mod Bytes /= 0
+              or else Bytes > State.Items (I).Length-Index then Result := Denied; return; end if;
+            State.Working := True;
+            if not Live_Row (State,I) then
+               State.Stage := Failed; State.Working := False; Result := Backing_Unavailable; return;
+            end if;
+            View := Catalog.Select_Access (Hardware,State.Items (I).Window,Catalog.W.P.Memory_Space,
+               State.Items (I).Base+Index,Width,True);
+            if not View.Allowed or else View.Space /= Catalog.W.P.Memory_Space then
+               View := (Allowed => False,Space => Catalog.W.P.Memory_Space); Result := Denied;
+            else Result := Ready;
+            end if;
+            State.Working := False; return;
+         end if;
+      end loop;
+      Result := Denied;
+   end Select_Write;
    procedure Read
      (State : in out Context; Scope : Word; Epoch : Epoch_Number;
       ID : Record_ID; Index : Word; Width : T.Access_Width; Value : out Word; Result : out Outcome) is

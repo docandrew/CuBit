@@ -16,6 +16,8 @@ package body ACPI_HID_I2C_Channels with SPARK_Mode is
          return (Status => Unsupported_Initiator);
       elsif Item.Interrupt_Role /= P.Consumes_Resource then
          return (Status => Unsupported_GPIO_Role);
+      elsif Item.I2C.Addressing = S.Seven_Bit and then Item.I2C.Address = General_Call_Address then
+         return (Status => Invalid_I2C_Target);
       elsif not I.Valid (Target) then
          return (Status => Invalid_I2C_Target);
       elsif Item.Pin > P.Pin_Number (G.Pin_Number'Last) then

@@ -1,13 +1,18 @@
 (type ACPI_Profile (enum Neutral Known_Windows))
 (type ACPI_Firmware_Profile (record (kind ACPI_Profile)))
-# Sealed table snapshot and optional named-register endpoint; no raw hardware authority.
+# ACPI-ONE-001: the one ACPI service. It holds the ACPI hardware grant itself
+# (FADT fixed-hardware ports, FACS/NVS firmware memory, and with approval
+# the firmware-data endpoint that carries the platform-register pool) and
+# runs AML over it in-process. The PCI configuration broker is devmgr's
+# acpi-pci-windows service, approved for this entry only.
 (Executable_Manifest
   parameters => (Parameter_Signature.Declared "ACPI_Firmware_Profile")
   identity => "com.cubit.acpi"
-  version => "0.1.0"
+  version => "0.2.0"
   requests => [
     (service "logstore" "logstore")
     (Request.Firmware_Snapshot "tables")
-    (service "acpi-registers" "registers")
+    (Request.ACPI_Hardware "hardware")
+    (service "acpi-pci-windows" "pci-windows")
     (notification "acpi" Notify_Access.Manage "registration")]
-  optional => ["registers"])
+  optional => ["pci-windows"])

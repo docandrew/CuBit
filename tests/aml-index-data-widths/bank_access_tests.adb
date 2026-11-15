@@ -99,7 +99,7 @@ procedure Bank_Access_Tests is
      Maximum_Bindings => 2, Authorize_Target => Authorize);
    Service : aliased C.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Context;
-   Items : F.Binding_Set;
+   Items : F.Binding_Set(F.Default_Binding_Capacity);
    Stage : C.Stage_Status;
    Freeze : C.Freeze_Status;
    Status : C.Values.Access_Status;

@@ -1,0 +1,16 @@
+{
+  "disassembly_sha256": "39b977beb10a15fc0c507d0fda501d33222257424f152c3776c176c4f53e73eb",
+  "fragments": [
+    {
+      "port": "RP04",
+      "startLine": 15059,
+      "sha256": "8eb93e63eb36ac901b269b9c315532d456b12774006c17e3fbe2ef6cfed4508d"
+    },
+    {
+      "port": "RP07",
+      "startLine": 16529,
+      "sha256": "d28eb70997aa6b2949c09437e9530c2e810df8771d15c00f9ba291a865983771"
+    }
+  ],
+  "scope": "Exact disassembled RP04/RP07 initializer bodies; all surrounding fields modeled as named scalars, PRES/PXSX helpers are explicit constant models, PINI deliberately absent. Not full-table/hardware reproduction."
+}

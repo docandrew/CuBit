@@ -75,6 +75,8 @@ tests/acpi-native-startup/boundary/acpi_native_snapshot_load-with_driver.ads
 tests/acpi-native-startup/boundary/acpi_native_snapshot_load.ads
 tests/acpi-native-startup/boundary/acpi_native_snapshot_read.ads
 tests/acpi-native-startup/boundary/acpi_native_startup_timing.ads
+tests/acpi-native-startup/boundary/acpi_startup_phase_trace.adb
+tests/acpi-native-startup/boundary/acpi_startup_phase_trace.ads
 tests/acpi-native-startup/boundary/delay_owner_model.ads
 tests/acpi-native-startup/models/acpi_clock_source.adb
 tests/acpi-native-startup/models/acpi_field_transport.adb

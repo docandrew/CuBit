@@ -135,7 +135,7 @@ begin
          declare
             S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             IO : Context;
-            Items, Bad : F.Binding_Set;
+            Items, Bad : F.Binding_Set(F.Default_Binding_Capacity);
             Targets, Reversed : AML_Field_Targets.Vector := [others => A.No_Target];
             Count : constant AML_Field_Plans.Datum_Count := 9;
             Expected : constant Unsigned_64 := 16#4FA7_8D73_591E_E4CA#;

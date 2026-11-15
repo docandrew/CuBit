@@ -1,0 +1,79 @@
+{
+  "sourceSHA256": "46b1eb60a287a3effd755b56f379be1ef3d5de369fdae6734fb1dc601c4e7500",
+  "sourceDescription": "Lenovo i3-N350 laptop DSDT previously captured by the user; original retained privately at /home/doc/git/.acpi-proof-work/hid-offer-wire-20261113/firmware-evidence/dsdt.dsl",
+  "rows": [
+    {
+      "name": "HIDD",
+      "start": 3109451,
+      "end": 3110135,
+      "line": 92003,
+      "path": "fixture/fragments/HIDD.asl",
+      "sha256": "d810180b8079264502b047bddb95b37213dd591fb016c82eabbcbd4d642fe2a3"
+    },
+    {
+      "name": "TP7D",
+      "start": 3110145,
+      "end": 3110860,
+      "line": 92030,
+      "path": "fixture/fragments/TP7D.asl",
+      "sha256": "2e57e85fb268d8576e259e0564fafa0e228b9a9983c12a91723a0badb2ab1a52"
+    },
+    {
+      "name": "I2CM",
+      "start": 3110870,
+      "end": 3118046,
+      "line": 92057,
+      "path": "fixture/fragments/I2CM.asl",
+      "sha256": "d964f87ca4fb6468b5d933a94846952e84951e1146fa3d071ae3a44974a62709"
+    },
+    {
+      "name": "root",
+      "start": 154181,
+      "end": 154625,
+      "line": 5341,
+      "path": "fixture/fragments/root.asl",
+      "sha256": "c3c7e74b00eaa2097497801d942a8a2d6872d65e8c2accdfccd564acdfc95072"
+    },
+    {
+      "name": "uuids",
+      "start": 3109273,
+      "end": 3109451,
+      "line": 92001,
+      "path": "fixture/fragments/uuids.asl",
+      "sha256": "aca195cc623320b3b47d462a52f96b79ab7e8e768741eb7a1f7bf849a2482f3a"
+    },
+    {
+      "name": "touchpad",
+      "start": 3131648,
+      "end": 3136015,
+      "line": 92483,
+      "path": "fixture/fragments/touchpad.asl",
+      "sha256": "52eb67a72000ecb85812430909ae93a0fbaec64b92936b86f6903b5b37976370"
+    },
+    {
+      "name": "parent",
+      "start": 3131430,
+      "end": 3131648,
+      "line": 92474,
+      "path": "fixture/fragments/parent.asl",
+      "sha256": "35751c67ad475393200c433e8d528b337c238025072cb70579261fcb09af06c5"
+    },
+    {
+      "name": "address",
+      "start": 329317,
+      "end": 329525,
+      "line": 10704,
+      "path": "fixture/fragments/address.asl",
+      "sha256": "4934f440c977589faca3bc2a653148201f15ad5b48f6ccc1421fc3e6dfc700a1"
+    }
+  ],
+  "alterations": [
+    "Synthetic table/container and fixed input names",
+    "GNUM/INUM/SRXO are counter-bearing pure models; no hardware behavior",
+    "TPRD/TPWR omitted (EC access outside this HID query test)",
+    "Controller contains captured conditional _ADR plus captured parent _INI; unrelated methods omitted; test IM01=0 only",
+    "GPIO sibling identity is a modeled namespace stub; submitted admission is synthetic",
+    "Touchpad fragment closes its device after exact captured _CRS"
+  ],
+  "matrixAlteration": "Only controlled cases replace TPD0 STA with a constant. All16 low-bit combinations plus4 high-word cases. Synthetic table/OEM ID; modeled GNUM/INUM/SRXO and GPIO identity/admission; IM01=0 only."
+}

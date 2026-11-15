@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/native/acpi_startup_phase_trace.ads",
+      "sha256": "fa1fe0f8131bc6dedcc3a252a64ac2c5429f587310bc4512e18d1575106d123f",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_startup_phase_trace.adb",
+      "sha256": "4cf136e4772a25ec3845342ec6ccd03e0a2660f4e3ec6a9cbf778b40c5b15140",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-startup-phase-trace/phase_trace_tests.adb",
+      "sha256": "2b47a787534e2fad9d7872a87fe4fb1f9e60a45e3bfc039772f440de81cd44e4",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-startup-phase-trace/run.mjs",
+      "sha256": "a4135a1f3af808e4f3e419c570830d8c7e605f5f8a30fc0b28809c24802962d6",
+      "kind": "metadata"
+    },
+    {
+      "path": "tests/acpi-startup-phase-trace/run.sh",
+      "sha256": "6d01b7d0aff52ade9eb7c8bd0240aef2301cdeef0ffc13b646b9d47fe7b7e0f9",
+      "kind": "metadata"
+    },
+    {
+      "path": "tests/acpi-startup-phase-trace/README.md",
+      "sha256": "56a4f019b6cd95e9a8c38b4625b8762a113b1cd53c1d202f86fc2b21f600ebbb",
+      "kind": "metadata"
+    }
+  ],
+  "checkedExpected": 24918,
+  "releaseExpected": 24918
+}

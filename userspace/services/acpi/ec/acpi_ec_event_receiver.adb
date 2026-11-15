@@ -162,4 +162,25 @@ package body ACPI_EC_Event_Receiver with SPARK_Mode is
       else Result := Cleanup_Failed;
       end if;
    end Close;
+   procedure Retire (Run : in out Delivery; Service : Core.State; Accepted : out Boolean) is
+      Cleared:Boolean;
+   begin
+      Accepted:=False;
+      if In_Call or else Fatal_Seen or else not Run.Used or else Pending(Run)
+        or else Natural(Core.Pending_Notifications(Service))>0
+        or else Run.Info.Field_Uncertainty or else Run.Info.Status not in Completed|Handler_Missing
+        or else Run.Slot=0 or else not Core.Current_Binding(Service,Run.Owner)
+        or else not P.Matches(Routes(Run.Slot).Logic,Run.Event)
+        or else P.View(Routes(Run.Slot).Logic).Held
+        or else P.View(Routes(Run.Slot).Logic).Uncertain
+        or else P.View(Routes(Run.Slot).Logic).Guarding then return;end if;
+      In_Call:=True;
+      if Methods.Consumed(Run.Handler) then Methods.Retire(Run.Handler,Service,Cleared);
+      else Cleared:=Run.Info.Status=Handler_Missing;end if;
+      if Cleared then
+         Run.Used:=False;Run.Slot:=0;Run.Event:=(others=><>);
+         Run.Owner:=Core.Values.No_Node;Run.Info:=(others=><>);Accepted:=True;
+      end if;
+      In_Call:=False;
+   end Retire;
 end ACPI_EC_Event_Receiver;

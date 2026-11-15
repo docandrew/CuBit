@@ -141,7 +141,7 @@ procedure Bank_Capacity_Tests is
         Maximum_Bindings => 3, Authorize_Target => Authorize);
       Limited_Service : aliased Small.State (1, Bank_Access_Oracle.Raw_Table'Length, Bank_Access_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Model : Context;
-      Bindings : SF.Binding_Set;
+      Bindings : SF.Binding_Set(SF.Default_Binding_Capacity);
       Staged : Small.Stage_Status;
       Frozen : Small.Freeze_Status;
       Accessed : Small.Values.Access_Status;

@@ -317,10 +317,18 @@ package ACPI_Requests with SPARK_Mode is
        and then Model'Result.Value_Element_Capacity = Server.Value_Element_Capacity;
    function Revision (Server : State) return Revision_Number with Pre => Valid (Server);
    function Current (Server : State) return Phase with Pre => Valid (Server);
+   -- Local observation only:includes queued AND already-claimed work. No
+   -- dequeue/ACK/AML or new wire authority. Use before cached publication/read.
+   -- Actual requested/enabled/status policy of the same private Bootstrap/Core.
+   -- Native event admission must check this; an empty queue alone says nothing
+   -- about whether firmware Notify events are being captured.
+   function Notifications_Ready(Server:State) return Boolean with Pre=>Valid(Server);
+   function Notifications_Pending(Server:State) return Boolean with Pre=>Valid(Server);
    function Table_Open (Server : State) return Boolean with Pre => Valid (Server);
    function Received (Server : State) return Natural with Pre => Valid (Server);
    function Completion (Server : State) return ACPI_Bootstrap.Finish_Report with Pre => Valid (Server);
    -- Copied initialization outcome; no AML, state change or new wire authority.
+   function Device_Walk_Finished (Server : State) return Boolean with Pre => Valid (Server);
    function Device_Completion (Server : State) return ACPI_Bootstrap.Device_Report
      with Pre => Valid (Server), Global => null;
    -- Copied observation only; does not add a wire operation or authority.
@@ -374,6 +382,21 @@ package ACPI_Requests with SPARK_Mode is
          Revision (Server)'Old < Max_Revision
          and then Revision (Server) = Revision (Server)'Old + 1
          and then not Table_Open (Server) and then Received (Server) = 0);
+   -- Trusted local continuation; deliberately absent from the wire protocol.
+   -- The callback may complete retained provider metadata, never run AML or
+   -- mutate the Core. Request revision, receipts and table import stay intact.
+   generic
+      with procedure Advance_Metadata (Service : ACPI_Service.State; Completed : out Boolean);
+   package With_Metadata_Continuation is
+      procedure Advance (Server : State; Completed : out Boolean)
+        with Pre => Valid (Server), Post => Model (Server) = Model (Server)'Old;
+   end With_Metadata_Continuation;
+
+   -- Read-only owner retirement observation, valid in every protocol phase.
+   -- False alone is not a hardware/event/whole-service retirement permission.
+   function Retained_Results_Pending (Server : State) return Boolean
+     with Global => null, Pre => Valid (Server);
+
 private
    -- Private wire codec; deliberately independent of internal enum positions.
    function Error_Code (Item : AML_Execute.Execution_Status) return Startup_Error_Code;

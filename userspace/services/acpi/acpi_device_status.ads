@@ -26,7 +26,8 @@ package ACPI_Device_Status with SPARK_Mode is
       Cleanup_Result : Core.Values.Access_Status := Core.Values.Available;
       Execution : AML_Execute.Execution_Status := AML_Execute.No_Return;
    end record;
-   -- Observe only this device's canonical direct _STA, including named values
+   -- Observe a Device, Processor or ThermalZone object's canonical direct
+   -- _STA, including named values
    -- and aliases. Missing _STA uses the existing device-policy default. Keep
    -- the full flags; presence, enablement and functioning are separate facts.
    -- Neither the flags nor this observation establish initialization/readiness.

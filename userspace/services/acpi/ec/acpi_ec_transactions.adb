@@ -1,6 +1,17 @@
 pragma Ada_2022;
 package body ACPI_EC_Transactions with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
+   function Diagnostics return Transaction_Observation is
+     ((Stage=>Current,Last_Active=>Diagnostic_Phase,Status=>State,Kind=>Action,
+       Cell=>Address,Command=>(case Action is when Read_Cell=>Read_Command,
+         when Write_Cell=>Write_Command,when Query_Event=>Query_Command),
+       Deadline=>Limit,Last_Time=>Previous,Last_Sample=>Diagnostic_Sample,
+       Began=>Diagnostic_Began,Wake=>Earliest,Remaining=>Remaining,
+       Has_Time=>Have_Time,Sample_Available=>Diagnostic_Sample_Available,
+       Has_Began=>Diagnostic_Has_Began,Status_Attempted=>Status_Attempted,
+       Status_Known=>Status_Known,Last_Status=>Diagnostic_Status,
+       Status_Result=>Diagnostic_Status_Result,Effects_Possible=>Touched,
+       Recovery=>Recovery,Stopping=>Stopping));
    procedure Fail (Reason : Outcome; Force_Recovery : Boolean := False) with
      Pre => State = Running and then Output = 0
        and then Remaining <= Given_Budget
@@ -41,6 +52,11 @@ package body ACPI_EC_Transactions with SPARK_Mode is
       Earliest := 0;
       State := Running;
       Current := Initial_Status;
+      Diagnostic_Phase := Initial_Status;
+      Diagnostic_Began := 0; Diagnostic_Sample := 0;
+      Diagnostic_Has_Began := False; Diagnostic_Sample_Available := False;
+      Status_Attempted := False; Status_Known := False;
+      Diagnostic_Status := 0; Diagnostic_Status_Result := Refused;
    end Start;
 
    procedure Step is
@@ -56,7 +72,15 @@ package body ACPI_EC_Transactions with SPARK_Mode is
       if State /= Running then
          return;
       end if;
+      Diagnostic_Phase := Current;
       Clock (Now, Available);
+      Diagnostic_Sample_Available := Available;
+      if Available then
+         Diagnostic_Sample := Now;
+         if not Diagnostic_Has_Began then
+            Diagnostic_Began := Now; Diagnostic_Has_Began := True;
+         end if;
+      end if;
       if not Available then
          Fail (Clock_Unavailable);
          return;
@@ -99,6 +123,8 @@ package body ACPI_EC_Transactions with SPARK_Mode is
          when Initial_Status | Wait_Input | Wait_Output | Confirm_Idle =>
             Accesses := Accesses + 1;
             Read (Status_Register, Value, Result);
+            Status_Attempted := True; Diagnostic_Status_Result := Result;
+            if Result = Completed then Diagnostic_Status := Value; Status_Known := True; end if;
             if Result /= Completed then
                --  Unknown status access also invalidates interface ownership.
                Fail ((if Result = Refused then Access_Refused else Access_Unknown),

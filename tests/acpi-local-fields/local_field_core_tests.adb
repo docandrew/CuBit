@@ -38,6 +38,10 @@ procedure Local_Field_Core_Tests is
    Memory : Cells := [others => 0];
    Checks, Reads, Writes : Natural := 0;
    Locked : constant Boolean := Ada.Command_Line.Argument (2) = "locked";
+   Window_Stop : constant Boolean := Ada.Command_Line.Argument_Count = 3
+     and then Ada.Command_Line.Argument (3) = "window-stop";
+   Window_Open : Boolean := True;
+   Close_After_Write : Boolean := False;
    type Lease is limited record Prepared : Boolean := False; end record;
    Physical_Held : Boolean := False;
    Acquires, Releases : Natural := 0;
@@ -65,6 +69,7 @@ procedure Local_Field_Core_Tests is
       if Writing then Check (Input <= 16#FF#); Memory (Cell) := Unsigned_8 (Input); Writes := Writes + 1; Output := 0;
       else Check (Input = 0); Reads := Reads + 1; Output := Unsigned_64 (Memory (Cell)); end if;
       Completed := not (Writing and Cell = 8 and Incomplete_Selector);
+      if Writing and Close_After_Write then Window_Open := False; end if;
    end Port_IO;
    package Catalog is new ACPI_Backend_Catalog
      (Natural,0,Natural,0,Inspect,Inspect,Map,Clock,Memory_IO,Port_IO,1,12,1,
@@ -77,6 +82,8 @@ procedure Local_Field_Core_Tests is
    function Due (Item : Lease) return Boolean is (Item.Prepared);
    procedure Window (Deadline : out Unsigned_64; Budget : out LP.Attempt_Budget; Available : out Boolean) is
    begin Deadline := 100; Budget := 3; Available := True; end Window;
+   procedure Inspect_Time (Deadline : out Unsigned_64; Available : out Boolean) is
+   begin Deadline := 100; Available := Window_Open; end Inspect_Time;
    procedure Acquire (Item : in out Lease; Deadline : Unsigned_64; Budget : LP.Attempt_Budget;
       Result : out LP.Lock_Outcome) is
    begin
@@ -90,7 +97,7 @@ procedure Local_Field_Core_Tests is
       Check (Item.Prepared and Physical_Held); Item.Prepared := False; Physical_Held := False;
       Releases := Releases + 1; Result := LP.Released;
    end Release;
-   package Guard is new ACPI_Local_Field_Scope (Lease,Admission,Due,Window,Acquire,Validate,Release,16);
+   package Guard is new ACPI_Local_Field_Scope (Lease,Admission,Due,Window,Acquire,Validate,Release,16,Inspect_Time);
    Transaction : Guard.Context;
    procedure Begin_Field (State : in out Provider.Context;
       Requires_Lock, For_Write : Boolean; Accepted : in out Boolean) is
@@ -121,7 +128,7 @@ procedure Local_Field_Core_Tests is
      (AML_Delays.Unavailable_Provider,Namespace_Node_Capacity => 64,Retained_Result_Capacity => 32);
    package Modules is new ACPI_Field_Module_Startup (Core,View,16);
    package Evaluation is new ACPI_Field_Evaluation (Core,View,16);
-   Run : Evaluation.Context;
+   Run : Evaluation.Context(Evaluation.Default_Capacity);
    package Empty_Regions is new ACPI_Unprovisioned_Regions (Core);
    procedure Regions (Service : aliased in out Core.State; Budget : Natural;
       Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome) is
@@ -155,6 +162,7 @@ procedure Local_Field_Core_Tests is
    Description : Core.Node_Descriptor;
    Value : Core.Values.Result;
    Saved_Reads, Saved_Writes : Natural;
+   Saved_Acquires : Natural;
    Result_Handle : Core.Values.Value_Handle;
    Result_Bytes : AML_Decode.Bytes (1 .. 8);
    Copied : Natural;
@@ -198,6 +206,31 @@ begin
    Driver.Complete_Initialization (Driver_Run,Service,OK);
    Check (OK and Driver.Observe (Driver_Run).Stage = Driver.Incomplete and Memory (2) = 0);
    -- The real region barrier remains closed; no fake controller/_REG readiness.
+   if Window_Stop then
+      Saved_Writes := Writes; Saved_Acquires := Acquires;
+      Close_After_Write := True;
+      Invoke ("WRW0",16#1234_5678#);
+      Check (Value.Status in AML_Execute.Unsupported_Value | AML_Execute.Field_Indeterminate);
+      Check (Writes = Saved_Writes + 1 and Memory (0) = 16#78# and Memory (1) = 16#43#
+        and Memory (2) = 0 and Memory (3) = 0);
+      Check (Guard.Observe (Transaction).Faulted and not Guard.Pending (Transaction));
+      Check (Core.Valid (Service) and Core.Retained_Results (Service) = 0);
+      Check (not Provider.Pending (IO) and not Provider.Uncertain (IO).Present);
+      Check (not Physical_Held and Acquires = Releases and ((Acquires > 0) = Locked));
+      Check (Acquires = Saved_Acquires + (if Locked then 1 else 0));
+      Saved_Reads := Reads; Saved_Writes := Writes;
+      Invoke ("WRW0",16#FFFF_FFFF#);
+      Check (Reads = Saved_Reads and Writes = Saved_Writes);
+      Window_Open := True;
+      Invoke ("PART",16#A#);
+      Check (Reads = Saved_Reads and Writes = Saved_Writes);
+      Guard.Cleanup (Transaction,OK);
+      Check (OK and not Guard.Pending (Transaction) and not Physical_Held);
+      Check (Core.Valid (Service) and Core.Retained_Results (Service) = 0);
+      Ada.Text_IO.Put_Line ("LOCAL FIELD WINDOW width=" & Width & " mode=" &
+        Ada.Command_Line.Argument (2) & " checks" & Checks'Image);
+      return;
+   end if;
    Invoke ("WRW0",16#1234_5678#);
    Check (Status = Core.Values.Available);
    if Width = "32" then

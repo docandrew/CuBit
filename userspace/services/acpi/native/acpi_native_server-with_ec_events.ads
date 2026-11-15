@@ -2,6 +2,7 @@ with ACPI_EC_Supervisor_Control;
 with ACPI_EC_Event_Receiver;
 with ACPI_EC_Event_Types;
 with ACPI_Requests.EC_Events;
+with Interfaces;
 with ACPI_Requests.Notification_Pump;
 with ACPI_Service;
 with AML_Fatal;
@@ -88,11 +89,16 @@ package ACPI_Native_Server.With_EC_Events is
       with procedure Handle_Event
         (Publisher : CuBit.Messages.Process_ID; Item : CuBit.Messages.Message;
          Stop, Handled : out Boolean) is ACPI_Native_Events.Handle;
+      with procedure Maintain_Owner
+        (Wake_Deadline_Milliseconds : out Interfaces.Unsigned_64;
+         May_Continue : out Boolean) is No_Maintenance;
    package With_Dispatch is
       -- Bind the service loop to this owner and its stop admission. A stop
       -- closes the owner before returning Stop_Requested; incomplete stop
       -- admission returns Owner_Work_Refused. Unexpected completion or raised
       -- hook/dispatch also closes admission where possible,retaining storage.
+      -- Maintenance stop also closes event/AML admission before returning,
+      -- preserving the exact completion; it never establishes safe exit.
       -- Wait_Unavailable leaves a healthy owner available for a later serve.
       -- All hardware,lower-owner and backing-lifetime obligations remain.
       procedure Serve (Server : in out ACPI_Requests.State; Reason : out Stop_Reason);

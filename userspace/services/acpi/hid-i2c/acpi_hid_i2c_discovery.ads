@@ -28,6 +28,9 @@ package ACPI_HID_I2C_Discovery with SPARK_Mode is
       Copy_Failed, Analysis_Failed, Descriptor_Failed, Budget_Exhausted,
       Cleanup_Failed, Provider_Contract_Error, Cancelled);
    type Action_Result is (Accepted, Busy, Wrong_Context, Not_Pending);
+   -- Classification only. Caller must first reject fatal/provider/cleanup
+   -- uncertainty and enforce its original shared budget and current context.
+   function Ordinary_Error (Item : Outcome) return Boolean with Global => null;
    type Report is record
       Step : Stage := Not_Started;
       Result : Outcome := Not_Attempted;

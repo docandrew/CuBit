@@ -3,7 +3,8 @@ package body ACPI_Battery_Observation with SPARK_Mode is
    use type Dynamic.Identification_Outcome;
    use type Dynamic.Presence_Outcome;
    use type Dynamic.Query_Outcome;
-   use type Static_Info.Query_Outcome;
+   use type Static_Info.Outcome;
+   use type Static_Info.Source_Kind;
    use type AML_Decode.Integer_Value;
    procedure Query (Service : aliased in out Core.State;
       Device : Core.Node_Descriptor; Budget : Natural; Report : out Query_Report) is
@@ -62,13 +63,15 @@ package body ACPI_Battery_Observation with SPARK_Mode is
          Report.Reached := Information; Report.Attempts := 3;
          Static_Info.Query (Service, Device, Budget - Report.Charged, Report.Static_Data);
          if not Add_Charge (Report.Static_Data.Charged) then return; end if;
-         if Report.Static_Data.Outcome /= Static_Info.Sampled then
-            Report.Status := (case Report.Static_Data.Outcome is
+         if Report.Static_Data.Status /= Static_Info.Sampled then
+            Report.Status := (case Report.Static_Data.Status is
               when Static_Info.Budget_Exhausted => Budget_Exhausted,
-              when Static_Info.Cleanup_Failed => Cleanup_Failed,
-              when Static_Info.Provider_Contract_Error => Provider_Contract_Error,
+              when Static_Info.Recovery_Required => Provider_Contract_Error,
               when others => Information_Failed);
             return;
+         end if;
+         if Report.Static_Data.Value.Source = Static_Info.None_Reported then
+            Report.Status := Provider_Contract_Error; return;
          end if;
          Report.Reached := Dynamic_Status; Report.Attempts := 4;
          Dynamic.Query (Service, Device, Budget - Report.Charged, Report.Dynamic_Data);

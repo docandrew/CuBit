@@ -3,6 +3,11 @@ with ACPI_Requests;
 with ACPI_Service;
 with ACPI_HID_I2C_Candidate;
 with ACPI_HID_I2C_Channels;
+with ACPI_HID_I2C_Discovery;
+with ACPI_HID_I2C_Resolved;
+with ACPI_Requests.HID_Devices;
+with ACPI_One_Service;
+with ACPI_Native_Initializer_History;
 -- Fixed, process-lifetime startup observation on the native service's Core.
 -- No launch, endpoint discovery, hardware admission or event-source enrollment.
 package ACPI_Native_HID_Detection is
@@ -12,6 +17,11 @@ package ACPI_Native_HID_Detection is
    Maximum_Source_Span_Bytes : constant := 256;
    package Candidates is new ACPI_HID_I2C_Candidate (Maximum_Source_Span_Bytes);
    package Channels is new ACPI_HID_I2C_Channels (Candidates);
+   package Discovery is new ACPI_HID_I2C_Discovery
+     (ACPI_Service, ACPI_One_Service.Root.Evaluation.Invoke_With_Arguments,
+      ACPI_One_Service.Root.Evaluation.Evaluate_Named);
+   package Resolver is new ACPI_HID_I2C_Resolved (ACPI_Service, Candidates);
+   package Owner is new ACPI_Requests.HID_Devices (Discovery, Resolver);
    subtype Fuel_Budget is Natural range 0 .. Maximum_AML_Fuel;
    subtype Resource_Budget is Natural range 0 .. Maximum_Resource_Bytes;
    subtype Candidate_Budget is Positive range 1 .. Maximum_Candidates;
@@ -22,8 +32,13 @@ package ACPI_Native_HID_Detection is
       Candidates : Candidate_Budget := 4;
    end record;
    type Outcome is (Not_Attempted, Not_Ready, No_Devices, Finished,
-      Budget_Exhausted, Search_Failed, Discovery_Failed, Sources_Failed,
+      Budget_Exhausted, Policy_Unresolved, Search_Failed, Discovery_Failed, Sources_Failed,
       Capacity_Refused, Candidate_Limit, Cleanup_Failed, Owner_Error, Recovery_Required, Channel_Refused);
+   function Name (Status : Outcome) return String;
+   type Progress_Step is (Not_Started, Search_Candidates, Begin_Device_Probe,
+      Release_Inactive_Probe, Resolve_Resources, Cancel_Probe, Validate_Candidate,
+      Prepare_Channels, Record_Observation);
+   function Step_Name (Step : Progress_Step) return String;
    subtype Observation_Index is Positive range 1 .. Maximum_Candidates;
    type Observation is record
       Device, I2C_Controller, GPIO_Controller : ACPI_Service.Node_Descriptor :=
@@ -31,9 +46,38 @@ package ACPI_Native_HID_Detection is
       Channel_Data : Channels.Preparation;
    end record;
    type Observation_Array is array (Observation_Index) of Observation;
+   subtype Unavailable_Count is Natural range 0 .. Natural (ACPI_Service.Namespace.Node_ID'Last);
+   Maximum_Captured_Errors : constant Positive := 8;
+   subtype Error_Count is Natural range 0 .. Maximum_Captured_Errors;
+   subtype Error_Index is Positive range 1 .. Maximum_Captured_Errors;
+   type Error_Kind is (Policy_Error, Identity_Error, Firmware_Error, Source_Error, Channel_Error);
+   function Error_Name (Kind : Error_Kind) return String;
+   type Error_Observation is record
+      Kind : Error_Kind := Policy_Error;
+      Device : ACPI_Service.Node_Descriptor := ACPI_Service.Values.No_Node;
+      Path : ACPI_Native_Initializer_History.Path_Text := [others => ' '];
+      Path_Complete : Boolean := False;
+      Search : Owner.Controller.Search_Error;
+      Firmware : Discovery.Report;
+      Source_Status : Resolver.Outcome := Resolver.Invalid_Device;
+      Channel_Status : Channels.Outcome := Channels.Invalid_I2C_Target;
+   end record;
+   type Error_Array is array (Error_Index) of Error_Observation;
    type Report is record
       Status : Outcome := Not_Attempted;
+      Last_Step : Progress_Step := Not_Started;
+      Exceptional_Exit : Boolean := False;
+      -- Candidates/Observed count eligible devices; inactive alternatives
+      -- are descriptive skips and do not consume the active-device budget.
       Candidates, Observed : Candidate_Count := 0;
+      Unavailable : Unavailable_Count := 0;
+      -- Pre-identity policy exclusions count all Device objects, not known HID
+      -- alternatives; identity AML intentionally never runs on these paths.
+      Policy_Excluded : Unavailable_Count := 0;
+      Node_Errors : Unavailable_Count := 0;
+      Failed_Candidates : Candidate_Count := 0;
+      Captured_Errors : Error_Count := 0;
+      Errors : Error_Array;
       Charged : Natural := 0;
       Channel_Attempted : Boolean := False;
       Last_Channel_Status : Channels.Outcome := Channels.Invalid_I2C_Target;
@@ -56,5 +100,13 @@ package ACPI_Native_HID_Detection is
    -- backend semantics and the owner must revalidate current resources and all
    -- three identities before a later handoff. No rows are wire-visible here.
    procedure Run (Server : in out ACPI_Requests.State; Result : out Report;
+      Limits : Policy := (others => <>));
+   generic
+      with procedure Check_Candidate
+        (Service : aliased in out ACPI_Service.State;
+         Item : ACPI_Service.Node_Descriptor; Budget : Natural;
+         Result : out Owner.Controller.Policy_Report);
+   procedure Run_With_Policy
+     (Server : in out ACPI_Requests.State; Result : out Report;
       Limits : Policy := (others => <>));
 end ACPI_Native_HID_Detection;

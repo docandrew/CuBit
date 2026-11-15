@@ -9,6 +9,11 @@ for(const row of catalog.inputs){const p=path.resolve(root,row.path);if(!p.start
 for(const[name,h]of Object.entries(inventory.source_sha256)){const p=sources.find(p=>path.basename(p)===name);if(!p||hash(p)!==h)throw Error('Proof obligation/source linkage');}
 if(new Set(sources.map(p=>path.basename(p))).size!==3)throw Error('Duplicate proof unit');
 for(const name of ['run.sh','run.mjs','audit.mjs','inventory.json','sources.json'])pins[here+'/'+name]=hash(here+'/'+name);
+for(const metadataEntry of catalog.prerequisites??[]){
+ const metadataPath=path.resolve(root,metadataEntry.path);
+ if(!metadataPath.startsWith(root+path.sep)||fs.lstatSync(metadataPath).isSymbolicLink()||fs.realpathSync(metadataPath)!==metadataPath||crypto.createHash('sha256').update(fs.readFileSync(metadataPath)).digest('hex')!==metadataEntry.sha256)throw Error('Prerequisite pin '+metadataEntry.path);
+ pins[metadataPath]=metadataEntry.sha256;
+}
 if(validate){console.log(JSON.stringify({validated:true,sources:3,entities:inventory.entities.length,executed:false}));process.exit(0);}
 if(process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('TMPDIR');
 const out=fs.mkdtempSync(process.env.TMPDIR+'/ec-supervisor-proof-');fs.mkdirSync(out+'/source');console.log(out);

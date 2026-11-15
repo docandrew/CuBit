@@ -1,9 +1,10 @@
-project Release is
- for Source_Dirs use ("models", "boundary", "../../userspace/services/acpi", "../../userspace/services/acpi/lib", "../../userspace/services/acpi/request-driver", "../../userspace/services/acpi/region-init", "../../shared/firmware", "../../shared/acpi", "../../userspace/services/acpi/resource-consumer");
+project release is
+ for Source_Dirs use ("models","boundary","../../userspace/services/acpi","../../userspace/services/acpi/lib","../../userspace/services/acpi/request-driver","../../userspace/services/acpi/region-init","../../shared/firmware","../../shared/acpi","../../userspace/services/acpi/resource-consumer","../../userspace/services/acpi/field-client/provider","../acpi-target-heap-model");
  for Main use ("observer_tests.adb");
- for Object_Dir use external ("OBSERVER_BUILD") & "/obj";
- for Exec_Dir use external ("OBSERVER_BUILD") & "/bin";
- package Compiler is
-  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
- end Compiler;
-end Release;
+ for Object_Dir use external("OBSERVER_BUILD") & "/obj";
+ for Exec_Dir use external("OBSERVER_BUILD") & "/bin";
+ for Excluded_Source_Files use("acpi_target_heap.adb");
+ package Naming is for Body("ACPI_Target_Heap") use "acpi_target_heap_host.adb";end Naming;
+ package Compiler is for Default_Switches("Ada") use("-O0","-gnat2022","-gnatwa","-gnatwe","-gnatp");
+ 
+ end Compiler;end release;

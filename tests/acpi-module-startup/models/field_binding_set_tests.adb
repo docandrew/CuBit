@@ -116,7 +116,7 @@ begin
       declare
          S, Other : aliased C.State (1, 4096, 4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          IO, Foreign : Context;
-         Items, Empty, Partial : F.Binding_Set;
+         Items, Empty, Partial : F.Binding_Set(F.Default_Binding_Capacity);
          One : F.Binding;
          K1, K2, Other_Key : C.Values.Field_Key;
          Description : C.Values.Field_Description;

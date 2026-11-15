@@ -1,0 +1,530 @@
+{
+  "schema_version": 1,
+  "scope": "Actual startup controller/sender/owner-cleanup production units, modeled Core, observer, physical I/O, kernel, heap and clocks. No actual AML discovery/native execution or new proof.",
+  "groups": [
+    {
+      "name": "controller",
+      "main": "controller_tests.adb",
+      "arguments": [
+        [
+          "1"
+        ],
+        [
+          "2"
+        ],
+        [
+          "3"
+        ],
+        [
+          "4"
+        ],
+        [
+          "5"
+        ],
+        [
+          "6"
+        ],
+        [
+          "7"
+        ],
+        [
+          "8"
+        ],
+        [
+          "9"
+        ],
+        [
+          "10"
+        ],
+        [
+          "11"
+        ],
+        [
+          "12"
+        ],
+        [
+          "13"
+        ],
+        [
+          "14"
+        ],
+        [
+          "15"
+        ],
+        [
+          "16"
+        ],
+        [
+          "17"
+        ],
+        [
+          "18"
+        ],
+        [
+          "19"
+        ],
+        [
+          "20"
+        ],
+        [
+          "21"
+        ],
+        [
+          "22"
+        ],
+        [
+          "23"
+        ],
+        [
+          "24"
+        ],
+        [
+          "25"
+        ]
+      ],
+      "pattern": "^Pre-device checks ([0-9]+)\\n$",
+      "cases": 25,
+      "checksPerProfile": 242,
+      "units": [
+        {
+          "name": "acpi_delay_domains.adb",
+          "path": "userspace/services/acpi/native-clock/acpi_delay_domains.adb",
+          "role": "production",
+          "sha256": "e8a89588ce66ddf0f2d326e8b7dae32df510566fe96c2dc017db0d868e54ebe4"
+        },
+        {
+          "name": "acpi_delay_domains.ads",
+          "path": "userspace/services/acpi/native-clock/acpi_delay_domains.ads",
+          "role": "production",
+          "sha256": "2416d8f7e9a79f62eadbfb0ff999fe61c329c0e1489107e76795446f9e72b2e9"
+        },
+        {
+          "name": "acpi_fallible_heap.adb",
+          "path": "controller/acpi_fallible_heap.adb",
+          "role": "fixture",
+          "sha256": "6ae465f08d29c38d76114c3a910af71475c2fc39be3a16ef15f224b053c4f451"
+        },
+        {
+          "name": "acpi_fallible_heap.ads",
+          "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+          "role": "production",
+          "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+        },
+        {
+          "name": "acpi_native_delays.adb",
+          "path": "controller/acpi_native_delays.adb",
+          "role": "fixture",
+          "sha256": "3794f93b19e8364fa41c61f67bb05152a64b6cbe135bf41a9eb4f853deb10534"
+        },
+        {
+          "name": "acpi_native_delays.ads",
+          "path": "controller/acpi_native_delays.ads",
+          "role": "fixture",
+          "sha256": "57700cb1775e7b4db98d4c2c4edf9b077997ea39fcf698ca01dca7cacb537579"
+        },
+        {
+          "name": "acpi_native_gpio_admission.adb",
+          "path": "userspace/services/acpi/native/acpi_native_gpio_admission.adb",
+          "role": "production",
+          "sha256": "d67fb3bee03c0ad4d8b7cd5d241223f74105753434a905bc159557e8fc7ead47"
+        },
+        {
+          "name": "acpi_native_gpio_admission.ads",
+          "path": "userspace/services/acpi/native/acpi_native_gpio_admission.ads",
+          "role": "production",
+          "sha256": "28c6041b58afe206b2b133b1c9b6fc201477dca48de24f0715fbd8235e5f82c6"
+        },
+        {
+          "name": "acpi_native_gpio_observation.adb",
+          "path": "controller/acpi_native_gpio_observation.adb",
+          "role": "fixture",
+          "sha256": "7e902a28008fd1dfcbbc418e02e880c07bd0cbc40a0406aec200c82d8ba3a687"
+        },
+        {
+          "name": "acpi_native_gpio_observation.ads",
+          "path": "controller/acpi_native_gpio_observation.ads",
+          "role": "fixture",
+          "sha256": "0eeeb17b7ffa5babc06d875db4a395c4336e684f66f08a2bb6c60110eaf92b38"
+        },
+        {
+          "name": "acpi_native_pre_device.adb",
+          "path": "userspace/services/acpi/native/acpi_native_pre_device.adb",
+          "role": "production",
+          "sha256": "56a797974d370666f877c3ef49147c0f43c53677d7645a838d648603da29db29"
+        },
+        {
+          "name": "acpi_native_pre_device.ads",
+          "path": "userspace/services/acpi/native/acpi_native_pre_device.ads",
+          "role": "production",
+          "sha256": "cae32dfe7302a76bba5aa54f3f07093fd24e1feb0b5021f031b72feb0e7f2e39"
+        },
+        {
+          "name": "acpi_one_service.ads",
+          "path": "controller/acpi_one_service.ads",
+          "role": "fixture",
+          "sha256": "8f2764fb01a36c68c1a40ba1634762e92c0505219002d9ca98158c307f623312"
+        },
+        {
+          "name": "acpi_service.adb",
+          "path": "controller/acpi_service.adb",
+          "role": "fixture",
+          "sha256": "260744f8e56654af9169645e85c2d56794e30040113c7091c5cd9397c21348a5"
+        },
+        {
+          "name": "acpi_service.ads",
+          "path": "controller/acpi_service.ads",
+          "role": "fixture",
+          "sha256": "42b53be84e3d6567db09416fcc4d85ebf4d9bab4af9574c8608eef2f1bf97db0"
+        },
+        {
+          "name": "controller_tests.adb",
+          "path": "controller/controller_tests.adb",
+          "role": "fixture",
+          "sha256": "fd69ad145ad806fbf5f5e9882d638b995a1c24a6db3f8053fc448ca627376628"
+        },
+        {
+          "name": "cubit-firmware_data_exchange.ads",
+          "path": "controller/cubit-firmware_data_exchange.ads",
+          "role": "fixture",
+          "sha256": "6fc3841edc93c325bac8784c1947083258782a87c42e058316de58ea12b33dbb"
+        },
+        {
+          "name": "cubit-gpio_bootstrap_exchange.ads",
+          "path": "userspace/runtime/gnat/cubit-gpio_bootstrap_exchange.ads",
+          "role": "production",
+          "sha256": "0a1f2ca52637fddb81363f68f19550726b63f4ebe8bc9c895a6d18a43fe5e921"
+        },
+        {
+          "name": "cubit-grant_references.ads",
+          "path": "userspace/runtime/gnat/cubit-grant_references.ads",
+          "role": "production",
+          "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
+        },
+        {
+          "name": "cubit-handles-ipc.adb",
+          "path": "controller/cubit-handles-ipc.adb",
+          "role": "fixture",
+          "sha256": "b2e0c7531fb39c4133792bea9d97e94a56e644f3459410f2835a90805a0c6fe8"
+        },
+        {
+          "name": "cubit-handles-ipc.ads",
+          "path": "controller/cubit-handles-ipc.ads",
+          "role": "fixture",
+          "sha256": "7e61196714ea3a2133b8a250f86d0a759aad486d3645b32c613608503805e719"
+        },
+        {
+          "name": "cubit-handles.ads",
+          "path": "controller/cubit-handles.ads",
+          "role": "fixture",
+          "sha256": "2f63fed56593f39dadb4eb2e7b7027ad554dcd0c6291b328b7019b048c1ab5f6"
+        },
+        {
+          "name": "cubit-memory_grants.adb",
+          "path": "controller/cubit-memory_grants.adb",
+          "role": "fixture",
+          "sha256": "e9d7e1c514dd083579a6244449025f70b695298cad7c5a5e51c4ed3695dd6f1d"
+        },
+        {
+          "name": "cubit-memory_grants.ads",
+          "path": "controller/cubit-memory_grants.ads",
+          "role": "fixture",
+          "sha256": "a85edd87a68e40238446d13f72cd42573fa3d11b44a35aaf7c89742c69d6991e"
+        },
+        {
+          "name": "cubit-messages.adb",
+          "path": "controller/cubit-messages.adb",
+          "role": "fixture",
+          "sha256": "d972bbf1f10c7a97c4d4ff6124b6a39687c38c5568c85512bd7e8656926c7ee9"
+        },
+        {
+          "name": "cubit-messages.ads",
+          "path": "controller/cubit-messages.ads",
+          "role": "fixture",
+          "sha256": "5007fc4e09b6d0083476561b0d440fdc33660945a4dcb62003ad930009d54d2f"
+        },
+        {
+          "name": "cubit-monotonic.adb",
+          "path": "controller/cubit-monotonic.adb",
+          "role": "fixture",
+          "sha256": "c9207af1d7d45fbfd94d4c4fed911c5731972b018e768e08271e908433c6e115"
+        },
+        {
+          "name": "cubit-monotonic.ads",
+          "path": "controller/cubit-monotonic.ads",
+          "role": "fixture",
+          "sha256": "d679f0e63d9d7d132190c77d3e6a69c8f53996ef85c3f5940bc22163afd4d3a9"
+        },
+        {
+          "name": "cubit.ads",
+          "path": "controller/cubit.ads",
+          "role": "fixture",
+          "sha256": "da1156fc1292b3f4a2d17ceea94a50ab6c4ba33f7a4129a05d0ed3f6c02aa19a"
+        },
+        {
+          "name": "firmware_tables.ads",
+          "path": "controller/firmware_tables.ads",
+          "role": "fixture",
+          "sha256": "26eb61975898273401f9d54dba4ecf73b53b981a8a62e9c79459c824c3d41641"
+        },
+        {
+          "name": "gpio_bootstrap_payload.adb",
+          "path": "shared/platform/gpio_bootstrap_payload.adb",
+          "role": "production",
+          "sha256": "d9fe6829eccbc83ca4c243782615e86b56fa178b638772068d67647db15b1856"
+        },
+        {
+          "name": "gpio_bootstrap_payload.ads",
+          "path": "shared/platform/gpio_bootstrap_payload.ads",
+          "role": "production",
+          "sha256": "4cf14ae8a96a03f1aa2d97b99507261b58acb8d2c682c1205de7ca401c30f094"
+        },
+        {
+          "name": "prep_model.ads",
+          "path": "controller/prep_model.ads",
+          "role": "fixture",
+          "sha256": "d8eaa50a4fc2fc4229526225babd52174a5ce5062ce0a1dbc131f731376fc39d"
+        },
+        {
+          "name": "sender_model.adb",
+          "path": "controller/sender_model.adb",
+          "role": "fixture",
+          "sha256": "6da86c55bc8f04283b0bc6a5339689661a2c8a470aa56e0da338e8434c84ccee"
+        },
+        {
+          "name": "sender_model.ads",
+          "path": "controller/sender_model.ads",
+          "role": "fixture",
+          "sha256": "7af03dcc6afc63a50e814919fc5013e02d46914a325c59619169473b8b2138c3"
+        },
+        {
+          "role": "fixture",
+          "name": "acpi_native_initializer_history.ads",
+          "path": "controller/acpi_native_initializer_history.ads",
+          "sha256": "a9a7252966270ab4b1f7190267bf1fd615741de317eb41e6343598e0d9e8b20d"
+        },
+        {
+          "role": "fixture",
+          "name": "acpi_native_initializer_history.adb",
+          "path": "controller/acpi_native_initializer_history.adb",
+          "sha256": "ed0493bc6b5ce1ce9285fd5ee1afe9aa91e83b13d63d1da24b497bc08aa0ed90"
+        }
+      ]
+    },
+    {
+      "name": "sender",
+      "main": "sender_tests.adb",
+      "arguments": [
+        []
+      ],
+      "pattern": "^GPIO sender checks ([0-9]+)\\n$",
+      "cases": 63,
+      "checksPerProfile": 603,
+      "units": [
+        {
+          "name": "acpi_fallible_heap.adb",
+          "path": "sender/acpi_fallible_heap.adb",
+          "role": "fixture",
+          "sha256": "d9e9a16fff878c7f5bd98b5ef7e525ea33d612989ccbd6f0bd50db81cde1bd1d"
+        },
+        {
+          "name": "acpi_fallible_heap.ads",
+          "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+          "role": "production",
+          "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+        },
+        {
+          "name": "acpi_native_gpio_admission.adb",
+          "path": "userspace/services/acpi/native/acpi_native_gpio_admission.adb",
+          "role": "production",
+          "sha256": "d67fb3bee03c0ad4d8b7cd5d241223f74105753434a905bc159557e8fc7ead47"
+        },
+        {
+          "name": "acpi_native_gpio_admission.ads",
+          "path": "userspace/services/acpi/native/acpi_native_gpio_admission.ads",
+          "role": "production",
+          "sha256": "28c6041b58afe206b2b133b1c9b6fc201477dca48de24f0715fbd8235e5f82c6"
+        },
+        {
+          "name": "cubit-firmware_data_exchange.ads",
+          "path": "sender/cubit-firmware_data_exchange.ads",
+          "role": "fixture",
+          "sha256": "6fc3841edc93c325bac8784c1947083258782a87c42e058316de58ea12b33dbb"
+        },
+        {
+          "name": "cubit-gpio_bootstrap_exchange.ads",
+          "path": "userspace/runtime/gnat/cubit-gpio_bootstrap_exchange.ads",
+          "role": "production",
+          "sha256": "0a1f2ca52637fddb81363f68f19550726b63f4ebe8bc9c895a6d18a43fe5e921"
+        },
+        {
+          "name": "cubit-grant_references.ads",
+          "path": "userspace/runtime/gnat/cubit-grant_references.ads",
+          "role": "production",
+          "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
+        },
+        {
+          "name": "cubit-handles-ipc.adb",
+          "path": "sender/cubit-handles-ipc.adb",
+          "role": "fixture",
+          "sha256": "3498fec9869e99edb3f3f9d411c503e8c9d83f62f5e91d020803097f2ef4bcc0"
+        },
+        {
+          "name": "cubit-handles-ipc.ads",
+          "path": "sender/cubit-handles-ipc.ads",
+          "role": "fixture",
+          "sha256": "7e61196714ea3a2133b8a250f86d0a759aad486d3645b32c613608503805e719"
+        },
+        {
+          "name": "cubit-handles.ads",
+          "path": "sender/cubit-handles.ads",
+          "role": "fixture",
+          "sha256": "2f63fed56593f39dadb4eb2e7b7027ad554dcd0c6291b328b7019b048c1ab5f6"
+        },
+        {
+          "name": "cubit-memory_grants.adb",
+          "path": "sender/cubit-memory_grants.adb",
+          "role": "fixture",
+          "sha256": "e9d7e1c514dd083579a6244449025f70b695298cad7c5a5e51c4ed3695dd6f1d"
+        },
+        {
+          "name": "cubit-memory_grants.ads",
+          "path": "sender/cubit-memory_grants.ads",
+          "role": "fixture",
+          "sha256": "a85edd87a68e40238446d13f72cd42573fa3d11b44a35aaf7c89742c69d6991e"
+        },
+        {
+          "name": "cubit-messages.adb",
+          "path": "sender/cubit-messages.adb",
+          "role": "fixture",
+          "sha256": "d972bbf1f10c7a97c4d4ff6124b6a39687c38c5568c85512bd7e8656926c7ee9"
+        },
+        {
+          "name": "cubit-messages.ads",
+          "path": "sender/cubit-messages.ads",
+          "role": "fixture",
+          "sha256": "5007fc4e09b6d0083476561b0d440fdc33660945a4dcb62003ad930009d54d2f"
+        },
+        {
+          "name": "cubit-monotonic.adb",
+          "path": "sender/cubit-monotonic.adb",
+          "role": "fixture",
+          "sha256": "c9207af1d7d45fbfd94d4c4fed911c5731972b018e768e08271e908433c6e115"
+        },
+        {
+          "name": "cubit-monotonic.ads",
+          "path": "sender/cubit-monotonic.ads",
+          "role": "fixture",
+          "sha256": "d679f0e63d9d7d132190c77d3e6a69c8f53996ef85c3f5940bc22163afd4d3a9"
+        },
+        {
+          "name": "cubit.ads",
+          "path": "sender/cubit.ads",
+          "role": "fixture",
+          "sha256": "da1156fc1292b3f4a2d17ceea94a50ab6c4ba33f7a4129a05d0ed3f6c02aa19a"
+        },
+        {
+          "name": "gpio_bootstrap_payload.adb",
+          "path": "shared/platform/gpio_bootstrap_payload.adb",
+          "role": "production",
+          "sha256": "d9fe6829eccbc83ca4c243782615e86b56fa178b638772068d67647db15b1856"
+        },
+        {
+          "name": "gpio_bootstrap_payload.ads",
+          "path": "shared/platform/gpio_bootstrap_payload.ads",
+          "role": "production",
+          "sha256": "4cf14ae8a96a03f1aa2d97b99507261b58acb8d2c682c1205de7ca401c30f094"
+        },
+        {
+          "name": "sender_model.adb",
+          "path": "sender/sender_model.adb",
+          "role": "fixture",
+          "sha256": "6da86c55bc8f04283b0bc6a5339689661a2c8a470aa56e0da338e8434c84ccee"
+        },
+        {
+          "name": "sender_model.ads",
+          "path": "sender/sender_model.ads",
+          "role": "fixture",
+          "sha256": "7af03dcc6afc63a50e814919fc5013e02d46914a325c59619169473b8b2138c3"
+        },
+        {
+          "name": "sender_tests.adb",
+          "path": "sender/sender_tests.adb",
+          "role": "fixture",
+          "sha256": "c96949074e3c6ca440a6bea5c1543bb195cb3f25264664335bf9cc923e8d13a0"
+        }
+      ]
+    },
+    {
+      "name": "owner-cleanup",
+      "main": "cleanup_tests.adb",
+      "arguments": [
+        []
+      ],
+      "pattern": "^Owner cleanup checks ([0-9]+)\\n$",
+      "cases": null,
+      "checksPerProfile": 1177,
+      "units": [
+        {
+          "name": "acpi_bootstrap-with_owner_cleanup.adb",
+          "path": "userspace/services/acpi/acpi_bootstrap-with_owner_cleanup.adb",
+          "role": "production",
+          "sha256": "84d3ab683829da40d845d41cc27a075ea4aa0f8cbf5af6c6b0e5fa4a027cf7c8"
+        },
+        {
+          "name": "acpi_bootstrap-with_owner_cleanup.ads",
+          "path": "userspace/services/acpi/acpi_bootstrap-with_owner_cleanup.ads",
+          "role": "production",
+          "sha256": "90f42e01b89d2c914f68f93adef6b947e42d6c22244236c7028779a2661e9cb9"
+        },
+        {
+          "name": "acpi_bootstrap.ads",
+          "path": "owner-cleanup/acpi_bootstrap.ads",
+          "role": "fixture",
+          "sha256": "ff48bb7b29cb3ce5c844b4f19ea85f52d1361e2427111767ebe9308cc5d0604b"
+        },
+        {
+          "name": "acpi_delay_domains.adb",
+          "path": "userspace/services/acpi/native-clock/acpi_delay_domains.adb",
+          "role": "production",
+          "sha256": "e8a89588ce66ddf0f2d326e8b7dae32df510566fe96c2dc017db0d868e54ebe4"
+        },
+        {
+          "name": "acpi_delay_domains.ads",
+          "path": "userspace/services/acpi/native-clock/acpi_delay_domains.ads",
+          "role": "production",
+          "sha256": "2416d8f7e9a79f62eadbfb0ff999fe61c329c0e1489107e76795446f9e72b2e9"
+        },
+        {
+          "name": "acpi_requests-with_owner_cleanup.adb",
+          "path": "userspace/services/acpi/acpi_requests-with_owner_cleanup.adb",
+          "role": "production",
+          "sha256": "4e41c727a46cc949579248249440232521baf5eadd40ab4121df46a1d090d9e4"
+        },
+        {
+          "name": "acpi_requests-with_owner_cleanup.ads",
+          "path": "userspace/services/acpi/acpi_requests-with_owner_cleanup.ads",
+          "role": "production",
+          "sha256": "6ef7ebfa8df6f0550d4a4ef567d4d8966d3c6fa62ff0f2d44f84b6f89d018e64"
+        },
+        {
+          "name": "acpi_requests.ads",
+          "path": "owner-cleanup/acpi_requests.ads",
+          "role": "fixture",
+          "sha256": "8b546fc9bf38c7537c70c838b9c4a3cbc8586198ceaf725c838ee47ba0173a96"
+        },
+        {
+          "name": "acpi_service.ads",
+          "path": "owner-cleanup/acpi_service.ads",
+          "role": "fixture",
+          "sha256": "95d7c050e29de3657743ca1078da65632978fc232a04a6c2c5a79ef3290efbf9"
+        },
+        {
+          "name": "cleanup_tests.adb",
+          "path": "owner-cleanup/cleanup_tests.adb",
+          "role": "fixture",
+          "sha256": "8306b9420ba1ccf401f05b70d74c7672ee2c128ad655c444d0af10e94ba71c92"
+        }
+      ]
+    }
+  ]
+}

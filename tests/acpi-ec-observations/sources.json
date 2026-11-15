@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_types.ads",
+      "sha256": "afa8f40ad72334d15a7c0cfa1f9bf2f2c2d9611fa7e634de9147fee51a591726"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_transactions.ads",
+      "sha256": "8a04c0573ed94ce0bfb8f47a97c1dbf2b6a2947e0aa9c12ac4b1014a3b825646"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_ec_transactions.adb",
+      "sha256": "406f0cd09a47a449fbeb3b6363b70562d04de944b82dd565858c73fab629b351"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_local_ec_commands.ads",
+      "sha256": "0451ff52cd612254de140a2da90fc650bac2204dc12643704b87bba181e53467"
+    },
+    {
+      "path": "userspace/services/acpi/ec/acpi_local_ec_commands.adb",
+      "sha256": "d3947f3e0a4b774bea5453a7101ff25fc0613ebdeb457bfd85fa510052a51c4e"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_diagnostic_output.ads",
+      "sha256": "d55850e43def1d5a0419e4d12181977a4ba4c70d839dbdc2f176fa36fd535a13"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_diagnostic_output.adb",
+      "sha256": "5705b1d74140bbae91d7f490336f002bb410d21c88a24379aec8b3b948b10f22"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_log.ads",
+      "sha256": "8ca21d6302586b8877695faf16eb4eae26305d5837635ba713c289b66589f270"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_log.adb",
+      "sha256": "c055de0cae0fcaa671072e3e0014d097856710b58d0d0f9b7732414320d06054"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-logging.adb",
+      "sha256": "d967498e2224608cd9d6068c9b333d6d61770765f4b84aa284501e9519ac4ff8"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channels.adb",
+      "sha256": "e6bfe758cc773ff9f71b76572d3227d6b29a6b27a23b5bc656465cf64782dcaa"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-messages.adb",
+      "sha256": "0a1cc66a5f7aeff67286f6264790f0b0928b322ef255847dae8356b6c41f5866"
+    },
+    {
+      "path": "tests/acpi-ec-observations/run.mjs",
+      "sha256": "d8635fe97a8c8eedd189a759a82ca5961d62d81cd970f55707c1d818a3e61595"
+    },
+    {
+      "path": "tests/acpi-ec-observations/run.sh",
+      "sha256": "e92253d9fe4c9820f6bf314d01962ecc161c1b76d3c6b87b0cdd2e99a5f51d1d"
+    },
+    {
+      "path": "tests/acpi-ec-observations/README.md",
+      "sha256": "9985888b27ec77210554e4e0770e833472ce8fbda500cb58194089398b1e4697"
+    }
+  ]
+}

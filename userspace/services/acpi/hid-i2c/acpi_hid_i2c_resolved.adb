@@ -2,6 +2,12 @@ package body ACPI_HID_I2C_Resolved with SPARK_Mode is
    use type Candidates.Outcome;
    use type Sources.Outcome;
    use type Core.Namespace.Object_Kind;
+   function Ordinary_Error (Item : Report) return Boolean is
+     (Item.Status = Candidate_Failed
+      or else (Item.Status = I2C_Source_Failed
+        and then Item.I2C.Status in Sources.Bad_Source | Sources.Above_Root | Sources.Not_Found | Sources.Not_Device)
+      or else (Item.Status = GPIO_Source_Failed
+        and then Item.GPIO.Status in Sources.Bad_Source | Sources.Above_Root | Sources.Not_Found | Sources.Not_Device));
    function Is_Device (Service : Core.State; Node : Core.Node_Descriptor) return Boolean is
      (Core.Current_Node (Service, Node)
       and then Core.Values.Node_Kind (Node) = Core.Namespace.Device_Object);

@@ -60,14 +60,12 @@ package ACPI_EC_Transactions with SPARK_Mode, Initial_Condition => Coherent is
    function Needs_Recovery return Boolean;
    function Stop_Requested return Boolean;
    function Wake_At return Microseconds;
+   function Diagnostics return Transaction_Observation;
    --  Faulted/uncertain interfaces cannot be reset by acknowledging a result.
    procedure Acknowledge (Accepted : out Boolean) with Pre => Coherent,
      Post => Coherent and then Acknowledge_Transition (State_Of'Old, State_Of, Accepted);
 private
-   type Phase is
-     (Dormant, Initial_Status, Send_Command, Stamp_Write, Wait_Input,
-      Send_Address, Send_Value, Wait_Output, Read_Output, Confirm_Idle,
-      Complete_Exchange);
+   subtype Phase is Engine_Phase;
    Current : Phase := Dormant;
    After_Write : Phase := Dormant;
    State : Outcome := Idle;
@@ -85,6 +83,12 @@ private
    Recovery : Boolean := False;
    Stopping : Boolean := False;
    Next_Input : Phase := Dormant;
+   Diagnostic_Phase : Phase := Dormant;
+   Diagnostic_Began, Diagnostic_Sample : Microseconds := 0;
+   Diagnostic_Has_Began, Diagnostic_Sample_Available : Boolean := False;
+   Status_Attempted, Status_Known : Boolean := False;
+   Diagnostic_Status : Byte := 0;
+   Diagnostic_Status_Result : Access_Result := Refused;
    Given_Budget : Work_Budget := 0 with Ghost;
    Accesses : Work_Budget := 0 with Ghost;
    function State_Of return State_View is

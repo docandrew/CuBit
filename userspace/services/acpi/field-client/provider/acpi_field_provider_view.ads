@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Field_Notes;
 with AML_Field_Access;
 with AML_Field_Layout;
 with AML_Identity;
@@ -38,7 +39,11 @@ generic
      (IO : in out Provider_Context; Accepted : in out Boolean) is null;
    Locked_NVS_Reads : Boolean := False;
    Allow_Locked_Fields : Boolean := False;
+   with procedure Observe_Field (Item : AML_Field_Notes.Event) is null;
+   Field_Notes_Enabled : Boolean := False;
 package ACPI_Field_Provider_View is
+   Supports_Field_Notes : constant Boolean := Field_Notes_Enabled;
+   procedure Note_Field (Item : AML_Field_Notes.Event) renames Observe_Field;
    Supports_Locked_NVS_Reads : constant Boolean := Locked_NVS_Reads;
    Supports_Whole_Field_Locks : constant Boolean := Allow_Locked_Fields;
    subtype Context is Provider_Context;

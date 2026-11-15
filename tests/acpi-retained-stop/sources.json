@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/native/acpi_native_events.ads",
+      "sha256": "835a76a183ca43f1fd5fd572dd33754d5688a297aa928aab225974f84f354da7"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_events.adb",
+      "sha256": "ca221fc0df45c3970972e3faaf74a655739b36c2c40185f47e30ffa3406e2464"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_system_events.ads",
+      "sha256": "142a82065679756bba8d908118095dad8d7e9443ebdec3c0c4e119e732c2426c"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_system_events.adb",
+      "sha256": "adf9ba3f3a895302e50f0d0315b9646b3f1ec38a1a89520787e2bef0f22a856d"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_one_service.adb",
+      "sha256": "b68d7a4b282d293da040b3cd03c4ee9e2bacb05f4a259b66d268df2bda99fb74"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.ads",
+      "sha256": "d012ffd2942827ef674e11921492508bfc46f0787553c94fb1c745cdcbe5d48a"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.adb",
+      "sha256": "0670a89f145f4ae0006e7f4014d9c9c6e28e6e7cc4cae29c54edf205d5ff2478"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-control_events.ads",
+      "sha256": "9917bc1c897c36acaac0b8968d7fa6be527bd1bd5cefe42d3d92eadec04b6511"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-grant_references.ads",
+      "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-messages.ads",
+      "sha256": "5821c8bfe49dca95b486dc76b93d4a43377edc3f9bf8a62c1d07d023c9eac2b2"
+    },
+    {
+      "path": "shared/capabilities/channel_wake_abi.ads",
+      "sha256": "ef921b0ac679aff21ba9bbe4909f07b0ca904a03842b9596feee06d3b33bfeea"
+    },
+    {
+      "path": "shared/capabilities/capability_abi.ads",
+      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc"
+    },
+    {
+      "path": "shared/capabilities/capability_abi.adb",
+      "sha256": "f280df7b0e8291913387a6bd4607a7e18b3025d5cb512c07f102ad90b682af20"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_power_retirement_replies.ads",
+      "sha256": "6e8b0f5163b23e5a958fb065e0e66332ba66863432ed147678b2648873f8ebd8"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_power_retirement_replies.adb",
+      "sha256": "77617240e5c421acbec29ca0ec18c0913ee4c896690958fb3ddbfd883d23d924"
+    }
+  ],
+  "tests": [
+    {
+      "path": "README.md",
+      "sha256": "c5312ddd6d90736ff98b06ede94d1e1fdbf23216530713345fb6188b13b6d682"
+    },
+    {
+      "path": "run.mjs",
+      "sha256": "77df3cd9e9bdf9abdbc0a5e4b22d923ebcc9c61914bd76992cb8f8c066129ae6"
+    },
+    {
+      "path": "run.sh",
+      "sha256": "11ee94042cad01ea83f1d4267609e043b1d27f6f4b871c8d35cbffa658d53259"
+    },
+    {
+      "path": "fixtures/acpi_native_log.adb",
+      "sha256": "58d7cb325695cef536b5f86b9c033d5b347d3c8cd19236ebe86381b93276c07d"
+    },
+    {
+      "path": "fixtures/acpi_native_log.ads",
+      "sha256": "e1f56b6b779e83af36a26fedb4a3d20c8735a07fb5e697bea21d64516310fdea"
+    },
+    {
+      "path": "fixtures/cubit-channel_bells.adb",
+      "sha256": "8a41f54c9405c485753b29d44e8ce473dd3d76d89fcfc822d4d7319052d03d74"
+    },
+    {
+      "path": "fixtures/cubit-channel_bells.ads",
+      "sha256": "b25724964cb753322224134e9803178a92b40f1f596003df29d061c6b80dc74b"
+    },
+    {
+      "path": "fixtures/cubit.ads",
+      "sha256": "6a3f0b27b91935d939c20d290422ebfb6e2e7447d6f9f04f7373ad5cb9c728f2"
+    },
+    {
+      "path": "fixtures/stop_tests.adb",
+      "sha256": "f5c7da51a64aa36e16744355f700265f88a28ba9fa6b36f25dd583f62182c1d5"
+    }
+  ]
+}

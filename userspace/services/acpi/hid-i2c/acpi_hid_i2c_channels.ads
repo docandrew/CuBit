@@ -13,6 +13,8 @@ package ACPI_HID_I2C_Channels with Pure, SPARK_Mode is
    use type Candidates.S.Address_Mode, Candidates.S.Slave_Address, Candidates.S.Rate;
    use type Candidates.G.Resource_Role, Candidates.G.Pin_Number;
    use type Candidates.G.Interrupt_Mode, Candidates.G.Interrupt_Polarity;
+   -- Seven-bit general call is not an individually addressed HID device.
+   General_Call_Address : constant Candidates.S.Slave_Address := 0;
    type Outcome is (Prepared, Unsupported_I2C_Role, Unsupported_Initiator,
       Unsupported_GPIO_Role, Invalid_I2C_Target, Invalid_GPIO_Input);
    type Preparation (Status : Outcome := Invalid_I2C_Target) is record
@@ -38,6 +40,8 @@ package ACPI_HID_I2C_Channels with Pure, SPARK_Mode is
             and then Item.Initiated_By = Candidates.S.Controller_Initiated
             and then Item.Interrupt_Role = Candidates.G.Consumes_Resource
             and then Item.I2C.Connection_Speed /= 0
+            and then (Item.I2C.Addressing = Candidates.S.Ten_Bit
+              or else Item.I2C.Address /= General_Call_Address)
             and then (Item.I2C.Addressing = Candidates.S.Ten_Bit
               or else Item.I2C.Address <= Candidates.S.Slave_Address (I.Seven_Bit_Last))
             and then Item.Pin <= Candidates.G.Pin_Number (G.Pin_Number'Last)

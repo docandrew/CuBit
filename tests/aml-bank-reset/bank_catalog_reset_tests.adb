@@ -140,7 +140,7 @@ procedure Bank_Catalog_Reset_Tests is
       Arena : V.Arena;
       Input : aliased AML_Table_Backing.State (1, Bank_Access_Oracle.Raw_Table'Length);
       Model : Context;
-      Old_Items, Fresh : VF.Binding_Set;
+      Old_Items, Fresh : VF.Binding_Set(VF.Default_Binding_Capacity);
       Old_Region, New_Region : V.Node_Descriptor;
       Description : V.Field_Description;
       Key : V.Field_Key;

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/backend/acpi_local_field_scope.ads",
+      "sha256": "a694bb4a5f60e49d163ce8a1826fa0b44008e76408c50c8ff784dd323a49432f",
+      "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/backend/acpi_local_field_scope.adb",
+      "sha256": "f21bd90e18ef806a64d2d3481f7fef5cc8641158191e8d639a75868604f038df",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_global_lock_protocol.ads",
+      "sha256": "da8a30b403e4af90a46e3b2c30d199e19a5adbab4697dc760ec27abca00ef6b7",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_global_lock_protocol.adb",
+      "sha256": "dcdb98355a24878b31e752205c1d398a6faaab11168912f0ca32503f06afc929",
+      "kind": "ada"
+    },
+    {
+      "path": "shared/acpi/acpi_region_protocol.ads",
+      "sha256": "d7f69bcc7c8411f70281fe5c6770851820c18c75520526d9716b0180518a64de",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-field-window-proof/field_scope_model.ads",
+      "sha256": "3a0a4ec762a318336ee8be9cca6098faeac13b7b135729818190f910f183a5e1",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-field-window-proof/field_scope_model.adb",
+      "sha256": "9b5de2c1235241eec36a30f87de68cfbfeef5f89c6243b38895278261baec4bb",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-field-window-proof/field_scope_instances.ads",
+      "sha256": "d0dbb684168ead5bbb5ec353eda1b6db50b9f01c12f06ec1e01c998ec999ef21",
+      "kind": "ada"
+    },
+    {
+      "path": "tests/acpi-field-window-proof/run.mjs",
+      "sha256": "1d7f5d5936076320a46f21370d8e2e823aa9c6f7db1e0381c474009365c07e3e",
+      "kind": "audit"
+    },
+    {
+      "path": "tests/acpi-field-window-proof/run.sh",
+      "sha256": "f6cb71956c3d79a61ce6ca6a813be2a523657493a801c1d32786f71712cf773a",
+      "kind": "audit"
+    },
+    {
+      "path": "tests/acpi-field-window-proof/README.md",
+      "sha256": "58a8a00f28e7b89e665e42c495a3b6e53984818c4ff0c5cb889526f2901a1881",
+      "kind": "audit"
+    }
+  ]
+}

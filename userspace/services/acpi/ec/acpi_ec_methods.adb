@@ -104,4 +104,10 @@ package body ACPI_EC_Methods with SPARK_Mode is
       Action := Accepted; Release (Run, Service);
       if not Pending (Run) then Run.Info.Status := Closed; end if;
    end Close;
+   procedure Retire (Run : in out Invocation; Service : Core.State; Accepted : out Boolean) is
+   begin
+      Accepted:=Run.Used and then not Pending(Run) and then Run.Info.Status=Succeeded
+        and then Core.Current_Binding(Service,Run.Owner);
+      if Accepted then Run.Used:=False;Run.Owner:=V.No_Node;Run.Info:=(others=><>);end if;
+   end Retire;
 end ACPI_EC_Methods;

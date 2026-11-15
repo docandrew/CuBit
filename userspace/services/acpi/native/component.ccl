@@ -1,13 +1,15 @@
 (Component name => "acpi" kind => (Kind.Service Launcher.Process_Manager)
   source => (Source.Ada (Ada_Source
     language => Ada_Language.Ada_2022
-    sources => ["userspace/ccl/src"
+    sources => ["shared/platform" "userspace/ccl/src"
                 "userspace/services/acpi"
                 "userspace/services/acpi/lib"
                 "userspace/services/acpi/backend"
+                "userspace/services/acpi/backend/native"
                 "userspace/services/acpi/native-clock"
                 "userspace/services/acpi/snapshot"
                 "userspace/services/acpi/ec"
+                "userspace/services/acpi/events"
                 "userspace/services/acpi/request-driver"
                 "userspace/services/acpi/field-client"
                 "userspace/services/acpi/field-client/provider"
@@ -23,6 +25,7 @@
                 "userspace/lib/gpio-admission"
                 "userspace/services/acpi/lid"
                 "userspace/services/acpi/power"
+                "shared/hardware"
                 "shared/firmware"
                 "shared/acpi"]
     link_extra => [(Link_Argument.Text "-Wl,-z,stack-size=67108864")])))

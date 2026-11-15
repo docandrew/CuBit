@@ -1,0 +1,24 @@
+# The acpi-live-replace test (tests/acpi-live-replace/acpi_live_replace.py
+# drives it): the one acpi.svc (ACPI-ONE-001) switched live through system
+# generations, as on the laptop's live and installed plans.
+# - acpi.svc: (replace graceful) with the laptop's approvals, on q35 plus
+#   the edu device and the regression SSDT (as acpi-one-service), so every
+#   instance maps a platform-pool member, takes the hardware windows, the
+#   firmware-data endpoint and the PCI broker: what must be retired on exit
+#   and granted again to the next instance.
+# - clock.svc (ccl-remote requires it), ccl-remote with builds granted and a desktop, so the person's "Allow
+#   app replacement" switch can be turned on by a click (as service-switch).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "acpi.svc" (priority 4) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Neutral))
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared)
+    (replace graceful))
+  (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
+    (arguments (Remote_Parameters listen => Remote_Listen.LAN
+      display => Pairing_Display.Kernel_Console work => "@system/work"
+      files => true builds => true mail => true)))
+)

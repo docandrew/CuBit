@@ -21,8 +21,13 @@ package body ACPI_Service_Core with SPARK_Mode is
    begin Values.Release_Storage (Service.Tree, Released); end Release_Storage;
    function Valid (Service : State) return Boolean is
      (Values.Valid (Service.Tree));
+   function Capture_Context (Service : State) return Context_Key is
+     ((Owner => Values.Context_Identity (Service.Tree)));
+   function Current_Context (Service : State; Item : Context_Key) return Boolean is
+     (Item.Owner /= AML_Identity.No_Identity and then Item.Owner = Values.Context_Identity (Service.Tree));
    function Current_Import_Phase (Service : State) return Import_Phase is (Service.Import_State);
    function Namespace_Load_Phase (Service : State) return Values.Phase is (Values.Current (Service.Tree));
+   function Namespace_Phase (Service : State) return Values.Phase is (Values.Current (Service.Tree));
    function Namespace_Generation (Service : State) return AML_Identity.Identity is (Values.Generation (Service.Tree));
    function Audit (Service : State) return Values.Audit_Value is (Values.Audit (Service.Tree));
    function Observe (Service : State) return Metrics is

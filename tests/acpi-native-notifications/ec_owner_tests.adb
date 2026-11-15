@@ -203,8 +203,14 @@ procedure EC_Owner_Tests is
       if Reenter_Loop_Event then Try_Loop_Reentry; end if;
       Stop := False; Handled := True;
    end Loop_Event;
+   procedure Maintain_Test (Wake_Deadline_Milliseconds : out Interfaces.Unsigned_64;
+      May_Continue : out Boolean) is
+   begin
+      Wake_Deadline_Milliseconds := CuBit.Messages.Wait_Forever;
+      May_Continue := Ada.Command_Line.Argument (2) /= "maintenance-stop";
+   end Maintain_Test;
    package EC_Loop is new EC_Owner.With_Dispatch
-     (ACPI_Native_Endpoint.Dispatch, Handle_Event => Loop_Event);
+     (ACPI_Native_Endpoint.Dispatch, Handle_Event => Loop_Event,Maintain_Owner => Maintain_Test);
    package M renames CuBit.Messages;
    procedure Try_Loop_Reentry is
       Before_Events : constant Natural := M.Test.Event_Polls;
@@ -604,7 +610,8 @@ begin
          begin
             Queued := [(Source, Epoch, 11, 3), (Source, Epoch, 12, 3),
               (Source, Epoch, 13, Fatal_Event), (Source, Epoch, 14, 1)];
-            if Ada.Command_Line.Argument (2) = "owner-fatal" then Queue_Length := 4;
+            if Ada.Command_Line.Argument (2) = "maintenance-stop" then Queue_Length := 2; Route_Calls := 0;
+            elsif Ada.Command_Line.Argument (2) = "owner-fatal" then Queue_Length := 4;
             elsif Ada.Command_Line.Argument (2) = "owner-drain" then Queue_Length := 2;
             elsif Ada.Command_Line.Argument (2) = "source-fail" then
                Queue_Length := 1; Source_Healthy := False;
@@ -715,7 +722,17 @@ begin
                Check (not Raised and then EC_Owner.Observation_Complete,
                  "EC loop reports a complete bounded turn");
             end if;
-            if Ada.Command_Line.Argument (2) in "kernel-stop-pending" | "kernel-stop-before-work" then
+            if Ada.Command_Line.Argument (2) = "maintenance-stop" then
+               Check (Reason = ACPI_Native_Server.Owner_Maintenance_Stopped and then EC_Owner.Is_Stopped
+                 and then Info.Status = EC_Owner.Stopped_By_Owner,
+                 "maintenance stop closes EC event admission");
+               Check (Source_Taken = 1 and then EC_Owner.Pending_Completion.Present
+                 and then EC_Owner.Pending_Completion.Item = Queued (1)
+                 and then Completion_Calls = 0 and then Route_Calls = 0,
+                 "maintenance stop preserves exact unsettled completion without handoff or replay");
+               Check (M.Test.Poll_Count = 0 and then M.Test.Reply_Count = 0 and then M.Test.Wait_Count = 0,
+                 "maintenance stop precedes request dispatch and wait");
+            elsif Ada.Command_Line.Argument (2) in "kernel-stop-pending" | "kernel-stop-before-work" then
                Check (Reason = ACPI_Native_Server.Stop_Requested and then EC_Owner.Is_Stopped
                  and then Info.Status = EC_Owner.Stopped_By_Owner and then Loop_Event_Calls = 0,
                  "authenticated stop closes the owner and cannot be vetoed by a custom event hook");

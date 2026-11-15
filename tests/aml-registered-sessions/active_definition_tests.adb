@@ -84,7 +84,7 @@ procedure Active_Definition_Tests is
    Named_Mode : constant Boolean := Mode in "named" | "field-named";
    Service : aliased C.State (4, Capacity, Limit, 4, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : IO_Context;
-   Bindings : F.Binding_Set;
+   Bindings : F.Binding_Set(F.Default_Binding_Capacity);
    Single : F.Binding;
 
    Status : V.Access_Status;

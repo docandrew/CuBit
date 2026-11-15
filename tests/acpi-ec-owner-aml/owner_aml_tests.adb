@@ -170,7 +170,7 @@ procedure Owner_AML_Tests is
       Namespace_Node_Capacity => 64, Aggregate_Method_Capacity => 4096, Retained_Result_Capacity => 4);
    package Fields is new C.Field_IO (Provider.Context, Provider.Pending, Provider.Describe,
       Provider.Dispatch, Provider.Reconciled, Authorize_Target => Provider.Authorize);
-   Service : aliased C.State (1,4096,4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements); IO : Provider.Context; Reads, Writes : Fields.Binding_Set;
+   Service : aliased C.State (1,4096,4096, Load_Capacity => 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements); IO : Provider.Context; Reads, Writes : Fields.Binding_Set(Fields.Default_Binding_Capacity);
    procedure Evaluate (State : aliased in out C.State; Item : C.Node_Descriptor; Budget : Natural;
       Result : out C.Values.Result; Status : out C.Values.Access_Status) is
    begin

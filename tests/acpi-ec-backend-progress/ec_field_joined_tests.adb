@@ -234,7 +234,7 @@ procedure EC_Field_Joined_Tests is
       Provider.Reconciled, Authorize_Target => Provider.Authorize);
    Service : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Provider.Context;
-   Reads, Writes : Fields.Binding_Set;
+   Reads, Writes : Fields.Binding_Set(Fields.Default_Binding_Capacity);
    Evaluations, Releases, Release_Failures : Natural := 0;
    Inflate_Charge : Boolean := False;
    procedure Evaluate
@@ -515,15 +515,48 @@ begin
       Region_Run, Unavailable_Run : Regions.Session;
       procedure Barrier (State : aliased in out C.State; Budget : Natural;
                          Charged : out Natural; Outcome : out ACPI_Device_Policy.Region_Outcome) is
+         pragma Unreferenced (Budget);
          OK : Boolean;
       begin
-         Expect (State, "STUP", 16#10#);
-         Regions.Connect (Region_Run, State, Context, Budget, OK);
-         Check (OK);
-         Charged := Regions.Observe (Region_Run).Charged;
-         Outcome := Regions.Outcome (Region_Run);
+         -- Preparation is metadata-only and precedes any initializer.
+         Expect (State, "STUP", 0);
+         Regions.Prepare (Region_Run, State, Context, OK);
+         Check (OK and Regions.Observe (Region_Run).Stage = Regions.Prepared);
+         Check (Context.Notices = 0);
+         Charged := 0; Outcome := ACPI_Device_Policy.Regions_Prepared;
       end Barrier;
-      package Devices is new ACPI_Device_Initialization (C, Barrier, Evaluate);
+      procedure After_Initializer
+        (State : aliased in out C.State; Scope : C.Namespace.Node_ID;
+         Initialization_Completed : Boolean; Budget : Natural;
+         Charged : in out Natural; Outcome : in out ACPI_Device_Policy.Region_Outcome) is
+         Action : Regions.Scope_Action;
+         use type Regions.Scope_Action;
+      begin
+         Charged := 0;
+         if Scope = C.Namespace.Root then
+            Check (Initialization_Completed);
+            -- Root INI must precede this direct child's REG, which in turn
+            -- must precede the child's own INI. No ordering assertion is dropped.
+            Expect (State, "STUP", 16#10#);
+            Regions.Connect_Scope (Region_Run, State, Context, C.Values.Position (EC_Device),
+              Budget, Charged, Action);
+            Check (Action = Regions.Scope_Completed);
+            Expect (State, "STUP", 1);
+         end if;
+         Outcome := ACPI_Device_Policy.Regions_Connected;
+      end After_Initializer;
+      procedure Finish_Regions
+        (State : aliased in out C.State; Budget : Natural; Charged : in out Natural;
+         Outcome : in out ACPI_Device_Policy.Region_Outcome) is
+         pragma Unreferenced (Budget);
+         OK : Boolean;
+      begin
+         Charged := 0; Regions.Finish_Connect (Region_Run, State, Context, OK);
+         Check (OK and Regions.Observe (Region_Run).Stage = Regions.Connected);
+         Outcome := Regions.Outcome (Region_Run);
+      end Finish_Regions;
+      package Devices is new ACPI_Device_Initialization
+        (C, Barrier, Evaluate, After_Initializer, Finish_Regions);
       use type Devices.Phase, Devices.Step_Result;
       Device_Run : Devices.Session;
       OK : Boolean;
@@ -540,7 +573,8 @@ begin
       Context.Provider_Installed := True;
       Devices.Begin_Initialization (Device_Run, Service, 10000, OK);
       Check (OK and Devices.Observe (Device_Run).Stage = Devices.Awaiting_Regions);
-      Expect (Service, "STUP", 16#10#);
+      Expect (Service, "STUP", 0);
+      Check (Context.Notices = 0 and IO_Count = Before_IO);
       Devices.Complete_Initialization (Device_Run, Service, OK);
       Check (OK and Devices.Observe (Device_Run).Stage = Devices.Completed);
       Check (Regions.Observe (Region_Run).Stage = Regions.Connected
@@ -722,7 +756,7 @@ begin
    Fields.Invoke_Scalar (Service, IO, Reads, C.Values.Position (Find (C.Values.Position (EC_Device), "STOR")),
                          [others => 0], 1, 1000, Result);
    Check (Result.Status = AML_Execute.Unsupported and IO_Count = Before);
-   declare Rejected : Fields.Binding_Set; begin
+   declare Rejected : Fields.Binding_Set(Fields.Default_Binding_Capacity); begin
       C.Read_Field_Descriptor (Service, C.Values.Position (Find (C.Values.Position (EC_Device), "LCKD")), Field, Key, Status);
       Check (Status = C.Values.Available);
       Fields.Add_Read_Binding (Service, IO, Key, Targets, 1, Rejected, Status);

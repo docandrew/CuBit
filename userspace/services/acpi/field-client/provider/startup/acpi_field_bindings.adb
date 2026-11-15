@@ -19,7 +19,7 @@ package body ACPI_Field_Bindings is
      (Run : in out Context; Service : Core.State; IO : in out Provider.Context; Result : out Report)
    is
       Needed : array (N.Node_ID) of Boolean := [others => False];
-      Items : Fields.Binding_Set;
+      Items : Fields.Binding_Set renames Run.Items;
       Node : Core.Node_Descriptor;
       Field : V.Field_Description;
       Key : V.Field_Key;
@@ -159,19 +159,54 @@ package body ACPI_Field_Bindings is
             end if;
          end if;
       end loop;
-      Run.Items := Items; Run.Stage := Published;
+      Run.Stage := Published;
       Run.Info.Status := (if Run.Info.Missing_Fields = 0 and then Run.Info.Unsupported_Fields = 0
         and then Run.Info.Unkeyed_Fields = 0 and then Run.Info.Direction_Conflicts = 0
         then Built else Built_With_Gaps);
       Result := Run.Info;
    end Build;
+   procedure Required_Capacity(Service:Core.State;IO:Provider.Context;
+      Capacity:out Positive;Accepted:out Boolean) is
+      Needed:array(N.Node_ID) of Boolean:=[others=>False];
+      Node:Core.Node_Descriptor;Field:V.Field_Description;Key:V.Field_Key;
+      Status:V.Access_Status;Fields_Count,Regions_Count:Natural:=0;
+      Registers:constant Natural:=Provider.Register_Count(IO);
+      Region_Entries:Natural:=0;
+   begin
+      Capacity:=1;Accepted:=False;
+      for Index in N.Root..Core.Namespace_Node_Count(Service) loop
+         Core.Describe_Node(Service,Index,Node,Status);
+         if Status=V.Available and then V.Node_Kind(Node)=N.Region_Field_Object then
+            Fields_Count:=Fields_Count+1;
+            Core.Read_Field_Descriptor(Service,Index,Field,Key,Status);
+            if Status=V.Available and then
+              (Field.Field.Organization=N.Banked_Region_Field or else
+               (Field.Field.Organization=N.Direct_Region_Field and then Field.Field.Bits>Maximum_Direct_Bits)) then
+               Needed(Field.Field.Region):=True;
+            end if;
+         end if;
+      end loop;
+      for Used of Needed loop if Used then Regions_Count:=Regions_Count+1;end if;end loop;
+      if Registers/=0 and then Regions_Count>Natural'Last/Registers then return;end if;
+      Region_Entries:=Regions_Count*Registers;
+      Capacity:=Positive'Max(1,Natural'Max(Fields_Count,Region_Entries));Accepted:=True;
+   end Required_Capacity;
+   function Current(Run:Context;Service:Core.State;IO:Provider.Context) return Boolean is
+     (Run.Stage=Published and then not Run.Borrowed and then not Provider.Pending(IO)
+      and then Provider.Ready(IO) and then Run.Provider_ID=Provider.Identity(IO)
+      and then Core.Current_Node(Service,Run.Root));
+   procedure With_Bindings(Run:in out Context;Service:Core.State;
+      IO:Provider.Context;Accepted:out Boolean) is
+   begin
+      Accepted:=Current(Run,Service,IO);if not Accepted then return;end if;
+      Run.Borrowed:=True;Action(Run.Items);Run.Borrowed:=False;
+   end With_Bindings;
    procedure Copy_Bindings
      (Run : Context; Service : Core.State; IO : Provider.Context;
       Items : out Fields.Binding_Set; Accepted : out Boolean) is
    begin
       Fields.Clear (Items);
-      Accepted := Run.Stage = Published and then Run.Provider_ID = Provider.Identity (IO)
-        and then Core.Current_Node (Service, Run.Root);
+      Accepted := Items.Capacity = Run.Items.Capacity and then Current(Run,Service,IO);
       if Accepted then Items := Run.Items; end if;
    end Copy_Bindings;
 end ACPI_Field_Bindings;

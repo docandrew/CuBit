@@ -1,0 +1,266 @@
+{
+  "version": 1,
+  "name": "acpi-pre-device-provenance",
+  "kind": "capture",
+  "main": "controller_tests.adb",
+  "profiles": [
+    "checked",
+    "release"
+  ],
+  "verdict": "Pre-device",
+  "scenarios": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25
+  ],
+  "production_files": [
+    "userspace/services/acpi/native-clock/acpi_delay_domains.adb",
+    "userspace/services/acpi/native-clock/acpi_delay_domains.ads",
+    "userspace/services/acpi/acpi_fallible_heap.ads",
+    "userspace/services/acpi/native/acpi_native_gpio_admission.adb",
+    "userspace/services/acpi/native/acpi_native_gpio_admission.ads",
+    "userspace/services/acpi/native/acpi_native_pre_device.adb",
+    "userspace/services/acpi/native/acpi_native_pre_device.ads",
+    "userspace/runtime/gnat/cubit-gpio_bootstrap_exchange.ads",
+    "userspace/runtime/gnat/cubit-grant_references.ads",
+    "shared/platform/gpio_bootstrap_payload.adb",
+    "shared/platform/gpio_bootstrap_payload.ads"
+  ],
+  "ada_directories": [],
+  "checked_units": [
+    "acpi_native_pre_device",
+    "acpi_native_gpio_admission",
+    "acpi_delay_domains"
+  ],
+  "scope": "Actual pre-device owner, GPIO transport and delay policy; Core/discovery/provider/IPC/grant/clock boundaries modeled. Exact immutable submitted GPIO facts, descriptor and receipt capture; no native/hardware execution.",
+  "selected_helpers": [
+    "tests/acpi-pre-device-provenance/fixture/acpi_fallible_heap.adb",
+    "tests/acpi-pre-device-provenance/fixture/acpi_native_delays.adb",
+    "tests/acpi-pre-device-provenance/fixture/acpi_native_delays.ads",
+    "tests/acpi-pre-device-provenance/fixture/acpi_native_gpio_observation.adb",
+    "tests/acpi-pre-device-provenance/fixture/acpi_native_gpio_observation.ads",
+    "tests/acpi-pre-device-provenance/fixture/acpi_native_initializer_history.adb",
+    "tests/acpi-pre-device-provenance/fixture/acpi_native_initializer_history.ads",
+    "tests/acpi-pre-device-provenance/fixture/acpi_one_service.ads",
+    "tests/acpi-pre-device-provenance/fixture/acpi_service.adb",
+    "tests/acpi-pre-device-provenance/fixture/acpi_service.ads",
+    "tests/acpi-pre-device-provenance/fixture/controller_tests.adb",
+    "tests/acpi-pre-device-provenance/fixture/cubit-firmware_data_exchange.ads",
+    "tests/acpi-pre-device-provenance/fixture/cubit-handles-ipc.adb",
+    "tests/acpi-pre-device-provenance/fixture/cubit-handles-ipc.ads",
+    "tests/acpi-pre-device-provenance/fixture/cubit-handles.ads",
+    "tests/acpi-pre-device-provenance/fixture/cubit-memory_grants.adb",
+    "tests/acpi-pre-device-provenance/fixture/cubit-memory_grants.ads",
+    "tests/acpi-pre-device-provenance/fixture/cubit-messages.adb",
+    "tests/acpi-pre-device-provenance/fixture/cubit-messages.ads",
+    "tests/acpi-pre-device-provenance/fixture/cubit-monotonic.adb",
+    "tests/acpi-pre-device-provenance/fixture/cubit-monotonic.ads",
+    "tests/acpi-pre-device-provenance/fixture/cubit.ads",
+    "tests/acpi-pre-device-provenance/fixture/firmware_tables.ads",
+    "tests/acpi-pre-device-provenance/fixture/prep_model.ads",
+    "tests/acpi-pre-device-provenance/fixture/sender_model.adb",
+    "tests/acpi-pre-device-provenance/fixture/sender_model.ads"
+  ],
+  "tools": {
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    },
+    "gcc": {
+      "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gcc",
+      "sha256": "216c8e207c60cee4b90866c28a4a89d424e37fecc03526d2ba825a2d2d58a1ef"
+    },
+    "iasl": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+    },
+    "acpiexec": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+    }
+  },
+  "inputs": [
+    {
+      "path": "shared/platform/gpio_bootstrap_payload.adb",
+      "sha256": "d9fe6829eccbc83ca4c243782615e86b56fa178b638772068d67647db15b1856"
+    },
+    {
+      "path": "shared/platform/gpio_bootstrap_payload.ads",
+      "sha256": "4cf14ae8a96a03f1aa2d97b99507261b58acb8d2c682c1205de7ca401c30f094"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_fallible_heap.adb",
+      "sha256": "6ae465f08d29c38d76114c3a910af71475c2fc39be3a16ef15f224b053c4f451"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_native_delays.adb",
+      "sha256": "3794f93b19e8364fa41c61f67bb05152a64b6cbe135bf41a9eb4f853deb10534"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_native_delays.ads",
+      "sha256": "57700cb1775e7b4db98d4c2c4edf9b077997ea39fcf698ca01dca7cacb537579"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_native_gpio_observation.adb",
+      "sha256": "2b36ce2d49b2d1ec995120ebdb3c343d76fb18ce0f5e0feea8e2e259b67af1a0"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_native_gpio_observation.ads",
+      "sha256": "4168c3c1e7acac5735b05d5d1835fe0d805bc61bcf80fbb0f522cd7caf4024a3"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_native_initializer_history.adb",
+      "sha256": "ed0493bc6b5ce1ce9285fd5ee1afe9aa91e83b13d63d1da24b497bc08aa0ed90"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_native_initializer_history.ads",
+      "sha256": "a9a7252966270ab4b1f7190267bf1fd615741de317eb41e6343598e0d9e8b20d"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_one_service.ads",
+      "sha256": "8f2764fb01a36c68c1a40ba1634762e92c0505219002d9ca98158c307f623312"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_service.adb",
+      "sha256": "4687d531810854a52316c09411930b45b6fa40781205f867eae2e7c2a9fb6a33"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/acpi_service.ads",
+      "sha256": "ba320e245707cdf5767d662c5624a10a7555c9395f0dea0ec253d39f5be5f1ff"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/controller_tests.adb",
+      "sha256": "9e5ce428f4047e6b015b634c5e95dd372f3f0459d3def6217cb5e8b876dc1c0f"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-firmware_data_exchange.ads",
+      "sha256": "6fc3841edc93c325bac8784c1947083258782a87c42e058316de58ea12b33dbb"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-handles-ipc.adb",
+      "sha256": "b2e0c7531fb39c4133792bea9d97e94a56e644f3459410f2835a90805a0c6fe8"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-handles-ipc.ads",
+      "sha256": "7e61196714ea3a2133b8a250f86d0a759aad486d3645b32c613608503805e719"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-handles.ads",
+      "sha256": "2f63fed56593f39dadb4eb2e7b7027ad554dcd0c6291b328b7019b048c1ab5f6"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-memory_grants.adb",
+      "sha256": "c4ec147340245537c1a161375380c1cca691c51b7e260b5580c6b6e8f61c245e"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-memory_grants.ads",
+      "sha256": "f9fc78c58584e60b69a6072e1fd5a5cb57fcfd14a189899338eda808df956edc"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-messages.adb",
+      "sha256": "d972bbf1f10c7a97c4d4ff6124b6a39687c38c5568c85512bd7e8656926c7ee9"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-messages.ads",
+      "sha256": "5007fc4e09b6d0083476561b0d440fdc33660945a4dcb62003ad930009d54d2f"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-monotonic.adb",
+      "sha256": "c9207af1d7d45fbfd94d4c4fed911c5731972b018e768e08271e908433c6e115"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit-monotonic.ads",
+      "sha256": "d679f0e63d9d7d132190c77d3e6a69c8f53996ef85c3f5940bc22163afd4d3a9"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/cubit.ads",
+      "sha256": "da1156fc1292b3f4a2d17ceea94a50ab6c4ba33f7a4129a05d0ed3f6c02aa19a"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/firmware_tables.ads",
+      "sha256": "26eb61975898273401f9d54dba4ecf73b53b981a8a62e9c79459c824c3d41641"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/prep_model.ads",
+      "sha256": "93f4f0f830ef0bc50af75e76c69950c9f4919ab2d09f7dcb15d1cde0cbf46010"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/sender_model.adb",
+      "sha256": "6da86c55bc8f04283b0bc6a5339689661a2c8a470aa56e0da338e8434c84ccee"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/fixture/sender_model.ads",
+      "sha256": "47bb581df8e96bd924af1ef30679aabc2c2dcac4984919f6dd645d0d88fe4a05"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/README.md",
+      "sha256": "c1ae337f0f89946710945cdeb4abf447684653adf527aff5a2c32687d237fcf7"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/run.mjs",
+      "sha256": "d51195f432df54ea59e4cea60031d1a2f730d5d0f2f16c190d3248beae70a8e6"
+    },
+    {
+      "path": "tests/acpi-pre-device-provenance/run.sh",
+      "sha256": "1aac3b9e8ab172a31e7a0f0aca6d63a955bfef17e108b28004369d86f21a8929"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-gpio_bootstrap_exchange.ads",
+      "sha256": "0a1f2ca52637fddb81363f68f19550726b63f4ebe8bc9c895a6d18a43fe5e921"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-grant_references.ads",
+      "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
+    },
+    {
+      "path": "userspace/services/acpi/acpi_fallible_heap.ads",
+      "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+    },
+    {
+      "path": "userspace/services/acpi/native-clock/acpi_delay_domains.adb",
+      "sha256": "e8a89588ce66ddf0f2d326e8b7dae32df510566fe96c2dc017db0d868e54ebe4"
+    },
+    {
+      "path": "userspace/services/acpi/native-clock/acpi_delay_domains.ads",
+      "sha256": "2416d8f7e9a79f62eadbfb0ff999fe61c329c0e1489107e76795446f9e72b2e9"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_gpio_admission.adb",
+      "sha256": "d67fb3bee03c0ad4d8b7cd5d241223f74105753434a905bc159557e8fc7ead47"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_gpio_admission.ads",
+      "sha256": "28c6041b58afe206b2b133b1c9b6fc201477dca48de24f0715fbd8235e5f82c6"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_pre_device.adb",
+      "sha256": "87c679dfc544ec59a0d00e450eb3b02869a3f0fb28553d66295ff39cab970f21"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_pre_device.ads",
+      "sha256": "ac811af7842b325026b5df812b508b18c06c473c63d36effabbc089a75839d24"
+    }
+  ]
+}

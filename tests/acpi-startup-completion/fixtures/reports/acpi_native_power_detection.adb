@@ -1,0 +1,1 @@
+package body ACPI_Native_Power_Detection is procedure Run(Server:in out ACPI_Requests.State;Result:out Report;Limits:Policy:=(others=><>)) is pragma Unreferenced(Server,Result,Limits);begin raise Program_Error with "unexpected discovery invocation";end Run;end ACPI_Native_Power_Detection;

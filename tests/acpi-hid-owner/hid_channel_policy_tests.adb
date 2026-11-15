@@ -66,11 +66,13 @@ begin
          for Speed of Speed_Cases loop
             Normal; Facts.I2C.Addressing := Addressing;
             Facts.I2C.Address := Address; Facts.I2C.Connection_Speed := Speed;
-            Expect (if Addressing = C.S.Seven_Bit and then Address > 127
+            Expect (if Addressing = C.S.Seven_Bit and then (Address = 0 or else Address > 127)
               then P.Invalid_I2C_Target else P.Prepared);
          end loop;
       end loop;
    end loop;
+   Normal; Facts.I2C.Address := 16#2C#; Facts.Pin := 209; Expect (P.Prepared);
+   Normal; Facts.I2C.Address := 16#2C#; Facts.Pin := 0; Facts.Descriptor_Register := 0; Expect (P.Prepared);
    for Pin of Pin_Cases loop
       for Trigger in C.G.Interrupt_Mode loop
          for Active in C.G.Interrupt_Polarity loop

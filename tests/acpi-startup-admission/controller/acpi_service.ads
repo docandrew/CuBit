@@ -1,0 +1,2 @@
+-- Hosted test model only; never a native runtime/provider implementation.
+with Prep_Model; package ACPI_Service is type State is null record; function Retained_Results(Service : State) return Natural; end ACPI_Service;

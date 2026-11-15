@@ -68,10 +68,13 @@ package body ACPI_Firmware_Data_Frontend_Native is
       Connection.Endpoint := Target; Connection.Ready := True; Accepted := True;
    end Initialize;
    procedure Clock (Now : out IPC.Time_Instant; Available : out Boolean) is
-      Sample : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
+      -- Call deadlines use GETTIME's epoch. Read.Microseconds may instead
+      -- use the HPET epoch when the clock publication is unavailable;
+      -- dividing that absolute timestamp cannot convert between epochs.
+      Sample : constant IPC.Time_Instant := IPC.Time_Instant (CuBit.Monotonic.Milliseconds);
    begin
-      Now := 0; Available := Sample.Available;
-      if Available then Now := IPC.Time_Instant (Sample.Microseconds / F.Microseconds_Per_Millisecond); end if;
+      Available := Sample /= IPC.No_Finite_Deadline;
+      Now := (if Available then Sample else 0);
    end Clock;
    procedure Exchange (Connection : in out Channel; Deadline : IPC.Time_Instant;
       Request : IPC.Packet; Reply : out IPC.Packet;

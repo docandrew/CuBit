@@ -2,27 +2,34 @@
 
 ## Direct-entry architecture
 
-The current native entry in `native/` declares a process-manager-launched
-`acpi.svc`. Generated `Startup.Tables` supplies the kernel's sealed, read-only
-snapshot authority. Startup copies bounded chunks into owned, descriptor-sized
-storage, validates and initializes the namespace, and registers the observer
-endpoint only after obtaining a complete owner. The kernel retains early-boot
-ACPI responsibilities; no firmware pages or arbitrary physical addresses are
-mapped into this service by this interface.
+The native entry in `native/` declares a process-manager-launched
+`acpi.svc`. It registers its role at service-start so dependent processes can
+resolve its endpoint while firmware initialization continues. Registration
+advertises existence; runtime readiness still requires startup admission.
+Incoming requests remain queued until SERVE. If startup or retirement retains
+the owner, the existing bounded drain returns typed power-operation refusals
+and observer ordering errors without invoking AML or accessing hardware.
+Power-button refusals preserve the owner's known press count and source.
 
-One serialized event loop owns the service state. It dispatches stamped
-observer requests, attempts each reply once, and sleeps through the runtime's
-activity wait when idle. Upload/configure/provider authority is absent from
-this entry. SCI/GPE/EC delivery, device-state refresh and CCL subscriptions are
-future integration work, not implemented native event handling. ACPI supplies
-firmware mechanisms; power policy and I2C/HID controller operations belong to
-their respective services and drivers.
+Generated `Startup.Tables` supplies the sealed, read-only snapshot authority.
+Startup copies bounded chunks into owned, descriptor-sized storage, validates
+and initializes the namespace, and selects local runtime or admitted observer
+mode before serving. The kernel retains early-boot ACPI responsibilities.
 
-The direct startup, Fatal-report lifetime, owner lifecycle and observer loop
-have hosted functional tests. Actual service linking, stack fit, boot, logger
-delivery and hardware events still require native validation. The whole AML
-interpreter is not yet SPARK-proved; earlier scoped proofs apply only to their
-recorded units and assumptions. See `native/README.md` for the entry contract.
+One serialized event loop owns the service state. Native integration includes
+SCI/GPE dispatch, EC query handling and copied consumer facts after successful
+event-domain admission; each family still depends on the machine's discovered
+and provisioned resources. Stamped observer requests and power watches use the
+same owner. A failed event startup preserves a copied pre-cleanup reason in
+its final diagnostic tail. Firmware mechanisms belong here; power policy and
+I2C/HID controller operations belong to their respective services and drivers.
+
+Hosted functional tests and native compilation cover scoped parts of this
+shape. Complete hardware startup, event behavior and early-registration boot
+latency require separate native validation. Replacement health currently uses
+process presence and role registration; that check is not functional readiness.
+The whole AML interpreter is not yet SPARK-proved; earlier proofs apply only to
+their recorded units and assumptions. See `native/README.md` for entry details.
 
 The service-owned [passive discovery entry](passive/README.md) now connects
 Requests to Find, Describe and resource queries without exposing mutable Core

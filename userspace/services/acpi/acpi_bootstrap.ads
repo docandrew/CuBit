@@ -87,6 +87,9 @@ package ACPI_Bootstrap with SPARK_Mode is
    -- has no registered hardware provider: actual hardware declarations leave
    -- its region phase unavailable, while an empty requirement can complete.
    function Device_Completion (Session : State) return Device_Report with Pre => Valid (Session);
+   -- A completed walk may retain known ordinary AML errors. This grants no
+   -- hardware authority and does not bypass any local provider/event check.
+   function Device_Walk_Finished (Session : State) return Boolean with Pre => Valid (Session);
    function Startup_Charged (Session : State) return Natural
      with Pre => Valid (Session), Post => Startup_Charged'Result <= Default_Startup_Budget;
    -- Owner interest is latched before startup and applied only after Ready,
@@ -243,6 +246,20 @@ package ACPI_Bootstrap with SPARK_Mode is
              and then Completion (Session) = Completion (Session)'Old
          else Model (Session) = Model (Session)'Old);
    end With_Driver;
+
+   -- Trusted process-local metadata maintenance only. The Core is read-only;
+   -- no namespace alias, wire operation or AML evaluation authority escapes.
+   generic
+      with procedure Advance_Metadata (Service : ACPI_Service.State; Completed : out Boolean);
+   package With_Metadata_Continuation is
+      procedure Advance (Session : State; Completed : out Boolean)
+        with Pre => Valid (Session), Post => Model (Session) = Model (Session)'Old;
+   end With_Metadata_Continuation;
+
+   -- Read-only owner retirement observation, valid in every protocol phase.
+   -- False alone is not a hardware/event/whole-service retirement permission.
+   function Retained_Results_Pending (Session : State) return Boolean
+     with Global => null, Pre => Valid (Session);
 
 private
    procedure Unconfigured_Regions

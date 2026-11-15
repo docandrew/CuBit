@@ -1,0 +1,23 @@
+[
+  {
+    "origin": "/home/doc/git/cubit/tests/aml-bcd/bcd_execute_tests.adb",
+    "originSha256": "3de43a03dcfd24bb2175fa50f1afb3086463a032a032eedd316e5ef0300f6a65",
+    "source": "/home/doc/git/.acpi-proof-work/bcd-service-integration-20261113/helpers/bcd_execute_tests.adb",
+    "sha256": "3de43a03dcfd24bb2175fa50f1afb3086463a032a032eedd316e5ef0300f6a65",
+    "change": "Exact existing helper bytes"
+  },
+  {
+    "origin": "/home/doc/git/cubit/tests/aml-bcd/bcd_quota_tests.adb",
+    "originSha256": "f9ba6965eb9a7a880b90697ee3809bee5d2f9503c94a9c917ffaf3f14f5343b8",
+    "source": "/home/doc/git/.acpi-proof-work/bcd-service-integration-20261113/helpers/bcd_quota_tests.adb",
+    "sha256": "4711f91b0d4170624f274c9fd24c347b04f5d32fa26a1942891c6ed91b68b3c5",
+    "change": "Add equality/concatenation visibility for the current shared Firmware_Tables.Bytes subtype; preserve test operations and checks"
+  },
+  {
+    "origin": "/home/doc/git/cubit/tests/aml-references/test_namespace.ads",
+    "originSha256": "a0827e72595e9d34a2453a49b4310971758db9a978c67811c7e5265d0a90422c",
+    "source": "/home/doc/git/.acpi-proof-work/bcd-service-integration-20261113/helpers/test_namespace.ads",
+    "sha256": "a0827e72595e9d34a2453a49b4310971758db9a978c67811c7e5265d0a90422c",
+    "change": "Exact existing helper bytes"
+  }
+]

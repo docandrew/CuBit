@@ -68,3 +68,5 @@ report without executing AML or changing another Core.
 These rows are descriptive data, not readiness, authority, or a frozen view of
 firmware state. Native launcher handoff and revalidation, backend admission,
 event enrollment, hardware behavior and full SPARK proof remain unfinished.
+
+One-service update: the actual coordinator detection body calls ACPI_One_Service.Root.Evaluation. The hosted acpi_one_service.ads fixture models those callbacks with the real Core for synthetic no-Field AML. It does not model native hardware/cache/lease/owner lifecycle. Removed native facade files are no longer required. Whole-Core functionality uses release -O0 -gnatp only; native checked/release semantic binding is separate. No new proof or native/hardware execution is claimed.

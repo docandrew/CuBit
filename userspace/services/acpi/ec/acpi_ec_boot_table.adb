@@ -128,7 +128,15 @@ package body ACPI_EC_Boot_Table with SPARK_Mode is
    begin
       if Item.Status /= Decoded then return Invalid_Description;
       elsif Item.Revision /= Revision_One then return Unsupported_Revision;
-      elsif Item.Suffix_Length /= 0 then return Unrecognized_Suffix;
+      elsif Item.Suffix_Length /= 0 then
+         -- Some firmware includes zero padding after the terminated identifier.
+         -- Preserve the admitted extent/path; only an entirely zero suffix is
+         -- compatible. Nonzero unknown data still requires explicit review.
+         for Offset in Fixed_Size + Item.Path_Length + 1 .. Data'Length - 1 loop
+            if Data (Data'First + Offset) /= 0 then
+               return Unrecognized_Suffix;
+            end if;
+         end loop;
       end if;
       Status := Check (Item.Control);
       if Status /= Byte_Registers_Described then return Status; end if;

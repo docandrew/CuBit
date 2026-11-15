@@ -4,8 +4,13 @@
     nix develop --command bash tests/acpi-ec-resource-match/run.sh
 
 Use the pinned project shell. The portable runner supports --source-root DIR
-and --validate-only. It pins245actual sources and three test inputs. Both
-checked/release profiles pass292checks. Normal ACPICA AML and ECDT template
+and --validate-only. The current registration pins910 inputs (505 compiled source candidates and
+405 audit-only inputs), plus three unchanged test inputs. Both profiles pass
+292 checks and validate the exact 98-unit compiled ALI inventory. The focused
+checked profile enables assertions only for ACPI_EC_Resources and
+ACPI_EC_Boot_Resources. Core and its direct test instantiation use -O0 -gnatp
+to avoid the previously documented GNAT code-generation failure. This is
+functional test evidence, not whole-interpreter assertion or proof evidence. Normal ACPICA AML and ECDT template
 compilation are used. Twelve actual Core/AML _CRS buffers match independent
 acpiexec buffers byte-for-byte,including descriptor extent/order/end tags.
 
@@ -48,3 +53,11 @@ level1/2 proof milestone:16checks,one functional postcondition,3SPARK entities,
 5flow results per level. Decoder semantics/provenance/hardware remain separate.
 Both this292-check suite and joined197-check discovery suite pass both profiles
 on the final source. See tests/acpi-ec-resource-proof for exact retained scope.
+
+The 2026-11-11 registration refresh preserves all three original test fixtures
+and all explicit checks. Target runtime files remain pinned audit witnesses,
+not Linux compiler inputs. The obsolete s-memory.adb audit witness is removed
+because it is absent from the current tree. No old runtime body is restored.
+Source-directory candidates exceed the actual compiled closure; hash coverage
+does not establish execution or proof. The historical proof section above
+describes its retained milestone; this refresh runs no proof.

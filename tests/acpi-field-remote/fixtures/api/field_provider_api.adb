@@ -16,7 +16,7 @@ procedure Field_Provider_API is
       Authorize_Target => P.Authorize);
    type Controller is limited record
       IO : P.Context;
-      Bindings : Fields.Binding_Set;
+      Bindings : Fields.Binding_Set(Fields.Default_Binding_Capacity);
    end record;
    function Ready (Context : Controller; Region : Service.Node_Descriptor;
       Data : Service.Namespace.Operation_Region_Attributes) return Boolean is

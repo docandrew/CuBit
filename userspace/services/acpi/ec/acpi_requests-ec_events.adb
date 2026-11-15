@@ -14,6 +14,7 @@ package body ACPI_Requests.EC_Events with SPARK_Mode is
       Budget : Natural; Allowed : out Controller.Admission;
       Result : out Receiver.Outcome) is
    begin
+      if Notifications_Pending(Server) then Allowed:=Controller.Notifications_Pending;Result:=Receiver.Not_Started;return;end if;
       Controller.Dispatch (Server.Boot, Run, Sender, Item, Budget, Allowed, Result);
    end Dispatch;
    procedure Close
@@ -22,4 +23,11 @@ package body ACPI_Requests.EC_Events with SPARK_Mode is
    begin
       Controller.Close (Server.Boot, Run, Result);
    end Close;
+   procedure Retire (Server : in out State; Run : in out Receiver.Delivery;
+      Allowed : out Controller.Admission; Accepted : out Boolean) is
+   begin
+      Accepted:=False;
+      if Notifications_Pending(Server) then Allowed:=Controller.Notifications_Pending;return;end if;
+      Controller.Retire(Server.Boot,Run,Allowed,Accepted);
+   end Retire;
 end ACPI_Requests.EC_Events;

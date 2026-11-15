@@ -117,11 +117,12 @@ begin
    elsif Mode in "hardware" | "fadt-hardware" | "unstarted" then Expected := P.Not_Ready;
    elsif Mode in "blocked" | "both" then Expected := P.Lid_Failed;
    elsif Mode = "source" then Expected := P.Source_Failed;
-   elsif Mode in "invalid" | "changed" then Expected := P.Battery_Failed;
-   elsif Mode in "fatal" | "source-fatal" then Expected := P.Recovery_Required;
+   elsif Mode in "invalid" | "changed" | "invalid-first" | "invalid-last" then Expected := P.Battery_Failed;
+   elsif Mode = "search-after-invalid" then Expected := P.Battery_Search_Failed;
+   elsif Mode in "fatal" | "source-fatal" | "battery-fatal" then Expected := P.Recovery_Required;
    elsif Mode = "zero" then Limits.Fuel := 0; Expected := P.Budget_Exhausted;
    elsif Mode = "fuel" then Limits.Fuel := 1; Expected := P.Budget_Exhausted;
-   elsif Mode in "limit" | "blocked-limit" then Limits.Batteries := 1; Expected := P.Battery_Limit;
+   elsif Mode in "limit" | "blocked-limit" | "invalid-first-limit" then Limits.Batteries := 1; Expected := P.Battery_Limit;
    end if;
    declare Before : constant Q.Revision_Number := Q.Revision (Server); begin
       begin
@@ -137,7 +138,7 @@ begin
       Check (Q.Valid (Server) and then Q.Revision (Server) = Before, "point observations preserve owner/revision");
    end;
    Check (Result.Charged <= Limits.Fuel, "one shared fuel budget across families");
-   Check (Result.Recovery_Needed = (Mode in "fatal" | "source-fatal"), "execution uncertainty retained");
+   Check (Result.Recovery_Needed = (Mode in "fatal" | "source-fatal" | "battery-fatal"), "execution uncertainty retained");
    Check (Result.Lid_Query_Failed = (Mode in "blocked" | "both" | "blocked-limit"),
      "ordinary lid failure recorded separately from absence or uncertainty");
    Check (Result.Source_Query_Failed = (Mode in "source" | "both" | "source-fatal"),
@@ -180,10 +181,25 @@ begin
       Check (not Result.Lid_Observed and then Result.Lid = P.Unknown
         and then not Result.Source_Observed and then Result.Source = P.Unknown
         and then Result.Batteries = 0, "no later or invented observations after refusal");
-   else
+   elsif Mode = "search-after-invalid" then
       Check (Result.Batteries = 1 and then Result.Sampled_Batteries = 0
-        and then Result.Absent_Batteries = 0, "bad or changed battery bundle never escapes");
+        and then Result.Failed_Batteries = 1 and then not Result.Recovery_Needed,
+        "failed search after local error stays explicitly incomplete, with no later sample");
+   elsif Mode = "battery-fatal" then
+      Check (Result.Batteries = 1 and then Result.Sampled_Batteries = 0
+        and then Result.Failed_Batteries = 0 and then Result.Recovery_Needed,
+        "fatal first battery never reaches the later valid battery");
+   else
+      Check (Result.Batteries = (if Mode = "invalid-first-limit" then 1 else 2)
+        and then Result.Sampled_Batteries = (if Mode in "invalid" | "invalid-first-limit" then 0 else 1)
+        and then Result.Absent_Batteries = 0,
+        "bad or changed battery bundle is discarded while a later independent sample can proceed");
    end if;
+   Check (Result.Failed_Batteries = (if Mode = "invalid" then 2
+     elsif Mode in "changed" | "invalid-first" | "invalid-last" | "invalid-first-limit" | "search-after-invalid" then 1 else 0),
+     "ordinary battery failures are exact and distinct from uncertain effects");
+   Check (Power_Test_Log.Failures = Result.Failed_Batteries,
+     "each failed battery is logged once before any later device");
    Check (Power_Test_Log.Sleep_Registers = 1, "one bounded sleep metadata stage is logged");
    if Mode = "unstarted" then
       Check (Result.Sleep_Registers.Status = Sleep.Not_Ready, "unready catalog cannot imply a sleep model");

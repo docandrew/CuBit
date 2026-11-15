@@ -135,7 +135,7 @@ begin
          declare
             S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             IO : Context;
-            Items, Bad : F.Binding_Set;
+            Items, Bad : F.Binding_Set(F.Default_Binding_Capacity);
             Targets, Reversed : AML_Field_Targets.Vector := [others => A.No_Target];
             First : constant Positive := (case Width is
                when T.Byte_Access => 7, when T.Word_Access => 11, when others => 27);

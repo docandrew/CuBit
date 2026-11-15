@@ -76,7 +76,7 @@ procedure Bank_Access_Tests is
       Depth : constant Positive := (if Deep then 256 else 128);
       Service : aliased C.State (1, Bank_Access_Oracle.Table256'Length, Bank_Access_Oracle.Table256'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : Context;
-      Items : F.Binding_Set;
+      Items : F.Binding_Set(F.Default_Binding_Capacity);
       Stage : C.Stage_Status;
       Freeze : C.Freeze_Status;
       Status : C.Values.Access_Status;
@@ -139,7 +139,7 @@ procedure Bank_Access_Tests is
             Expanded_Work : constant AML_Execution_Limits.Field_Work_Limit := 100_000;
             package Expanded_IO is new C.Field_IO (Context, Pending, Describe, Dispatch, Confirmed,
               Maximum_Bindings => 2, Authorize_Target => Authorize, Maximum_Work => Expanded_Work);
-            Bindings : Expanded_IO.Binding_Set;
+            Bindings : Expanded_IO.Binding_Set(Expanded_IO.Default_Binding_Capacity);
          begin
             Expanded_IO.Clear (Bindings);
             for S in Slot loop

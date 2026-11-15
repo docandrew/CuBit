@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Names;
 with AML_Field_Access;
 with AML_Field_Layout;
 with ACPI_Service_Core;
@@ -14,6 +15,12 @@ generic
      (IO : in out Provider.Context; Declaration : Core.Namespace.Operation_Region_Attributes;
       Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+   Enable_Startup_Platform_Resolution : Boolean := False;
+   with procedure Resolve_Startup_Platform_Target
+     (IO : in out Provider.Context; Declaration : Core.Namespace.Operation_Region_Attributes;
+      Name : AML_Names.Segment; Node : Core.Namespace.Node_ID;
+      Geometry : AML_Field_Layout.Register_Geometry;
+      Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
 package ACPI_Field_Module_Startup is
    package Fields is new Core.Field_IO
      (Provider.Context, Provider.Pending, Provider.Describe, Provider.Dispatch,
@@ -23,7 +30,10 @@ package ACPI_Field_Module_Startup is
       Allow_Locked_NVS_Reads => Provider.Supports_Locked_NVS_Reads,
       Enable_Startup_Firmware_Resolution => Enable_Startup_Firmware_Resolution,
       Resolve_Startup_Firmware_Target => Resolve_Startup_Firmware_Target,
-      Allow_Locked_Fields => Provider.Supports_Whole_Field_Locks);
+      Allow_Locked_Fields => Provider.Supports_Whole_Field_Locks,
+      Enable_Startup_Platform_Resolution => Enable_Startup_Platform_Resolution,
+      Resolve_Startup_Platform_Target => Resolve_Startup_Platform_Target,
+      Observe_Field => Provider.Note_Field, Field_Notes_Enabled => Provider.Supports_Field_Notes);
    -- Trusted startup callback bridge. Provision Provider before this call;
    -- the outer snapshot/controller owns the one-attempt startup latch.
    -- Never serve or retry after module effects/failure/uncertainty. Preserve

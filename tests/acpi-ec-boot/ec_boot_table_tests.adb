@@ -100,6 +100,14 @@ procedure EC_Boot_Table_Tests is
          Check (Read_Path (Data).Status = Parsed);
          Check (Check_Registers (Data) = Unrecognized_Suffix);
       end;
+      for Padding in 1 .. 32 loop
+         declare Data : Firmware_Tables.Bytes := With_Path ("\_SB.PCI0.LPCB.EC0", Padding); begin
+            Data (Data'Last) := 0; Fix (Data);
+            Item := Decode (Data);
+            Check (Item.Status = Decoded and then Item.Suffix_Length = Padding);
+            Check (Check_Registers (Data) = Byte_Registers_Described);
+         end;
+      end loop;
       declare Data : Firmware_Tables.Bytes := With_Path ("\A"); begin
          Data (Data'Last) := Character'Pos ('B'); Fix (Data);
          Check (Decode (Data).Status = Missing_Terminator);

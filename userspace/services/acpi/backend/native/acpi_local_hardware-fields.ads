@@ -13,6 +13,7 @@ generic
    Maximum_Depth : Positive;
    Maximum_Registers : Positive := AML_Field_Access.Default_Maximum_Registers;
    Maximum_Bindings : Positive := AML_Field_Access.Default_Maximum_Bindings;
+   with procedure Inspect_IO_Window (Deadline_Microseconds : out Word; Available : out Boolean);
 package ACPI_Local_Hardware.Fields is
    type Field_Phase is (Owner_Fresh, Owner_Ready, Owner_Failed, Owner_Closed);
    type Field_Report is record
@@ -49,7 +50,7 @@ package ACPI_Local_Hardware.Fields is
 private
    package Scalar is new ACPI_Local_Register_Provider (Catalog,Hardware,Local_Scope,Maximum_Registers);
    package Scope is new ACPI_Local_Field_Scope
-      (Lease,Admitting,Needs_Cleanup,Begin_Window,Acquire,Check_Access,Release,Maximum_Depth);
+      (Lease,Admitting,Needs_Cleanup,Begin_Window,Acquire,Check_Access,Release,Maximum_Depth,Inspect_IO_Window);
    Transaction : Scope.Context;
    function Scalar_Ready (IO : Scalar.Context) return Boolean;
    function Scalar_Pending (IO : Scalar.Context) return Boolean;
@@ -64,7 +65,7 @@ private
       Allow_Locked_Fields => True);
    package Evaluation is new ACPI_Field_Evaluation (Core,View,Maximum_Bindings);
    IO : Scalar.Context;
-   Cache : Evaluation.Context;
+   Cache : Evaluation.Context (Maximum_Bindings);
    Field_State : Field_Phase := Owner_Fresh;
    Attempted, Completed, Finished, Has_Anchor : Boolean := False;
    Anchor : Core.Node_Descriptor;

@@ -135,7 +135,7 @@ procedure Bank_Module_Tests is
      Maximum_Bindings => 3, Authorize_Target => Authorize);
    Service : aliased C.State (1, Bank_Module_Oracle.Raw_Table'Length, Bank_Module_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Context;
-   Items : F.Binding_Set;
+   Items : F.Binding_Set(F.Default_Binding_Capacity);
    Staged : C.Stage_Status;
    Frozen : C.Freeze_Status;
    Status : C.Values.Access_Status;

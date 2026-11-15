@@ -26,6 +26,9 @@ package body CuBit.Messages is
    begin
       Test.Wait_Count := Test.Wait_Count + 1; Test.Deadlines (Test.Wait_Count) := Deadline;
       if Test.Events_Taken < Test.Events_Queued then return Work_Available; end if;
+      if Test.Spurious_Wakes > 0 then
+         Test.Spurious_Wakes := Test.Spurious_Wakes-1; return Work_Available;
+      end if;
       if Test.Wake_Credits = 0 then return Unavailable; end if;
       Test.Wake_Credits := Test.Wake_Credits - 1;
       if Deadline /= Wait_Forever then Test.Now := Deadline; return Deadline_Reached; end if;

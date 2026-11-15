@@ -106,7 +106,7 @@ procedure Index_Field_Tests is
      Authorize_Target => Authorize);
    Service : aliased C.State (1, Index_Field_Oracle.Raw_Table'Length, Index_Field_Oracle.Raw_Table'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
    IO : Context;
-   Items : F.Binding_Set;
+   Items : F.Binding_Set(F.Default_Binding_Capacity);
    Staged : C.Stage_Status;
    Frozen : C.Freeze_Status;
    Status : C.Values.Access_Status;
@@ -182,7 +182,7 @@ procedure Index_Field_Tests is
       Sum : AML_Decode.Byte := 0;
       Bad : aliased C.State (1, Raw'Length, Raw'Length, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Bad_IO : Context;
-      Bad_Items : F.Binding_Set;
+      Bad_Items : F.Binding_Set(F.Default_Binding_Capacity);
       Report : C.Execution_Report;
       Init : C.Namespace.Initialization_Report;
       Found : C.Namespace.Lookup_Result;

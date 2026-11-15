@@ -65,6 +65,12 @@ package ACPI_EC_Event_Receiver with SPARK_Mode is
    procedure Close
      (Run : in out Delivery; Service : in out Core.State; Result : out Close_Result)
      with Pre => Core.Valid (Service), Post => Core.Valid (Service);
+   -- Trusted local owner: finish the consumed delivery record only after
+   -- successful/missing-handler completion and original-Core cleanup. The
+   -- admitted route's epoch/token high-water history is NEVER reset. A new
+   -- query can reuse this storage; duplicate/older tokens still execute no AML.
+   procedure Retire (Run : in out Delivery; Service : Core.State; Accepted : out Boolean)
+     with Pre => Core.Valid(Service), Post => Core.Valid(Service);
    --  Pending counts retained result handles only. Field uncertainty holds the
    --  route independently and cannot be cleared by Close/revoke/re-enrollment.
 private

@@ -101,7 +101,7 @@ procedure Field_Qword_Tests is
       Source : Source_Kind; Policy : Natural := 0; Fault : Natural := 0) is
       S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       IO : P.Context;
-      Items, Read_Only : F.Binding_Set;
+      Items, Read_Only : F.Binding_Set(F.Default_Binding_Capacity);
       Targets : AML_Field_Targets.Vector := [others => A.No_Target];
       Count : constant AML_Field_Plans.Datum_Count := (if First = 0 then 1 else 2);
       IDs : constant array (Positive range 1 .. 2) of A.Register_ID :=

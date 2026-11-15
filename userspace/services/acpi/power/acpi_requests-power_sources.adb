@@ -1,6 +1,5 @@
 pragma Ada_2022;
 package body ACPI_Requests.Power_Sources with SPARK_Mode is
-   use type ACPI_Bootstrap.Device_Phase;
    function Unseen (Data : Cache; Server : State) return Boolean is
      (Receipts.Current (Server.Receipt) /= 0 and then
       Receipts.Current (Server.Receipt) /= Data.Last_Receipt);
@@ -35,8 +34,7 @@ package body ACPI_Requests.Power_Sources with SPARK_Mode is
       Maximum_Age : Samples.Tick) return Samples.View is
       Result : Samples.View := Cached.Read (Data.Value, Now, Maximum_Age);
    begin
-      if Current (Server) /= Complete
-        or else ACPI_Bootstrap.Device_Completion (Server.Boot).Stage /= ACPI_Bootstrap.Devices_Completed
+      if not Device_Walk_Finished (Server)
         or else not ACPI_Bootstrap.Notifications_Enabled (Server.Boot)
         or else ACPI_Bootstrap.Pending_Notifications (Server.Boot) /= 0
         or else Unseen (Data, Server) then

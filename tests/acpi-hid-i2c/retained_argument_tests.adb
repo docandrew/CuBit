@@ -68,7 +68,7 @@ procedure Retained_Argument_Tests is
    end Authorize;
    package F is new C.Field_IO
      (IO_Context, Pending, Describe, Dispatch, Confirm, Authorize_Target => Authorize);
-   Bindings : F.Binding_Set;
+   Bindings : F.Binding_Set(F.Default_Binding_Capacity);
    One_Binding : F.Binding;
    Args : C.Values.Arguments := [others => (C.Values.Immediate_Argument, 0)];
    R : C.Values.Result;

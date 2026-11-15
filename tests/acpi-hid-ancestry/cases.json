@@ -1,0 +1,162 @@
+[
+  {
+    "id": "normal",
+    "kind": "ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-normal.asl"
+  },
+  {
+    "id": "parent-pruned",
+    "kind": "pruned",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-parent-pruned.asl"
+  },
+  {
+    "id": "parent-functioning",
+    "kind": "ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-parent-functioning.asl"
+  },
+  {
+    "id": "leaf-functioning",
+    "kind": "skipped-ini",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-leaf-functioning.asl"
+  },
+  {
+    "id": "no-leaf-ini",
+    "kind": "ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-no-leaf-ini.asl"
+  },
+  {
+    "id": "current-parent-pruned",
+    "kind": "current-excluded",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-current-parent-pruned.asl"
+  },
+  {
+    "id": "current-parent-functioning",
+    "kind": "ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-current-parent-functioning.asl"
+  },
+  {
+    "id": "current-leaf-absent",
+    "kind": "current-excluded",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-current-leaf-absent.asl"
+  },
+  {
+    "id": "no-ini-parent-absent",
+    "kind": "current-excluded",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-no-ini-parent-absent.asl"
+  },
+  {
+    "id": "skipped-now-active",
+    "kind": "skipped-now-active",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-skipped-now-active.asl"
+  },
+  {
+    "id": "nested-ready",
+    "kind": "nested-ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-nested-ready.asl"
+  },
+  {
+    "id": "nested-excluded",
+    "kind": "nested-excluded",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/history-nested-excluded.asl"
+  },
+  {
+    "id": "processor-ready",
+    "kind": "nested-ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/processor-ready.asl"
+  },
+  {
+    "id": "processor-functioning",
+    "kind": "nested-ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/processor-functioning.asl"
+  },
+  {
+    "id": "processor-pruned",
+    "kind": "nested-pruned",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/processor-pruned.asl"
+  },
+  {
+    "id": "processor-current-excluded",
+    "kind": "nested-excluded",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/processor-current-excluded.asl"
+  },
+  {
+    "id": "thermal-ready",
+    "kind": "nested-ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/thermal-ready.asl"
+  },
+  {
+    "id": "thermal-functioning",
+    "kind": "nested-ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/thermal-functioning.asl"
+  },
+  {
+    "id": "thermal-pruned",
+    "kind": "nested-pruned",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/thermal-pruned.asl"
+  },
+  {
+    "id": "thermal-current-excluded",
+    "kind": "nested-excluded",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/thermal-current-excluded.asl"
+  },
+  {
+    "id": "transient-ready",
+    "kind": "nested-ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/transient-ready.asl"
+  },
+  {
+    "id": "transient-excluded",
+    "kind": "nested-excluded",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/transient-excluded.asl"
+  },
+  {
+    "id": "mutation-ini",
+    "kind": "nested-ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/mutation-ini.asl"
+  },
+  {
+    "id": "mutation-status",
+    "kind": "nested-ready",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/mutation-status.asl"
+  },
+  {
+    "id": "unrelated-fatal",
+    "kind": "all-devices",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/unrelated-fatal.asl"
+  },
+  {
+    "id": "unrelated-field",
+    "kind": "all-devices",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/unrelated-field.asl"
+  },
+  {
+    "id": "ordinary-status-error",
+    "kind": "all-devices",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/ordinary-status-error.asl"
+  },
+  {
+    "id": "ordinary-identity-error",
+    "kind": "all-devices",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/ordinary-identity-error.asl"
+  },
+  {
+    "id": "ordinary-resource-evaluation",
+    "kind": "all-probes",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/ordinary-resource-evaluation.asl"
+  },
+  {
+    "id": "ordinary-resource-template",
+    "kind": "all-probes",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/ordinary-resource-template.asl"
+  },
+  {
+    "id": "ordinary-many-identity-errors",
+    "kind": "all-devices",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/ordinary-many-identity-errors.asl"
+  },
+  {
+    "id": "zero-address-resource",
+    "kind": "all-probes",
+    "path": "tests/acpi-hid-ancestry/fixture/matrix/zero-address-resource.asl"
+  }
+]

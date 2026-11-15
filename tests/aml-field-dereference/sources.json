@@ -398,11 +398,11 @@
     },
     {
       "path": "userspace/services/acpi/acpi_device_initialization.adb",
-      "sha256": "e96b8caf16a6b41c374a26c318ccb2df5fb994f8c2760833ee80f28e3e8375bf"
+      "sha256": "82e225a31d948426a5035df92df381a5fdc813ae940f7035dca8adaac979128c"
     },
     {
       "path": "userspace/services/acpi/acpi_device_initialization.ads",
-      "sha256": "15e2abd2a3cb867d9e05679db48a89bbb51ec26fbeca0a6e30c1150cadd87957"
+      "sha256": "f741ffb907f7b47f363bc55b7492f35a50c6ec3ecd61115dce70f1272d16fb3f"
     },
     {
       "path": "userspace/services/acpi/acpi_device_policy.adb",
@@ -410,7 +410,7 @@
     },
     {
       "path": "userspace/services/acpi/acpi_device_policy.ads",
-      "sha256": "f8e7ef9b53cb7a5d95e423ef607bd3c3f09d36f45946febe1340b298440925a0"
+      "sha256": "410c846bf612921d0b74891f09d5b6938a95e35323d13bbaf592ebae16463bf1"
     },
     {
       "path": "userspace/services/acpi/acpi_device_status.adb",
@@ -494,7 +494,7 @@
     },
     {
       "path": "userspace/services/acpi/acpi_requests.adb",
-      "sha256": "ce0f3e505f6bdb28487bd5f431930cad8d9e58ac1f24e8c92c65eade90e50beb"
+      "sha256": "a2e20417e1a7d2e67787d09a36ea61a5e3e3772c39e425cb3ca984cca3aad239"
     },
     {
       "path": "userspace/services/acpi/acpi_requests.ads",
@@ -510,7 +510,7 @@
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.ads",
-      "sha256": "edd9ad7dedeb72f1c5e260c0253c2115866a16ce0c3d8644c79eaa8f49239f13"
+      "sha256": "f8738dab033c0bb57e6cb80f84c6556fd7155ed4597fa5a5d38f9a0ce69c374e"
     },
     {
       "path": "userspace/services/acpi/acpi_snapshot_provider.adb",
@@ -1026,11 +1026,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "3b6b3e073a12287554121eca9a2d058172176b2f77da6c3859ecd0752c0eace4"
+      "sha256": "8dca78f934fdc82781a1a637f429aab8f4dcda8cf0cc43c877fb1c7c8f73e13c"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "f9be802f0e19e6bea2fc8c960a1ecddee612d05158eb82c4906621384be5fcb8"
+      "sha256": "e94aec9d422eff07c40125b0979af99246c7ad2ffb845b916b3d538a494c4fd1"
     },
     {
       "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",

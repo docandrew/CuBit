@@ -44,7 +44,6 @@ package body ACPI_EC_Boot_Diagnostics with SPARK_Mode is
         " data-space=" & Item.Description.Data.Space'Image &
         " data=0x" & Hex (Item.Description.Data.Address, Maximum_Hex_Digits) &
         " uid=0x" & Hex (Interfaces.Unsigned_64 (Item.Description.UID), UID_Hex_Digits) &
-        " gpe-bit=0x" & Hex (Interfaces.Unsigned_64 (Item.Description.GPE_Bit), Byte_Hex_Digits) &
-        " authority=NOT_ESTABLISHED";
+        " gpe-bit=0x" & Hex (Interfaces.Unsigned_64 (Item.Description.GPE_Bit), Byte_Hex_Digits);
    end Format;
 end ACPI_EC_Boot_Diagnostics;

@@ -1,6 +1,9 @@
 pragma Ada_2022;
 with AML_Names;
 package body ACPI_HID_I2C_Discovery with SPARK_Mode is
+   function Ordinary_Error (Item : Outcome) return Boolean is
+     (Item in Identity_Failed | Status_Failed | Missing_Resources | Evaluation_Failed |
+       Wrong_Result_Type | Copy_Failed | Analysis_Failed | Descriptor_Failed);
    package V renames Core.Values;
    package N renames Core.Namespace;
    use type V.Value_Handle;

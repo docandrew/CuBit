@@ -15,16 +15,20 @@ procedure Local_Scope_Tests is
    type Lease is limited record Prepared : Boolean := False; Generation : Natural := 0; end record;
    Checks, Acquires, Releases, Windows, Access_Checks : Natural := 0;
    Physical_Held, Recover, Expired : Boolean := False;
+   IO_Open : Boolean := True;
+   IO_Deadline : Interfaces.Unsigned_64 := 100;
+   IO_Observations : Natural := 0;
    procedure Check (OK : Boolean) is
    begin Checks := Checks + 1; if not OK then raise Program_Error with Mode & Checks'Image; end if; end Check;
    function Admission return Boolean;
    function Due (Item : Lease) return Boolean is (Item.Prepared);
    procedure Window (Deadline : out Interfaces.Unsigned_64; Budget : out P.Attempt_Budget; Available : out Boolean);
+   procedure Inspect_Time (Deadline : out Interfaces.Unsigned_64; Available : out Boolean);
    procedure Acquire (Item : in out Lease; Deadline : Interfaces.Unsigned_64;
       Budget : P.Attempt_Budget; Result : out P.Lock_Outcome);
    procedure Validate (Item : Lease; Result : out P.Lock_Outcome);
    procedure Release (Item : in out Lease; Result : out P.Lock_Outcome);
-   package S is new ACPI_Local_Field_Scope (Lease,Admission,Due,Window,Acquire,Validate,Release,4);
+   package S is new ACPI_Local_Field_Scope (Lease,Admission,Due,Window,Acquire,Validate,Release,4,Inspect_Time);
    use type S.Depth_Count;
    State : S.Context;
    procedure Reentry is
@@ -47,10 +51,18 @@ procedure Local_Scope_Tests is
       Deadline := (if Mode = "zero-window" then 0 elsif Mode = "forever-window" then Interfaces.Unsigned_64'Last else 100);
       Budget := 3; Available := Mode /= "unavailable-window";
    end Window;
+   procedure Inspect_Time (Deadline : out Interfaces.Unsigned_64; Available : out Boolean) is
+   begin
+      IO_Observations := IO_Observations + 1; Reentry;
+      Deadline := (if Mode = "io-zero-window" then 0
+        elsif Mode = "io-forever-window" then Interfaces.Unsigned_64'Last else IO_Deadline);
+      Available := IO_Open and Mode /= "io-unavailable-window";
+   end Inspect_Time;
    procedure Acquire (Item : in out Lease; Deadline : Interfaces.Unsigned_64;
       Budget : P.Attempt_Budget; Result : out P.Lock_Outcome) is
    begin
-      Check (not Item.Prepared and not Physical_Held and Deadline = 100 and Budget = 3);
+      Check (not Item.Prepared and not Physical_Held and
+        Deadline = (if Mode = "lock-window-clamped" then 50 else 100) and Budget = 3);
       Acquires := Acquires + 1; Item.Generation := Acquires; Item.Prepared := True; Physical_Held := True;
       Reentry;
       Result := (if Mode = "acquire-late" or Mode = "child-failure" then P.Acquired_After_Deadline
@@ -70,7 +82,7 @@ procedure Local_Scope_Tests is
    begin
       Releases := Releases + 1; Check (Item.Prepared and Item.Generation = Acquires and Physical_Held);
       Reentry;
-      if (Mode = "release-unknown" or Mode = "signal-deferred") and not Recover then
+      if (Mode = "release-unknown" or Mode = "signal-deferred" or Mode = "window-release-unknown") and not Recover then
          Result := (if Mode = "signal-deferred" then P.Signal_Deferred else P.Atomic_Indeterminate);
       elsif Mode = "contradictory-release" then Result := P.Released;
       else Item.Prepared := False; Physical_Held := False; Result := P.Released;
@@ -122,6 +134,30 @@ begin
       S.Cleanup (State,OK); Check (not OK and Releases = 0);
       S.End_Field (State,OK); Check (not OK and Releases = 0 and S.Observe (State).Depth = 0);
       S.Cleanup (State,OK); Check (OK and Releases = 1 and not Physical_Held);
+   elsif Mode = "unlocked-window-closed" or Mode = "unlocked-window-changed" or Mode = "unlocked-window-nested" then
+      S.Begin_Field (State,False,True,OK); Check (OK and Acquires = 0 and Windows = 0);
+      S.Check_Datum (State,OK); Check (OK and IO_Observations = 2);
+      if Mode = "unlocked-window-closed" then IO_Open := False; else IO_Deadline := 101; end if;
+      if Mode = "unlocked-window-nested" then
+         S.Begin_Field (State,False,False,OK);
+      else S.Check_Datum (State,OK);
+      end if;
+      Check (not OK and S.Observe (State).Depth = 1 and S.Observe (State).Faulted and Acquires = 0);
+      Check (S.Observe (State).First_Failure = P.Invalid_Deadline);
+      S.End_Field (State,OK); Check (not OK and S.Observe (State).Depth = 0 and Releases = 0);
+      S.Cleanup (State,OK); Check (OK and not S.Pending (State));
+   elsif Mode = "lock-window-clamped" then
+      IO_Deadline := 50;
+      S.Begin_Field (State,True,False,OK); Check (OK and Acquires = 1);
+      S.Check_Datum (State,OK); Check (OK);
+      S.End_Field (State,OK); Check (OK and Releases = 1 and not S.Pending (State));
+   elsif Mode = "window-release-unknown" then
+      S.Begin_Field (State,True,False,OK); Check (OK and Physical_Held);
+      IO_Open := False; S.Check_Datum (State,OK); Check (not OK);
+      S.End_Field (State,OK); Check (not OK and Releases = 1 and S.Observe (State).Cleanup_Required);
+      S.Begin_Field (State,False,False,OK); Check (not OK and Acquires = 1);
+      Recover := True; S.Cleanup (State,OK);
+      Check (OK and Releases = 2 and not Physical_Held and not S.Pending (State));
    elsif Mode = "normal" or Mode = "reentry" or Mode = "repeated" then
       for Cycle in 1 .. (if Mode = "repeated" then 100 else 1) loop
          S.Begin_Field (State,False,False,OK); Check (OK);
@@ -136,7 +172,8 @@ begin
       end loop;
    else
       S.Begin_Field (State,True,False,OK);
-      if Mode = "zero-window" or Mode = "forever-window" or Mode = "unavailable-window" or Mode = "closed-admission" then
+      if Mode = "zero-window" or Mode = "forever-window" or Mode = "unavailable-window" or Mode = "closed-admission"
+        or Mode = "io-zero-window" or Mode = "io-forever-window" or Mode = "io-unavailable-window" then
          Check (not OK and S.Observe (State).Depth = 0 and Acquires = 0);
       elsif Mode = "acquire-late" or Mode = "acquire-unknown" then
          Check (not OK and S.Observe (State).Depth = 0 and S.Observe (State).Cleanup_Required);

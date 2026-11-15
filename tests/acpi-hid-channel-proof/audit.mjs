@@ -10,7 +10,7 @@ function checked(report,name,proofCount,flowCount){
  for(const c of report.proof) requireThat(c.how_proved==='prover'&&c.check_tree?.length&&c.check_tree.every(t=>Object.values(t.proof_attempts??{}).some(a=>a.result==='Valid')),'proof attempt verdict');
 }
 export function audit(prepare,i2c,gpio){
- checked(prepare,'Channel_Proof_Model.Channels.Prepare',23,2);
+ checked(prepare,'Channel_Proof_Model.Channels.Prepare',27,2);
  checked(i2c,'I2C_Channel_Badges.Valid',0,1);checked(gpio,'GPIO_Channel_Badges.Valid',0,1);
  requireThat(i2c.assumptions.length===0&&gpio.assumptions.length===0,'validity dependency assumptions');
  requireThat(prepare.entities[' 2']?.name==='GPIO_Channel_Badges.Valid'&&prepare.entities[' 3']?.name==='I2C_Channel_Badges.Valid','unexpected dependency identity');

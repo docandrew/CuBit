@@ -1,0 +1,2 @@
+-- Hosted test model only; never a native runtime/provider implementation.
+with Interfaces; package CuBit.Firmware_Data_Exchange is Authority_Tag : constant Interfaces.Unsigned_64 := 16#4657#; end CuBit.Firmware_Data_Exchange;

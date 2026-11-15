@@ -1,14 +1,16 @@
 pragma Ada_2022;
 with HID_I2C_Descriptors;
+with AML_Execute;
 package body ACPI_Bootstrap.HID_Devices with SPARK_Mode is
    package C renames ACPI_Service;
    package N renames C.Namespace;
    use type N.Object_Kind, Discovery.Queries.Identification_Outcome;
    use type Discovery.Action_Result, Discovery.Outcome;
    use type Discovery.Resources.R.Byte_Count, Resolver.Outcome;
+   use type AML_Execute.Execution_Status;
    function Ready (Session : State) return Boolean is
-     (Session.Stage = Complete and then Session.Device_Data.Stage = Devices_Completed);
-   procedure Find
+     (Device_Walk_Finished (Session));
+   procedure Find_With_Policy
      (Session : in out State; After : N.Node_ID; Budget : Natural;
       Device : out N.Node_ID; Result : out Search_Report)
    is
@@ -16,6 +18,18 @@ package body ACPI_Bootstrap.HID_Devices with SPARK_Mode is
       Snapshot : Descriptors := [others => C.Values.No_Node];
       Last : N.Node_ID;
       Status : C.Values.Access_Status;
+      procedure Capture_Error (Kind : Search_Error_Kind; Item : C.Node_Descriptor) is
+      begin
+         Result.Node_Errors := Result.Node_Errors + 1;
+         if Result.Captured_Errors < Maximum_Captured_Search_Errors then
+            Result.Captured_Errors := Result.Captured_Errors + 1;
+            Result.Errors (Result.Captured_Errors) :=
+              (Kind => Kind, Device => Item, Policy => Result.Last_Policy,
+               Identity => (if Kind = Identity_Error then Result.Last_Identity else (others => <>)));
+         else
+            Result.Omitted_Errors := Result.Omitted_Errors + 1;
+         end if;
+      end Capture_Error;
       function Same_Topology return Boolean is
       begin
          if not Ready (Session) or else C.Namespace_Node_Count (Session.Core) /= Last then return False; end if;
@@ -27,6 +41,9 @@ package body ACPI_Bootstrap.HID_Devices with SPARK_Mode is
    begin
       Device := N.Root; Result := (others => <>);
       if not Ready (Session) then return; end if;
+      if C.Retained_Results (Session.Core) /= 0 then
+         Result.Outcome := Failed; Result.Last_Policy.Outcome := Recovery_Required; return;
+      end if;
       Last := C.Namespace_Node_Count (Session.Core);
       if After > Last then Result.Outcome := Invalid_Cursor; return; end if;
       Result.Outcome := Incomplete;
@@ -41,21 +58,73 @@ package body ACPI_Bootstrap.HID_Devices with SPARK_Mode is
             Result.Scanned := Result.Scanned + 1;
             if C.Values.Node_Kind (Snapshot (I)) = N.Device_Object then
                Result.Candidates := Result.Candidates + 1;
-               Discovery.Queries.Identify (Session.Core, Snapshot (I), Budget - Result.Charged, Result.Last_Identity);
-               if Result.Last_Identity.Charged > Budget - Result.Charged then Result.Outcome := Failed; return; end if;
-               Result.Charged := Result.Charged + Result.Last_Identity.Charged;
+               Check_Candidate
+                 (Session.Core, Snapshot (I), Budget - Result.Charged, Result.Last_Policy);
+               if Result.Last_Policy.Charged > Budget - Result.Charged then
+                  Result.Last_Policy.Outcome := Recovery_Required;
+                  Result.Outcome := Failed; return;
+               end if;
+               Result.Charged := Result.Charged + Result.Last_Policy.Charged;
+               if C.Retained_Results (Session.Core) /= 0 then
+                  Result.Last_Policy.Outcome := Recovery_Required;
+                  Result.Outcome := Failed; return;
+               end if;
                if not Same_Topology then Result.Outcome := Failed; return; end if;
-               case Result.Last_Identity.Outcome is
-                  when Discovery.Queries.Compatible => Device := I; Result.Outcome := Found; return;
-                  when Discovery.Queries.Not_Compatible | Discovery.Queries.Missing_CID => null;
-                  when Discovery.Queries.Budget_Exhausted => return;
-                  when others => Result.Outcome := Failed; return;
+               case Result.Last_Policy.Outcome is
+                  when Excluded => Result.Excluded_Count := Result.Excluded_Count + 1;
+                  when Node_Error => Capture_Error (Policy_Error, Snapshot (I));
+                  when Policy_Incomplete => return;
+                  when Policy_Failed | Recovery_Required => Result.Outcome := Failed; return;
+                  when Eligible =>
+                     Discovery.Queries.Identify (Session.Core, Snapshot (I), Budget - Result.Charged, Result.Last_Identity);
+                     if Result.Last_Identity.Charged > Budget - Result.Charged then Result.Outcome := Failed; return; end if;
+                     Result.Charged := Result.Charged + Result.Last_Identity.Charged;
+                     if C.Retained_Results (Session.Core) /= 0 then
+                        Result.Last_Policy.Outcome := Recovery_Required;
+                        Result.Outcome := Failed; return;
+                     end if;
+                     if not Same_Topology then Result.Outcome := Failed; return; end if;
+                     case Result.Last_Identity.Outcome is
+                        when Discovery.Queries.Compatible => Device := I; Result.Outcome := Found; return;
+                        when Discovery.Queries.Not_Compatible | Discovery.Queries.Missing_CID => null;
+                        when Discovery.Queries.Budget_Exhausted => return;
+                        when Discovery.Queries.Evaluation_Failed | Discovery.Queries.Wrong_Result_Type =>
+                           if Result.Last_Identity.Execution in AML_Execute.Fatal_Requested | AML_Execute.Field_Indeterminate then
+                              Result.Last_Policy.Outcome := Recovery_Required;
+                              Result.Outcome := Failed; return;
+                           end if;
+                           Capture_Error (Identity_Error, Snapshot (I));
+                        when others => Result.Outcome := Failed; return;
+                     end case;
                end case;
             end if;
          end if;
       end loop;
       Result.Outcome := No_Match;
-   end Find;
+   end Find_With_Policy;
+   procedure Check_With_Policy
+     (Session : in out State; Item : C.Node_Descriptor;
+      Budget : Natural; Result : out Policy_Report) is
+   begin
+      Result := (Policy_Failed, 0);
+      if not Ready (Session) or else not C.Current_Node (Session.Core, Item) then return; end if;
+      if C.Retained_Results (Session.Core) /= 0 then Result.Outcome := Recovery_Required; return; end if;
+      Check_Candidate (Session.Core, Item, Budget, Result);
+      if Result.Charged > Budget then Result := (Recovery_Required, 0); return; end if;
+      if Result.Outcome /= Recovery_Required and then not C.Current_Node (Session.Core, Item) then
+         Result.Outcome := Policy_Failed;
+      end if;
+   end Check_With_Policy;
+   procedure Descriptive_Candidate
+     (Service : aliased in out C.State; Item : C.Node_Descriptor;
+      Budget : Natural; Result : out Policy_Report) is
+      pragma Unreferenced (Service, Item, Budget);
+   begin Result := (Eligible, 0); end Descriptive_Candidate;
+   procedure Descriptive_Find is new Find_With_Policy (Descriptive_Candidate);
+   procedure Find
+     (Session : in out State; After : N.Node_ID; Budget : Natural;
+      Device : out N.Node_ID; Result : out Search_Report) is
+   begin Descriptive_Find (Session, After, Budget, Device, Result); end Find;
    function Pending (Run : Probe) return Boolean is (Discovery.Pending (Run.Work));
    function Observe (Run : Probe) return Report is
      (Discovery.Observe (Run.Work), Run.Tried, Run.Resolution);

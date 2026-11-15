@@ -25,6 +25,10 @@ package acpi is
     lapicAddr   : Virtmem.PhysAddress := 0;
     ioapicAddr  : Virtmem.PhysAddress := 0;
     ioapicID    : Unsigned_32 := 0;
+    -- The first global system interrupt (GSI) of the driven I/O APIC (the
+    -- MADT's first): legacy lines are its inputs only when this is 0
+    -- (Interrupt_Lines refuses to route them otherwise).
+    ioapicGSIBase : Unsigned_32 := 0;
     -- Checked HPET register window, zero when firmware advertises none.
     hpetAddr    : Virtmem.PhysAddress := 0;
     -- The FACS (ACPI Global Lock) the FADT names: X_FIRMWARE_CTRL when the

@@ -9,4 +9,5 @@ package body ACPI_Native_Log is
    procedure Grant_Notice (Item : CuBit.Control_Events.Event) is
       pragma Unreferenced (Item);
    begin null; end Grant_Notice;
+   function Publisher_Dropped return Interfaces.Unsigned_64 is (0);
 end ACPI_Native_Log;

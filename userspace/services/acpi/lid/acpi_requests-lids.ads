@@ -20,10 +20,13 @@ package ACPI_Requests.Lids with SPARK_Mode is
        and then Revision (Server) = Revision (Server)'Old;
    procedure Forget (Data : in out Cache);
    procedure Invalidate (Data : in out Cache);
+   -- Includes a fresh _STA observation before _LID,under one total budget.
+   -- Publication preserves known absence separately from query/status failure.
    procedure Prepare (Data : in out Cache; Server : in out State; Budget : Natural;
       Report : out Cached.Refresh_Report)
      with Pre => Valid (Server), Post => Valid (Server)
-       and then Revision (Server) = Revision (Server)'Old;
+       and then Revision (Server) = Revision (Server)'Old
+       and then Report.Charged <= Budget;
    -- Route the SAME Server's actual retained notification to this consumer
    -- before acknowledging its broker receipt. Does not claim, drain or ACK.
    -- Each active receipt is observed at most once by this Cache. The owner

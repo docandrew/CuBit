@@ -19,12 +19,21 @@ package ACPI_Bootstrap.Power_Sources.Cached with SPARK_Mode is
       Admission : Query_Admission := Not_Ready;
       Query : Driver.Query_Report;
       Publication : Samples.Publication_Result := Samples.Not_Pending;
+      Device_Status : Driver.Device_Status.Status_Report;
+      -- Total accepted charge of status plus member query. Raw faulty charges
+      -- remain in the nested reports when a provider contract is violated.
+      Charged : Natural := 0;
    end record;
    -- Explicit owner phases: prepare once; route the SAME Core's actual events
    -- to every local consumer without AML/reset/reentry; then publish once.
    -- Event metadata is descriptive, never accepted from untrusted wire words.
+   -- Fresh direct _STA gates _PSR:only present/enabled/functioning devices
+   -- are queried. Missing _STA uses the normal device-policy default. Status
+   -- and member share Budget;known absence and acquisition failure stay
+   -- distinct. These are ordered observations,not an atomic hardware snapshot.
    procedure Prepare (Data : in out Cache; Session : in out State; Budget : Natural;
-      Report : out Refresh_Report) with Pre => Valid (Session), Post => Valid (Session);
+      Report : out Refresh_Report) with Pre => Valid (Session),
+       Post => Valid (Session) and then Report.Charged <= Budget;
    procedure Observe_Notification (Data : in out Cache; Session : State;
       Event : ACPI_Service.Notification_Observation) with Pre => Valid (Session);
    procedure Publish (Data : in out Cache; Session : State;
@@ -38,5 +47,7 @@ private
       Expected : Samples.Revision_Number := 0;
       Query : Driver.Query_Report;
       Admission : Query_Admission := Not_Ready;
+      Device_Status : Driver.Device_Status.Status_Report;
+      Charged : Natural := 0;
    end record;
 end ACPI_Bootstrap.Power_Sources.Cached;

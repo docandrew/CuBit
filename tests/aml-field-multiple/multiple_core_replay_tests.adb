@@ -106,7 +106,7 @@ begin
          Completed_Source_Marker : constant Unsigned_64 := D.Expected (Case_ID, 2).Value;
          S : aliased C.State (1, 4096, 4096, 1, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
          IO, Other : P.Context;
-         Items : F.Binding_Set;
+         Items : F.Binding_Set(F.Default_Binding_Capacity);
          Targets : array (Register_Index) of A.Target;
          Nodes : array (Register_Index) of C.Namespace.Node_ID;
          Region_Node : C.Namespace.Node_ID;

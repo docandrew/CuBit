@@ -1,15 +1,15 @@
 with ACPI_Service_Core;
 with ACPI_Battery;
 with ACPI_Battery_Information;
-with ACPI_Battery_Information_Reader;
+with ACPI_Battery_Information_Selection;
 with ACPI_Battery_Observation;
 with ACPI_Sample_Cache;
 generic
    with package Core is new ACPI_Service_Core (<>);
    with package Format is new ACPI_Battery_Information (<>);
    with package Dynamic is new ACPI_Battery (Core => Core, others => <>);
-   with package Static_Info is new ACPI_Battery_Information_Reader
-     (Core => Core, Format => Format, others => <>);
+   with package Static_Info is new ACPI_Battery_Information_Selection
+     (Core => Core, Extended_Format => Format, others => <>);
    with package Collector is new ACPI_Battery_Observation
      (Core => Core, Format => Format, Dynamic => Dynamic, Static_Info => Static_Info);
 package ACPI_Battery_Cache with SPARK_Mode is

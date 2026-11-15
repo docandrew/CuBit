@@ -1,0 +1,12 @@
+{
+  "source": "Lenovo captured DSDT disassembly; GPI0 device fragment",
+  "sourceSha256": "46b1eb60a287a3effd755b56f379be1ef3d5de369fdae6734fb1dc601c4e7500",
+  "fragmentSha256": "95a9e69c1236a8440c0fd64dced3ecd69a7fb1478e960a8ab5b2600c2278f492",
+  "modeled": [
+    "PNVA PCHS",
+    "PNVA GPHD",
+    "PNVA SBRG",
+    "PNVA SGIR"
+  ],
+  "hardwareRead": false
+}

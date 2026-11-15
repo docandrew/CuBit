@@ -105,6 +105,7 @@ package body ACPI_Startup_Diagnostics is
         when ACPI_Device_Policy.Regions_Connected => "REGIONS_CONNECTED",
         when ACPI_Device_Policy.No_Regions_Required => "NO_REGIONS_REQUIRED",
         when ACPI_Device_Policy.Regions_Unavailable => "REGIONS_UNAVAILABLE",
+        when ACPI_Device_Policy.Regions_Prepared => "REGIONS_PREPARED",
         when ACPI_Device_Policy.Region_Initialization_Failed => "REGION_INITIALIZATION_FAILED");
 
    function Format_Field_Failure
@@ -194,10 +195,11 @@ package body ACPI_Startup_Diagnostics is
    end Format;
    function Device_Initialization_Completed
      (Item : ACPI_Bootstrap.Device_Report) return Boolean is
-     (Item.Stage = ACPI_Bootstrap.Devices_Completed and then
+     (((Item.Stage = ACPI_Bootstrap.Devices_Completed and then Item.Errors = 0)
+        or else Item.Stage = ACPI_Bootstrap.Devices_Completed_With_Errors) and then
       Item.Regions_Attempted and then Item.Region_Status in
         ACPI_Device_Policy.Regions_Connected | ACPI_Device_Policy.No_Regions_Required
-      and then Item.Errors = 0 and then not Item.Fatal.Present);
+      and then not Item.Fatal.Present);
    function Format (Item : ACPI_Bootstrap.Device_Report) return String is
    begin
       return "acpi: stage devices " &

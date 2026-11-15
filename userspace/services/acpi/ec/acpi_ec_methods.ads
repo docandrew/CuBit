@@ -69,6 +69,11 @@ package ACPI_EC_Methods with SPARK_Mode is
    procedure Close
      (Run : in out Invocation; Service : in out Core.State; Action : out Action_Result)
      with Pre => Core.Valid (Service), Post => Core.Valid (Service);
+   -- Trusted controller: retire a completed invocation record in its original
+   -- Core only after success and complete result cleanup. This releases no
+   -- hardware or source authority and cannot reset failures/uncertainty.
+   procedure Retire (Run : in out Invocation; Service : Core.State; Accepted : out Boolean)
+     with Pre => Core.Valid(Service);
 private
    type Binding is record
       Bound : Boolean := False;

@@ -6,6 +6,8 @@ with Firmware_Tables.MADT;
 with Firmware_Tables.SRAT;
 with Firmware_Tables.SLIT;
 package body ACPI_Requests with SPARK_Mode is
+   function Retained_Results_Pending (Server : State) return Boolean is
+     (ACPI_Bootstrap.Retained_Results_Pending (Server.Boot));
    pragma Unevaluated_Use_Of_Old (Allow);
    function Storage_Released (Server : State) return Boolean is (ACPI_Bootstrap.Storage_Released (Server.Boot));
    procedure Release_Storage (Server : in out State; Released : out Boolean) is
@@ -27,10 +29,21 @@ package body ACPI_Requests with SPARK_Mode is
    use type ACPI_Service.Install_Status;
    use type ACPI_Service.State_Model;
    function Revision (Server : State) return Revision_Number is (Server.Version);
+   function Notifications_Ready(Server:State) return Boolean is
+      use type ACPI_Service.Values.Access_Status;
+   begin
+      return ACPI_Bootstrap.Notifications_Requested(Server.Boot)
+        and then ACPI_Bootstrap.Notifications_Enabled(Server.Boot)
+        and then ACPI_Bootstrap.Notification_Status(Server.Boot)=ACPI_Service.Values.Available;
+   end Notifications_Ready;
+   function Notifications_Pending(Server:State) return Boolean is
+     (ACPI_Bootstrap.Pending_Notifications(Server.Boot)/=0 or else Receipts.Current(Server.Receipt)/=0);
    function Table_Open (Server : State) return Boolean is (Server.Open);
    function Received (Server : State) return Natural is (Server.Used);
    function Completion (Server : State) return ACPI_Bootstrap.Finish_Report is
      (ACPI_Bootstrap.Completion (Server.Boot));
+   function Device_Walk_Finished (Server : State) return Boolean is
+     (ACPI_Bootstrap.Device_Walk_Finished (Server.Boot));
    function Device_Completion (Server : State) return ACPI_Bootstrap.Device_Report is
      (ACPI_Bootstrap.Device_Completion (Server.Boot));
    function Module_Errors (Server : State) return ACPI_Service.Module_Error_Observation is
@@ -123,7 +136,7 @@ package body ACPI_Requests with SPARK_Mode is
      (case Item is
         when ACPI_Device_Policy.Regions_Connected => Regions_Connected_Code,
         when ACPI_Device_Policy.No_Regions_Required => No_Regions_Required_Code,
-        when ACPI_Device_Policy.Regions_Unavailable => Regions_Unavailable_Code,
+        when ACPI_Device_Policy.Regions_Unavailable | ACPI_Device_Policy.Regions_Prepared => Regions_Unavailable_Code,
         when ACPI_Device_Policy.Region_Initialization_Failed => Region_Failed_Code);
    function Error_Code (Item : AML_Execute.Execution_Status) return Startup_Error_Code is
      (case Item is
@@ -960,4 +973,13 @@ package body ACPI_Requests with SPARK_Mode is
       Reply.Data (0) := Server.Version;
       if Reply.Status = Malformed then Reply.Status := OK; end if;
    end Handle;
+   package body With_Metadata_Continuation is
+      package Boot_Metadata is new ACPI_Bootstrap.With_Metadata_Continuation (Advance_Metadata);
+      procedure Advance (Server : State; Completed : out Boolean) is
+      begin
+         Completed := False;
+         if Server.Open then return; end if;
+         Boot_Metadata.Advance (Server.Boot,Completed);
+      end Advance;
+   end With_Metadata_Continuation;
 end ACPI_Requests;

@@ -109,3 +109,11 @@ observations remain historical startup samples; failed queries never become
 closed/offline/absent observations. Evidence and trusted native boundaries are
 recorded in /home/doc/git/.acpi-proof-work/native-power-shared-work/VALIDATED.json.
 No new SPARK proof or native/laptop validation is claimed.
+
+One-service update: the actual coordinator detection body calls ACPI_One_Service.Root.Evaluation. The hosted acpi_one_service.ads fixture models those callbacks with the real Core for synthetic no-Field AML. It does not model native hardware/cache/lease/owner lifecycle. Removed native facade files are no longer required. Whole-Core functionality uses release -O0 -gnatp only; native checked/release semantic binding is separate. No new proof or native/hardware execution is claimed.
+
+## Battery-local continuation
+
+Known ordinary battery observation failures are counted and do not suppress later batteries. Each failed bundle remains empty; presence changes discard it. Battery_Search_Failed distinguishes a failed identity search from completed enumeration with ordinary errors. Cleanup/provider uncertainty, Fatal, fuel and battery-count limits still stop the pass. Startup completion accepts Battery_Failed only with a positive failure count and exact sampled/absent/failed accounting; interrupted or inconsistent scans remain incomplete.
+
+Fresh current hosted cases cover bad-first/good-second, good-first/bad-second, both invalid, changed presence, failed search after a bad battery, and fatal/limit boundaries in both AML widths. Exact production report specs are used by the completion adapter tests. No native execution, hardware validation or new formal proof is implied.

@@ -6,7 +6,7 @@ generic
    with package Receiver is new ACPI_EC_Event_Receiver
      (Core => ACPI_Service, others => <>);
 package ACPI_Bootstrap.EC_Events with SPARK_Mode is
-   type Admission is (Not_Ready, Admitted);
+   type Admission is (Not_Ready,Notifications_Pending,Results_Pending,Admitted);
    -- Trusted serialized owner API. Keep Receiver with this Session for its
    -- lifetime. Scope is selected by the owner from this completed snapshot;
    -- it is never a wire node selector or proof of hardware/source authority.
@@ -27,6 +27,9 @@ package ACPI_Bootstrap.EC_Events with SPARK_Mode is
       Sender : CuBit.Process_IDs.Process_ID; Item : ACPI_EC_Event_Types.Notice;
       Budget : Natural; Allowed : out Admission; Result : out Receiver.Outcome)
      with Pre => Valid (Session), Post => Valid (Session);
+   procedure Retire (Session : in out State; Run : in out Receiver.Delivery;
+      Allowed : out Admission; Accepted : out Boolean)
+     with Pre=>Valid(Session),Post=>Valid(Session);
    -- Cleanup remains possible even when startup is no longer ready. Close
    -- delegates the retained owner check; it cannot clear Field uncertainty.
    procedure Close

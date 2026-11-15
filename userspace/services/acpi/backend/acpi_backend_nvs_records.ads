@@ -54,6 +54,17 @@ package ACPI_Backend_NVS_Records with SPARK_Mode is
    procedure Describe
      (State : in out Context; Scope : Word; Epoch : Epoch_Number;
       Ordinal : Natural; Result : out Description_Report);
+   procedure Stop (State : in out Context);
+   -- Monotonic local failure fence; retains all backing and Working state.
+   -- Never resets a context or accepts purported completion evidence.
+   subtype Write_View is Catalog.Bindings.Access_View;
+   procedure Select_Write
+     (State : in out Context; Scope : Word; Epoch : Epoch_Number;
+      ID : Record_ID; Index : Word; Width : T.Access_Width;
+      View : out Write_View; Result : out Outcome);
+   -- Trusted local adapter only. Fresh class/backing, epoch, complete datum
+   -- bounds, natural alignment and mapped write right are checked here.
+   -- Returns no broader view; no write or wire endpoint is introduced.
    procedure Read
      (State : in out Context; Scope : Word; Epoch : Epoch_Number;
       ID : Record_ID; Index : Word; Width : T.Access_Width; Value : out Word; Result : out Outcome);

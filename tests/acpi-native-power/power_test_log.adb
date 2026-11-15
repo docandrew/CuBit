@@ -23,6 +23,7 @@ package body Power_Test_Log is
             raise Program_Error with "actual BIX units and BST quantity";
          end if;
       elsif Starts ("acpi: stage battery-observation ok ABSENT") then Absent := Absent + 1;
+      elsif Starts ("acpi: stage battery-observation fail ") then Failures := Failures + 1;
       elsif Starts ("acpi: stage power-discovery ") then Summaries := Summaries + 1;
       elsif not Starts ("acpi: stage ") then raise Program_Error with "unexpected log";
       end if;

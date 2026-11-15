@@ -8,15 +8,42 @@ generic
    with package Resolver is new ACPI_HID_I2C_Resolved
      (Core => ACPI_Service, others => <>);
 package ACPI_Requests.HID_Devices with SPARK_Mode is
-   pragma Unevaluated_Use_Of_Old (Allow);
    package Controller is new ACPI_Bootstrap.HID_Devices (Discovery, Resolver);
+   -- Capture the old scalar at the outer postcondition call, unconditionally.
+   -- Keep the current-state validity guard before reading its revision.
+   function Revision_Preserved (Server : State; Expected : Revision_Number)
+     return Boolean is (Valid (Server) and then Revision (Server) = Expected)
+     with Ghost;
+
    -- Trusted owner enumeration, same pending-session exclusion as Controller.
    procedure Find
      (Server : in out State; After : ACPI_Service.Namespace.Node_ID;
       Budget : Natural; Device : out ACPI_Service.Namespace.Node_ID;
       Result : out Controller.Search_Report)
+     with Pre => Valid (Server), Post => Revision_Preserved (Server, Revision (Server)'Old)
+       and then Result.Charged <= Budget;
+
+   generic
+      with procedure Check_Candidate
+        (Service : aliased in out ACPI_Service.State;
+         Item : ACPI_Service.Node_Descriptor; Budget : Natural;
+         Result : out Controller.Policy_Report);
+   procedure Find_With_Policy
+     (Server : in out State; After : ACPI_Service.Namespace.Node_ID;
+      Budget : Natural; Device : out ACPI_Service.Namespace.Node_ID;
+      Result : out Controller.Search_Report)
+     with Pre => Valid (Server), Post => Revision_Preserved (Server, Revision (Server)'Old)
+       and then Result.Charged <= Budget;
+
+   generic
+      with procedure Check_Candidate
+        (Service : aliased in out ACPI_Service.State;
+         Item : ACPI_Service.Node_Descriptor; Budget : Natural;
+         Result : out Controller.Policy_Report);
+   procedure Check_With_Policy
+     (Server : in out State; Item : ACPI_Service.Node_Descriptor;
+      Budget : Natural; Result : out Controller.Policy_Report)
      with Pre => Valid (Server), Post => Valid (Server)
-       and then Revision (Server) = Revision (Server)'Old
        and then Result.Charged <= Budget;
 
    function Current (Run : Controller.Probe; Server : State) return Boolean
@@ -28,19 +55,16 @@ package ACPI_Requests.HID_Devices with SPARK_Mode is
      (Run : in out Controller.Probe; Server : in out State;
       Device : ACPI_Service.Namespace.Node_ID; Budget : Natural;
       Allowed : out Controller.Admission; Action : out Discovery.Action_Result)
-     with Pre => Valid (Server), Post => Valid (Server)
-       and then Revision (Server) = Revision (Server)'Old;
+     with Pre => Valid (Server), Post => Revision_Preserved (Server, Revision (Server)'Old);
    procedure Copy_And_Resolve
      (Run : in out Controller.Probe; Server : in out State;
       Data : out Firmware_Tables.Bytes; Allowed : out Controller.Admission;
       Action : out Discovery.Action_Result)
-     with Pre => Valid (Server), Post => Valid (Server)
-       and then Revision (Server) = Revision (Server)'Old;
+     with Pre => Valid (Server), Post => Revision_Preserved (Server, Revision (Server)'Old);
    procedure Cancel
      (Run : in out Controller.Probe; Server : in out State;
       Action : out Discovery.Action_Result)
-     with Pre => Valid (Server), Post => Valid (Server)
-       and then Revision (Server) = Revision (Server)'Old;
+     with Pre => Valid (Server), Post => Revision_Preserved (Server, Revision (Server)'Old);
    -- Serialized trusted-owner selection and probe start. Search and all later
    -- probe work share Budget: Begin_Probe receives only Budget - Search.Charged.
    -- While this Run is Pending, return Busy without searching or replacing it.
@@ -52,7 +76,6 @@ package ACPI_Requests.HID_Devices with SPARK_Mode is
       After : ACPI_Service.Namespace.Node_ID; Budget : Natural;
       Device : out ACPI_Service.Namespace.Node_ID; Search : out Controller.Search_Report;
       Allowed : out Controller.Admission; Action : out Discovery.Action_Result)
-     with Pre => Valid (Server), Post => Valid (Server)
-       and then Revision (Server) = Revision (Server)'Old
+     with Pre => Valid (Server), Post => Revision_Preserved (Server, Revision (Server)'Old)
        and then Search.Charged <= Budget;
 end ACPI_Requests.HID_Devices;

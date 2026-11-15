@@ -505,6 +505,7 @@ package body acpi is
                             if ioapicAddr = 0 then
                                 ioapicAddr := virtmem.PhysAddress(ioapic.apicAddress);
                                 ioapicID := Unsigned_32(ioapic.apicID);
+                                ioapicGSIBase := ioapic.globalBase;
                             end if;
                         else
                             println(" WARNING: Bad IO APIC Record");

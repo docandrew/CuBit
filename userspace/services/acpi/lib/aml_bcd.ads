@@ -11,14 +11,18 @@ package AML_BCD with SPARK_Mode, Pure is
    Nibble_Bits : constant := 4;
    -- Static factors keep checked postconditions independent of an optional
    -- run-time exponentiation helper on the native CuBit profile.
-   type Decimal_Power_Table is array (Digit_Index) of AML_Decode.Integer_Value;
+   subtype Decimal_Factor is AML_Decode.Integer_Value range
+     1 .. Decimal_Radix ** Digit_Index'Last;
+   type Decimal_Power_Table is array (Digit_Index) of Decimal_Factor;
    Decimal_Powers : constant Decimal_Power_Table :=
      [Decimal_Radix ** 0, Decimal_Radix ** 1, Decimal_Radix ** 2, Decimal_Radix ** 3,
       Decimal_Radix ** 4, Decimal_Radix ** 5, Decimal_Radix ** 6, Decimal_Radix ** 7,
       Decimal_Radix ** 8, Decimal_Radix ** 9, Decimal_Radix ** 10, Decimal_Radix ** 11,
       Decimal_Radix ** 12, Decimal_Radix ** 13, Decimal_Radix ** 14, Decimal_Radix ** 15];
-   function Decimal_Power (Index : Digit_Index) return AML_Decode.Integer_Value is
-     (Decimal_Powers (Index));
+   function Decimal_Power (Index : Digit_Index) return Decimal_Factor is
+     (Decimal_Powers (Index))
+     with Post => (if Index = Digit_Index'First then Decimal_Power'Result = 1
+       else Decimal_Power'Result = Decimal_Powers (Index - 1) * Decimal_Radix);
    function Active_Digits (Width : AML_Decode.Integer_Width) return Digit_Count is
      (if Width = AML_Decode.Bits_32 then 8 else 16);
    function Decimal_Maximum (Width : AML_Decode.Integer_Width)

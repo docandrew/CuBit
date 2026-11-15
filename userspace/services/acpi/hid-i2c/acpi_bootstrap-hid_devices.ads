@@ -9,9 +9,37 @@ generic
 package ACPI_Bootstrap.HID_Devices with SPARK_Mode is
    type Admission is (Not_Ready, Admitted);
    type Search_Outcome is (Not_Ready, Found, No_Match, Incomplete, Invalid_Cursor, Failed);
+   -- Process-local owner policy, invoked before any HID identity AML. This
+   -- gate grants no authority. Recovery_Required preserves owner cleanup debt;
+   -- Excluded skips a non-candidate; Node_Error skips a known ordinary AML
+   -- failure, counts it and continues. Neither grants device authority.
+   type Policy_Outcome is
+     (Eligible, Excluded, Policy_Incomplete, Policy_Failed, Recovery_Required, Node_Error);
+   type Policy_Report is record
+      Outcome : Policy_Outcome := Policy_Incomplete;
+      Charged : Natural := 0;
+   end record;
+   Maximum_Captured_Search_Errors : constant Positive := 8;
+   subtype Search_Error_Count is Natural range 0 .. Maximum_Captured_Search_Errors;
+   subtype Search_Error_Index is Positive range 1 .. Maximum_Captured_Search_Errors;
+   type Search_Error_Kind is (Policy_Error, Identity_Error);
+   type Search_Error is record
+      Kind : Search_Error_Kind := Policy_Error;
+      Device : ACPI_Service.Node_Descriptor := ACPI_Service.Values.No_Node;
+      Policy : Policy_Report;
+      Identity : Discovery.Queries.Identification_Report;
+   end record;
+   type Search_Error_Array is array (Search_Error_Index) of Search_Error;
    type Search_Report is record
       Outcome : Search_Outcome := Not_Ready;
-      Scanned, Candidates, Charged : Natural := 0;
+      Scanned, Candidates, Excluded_Count, Charged : Natural := 0;
+      Node_Errors : Natural := 0;
+      -- Detached observations in scan order, including errors preceding a
+      -- later successful candidate. No retained values or Core references.
+      Captured_Errors : Search_Error_Count := 0;
+      Omitted_Errors : Natural := 0;
+      Errors : Search_Error_Array;
+      Last_Policy : Policy_Report;
       Last_Identity : Discovery.Queries.Identification_Report;
    end record;
    -- Trusted owner search in this completed snapshot. Root starts enumeration;
@@ -21,6 +49,33 @@ package ACPI_Bootstrap.HID_Devices with SPARK_Mode is
      (Session : in out State; After : ACPI_Service.Namespace.Node_ID;
       Budget : Natural; Device : out ACPI_Service.Namespace.Node_ID;
       Result : out Search_Report)
+     with Pre => Valid (Session), Post => Valid (Session)
+       and then Result.Charged <= Budget;
+
+   -- The fixed owner callback receives this Session's exact private Core.
+   -- It must preserve Core validity, use only Budget, retain any pending result
+   -- itself, and report Recovery_Required until that obligation is settled.
+   -- It must not reset/rebind the owner or recursively enter discovery.
+   generic
+      with procedure Check_Candidate
+        (Service : aliased in out ACPI_Service.State;
+         Item : ACPI_Service.Node_Descriptor; Budget : Natural;
+         Result : out Policy_Report);
+   procedure Find_With_Policy
+     (Session : in out State; After : ACPI_Service.Namespace.Node_ID;
+      Budget : Natural; Device : out ACPI_Service.Namespace.Node_ID;
+      Result : out Search_Report)
+     with Pre => Valid (Session), Post => Valid (Session)
+       and then Result.Charged <= Budget;
+
+   generic
+      with procedure Check_Candidate
+        (Service : aliased in out ACPI_Service.State;
+         Item : ACPI_Service.Node_Descriptor; Budget : Natural;
+         Result : out Policy_Report);
+   procedure Check_With_Policy
+     (Session : in out State; Item : ACPI_Service.Node_Descriptor;
+      Budget : Natural; Result : out Policy_Report)
      with Pre => Valid (Session), Post => Valid (Session)
        and then Result.Charged <= Budget;
 

@@ -41,16 +41,16 @@
   "stop_reason": "STOP_REASON_NONE",
   "timings": {
     " 1": {
-      "gnat2why.vc_generation": 1.26388996839523E-01
+      "gnat2why.vc_generation": 1.28393992781639E-01
     },
     "global": {
-      "flow analysis": 7.14500015601516E-03,
-      "globals (advanced)": 8.23999987915158E-04,
-      "globals (basic)": 1.10309999436140E-02,
-      "init_why_sections": 8.75599961727858E-03,
-      "marking": 8.19499976933002E-03,
-      "properties (advanced)": 2.20999994780868E-04,
-      "translation of standard": 4.16820012032986E-02
+      "flow analysis": 7.28499982506037E-03,
+      "globals (advanced)": 8.46999988425523E-04,
+      "globals (basic)": 1.11899999901652E-02,
+      "init_why_sections": 8.97799991071224E-03,
+      "marking": 8.32900032401085E-03,
+      "properties (advanced)": 2.32999998843297E-04,
+      "translation of standard": 4.22459989786148E-02
     }
   }
 }

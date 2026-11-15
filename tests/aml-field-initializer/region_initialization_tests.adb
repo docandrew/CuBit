@@ -66,7 +66,7 @@ function Region_Initialization_Tests return Natural is
      (P.Context,P.Pending,P.Describe,P.Dispatch,P.Reconciled,Authorize_Target => P.Authorize);
    type Controller is limited record
       IO : P.Context;
-      Bindings : F.Binding_Set;
+      Bindings : F.Binding_Set(F.Default_Binding_Capacity);
       Ready : Boolean := True;
       Calls : Natural := 0;
       Last_Space, Last_Code : Unsigned_64 := 0;

@@ -26,6 +26,9 @@ package ACPI_Requests.EC_Events with SPARK_Mode is
       Result : out Receiver.Outcome)
      with Pre => Valid (Server), Post => Valid (Server)
        and then Revision (Server) = Revision (Server)'Old;
+   procedure Retire (Server : in out State; Run : in out Receiver.Delivery;
+      Allowed : out Controller.Admission; Accepted : out Boolean)
+     with Pre=>Valid(Server),Post=>Valid(Server) and then Revision(Server)=Revision(Server)'Old;
    procedure Close
      (Server : in out State; Run : in out Receiver.Delivery;
       Result : out Receiver.Close_Result)

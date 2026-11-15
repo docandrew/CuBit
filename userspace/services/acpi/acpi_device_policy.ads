@@ -17,5 +17,5 @@ package ACPI_Device_Policy with Pure, SPARK_Mode is
             => Decide'Result = Prune_Subtree);
    -- These are outcomes supplied by a trusted region coordinator, not authority.
    type Region_Outcome is (Regions_Connected, No_Regions_Required,
-      Regions_Unavailable, Region_Initialization_Failed);
+      Regions_Unavailable, Region_Initialization_Failed, Regions_Prepared);
 end ACPI_Device_Policy;

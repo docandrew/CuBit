@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Field_Notes;
 with AML_Profile_Events;
 with AML_Work_Kinds;
 with AML_Definition_Loads;
@@ -138,6 +139,15 @@ package ACPI_Service_Core with SPARK_Mode is
    function Initial_Storage_Limits (Table_Bytes : Positive) return AML_Storage_Capacities.Limits;
    function Storage_Limits (Service : State) return AML_Storage_Capacities.Limits with Pre => Valid (Service);
    function Valid (Service : State) return Boolean;
+   -- Detached equality key only: no node, address, permission or import API.
+   -- Capturable once module execution has initialized the namespace, before
+   -- member/node metadata is ready. Reset/replacement invalidates old keys.
+   type Context_Key is private;
+   No_Context : constant Context_Key;
+   function Capture_Context (Service : State) return Context_Key
+     with Global => null, Pre => Valid (Service);
+   function Current_Context (Service : State; Item : Context_Key) return Boolean
+     with Global => null, Pre => Valid (Service);
    -- Terminal local cleanup after retiring this protocol owner. After success,
    -- only Storage_Released and idempotent Release_Storage may be called.
    function Storage_Released (Service : State) return Boolean;
@@ -147,6 +157,9 @@ package ACPI_Service_Core with SPARK_Mode is
        and then (if Released then not Valid (Service) else Valid (Service));
    function Current_Import_Phase (Service : State) return Import_Phase with Pre => Valid (Service);
    function Namespace_Load_Phase (Service : State) return Values.Phase with Pre => Valid (Service), Ghost;
+   -- Runtime lifecycle observation; does not describe or evaluate a node.
+   function Namespace_Phase (Service : State) return Values.Phase
+     with Pre => Valid (Service), Post => Namespace_Phase'Result = Namespace_Load_Phase(Service);
    function Namespace_Generation (Service : State) return AML_Identity.Identity with Pre => Valid (Service), Ghost;
    function Table_Count (Service : State) return Natural with Pre => Valid (Service),
      Post => Table_Count'Result <= Service.Table_Capacity;
@@ -426,6 +439,16 @@ package ACPI_Service_Core with SPARK_Mode is
       -- Explicit whole-Field lock provider, with per-datum admission.
       -- Separate from the existing read-only named-NVS policy.
       Allow_Locked_Fields : Boolean := False;
+      -- Independent computed SystemMemory fallback. Disabled unless a real
+      -- platform-pool owner is installed; it supersedes the literal fallback.
+      Enable_Startup_Platform_Resolution : Boolean := False;
+      with procedure Resolve_Startup_Platform_Target
+        (IO : in out IO_Context; Declaration : Namespace.Operation_Region_Attributes;
+         Name : AML_Names.Segment; Node : Namespace.Node_ID;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+   with procedure Observe_Field (Item : AML_Field_Notes.Event) is null;
+   Field_Notes_Enabled : Boolean := False;
    package Field_IO is
       pragma Unevaluated_Use_Of_Old (Allow);
       type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
@@ -443,7 +466,8 @@ package ACPI_Service_Core with SPARK_Mode is
           and then Catalog_Snapshot (Service) = Catalog_Snapshot (Service)'Old;
       type Binding is private;
       No_Binding : constant Binding;
-      type Binding_Set is private;
+      Default_Binding_Capacity : constant Positive := Maximum_Bindings;
+      type Binding_Set (Capacity : Positive) is private;
       procedure Clear (Items : out Binding_Set);
       procedure Add_Region_Register
         (Service : State; IO : IO_Context; Region : Node_Descriptor;
@@ -573,12 +597,13 @@ package ACPI_Service_Core with SPARK_Mode is
       package Adapter is new Values.Field_IO
         (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed, Maximum_Bindings,
          Authorize_Target, Maximum_Requests, Maximum_Work, Resolve_Module_Target, Begin_Field, End_Field, Allow_Locked_NVS_Reads,
-         Enable_Startup_Firmware_Resolution, Resolve_Startup_Firmware_Target, Allow_Locked_Fields);
+         Enable_Startup_Firmware_Resolution, Resolve_Startup_Firmware_Target, Allow_Locked_Fields,
+         Enable_Startup_Platform_Resolution, Resolve_Startup_Platform_Target, Observe_Field, Field_Notes_Enabled);
       type Binding is record
          Inner : Adapter.Binding := Adapter.No_Binding;
       end record;
-      type Binding_Set is record
-         Inner : Adapter.Binding_Set;
+      type Binding_Set (Capacity : Positive) is record
+         Inner : Adapter.Binding_Set (Capacity);
       end record;
       No_Binding : constant Binding := (others => <>);
    end Field_IO;
@@ -774,6 +799,8 @@ package ACPI_Service_Core with SPARK_Mode is
            Current_Import_Phase (Service) = Catalog_Frozen
          else Current_Import_Phase (Service) = Current_Import_Phase (Service)'Old);
 private
+   type Context_Key is record Owner : AML_Identity.Identity := AML_Identity.No_Identity; end record;
+   No_Context : constant Context_Key := (Owner => AML_Identity.No_Identity);
    type Table_Entry is record
       Metadata : Table_Metadata;
       Offset : Natural := 0;

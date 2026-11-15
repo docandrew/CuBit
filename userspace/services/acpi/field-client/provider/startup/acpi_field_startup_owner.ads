@@ -209,5 +209,5 @@ private
    Until_Time, Last_Sample : Wire.Time_Instant := 0;
    Module_Attempted, Module_Completed : Boolean := False;
    IO : Root_Context;
-   Cache : Evaluation.Context;
+   Cache : Evaluation.Context (Maximum_Bindings);
 end ACPI_Field_Startup_Owner;

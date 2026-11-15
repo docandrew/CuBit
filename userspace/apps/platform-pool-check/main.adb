@@ -17,7 +17,7 @@
 --    * acquires PCI segment 0 bus 0's read-only configuration window from
 --      devmgr's named PCI broker (since the ACPI PCI-windows cohort there
 --      are no startup PCI configuration pregrants: the backend, and so
---      this validated com.cubit.acpi-backend stand-in, asks the broker for
+--      this validated com.cubit.acpi stand-in, asks the broker for
 --      a bus's window) and finds edu's BAR0 through it;
 --    * asks devmgr for the pool through the firmware-data badge, gets it
 --      with the pool tag, read-write without grant, and cannot copy it on;

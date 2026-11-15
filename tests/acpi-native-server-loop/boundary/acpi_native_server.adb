@@ -8,6 +8,11 @@ package body ACPI_Native_Server is
    begin
       Result := Owner_Idle;
    end Idle_Owner;
+   procedure No_Maintenance (Wake_Deadline_Milliseconds : out Interfaces.Unsigned_64;
+      May_Continue : out Boolean) is
+   begin
+      Wake_Deadline_Milliseconds := Wait_Forever; May_Continue := True;
+   end No_Maintenance;
    package body With_Dispatch is
       procedure Serve (Server : in out ACPI_Requests.State; Reason : out Stop_Reason) is
          Request, Response : Message;
@@ -18,6 +23,8 @@ package body ACPI_Native_Server is
          Publisher : Process_ID;
          Ignore : Unsigned_64;
          Owner_Result : Owner_Outcome;
+         Owner_Deadline : Unsigned_64;
+         May_Continue : Boolean;
       begin
          loop
             -- This synchronous observer runner submits no asynchronous work.
@@ -39,6 +46,10 @@ package body ACPI_Native_Server is
             if Owner_Result = Owner_Refused then
                Reason := Owner_Work_Refused; return;
             end if;
+            Maintain_Owner (Owner_Deadline,May_Continue);
+            if not May_Continue then
+               Reason := Owner_Maintenance_Stopped; return;
+            end if;
             -- Keep remaining events on their typed lane for the next turn.
             -- A mixed receive here could consume a second event as a request.
             Poll_Service_Request (From, Request, Found);
@@ -49,7 +60,7 @@ package body ACPI_Native_Server is
                -- never replays a dispatch, table import, or AML startup.
                Ignore := reply (From, Response);
             elsif not Event_Found and then Owner_Result = Owner_Idle
-              and then Wait_For_Activity_Until (Wait_Forever) = Unavailable then
+              and then Wait_For_Activity_Until (Owner_Deadline) = Unavailable then
                Reason := Wait_Unavailable; return;
             end if;
          end loop;

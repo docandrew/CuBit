@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Names;
 with ACPI_Service_Core;
 with ACPI_Field_Provider_View;
 with ACPI_Field_Module_Startup;
@@ -16,9 +17,16 @@ generic
      (IO : in out Provider.Context; Declaration : Core.Namespace.Operation_Region_Attributes;
       Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+   Enable_Startup_Platform_Resolution : Boolean := False;
+   with procedure Resolve_Startup_Platform_Target
+     (IO : in out Provider.Context; Declaration : Core.Namespace.Operation_Region_Attributes;
+      Name : AML_Names.Segment; Node : Core.Namespace.Node_ID;
+      Geometry : AML_Field_Layout.Register_Geometry;
+      Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
 package ACPI_Field_Bindings is
    package Startup is new ACPI_Field_Module_Startup (Core, Provider, Maximum_Bindings, Enable_Startup_Firmware_Resolution,
-      Resolve_Startup_Firmware_Target);
+      Resolve_Startup_Firmware_Target, Enable_Startup_Platform_Resolution,
+      Resolve_Startup_Platform_Target);
    package Fields renames Startup.Fields;
    type Outcome is (Not_Attempted, Built, Built_With_Gaps, Already_Consumed,
                     Provider_Unavailable, Pending_IO, Namespace_Unavailable, Binding_Refused);
@@ -29,7 +37,7 @@ package ACPI_Field_Bindings is
       Failed_Node : Core.Namespace.Node_ID := Core.Namespace.Root;
       Failure : Core.Values.Access_Status := Core.Values.Available;
    end record;
-   type Context is limited private;
+   type Context (Capacity : Positive) is limited private;
    function Observe (Run : Context) return Report;
    -- One attempt after module execution and Initialize_Members, before root/
    -- _SB._INI. No AML or IPC is executed here. Targets come exclusively from
@@ -46,13 +54,23 @@ package ACPI_Field_Bindings is
    procedure Copy_Bindings
      (Run : Context; Service : Core.State; IO : Provider.Context;
       Items : out Fields.Binding_Set; Accepted : out Boolean);
+   -- Metadata-only upper bound from THIS namespace and provisioned registry.
+   -- No AML, selector dispatch or mapping is performed while counting.
+   procedure Required_Capacity(Service:Core.State; IO:Provider.Context;
+      Capacity:out Positive; Accepted:out Boolean);
+   function Current(Run:Context;Service:Core.State;IO:Provider.Context) return Boolean;
+   generic
+      with procedure Action(Items:Fields.Binding_Set);
+   procedure With_Bindings(Run:in out Context;Service:Core.State;
+      IO:Provider.Context;Accepted:out Boolean);
 private
    type Phase is (Fresh, Building, Published, Failed);
-   type Context is limited record
+   type Context (Capacity : Positive) is limited record
       Stage : Phase := Fresh;
       Info : Report;
       Root : Core.Node_Descriptor := Core.Values.No_Node;
       Provider_ID : AML_Identity.Identity := AML_Identity.No_Identity;
-      Items : Fields.Binding_Set;
+      Items : Fields.Binding_Set (Capacity);
+      Borrowed : Boolean := False;
    end record;
 end ACPI_Field_Bindings;
