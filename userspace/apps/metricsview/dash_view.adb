@@ -4140,6 +4140,18 @@ package body Dash_View is
       Register;
    end Close_Picker;
 
+   --  The lists' places before an input (Note_Lists), for what a list
+   --  that closed covered.
+   Before_Series_List, Before_View_List : Rect := (others => 0);
+   procedure Note_Lists;
+   procedure Note_Lists is
+   begin
+      Before_Series_List :=
+        (if Picker_On and then CB.Is_Open (Series_Combo) then Picker_List else (others => 0));
+      Before_View_List :=
+        (if Picker_On and then CB.Is_Open (View_Combo) then Picker_List else (others => 0));
+   end Note_Lists;
+
    --  The picker's look changed: its card and its list (and what a list
    --  that closed covered).
    procedure Picker_Moved (Before : Rect; Damage : in out Rect);
@@ -4147,9 +4159,19 @@ package body Dash_View is
       After : constant Rect := Picker_Cover;
    begin
       if After /= Before then
-         --  A list opened or closed: what it covered, and the card.
-         Mark_Exactly (Damage, Before);
-         Mark_Exactly (Damage, After);
+         --  A list opened or closed: the card, the list, and what a list
+         --  that closed covered (each on its own: wholly under a layer,
+         --  nothing beneath is drawn).
+         Mark_Exactly (Damage, Picker_Box);
+         Mark_Exactly (Damage, Picker_List);
+         for Field in Picker_Field loop
+            declare
+               Old_List : constant Rect :=
+                 (if Field = Series_Field then Before_Series_List else Before_View_List);
+            begin
+               Mark_Exactly (Damage, Old_List);
+            end;
+         end loop;
          Register;
       else
          --  The fields and the open list; the card's text stays.
@@ -4221,6 +4243,7 @@ package body Dash_View is
            when Series_Field => CB.Is_Open (Series_Combo),
            when View_Field => CB.Is_Open (View_Combo));
    begin
+      Note_Lists;
       case E.Pressed is
          when Escape =>
             if Focused_Open then
@@ -4815,6 +4838,7 @@ package body Dash_View is
       Changed, Dispatched, Handled : Boolean;
    begin
       Taken := False;
+      Note_Lists;
       if Action = Controls.Pointer_Release and then Block_Release then
          Block_Release := False;
          Taken := True;
@@ -5206,6 +5230,7 @@ package body Dash_View is
             Before : constant Rect := Picker_Cover;
             Handled : Boolean := False;
          begin
+            Note_Lists;
             if CB.Is_Open (Series_Combo) then
                CB.Handle_Wheel (Series_Combo, Series_Model, E.Steps, Handled);
             elsif CB.Is_Open (View_Combo) then
