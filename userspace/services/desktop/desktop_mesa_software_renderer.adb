@@ -14,15 +14,17 @@ package body Desktop_Mesa_Software_Renderer with SPARK_Mode,
    package Selection renames Compositor_Backend_Selection;
    Choice : Selection.State;
    procedure Configure_Renderer
-     (Evidence : Selection.Readiness; Accepted : out Boolean)
+     (Evidence : Selection.Readiness; Policy : Selection.Composition; Accepted : out Boolean)
      with Refined_Global => (In_Out => Choice) is
+      pragma Unreferenced (Policy);
    begin
       -- A software build cannot authenticate GPU readiness. Reject such
       -- evidence without changing its selection or granting GPU authority.
+      -- It composes on the CPU whatever the policy asks for.
       if Selection.Ready (Evidence) then
          Accepted := False;
       else
-         Selection.Select_Backend (Choice, Evidence, Accepted);
+         Selection.Select_Backend (Choice, Evidence, Selection.CPU_Composition, Accepted);
       end if;
    end Configure_Renderer;
    procedure Recover_Renderer

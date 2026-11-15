@@ -12479,8 +12479,11 @@ procedure main is
       then
          --  Boot timeline (docs/boot-timeline.md); one branch after the first.
          CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Input_Accepted, Startup.Registration);
-         --  A frame follows: let the GPU clock rise now (one-way, coalesced).
-         Desktop_GPU_Wake.Input_Hint;
+         --  A frame follows: let the GPU clock rise now (one-way, coalesced),
+         --  only when that frame is the GPU's (CPU composition boosts nothing).
+         if Desktop_Compositor.Full_Output then
+            Desktop_GPU_Wake.Input_Hint;
+         end if;
       end if;
 
       if eventMsg.tag.label = EVENT_KEYBOARD or else
@@ -13994,6 +13997,7 @@ procedure main is
       Started, Finished, Storage_Ready : Boolean := False;
       Abandoned : Boolean := False;
       use type Desktop_Breadcrumbs.Stage;
+      use type Selection.Composition;
    begin
       -- No GPU owner exists before the worker runs. On an unconfirmed CPU
       -- bootstrap, select software without entering foreign initialization.
@@ -14002,6 +14006,7 @@ procedure main is
          Desktop_Renderer_Worker.Start
            (Configuration => backBufferReady and then desktopLayout.Count = 1 and then
               primaryOutput = 0 and then presentations (0).Enabled,
+            Policy => Selection.UI_Composition,
             Width => Unsigned_64 (presentations (0).Geometry.Width),
             Height => Unsigned_64 (presentations (0).Geometry.Height),
             Epoch => BP.Writer (presentations (0).Pool).Epoch,
@@ -14045,10 +14050,25 @@ procedure main is
          Diagnostic_Pipeline_Result := Diagnostic.Result;
          Diagnostic_Pipeline_Valid := True;
       end if;
-      Desktop_Compositor.Configure_Renderer (Evidence, Accepted);
+      Desktop_Compositor.Configure_Renderer (Evidence, Selection.UI_Composition, Accepted);
       if not Accepted then exitCompositor (1); return; end if;
-      if Selection.Ready (Evidence) then
+      if Desktop_Compositor.Full_Output then
          debugPrint ("DESKTOP-VULKAN: startup=READY" & LF);
+      elsif Selection.UI_Composition = Selection.CPU_Composition and then
+        Desktop_Renderer_Startup.GPU_Capable
+      then
+         --  The UI is composed on the CPU by policy (LAT-002, user 2026-11-14);
+         --  an admitted, healthy GPU session stays open for 3D work.
+         debugPrint ("DESKTOP-VULKAN: startup=SOFTWARE" & LF);
+         if Allow_GPU and then Finished and then not (Evidence.Admitted and then Evidence.Device) then
+            Desktop_Renderer_Startup.Stop;
+         end if;
+         softwareAnnounced := True;
+         debugPrint ("desktop: software rendering (CPU composition policy; GPU session " &
+           (if Abandoned then "startup did not finish in time"
+            elsif not Allow_GPU then "not started; bootstrap unconfirmed"
+            elsif Evidence.Admitted and then Evidence.Device then "kept for 3D surfaces"
+            else "unavailable") & ")" & LF);
       else
          debugPrint ("DESKTOP-VULKAN: startup=SOFTWARE" & LF);
          if Allow_GPU and then Finished then Desktop_Renderer_Startup.Stop; end if;
@@ -14396,7 +14416,9 @@ begin
                   then nextDueMs := KR.Next_Due (keyRepeat); end if;
                   -- GPU work in flight: sleep on its completion event when the
                   -- glue can arm one (Desktop_GPU_Wake), else the 1 ms timer.
-                  Desktop_GPU_Wake.Prepare_Wait (renderingPending, requestSequence, now, gpuWaitMode);
+                  -- CPU-composed frames have no GPU work to wait for.
+                  Desktop_GPU_Wake.Prepare_Wait
+                    (renderingPending and then Desktop_Compositor.Full_Output, requestSequence, now, gpuWaitMode);
                   if gpuWaitMode = Desktop_GPU_Wake.Look_Again then
                      mayWait := False;
                   elsif renderingPending or else sourceRetirementPending or else outputDrainRequested or else outputReopenPending then
@@ -14423,7 +14445,7 @@ begin
                   if mayWait and then nextDueMs /= 0 then
                      activity := Wait_For_Activity_Until (nextDueMs);
                      if activity = Unavailable then running := False; end if;
-                     if renderingPending then
+                     if renderingPending and then Desktop_Compositor.Full_Output then
                         Desktop_GPU_Wake.Woke (gpuWaitMode, now, nowMs);
                      end if;
                   end if;

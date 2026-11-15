@@ -28,6 +28,8 @@ package body Desktop_Renderer_Worker with SPARK_Mode => Off is
    --  Written by the main thread before pthread_create (which orders them
    --  before the worker's reads), read by the worker.
    In_Configuration : Boolean := False;
+   In_Policy : Compositor_Backend_Selection.Composition :=
+     Compositor_Backend_Selection.CPU_Composition;
    In_Width, In_Height : Unsigned_64 := 0;
    In_Epoch : Compositor_Pool.ID := 0;
    --  Written by the worker before Done; read by the main thread after it.
@@ -45,7 +47,7 @@ package body Desktop_Renderer_Worker with SPARK_Mode => Off is
       Diagnostic : Desktop_Renderer_Startup.Pipeline_Diagnostic;
    begin
       Desktop_Renderer_Startup.Run
-        (In_Configuration, In_Width, In_Height, In_Epoch, Evidence, Diagnostic);
+        (In_Configuration, In_Policy, In_Width, In_Height, In_Epoch, Evidence, Diagnostic);
       Out_Evidence := Evidence;
       Out_Diagnostic := Diagnostic;
       Done := 1;
@@ -53,7 +55,8 @@ package body Desktop_Renderer_Worker with SPARK_Mode => Off is
    end Worker;
 
    procedure Start
-     (Configuration : Boolean; Width, Height : Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Unsigned_64;
       Epoch : Compositor_Pool.ID; Started : out Boolean)
    is
       Attributes : aliased Attribute_Storage := (others => 0);
@@ -62,6 +65,7 @@ package body Desktop_Renderer_Worker with SPARK_Mode => Off is
    begin
       Started := False;
       In_Configuration := Configuration;
+      In_Policy := Policy;
       In_Width := Width;
       In_Height := Height;
       In_Epoch := Epoch;

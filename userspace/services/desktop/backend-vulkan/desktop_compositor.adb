@@ -648,9 +648,11 @@ begin
  elsif Selection.Recovery (Choice) = Selection.Quarantined then Result := Recovery_Unsafe;
  end if;
 end Recover_Renderer;
-procedure Configure_Renderer (Evidence : Compositor_Backend_Selection.Readiness; Accepted : out Boolean) is
+procedure Configure_Renderer
+     (Evidence : Compositor_Backend_Selection.Readiness;
+      Policy : Compositor_Backend_Selection.Composition; Accepted : out Boolean) is
 begin
- Selection.Select_Backend (Choice, Evidence, Accepted);
+ Selection.Select_Backend (Choice, Evidence, Policy, Accepted);
 end Configure_Renderer;
 function Selected return Boolean is
 begin

@@ -6,7 +6,8 @@ with Desktop_Renderer_Startup;
 --  (empty) startup at once. Same interface as the Vulkan build's worker.
 package Desktop_Renderer_Worker is
    procedure Start
-     (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID; Started : out Boolean);
    function Finished return Boolean;
    procedure Take

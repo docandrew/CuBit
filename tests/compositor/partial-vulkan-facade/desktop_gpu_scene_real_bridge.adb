@@ -1,3 +1,4 @@
+with Compositor_Backend_Selection;
 with System;
 with Desktop_Compositor; with Desktop_Vulkan_Startup; with Vulkan_Device_Owner;
 with Compositor_Damage; with Compositor_Formats; with Compositor_Pool;
@@ -29,7 +30,7 @@ package body Desktop_GPU_Scene_Real_Bridge is
   D.Prepare_Pipeline(OK); if not OK then return 3; end if;
   D.Configure_Upload(8192,OK); if not OK then return 4; end if;
   D.Configure_Readback(96*64*4,OK); if not OK then return 5; end if;
-  C.Configure_Renderer((others=>True),OK); return (if OK and C.Full_Output then 0 else 6);
+  C.Configure_Renderer((others=>True),Compositor_Backend_Selection.GPU_Composition,OK); return (if OK and C.Full_Output then 0 else 6);
  end Open;
  function Frame (Step : Interfaces.C.int) return Interfaces.C.int is
   N : constant Natural:=Natural(Step); X : constant Natural:=20+(N mod 4)*4;

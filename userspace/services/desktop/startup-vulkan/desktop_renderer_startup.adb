@@ -13,7 +13,7 @@ with Desktop_Startup_Progress;
 with Desktop_Logs;
 with Desktop_GPU_Calls;
 package body Desktop_Renderer_Startup with SPARK_Mode,
-  Refined_State => (Observed => (Admission, Device_Created, Mode_Width, Mode_Height)) is
+  Refined_State => (Observed => (Admission, Device_Created, Mode_Width, Mode_Height, Composing)) is
    use Interfaces;
    --  The longest one GPU-service reply may take before Desktop gives up the
    --  GPU path for software (IPC-004). A legitimate operation is far below it;
@@ -31,8 +31,13 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
    Device_Created : Boolean := False;
    -- The mode Run was asked for (its frame and GPU budget derive from it).
    Mode_Width, Mode_Height : Unsigned_64 := 0;
+   -- The composition policy Run was asked for.
+   Composing : Compositor_Backend_Selection.Composition :=
+     Compositor_Backend_Selection.CPU_Composition;
+   use type Compositor_Backend_Selection.Composition;
    procedure Run
-     (Configuration : Boolean; Width, Height : Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Unsigned_64;
       Epoch : Compositor_Pool.ID;
       Evidence : out Compositor_Backend_Selection.Readiness;
       Diagnostic : out Pipeline_Diagnostic) is
@@ -46,6 +51,7 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
       Admission := Unknown_Slot;
       Mode_Width := Width;
       Mode_Height := Height;
+      Composing := Policy;
       Desktop_GPU_Calls.Bound (GPU_Call_Timeout_Ms);
       --  procmgr installs the render entry only for an admitted session.
       Evidence.Admitted := CuBit.Handles.Valid (Desktop_Endpoints.Render);
@@ -62,7 +68,10 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
       Step.Enter (Desktop_Breadcrumbs.Health_After); end if;
       Bytes := Desktop_Startup_Layout.Required_Bytes (Width, Height);
       Evidence.Configuration := Configuration and then Epoch /= 0 and then Bytes /= 0;
-      if Evidence.Device and then Evidence.Configuration then
+      -- CPU composition needs none of the GPU composition resources.
+      if Evidence.Device and then Evidence.Configuration and then
+        Policy = Compositor_Backend_Selection.GPU_Composition
+      then
          Step.Enter (Desktop_Breadcrumbs.Targets_Before);
       GPU.Configure_Targets (Unsigned_32 (Width), Unsigned_32 (Height),
            Epoch, Desktop_Startup_Layout.GPU_Budget_Bytes (Width, Height), Evidence.Targets);
@@ -135,7 +144,19 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
            ASCII.LF);
       end if;
       -- Report the first unmet gate, not an inferred allocation/quota cause.
-      if not Evidence.Admitted then
+      -- Under CPU composition the session is the only gate: admission,
+      -- device and health.
+      if Composing = Compositor_Backend_Selection.CPU_Composition then
+         if not Evidence.Admitted then
+            debugPrint ("DESKTOP-VULKAN: setup unavailable stage=admission" & ASCII.LF);
+         elsif not Device_Created then
+            debugPrint ("DESKTOP-VULKAN: setup unavailable stage=device" & ASCII.LF);
+         elsif not Evidence.Device then
+            debugPrint ("DESKTOP-VULKAN: setup unavailable stage=health" & ASCII.LF);
+         else
+            debugPrint ("DESKTOP-VULKAN: GPU session ready; UI composed on the CPU" & ASCII.LF);
+         end if;
+      elsif not Evidence.Admitted then
          debugPrint ("DESKTOP-VULKAN: setup unavailable stage=admission" & ASCII.LF);
       elsif not Device_Created then
          debugPrint ("DESKTOP-VULKAN: setup unavailable stage=device" & ASCII.LF);
@@ -166,12 +187,13 @@ package body Desktop_Renderer_Startup with SPARK_Mode,
    end Report_Timeouts;
 
    procedure Initialize
-     (Configuration : Boolean; Width, Height : Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Unsigned_64;
       Epoch : Compositor_Pool.ID;
       Evidence : out Compositor_Backend_Selection.Readiness;
       Diagnostic : out Pipeline_Diagnostic) is
    begin
-      Run (Configuration, Width, Height, Epoch, Evidence, Diagnostic);
+      Run (Configuration, Policy, Width, Height, Epoch, Evidence, Diagnostic);
       Report (Evidence, Diagnostic);
    end Initialize;
    procedure Stop is

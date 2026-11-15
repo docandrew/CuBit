@@ -14,7 +14,8 @@ with Desktop_Renderer_Startup;
 package Desktop_Renderer_Worker with SPARK_Mode => Off is
    --  Start the worker. Started = False: no thread (nothing was run).
    procedure Start
-     (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID; Started : out Boolean);
    --  Run has returned on the worker.
    function Finished return Boolean;

@@ -6,9 +6,10 @@ procedure Startup_Denial_Tests is
  E : Compositor_Backend_Selection.Readiness; D : S.Pipeline_Diagnostic;
  Cases : Natural := 0;
  procedure Run(Last : T.Stage; Expected : String:=""; Config : Boolean:=True;
-               Width : Interfaces.Unsigned_64:=1024; Epoch : Interfaces.Unsigned_64:=1) is
+               Width : Interfaces.Unsigned_64:=1024; Epoch : Interfaces.Unsigned_64:=1;
+               Policy : Compositor_Backend_Selection.Composition:=Compositor_Backend_Selection.GPU_Composition) is
  begin
-  S.Initialize(Config,Width,768,Epoch,E,D);
+  S.Initialize(Config,Policy,Width,768,Epoch,E,D);
   for Step in T.Stage loop
    if T.Stage'Pos(Step)<=T.Stage'Pos(Last) then
     pragma Assert(T.Calls(Step)=1,"missing or repeated setup stage");
@@ -36,5 +37,12 @@ begin
  T.Reset; Run(T.Health,Expected=>"configuration",Width=>0); pragma Assert(not E.Configuration);
  T.Reset; Run(T.Health,Expected=>"configuration",Width=>2**62+1024); pragma Assert(not E.Configuration);
  T.Reset; T.Render_Absent:=True; Run(T.Device,Expected=>"admission"); pragma Assert(not E.Admitted);
+ --  CPU composition (the UI policy): the session opens (device, health) and
+ --  no composition resource is set up; never Ready, and no stage failure.
+ T.Reset; Run(T.Health,Policy=>Compositor_Backend_Selection.CPU_Composition);
+ pragma Assert(E.Admitted and E.Device and E.Configuration and not E.Targets);
+ T.Reset; T.Deny:=True; T.Failure:=T.Health;
+ Run(T.Health,Expected=>"health",Policy=>Compositor_Backend_Selection.CPU_Composition);
+ pragma Assert(not E.Device);
  Ada.Text_IO.Put_Line("PASS startup external-denial cases=" & Cases'Image);
 end Startup_Denial_Tests;

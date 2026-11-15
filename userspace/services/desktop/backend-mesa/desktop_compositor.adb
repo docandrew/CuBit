@@ -8,7 +8,9 @@ package body Desktop_Compositor with SPARK_Mode,
      Source_Release, Source_Retired, Source_Unsafe,
      Target_Release, Targets_Retired, Targets_Unsafe);
    function Readback_Work return Transfer_Counters is ((others => <>));
-   procedure Configure_Renderer (Evidence : Compositor_Backend_Selection.Readiness; Accepted : out Boolean) renames Renderer.Configure_Renderer;
+   procedure Configure_Renderer
+     (Evidence : Compositor_Backend_Selection.Readiness;
+      Policy : Compositor_Backend_Selection.Composition; Accepted : out Boolean) renames Renderer.Configure_Renderer;
    procedure Recover_Renderer (Key : Compositor_Backend_Selection.Recovery_Key;
       Writer_Retired, Repaint_Queued : Boolean; Result : out Recovery_Result) renames Renderer.Recover_Renderer;
    function Selected return Boolean renames Renderer.Selected;

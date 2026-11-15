@@ -12,6 +12,7 @@ with Compositor_Backend_Selection;
 package Desktop_Renderer_Startup with SPARK_Mode,
   Abstract_State => Observed, Initializes => Observed is
    use type Interfaces.Unsigned_64;
+   use type Compositor_Backend_Selection.Composition;
    type Pipeline_Diagnostic is record
       Stage, Index : Interfaces.Unsigned_32 := 0;
       Result : Interfaces.Integer_32 := 0;
@@ -22,8 +23,13 @@ package Desktop_Renderer_Startup with SPARK_Mode,
    -- The foreign work of startup, without logging: safe on the renderer
    -- worker thread (Desktop_Renderer_Worker). The step in progress goes to
    -- Desktop_Startup_Progress; what to log is kept for Report.
+   -- Policy CPU_Composition opens the GPU session (admission, device,
+   -- health) and stops there: no composition targets, pipeline, upload
+   -- staging or readback, so the evidence is never Ready. The session stays
+   -- for 3D work; Desktop composes on the CPU.
    procedure Run
-     (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID;
       Evidence : out Compositor_Backend_Selection.Readiness;
       Diagnostic : out Pipeline_Diagnostic)
@@ -34,7 +40,8 @@ package Desktop_Renderer_Startup with SPARK_Mode,
        Post => Desktop_Vulkan_Startup.Valid and
          Evidence.Configuration = (Configuration and Epoch /= 0 and
            Desktop_Startup_Layout.Supported (Width, Height)) and
-         (if Evidence.Targets then Evidence.Device and Evidence.Configuration) and
+         (if Evidence.Targets then Evidence.Device and Evidence.Configuration and
+            Policy = Compositor_Backend_Selection.GPU_Composition) and
          (if Evidence.Pipeline then Evidence.Targets) and
          (if Evidence.Upload then Evidence.Pipeline) and
          (if Evidence.Readback then Evidence.Upload) and
@@ -51,7 +58,8 @@ package Desktop_Renderer_Startup with SPARK_Mode,
      with Global => (In_Out => (Desktop_GPU_Calls.Service, Desktop_Logs.State, Desktop_Log_IO.State));
    -- Run then Report, on one thread.
    procedure Initialize
-     (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID;
       Evidence : out Compositor_Backend_Selection.Readiness;
       Diagnostic : out Pipeline_Diagnostic)
@@ -63,7 +71,8 @@ package Desktop_Renderer_Startup with SPARK_Mode,
        Post => Desktop_Vulkan_Startup.Valid and
          Evidence.Configuration = (Configuration and Epoch /= 0 and
            Desktop_Startup_Layout.Supported (Width, Height)) and
-         (if Evidence.Targets then Evidence.Device and Evidence.Configuration) and
+         (if Evidence.Targets then Evidence.Device and Evidence.Configuration and
+            Policy = Compositor_Backend_Selection.GPU_Composition) and
          (if Evidence.Pipeline then Evidence.Targets) and
          (if Evidence.Upload then Evidence.Pipeline) and
          (if Evidence.Readback then Evidence.Upload) and

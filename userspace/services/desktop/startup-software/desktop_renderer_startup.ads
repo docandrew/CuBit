@@ -17,7 +17,8 @@ package Desktop_Renderer_Startup with SPARK_Mode is
    -- Software-only build: no GPU renderer exists to fall back from.
    GPU_Capable : constant Boolean := False;
    procedure Initialize
-     (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID;
       Evidence : out Compositor_Backend_Selection.Readiness;
       Diagnostic : out Pipeline_Diagnostic)
@@ -27,7 +28,8 @@ package Desktop_Renderer_Startup with SPARK_Mode is
          and not Diagnostic.Valid;
    -- Same interface as the Vulkan build (Desktop_Renderer_Worker, main).
    procedure Run
-     (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID;
       Evidence : out Compositor_Backend_Selection.Readiness;
       Diagnostic : out Pipeline_Diagnostic)

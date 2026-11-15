@@ -33,11 +33,13 @@ procedure Software_Facade_Tests is
  end Draw;
 begin
  pragma Assert (D.Selected and D.Software_Text);
- D.Configure_Renderer ((others => True), Accepted);
+ D.Configure_Renderer ((others => True), Compositor_Backend_Selection.GPU_Composition, Accepted);
  pragma Assert (not Accepted);
- D.Configure_Renderer ((others => False), Accepted);
+ D.Configure_Renderer ((others => True), Compositor_Backend_Selection.CPU_Composition, Accepted);
+ pragma Assert (not Accepted);
+ D.Configure_Renderer ((others => False), Compositor_Backend_Selection.GPU_Composition, Accepted);
  pragma Assert (Accepted);
- D.Configure_Renderer ((others => False), Accepted);
+ D.Configure_Renderer ((others => False), Compositor_Backend_Selection.CPU_Composition, Accepted);
  pragma Assert (not Accepted);
  D.Recover_Renderer ((Output => 0, Epoch => 1, Frame => 1, Buffer => 1), True, True, Recovery);
  pragma Assert (Recovery = D.Recovery_Unsafe);

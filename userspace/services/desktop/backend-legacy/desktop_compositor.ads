@@ -19,7 +19,9 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine is
    end record;
    -- Submitted payload and completed synchronous copies, not physical bus traffic.
    function Readback_Work return Transfer_Counters with Global => null;
-   procedure Configure_Renderer (Evidence : Compositor_Backend_Selection.Readiness; Accepted : out Boolean)
+   procedure Configure_Renderer
+     (Evidence : Compositor_Backend_Selection.Readiness;
+      Policy : Compositor_Backend_Selection.Composition; Accepted : out Boolean)
      with Global => (In_Out => Engine);
    type Recovery_Result is (Recovery_Pending, Recovery_Complete, Recovery_Unsafe);
    procedure Recover_Renderer (Key : Compositor_Backend_Selection.Recovery_Key;

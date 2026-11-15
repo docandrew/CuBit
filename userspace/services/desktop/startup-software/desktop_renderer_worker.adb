@@ -3,10 +3,11 @@ package body Desktop_Renderer_Worker is
    Result : Compositor_Backend_Selection.Readiness := (others => False);
    Diagnosis : Desktop_Renderer_Startup.Pipeline_Diagnostic := (others => <>);
    procedure Start
-     (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
+     (Configuration : Boolean; Policy : Compositor_Backend_Selection.Composition;
+      Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID; Started : out Boolean) is
    begin
-      Desktop_Renderer_Startup.Run (Configuration, Width, Height, Epoch, Result, Diagnosis);
+      Desktop_Renderer_Startup.Run (Configuration, Policy, Width, Height, Epoch, Result, Diagnosis);
       Ran := True;
       Started := True;
    end Start;

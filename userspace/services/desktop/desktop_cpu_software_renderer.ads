@@ -25,7 +25,9 @@ generic
    type Target_Release is (<>);
    Targets_Retired, Targets_Unsafe : Target_Release;
 package Desktop_CPU_Software_Renderer with SPARK_Mode, Abstract_State => State, Initializes => State is
-   procedure Configure_Renderer (Evidence : Compositor_Backend_Selection.Readiness; Accepted : out Boolean)
+   procedure Configure_Renderer
+     (Evidence : Compositor_Backend_Selection.Readiness;
+      Policy : Compositor_Backend_Selection.Composition; Accepted : out Boolean)
      with Global => (In_Out => State);
    procedure Recover_Renderer (Key : Compositor_Backend_Selection.Recovery_Key;
       Writer_Retired, Repaint_Queued : Boolean; Result : out Recovery_Result)

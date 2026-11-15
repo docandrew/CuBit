@@ -3,6 +3,13 @@
 with Interfaces;
 package Compositor_Backend_Selection with SPARK_Mode, Pure is
    type Mode is (Unselected, Software, GPU);
+   -- Which processor composes Desktop's UI. User decision 2026-11-14 (LAT-002):
+   -- "let's save the GPU for where it really excels - 3D work, games". The UI
+   -- is composed on the CPU, damage only; the GPU session stays for 3D app
+   -- surfaces and video. GPU composition remains a policy choice, not a
+   -- consequence of a GPU being present.
+   type Composition is (CPU_Composition, GPU_Composition);
+   UI_Composition : constant Composition := CPU_Composition;
    type Readiness is record
       Admitted, Device, Targets, Pipeline, Upload, Readback, Configuration : Boolean := False;
    end record;
@@ -26,9 +33,14 @@ package Compositor_Backend_Selection with SPARK_Mode, Pure is
       Evidence.Output_Writer and Evidence.Full_Repaint and not Evidence.Uncertain);
    type State is private;
    function Current (S : State) return Mode;
-   procedure Select_Backend (S : in out State; Evidence : Readiness; Accepted : out Boolean)
+   -- GPU only when Policy asks for GPU composition and every readiness
+   -- observation holds; CPU composition never selects the GPU, whatever the
+   -- evidence.
+   procedure Select_Backend
+     (S : in out State; Evidence : Readiness; Policy : Composition; Accepted : out Boolean)
      with Post => Accepted = (Current (S'Old) = Unselected) and then
-       (if Accepted then Current (S) = (if Ready (Evidence) then GPU else Software)
+       (if Accepted then Current (S) =
+          (if Policy = GPU_Composition and then Ready (Evidence) then GPU else Software)
         else S = S'Old);
    -- An early draw closes admission with CPU selected; it cannot activate GPU.
    procedure Begin_Output (S : in out State)

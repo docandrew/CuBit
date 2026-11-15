@@ -9,6 +9,9 @@ package body Desktop_GPU_Wake is
    Armed_Token : Unsigned_64 := 0;
    Waitboost_On : Boolean := True;
    Policy_Pending : Boolean := False;
+   --  Without GPU work of Desktop's own (CPU composition), the policy is
+   --  offered at most once a Report_Period_Ms until the driver takes it.
+   Policy_Retry_Ms : Unsigned_64 := 0;
    Looked_Again : Boolean := False;
    Disabled : Boolean := False;
 
@@ -77,11 +80,18 @@ package body Desktop_GPU_Wake is
       if Disabled then
          return;
       end if;
-      --  The policy goes out once the GPU queue is open (rendering).
-      if Policy_Pending and then Rendering and then Hook.Boost_Policy (Waitboost_On) then
-         Policy_Pending := False;
-         Desktop_Logs.Write ("desktop: gpu waitboost " & (if Waitboost_On then "on" else "off") &
-                             " sent to the driver" & ASCII.LF);
+      --  The policy goes out once the GPU queue is open: at the next rendering
+      --  wait, or (no GPU work of our own) at most once a second.
+      if Policy_Pending and then (Rendering or else Now_Ms >= Policy_Retry_Ms) then
+         if Hook.Boost_Policy (Waitboost_On) then
+            Policy_Pending := False;
+            Desktop_Logs.Write ("desktop: gpu waitboost " & (if Waitboost_On then "on" else "off") &
+                                " sent to the driver" & ASCII.LF);
+         elsif Now_Ms <= Unsigned_64'Last - Report_Period_Ms then
+            Policy_Retry_Ms := Now_Ms + Report_Period_Ms;
+         else
+            Policy_Retry_Ms := Unsigned_64'Last;
+         end if;
       end if;
       if not Rendering then
          Looked_Again := False;

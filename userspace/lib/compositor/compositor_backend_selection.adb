@@ -1,8 +1,11 @@
 package body Compositor_Backend_Selection with SPARK_Mode is
-   procedure Select_Backend (S : in out State; Evidence : Readiness; Accepted : out Boolean) is
+   procedure Select_Backend
+     (S : in out State; Evidence : Readiness; Policy : Composition; Accepted : out Boolean) is
    begin
       Accepted := S.Selected = Unselected;
-      if Accepted then S.Selected := (if Ready (Evidence) then GPU else Software); end if;
+      if Accepted then
+         S.Selected := (if Policy = GPU_Composition and then Ready (Evidence) then GPU else Software);
+      end if;
    end Select_Backend;
    procedure Begin_Output (S : in out State) is
    begin
