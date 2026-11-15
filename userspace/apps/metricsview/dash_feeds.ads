@@ -84,6 +84,29 @@ package Dash_Feeds is
      (F : in out Feed; Id : Series_Id; From_Us, To_Us : Unsigned_64; Stats : out Window_Stats; Result : out Status)
    is abstract;
 
+   ---------------------------------------------------------------------------
+   --  Push (DESIGN-metrics-push.md): every sample the store takes for a
+   --  series the reader may see, as it takes it, with no call per read.
+   ---------------------------------------------------------------------------
+   type Update_Kind is (Sample, Gap);
+   type Update is record
+      Kind : Update_Kind := Sample;
+      --  No_Series in a gap of the subscription itself (the reader fell
+      --  behind and the store shed what did not fit): refetch its range.
+      Series : Series_Id := No_Series;
+      Time_Us, Value : Unsigned_64 := 0;
+      Missing, First_Us, Last_Us : Unsigned_64 := 0;
+   end record;
+   type Update_Array is array (Positive range <>) of Update;
+
+   --  Subscribe to every series the reader may see. Started False: no
+   --  push (no store, or a store without subscriptions); reads go on through
+   --  the query path.
+   procedure Start_Push (F : in out Feed; Started : out Boolean) is abstract;
+   function Pushing (F : Feed) return Boolean is abstract;
+   --  What arrived since the last call, oldest first, up to Into'Length.
+   procedure Take_Updates (F : in out Feed; Into : out Update_Array; Count : out Natural) is abstract;
+
    --  The clock samples are stamped with (CuBit.Monotonic on CuBit).
    function Now_Us (F : Feed) return Unsigned_64 is abstract;
 

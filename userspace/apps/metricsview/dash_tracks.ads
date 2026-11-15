@@ -23,6 +23,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with Charts_Buckets;
 with Charts_Columns;
+with Charts_Quantiles;
 with Charts_Time_Axis;
 with Dash_Feeds;
 with Dash_Model;
@@ -49,9 +50,16 @@ package Dash_Tracks is
    type Track_State is (Unresolved, Resolved, Missing, Refused, Unavailable);
 
    type Column_Ring_Access is access Charts_Columns.Ring;
+   type Sample_Access is access Charts_Quantiles.Sample_Array;
+   --  The most pushed samples a track keeps for its push-made columns
+   --  (16 MiB of times and values); past it the oldest half is let go and
+   --  those columns stay as made.
+   Maximum_Recent_Samples : constant := 1_048_576;
    type Bucket_Ring_Access is access Charts_Buckets.Ring;
 
-   type Track is record
+   --  Shared by the UI thread and the data thread (by reference, never
+   --  copied): its fields change only under Dash_Sync's lock.
+   type Track is limited record
       Panel : Dash_Model.Panel_Index := 1;
       --  Which of the panel's series specs, and which match of it (a
       --  prefix spec has several tracks).
@@ -62,6 +70,12 @@ package Dash_Tracks is
       State : Track_State := Unresolved;
       Next_Resolve_Us : Unsigned_64 := 0;
       Columns : Column_Ring_Access;
+      --  A ring as large, kept for the next zoom's resample (no allocation
+      --  on the UI thread's path).
+      Spare : Column_Ring_Access;
+      --  Bumped by every viewport change (Follow): an answer the store gave
+      --  for an older viewport is dropped, not folded.
+      Generation : Unsigned_64 := 0;
       Buckets : Bucket_Ring_Access;
       Layout : Charts_Buckets.Layout;
       Width_Us : Axis.Column_Width := 1;
@@ -78,8 +92,23 @@ package Dash_Tracks is
       Previous : Dash_Feeds.Window_Stats;
       Previous_Valid : Boolean := False;
       Previous_Due_Us : Unsigned_64 := 0;
+      Stats_Due_Us : Unsigned_64 := 0;
+      --  Set by the data thread when Stats or Previous changed; the UI
+      --  thread redraws the panel and clears it.
+      Stats_Changed : Boolean := False;
       --  Columns from tier windows (quantiles merged): the panel says so.
       From_Windows : Boolean := False;
+      --  Push (DESIGN-metrics-push.md): the samples since Push_From_Us arrive
+      --  through Accept_Sample, with no call; the columns after the one
+      --  holding Push_From_Us are made from them (Recent), the ones up to it
+      --  through the query path once they settle.
+      Pushed : Boolean := False;
+      Push_From_Us : Unsigned_64 := 0;
+      Recent_Times, Recent_Values : Sample_Access;
+      Recent_Used : Natural := 0;
+      --  The time span whose push-made columns must be made again.
+      Push_Dirty : Boolean := False;
+      Push_Dirty_From_Us, Push_Dirty_To_Us : Unsigned_64 := 0;
       --  The store's count of samples published (the last probe's, and the
       --  one this track's columns were last fetched at).
       Latest_Published, Seen_Published : Unsigned_64 := 0;
@@ -91,6 +120,11 @@ package Dash_Tracks is
    --  Make T's rings for a plot Columns wide at width W ending at V.Last
    --  (Buckets: a histogram panel's layout, else no bucket ring).
    procedure Configure (T : in out Track; V : Axis.Viewport; Histogram : Boolean; Layout : Charts_Buckets.Layout);
+
+   --  The data thread's operations (Resolve, Refresh, Refresh_Stats, the
+   --  push intake) are called with Dash_Sync's lock held and let it go
+   --  around each call to the store; the UI thread's (Configure, Follow,
+   --  Take_Dirty) and its drawing also hold it.
 
    --  Look the series up (when due); a prefix track takes its Match_Index-th match.
    procedure Resolve (T : in out Track; F : in out Dash_Feeds.Feed'Class; Now_Us : Unsigned_64);
@@ -108,12 +142,23 @@ package Dash_Tracks is
    procedure Refresh
      (T : in out Track; F : in out Dash_Feeds.Feed'Class; V : Axis.Viewport; Now_Us, Budget_End_Us : Unsigned_64);
 
+   --  Start taking pushed samples (stamped From_Us and later).
+   procedure Begin_Push (T : in out Track; From_Us : Unsigned_64);
+   --  One pushed sample of T's series.
+   procedure Accept_Sample (T : in out Track; Time_Us, Value : Unsigned_64);
+   --  The push lost samples in First_Us .. Last_Us (the subscription shed
+   --  them): those columns are made again through the query path.
+   procedure Push_Lost (T : in out Track; First_Us, Last_Us : Unsigned_64);
+
    --  Every column in view is loaded (final or provisional).
    function Complete (T : Track; V : Axis.Viewport) return Boolean;
 
    --  Stat panels: the merged window over the viewport, when stale, and
    --  the window before it, when due.
    Previous_Interval_Us : constant := Axis.Microseconds_Per_Second;
+   --  A stat's window is asked for at most this often (a merged sketch is a
+   --  store call; a number changing faster than this is not read anyway).
+   Stats_Interval_Us : constant := 250 * Axis.Microseconds_Per_Millisecond;
    procedure Refresh_Stats (T : in out Track; F : in out Dash_Feeds.Feed'Class; V : Axis.Viewport; Now_Us : Unsigned_64);
 
    procedure Take_Dirty (T : in out Track; Any : out Boolean; First, Last : out Column_Number);

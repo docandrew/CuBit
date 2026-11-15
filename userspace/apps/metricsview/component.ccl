@@ -4,9 +4,10 @@
 # -O3 -gnatp; CCL checks the dashboards.
 (Component name => "metricsview" kind => Kind.Application
   source => (Source.Ada (Ada_Source
-    sources => ["userspace/lib/charts" "userspace/ccl/src"]
+    sources => ["userspace/apps/metricsview/native" "userspace/lib/charts" "userspace/ccl/src"]
     libraries => ["ui-toolkit"]
     language => Ada_Language.Ada_2022
+    optimization => Optimization.Maximum
     debug_info => false
     units => [(Unit_Code ["charts_time_axis.adb" "charts_value_axis.adb" "charts_quantiles.adb"
                           "charts_columns.adb" "charts_buckets.adb" "charts_palette.adb"] "proved")])))

@@ -1,14 +1,15 @@
 pragma Ada_2022;
 with Ada.Unchecked_Deallocation;
 with Charts_Quantiles;
+with Dash_Sync;
 
 package body Dash_Tracks is
    use type Dash_Feeds.Status;
    use type Dash_Model.Match_Kind;
    use type Charts_Columns.Summary;
+   use type Dash_Feeds.Window_Stats;
 
    subtype Sample_Array is Charts_Quantiles.Sample_Array;
-   type Sample_Access is access Sample_Array;
 
    --  One store page (CuBit.Metric_Query_Pages: 238 raw rows, 59 windows).
    Page_Rows : constant := 256;
@@ -20,6 +21,32 @@ package body Dash_Tracks is
    Batch_Times, Batch_Values, Grouped : Sample_Access;
    Page_Times, Page_Values : Sample_Array (1 .. Page_Rows);
    Window_Batch : Charts_Columns.Window_Rows (1 .. Page_Rows);
+   --  All the windows of one fetch (gathered with the lock let go).
+   type Row_Access is access Charts_Columns.Window_Rows;
+   Row_Batch : Row_Access;
+   procedure Free is new Ada.Unchecked_Deallocation (Charts_Columns.Window_Rows, Row_Access);
+
+   procedure Reserve_Rows (Needed : Natural; Ok : out Boolean);
+   procedure Reserve_Rows (Needed : Natural; Ok : out Boolean) is
+      Size : Natural := (if Row_Batch = null then Page_Rows else Row_Batch'Length);
+   begin
+      Ok := Needed <= Maximum_Batch_Samples;
+      if not Ok or else (Row_Batch /= null and then Row_Batch'Length >= Needed) then
+         return;
+      end if;
+      while Size < Needed loop
+         Size := Natural'Min (Size * 2, Maximum_Batch_Samples);
+      end loop;
+      declare
+         Grown : constant Row_Access := new Charts_Columns.Window_Rows (1 .. Size);
+      begin
+         if Row_Batch /= null then
+            Grown (1 .. Row_Batch'Length) := Row_Batch.all;
+            Free (Row_Batch);
+         end if;
+         Row_Batch := Grown;
+      end;
+   end Reserve_Rows;
    Fetch_Count, Folded_Count : Unsigned_64 := 0;
 
    procedure Free is new Ada.Unchecked_Deallocation (Sample_Array, Sample_Access);
@@ -73,8 +100,13 @@ package body Dash_Tracks is
       if T.Buckets /= null then
          Free (T.Buckets);
       end if;
+      if T.Spare /= null then
+         Free (T.Spare);
+      end if;
       T.Columns := new Charts_Columns.Ring (V.Columns);
+      T.Spare := new Charts_Columns.Ring (V.Columns);
       Charts_Columns.Reset (T.Columns.all, V.Last);
+      T.Generation := T.Generation + 1;
       if Histogram then
          T.Buckets := new Charts_Buckets.Ring (V.Columns, Layout.Count);
          Charts_Buckets.Reset (T.Buckets.all, V.Last);
@@ -97,7 +129,9 @@ package body Dash_Tracks is
          return;
       end if;
       T.Next_Resolve_Us := Now_Us + Resolve_Interval_Us;
+      Dash_Sync.Unlock;
       F.Find (T.Spec, Found, Listed, Total, Result);
+      Dash_Sync.Lock;
       Fetch_Count := Fetch_Count + 1;
       case Result is
          when Dash_Feeds.OK =>
@@ -135,24 +169,43 @@ package body Dash_Tracks is
          declare
             Old : Column_Ring_Access := T.Columns;
          begin
-            T.Columns := new Charts_Columns.Ring (V.Columns);
+            if T.Spare /= null and then T.Spare.Capacity = V.Columns then
+               --  The zoom's preview into the spare ring: no allocation.
+               T.Columns := T.Spare;
+               T.Spare := Old;
+            else
+               T.Columns := new Charts_Columns.Ring (V.Columns);
+               if T.Spare /= null then
+                  Free (T.Spare);
+               end if;
+               T.Spare := new Charts_Columns.Ring (V.Columns);
+            end if;
             T.Columns.Last := V.Last;
             Charts_Columns.Resample (Old.all, T.Width_Us, T.Columns.all, V.Width);
-            Free (Old);
+            if Old /= T.Spare then
+               Free (Old);
+            end if;
          end;
-         if T.Buckets /= null then
+         if T.Buckets /= null and then T.Buckets.Capacity /= V.Columns then
             declare
                Count : constant Charts_Buckets.Bucket_Count := T.Buckets.Buckets;
             begin
                Free (T.Buckets);
                T.Buckets := new Charts_Buckets.Ring (V.Columns, Count);
-               Charts_Buckets.Reset (T.Buckets.all, V.Last);
             end;
+         end if;
+         if T.Buckets /= null then
+            Charts_Buckets.Reset (T.Buckets.all, V.Last);
          end if;
          T.Width_Us := V.Width;
          T.Lo := 0;
          T.Next := 0;
          T.Fetched_To := 0;
+         if T.Pushed then
+            T.Push_Dirty := True;
+            T.Push_Dirty_From_Us := T.Push_From_Us;
+            T.Push_Dirty_To_Us := Unsigned_64'Last / 2;
+         end if;
          Mark (T, Axis.First (V));
          Mark (T, V.Last);
       else
@@ -163,6 +216,12 @@ package body Dash_Tracks is
          --  What is held of the final run.
          T.Lo := Unsigned_64'Max (T.Lo, Axis.First (V));
          T.Next := Unsigned_64'Min (T.Next, V.Last + 1);
+         if T.Pushed then
+            --  Columns that scrolled in are made again from what was pushed.
+            T.Push_Dirty := True;
+            T.Push_Dirty_From_Us := T.Push_From_Us;
+            T.Push_Dirty_To_Us := Unsigned_64'Last / 2;
+         end if;
          if T.Lo >= T.Next then
             T.Lo := 0;
             T.Next := 0;
@@ -170,9 +229,88 @@ package body Dash_Tracks is
       end if;
       T.Stats_Stale := True;
       T.Previous_Due_Us := 0;
+      T.Generation := T.Generation + 1;
    end Follow;
 
    function Loaded (T : Track) return Boolean is (T.Lo < T.Next);
+
+   --  Columns C0 .. C1 of T from the Count raw samples in Batch_Times and
+   --  Batch_Values (any order): summaries replaced, dirty where changed.
+   procedure Fold_Raw (T : in out Track; C0, C1 : Column_Number; Count : Natural);
+   procedure Fold_Raw (T : in out Track; C0, C1 : Column_Number; Count : Natural) is
+      W : constant Axis.Column_Width := T.Width_Us;
+      Span : constant Natural := Natural (C1 - C0) + 1;
+      Gathered : constant Natural := Count;
+      Room : Boolean;
+      Offsets : array (0 .. Span) of Natural := [others => 0];
+      Latest_Time : array (0 .. Span - 1) of Unsigned_64 := [others => 0];
+      Latest_Value : array (0 .. Span - 1) of Unsigned_64 := [others => 0];
+      procedure Replace (C : Column_Number; S : Charts_Columns.Summary);
+      procedure Replace (C : Column_Number; S : Charts_Columns.Summary) is
+      begin
+         if Charts_Columns.Get (T.Columns.all, C) /= S then
+            Charts_Columns.Put (T.Columns.all, C, S);
+            Mark (T, C);
+         end if;
+      end Replace;
+   begin
+      --  Counting sort by column: samples need not come in time order.
+      for I in 0 .. Gathered - 1 loop
+         declare
+            C : constant Column_Number := Axis.Column_Of (Batch_Times (I), W);
+         begin
+            if C in C0 .. C1 then
+               declare
+                  K : constant Natural := Natural (C - C0);
+               begin
+                  Offsets (K + 1) := Offsets (K + 1) + 1;
+                  if Batch_Times (I) >= Latest_Time (K) then
+                     Latest_Time (K) := Batch_Times (I);
+                     Latest_Value (K) := Batch_Values (I);
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+      for K in 1 .. Span loop
+         Offsets (K) := Offsets (K) + Offsets (K - 1);
+      end loop;
+      Reserve (Grouped, Natural'Max (Offsets (Span), 1), Room);
+      declare
+         Fill : array (0 .. Span - 1) of Natural;
+      begin
+         for K in 0 .. Span - 1 loop
+            Fill (K) := Offsets (K);
+         end loop;
+         for I in 0 .. Gathered - 1 loop
+            declare
+               C : constant Column_Number := Axis.Column_Of (Batch_Times (I), W);
+            begin
+               if C in C0 .. C1 then
+                  Grouped (Fill (Natural (C - C0))) := Batch_Values (I);
+                  Fill (Natural (C - C0)) := Fill (Natural (C - C0)) + 1;
+               end if;
+            end;
+         end loop;
+      end;
+      for K in 0 .. Span - 1 loop
+         declare
+            C : constant Column_Number := C0 + Unsigned_64 (K);
+            S : Charts_Columns.Summary := Charts_Columns.Nothing;
+         begin
+            if Offsets (K + 1) > Offsets (K) then
+               Charts_Columns.Summarize_Raw (Grouped (Offsets (K) .. Offsets (K + 1) - 1), Latest_Value (K), S);
+            end if;
+            if T.Buckets /= null then
+               Charts_Buckets.Clear (T.Buckets.all, C);
+               for I in Offsets (K) .. Offsets (K + 1) - 1 loop
+                  Charts_Buckets.Add (T.Buckets.all, T.Layout, C, Grouped (I));
+               end loop;
+            end if;
+            Replace (C, S);
+         end;
+      end loop;
+   end Fold_Raw;
 
    --  Columns C0 .. C1 from the store: their summaries replaced (dirty
    --  where changed). False when the feed refused.
@@ -182,8 +320,12 @@ package body Dash_Tracks is
       W : constant Axis.Column_Width := T.Width_Us;
       From_Us : constant Unsigned_64 := Axis.Start_Of (C0, W);
       To_Us : constant Unsigned_64 := Axis.End_Of (C1, W);
-      Span : constant Natural := Natural (C1 - C0) + 1;
       Result : Dash_Feeds.Status := Dash_Feeds.OK;
+      --  What the call is for: if the viewport moves meanwhile (the UI
+      --  thread's Follow), the answer is dropped.
+      Generation : constant Unsigned_64 := T.Generation;
+      Id : constant Dash_Feeds.Series_Id := T.Info.Id;
+      Stale : Boolean := False;
 
       procedure Replace (C : Column_Number; S : Charts_Columns.Summary);
       procedure Replace (C : Column_Number; S : Charts_Columns.Summary) is
@@ -198,12 +340,10 @@ package body Dash_Tracks is
          Gathered : Natural := 0;
          Rows, Total : Natural;
          Room : Boolean;
-         Offsets : array (0 .. Span) of Natural := [others => 0];
-         Latest_Time : array (0 .. Span - 1) of Unsigned_64 := [others => 0];
-         Latest_Value : array (0 .. Span - 1) of Unsigned_64 := [others => 0];
       begin
+         Dash_Sync.Unlock;
          loop
-            F.Read_Raw (T.Info.Id, From_Us, To_Us, Unsigned_64 (Gathered), Page_Times, Page_Values, Rows, Total,
+            F.Read_Raw (Id, From_Us, To_Us, Unsigned_64 (Gathered), Page_Times, Page_Values, Rows, Total,
                         Result);
             Fetch_Count := Fetch_Count + 1;
             exit when Result /= Dash_Feeds.OK or else Rows = 0;
@@ -215,65 +355,12 @@ package body Dash_Tracks is
             Gathered := Gathered + Rows;
             exit when Gathered >= Total;
          end loop;
-         if Result /= Dash_Feeds.OK then
+         Dash_Sync.Lock;
+         Stale := T.Generation /= Generation;
+         if Result /= Dash_Feeds.OK or else Stale then
             return;
          end if;
-         --  Counting sort by column: samples need not come in time order.
-         for I in 0 .. Gathered - 1 loop
-            declare
-               C : constant Column_Number := Axis.Column_Of (Batch_Times (I), W);
-            begin
-               if C in C0 .. C1 then
-                  declare
-                     K : constant Natural := Natural (C - C0);
-                  begin
-                     Offsets (K + 1) := Offsets (K + 1) + 1;
-                     if Batch_Times (I) >= Latest_Time (K) then
-                        Latest_Time (K) := Batch_Times (I);
-                        Latest_Value (K) := Batch_Values (I);
-                     end if;
-                  end;
-               end if;
-            end;
-         end loop;
-         for K in 1 .. Span loop
-            Offsets (K) := Offsets (K) + Offsets (K - 1);
-         end loop;
-         Reserve (Grouped, Natural'Max (Offsets (Span), 1), Room);
-         declare
-            Fill : array (0 .. Span - 1) of Natural;
-         begin
-            for K in 0 .. Span - 1 loop
-               Fill (K) := Offsets (K);
-            end loop;
-            for I in 0 .. Gathered - 1 loop
-               declare
-                  C : constant Column_Number := Axis.Column_Of (Batch_Times (I), W);
-               begin
-                  if C in C0 .. C1 then
-                     Grouped (Fill (Natural (C - C0))) := Batch_Values (I);
-                     Fill (Natural (C - C0)) := Fill (Natural (C - C0)) + 1;
-                  end if;
-               end;
-            end loop;
-         end;
-         for K in 0 .. Span - 1 loop
-            declare
-               C : constant Column_Number := C0 + Unsigned_64 (K);
-               S : Charts_Columns.Summary := Charts_Columns.Nothing;
-            begin
-               if Offsets (K + 1) > Offsets (K) then
-                  Charts_Columns.Summarize_Raw (Grouped (Offsets (K) .. Offsets (K + 1) - 1), Latest_Value (K), S);
-               end if;
-               if T.Buckets /= null then
-                  Charts_Buckets.Clear (T.Buckets.all, C);
-                  for I in Offsets (K) .. Offsets (K + 1) - 1 loop
-                     Charts_Buckets.Add (T.Buckets.all, T.Layout, C, Grouped (I));
-                  end loop;
-               end if;
-               Replace (C, S);
-            end;
-         end loop;
+         Fold_Raw (T, C0, C1, Gathered);
          Folded_Count := Folded_Count + Unsigned_64 (Gathered);
          T.From_Windows := False;
       end Raw;
@@ -316,33 +403,45 @@ package body Dash_Tracks is
             Next_Column := Group_Column + 1;
             Used := 0;
          end Flush;
+         Gathered : Natural := 0;
+         Room : Boolean;
       begin
+         Dash_Sync.Unlock;
          loop
-            F.Read_Windows (T.Info.Id, From_Us, To_Us, Unsigned_64 (Skip), W, Window_Batch, Rows, Total, Resolution,
+            F.Read_Windows (Id, From_Us, To_Us, Unsigned_64 (Skip), W, Window_Batch, Rows, Total, Resolution,
                             Result);
             Fetch_Count := Fetch_Count + 1;
             exit when Result /= Dash_Feeds.OK or else Rows = 0;
-            for I in 1 .. Rows loop
-               declare
-                  Row : constant Charts_Columns.Window_Row := Window_Batch (I);
-                  C : constant Column_Number := Axis.Column_Of (Unsigned_64'Max (Row.Start_Us, From_Us), W);
-               begin
-                  if C in C0 .. C1 and then C >= Next_Column then
-                     if Used > 0 and then (C /= Group_Column or else Used = Group'Length) then
-                        Flush;
-                     end if;
-                     if C >= Next_Column then
-                        Group_Column := C;
-                        Used := Used + 1;
-                        Group (Used) := Row;
-                     end if;
-                  end if;
-               end;
-            end loop;
+            Reserve_Rows (Gathered + Rows, Room);
+            exit when not Room;
+            Row_Batch (Gathered + 1 .. Gathered + Rows) := Window_Batch (1 .. Rows);
+            Gathered := Gathered + Rows;
             Skip := Skip + Rows;
-            Folded_Count := Folded_Count + Unsigned_64 (Rows);
             exit when Skip >= Total;
          end loop;
+         Dash_Sync.Lock;
+         Stale := T.Generation /= Generation;
+         if Result /= Dash_Feeds.OK or else Stale then
+            return;
+         end if;
+         for I in 1 .. Gathered loop
+            declare
+               Row : constant Charts_Columns.Window_Row := Row_Batch (I);
+               C : constant Column_Number := Axis.Column_Of (Unsigned_64'Max (Row.Start_Us, From_Us), W);
+            begin
+               if C in C0 .. C1 and then C >= Next_Column then
+                  if Used > 0 and then (C /= Group_Column or else Used = Group'Length) then
+                     Flush;
+                  end if;
+                  if C >= Next_Column then
+                     Group_Column := C;
+                     Used := Used + 1;
+                     Group (Used) := Row;
+                  end if;
+               end if;
+            end;
+         end loop;
+         Folded_Count := Folded_Count + Unsigned_64 (Gathered);
          if Result = Dash_Feeds.OK then
             Flush;
             Put_Empty_Until (C1 + 1);
@@ -355,14 +454,116 @@ package body Dash_Tracks is
       else
          Windows;
       end if;
-      Ok := Result = Dash_Feeds.OK;
-      if not Ok then
+      Ok := Result = Dash_Feeds.OK and then not Stale;
+      if Stale then
+         return;
+      elsif not Ok then
          T.State := (case Result is
                        when Dash_Feeds.Out_Of_Scope => Refused,
                        when Dash_Feeds.Not_Found => Unresolved,
                        when others => Unavailable);
       end if;
    end Fetch;
+
+   procedure Begin_Push (T : in out Track; From_Us : Unsigned_64) is
+   begin
+      T.Pushed := True;
+      T.Push_From_Us := From_Us;
+      T.Recent_Used := 0;
+      T.Push_Dirty := False;
+   end Begin_Push;
+
+   procedure Accept_Sample (T : in out Track; Time_Us, Value : Unsigned_64) is
+      Room : Boolean;
+   begin
+      if not T.Pushed or else Time_Us < T.Push_From_Us then
+         return;
+      end if;
+      if T.Recent_Used = Maximum_Recent_Samples then
+         --  The oldest half goes; its columns stay as they were made, now
+         --  counted with those the query path made (they are final).
+         declare
+            Half : constant Natural := Maximum_Recent_Samples / 2;
+         begin
+            T.Recent_Times (0 .. Half - 1) := T.Recent_Times (Half .. T.Recent_Used - 1);
+            T.Recent_Values (0 .. Half - 1) := T.Recent_Values (Half .. T.Recent_Used - 1);
+            T.Recent_Used := Half;
+            T.Push_From_Us := T.Recent_Times (0);
+            T.Next := Unsigned_64'Max (T.Next, Axis.Column_Of (T.Push_From_Us, T.Width_Us) + 1);
+         end;
+      end if;
+      Reserve (T.Recent_Times, T.Recent_Used + 1, Room);
+      if Room then
+         Reserve (T.Recent_Values, T.Recent_Used + 1, Room);
+      end if;
+      if not Room then
+         return;
+      end if;
+      T.Recent_Times (T.Recent_Used) := Time_Us;
+      T.Recent_Values (T.Recent_Used) := Value;
+      T.Recent_Used := T.Recent_Used + 1;
+      if not T.Push_Dirty then
+         T.Push_Dirty := True;
+         T.Push_Dirty_From_Us := Time_Us;
+         T.Push_Dirty_To_Us := Time_Us;
+      else
+         T.Push_Dirty_From_Us := Unsigned_64'Min (T.Push_Dirty_From_Us, Time_Us);
+         T.Push_Dirty_To_Us := Unsigned_64'Max (T.Push_Dirty_To_Us, Time_Us);
+      end if;
+   end Accept_Sample;
+
+   procedure Push_Lost (T : in out Track; First_Us, Last_Us : Unsigned_64) is
+   begin
+      if not T.Pushed then
+         return;
+      end if;
+      --  The query path takes over up to the loss's end, from its start.
+      T.Push_From_Us := Unsigned_64'Max (T.Push_From_Us, Last_Us + 1);
+      T.Next := Unsigned_64'Min (T.Next, Axis.Column_Of (First_Us, T.Width_Us));
+      T.Lo := Unsigned_64'Min (T.Lo, T.Next);
+   end Push_Lost;
+
+   --  The last column made through the query path (the one holding
+   --  Push_From_Us); every column for an unpushed track.
+   function Push_Limit (T : Track) return Column_Number is
+     (if T.Pushed then Axis.Column_Of (T.Push_From_Us, T.Width_Us) else Axis.Maximum_Time_Us);
+
+   --  Remake the push-made columns the pushed samples touched (all of them
+   --  in view after a zoom): from Recent, no call.
+   procedure Make_Pushed (T : in out Track; V : Axis.Viewport);
+   procedure Make_Pushed (T : in out Track; V : Axis.Viewport) is
+      W : constant Axis.Column_Width := T.Width_Us;
+      Boundary : constant Column_Number := Axis.Column_Of (T.Push_From_Us, W);
+      C0 : constant Column_Number :=
+        Unsigned_64'Max (Unsigned_64'Max (Boundary + 1, Axis.Column_Of (T.Push_Dirty_From_Us, W)), Axis.First (V));
+      C1 : constant Column_Number := Unsigned_64'Min (Axis.Column_Of (T.Push_Dirty_To_Us, W), V.Last);
+      From_Us, To_Us : Unsigned_64;
+      Count : Natural := 0;
+      Room : Boolean;
+   begin
+      T.Push_Dirty := False;
+      if C0 > C1 then
+         return;
+      end if;
+      From_Us := Axis.Start_Of (C0, W);
+      To_Us := Axis.End_Of (C1, W);
+      Reserve (Batch_Times, Natural'Max (T.Recent_Used, 1), Room);
+      if Room then
+         Reserve (Batch_Values, Natural'Max (T.Recent_Used, 1), Room);
+      end if;
+      if not Room then
+         return;
+      end if;
+      for I in 0 .. T.Recent_Used - 1 loop
+         if T.Recent_Times (I) in From_Us .. To_Us then
+            Batch_Times (Count) := T.Recent_Times (I);
+            Batch_Values (Count) := T.Recent_Values (I);
+            Count := Count + 1;
+         end if;
+      end loop;
+      Fold_Raw (T, C0, C1, Count);
+      Folded_Count := Folded_Count + Unsigned_64 (Count);
+   end Make_Pushed;
 
    procedure Refresh
      (T : in out Track; F : in out Dash_Feeds.Feed'Class; V : Axis.Viewport; Now_Us, Budget_End_Us : Unsigned_64)
@@ -376,36 +577,61 @@ package body Dash_Tracks is
          return;
       end if;
       if not Loaded (T) then
-         --  Start the final run where provisional columns begin.
+         --  Start the final run where provisional columns begin (for a
+         --  pushed track, no later than its push-made columns).
          declare
-            Start : constant Column_Number := Unsigned_64'Max (First, Unsigned_64'Min (Horizon, V.Last + 1));
+            Start : constant Column_Number :=
+              Unsigned_64'Max (First, Unsigned_64'Min (Horizon, Unsigned_64'Min (V.Last + 1, Push_Limit (T) + 1)));
          begin
             T.Lo := Start;
             T.Next := Start;
          end;
       end if;
-      --  Nothing new in the store: what was fetched up to the edge stands.
-      if T.Next <= V.Last and then T.Latest_Published = T.Seen_Published and then T.Seen_Published > 0
-        and then T.Fetched_To >= V.Last
-      then
-         T.Next := Unsigned_64'Max (T.Next, Unsigned_64'Min (Horizon, V.Last + 1));
-      end if;
-      --  The right: the live edge, and what panning right uncovered.
-      if T.Next <= V.Last and then (T.Latest_Published /= T.Seen_Published or else T.Fetched_To < V.Last) then
+      if T.Pushed then
+         --  Up to the push boundary through the query path, once settled;
+         --  after it, from the pushed samples (no call).
          declare
-            R0 : constant Column_Number := T.Next;
-            R1 : constant Column_Number :=
-              (if V.Last - R0 < 2 * Chunk_Columns then V.Last else R0 + Chunk_Columns - 1);
+            Limit : constant Column_Number := Unsigned_64'Min (V.Last, Push_Limit (T));
          begin
-            Fetch (T, F, R0, R1, Ok);
-            if Ok then
-               T.Next := Unsigned_64'Max (T.Next, Unsigned_64'Min (R1 + 1, Horizon));
-               if R1 = V.Last then
-                  T.Seen_Published := T.Latest_Published;
-                  T.Fetched_To := V.Last;
-               end if;
+            if T.Next <= Limit and then Push_Limit (T) < Horizon then
+               declare
+                  R1 : constant Column_Number :=
+                    (if Limit - T.Next < 2 * Chunk_Columns then Limit else T.Next + Chunk_Columns - 1);
+               begin
+                  Fetch (T, F, T.Next, R1, Ok);
+                  if Ok then
+                     T.Next := R1 + 1;
+                  end if;
+               end;
             end if;
          end;
+         if T.Push_Dirty then
+            Make_Pushed (T, V);
+         end if;
+      else
+         --  Nothing new in the store: what was fetched up to the edge stands.
+         if T.Next <= V.Last and then T.Latest_Published = T.Seen_Published and then T.Seen_Published > 0
+           and then T.Fetched_To >= V.Last
+         then
+            T.Next := Unsigned_64'Max (T.Next, Unsigned_64'Min (Horizon, V.Last + 1));
+         end if;
+         --  The right: the live edge, and what panning right uncovered.
+         if T.Next <= V.Last and then (T.Latest_Published /= T.Seen_Published or else T.Fetched_To < V.Last) then
+            declare
+               R0 : constant Column_Number := T.Next;
+               R1 : constant Column_Number :=
+                 (if V.Last - R0 < 2 * Chunk_Columns then V.Last else R0 + Chunk_Columns - 1);
+            begin
+               Fetch (T, F, R0, R1, Ok);
+               if Ok then
+                  T.Next := Unsigned_64'Max (T.Next, Unsigned_64'Min (R1 + 1, Horizon));
+                  if R1 = V.Last then
+                     T.Seen_Published := T.Latest_Published;
+                     T.Fetched_To := V.Last;
+                  end if;
+               end if;
+            end;
+         end if;
       end if;
       --  The left, oldest last, while the budget lasts.
       while Ok and then T.Lo > First and then F.Now_Us < Budget_End_Us loop
@@ -432,23 +658,35 @@ package body Dash_Tracks is
       Result : Dash_Feeds.Status;
       Left : constant Unsigned_64 := Axis.Left_Time (V);
       Length : constant Unsigned_64 := Axis.Right_Time (V) - Left + 1;
+      Id : constant Dash_Feeds.Series_Id := T.Info.Id;
+      Answer : Dash_Feeds.Window_Stats;
    begin
       if T.State /= Resolved then
          return;
       end if;
-      if T.Stats_Stale then
-         F.Read_Stats (T.Info.Id, Left, Axis.Right_Time (V), T.Stats, Result);
-         Fetch_Count := Fetch_Count + 1;
-         T.Stats_Valid := Result = Dash_Feeds.OK;
+      if T.Stats_Stale and then Now_Us >= T.Stats_Due_Us then
+         T.Stats_Due_Us := Now_Us + Stats_Interval_Us;
          T.Stats_Stale := False;
+         Dash_Sync.Unlock;
+         F.Read_Stats (Id, Left, Axis.Right_Time (V), Answer, Result);
+         Dash_Sync.Lock;
+         Fetch_Count := Fetch_Count + 1;
+         T.Stats_Changed := T.Stats_Changed or else T.Stats /= Answer;
+         T.Stats := Answer;
+         T.Stats_Valid := Result = Dash_Feeds.OK;
       end if;
       if Now_Us >= T.Previous_Due_Us then
          T.Previous_Due_Us := Now_Us + Previous_Interval_Us;
-         T.Previous_Valid := False;
          if Left >= Length then
-            F.Read_Stats (T.Info.Id, Left - Length, Left - 1, T.Previous, Result);
+            Dash_Sync.Unlock;
+            F.Read_Stats (Id, Left - Length, Left - 1, Answer, Result);
+            Dash_Sync.Lock;
             Fetch_Count := Fetch_Count + 1;
+            T.Stats_Changed := T.Stats_Changed or else T.Previous /= Answer;
+            T.Previous := Answer;
             T.Previous_Valid := Result = Dash_Feeds.OK;
+         else
+            T.Previous_Valid := False;
          end if;
       end if;
    end Refresh_Stats;

@@ -47,6 +47,12 @@ package Synthetic_Feeds is
    overriding procedure Read_Stats
      (F : in out Synthetic_Feed; Id : Dash_Feeds.Series_Id; From_Us, To_Us : Unsigned_64;
       Stats : out Dash_Feeds.Window_Stats; Result : out Dash_Feeds.Status);
+   overriding procedure Start_Push (F : in out Synthetic_Feed; Started : out Boolean);
+   overriding function Pushing (F : Synthetic_Feed) return Boolean;
+   overriding procedure Take_Updates
+     (F : in out Synthetic_Feed; Into : out Dash_Feeds.Update_Array; Count : out Natural);
+   --  Push off (as a store without subscriptions): reads stay on the query path.
+   procedure Disable_Push (F : in out Synthetic_Feed);
    overriding function Now_Us (F : Synthetic_Feed) return Unsigned_64;
    overriding function Calls (F : Synthetic_Feed) return Unsigned_64;
 private
@@ -57,6 +63,8 @@ private
       Unit : Charts_Format.Unit := Charts_Format.Count;
       Times, Values : Sample_Access;
       Used : Natural := 0;
+      --  Samples pushed so far (those after the subscription).
+      Delivered : Natural := 0;
    end record;
    type Series_Table is array (1 .. Maximum_Series) of Series_Data;
    type Synthetic_Feed is new Dash_Feeds.Feed with record
@@ -65,5 +73,6 @@ private
       Clock : Unsigned_64 := 0;
       Refused : Dash_Model.Text;
       Call_Count : Unsigned_64 := 0;
+      Push, No_Push : Boolean := False;
    end record;
 end Synthetic_Feeds;

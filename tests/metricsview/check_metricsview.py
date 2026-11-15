@@ -26,6 +26,8 @@ TRACKS = re.compile(r"metricsview: tracks=(\d+)/(\d+) columns=(\d+) input_to_rea
                     r"refresh_last_us=(\d+) refresh_max_us=(\d+) refreshes=(\d+) "
                     r"input_to_render_last_us=(\d+) input_to_render_max_us=(\d+) inputs=(\d+) "
                     r"input_cost_last_us=(\d+) input_cost_max_us=(\d+)")
+PUSH = re.compile(r"push=(on|off) pushed=(\d+) data_thread=(on|off) data_steps=(\d+) data_last_us=(\d+) "
+                  r"data_max_us=(\d+)")
 OWN = re.compile(r"metricsview: own series (metricsview\.\w+) n=(\d+) p50_us=(\d+) p99_us=(\d+) max_us=(\d+)")
 STAGE = re.compile(r"desktop: latency stage=input_to_ready n=(\d+) p50=(\d+) p90=(\d+) p99=(\d+) max=(\d+)")
 
@@ -49,6 +51,14 @@ if reports:
           f"refresh last {last[8]} us, max {last[9]} us over {last[10]} refreshes; "
           f"input-to-rendered last {last[11]} us, max {last[12]} us over {last[13]} inputs; "
           f"the app's own work per input last {last[14]} us, max {last[15]} us")
+pushes = PUSH.findall(data)
+if pushes:
+    push_on, pushed, thread_on, steps, data_last, data_max = pushes[-1]
+    check(push_on == "on" and int(pushed) > 0, f"metrics.svc pushes samples: push={push_on} pushed={pushed}")
+    check(thread_on == "on" and int(steps) > 0, f"the data thread steps: {thread_on}, {steps} steps")
+    print(f"metricsview: data thread last step {data_last} us, slowest {data_max} us")
+else:
+    check(False, "push and data-thread fields in the reports")
 check(bool(own) and own[-1][0] > 0, "the app's own input_to_render_us series read back from metrics.svc")
 for name, (n, p50, p99, top) in sorted(own_all.items()):
     print(f"metricsview: own {name} n={n} p50={p50} us p99={p99} us max={top} us (read back from metrics.svc)")

@@ -6,8 +6,10 @@ with Charts_Format;
 with Charts_Palette;
 with Charts_Time_Axis;
 with Charts_Value_Axis;
+with Dash_Labels;
 with Dash_Layers;
 with Dash_Pixels;
+with Dash_Sync;
 with Dash_Tracks;
 
 package body Dash_View is
@@ -556,9 +558,10 @@ package body Dash_View is
       for I in First .. Last loop
          if Tracks (I).Columns /= null and then Tracks (I).State = Dash_Tracks.Resolved then
             declare
-               Run : Columns.Summary_Array (1 .. Port.Columns);
+               --  The ring holds exactly the viewport's columns (the others
+               --  are cleared as they scroll out): its items in any order.
+               Run : Columns.Summary_Array renames Tracks (I).Columns.Items;
             begin
-               Copy_View (Tracks (I), Port, Run);
                for S of Run loop
                   if S.Origin /= Columns.Empty then
                      case Item.Kind is
@@ -632,6 +635,7 @@ package body Dash_View is
       loop
          Feed.List_All (Skip, Found, Listed, Total, Result);
          exit when Result /= Dash_Feeds.OK or else Listed = 0;
+         Dash_Sync.Lock;
          for F of Found (1 .. Listed) loop
             for T of Tracks.all loop
                if T.State = Dash_Tracks.Resolved and then T.Info.Id = F.Id then
@@ -639,24 +643,131 @@ package body Dash_View is
                end if;
             end loop;
          end loop;
+         Dash_Sync.Unlock;
          Skip := Skip + Listed;
          exit when Skip >= Total;
       end loop;
    end Probe;
 
-   procedure Refresh (V : in out View; Damage : in out Rect) is
+   --  Push (DESIGN-metrics-push.md): what the store pushed since the last
+   --  frame, routed to the tracks of its series. No call: a ring read.
+   Push_Tried : Boolean := False;
+   Push_Since_Us : Unsigned_64 := 0;
+   Updates_Per_Take : constant := 256;
+   Pushed_Total : Unsigned_64 := 0;
+
+   procedure Take_Pushed;
+   procedure Take_Pushed is
+      Batch : Dash_Feeds.Update_Array (1 .. Updates_Per_Take);
+      Count : Natural;
+      use type Dash_Feeds.Update_Kind;
+   begin
+      Dash_Sync.Lock;
+      for T of Tracks.all loop
+         if T.State = Dash_Tracks.Resolved and then not T.Pushed then
+            --  A series resolved since the subscription: pushed from now.
+            Dash_Tracks.Begin_Push (T, Unsigned_64'Max (Push_Since_Us, Feed.Now_Us));
+         end if;
+      end loop;
+      Dash_Sync.Unlock;
+      loop
+         --  The ring read and decoding without the lock; the routing with it.
+         Feed.Take_Updates (Batch, Count);
+         exit when Count = 0;
+         Dash_Sync.Lock;
+         for U of Batch (1 .. Count) loop
+            if U.Kind = Dash_Feeds.Sample then
+               Pushed_Total := Pushed_Total + 1;
+               for T of Tracks.all loop
+                  if T.Pushed and then T.Info.Id = U.Series then
+                     Dash_Tracks.Accept_Sample (T, U.Time_Us, U.Value);
+                  end if;
+               end loop;
+            elsif U.Series = Dash_Feeds.No_Series then
+               --  The subscription itself lost samples: the query path
+               --  makes those columns again.
+               for T of Tracks.all loop
+                  Dash_Tracks.Push_Lost (T, U.First_Us, U.Last_Us);
+               end loop;
+            end if;
+         end loop;
+         Dash_Sync.Unlock;
+         exit when Count < Batch'Length;
+      end loop;
+   end Take_Pushed;
+
+   --  The state each track was last drawn in (a change redraws its panel).
+   type State_List is array (Positive range <>) of Dash_Tracks.Track_State;
+   type State_List_Access is access State_List;
+   Drawn_States : State_List_Access;
+
+   procedure Data_Step (V : in out View) is
       pragma Unreferenced (V);
       Started : constant Unsigned_64 := Feed.Now_Us;
-      Calls_Before : constant Unsigned_64 := Dash_Tracks.Fetches;
       Budget_End : constant Unsigned_64 := Started + Fetch_Budget_Us;
    begin
       if Board = null or else Tracks = null then
          return;
       end if;
-      if Started >= Next_Probe_Us then
+      if not Push_Tried then
+         --  Once: push if the store offers it (the query path stays for
+         --  history, zoom and stats).
+         Push_Tried := True;
+         declare
+            Started_Push : Boolean;
+         begin
+            Feed.Start_Push (Started_Push);
+            Push_Since_Us := Feed.Now_Us;
+         end;
+      end if;
+      if Feed.Pushing then
+         Take_Pushed;
+      elsif Started >= Next_Probe_Us then
          Next_Probe_Us := Started + Probe_Interval_Us;
          Probe;
       end if;
+      Dash_Sync.Lock;
+      for P in 1 .. Board.Panels_Used loop
+         if Has_Port (P) then
+            declare
+               --  The UI thread's viewport, as it was when the lock was
+               --  taken (a later move bumps the tracks' generation, and an
+               --  answer for this one is dropped).
+               Port : constant Axis.Viewport := Ports (P);
+               Item : constant Dash_Model.Panel := Panel_Of (P);
+               First, Last : Natural;
+            begin
+               Tracks_Of (P, First, Last);
+               for I in First .. Last loop
+                  declare
+                     T : Dash_Tracks.Track renames Tracks (I);
+                  begin
+                     if T.Columns /= null then
+                        Dash_Tracks.Resolve (T, Feed.all, Started);
+                        Dash_Tracks.Refresh (T, Feed.all, Port, Feed.Now_Us, Budget_End);
+                        if Item.Kind in Dash_Model.Stat | Dash_Model.Histogram then
+                           Dash_Tracks.Refresh_Stats (T, Feed.all, Port, Started);
+                        end if;
+                     end if;
+                  end;
+               end loop;
+            end;
+         end if;
+      end loop;
+      Dash_Sync.Unlock;
+      Last_Refresh_Cost := Feed.Now_Us - Started;
+   end Data_Step;
+
+   procedure Refresh (V : in out View; Damage : in out Rect) is
+      pragma Unreferenced (V);
+   begin
+      if Board = null or else Tracks = null then
+         return;
+      end if;
+      if Drawn_States = null then
+         Drawn_States := new State_List'(Tracks'Range => Dash_Tracks.Unresolved);
+      end if;
+      Dash_Sync.Lock;
       for P in 1 .. Board.Panels_Used loop
          declare
             Port : constant Axis.Viewport := Viewport_For (P);
@@ -669,25 +780,18 @@ package body Dash_View is
             for I in First .. Last loop
                declare
                   T : Dash_Tracks.Track renames Tracks (I);
-                  Was : constant Dash_Tracks.Track_State := T.State;
                begin
                   if T.Columns = null then
                      Dash_Tracks.Configure (T, Port, Item.Kind = Dash_Model.Histogram, Item.Buckets);
                   elsif Moved then
                      Dash_Tracks.Follow (T, Port);
                   end if;
-                  Dash_Tracks.Resolve (T, Feed.all, Started);
-                  Dash_Tracks.Refresh (T, Feed.all, Port, Feed.Now_Us, Budget_End);
-                  if Item.Kind in Dash_Model.Stat | Dash_Model.Histogram then
-                     declare
-                        Before : constant Dash_Feeds.Window_Stats := T.Stats;
-                        Before_Previous : constant Dash_Feeds.Window_Stats := T.Previous;
-                     begin
-                        Dash_Tracks.Refresh_Stats (T, Feed.all, Port, Started);
-                        Whole_Panel := Whole_Panel or else T.Stats /= Before or else T.Previous /= Before_Previous;
-                     end;
+                  if T.Stats_Changed then
+                     T.Stats_Changed := False;
+                     Whole_Panel := True;
                   end if;
-                  if T.State /= Was then
+                  if T.State /= Drawn_States (I) then
+                     Drawn_States (I) := T.State;
                      Whole_Panel := True;
                      Mark (Damage, Status);
                   end if;
@@ -733,12 +837,11 @@ package body Dash_View is
             end if;
          end;
       end loop;
+      Dash_Sync.Unlock;
       --  The live dot's pulse.
       if Live_Mode and then Pulse_Phase /= Shown_Pulse then
          Mark (Damage, Live_Dot_Rect);
       end if;
-      Last_Refresh_Cost := Feed.Now_Us - Started;
-      Last_Refresh_Calls := Dash_Tracks.Fetches - Calls_Before;
    end Refresh;
 
    ---------------------------------------------------------------------------
@@ -785,7 +888,7 @@ package body Dash_View is
                         Left : constant Natural := Plot.x + X - Natural'Min (W / 2, Plot.x + X);
                      begin
                         if Left >= Axis_Box.x and then Left + W <= Axis_Box.x + Axis_Box.w then
-                           Text (C, Left, Axis_Box.y + M.Space_XS, Label, K.Axis_Text);
+                           Dash_Labels.Draw (C, Left, Axis_Box.y + M.Space_XS, Label, K.Axis_Text, K.Card);
                         end if;
                      end;
                   end if;
@@ -826,7 +929,7 @@ package body Dash_View is
                   W : constant Natural := UI_Text_Width (Label);
                   Right : constant Natural := Plot.x - M.Space_S;
                begin
-                  Text (C, (if Right > W then Right - W else 0), Label_Y, Label, K.Axis_Text);
+                  Dash_Labels.Draw (C, (if Right > W then Right - W else 0), Label_Y, Label, K.Axis_Text, K.Card);
                end;
             end if;
          end;
@@ -1875,13 +1978,18 @@ package body Dash_View is
       end if;
       --  What changed, exactly, into the retained frame; then the frame
       --  the toolkit asked for is a copy.
-      for I in 1 .. Dash_Layers.Dirty_Count loop
-         declare
-            R : constant Rect := Dash_Layers.Dirty (I);
-         begin
-            Paint (Dash_Layers.Canvas (R), R);
-         end;
-      end loop;
+      if Dash_Layers.Dirty_Count > 0 then
+         --  The columns are read under the lock; the copy out needs none.
+         Dash_Sync.Lock;
+         for I in 1 .. Dash_Layers.Dirty_Count loop
+            declare
+               R : constant Rect := Dash_Layers.Dirty (I);
+            begin
+               Paint (Dash_Layers.Canvas (R), R);
+            end;
+         end loop;
+         Dash_Sync.Unlock;
+      end if;
       Dash_Layers.Clear_Dirty;
       Dash_Layers.Copy_Out (C, Damage);
    end Render;
@@ -2122,13 +2230,18 @@ package body Dash_View is
       end if;
       Span := Clamped;
       Update_Quantum;
-      Mark_Plots (Damage);
-      Mark (Damage, Toolbar);
-      --  Re-follow every panel at the next frame; the tracks resample at once.
+      --  The toolbar's span text and the presets only, not the whole bar.
+      Mark (Damage, (Toolbar.x, Toolbar.y, Natural'Max (Preset_Rect (1).x, Toolbar.x) - Toolbar.x, Toolbar.h));
+      Mark (Damage, (Preset_Rect (1).x, Toolbar.y,
+                     Natural'Max (Live_Rect.x + Live_Rect.w, Preset_Rect (1).x) - Preset_Rect (1).x, Toolbar.h));
+      --  Every track resamples at once (the preview the store's answer
+      --  refines); each plot and its time axis are redrawn, its value axis
+      --  only when its top changed, a stat's number when the store answers.
       if Board /= null then
          for P in 1 .. Board.Panels_Used loop
             declare
                Port : constant Axis.Viewport := Viewport_For (P);
+               Old_Top : constant Unsigned_64 := Tops (P);
                First, Last : Natural;
             begin
                Tracks_Of (P, First, Last);
@@ -2138,6 +2251,17 @@ package body Dash_View is
                Ports (P) := Port;
                Has_Port (P) := Tracks /= null and then Last >= First;
                Tops (P) := Panel_Top (P);
+               case Panels_Kind (P) is
+                  when Dash_Model.Time_Series | Dash_Model.Heatmap =>
+                     Mark (Damage, Panels (P).Plot);
+                     Mark (Damage, Panels (P).Bottom_Axis);
+                     if Tops (P) /= Old_Top then
+                        Mark (Damage, Panels (P).Left_Axis);
+                        Mark (Damage, Panels (P).Header);
+                     end if;
+                  when Dash_Model.Stat => Mark (Damage, Panels (P).Plot);
+                  when others => Mark (Damage, Panels (P).Outer);
+               end case;
             end;
          end loop;
       end if;
@@ -2219,8 +2343,17 @@ package body Dash_View is
       end if;
    end Set_Hover;
 
+   procedure Handle_Locked (E : Event; Damage : in out Rect);
+
    procedure Handle (V : in out View; E : Event; Damage : in out Rect) is
       pragma Unreferenced (V);
+   begin
+      Dash_Sync.Lock;
+      Handle_Locked (E, Damage);
+      Dash_Sync.Unlock;
+   end Handle;
+
+   procedure Handle_Locked (E : Event; Damage : in out Rect) is
    begin
       if Board = null then
          return;
@@ -2350,7 +2483,7 @@ package body Dash_View is
                when Copy | No_Key => null;
             end case;
       end case;
-   end Handle;
+   end Handle_Locked;
 
    ---------------------------------------------------------------------------
    --  Drill-down
@@ -2499,6 +2632,18 @@ package body Dash_View is
    begin
       return (if Board = null then "" else Dash_Model.Image (Board.Title));
    end Title;
+   function Pushed_Samples (V : View) return Unsigned_64 is
+      pragma Unreferenced (V);
+   begin
+      return Pushed_Total;
+   end Pushed_Samples;
+
+   function Push_Active (V : View) return Boolean is
+      pragma Unreferenced (V);
+   begin
+      return Feed /= null and then Feed.Pushing;
+   end Push_Active;
+
    function Panel_Count (V : View) return Natural is
       pragma Unreferenced (V);
    begin

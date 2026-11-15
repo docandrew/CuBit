@@ -22,7 +22,7 @@ package body Synthetic_Feeds is
       F.Count := F.Count + 1;
       F.Series (F.Count) := (Name => Dash_Model.To_Text (Name), Kind => Kind, Unit => Unit,
                              Times => new Q.Sample_Array (1 .. Maximum_Samples),
-                             Values => new Q.Sample_Array (1 .. Maximum_Samples), Used => 0);
+                             Values => new Q.Sample_Array (1 .. Maximum_Samples), Used => 0, Delivered => 0);
    end Add_Series;
 
    procedure Observe (F : in out Synthetic_Feed; Name : String; Time_Us, Value : Unsigned_64) is
@@ -283,6 +283,53 @@ package body Synthetic_Feeds is
       end;
       Result := Dash_Feeds.OK;
    end Read_Stats;
+
+   overriding procedure Start_Push (F : in out Synthetic_Feed; Started : out Boolean) is
+   begin
+      F.Call_Count := F.Call_Count + 1;
+      if not F.No_Push and then not F.Push then
+         F.Push := True;
+         for I in 1 .. F.Count loop
+            F.Series (I).Delivered := F.Series (I).Used;
+         end loop;
+      end if;
+      Started := F.Push;
+   end Start_Push;
+
+   overriding function Pushing (F : Synthetic_Feed) return Boolean is (F.Push);
+
+   procedure Disable_Push (F : in out Synthetic_Feed) is
+   begin
+      F.No_Push := True;
+      F.Push := False;
+   end Disable_Push;
+
+   --  Samples in the order they were observed, series by series (a real
+   --  store interleaves them; the viewer must not care).
+   overriding procedure Take_Updates
+     (F : in out Synthetic_Feed; Into : out Dash_Feeds.Update_Array; Count : out Natural) is
+   begin
+      Count := 0;
+      if not F.Push then
+         return;
+      end if;
+      for I in 1 .. F.Count loop
+         declare
+            S : Series_Data renames F.Series (I);
+         begin
+            if Refused (F, Dash_Model.Image (S.Name)) then
+               S.Delivered := S.Used;
+            end if;
+            while S.Delivered < S.Used and then Count < Into'Length loop
+               S.Delivered := S.Delivered + 1;
+               Count := Count + 1;
+               Into (Into'First + Count - 1) :=
+                 (Kind => Dash_Feeds.Sample, Series => Unsigned_64 (I), Time_Us => S.Times (S.Delivered),
+                  Value => S.Values (S.Delivered), others => 0);
+            end loop;
+         end;
+      end loop;
+   end Take_Updates;
 
    overriding function Now_Us (F : Synthetic_Feed) return Unsigned_64 is (F.Clock);
    overriding function Calls (F : Synthetic_Feed) return Unsigned_64 is (F.Call_Count);

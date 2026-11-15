@@ -36,10 +36,15 @@ package Dash_View is
    procedure Set_Bounds (V : in out View; Bounds : Rect; Numerator, Denominator : Positive := 1);
    function Bounds (V : View) return Rect;
 
-   --  One frame's fetch: Fetch_Budget_Us of feed time at most for loading
-   --  history (the live edge is always fetched). Damage grows by what to
-   --  repaint.
+   --  The data thread's step: what the store pushed, the series looked up,
+   --  history fetched (Fetch_Budget_Us of feed time at most per step), the
+   --  stat windows. All the I/O and decoding is here, with the shared lock
+   --  let go around every call (Dash_Sync).
    Fetch_Budget_Us : constant := 2_000;
+   procedure Data_Step (V : in out View);
+
+   --  The UI thread's frame: viewports follow the clock and the input, and
+   --  Damage grows by what changed. No I/O.
    procedure Refresh (V : in out View; Damage : in out Rect);
 
    type Key is
@@ -79,6 +84,9 @@ package Dash_View is
    procedure Probe
      (V : View; Title : String; Samples, Newest_P99, From_Us, To_Us : out Unsigned_64; Found : out Boolean);
    function Title (V : View) return String;
+   --  Samples the store pushed so far, and whether it pushes.
+   function Pushed_Samples (V : View) return Unsigned_64;
+   function Push_Active (V : View) return Boolean;
    --  Panel P's card and its plot (tests aim the pointer with these).
    function Panel_Count (V : View) return Natural;
    function Panel_Bounds (V : View; P : Positive) return Rect;

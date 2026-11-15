@@ -14,6 +14,7 @@ with Ada.Streams.Stream_IO;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Appearance;
+with CuBit.Metric_Updates;
 with CuBit.UI;
 with CuBit.UI.Theme_CCL;
 with Charts_Format;
@@ -188,6 +189,8 @@ procedure Metricsview_View_Tests is
       Damage : CuBit.UI.Rect := (others => 0);
    begin
       Feed.Set_Clock (Now);
+      --  Both threads' steps, in order, on the test's one thread.
+      Dash_View.Data_Step (View);
       Dash_View.Refresh (View, Damage);
       Damage_Total := Damage;
       if not CuBit.UI.Is_Empty (Damage) then
@@ -202,14 +205,16 @@ procedure Metricsview_View_Tests is
       Damage : CuBit.UI.Rect := (others => 0);
       Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
       Taken : Natural;
+      Handled : Natural;
    begin
       Dash_View.Handle (View, E, Damage);
+      Handled := Elapsed_Us (Started);
       if not CuBit.UI.Is_Empty (Damage) then
          Dash_View.Render (View, CuBit.UI.With_Clip (Whole, Damage), Damage);
       end if;
       Taken := Elapsed_Us (Started);
-      Put_Line ("interaction " & What & ": " & Natural'Image (Taken) & " us, damage" & Natural'Image (Damage.w) & "x"
-                & Natural'Image (Damage.h));
+      Put_Line ("interaction " & What & ": " & Natural'Image (Taken) & " us (handle" & Handled'Image & "), damage"
+                & Natural'Image (Damage.w) & "x" & Natural'Image (Damage.h));
    end Interact;
 
    --  Everything drawn again (not copied from the retained frame).
@@ -270,7 +275,34 @@ procedure Metricsview_View_Tests is
    Loaded : Dash_Model.Load_Result;
    Samples, P99, From_Us, To_Us : Unsigned_64;
    Found : Boolean;
+   --  The push ring's elements (CuBit.Metric_Updates): what metrics.svc
+   --  encodes reads back, and malformed words are refused.
+   procedure Update_Codec is
+      package U renames CuBit.Metric_Updates;
+      use type U.Element_Kind;
+      use type U.Gap_Cause;
+      Wire : U.Element_Buffer;
+      D : U.Decoded;
+   begin
+      U.Encode ((Kind => U.Sample, Series => 42, Time_Us => 1_234_567, Value => 89), Wire);
+      D := U.Decode (Wire);
+      Check (D.Success and then D.Value.Kind = U.Sample and then D.Value.Series = 42
+             and then D.Value.Time_Us = 1_234_567 and then D.Value.Value = 89, "a pushed sample reads back");
+      U.Encode ((Kind => U.Gap, Series => 0, Cause => U.Subscriber_Shed, Missing => 7, First_Us => 10,
+                 Last_Us => 20), Wire);
+      D := U.Decode (Wire);
+      Check (D.Success and then D.Value.Kind = U.Gap and then D.Value.Cause = U.Subscriber_Shed
+             and then D.Value.Missing = 7, "the subscription's own shed reads back");
+      Wire (5) := 1;
+      Check (not U.Decode (Wire).Success, "a cause the element cannot carry is refused");
+      U.Encode ((Kind => U.Gap, Series => 3, Cause => U.Producer_Shed, Missing => 1, First_Us => 30,
+                 Last_Us => 20), Wire);
+      Check (not U.Decode (Wire).Success, "a gap that ends before it starts is refused");
+      U.Encode ((Kind => U.Sample, Series => 0, Time_Us => 1, Value => 1), Wire);
+      Check (not U.Decode (Wire).Success, "a sample of no series is refused");
+   end Update_Codec;
 begin
+   Update_Codec;
    Install_Themes;
    CuBit.UI.Set_Color_Scheme (CuBit.Appearance.Alloy_Dark);
    Add_Series;
@@ -304,6 +336,9 @@ begin
    end;
 
    Feed.Set_Clock (Now);
+   if Ada.Environment_Variables.Exists ("METRICSVIEW_NO_PUSH") then
+      Feed.Disable_Push;
+   end if;
    Dash_View.Initialize (View, Feed'Unchecked_Access, Board);
    Dash_View.Set_Bounds (View, (0, 0, WIDTH, HEIGHT));
    for I in 1 .. 4 loop
@@ -427,7 +462,9 @@ begin
    declare
       Truth : constant Natural := Feed.Samples_Between (Series_Of (Input_To_Ready), From_Us, To_Us);
    begin
-      Check (Found and then Natural (Samples) in Truth .. Truth + Truth / 50 + 50,
+      --  A window goes to the column of its start: where a column edge cuts
+      --  one, its count lands on one side, so the totals agree within 2%.
+      Check (Found and then Natural (Samples) in Truth - Truth / 50 .. Truth + Truth / 50 + 50,
              "tier columns count the samples in view:" & Samples'Image & " vs" & Truth'Image);
    end;
    Repaint_All;

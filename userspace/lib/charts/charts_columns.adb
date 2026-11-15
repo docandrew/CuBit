@@ -150,9 +150,11 @@ package body Charts_Columns with SPARK_Mode is
         (if Into.Last >= Unsigned_64 (Into.Capacity - 1) then Into.Last - Unsigned_64 (Into.Capacity - 1) else 0);
       From_First : constant Column_Number :=
         (if From.Last >= Unsigned_64 (From.Capacity - 1) then From.Last - Unsigned_64 (From.Capacity - 1) else 0);
+      At_Slot : Positive := Slot (Into, Into_First);
    begin
       Into.Items := [others => Nothing];
       for C in Into_First .. Into.Last loop
+         pragma Loop_Invariant (At_Slot in 1 .. Into.Capacity);
          declare
             Start : constant Axis.Time_Us := Axis.Start_Of (C, To_Width);
             Stop : constant Axis.Time_Us := Axis.End_Of (C, To_Width);
@@ -161,14 +163,25 @@ package body Charts_Columns with SPARK_Mode is
             S : Summary := Nothing;
          begin
             if Low <= High then
-               for Old in Low .. High loop
-                  S := Merge (S, From.Items (Slot (From, Old)));
-               end loop;
+               --  The old columns' slots follow one another: one division
+               --  for the run, not one per column.
+               declare
+                  Old_Slot : Positive := Slot (From, Low);
+               begin
+                  for Old in Low .. High loop
+                     pragma Loop_Invariant (Old_Slot in 1 .. From.Capacity);
+                     if From.Items (Old_Slot).Origin /= Empty then
+                        S := Merge (S, From.Items (Old_Slot));
+                     end if;
+                     Old_Slot := (if Old_Slot = From.Capacity then 1 else Old_Slot + 1);
+                  end loop;
+               end;
             end if;
             if S.Origin /= Empty then
                S.Origin := Preview;
             end if;
-            Into.Items (Slot (Into, C)) := S;
+            Into.Items (At_Slot) := S;
+            At_Slot := (if At_Slot = Into.Capacity then 1 else At_Slot + 1);
          end;
       end loop;
    end Resample;

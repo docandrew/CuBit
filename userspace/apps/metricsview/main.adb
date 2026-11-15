@@ -24,6 +24,8 @@ with Charts_Format;
 with Dash_Feeds;
 with Dash_Model;
 with Dash_Query_Feeds;
+with Dash_Runner;
+with Dash_Sync;
 with Dash_View;
 with Startup;
 
@@ -72,8 +74,10 @@ procedure Main is
    Win : CuBit.UI.App.Window;
    UI : CuBit.UI.State.UI_State;
    Controls : CuBit.UI.Controls.Control_Map;
-   Feed : aliased Dash_Query_Feeds.Query_Feed;
-   View : Dash_View.View;
+   Feed : Dash_Query_Feeds.Query_Feed renames Dash_Runner.Feed;
+   View : Dash_View.View renames Dash_Runner.View;
+   --  The data thread runs; else the UI thread steps the data itself.
+   Threaded : Boolean := False;
    Board : Dash_Model.Dashboard;
    Loaded : Dash_Model.Load_Result;
    Opened : Boolean;
@@ -97,18 +101,18 @@ procedure Main is
       Started : constant Unsigned_64 := Now_Us;
    begin
       Dash_View.Render (View, CuBit.UI.App.Canvas (Win, Damage), Damage);
-      CuBit.Metrics.Observe (Render_Cost, Now_Us - Started);
-      CuBit.Metrics.Observe (Frames, 1);
+      Dash_Runner.Observe (Render_Cost, Now_Us - Started);
+      Dash_Runner.Observe (Frames, 1);
       if Input_Pending then
          Input_Pending := False;
          Last_Cost_Us := Input_Work_Us + (Now_Us - Started);
          Worst_Cost_Us := Unsigned_64'Max (Worst_Cost_Us, Last_Cost_Us);
-         CuBit.Metrics.Observe (Input_Cost, Last_Cost_Us);
+         Dash_Runner.Observe (Input_Cost, Last_Cost_Us);
          Input_Work_Us := 0;
          Last_Input_Us := Now_Us - Input_Started_Us;
          Worst_Input_Us := Unsigned_64'Max (Worst_Input_Us, Last_Input_Us);
          Inputs_Measured := Inputs_Measured + 1;
-         CuBit.Metrics.Observe (Input_To_Render, Last_Input_Us);
+         Dash_Runner.Observe (Input_To_Render, Last_Input_Us);
       end if;
       if First_Frame then
          First_Frame := False;
@@ -175,6 +179,12 @@ procedure Main is
          Dash_View.Handle (View, (Kind => Dash_View.Wheel, X => I.Pointer_X (Event), Y => I.Pointer_Y (Event),
                                   Steps => I.Pointer_Wheel_Delta (Event), others => <>), Dirty);
       end if;
+      --  A new viewport: the data thread fetches for it now, not at its poll.
+      if Threaded and then Event.kind in I.INPUT_KEY_DOWN | I.INPUT_POINTER_WHEEL | I.INPUT_POINTER_UP
+        | I.INPUT_POINTER_MOVE and then (Event.kind /= I.INPUT_POINTER_MOVE or else I.Pointer_Buttons (Event) /= 0)
+      then
+         Dash_Runner.Wake;
+      end if;
       --  Input that changed the window: measured to the end of its render.
       if not Input_Pending and then (Dirty.w /= Before.w or else Dirty.h /= Before.h or else
                                      Dirty.x /= Before.x or else Dirty.y /= Before.y)
@@ -190,26 +200,24 @@ procedure Main is
    function Deadline return Unsigned_64 is (Due_Ms);
 
 
-   type Name_Access is access constant String;
-   Input_Name : aliased constant String := "metricsview.input_to_render_us";
-   Cost_Name : aliased constant String := "metricsview.input_cost_us";
-   Update_Name : aliased constant String := "metricsview.update_us";
-   Own_Names : constant array (1 .. 3) of Name_Access :=
-     [Input_Name'Access, Cost_Name'Access, Update_Name'Access];
-
    procedure Report;
    procedure Report is
       Samples, P99, From_Us, To_Us : Unsigned_64;
       Found : Boolean;
-      Own : Dash_Feeds.Series_Infos (1 .. 1);
-      Listed, Total : Natural;
-      Result : Dash_Feeds.Status;
-      Stats : Dash_Feeds.Window_Stats;
+      Resolved, Total_Tracks, Columns : Natural;
+      Pushed : Unsigned_64;
+      Push_On : Boolean;
    begin
+      Dash_Sync.Lock;
       Dash_View.Probe (View, "Input to ready", Samples, P99, From_Us, To_Us, Found);
-      debugPrint ("metricsview: tracks=" & Decimal (Unsigned_64 (Dash_View.Resolved_Tracks (View))) & "/"
-                  & Decimal (Unsigned_64 (Dash_View.Track_Total (View)))
-                  & " columns=" & Decimal (Unsigned_64 (Dash_View.Columns_With_Data (View)))
+      Resolved := Dash_View.Resolved_Tracks (View);
+      Total_Tracks := Dash_View.Track_Total (View);
+      Columns := Dash_View.Columns_With_Data (View);
+      Pushed := Dash_View.Pushed_Samples (View);
+      Push_On := Dash_View.Push_Active (View);
+      Dash_Sync.Unlock;
+      debugPrint ("metricsview: tracks=" & Decimal (Unsigned_64 (Resolved)) & "/" & Decimal (Unsigned_64 (Total_Tracks))
+                  & " columns=" & Decimal (Unsigned_64 (Columns))
                   & " input_to_ready samples=" & Decimal (Samples) & " newest_p99_us=" & Decimal (P99)
                   & " queries=" & Decimal (Dash_Query_Feeds.Calls (Feed))
                   & " query_mean_us=" & Decimal (Dash_Query_Feeds.Call_Time (Feed)
@@ -221,20 +229,11 @@ procedure Main is
                   & " input_to_render_max_us=" & Decimal (Worst_Input_Us)
                   & " inputs=" & Decimal (Inputs_Measured)
                   & " input_cost_last_us=" & Decimal (Last_Cost_Us) & " input_cost_max_us=" & Decimal (Worst_Cost_Us)
-                  & ASCII.LF);
-      --  Its own series, read back through the store like any other.
-      for Name of Own_Names loop
-         Dash_Query_Feeds.Find (Feed, (Name => Dash_Model.To_Text (Name.all), others => <>), Own, Listed, Total,
-                                Result);
-         if Result = Dash_Feeds.OK and then Listed = 1 then
-            Dash_Query_Feeds.Read_Stats (Feed, Own (1).Id, 0, Now_Us, Stats, Result);
-            if Result = Dash_Feeds.OK then
-               debugPrint ("metricsview: own series " & Name.all & " n=" & Decimal (Stats.Count)
-                           & " p50_us=" & Decimal (Stats.P50) & " p99_us=" & Decimal (Stats.P99)
-                           & " max_us=" & Decimal (Stats.Maximum) & ASCII.LF);
-            end if;
-         end if;
-      end loop;
+                  & " push=" & (if Push_On then "on" else "off") & " pushed=" & Decimal (Pushed)
+                  & " data_thread=" & (if Threaded then "on" else "off")
+                  & " data_steps=" & Decimal (Dash_Runner.Steps)
+                  & " data_last_us=" & Decimal (Dash_Runner.Last_Step_Us)
+                  & " data_max_us=" & Decimal (Dash_Runner.Slowest_Step_Us) & ASCII.LF);
    end Report;
 
    --  The frame clock: one refresh per frame, none while the last frame is
@@ -251,11 +250,14 @@ procedure Main is
       declare
          Started : constant Unsigned_64 := Now_Us;
       begin
+         if not Threaded then
+            Dash_View.Data_Step (View);
+         end if;
          Dash_View.Refresh (View, Dirty);
          Last_Update_Us := Now_Us - Started;
          Worst_Update_Us := Unsigned_64'Max (Worst_Update_Us, Last_Update_Us);
          Updates := Updates + 1;
-         CuBit.Metrics.Observe (Update_Cost, Last_Update_Us);
+         Dash_Runner.Observe (Update_Cost, Last_Update_Us);
       end;
       if Now >= Report_Due_Ms then
          Report_Due_Ms := Now + REPORT_MS;
@@ -294,10 +296,13 @@ begin
       return;
    end if;
    Set_Bounds (Win);
+   Dash_Runner.Start (Threaded);
+   debugPrint ("metricsview: data thread " & (if Threaded then "started" else "not started: one thread") & ASCII.LF);
    Due_Ms := Now_Ms + 1;
    Report_Due_Ms := Now_Ms + REPORT_MS;
    debugPrint ("metricsview: window ready" & ASCII.LF);
    Run (Win);
+   Dash_Runner.Stop;
    CuBit.UI.App.Close (Win);
    debugPrint ("metricsview: closed" & ASCII.LF);
 end Main;

@@ -26,7 +26,7 @@ for unit in cubit.ads cubit-filesystems.ads cubit-filesystems.adb cubit-director
             cubit-filesystem_events.ads cubit-filesystem_events.adb cubit-volume_descriptions.ads \
             cubit-volume_descriptions.adb cubit-file_access.ads cubit-file_access.adb \
             cubit-published_clock.ads cubit-published_clock.adb cubit-kernel_calls.ads \
-            cubit-kernel_calls.adb; do
+            cubit-kernel_calls.adb cubit-metric_updates.ads cubit-metric_updates.adb; do
   cmp -s "$root/userspace/runtime/gnat/$unit" "$here/build/source/$unit" ||
     cp "$root/userspace/runtime/gnat/$unit" "$here/build/source/"
 done

@@ -1,10 +1,12 @@
 pragma Ada_2022;
 with CuBit.Handles.Startup;
 with CuBit.Metric_Protocol;
+with CuBit.Metric_Updates;
 with CuBit.Metric_Query_Pages;
 with CuBit.Metrics;
 with CuBit.Monotonic;
 with Charts_Format;
+with Dash_Sync;
 
 package body Dash_Query_Feeds is
    package Queries renames CuBit.Metric_Queries;
@@ -48,7 +50,11 @@ package body Dash_Query_Feeds is
       F.Call_Count := F.Call_Count + 1;
       F.Time_Us := F.Time_Us + Taken;
       F.Slowest_Us := Unsigned_64'Max (F.Slowest_Us, Taken);
+      --  Called by the data thread with the shared lock let go; CuBit.Metrics
+      --  is serialized by it.
+      Dash_Sync.Lock;
       CuBit.Metrics.Observe (Query_Series, Taken);
+      Dash_Sync.Unlock;
    end Note_Call;
 
    procedure List_Page
@@ -208,6 +214,59 @@ package body Dash_Query_Feeds is
                 P99 => Answer (Pages.Stat_P99), P999 => Answer (Pages.Stat_P999),
                 Rate_Milli => Answer (Pages.Stat_Rate_Milli), Missing => Answer (Pages.Stat_Missing));
    end Read_Stats;
+
+   overriding procedure Start_Push (F : in out Query_Feed; Started : out Boolean) is
+      Answered : Protocol.Status;
+      Begun : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+   begin
+      Started := False;
+      if not Bound (F) or else F.Push then
+         Started := F.Push;
+         return;
+      end if;
+      Queries.Subscribe (F.Reader.all, Queries.Any_Name, "", "", F.Link, Answered);
+      Note_Call (F, Begun);
+      F.Push := Answered = Protocol.OK;
+      Started := F.Push;
+   end Start_Push;
+
+   overriding function Pushing (F : Query_Feed) return Boolean is (F.Push and then F.Link.Active);
+
+   overriding procedure Take_Updates (F : in out Query_Feed; Into : out Dash_Feeds.Update_Array; Count : out Natural)
+   is
+      use type CuBit.Channels.Take_Result;
+      package U renames CuBit.Metric_Updates;
+      Wire : U.Element_Buffer;
+      Length : Natural;
+      Taken : CuBit.Channels.Take_Result;
+   begin
+      Count := 0;
+      if not Pushing (F) then
+         return;
+      end if;
+      while Count < Into'Length loop
+         CuBit.Channels.Take (F.Link, Wire'Address, Wire'Length, Length, Taken);
+         exit when Taken /= CuBit.Channels.Taken and then Taken /= CuBit.Channels.Malformed;
+         declare
+            Item : constant U.Decoded := (if Taken = CuBit.Channels.Taken and then Length = Wire'Length
+                                          then U.Decode (Wire) else (Success => False));
+         begin
+            if not Item.Success then
+               F.Malformed := F.Malformed + 1;
+            else
+               Count := Count + 1;
+               Into (Into'First + Count - 1) :=
+                 (case Item.Value.Kind is
+                    when U.Sample =>
+                      (Kind => Dash_Feeds.Sample, Series => Item.Value.Series, Time_Us => Item.Value.Time_Us,
+                       Value => Item.Value.Value, others => 0),
+                    when U.Gap =>
+                      (Kind => Dash_Feeds.Gap, Series => Item.Value.Series, Missing => Item.Value.Missing,
+                       First_Us => Item.Value.First_Us, Last_Us => Item.Value.Last_Us, others => 0));
+            end if;
+         end;
+      end loop;
+   end Take_Updates;
 
    overriding function Now_Us (F : Query_Feed) return Unsigned_64 is (CuBit.Monotonic.Microseconds);
    overriding function Calls (F : Query_Feed) return Unsigned_64 is (F.Call_Count);

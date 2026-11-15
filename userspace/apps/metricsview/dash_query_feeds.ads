@@ -16,6 +16,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with Charts_Columns;
 with Charts_Quantiles;
+with CuBit.Channels;
 with CuBit.Metric_Queries;
 with Dash_Feeds;
 with Dash_Model;
@@ -44,6 +45,9 @@ package Dash_Query_Feeds is
    overriding procedure Read_Stats
      (F : in out Query_Feed; Id : Dash_Feeds.Series_Id; From_Us, To_Us : Unsigned_64;
       Stats : out Dash_Feeds.Window_Stats; Result : out Dash_Feeds.Status);
+   overriding procedure Start_Push (F : in out Query_Feed; Started : out Boolean);
+   overriding function Pushing (F : Query_Feed) return Boolean;
+   overriding procedure Take_Updates (F : in out Query_Feed; Into : out Dash_Feeds.Update_Array; Count : out Natural);
    overriding function Now_Us (F : Query_Feed) return Unsigned_64;
    overriding function Calls (F : Query_Feed) return Unsigned_64;
 
@@ -55,5 +59,10 @@ private
    type Query_Feed is new Dash_Feeds.Feed with record
       Reader : Reader_Access;
       Call_Count, Time_Us, Slowest_Us : Unsigned_64 := 0;
+      --  The push subscription's ring (CuBit.Metric_Updates).
+      Link : CuBit.Channels.Channel;
+      Push : Boolean := False;
+      --  Elements that did not decode (counted, never used).
+      Malformed : Unsigned_64 := 0;
    end record;
 end Dash_Query_Feeds;
