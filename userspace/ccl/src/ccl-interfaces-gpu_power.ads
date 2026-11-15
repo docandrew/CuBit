@@ -18,4 +18,15 @@ package CCL.Interfaces.GPU_Power with SPARK_Mode, Pure is
    RENDERING_TYPE_SOURCE : constant String :=
      "(type GPU_Rendering (record (enabled Boolean true)))";
    RENDERING_ROOT_TYPE_NAME : constant String := "GPU_Rendering";
+
+   --  `desktop.composition` is one Desktop_Composition: which processor
+   --  composes Desktop's UI (LAT-002): CPU (damage only, the default, and
+   --  what an absent setting means) or GPU (the Vulkan scene, which needs
+   --  the admitted render session desktop.render.gpu grants). It is an
+   --  operator's A/B switch, read when Desktop starts; it never admits or
+   --  refuses the GPU session itself, which stays for 3D work either way.
+   COMPOSITION_TYPE_SOURCE : constant String :=
+     "(type Composition_Path (enum CPU GPU)) " &
+     "(type Desktop_Composition (record (path Composition_Path Composition_Path.CPU)))";
+   COMPOSITION_ROOT_TYPE_NAME : constant String := "Desktop_Composition";
 end CCL.Interfaces.GPU_Power;

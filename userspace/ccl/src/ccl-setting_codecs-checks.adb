@@ -9,6 +9,7 @@ with CCL.Setting_Codecs.Display_Scale;
 with CCL.Setting_Codecs.Display_Mode;
 with CCL.Setting_Codecs.Display_Modeset;
 with CCL.Setting_Codecs.GPU_Waitboost;
+with CCL.Setting_Codecs.Desktop_Composition;
 with CCL.Setting_Codecs.Net_Interface;
 with CCL.Setting_Codecs.Log_Retention;
 with CCL.Setting_Codecs.GPU_Rendering;
@@ -69,6 +70,12 @@ package body CCL.Setting_Codecs.Checks with SPARK_Mode is
                Item : GPU_Waitboost.GPU_Waitboost_Value;
             begin
                GPU_Waitboost.Decode (Source, Item, OK);
+            end;
+         when Kinds.Desktop_Composition_Setting =>
+            declare
+               Item : Desktop_Composition.Desktop_Composition_Value;
+            begin
+               Desktop_Composition.Decode (Source, Item, OK);
             end;
          when Kinds.Net_Interface_Setting =>
             declare

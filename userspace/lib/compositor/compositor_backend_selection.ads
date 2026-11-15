@@ -3,13 +3,14 @@
 with Interfaces;
 package Compositor_Backend_Selection with SPARK_Mode, Pure is
    type Mode is (Unselected, Software, GPU);
-   -- Which processor composes Desktop's UI. User decision 2026-11-14 (LAT-002):
-   -- "let's save the GPU for where it really excels - 3D work, games". The UI
-   -- is composed on the CPU, damage only; the GPU session stays for 3D app
-   -- surfaces and video. GPU composition remains a policy choice, not a
-   -- consequence of a GPU being present.
+   -- Which processor composes Desktop's UI (LAT-002). User 2026-11-14: "let's
+   -- save the GPU for where it really excels - 3D work, games"; 2026-11-15:
+   -- CPU against GPU composition is an A/B to measure. The arm is the
+   -- desktop.composition setting (Desktop_Composition_Settings), read at
+   -- startup; it is a policy choice, never a consequence of a GPU being
+   -- present, and the GPU session (desktop.render.gpu) stays either way.
    type Composition is (CPU_Composition, GPU_Composition);
-   UI_Composition : constant Composition := CPU_Composition;
+   Default_Composition : constant Composition := CPU_Composition;
    type Readiness is record
       Admitted, Device, Targets, Pipeline, Upload, Readback, Configuration : Boolean := False;
    end record;

@@ -14,6 +14,7 @@ with Compositor_Frame_Replacement;
 with Desktop_Input_Diagnostic;
 with Desktop_Breadcrumbs;
 with Compositor_Backend_Selection;
+with Desktop_Composition_Settings;
 with Compositor_Focus;
 with Compositor_Source_Damage;
 with Compositor_Source_Content;
@@ -1566,6 +1567,27 @@ procedure main is
    --  effective settings are logged either way.
    --  gpu.power.waitboost (Desktop_GPU_Power_Settings): logged either way,
    --  handed to the GPU driver once its queue is open.
+   --  desktop.composition (Desktop_Composition_Settings): which processor
+   --  composes the UI, the LAT-002 A/B arm; read once, logged either way.
+   uiComposition : Compositor_Backend_Selection.Composition :=
+     Desktop_Composition_Settings.Default_Composition;
+   procedure Load_Composition is
+      use all type CuBit.Settings.Outcome;
+      package Setting renames Startup.Settings.Desktop_Composition;
+      Stored : constant Setting.Reading := Setting.Read;
+   begin
+      uiComposition :=
+        (if Stored.Kind = Present then Stored.Item else Desktop_Composition_Settings.Default_Composition);
+      if Stored.Kind not in Present | Absent then
+         debugPrint ("desktop: " & Setting.Setting_Key & " " & CuBit.Settings.Outcome'Image (Stored.Kind) &
+                     "; using the default" & LF);
+      end if;
+      debugPrint ("desktop: composition " &
+                  (case uiComposition is
+                     when Compositor_Backend_Selection.CPU_Composition => "cpu",
+                     when Compositor_Backend_Selection.GPU_Composition => "gpu") &
+                  (if Stored.Kind = Present then " (configured)" else " (default)") & LF);
+   end Load_Composition;
    procedure Load_GPU_Power is
       use all type CuBit.Settings.Outcome;
       package Setting renames Startup.Settings.Gpu_Power_Waitboost;
@@ -14192,7 +14214,7 @@ procedure main is
          Desktop_Renderer_Worker.Start
            (Configuration => backBufferReady and then desktopLayout.Count = 1 and then
               primaryOutput = 0 and then presentations (0).Enabled,
-            Policy => Selection.UI_Composition,
+            Policy => uiComposition,
             Width => Unsigned_64 (presentations (0).Geometry.Width),
             Height => Unsigned_64 (presentations (0).Geometry.Height),
             Epoch => BP.Writer (presentations (0).Pool).Epoch,
@@ -14236,11 +14258,11 @@ procedure main is
          Diagnostic_Pipeline_Result := Diagnostic.Result;
          Diagnostic_Pipeline_Valid := True;
       end if;
-      Desktop_Compositor.Configure_Renderer (Evidence, Selection.UI_Composition, Accepted);
+      Desktop_Compositor.Configure_Renderer (Evidence, uiComposition, Accepted);
       if not Accepted then exitCompositor (1); return; end if;
       if Desktop_Compositor.Full_Output then
          debugPrint ("DESKTOP-VULKAN: startup=READY" & LF);
-      elsif Selection.UI_Composition = Selection.CPU_Composition and then
+      elsif uiComposition = Selection.CPU_Composition and then
         Desktop_Renderer_Startup.GPU_Capable
       then
          --  The UI is composed on the CPU by policy (LAT-002, user 2026-11-14);
@@ -14298,6 +14320,7 @@ begin
    Load_Launch_Menu;
    Load_Key_Repeat;
    Load_GPU_Power;
+   Load_Composition;
    Load_Display_Scale;
    Load_Display_Modeset;
    Desktop_Launch_Refresh.Initialize;

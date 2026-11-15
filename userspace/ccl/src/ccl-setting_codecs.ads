@@ -11,6 +11,7 @@
 --    CCL.Setting_Codecs.Display_Mode: desktop.display.mode.
 --    CCL.Setting_Codecs.Display_Modeset: desktop.display.modeset
 --    CCL.Setting_Codecs.GPU_Waitboost: gpu.power.waitboost
+--    CCL.Setting_Codecs.Desktop_Composition: desktop.composition
 --    CCL.Setting_Codecs.Net_Interface: net.interface.
 --    CCL.Setting_Codecs.Log_Retention: logs.retention
 --    CCL.Setting_Codecs.GPU_Rendering: desktop.render.gpu

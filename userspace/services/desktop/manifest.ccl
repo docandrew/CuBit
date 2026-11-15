@@ -50,6 +50,9 @@
     # Settings); without this scope the read was denied and taken as the
     # default (CAP-003).
     (config [File_Right.Read] "gpu.power.waitboost")
+    # Which processor composes the UI (Desktop_Composition_Settings,
+    # LAT-002): the operator's A/B switch (read only).
+    (config [File_Right.Read] "desktop.composition")
     (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-wallpapers/")
     (filesystem [File_Right.Read] "@cd:0/Assets/cubit-wallpapers/")
     (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-icons/")

@@ -74,6 +74,10 @@
   # switch to the monitor's best admitted mode from EDID instead of the
   # firmware's. Off until the modeset passes its hardware soak (DISP-013).
   (setting "desktop.display.modeset" (Display_Modeset enabled => false))
+  # Which processor composes the UI (LAT-002 A/B; read when Desktop starts):
+  # Composition_Path.CPU (damage only) or Composition_Path.GPU (the Vulkan
+  # scene; needs the render session desktop.render.gpu admits).
+  (setting "desktop.composition" (Desktop_Composition path => Composition_Path.CPU))
   (setting "desktop.input.key-repeat"
     (Key_Repeat enabled => true delay_ms => 500 rate_hz => 30))
   (setting "clock.time-zone" "UTC")

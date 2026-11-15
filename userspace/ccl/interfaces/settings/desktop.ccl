@@ -23,4 +23,7 @@
     Class.Declaration_Managed "Desktop_Display_Modeset_Settings")
   (Setting "gpu.power.waitboost" Shape.Key
     (Value.Typed (CCL_Type "CCL.Interfaces.GPU_Power.TYPE_SOURCE" "GPU_Waitboost"))
-    Class.Declaration_Managed "Desktop_GPU_Power_Settings")])
+    Class.Declaration_Managed "Desktop_GPU_Power_Settings")
+  (Setting "desktop.composition" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.GPU_Power.COMPOSITION_TYPE_SOURCE" "Desktop_Composition"))
+    Class.Declaration_Managed "Desktop_Composition_Settings")])

@@ -6,8 +6,8 @@ procedure Check is
       (Mask / 8) mod 2 = 1, (Mask / 16) mod 2 = 1, (Mask / 32) mod 2 = 1,
       (Mask / 64) mod 2 = 1);
 begin
-   --  The UI composition policy is the user's (LAT-002): CPU.
-   pragma Assert (UI_Composition = CPU_Composition);
+   --  Without a desktop.composition setting the UI is composed on the CPU.
+   pragma Assert (Default_Composition = CPU_Composition);
    for Policy in Composition loop
    for Mask in 0 .. 127 loop
       declare S : State; Accepted : Boolean; Chosen : Mode;

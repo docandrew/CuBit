@@ -23,6 +23,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
       Display_Mode_Setting,
       Display_Modeset_Setting,
       GPU_Waitboost_Setting,
+      Desktop_Composition_Setting,
       Net_Interface_Setting,
       Log_Retention_Setting,
       GPU_Rendering_Setting);
@@ -40,6 +41,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
       elsif Starts (Key, "desktop.display.mode.") then Display_Mode_Setting
       elsif Key = "desktop.display.modeset" then Display_Modeset_Setting
       elsif Key = "gpu.power.waitboost" then GPU_Waitboost_Setting
+      elsif Key = "desktop.composition" then Desktop_Composition_Setting
       elsif Starts (Key, "net.interface.") then Net_Interface_Setting
       elsif Key = "logs.retention" then Log_Retention_Setting
       elsif Key = "desktop.render.gpu" then GPU_Rendering_Setting
@@ -56,6 +58,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
          when Display_Mode_Setting => CCL.Interfaces.Desktop_Display.MODE_TYPE_SOURCE,
          when Display_Modeset_Setting => CCL.Interfaces.Desktop_Display.MODESET_TYPE_SOURCE,
          when GPU_Waitboost_Setting => CCL.Interfaces.GPU_Power.TYPE_SOURCE,
+         when Desktop_Composition_Setting => CCL.Interfaces.GPU_Power.COMPOSITION_TYPE_SOURCE,
          when Net_Interface_Setting => CCL.Interfaces.Net_Interface.TYPE_SOURCE,
          when Log_Retention_Setting => CCL.Interfaces.Log_Retention.TYPE_SOURCE,
          when GPU_Rendering_Setting => CCL.Interfaces.GPU_Power.RENDERING_TYPE_SOURCE,
@@ -70,6 +73,7 @@ package CCL.Setting_Kinds with SPARK_Mode, Pure is
          when Display_Mode_Setting => "Display_Mode",
          when Display_Modeset_Setting => "Display_Modeset",
          when GPU_Waitboost_Setting => "GPU_Waitboost",
+         when Desktop_Composition_Setting => "Desktop_Composition",
          when Net_Interface_Setting => "Net_Interface",
          when Log_Retention_Setting => "Log_Retention",
          when GPU_Rendering_Setting => "GPU_Rendering",

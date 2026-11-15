@@ -22,6 +22,7 @@ with CCL.Setting_Codecs.Display_Modeset;
 with CCL.Setting_Codecs.Display_Scale;
 with CCL.Setting_Codecs.GPU_Rendering;
 with CCL.Setting_Codecs.GPU_Waitboost;
+with CCL.Setting_Codecs.Desktop_Composition;
 with CCL.Setting_Codecs.Key_Repeat;
 with CCL.Setting_Codecs.Launch_Entry;
 with CCL.Setting_Codecs.Net_Interface;
@@ -95,6 +96,12 @@ procedure Setting_Codecs_Tests is
                Item : CCL.Setting_Codecs.GPU_Waitboost.GPU_Waitboost_Value;
             begin
                CCL.Setting_Codecs.GPU_Waitboost.Decode (Source, Item, OK);
+            end;
+         when Desktop_Composition_Setting =>
+            declare
+               Item : CCL.Setting_Codecs.Desktop_Composition.Desktop_Composition_Value;
+            begin
+               CCL.Setting_Codecs.Desktop_Composition.Decode (Source, Item, OK);
             end;
          when GPU_Rendering_Setting =>
             declare
@@ -300,6 +307,20 @@ begin
    Differential (Display_Modeset_Setting, "(Display_Modeset enabled => true)");
    Differential (GPU_Waitboost_Setting, "(GPU_Waitboost)");
    Differential (GPU_Rendering_Setting, "(GPU_Rendering enabled => false)");
+   --  LAT-002: the composition arm.
+   Differential (Desktop_Composition_Setting, "(Desktop_Composition)");
+   Differential (Desktop_Composition_Setting, "(Desktop_Composition path => Composition_Path.CPU)");
+   Differential (Desktop_Composition_Setting, "(Desktop_Composition path => Composition_Path.GPU)");
+   declare
+      use CCL.Setting_Codecs.Desktop_Composition;
+      Item : Desktop_Composition_Value;
+      OK : Boolean;
+   begin
+      Decode ("(Desktop_Composition path => Composition_Path.GPU)", Item, OK);
+      Check (OK and then Item.path = GPU, "a GPU composition setting reads back as GPU");
+      Decode ("(Desktop_Composition path => Composition_Path.CPU)", Item, OK);
+      Check (OK and then Item.path = CPU, "the default composition is the CPU");
+   end;
    Differential (Net_Interface_Setting, "Net_Interface.Automatic");
    Differential (Net_Interface_Setting, "Net_Interface.Disabled");
    Differential (Net_Interface_Setting,

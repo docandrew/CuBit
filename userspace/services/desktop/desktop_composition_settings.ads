@@ -1,0 +1,23 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  `desktop.composition`, a typed CCL Desktop_Composition
+--  (CCL.Interfaces.GPU_Power), e.g.
+--  (Desktop_Composition path => Composition_Path.GPU): which processor
+--  composes the UI (LAT-002's CPU/GPU A/B). Read once at startup; a change
+--  takes effect when Desktop next starts (a live replace). Absent or
+--  invalid: Compositor_Backend_Selection.Default_Composition (CPU).
+--  GPU composition still needs the render session desktop.render.gpu
+--  admits; without it Desktop composes on the CPU.
+------------------------------------------------------------------------------
+with Compositor_Backend_Selection;
+
+package Desktop_Composition_Settings is
+   subtype Composition is Compositor_Backend_Selection.Composition;
+   Default_Composition : constant Composition := Compositor_Backend_Selection.Default_Composition;
+   procedure Decode (Source : String; Path : out Composition; Success : out Boolean);
+   --  The setting catalog's codec (CAP-003).
+   subtype Value is Composition;
+end Desktop_Composition_Settings;
