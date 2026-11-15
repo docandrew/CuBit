@@ -1,60 +1,63 @@
 # Generated ELF metadata is tied to this executable; requests are not grants.
-# Written without indentation: with the schema it must fit CCL's source limit.
-#
-# Requests: the bootstrap screen shows recent Warning records (log-observer,
-# Desktop_Bootstrap_Logs). The status area's network items (UI-027): wifi.svc
-# (watch, join, passphrase, forget) and netmgr (watch, per-interface Apply,
-# DNS), absent on profiles without them, when the items stay hidden. Shut
-# Down... in the Apps menu (PWR-003): power.svc as Desktop's own requester
-# badge (CuBit.Power_Requests; startup plan only). The status area's CPU and
-# memory bars: the kernel's per-CPU times page, mapped read-only (KERN-002).
-# The status bar's time: minimal profiles start Desktop without clock.
-#
-# Scopes: appearance; the Apps menu entries (Desktop_Launch); keyboard
-# settings (Desktop_Key_Repeat_Settings); Settings > Date & Time; Settings >
-# Displays and Monitor (the display scale and each monitor's chosen mode; the
-# modeset soak gate is the operator's, read only); the GPU's waitboost policy
-# Desktop sends the driver (CAP-003). Wallpapers and icons (docs/assets.md):
-# read-only, exactly the wallpaper and icon packages on each image's system
-# volume and the installed root (SYS-001); system.assets.root names the root.
-#
-# Outlet: LAT-002's display-latency samples and the frame-time series
-# (Desktop_Metrics, CuBit.Metrics), into metrics.svc's store (MET-002).
 (Executable_Manifest
-identity => "com.cubit.desktop"
-version => "0.1.0"
-requests => [
-(Request.Optional_Render "render")
-(service "logstore" "logstore")
-(service "log-observer" "log-observer")
-(service "config" "config")
-(service "mixer-control" "mixer-control")
-(service "wifi" "wifi")
-(service "netmgr" "netmgr")
-(service "power-desktop" "power")
-(Request.Publication "cpu-times")
-(service "clock" "clock")
-(service "display" "display")
-(service "process-manager" "process-manager")
-(service "filesystem" "filesystem")
-(notification "keyboard" Notify_Access.Manage "keyboard")
-(notification "mouse" Notify_Access.Manage "mouse")
-(notification "desktop" Notify_Access.Manage "registration")]
-optional => ["mixer-control" "wifi" "netmgr" "power" "clock"]
-scopes => [
-(config [File_Right.Read File_Right.Write] "desktop.appearance.")
-(config [File_Right.Read] "desktop.launch.")
-(config [File_Right.Read] "desktop.input.")
-(config [File_Right.Read File_Right.Write] "clock.time-zone")
-(config [File_Right.Read File_Right.Write] "desktop.display.scale")
-(config [File_Right.Read File_Right.Write] "desktop.display.mode.")
-(config [File_Right.Read] "desktop.display.modeset")
-(config [File_Right.Read] "gpu.power.waitboost")
-(filesystem [File_Right.Read] "@nvme:0/Assets/cubit-wallpapers/")
-(filesystem [File_Right.Read] "@cd:0/Assets/cubit-wallpapers/")
-(filesystem [File_Right.Read] "@nvme:0/Assets/cubit-icons/")
-(filesystem [File_Right.Read] "@cd:0/Assets/cubit-icons/")
-(filesystem [File_Right.Read] "@ufs:0/Assets/cubit-wallpapers/")
-(filesystem [File_Right.Read] "@ufs:0/Assets/cubit-icons/")
-(config [File_Right.Read] "system.assets.")]
-outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)])
+  identity => "com.cubit.desktop"
+  version => "0.1.0"
+  requests => [
+    (Request.Optional_Render "render")
+    (service "logstore" "logstore")
+    # The bootstrap screen shows recent Warning records (Desktop_Bootstrap_Logs).
+    (service "log-observer" "log-observer")
+    (service "config" "config")
+    (service "mixer-control" "mixer-control")
+    # The status area's network items (UI-027): wifi.svc (watch, join,
+    # passphrase, forget) and netmgr (watch, per-interface Apply, DNS).
+    # Absent on profiles without them; the items then stay hidden.
+    (service "wifi" "wifi")
+    (service "netmgr" "netmgr")
+    # Shut Down... in the Apps menu (PWR-003): power.svc as Desktop's own
+    # requester badge (CuBit.Power_Requests; startup plan only).
+    (service "power-desktop" "power")
+    # The status area's CPU and memory bars (UI-027): the kernel's per-CPU
+    # times page, mapped read-only (KERN-002); read without a system call.
+    (Request.Publication "cpu-times")
+    # The status bar's time; minimal profiles start Desktop without clock.
+    (service "clock" "clock")
+    (service "display" "display")
+    (service "process-manager" "process-manager")
+    # Wallpapers and icons (docs/assets.md): read-only, exactly the wallpaper
+    # and icon packages on each image's system volume; system.assets.root
+    # names the asset root.
+    (service "filesystem" "filesystem")
+    (notification "keyboard" Notify_Access.Manage "keyboard")
+    (notification "mouse" Notify_Access.Manage "mouse")
+    (notification "desktop" Notify_Access.Manage "registration")]
+  optional => ["mixer-control" "wifi" "netmgr" "power" "clock"]
+  scopes => [
+    (config [File_Right.Read File_Right.Write] "desktop.appearance.")
+    # The Apps menu entries (Desktop_Launch).
+    (config [File_Right.Read] "desktop.launch.")
+    # Keyboard settings (desktop.input.key-repeat: Desktop_Key_Repeat_Settings).
+    (config [File_Right.Read] "desktop.input.")
+    # Settings > Date & Time (Desktop_Time_Zone_Setting).
+    (config [File_Right.Read File_Right.Write] "clock.time-zone")
+    # Settings > Displays and Monitor: the display scale and each monitor's
+    # chosen mode (Desktop_Display_Scale_Settings, Desktop_Display_Mode_Settings);
+    # the modeset soak gate is the operator's (read only).
+    (config [File_Right.Read File_Right.Write] "desktop.display.scale")
+    (config [File_Right.Read File_Right.Write] "desktop.display.mode.")
+    (config [File_Right.Read] "desktop.display.modeset")
+    # The GPU's waitboost policy Desktop sends the driver (Desktop_GPU_Power_
+    # Settings); without this scope the read was denied and taken as the
+    # default (CAP-003).
+    (config [File_Right.Read] "gpu.power.waitboost")
+    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-wallpapers/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-wallpapers/")
+    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-icons/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-icons/")
+    # The installed root (SYS-001).
+    (filesystem [File_Right.Read] "@ufs:0/Assets/cubit-wallpapers/")
+    (filesystem [File_Right.Read] "@ufs:0/Assets/cubit-icons/")
+    (config [File_Right.Read] "system.assets.")]
+  # LAT-002's display-latency samples and the frame-time series
+  # (Desktop_Metrics, CuBit.Metrics), into metrics.svc's store (MET-002).
+  outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)])
