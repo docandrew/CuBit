@@ -179,6 +179,24 @@ class Configurations(unittest.TestCase):
             text = plan.read_text(errors='replace')
             self.assertNotIn('(acpi-firmware-data approve-declared)', text, relative)
 
+    def test_every_shipped_startup_plan_compiles(self):
+        """Every startup plan an image or test boots compiles. The laptop
+        build plans outgrew the 16-program table when metrics.svc and the
+        Metrics app joined (image 24), and only the ISO build noticed."""
+        plans = []
+        for plan in sorted(ROOT.glob('**/*.ccl')):
+            relative = plan.relative_to(ROOT).as_posix()
+            if relative.startswith('.') or '/build/' in relative or '/fixtures/' in relative:
+                continue
+            text = plan.read_text(errors='replace')
+            if '(startup v1' not in text:
+                continue
+            plans.append(relative)
+            with self.subTest(plan=relative):
+                result = self.compile(text)
+                self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('tests/hardware/init-usb-live-build.ccl', plans)
+
     def test_all_existing_profiles(self):
         fixtures = sorted(FIXTURES.rglob('*.conf'))
         self.assertEqual(len(fixtures), 28)
@@ -326,8 +344,8 @@ class Configurations(unittest.TestCase):
                 self.reject(source, 'INVALID_KEY')
         self.reject('(system-config v1 ' + ' '.join(f'(setting "k{i}" 1)' for i in range(129)) + ')',
                     'TOO_MANY_ENTRIES')
-        self.assertEqual(self.compile('(startup v1 ' + '(start "a.app" (priority 5))' * 16 + ')').returncode, 0)
-        self.reject('(startup v1 ' + '(start "a.app" (priority 5))' * 17 + ')', 'TOO_MANY_ENTRIES')
+        self.assertEqual(self.compile('(startup v1 ' + '(start "a.app" (priority 5))' * 32 + ')').returncode, 0)
+        self.reject('(startup v1 ' + '(start "a.app" (priority 5))' * 33 + ')', 'TOO_MANY_ENTRIES')
         value = 'x5'
         for i in reversed(range(1, 6)):
             value = f'(let ((x{i} (concat x{i-1} x{i-1}))) {value})'

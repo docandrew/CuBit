@@ -4,7 +4,9 @@ with CCL.Scheduling_Limits;
 --  Shared native/host evaluator. Produces owned plans, never performs I/O.
 package CCL.Configurations with SPARK_Mode => On is
    MAX_SETTINGS : constant := 128;
-   MAX_LAUNCHES : constant := 16;
+   --  Programs one startup plan may start: a named ceiling (LIM-001). The
+   --  laptop build plans start 17 since the metrics store and viewer joined.
+   MAX_LAUNCHES : constant := 32;
    type Profile_Kind is (System_Profile, Startup_Profile);
    type Network_Approval is (Deny, Approve_Declared);
    --  Trusted startup wiring, not a role an executable may claim for itself.

@@ -231,7 +231,7 @@ package body CCL.Configurations with SPARK_Mode => On is
             Item.Dependencies (Item.Dependency_Total) := Found;
          end Dependency;
       begin
-         if Count = 16 then Fail (Too_Many_Entries); return; end if;
+         if Count = MAX_LAUNCHES then Fail (Too_Many_Entries); return; end if;
          Item.Entry_At := Position (Reader);
          Read_Key (Executable, True);
          while not Stopped and then not At_Close (Reader) and then not At_End (Reader) loop
