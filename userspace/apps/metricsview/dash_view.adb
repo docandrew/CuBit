@@ -4387,7 +4387,7 @@ package body Dash_View is
       Was : constant Natural :=
         (if Selected_Panel in 1 .. Board.Panels_Used then Board.Panels (Selected_Panel).Id else 0);
    begin
-      if D.Panels_Used >= Dash_Model.Maximum_Panels then
+      if D.Panels_Used = Dash_Model.Maximum_Panels then
          Set_Notice ("A dashboard holds" & Natural'Image (Dash_Model.Maximum_Panels) & " panels at most", Damage);
          return;
       end if;
