@@ -48,8 +48,6 @@ def build(output, files, debug_dir=None):
         # Apps' recovery places (CuBit.UI.Recovery, @system/Recovery/): unsaved
         # work at shutdown. The development disk is @system in its boots.
         (stage / 'Recovery' / 'com.cubit.text').mkdir(parents=True)
-        # Saved dashboards (Metrics, @system/Dashboards/): one CCL value a file.
-        (stage / 'Dashboards').mkdir()
         expected = {}
         for destination, source in payloads.items():
             target = stage / destination

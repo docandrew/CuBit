@@ -125,12 +125,13 @@ package body Dash_Runner is
            (View, Generation, Result = Dash_Files.Done,
             (case Result is
                when Dash_Files.Done => "",
-               when Dash_Files.Not_Found => "no " & Dash_Model.Dashboards_Place,
-               when Dash_Files.Not_Granted => "not granted",
-               when Dash_Files.Unavailable => "no filesystem",
-               when Dash_Files.Late => "the filesystem did not answer",
+               when Dash_Files.Unavailable | Dash_Files.Not_Granted =>
+                 "Can't save: this app has no folder to save dashboards in",
+               when Dash_Files.Not_Found => "Can't save: the Dashboards folder could not be made",
+               when Dash_Files.Late => "Can't save: the disk did not answer",
                when Dash_Files.Too_Large | Dash_Files.Failed =>
-                 "reply " & Charts_Format.Decimal (Unsigned_64 (Dash_Files.Last_Reply))));
+                 "Can't save: the disk refused it (error "
+                 & Charts_Format.Decimal (Unsigned_64 (Dash_Files.Last_Reply)) & ")"));
          Dash_Sync.Unlock;
          CuBit.Messages.debugPrint
            ("metricsview: " & (if Result = Dash_Files.Done then "saved " else "not saved ") & Name & " bytes="

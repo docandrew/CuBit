@@ -569,7 +569,7 @@ begin
    begin
       Interact (Key (Dash_View.Edit), "edit");
       Check (Dash_View.Editing (View), "E starts editing");
-      Check (Dash_View.Save_Name (View) = "@system/Dashboards/display-latency.ccl", "a dashboard's file is its title");
+      Check (Dash_View.Save_Name (View) = "@nvme:0/Documents/Dashboards/display-latency.ccl", "a dashboard's file is its title");
       Interact (Key (Dash_View.Right), "move later");
       declare
          Due : Boolean;
@@ -639,7 +639,17 @@ begin
       Check_Coherent ("edit-source-live");
       Repaint_All;
       Save_PPM ("10-edit-source");
-      Interact (Key (Dash_View.Show_Source), "hide CCL");
+      Interact (Key (Dash_View.Show_Keys), "keys");
+      Check (not Dash_View.Source_Showing (View), "? shows the keys instead of the CCL");
+      for I in 1 .. 4 loop
+         Generate (Now, Now + 4 * FRAME_US, 0);
+         Now := Now + 4 * FRAME_US;
+         Frame;
+      end loop;
+      Check_Coherent ("edit-keys-live");
+      Repaint_All;
+      Save_PPM ("11-keys");
+      Interact (Key (Dash_View.Show_Keys), "hide keys");
       for I in 1 .. 4 loop
          Interact (Key (Dash_View.Undo), "undo");
       end loop;
@@ -652,7 +662,16 @@ begin
       begin
          Dash_View.Take_Save (View, Due, Generation);
          Check (Due, "ending the editor saves at once");
-         Dash_View.End_Save (View, Generation, Saved => False, Reason => "no filesystem");
+         Dash_View.End_Save (View, Generation, Saved => False,
+                             Reason => "Can't save: this app has no folder to save dashboards in");
+         --  The panel brought back by undo reads its series again (its
+         --  tracks went with it): two steps, a port and then a fetch.
+         for I in 1 .. 3 loop
+            Frame;
+         end loop;
+         Check (Dash_View.Resolved_Tracks (View) = Dash_View.Track_Total (View), "a panel brought back reads again");
+         Repaint_All;
+         Save_PPM ("12-cannot-save");
          Check (Dash_View.Saving_State (View) = Dash_View.Not_Saved, "a failed save is shown");
          Dash_View.Take_Save (View, Due, Generation);
          Check (not Due, "a failed save is not retried until the next edit");

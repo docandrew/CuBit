@@ -4078,8 +4078,14 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-source.ppm"
                 printf 'sendkey c\n'
                 sleep 0.3
+                printf 'sendkey f1\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-keys.ppm"
+                printf 'sendkey esc\n'
+                sleep 0.3
                 printf 'sendkey esc\n'
                 sleep 2
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-saved.ppm"
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         elif [ "$TEST_NAME" = "logs" ]; then
             # The Logs app: let boot records arrive, then a live frame, a

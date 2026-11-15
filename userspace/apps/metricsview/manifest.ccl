@@ -21,6 +21,8 @@
     # Desktop's display latency (LAT-002) and this app's own series.
     (Scope.Metrics (Scope_Place.Under "desktop."))
     (Scope.Metrics (Scope_Place.Under "metricsview."))
-    # A save writes a hidden sibling and renames it over the file.
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/Dashboards/")]
+    # The user's saved dashboards: the folder itself (made at the first
+    # save) and what is in it. A save writes a hidden sibling and renames
+    # it over the file.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/Documents/Dashboards")]
   outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)])

@@ -178,9 +178,12 @@ package Dash_Model is
    --  One panel's expression.
    function Panel_Source (P : Panel) return String;
 
-   --  Saved dashboards (PLAN-metricsview.md): one file a dashboard, named
-   --  for its title (lower case, words joined by '-') in this place.
-   Dashboards_Place : constant String := "@system/Dashboards/";
+   --  Saved dashboards (PLAN-metricsview.md): the user's documents, one file
+   --  a dashboard, named for its title (lower case, words joined by '-'),
+   --  in a Dashboards folder among the user's files (as Text's Documents;
+   --  made at the first save). The built-ins are compiled into the app and
+   --  never written.
+   Dashboards_Place : constant String := "@nvme:0/Documents/Dashboards/";
    Dashboard_Suffix : constant String := ".ccl";
    function File_Name (D : Dashboard) return String;
 end Dash_Model;

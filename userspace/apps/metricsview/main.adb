@@ -61,6 +61,8 @@ procedure Main is
    --  A saved dashboard's largest file, and how long launch waits for it.
    SAVED_BYTES : constant := 262_144;
    LOAD_DEADLINE_MS : constant := 500;
+   KEY_SLASH : constant Unsigned_64 := 16#35#;
+   KEY_F1 : constant Unsigned_64 := 16#3B#;
    KEY_MODIFIER_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
    KEY_UP : constant Unsigned_64 := 16#48#;
    KEY_DOWN : constant Unsigned_64 := 16#50#;
@@ -165,6 +167,7 @@ procedure Main is
       elsif Code = KEY_TAB then Dash_View.Next_Panel elsif Code = KEY_E then Dash_View.Edit
       elsif Code = KEY_C then Dash_View.Show_Source elsif Code = KEY_INSERT then Dash_View.Duplicate
       elsif Code = KEY_DELETE then Dash_View.Remove
+      elsif Code in KEY_SLASH | KEY_F1 then Dash_View.Show_Keys
       elsif Code = KEY_HOME then Dash_View.Home elsif Code = KEY_END then Dash_View.End_Key
       elsif Code = KEY_ESCAPE then Dash_View.Escape elsif Code = KEY_EQUALS then Dash_View.Zoom_In
       elsif Code = KEY_MINUS then Dash_View.Zoom_Out elsif Code = KEY_L then Dash_View.Live

@@ -214,11 +214,20 @@ package body Dash_View is
 
    --  The editor's CCL overlay is shown (over the grid, opaque).
    Source_Shown : Boolean := False;
+   --  Which: the dashboard's CCL, or the keys (? or F1).
+   type Overlay_Kind is (Source_Overlay, Keys_Overlay);
+   Shown_Overlay : Overlay_Kind := Source_Overlay;
    --  Where the overlay is.
    function Source_Box return Rect is
      ((Grid.x + Natural'Min (Source_Inset, Grid.w / 4), Grid.y + Natural'Min (Source_Inset, Grid.h / 4),
        (if Grid.w > 2 * Source_Inset then Grid.w - 2 * Source_Inset else Grid.w),
        (if Grid.h > 2 * Source_Inset then Grid.h - 2 * Source_Inset else Grid.h)));
+
+   --  What the shown overlay covers: the CCL's box, or the keys card
+   --  (sized to its lines, centred in it).
+   function Overlay_Box return Rect;
+   --  The keys card's size, measured once a scale.
+   Keys_W, Keys_H : Natural := 0;
 
 
    function Inside (Outer, R : Rect) return Boolean is
@@ -242,9 +251,9 @@ package body Dash_View is
    procedure Mark (Damage : in out Rect; R : Rect);
    procedure Mark (Damage : in out Rect; R : Rect) is
    begin
-      if Source_Shown and then Intersects (R, Source_Box) then
-         if not Inside (Source_Box, R) then
-            Mark_Exactly (Damage, Add_Rect (R, Source_Box));
+      if Source_Shown and then Intersects (R, Overlay_Box) then
+         if not Inside (Overlay_Box, R) then
+            Mark_Exactly (Damage, Add_Rect (R, Overlay_Box));
          end if;
       else
          Mark_Exactly (Damage, R);
@@ -523,6 +532,7 @@ package body Dash_View is
       pragma Unreferenced (V);
    begin
       Whole := Bounds;
+      Keys_W := 0;
       Dash_Layers.Resize (Bounds.x + Bounds.w, Bounds.y + Bounds.h, Numerator, Denominator);
       Lay_Out;
       Update_Quantum;
@@ -1015,7 +1025,7 @@ package body Dash_View is
    function Source_Showing (V : View) return Boolean is
       pragma Unreferenced (V);
    begin
-      return Source_Shown;
+      return Source_Shown and then Shown_Overlay = Source_Overlay;
    end Source_Showing;
 
    function Edits (V : View) return Natural is
@@ -2235,19 +2245,18 @@ package body Dash_View is
            when Unedited => "",
            when Edited => ", edited",
            when Saving => ", saving",
-           when Saved => ", saved as " & Dash_Model.File_Name (Board.all),
-           when Not_Saved => ", not saved: " & Dash_Model.Image (Save_Reason));
+           when Saved => ", saved",
+           when Not_Saved => ", " & Dash_Model.Image (Save_Reason));
       Right_Text : constant String :=
         (if Edit_Mode then "panel " & Format.Decimal (Unsigned_64 (Selected_Panel)) & " of "
            & Format.Decimal (Unsigned_64 (Board.Panels_Used)) & Save_Text
-         elsif Shown_Save in Saving | Not_Saved then Save_Text (Save_Text'First + 2 .. Save_Text'Last)
+         elsif Shown_Save = Not_Saved then Save_Text (Save_Text'First + 2 .. Save_Text'Last)
          else Format.Decimal (Unsigned_64 (Resolved_Tracks (View'(null record)))) & " of "
            & Format.Decimal (Unsigned_64 (Track_Total (View'(null record)))) & " series live");
       Left_Text : constant String :=
-        (if Edit_Mode then "Editing: Tab selects, arrows move, Shift+arrows size, Delete removes, Insert copies, "
-           & "Ctrl+Z undoes, C shows the CCL, E or Esc is done"
+        (if Edit_Mode then "Editing: arrows move, Shift+arrows size, Esc is done, ? for all keys"
          elsif Detail_Valid then Detail_Text
-         elsif Live_Mode then "Drag to pan, wheel to zoom, Shift+drag to select, click for the slice's logs"
+         elsif Live_Mode then "Drag to pan, wheel to zoom, E to edit, ? for keys"
          else "Paused: L or End returns to live");
       Y : constant Natural := Status.y + (Status.h - UI_Text_Height) / 2;
    begin
@@ -2370,6 +2379,90 @@ package body Dash_View is
       end loop;
    end Draw_Selection;
 
+   --  The keys, as a card in the overlay's place.
+   type Key_Line is record
+      Keys, Action : access constant String;
+   end record;
+   K_Edit : aliased constant String := "E";
+   A_Edit : aliased constant String := "Edit the layout, or finish (also Esc)";
+   K_Tab : aliased constant String := "Tab, Shift+Tab";
+   A_Tab : aliased constant String := "Select the next or previous panel";
+   K_Move : aliased constant String := "Arrows";
+   A_Move : aliased constant String := "Move the panel earlier or later";
+   K_Size : aliased constant String := "Shift+arrows";
+   A_Size : aliased constant String := "Make it narrower, wider, shorter, taller";
+   K_Remove : aliased constant String := "Delete";
+   A_Remove : aliased constant String := "Remove the panel";
+   K_Copy : aliased constant String := "Insert";
+   A_Copy : aliased constant String := "Copy the panel";
+   K_Undo : aliased constant String := "Ctrl+Z, Ctrl+Y";
+   A_Undo : aliased constant String := "Undo, redo";
+   K_Source : aliased constant String := "C";
+   A_Source : aliased constant String := "Show the dashboard as CCL (Ctrl+C copies it)";
+   K_Range : aliased constant String := "1 .. 6, +, -";
+   A_Range : aliased constant String := "Time range: presets, zoom in and out";
+   K_Pan : aliased constant String := "Left, Right, Home, L";
+   A_Pan : aliased constant String := "Pan back and forth, to the start, live";
+   K_Pointer : aliased constant String := "Drag, wheel, Shift+drag";
+   A_Pointer : aliased constant String := "Pan, zoom, select a range (editing: move, grip sizes)";
+   K_Help : aliased constant String := "? or F1";
+   A_Help : aliased constant String := "These keys (again, or Esc, closes)";
+   Key_Lines : constant array (Positive range <>) of Key_Line :=
+     [(K_Edit'Access, A_Edit'Access), (K_Tab'Access, A_Tab'Access), (K_Move'Access, A_Move'Access),
+      (K_Size'Access, A_Size'Access), (K_Remove'Access, A_Remove'Access), (K_Copy'Access, A_Copy'Access),
+      (K_Undo'Access, A_Undo'Access), (K_Source'Access, A_Source'Access), (K_Range'Access, A_Range'Access),
+      (K_Pan'Access, A_Pan'Access), (K_Pointer'Access, A_Pointer'Access), (K_Help'Access, A_Help'Access)];
+
+   procedure Draw_Keys (C : Canvas; K : Colors);
+   function Overlay_Box return Rect is
+      Area : constant Rect := Source_Box;
+   begin
+      if Shown_Overlay = Source_Overlay then
+         return Area;
+      end if;
+      if Keys_W = 0 then
+         declare
+            Key_Width, Action_Width : Natural := 0;
+         begin
+            for L of Key_Lines loop
+               Key_Width := Natural'Max (Key_Width, Emphasis_Text_Width (L.Keys.all));
+               Action_Width := Natural'Max (Action_Width, UI_Text_Width (L.Action.all));
+            end loop;
+            Keys_W := Key_Width + Action_Width + 3 * Margin;
+            Keys_H := (Key_Lines'Length + 1) * (UI_Text_Height + M.Space_S) + M.Space_S + 2 * Margin;
+         end;
+      end if;
+      declare
+         W : constant Natural := Natural'Min (Keys_W, Area.w);
+         H : constant Natural := Natural'Min (Keys_H, Area.h);
+      begin
+         return (Area.x + (Area.w - W) / 2, Area.y + (Area.h - H) / 2, W, H);
+      end;
+   end Overlay_Box;
+
+   procedure Draw_Keys (C : Canvas; K : Colors) is
+      Box : constant Rect := Overlay_Box;
+      Row : constant Natural := UI_Text_Height + M.Space_S;
+      Key_Width : Natural := 0;
+      Y : Natural := Box.y + Margin;
+   begin
+      for L of Key_Lines loop
+         Key_Width := Natural'Max (Key_Width, Emphasis_Text_Width (L.Keys.all));
+      end loop;
+      Fill_Rect (C, Box, K.Card);
+      Stroke_Rect (C, Box, K.Accent, K.Accent);
+      Strong (C, Box.x + Margin, Y, "Keys", K.Text);
+      Y := Y + Row + M.Space_S;
+      for L of Key_Lines loop
+         exit when Y + Row > Box.y + Box.h;
+         Strong (C, Box.x + Margin, Y, L.Keys.all, K.Accent);
+         Text (C, Box.x + 2 * Margin + Key_Width, Y,
+               Fit_UI_Text (L.Action.all, (if Box.w > 3 * Margin + Key_Width then Box.w - 3 * Margin - Key_Width
+                                           else 0)), K.Text);
+         Y := Y + Row;
+      end loop;
+   end Draw_Keys;
+
    procedure Draw_Source (C : Canvas; K : Colors);
    procedure Draw_Source (C : Canvas; K : Colors) is
       Box : constant Rect := Source_Box;
@@ -2417,6 +2510,10 @@ package body Dash_View is
          end loop;
       end Line;
    begin
+      if Shown_Overlay = Keys_Overlay then
+         Draw_Keys (C, K);
+         return;
+      end if;
       Fill_Rect (C, Box, K.Card);
       Stroke_Rect (C, Box, K.Accent, K.Accent);
       Strong (C, Left, Y, "The dashboard as CCL", K.Text);
@@ -2437,9 +2534,9 @@ package body Dash_View is
         (Whole.x, Toolbar.y + Toolbar.h, Whole.w,
          (if Whole.h > Toolbar.h + Status.h then Whole.h - Toolbar.h - Status.h else 0));
    begin
-      if Board /= null and then Source_Shown and then Inside (Source_Box, Damage) then
+      if Board /= null and then Source_Shown and then Inside (Overlay_Box, Damage) then
          --  All under the opaque overlay.
-         Draw_Source (With_Clip (C, Source_Box), K);
+         Draw_Source (With_Clip (C, Overlay_Box), K);
          return;
       end if;
       if Intersects (Damage, Content) then
@@ -2464,8 +2561,8 @@ package body Dash_View is
       if Intersects (Damage, Status) then
          Draw_Status (C, K);
       end if;
-      if Board /= null and then Source_Shown and then Intersects (Damage, Source_Box) then
-         Draw_Source (With_Clip (C, Source_Box), K);
+      if Board /= null and then Source_Shown and then Intersects (Damage, Overlay_Box) then
+         Draw_Source (With_Clip (C, Overlay_Box), K);
       elsif Hover_Valid and then not Is_Empty (Tooltip) and then Intersects (Damage, Tooltip) then
          Draw_Tooltip (C, K);
       end if;
@@ -2906,7 +3003,7 @@ package body Dash_View is
       end if;
       Mark (Damage, Status);
       if Source_Shown then
-         Mark_Exactly (Damage, Source_Box);
+         Mark_Exactly (Damage, Overlay_Box);
       end if;
    end Select_Panel;
 
@@ -3169,11 +3266,25 @@ package body Dash_View is
             case E.Pressed is
                when Edit => Set_Editing (True, Damage);
                when Undo | Redo => Undo_Redo (E.Pressed = Redo, Damage);
-               when Show_Source =>
-                  Source_Shown := not Source_Shown;
+               when Show_Source | Show_Keys =>
+                  declare
+                     Wanted : constant Overlay_Kind :=
+                       (if E.Pressed = Show_Source then Source_Overlay else Keys_Overlay);
+                  begin
+                     --  The same key again closes it; the other one switches.
+                     if Source_Shown and then Shown_Overlay /= Wanted then
+                        --  What the other one covered comes back first.
+                        Source_Shown := False;
+                        Mark (Damage, Whole);
+                        Source_Shown := True;
+                     else
+                        Source_Shown := not Source_Shown;
+                     end if;
+                     Shown_Overlay := Wanted;
+                  end;
                   if Source_Shown then
                      Hover_Valid := False;
-                     Mark_Exactly (Damage, Source_Box);
+                     Mark_Exactly (Damage, Overlay_Box);
                   else
                      Mark (Damage, Whole);
                   end if;

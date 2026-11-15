@@ -53,7 +53,9 @@ package Dash_View is
       --  The editor (keyboard first): E toggles it; Tab selects the next
       --  panel; arrows move it, Shift+arrows size it; Delete removes it,
       --  Insert copies it; Ctrl+Z undoes, Ctrl+Y redoes; C shows its CCL.
-      Edit, Next_Panel, Remove, Duplicate, Undo, Redo, Show_Source);
+      Edit, Next_Panel, Remove, Duplicate, Undo, Redo, Show_Source,
+      --  ? or F1: the keys.
+      Show_Keys);
    type Event_Kind is (Pointer_Move, Pointer_Press, Pointer_Release, Wheel, Key_Press, Pointer_Leave);
    type Event is record
       Kind : Event_Kind := Pointer_Move;
