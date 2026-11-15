@@ -94,7 +94,8 @@ begin
      CuBit.Desktop_Protocol.Feature_Bits
        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
          CuBit.Desktop_Protocol.Closeable => True, others => False]),
-     Opened, maximum_width => GROWN_W, maximum_height => GROWN_H, title => "Frame ticker");
+     Opened, maximum_width => GROWN_W, maximum_height => GROWN_H, title => "Frame ticker",
+     protected_frames => True);
    if Opened then
       Opened_At := syscall (SYSCALL_GETTIME);
       Due := Opened_At + 1;

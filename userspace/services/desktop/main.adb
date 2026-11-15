@@ -14,6 +14,7 @@ with Compositor_Frame_Replacement;
 with Desktop_Input_Diagnostic;
 with Desktop_Breadcrumbs;
 with Compositor_Backend_Selection;
+with Compositor_Pacing;
 with Desktop_Composition_Settings;
 with Compositor_Focus;
 with Compositor_Source_Damage;
@@ -478,6 +479,10 @@ procedure main is
       Damage, Frame_Damage : Compositor_Damage.State;
       --  Frames Display dropped in a row (CP.Drops); bounded below.
       Dropped_In_Row : Natural := 0;
+      --  LAT-002: when to compose against the next latch (Compositor_Pacing),
+      --  and when the newest frame's composition began (its cost to arm).
+      Pacing : Compositor_Pacing.State;
+      Compose_Start_Us : Unsigned_64 := 0;
    end record;
    presentations : array (Output_Index) of Output_Presentation;
    --  The target slot of each output's newest presented frame (0: none
@@ -3630,13 +3635,21 @@ procedure main is
                         --  LAT-002: the backend's timing of this frame's latch.
                         declare
                            Seen : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+                           Timing : constant CuBit.Present_Timing.Timing :=
+                             (if result.Valid and then result.Value.Result.Outcome = DSP.Published and then
+                                 Seen /= CuBit.Monotonic.Unavailable_Us
+                              then CuBit.Present_Timing.Expand (result.Value.Result.Timing, Seen)
+                              else CuBit.Present_Timing.No_Timing);
+                           use type CuBit.Present_Timing.Latch_Source;
                         begin
                            Compositor_Latency.Completed
-                             (latencyLedger, latencyStats, Expected_Token,
-                              (if result.Valid and then result.Value.Result.Outcome = DSP.Published and then
-                                  Seen /= CuBit.Monotonic.Unavailable_Us
-                               then CuBit.Present_Timing.Expand (result.Value.Result.Timing, Seen)
-                               else CuBit.Present_Timing.No_Timing), Seen);
+                             (latencyLedger, latencyStats, Expected_Token, Timing, Seen);
+                           --  A refresh latched it: the grid and the cost to
+                           --  arm that pace the next composition.
+                           if Timing.Source = CuBit.Present_Timing.Hardware_Latch then
+                              Compositor_Pacing.Latched (P.Pacing, Timing.Latched_Us, Timing.Period);
+                              Compositor_Pacing.Frame_Cost (P.Pacing, P.Compose_Start_Us, Timing.Armed_Us);
+                           end if;
                         end;
                      end if;
                      BP.Retire_Display (P.Pool, BP.Displayed (P.Pool), CP.Writable (P.Transfer));
@@ -3803,6 +3816,7 @@ procedure main is
    procedure latencyCompose (Output : Output_Index; Damage : Compositor_Damage.State) is
       Pixels : Unsigned_64 := 0;
    begin
+      presentations (Output).Compose_Start_Us := CuBit.Monotonic.Microseconds;
       for I in 1 .. Compositor_Damage.Count (Damage) loop
          declare
             B : constant Compositor_Damage.Box := Compositor_Damage.Item (Damage, I);
@@ -3912,6 +3926,21 @@ procedure main is
          Desktop_Compositor.Complete_Output (P.Buffer, BP.Writer (P.Pool), Output = 1, True, Completion);
       else
          if Compositor_Damage.Count (P.Damage) = 0 then return; end if;
+         --  LAT-002: compose at the last moment that still makes the next
+         --  latch, so input arriving until then is in it (Compositor_Pacing;
+         --  without a known refresh, at once). The loop looks again within
+         --  a millisecond while damage is pending.
+         if not Bootstrap_CPU then
+            declare
+               Now_Us : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+            begin
+               if Now_Us /= CuBit.Monotonic.Unavailable_Us and then
+                 Compositor_Pacing.Compose_At (P.Pacing, Now_Us) > Now_Us
+               then
+                  return;
+               end if;
+            end;
+         end if;
          if not BP.Writable (P.Pool, BP.Writer (P.Pool)) then exitCompositor (1); end if;
          -- Optional diagnostics piggyback on damage; production adds no HUD area.
          if Desktop_Input_Overlay.Enabled and then not Bootstrap_CPU then
