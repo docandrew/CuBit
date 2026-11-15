@@ -152,6 +152,8 @@ project Devmgr is
        "ccl-types.ads", "ccl-types.adb",
        "ccl-types-correspondence.ads", "ccl-types-correspondence.adb",
        "ccl-objects.ads", "ccl-objects.adb",
+       "ccl-objects-holders.ads", "ccl-objects-holders.adb",
+       "ccl-held_texts.ads", "ccl-held_texts.adb",
        "ccl-objects-catalog.ads", "ccl-objects-catalog.adb",
        "ccl-objects-values.ads", "ccl-objects-values.adb",
        "ccl-objects-views.ads", "ccl-objects-views.adb",
