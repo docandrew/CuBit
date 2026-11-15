@@ -55,6 +55,15 @@ fonts-native:
 	$(CARGO) build --locked --offline --release -p cubit-fonts
 	mkdir -p build/font-native
 	printf '%s\n' 'CREATE build/font-native/libcubit_fonts.a' 'ADDLIB build/cargo/$(TARGET)/release/libcubit_fonts.a' 'ADDLIB ../allocator/build/native-lib/libcubit_allocator.a' 'SAVE' 'END' | ar -M
+	# memcpy, memmove, memset and memcmp are the runtime's (CuBit.String),
+	# for the Rust code too. Rust's core brings weak copies of them
+	# (compiler_builtins, one per archive member); this archive is linked
+	# before the runtime, so the linker took those for the whole program.
+	# Each starts three string instructions where the runtime's starts one
+	# (PERF-011: 63 cycles against 26 for a 16-byte copy). Their members go;
+	# the program then has one definition of each (tests/runtime-string/linked.sh).
+	ar d build/font-native/libcubit_fonts.a $$(nm -A --defined-only build/font-native/libcubit_fonts.a 2>/dev/null \
+	  | sed -n 's/^[^:]*:\([^:]*\):[0-9a-f]* [TW] \(memcpy\|memmove\|memset\|memcmp\)$$/\1/p' | sort -u)
 
 fonts-test:
 	$(CARGO) test --locked --offline --release --target x86_64-unknown-linux-gnu -p cubit-fonts
