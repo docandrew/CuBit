@@ -90,13 +90,44 @@ package body Synthetic_Feeds is
                     (Id => Unsigned_64 (I), Name => F.Series (I).Name, Source => Dash_Model.To_Text ("desktop"),
                      Kind => F.Series (I).Kind, Unit => F.Series (I).Unit,
                      Last_Us => (if F.Series (I).Used > 0 then F.Series (I).Times (F.Series (I).Used) else 0),
-                     Raw_From_Us => 0);
+                     Raw_From_Us => 0, Published => Unsigned_64 (F.Series (I).Used));
                end if;
             end if;
          end;
       end loop;
       Result := (if Refused (F, Wanted) then Dash_Feeds.Out_Of_Scope else Dash_Feeds.OK);
    end Find;
+
+   --  The store's page: 12 list rows (CuBit.Metric_Query_Pages.List_Rows).
+   List_Page : constant := 12;
+
+   overriding procedure List_All
+     (F : in out Synthetic_Feed; Skip : Natural; Found : out Dash_Feeds.Series_Infos; Listed, Total : out Natural;
+      Result : out Dash_Feeds.Status) is
+   begin
+      F.Call_Count := F.Call_Count + 1;
+      Found := [others => (others => <>)];
+      Listed := 0;
+      Total := 0;
+      for I in 1 .. F.Count loop
+         declare
+            Name : constant String := Dash_Model.Image (F.Series (I).Name);
+         begin
+            if not Refused (F, Name) then
+               Total := Total + 1;
+               if Total > Skip and then Listed < Natural'Min (Found'Length, List_Page) then
+                  Listed := Listed + 1;
+                  Found (Found'First + Listed - 1) :=
+                    (Id => Unsigned_64 (I), Name => F.Series (I).Name, Source => Dash_Model.To_Text ("desktop"),
+                     Kind => F.Series (I).Kind, Unit => F.Series (I).Unit,
+                     Last_Us => (if F.Series (I).Used > 0 then F.Series (I).Times (F.Series (I).Used) else 0),
+                     Raw_From_Us => 0, Published => Unsigned_64 (F.Series (I).Used));
+               end if;
+            end if;
+         end;
+      end loop;
+      Result := Dash_Feeds.OK;
+   end List_All;
 
    function Valid (F : Synthetic_Feed; Id : Dash_Feeds.Series_Id) return Boolean is
      (Id in 1 .. Unsigned_64 (F.Count));

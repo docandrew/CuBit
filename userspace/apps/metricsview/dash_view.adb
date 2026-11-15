@@ -6,6 +6,7 @@ with Charts_Format;
 with Charts_Palette;
 with Charts_Time_Axis;
 with Charts_Value_Axis;
+with Dash_Layers;
 with Dash_Pixels;
 with Dash_Tracks;
 
@@ -55,6 +56,8 @@ package body Dash_View is
    Bar_Gap : constant := M.Space_S;
    Spark_Height : constant := 3 * M.Base_Em;
    Minimum_Spark : constant := M.Base_Em + M.Space_S;
+   --  The mark over a sparkline value clipped at the lane's top.
+   Clip_Mark : constant := 3;
    --  A short stat tile's sparkline lane, on the right: this share of it.
    Spark_Lane_Percent : constant := 38;
    Tooltip_Offset : constant := M.Space_L;
@@ -70,6 +73,8 @@ package body Dash_View is
    Grid_Tint_Dark : constant := 16;
    Grid_Tint_Light : constant := 26;
    Selection_Tint : constant := 22;
+   --  Histogram bars at or over the budget: the series hue toward warning.
+   Late_Tint : constant := 70;
    Crosshair_Tint : constant := 45;
    Edge_Tint : constant := 55;
 
@@ -190,9 +195,16 @@ package body Dash_View is
    function Add_Rect (A, B : Rect) return Rect is
      (if Is_Empty (A) then B elsif Is_Empty (B) then A else Union_Rect (A, B));
 
-   function Inset (R : Rect; By : Natural) return Rect is
-     (if R.w > 2 * By and then R.h > 2 * By then (R.x + By, R.y + By, R.w - 2 * By, R.h - 2 * By)
-      else (R.x, R.y, 0, 0));
+   --  R changed: the retained frame redraws exactly R (Dash_Layers), the
+   --  toolkit's frame grows by it.
+   procedure Mark (Damage : in out Rect; R : Rect);
+   procedure Mark (Damage : in out Rect; R : Rect) is
+   begin
+      if not Is_Empty (R) then
+         Damage := Add_Rect (Damage, R);
+         Dash_Layers.Invalidate (R);
+      end if;
+   end Mark;
 
    procedure Text (C : Canvas; X, Y : Natural; S : String; Ink : Color) is
    begin
@@ -364,7 +376,12 @@ package body Dash_View is
                      Value_Block : constant Natural :=
                        Styled_Line_Height (Emphasis_Face, Heading_Size) + UI_Text_Height + M.Space_S;
                   begin
-                     if B.h >= Value_Block + Minimum_Spark then
+                     if B.h < Styled_Line_Height (Emphasis_Face, Heading_Size) then
+                        --  Too short for the large number: the number at the
+                        --  body's size on the left, the sparkline's lane right.
+                        G.Plot := (B.x + B.w - B.w * Spark_Lane_Percent / Palette.Percent, B.y,
+                                   B.w * Spark_Lane_Percent / Palette.Percent, B.h);
+                     elsif B.h >= Value_Block + Minimum_Spark then
                         G.Plot := (B.x, B.y + Value_Block, B.w, Natural'Min (Spark_Height, B.h - Value_Block));
                         G.Plot.y := B.y + B.h - G.Plot.h;
                      else
@@ -444,10 +461,11 @@ package body Dash_View is
       Has_Port := [others => False];
    end Initialize;
 
-   procedure Set_Bounds (V : in out View; Bounds : Rect) is
+   procedure Set_Bounds (V : in out View; Bounds : Rect; Numerator, Denominator : Positive := 1) is
       pragma Unreferenced (V);
    begin
       Whole := Bounds;
+      Dash_Layers.Resize (Bounds.x + Bounds.w, Bounds.y + Bounds.h, Numerator, Denominator);
       Lay_Out;
       Update_Quantum;
       --  Plot widths changed: every track follows on the next refresh.
@@ -524,7 +542,7 @@ package body Dash_View is
    --  One labelled value per Tick_Pixels of plot height, at least two.
    Tick_Pixels : constant := 48;
    function Ticks_For (P : Dash_Model.Panel_Index) return Values.Tick_Count is
-     (Natural'Max (2, Natural'Min (Values.Maximum_Ticks, Panels (P).Plot.h / Tick_Pixels)));
+     (Natural'Max (1, Natural'Min (Values.Maximum_Ticks, Panels (P).Plot.h / Tick_Pixels)));
 
    function Panel_Top (P : Dash_Model.Panel_Index) return Unsigned_64;
    function Panel_Top (P : Dash_Model.Panel_Index) return Unsigned_64 is
@@ -590,6 +608,42 @@ package body Dash_View is
       return (Plot.x + Axis.X_Of (Port, Lo), Plot.y, Axis.X_Of (Port, Hi) - Axis.X_Of (Port, Lo) + 1, Plot.h);
    end Cell_Strip;
 
+   procedure Scroll_Plot (P : Dash_Model.Panel_Index; Old, New_Port : Axis.Viewport; Damage : in out Rect);
+
+   --  Which series have new samples: the store's listing, a page of a
+   --  dozen series a call, every Probe_Interval_Us. That is how often the
+   --  store takes what publishers put in their rings (metrics.svc drains
+   --  outlets every 100 ms, Metric_Outlets.Drain_Interval_Ms): asking more
+   --  often finds nothing new. Between probes a refresh makes no call; a
+   --  series with nothing new makes none either (DESIGN-metrics-push.md
+   --  removes both waits).
+   Probe_Interval_Us : constant := 100 * Microseconds_Per_Millisecond;
+   Probe_Page : constant := 16;
+   Next_Probe_Us : Unsigned_64 := 0;
+
+   procedure Probe;
+   procedure Probe is
+      Found : Dash_Feeds.Series_Infos (1 .. Probe_Page);
+      Listed, Total : Natural;
+      Skip : Natural := 0;
+      Result : Dash_Feeds.Status;
+      use type Dash_Feeds.Status;
+   begin
+      loop
+         Feed.List_All (Skip, Found, Listed, Total, Result);
+         exit when Result /= Dash_Feeds.OK or else Listed = 0;
+         for F of Found (1 .. Listed) loop
+            for T of Tracks.all loop
+               if T.State = Dash_Tracks.Resolved and then T.Info.Id = F.Id then
+                  T.Latest_Published := F.Published;
+               end if;
+            end loop;
+         end loop;
+         Skip := Skip + Listed;
+         exit when Skip >= Total;
+      end loop;
+   end Probe;
+
    procedure Refresh (V : in out View; Damage : in out Rect) is
       pragma Unreferenced (V);
       Started : constant Unsigned_64 := Feed.Now_Us;
@@ -598,6 +652,10 @@ package body Dash_View is
    begin
       if Board = null or else Tracks = null then
          return;
+      end if;
+      if Started >= Next_Probe_Us then
+         Next_Probe_Us := Started + Probe_Interval_Us;
+         Probe;
       end if;
       for P in 1 .. Board.Panels_Used loop
          declare
@@ -631,17 +689,20 @@ package body Dash_View is
                   end if;
                   if T.State /= Was then
                      Whole_Panel := True;
+                     Mark (Damage, Status);
                   end if;
                end;
             end loop;
             if Moved then
-               Ports (P) := Port;
-               Has_Port (P) := True;
-               if Item.Kind in Dash_Model.Time_Series | Dash_Model.Heatmap then
-                  Damage := Add_Rect (Damage, Plot_Area (P));
+               if Item.Kind in Dash_Model.Time_Series | Dash_Model.Heatmap and then Has_Port (P) then
+                  Scroll_Plot (P, Ports (P), Port, Damage);
+               elsif Item.Kind in Dash_Model.Time_Series | Dash_Model.Heatmap then
+                  Mark (Damage, Plot_Area (P));
                else
                   Whole_Panel := True;
                end if;
+               Ports (P) := Port;
+               Has_Port (P) := True;
             end if;
             declare
                Top : constant Unsigned_64 := Panel_Top (P);
@@ -659,22 +720,22 @@ package body Dash_View is
                   Dash_Tracks.Take_Dirty (Tracks (I), Any, Lo, Hi);
                   if Any then
                      case Item.Kind is
-                        when Dash_Model.Time_Series => Damage := Add_Rect (Damage, Column_Strip (P, Lo, Hi));
-                        when Dash_Model.Heatmap => Damage := Add_Rect (Damage, Cell_Strip (P, Lo, Hi));
-                        when Dash_Model.Stat => Damage := Add_Rect (Damage, Panels (P).Plot);
+                        when Dash_Model.Time_Series => Mark (Damage, Column_Strip (P, Lo, Hi));
+                        when Dash_Model.Heatmap => Mark (Damage, Cell_Strip (P, Lo, Hi));
+                        when Dash_Model.Stat => Mark (Damage, Panels (P).Plot);
                         when others => Whole_Panel := True;
                      end case;
                   end if;
                end;
             end loop;
             if Whole_Panel then
-               Damage := Add_Rect (Damage, Panels (P).Outer);
+               Mark (Damage, Panels (P).Outer);
             end if;
          end;
       end loop;
       --  The live dot's pulse.
       if Live_Mode and then Pulse_Phase /= Shown_Pulse then
-         Damage := Add_Rect (Damage, Live_Dot_Rect);
+         Mark (Damage, Live_Dot_Rect);
       end if;
       Last_Refresh_Cost := Feed.Now_Us - Started;
       Last_Refresh_Calls := Dash_Tracks.Fetches - Calls_Before;
@@ -758,14 +819,14 @@ package body Dash_View is
                declare
                   Label : constant String := Format.Axis_Text (V, Top, U);
                   Y : constant Natural := Plot.y + Row;
-                  Half : constant Natural := Code_Text_Height / 2;
+                  Half : constant Natural := UI_Text_Height / 2;
                   Label_Y : constant Natural :=
                     (if Y < Plot.y + Half then Plot.y
-                     else Natural'Min (Y - Half, Plot.y + Plot.h - Code_Text_Height));
-                  W : constant Natural := Code_Text_Width (Label);
-                  Right : constant Natural := Left.x + Left.w - M.Space_M;
+                     else Natural'Min (Y - Half, Plot.y + Plot.h - UI_Text_Height));
+                  W : constant Natural := UI_Text_Width (Label);
+                  Right : constant Natural := Plot.x - M.Space_S;
                begin
-                  Draw_Code_Text_Transparent (C, (if Right > W then Right - W else 0), Label_Y, Label, K.Axis_Text);
+                  Text (C, (if Right > W then Right - W else 0), Label_Y, Label, K.Axis_Text);
                end;
             end if;
          end;
@@ -774,14 +835,17 @@ package body Dash_View is
       end loop;
    end Draw_Value_Ticks;
 
-   procedure Draw_Dashed (C : Canvas; X0, X1, Y : Natural; Ink : Color);
-   procedure Draw_Dashed (C : Canvas; X0, X1, Y : Natural; Ink : Color) is
-      X : Natural := X0 - X0 mod Dash_Period;
+   --  Dashes start where X + Phase is a multiple of Dash_Period: a plot's
+   --  phase follows its columns, so its dashes scroll with the data.
+   procedure Draw_Dashed (C : Canvas; X0, X1, Y : Natural; Ink : Color; Phase : Natural := 0);
+   procedure Draw_Dashed (C : Canvas; X0, X1, Y : Natural; Ink : Color; Phase : Natural := 0) is
+      Offset : constant Natural := (X0 + Phase) mod Dash_Period;
+      X : Integer := Integer (X0) - Integer (Offset);
    begin
       while X <= X1 loop
          declare
-            A : constant Natural := Natural'Max (X, X0);
-            B : constant Natural := Natural'Min (X + Dash_On - 1, X1);
+            A : constant Natural := Natural (Integer'Max (X, Integer (X0)));
+            B : constant Natural := Natural (Integer'Max (0, Integer'Min (X + Dash_On - 1, Integer (X1))));
          begin
             if B >= A then
                Fill_Rect (C, (A, Y, B - A + 1, Line_Thickness / 2 + 1), Ink);
@@ -800,8 +864,11 @@ package body Dash_View is
    begin
       Text (C, Area.x + (if Area.w > UI_Text_Width (Line_1) then (Area.w - UI_Text_Width (Line_1)) / 2 else 0), Y,
             Fit_UI_Text (Line_1, Area.w), K.Text);
-      Text (C, Area.x + (if Area.w > UI_Text_Width (Line_2) then (Area.w - UI_Text_Width (Line_2)) / 2 else 0),
-            Y + UI_Text_Height + M.Space_XS, Fit_UI_Text (Line_2, Area.w), K.Muted);
+      --  The second line only where it fits.
+      if Area.h >= 2 * UI_Text_Height + M.Space_XS then
+         Text (C, Area.x + (if Area.w > UI_Text_Width (Line_2) then (Area.w - UI_Text_Width (Line_2)) / 2 else 0),
+               Y + UI_Text_Height + M.Space_XS, Fit_UI_Text (Line_2, Area.w), K.Muted);
+      end if;
    end Draw_Message;
 
    --  Why panel P shows nothing, or "" when it has data.
@@ -838,7 +905,9 @@ package body Dash_View is
          elsif Reason = "unavailable" then
             Draw_Message (C, Panels (P).Body_Area, K, "metrics.svc is not answering", Name);
          else
-            Draw_Message (C, Panels (P).Body_Area, K, "Waiting for the first sample", Name);
+            Draw_Message (C, Panels (P).Body_Area, K,
+                          (if Panels (P).Body_Area.h >= 2 * UI_Text_Height + M.Space_XS
+                           then "Waiting for the first sample" else "Waiting for " & Name), Name);
          end if;
       end;
    end Draw_Empty;
@@ -1055,7 +1124,9 @@ package body Dash_View is
          end;
       end loop;
       if Item.Budget > 0 and then Item.Budget <= Top then
-         Draw_Dashed (C, Plot.x + X0, Plot.x + X1, Plot.y + Values.Row_Of (Item.Budget, Top, Rows), Palette.Critical);
+         Draw_Dashed (C, Plot.x + X0, Plot.x + X1, Plot.y + Values.Row_Of (Item.Budget, Top, Rows), Palette.Critical,
+                      Phase => Natural ((Port.Last + Unsigned_64 (Dash_Period) * Unsigned_64 (Plot.w)
+                                         - Unsigned_64 (Plot.x) - Unsigned_64 (Plot.w - 1)) mod Dash_Period));
       end if;
       Draw_Crosshair (C, P, K, X0, X1);
    end Draw_Time_Series;
@@ -1146,7 +1217,11 @@ package body Dash_View is
          return;
       end if;
       declare
-         Row_H : constant Natural := Natural'Max (1, Plot.h / Row_Count);
+         --  Every drawn row is a labelled line tall; rows that do not fit
+         --  are left out and counted under the labels (never a row whose
+         --  label is missing).
+         Shown_Rows : constant Positive := Natural'Max (1, Natural'Min (Row_Count, Plot.h / UI_Text_Height));
+         Row_H : constant Natural := Natural'Max (1, Plot.h / Shown_Rows);
          Row : Natural := 0;
          --  Whole cells, from the first damaged column's cell.
          Cell_X0 : Natural := X0;
@@ -1162,7 +1237,7 @@ package body Dash_View is
             declare
                T : Dash_Tracks.Track renames Tracks (I);
             begin
-               if T.State = Dash_Tracks.Resolved or else T.Match_Index = 1 then
+               if (T.State = Dash_Tracks.Resolved or else T.Match_Index = 1) and then Row < Shown_Rows then
                   declare
                      Y : constant Natural := Plot.y + Row * Row_H;
                      Cell_H : constant Natural := (if Row_H > 2 then Row_H - 1 else Row_H);
@@ -1211,6 +1286,13 @@ package body Dash_View is
             end;
          end loop;
       end;
+      if Row_Count > Natural'Max (1, Natural'Min (Row_Count, Plot.h / UI_Text_Height))
+        and then Intersects (Labels, Damage)
+      then
+         Text (C, Labels.x, Plot.y + Plot.h + M.Space_XS,
+               Fit_UI_Text ("+" & Format.Decimal (Unsigned_64 (Row_Count - Plot.h / UI_Text_Height))
+                            & " rows: taller panel", Labels.w), K.Muted);
+      end if;
       Draw_Slices (C, P, K, X0, X1, Outline => True);
       Draw_Crosshair (C, P, K, X0, X1);
    end Draw_Heatmap;
@@ -1260,7 +1342,8 @@ package body Dash_View is
                Y : constant Natural := Values.Row_Of (Totals (B), Top, Rows);
                Edge : constant Unsigned_64 := Charts_Buckets.Lower_Edge (Item.Buckets, B);
                Over : constant Boolean := Item.Budget > 0 and then Edge >= Item.Budget;
-               Ink : constant Color := (if Over then Palette.Serious else Line_Color (K, 1));
+               Ink : constant Color :=
+                 (if Over then Palette.Mix (Palette.Warning, Line_Color (K, 1), Late_Tint) else Line_Color (K, 1));
                Label : constant String :=
                  Format.Decimal (Edge) & (if B = Count - 1 then "+" else "");
                Count_Label : constant String := Format.Value_Text (Totals (B), Format.Count);
@@ -1314,14 +1397,26 @@ package body Dash_View is
          Note_Y : constant Natural := Value_Y + Styled_Line_Height (Emphasis_Face, Heading_Size);
          Spark : constant Rect := G.Plot;
          Spark_Ink : constant Color := Line_Color (K, 1);
-         Top : constant Values.Value := Values.Clamp (Unsigned_64'Max (1, Tops (P)));
+         --  Scaled to the window's p99, not its maximum: one spike is clipped
+         --  (and marked) instead of flattening the rest.
+         Top : constant Values.Value := Values.Clamp (Unsigned_64'Max (1,
+           (if T.Stats_Valid and then not Counting and then T.Stats.P99 > 0 then T.Stats.P99 else Tops (P))));
          Text_Room : constant Natural :=
            (if Spark.x > G.Body_Area.x + M.Space_M then Spark.x - G.Body_Area.x - M.Space_M else G.Body_Area.w);
+         Compact : constant Boolean := G.Body_Area.h < Styled_Line_Height (Emphasis_Face, Heading_Size);
       begin
-         Draw_Styled_Text_Transparent (C, G.Body_Area.x, Value_Y, Shown, K.Text, Emphasis_Face, Heading_Size);
+         if Compact then
+            Draw_Emphasis_Text_Transparent
+              (C, G.Body_Area.x,
+               G.Body_Area.y + (if G.Body_Area.h > UI_Text_Height then (G.Body_Area.h - UI_Text_Height) / 2 else 0),
+               Shown, K.Text);
+         else
+            Draw_Styled_Text_Transparent (C, G.Body_Area.x, Value_Y, Shown, K.Text, Emphasis_Face, Heading_Size);
+         end if;
          --  Against the window before: the change, muted (and which way is
          --  worse is the budget's to say, not a colour's).
-         if Has_Value and then T.Previous_Valid and then (T.Previous.Count > 0 or else Counting) then
+         if not Compact and then Has_Value and then T.Previous_Valid and then (T.Previous.Count > 0 or else Counting)
+         then
             declare
                Before : constant Unsigned_64 := Shown_Value (T.Previous, Counter);
                Percent : constant Unsigned_64 :=
@@ -1330,8 +1425,7 @@ package body Dash_View is
                Change : constant String :=
                  (if Before = 0 then "new"
                   elsif Percent = 0 then "same"
-                  else (if V >= Before then "+" else "-") & Format.Decimal (Percent) & "%")
-                 & " vs previous " & Format.Span_Text (Span);
+                  else (if V >= Before then "+" else "-") & Format.Decimal (Percent) & "%");
                Value_W : constant Natural :=
                  Styled_Text_Width (Shown, Emphasis_Face, Heading_Size) + M.Space_M;
             begin
@@ -1342,7 +1436,9 @@ package body Dash_View is
                end if;
             end;
          end if;
-         if Item.Budget > 0 and then Has_Value then
+         if Compact then
+            null;
+         elsif Item.Budget > 0 and then Has_Value then
             declare
                Over : constant Boolean := V > Item.Budget;
                Note : constant String :=
@@ -1502,7 +1598,24 @@ package body Dash_View is
                declare
                   L : constant String := "n = " & Format.Value_Text (Tracks (First).Stats.Count, Format.Count);
                begin
-                  Text_Right (C, Right, Y, L, K.Muted);
+                  Right := Right - UI_Text_Width (L);
+                  Text (C, Right, Y, L, K.Muted);
+                  Right := Right - Legend_Gap;
+               end;
+            end if;
+            if Item.Budget > 0 then
+               declare
+                  L : constant String := Format.Decimal (Item.Budget) & " or more";
+               begin
+                  if Right > H.x + UI_Text_Width (L) + Legend_Swatch + Legend_Gap
+                    + Emphasis_Text_Width (Dash_Model.Image (Item.Title))
+                  then
+                     Right := Right - UI_Text_Width (L);
+                     Text (C, Right, Y, L, K.Muted);
+                     Right := Right - M.Space_S - Legend_Swatch;
+                     Fill_Rect (C, (Right, Y + 3, Legend_Swatch, UI_Text_Height - 6),
+                                Palette.Mix (Palette.Warning, Line_Color (K, 1), Late_Tint));
+                  end if;
                end;
             end if;
          when others => null;
@@ -1626,9 +1739,8 @@ package body Dash_View is
    procedure Draw_Status (C : Canvas; K : Colors);
    procedure Draw_Status (C : Canvas; K : Colors) is
       Right_Text : constant String :=
-        Format.Decimal (Unsigned_64 (Resolved_Tracks (View'(null record)))) & " series   "
-        & Format.Decimal (Last_Refresh_Calls) & " calls   refresh "
-        & Format.Value_Text (Last_Refresh_Cost, Format.Microseconds);
+        Format.Decimal (Unsigned_64 (Resolved_Tracks (View'(null record)))) & " of "
+        & Format.Decimal (Unsigned_64 (Track_Total (View'(null record)))) & " series live";
       Left_Text : constant String :=
         (if Detail_Valid then Detail_Text
          elsif Live_Mode then "Drag to pan, wheel to zoom, Shift+drag to select, click for the slice's logs"
@@ -1725,8 +1837,8 @@ package body Dash_View is
       end loop;
    end Fill_Page;
 
-   procedure Render (V : in out View; C : Canvas; Damage : Rect) is
-      pragma Unreferenced (V);
+   procedure Paint (C : Canvas; Damage : Rect);
+   procedure Paint (C : Canvas; Damage : Rect) is
       K : constant Colors := Current_Colors;
       Content : constant Rect :=
         (Whole.x, Toolbar.y + Toolbar.h, Whole.w,
@@ -1740,7 +1852,10 @@ package body Dash_View is
       end if;
       if Board /= null then
          for P in 1 .. Board.Panels_Used loop
-            Draw_Panel (C, P, K, Damage);
+            --  Nothing a panel draws leaves its card.
+            if Intersects (Panels (P).Outer, Damage) then
+               Draw_Panel (With_Clip (C, Panels (P).Outer), P, K, Damage);
+            end if;
          end loop;
       end if;
       if Intersects (Damage, Status) then
@@ -1749,7 +1864,33 @@ package body Dash_View is
       if Hover_Valid and then not Is_Empty (Tooltip) and then Intersects (Damage, Tooltip) then
          Draw_Tooltip (C, K);
       end if;
+   end Paint;
+
+   procedure Render (V : in out View; C : Canvas; Damage : Rect) is
+      pragma Unreferenced (V);
+   begin
+      if not Dash_Layers.Ready then
+         Paint (C, Damage);
+         return;
+      end if;
+      --  What changed, exactly, into the retained frame; then the frame
+      --  the toolkit asked for is a copy.
+      for I in 1 .. Dash_Layers.Dirty_Count loop
+         declare
+            R : constant Rect := Dash_Layers.Dirty (I);
+         begin
+            Paint (Dash_Layers.Canvas (R), R);
+         end;
+      end loop;
+      Dash_Layers.Clear_Dirty;
+      Dash_Layers.Copy_Out (C, Damage);
    end Render;
+
+   procedure Invalidate (V : in out View; R : Rect; Damage : in out Rect) is
+      pragma Unreferenced (V);
+   begin
+      Mark (Damage, R);
+   end Invalidate;
 
    ---------------------------------------------------------------------------
    --  Hover and tooltip
@@ -1788,14 +1929,21 @@ package body Dash_View is
       declare
          W : constant Natural := Widest + 22 * M.Mono_Advance + 2 * Tooltip_Padding + Tooltip_Swatch;
          H : constant Natural := Lines * Tooltip_Row + 2 * Tooltip_Padding;
+         --  Inside the hovered card: right of the pointer, flipped left
+         --  near the card's edge; below it, flipped above near the bottom.
+         Card : constant Rect := Panels (P).Outer;
+         Inner_Right : constant Natural := Card.x + Card.w - M.Space_S;
+         Inner_Bottom : constant Natural := Card.y + Card.h - M.Space_S;
          X : constant Natural :=
-           (if Hover_X + Tooltip_Offset + W <= Whole.x + Whole.w then Hover_X + Tooltip_Offset
-            elsif Hover_X > W + Tooltip_Offset then Hover_X - W - Tooltip_Offset else Whole.x);
+           (if Hover_X + Tooltip_Offset + W <= Inner_Right then Hover_X + Tooltip_Offset
+            elsif Hover_X >= Card.x + W + Tooltip_Offset then Hover_X - W - Tooltip_Offset
+            else Card.x + M.Space_S);
          Y : constant Natural :=
-           (if Hover_Y + Tooltip_Offset + H <= Status.y then Hover_Y + Tooltip_Offset
-            elsif Hover_Y > H + Tooltip_Offset then Hover_Y - H - Tooltip_Offset else Whole.y);
+           (if Hover_Y + Tooltip_Offset + H <= Inner_Bottom then Hover_Y + Tooltip_Offset
+            elsif Hover_Y >= Card.y + H + Tooltip_Offset then Hover_Y - H - Tooltip_Offset
+            else Card.y + M.Space_S);
       begin
-         return (X, Y, W, H);
+         return (X, Y, Natural'Min (W, Card.w - M.Space_S), Natural'Min (H, Card.h - M.Space_S));
       end;
    end Tooltip_Box;
 
@@ -1902,17 +2050,63 @@ package body Dash_View is
       end;
    end Crosshair_Damage;
 
-   function All_Plots return Rect is
-      D : Rect := (others => 0);
+   --  Every panel whose picture follows the viewport: plots with their
+   --  axes, histograms whole, stat sparklines (their numbers follow when the
+   --  store answers for the new window, in Refresh).
+   procedure Mark_Plots (Damage : in out Rect);
+   procedure Mark_Plots (Damage : in out Rect) is
    begin
       if Board /= null then
          for P in 1 .. Board.Panels_Used loop
-            D := Add_Rect (D, (if Panels_Kind (P) in Dash_Model.Time_Series | Dash_Model.Heatmap then Plot_Area (P)
-                               else Panels (P).Outer));
+            Mark (Damage, (case Panels_Kind (P) is
+                             when Dash_Model.Time_Series | Dash_Model.Heatmap => Plot_Area (P),
+                             when Dash_Model.Stat => Panels (P).Plot,
+                             when others => Panels (P).Outer));
          end loop;
       end if;
-      return D;
-   end All_Plots;
+   end Mark_Plots;
+
+   --  The plots' pixels follow a viewport moved by whole columns (a pan, the
+   --  live edge's step): shifted in the retained frame, and only the strip
+   --  that scrolls in (with the joins reaching into it), the axes and any
+   --  overlay are redrawn. Another width, a new top or too far: whole.
+   procedure Scroll_Plot (P : Dash_Model.Panel_Index; Old, New_Port : Axis.Viewport; Damage : in out Rect) is
+      Plot : constant Rect := Panels (P).Plot;
+      Reach : constant Natural := Bridge_Of (P) + Cell_Columns (P);
+      Overlay : constant Boolean :=
+        (Hover_Valid and then Hover_Panel = P) or else Selecting or else (Detail_Valid and then Detail_Panel = P);
+   begin
+      Mark (Damage, Panels (P).Bottom_Axis);
+      if Old.Width /= New_Port.Width or else Old.Columns /= New_Port.Columns or else Overlay
+        or else (if New_Port.Last > Old.Last then New_Port.Last - Old.Last else Old.Last - New_Port.Last)
+                >= Unsigned_64 (Plot.w / 2)
+      then
+         Mark (Damage, Plot_Area (P));
+         return;
+      end if;
+      declare
+         Moved : constant Natural :=
+           Natural (if New_Port.Last > Old.Last then New_Port.Last - Old.Last else Old.Last - New_Port.Last);
+         Strip : constant Natural := Natural'Min (Plot.w, Moved + Reach);
+      begin
+         if Moved = 0 then
+            return;
+         end if;
+         --  Later: the picture moves left and the right edge scrolls in.
+         Dash_Layers.Shift (Plot, (if New_Port.Last > Old.Last then -Moved else Moved));
+         --  The toolkit copies the moved picture; nothing in it is redrawn.
+         Damage := Add_Rect (Damage, Plot);
+         if New_Port.Last > Old.Last then
+            Dash_Layers.Invalidate ((Plot.x + Plot.w - Strip, Plot.y, Strip, Plot.h));
+         else
+            Dash_Layers.Invalidate ((Plot.x, Plot.y, Strip, Plot.h));
+         end if;
+         --  Both edges: a bin cut by an edge merges other columns now.
+         Dash_Layers.Invalidate ((Plot.x, Plot.y, Natural'Min (Reach, Plot.w), Plot.h));
+         Dash_Layers.Invalidate ((Plot.x + Plot.w - Natural'Min (Reach, Plot.w), Plot.y, Natural'Min (Reach, Plot.w),
+                                  Plot.h));
+      end;
+   end Scroll_Plot;
 
    procedure Set_Span (New_Span : Unsigned_64; Anchor : Unsigned_64; Damage : in out Rect);
    procedure Set_Span (New_Span : Unsigned_64; Anchor : Unsigned_64; Damage : in out Rect) is
@@ -1928,7 +2122,8 @@ package body Dash_View is
       end if;
       Span := Clamped;
       Update_Quantum;
-      Damage := Add_Rect (Add_Rect (Damage, All_Plots), Toolbar);
+      Mark_Plots (Damage);
+      Mark (Damage, Toolbar);
       --  Re-follow every panel at the next frame; the tracks resample at once.
       if Board /= null then
          for P in 1 .. Board.Panels_Used loop
@@ -1952,13 +2147,19 @@ package body Dash_View is
    procedure Pan_To (New_End : Unsigned_64; Damage : in out Rect) is
       Now : constant Unsigned_64 := Feed.Now_Us;
    begin
+      if Live_Mode then
+         Mark (Damage, Live_Rect);
+         Mark (Damage, Status);
+      end if;
       Live_Mode := False;
       End_Us := Unsigned_64'Min (Unsigned_64'Max (New_End, Span), Now);
-      Damage := Add_Rect (Add_Rect (Damage, All_Plots), Add_Rect (Toolbar, Status));
+      --  The title's "ending ..." only, not the whole bar.
+      Mark (Damage, (Toolbar.x, Toolbar.y, Natural'Max (Preset_Rect (1).x, Toolbar.x) - Toolbar.x, Toolbar.h));
       if Board /= null then
          for P in 1 .. Board.Panels_Used loop
             declare
                Port : constant Axis.Viewport := Viewport_For (P);
+               Old : constant Axis.Viewport := Ports (P);
                First, Last : Natural;
             begin
                Tracks_Of (P, First, Last);
@@ -1966,7 +2167,14 @@ package body Dash_View is
                   Dash_Tracks.Follow (Tracks (I), Port);
                end loop;
                Ports (P) := Port;
-               Tops (P) := Panel_Top (P);
+               --  The value axis follows at the next frame (Refresh), not
+               --  per pointer event: a pan only shifts pixels.
+               case Panels_Kind (P) is
+                  when Dash_Model.Time_Series | Dash_Model.Heatmap =>
+                     Scroll_Plot (P, Old, Port, Damage);
+                  when Dash_Model.Stat => Mark (Damage, Panels (P).Plot);
+                  when others => Mark (Damage, Panels (P).Outer);
+               end case;
             end;
          end loop;
       end if;
@@ -1976,7 +2184,9 @@ package body Dash_View is
    procedure Go_Live (Damage : in out Rect) is
    begin
       Live_Mode := True;
-      Damage := Add_Rect (Add_Rect (Damage, All_Plots), Add_Rect (Toolbar, Status));
+      Mark_Plots (Damage);
+      Mark (Damage, Toolbar);
+      Mark (Damage, Status);
       Set_Span (Span, 0, Damage);
    end Go_Live;
 
@@ -2000,10 +2210,12 @@ package body Dash_View is
       end if;
       Tooltip := Tooltip_Box;
       if Was_Valid then
-         Damage := Add_Rect (Add_Rect (Damage, Old_Box), Crosshair_Damage (Old_Panel, Old_Time));
+         Mark (Damage, Old_Box);
+      Mark (Damage, Crosshair_Damage (Old_Panel, Old_Time));
       end if;
       if Hover_Valid then
-         Damage := Add_Rect (Add_Rect (Damage, Tooltip), Crosshair_Damage (Hover_Panel, Hover_Time));
+         Mark (Damage, Tooltip);
+      Mark (Damage, Crosshair_Damage (Hover_Panel, Hover_Time));
       end if;
    end Set_Hover;
 
@@ -2028,7 +2240,7 @@ package body Dash_View is
                   end if;
                   if Dragged and then Selecting then
                      Select_To := Time_At (Press_Panel, E.X);
-                     Damage := Add_Rect (Damage, All_Plots);
+                     Mark_Plots (Damage);
                   elsif Dragged then
                      declare
                         Shift : constant Unsigned_64 := Unsigned_64 (abs Moved) * Port.Width;
@@ -2078,7 +2290,8 @@ package body Dash_View is
                   Detail_Panel := Press_Panel;
                   Detail_From := Axis.Start_Of (Col, Port.Width);
                   Detail_To := Axis.End_Of (Col, Port.Width);
-                  Damage := Add_Rect (Add_Rect (Damage, All_Plots), Status);
+                  Mark_Plots (Damage);
+      Mark (Damage, Status);
                end;
             elsif Pressed and then Selecting and then Dragged then
                declare
@@ -2096,7 +2309,7 @@ package body Dash_View is
             Pressed := False;
             Dragged := False;
             Selecting := False;
-            Damage := Add_Rect (Damage, All_Plots);
+            Mark_Plots (Damage);
          when Wheel =>
             declare
                Anchor : constant Unsigned_64 := (if Hover_Valid then Hover_Time else 0);
@@ -2126,7 +2339,8 @@ package body Dash_View is
                when Escape =>
                   Detail_Valid := False;
                   Selecting := False;
-                  Damage := Add_Rect (Add_Rect (Damage, All_Plots), Status);
+                  Mark_Plots (Damage);
+      Mark (Damage, Status);
                when Range_1 => Set_Span (Presets (1), 0, Damage);
                when Range_2 => Set_Span (Presets (2), 0, Damage);
                when Range_3 => Set_Span (Presets (3), 0, Damage);

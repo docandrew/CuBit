@@ -212,10 +212,48 @@ procedure Metricsview_View_Tests is
                 & Natural'Image (Damage.h));
    end Interact;
 
+   --  Everything drawn again (not copied from the retained frame).
    procedure Repaint_All is
+      Damage : CuBit.UI.Rect := (others => 0);
    begin
-      Dash_View.Render (View, Whole, (0, 0, WIDTH, HEIGHT));
+      Dash_View.Invalidate (View, (0, 0, WIDTH, HEIGHT), Damage);
+      Dash_View.Render (View, Whole, Damage);
    end Repaint_All;
+
+   --  The retained frame's damage tracking is right when what the frames
+   --  built up equals a redraw of everything from scratch.
+   procedure Check_Coherent (What : String) is
+      Built : constant Pixels_Access := new Pixels'(Image.all);
+      Different : Natural := 0;
+      Low_X, Low_Y : Natural := Natural'Last;
+      High_X, High_Y : Natural := 0;
+   begin
+      Repaint_All;
+      for I in Image'Range loop
+         if Image (I) /= Built (I) then
+            Different := Different + 1;
+            Low_X := Natural'Min (Low_X, I mod WIDTH);
+            High_X := Natural'Max (High_X, I mod WIDTH);
+            Low_Y := Natural'Min (Low_Y, I / WIDTH);
+            High_Y := Natural'Max (High_Y, I / WIDTH);
+         end if;
+      end loop;
+      if Different > 0 then
+         Put_Line ("  differences within x" & Low_X'Image & " .." & High_X'Image & ", y" & Low_Y'Image & " .."
+                   & High_Y'Image);
+         if Screens then
+            declare
+               Redrawn : constant Pixels := Image.all;
+            begin
+               Image.all := Built.all;
+               Save_PPM ("diff-" & What & "-built");
+               Image.all := Redrawn;
+            end;
+         end if;
+      end if;
+      Check (Different = 0, What & ": frames built from damage equal a full redraw (" & Different'Image
+             & " pixels differ)");
+   end Check_Coherent;
 
    procedure Add_Series is
    begin
@@ -305,6 +343,7 @@ begin
                 & Natural'Image (Narrowest) & " px)," & Natural'Image (Scrolls) & " scrolls, mean frame"
                 & Natural'Image (Elapsed_Us (Started) / Frames) & " us (refresh + render)");
       Check (Slivers > 0, "new samples repaint slivers, not the window");
+      Check_Coherent ("live");
       Check (Scrolls > 0, "crossing a column scrolls the plots");
    end;
    Repaint_All;
@@ -324,6 +363,41 @@ begin
    Frame;
    Frame;
    Save_PPM ("04-zoomed");
+   --  Sequences as a pointer delivers them: per event, mean and worst.
+   declare
+      procedure Sequence (Name : String; Kind : Dash_View.Event_Kind; X0, Y0, Step, Count : Integer) is
+         Total, Worst : Natural := 0;
+      begin
+         for I in 1 .. Count loop
+            declare
+               Damage : CuBit.UI.Rect := (others => 0);
+               Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+               Taken : Natural;
+            begin
+               Dash_View.Handle (View, (Kind => Kind, X => X0 + I * Step, Y => Y0, others => <>), Damage);
+               if not CuBit.UI.Is_Empty (Damage) then
+                  Dash_View.Render (View, CuBit.UI.With_Clip (Whole, Damage), Damage);
+               end if;
+               Taken := Elapsed_Us (Started);
+               Total := Total + Taken;
+               Worst := Natural'Max (Worst, Taken);
+            end;
+         end loop;
+         Put_Line ("sequence " & Name & ":" & Natural'Image (Count) & " events, mean" & Natural'Image (Total / Count)
+                   & " us, worst" & Natural'Image (Worst) & " us (handle + render)");
+      end Sequence;
+      Plot : constant CuBit.UI.Rect := Dash_View.Plot_Bounds (View, 1);
+   begin
+      Sequence ("hover", Dash_View.Pointer_Move, Plot.x + 40, Plot.y + 60, 7, 60);
+      Interact ((Kind => Dash_View.Pointer_Press, X => Plot.x + 500, Y => Plot.y + 60, others => <>), "drag press");
+      Sequence ("drag pan", Dash_View.Pointer_Move, Plot.x + 500, Plot.y + 60, -6, 40);
+      Interact ((Kind => Dash_View.Pointer_Release, X => Plot.x + 260, Y => Plot.y + 60, others => <>),
+                "drag release");
+      Check_Coherent ("drag pan");
+      Interact ((Kind => Dash_View.Key_Press, Pressed => Dash_View.Live, others => <>), "back to live");
+      Frame;
+   end;
+
    --  Drag to pan back: paused.
    Interact ((Kind => Dash_View.Pointer_Press, X => 700, Y => 320, others => <>), "press");
    Interact ((Kind => Dash_View.Pointer_Move, X => 900, Y => 320, others => <>), "pan");
@@ -374,7 +448,7 @@ begin
       for I in 1 .. Rounds loop
          Repaint_All;
       end loop;
-      Put_Line ("full repaint:" & Natural'Image (Elapsed_Us (Started) / Rounds) & " us at"
+      Put_Line ("full redraw:" & Natural'Image (Elapsed_Us (Started) / Rounds) & " us at"
                 & Natural'Image (WIDTH) & "x" & Natural'Image (HEIGHT));
       declare
          Fill_Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
@@ -384,13 +458,27 @@ begin
          end loop;
          Put_Line ("one window fill (the floor):" & Natural'Image (Elapsed_Us (Fill_Started) / Rounds) & " us");
       end;
+      declare
+         Copy_Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+      begin
+         for I in 1 .. Rounds loop
+            Dash_View.Render (View, Whole, (0, 0, WIDTH, HEIGHT));
+         end loop;
+         Put_Line ("whole frame from the retained frame (a copy):" & Natural'Image (Elapsed_Us (Copy_Started) / Rounds)
+                   & " us");
+      end;
       for P in 1 .. Dash_View.Panel_Count (View) loop
          declare
             R : constant CuBit.UI.Rect := Dash_View.Panel_Bounds (View, P);
             Begun : constant Ada.Calendar.Time := Ada.Calendar.Clock;
          begin
             for I in 1 .. Rounds loop
-               Dash_View.Render (View, CuBit.UI.With_Clip (Whole, R), R);
+               declare
+                  Damage : CuBit.UI.Rect := (others => 0);
+               begin
+                  Dash_View.Invalidate (View, R, Damage);
+                  Dash_View.Render (View, CuBit.UI.With_Clip (Whole, R), R);
+               end;
             end loop;
             Put_Line ("  panel" & P'Image & " " & Natural'Image (R.w) & "x" & Natural'Image (R.h) & ":"
                       & Natural'Image (Elapsed_Us (Begun) / Rounds) & " us");
@@ -399,7 +487,12 @@ begin
                Plot_Begun : constant Ada.Calendar.Time := Ada.Calendar.Clock;
             begin
                for I in 1 .. Rounds loop
-                  Dash_View.Render (View, CuBit.UI.With_Clip (Whole, Plot), Plot);
+                  declare
+                     Damage : CuBit.UI.Rect := (others => 0);
+                  begin
+                     Dash_View.Invalidate (View, Plot, Damage);
+                     Dash_View.Render (View, CuBit.UI.With_Clip (Whole, Plot), Plot);
+                  end;
                end loop;
                Put_Line ("    its plot " & Natural'Image (Plot.w) & "x" & Natural'Image (Plot.h) & ":"
                          & Natural'Image (Elapsed_Us (Plot_Begun) / Rounds) & " us");

@@ -34,6 +34,9 @@ package Synthetic_Feeds is
    overriding procedure Find
      (F : in out Synthetic_Feed; Spec : Dash_Model.Series_Spec; Found : out Dash_Feeds.Series_Infos;
       Listed, Total : out Natural; Result : out Dash_Feeds.Status);
+   overriding procedure List_All
+     (F : in out Synthetic_Feed; Skip : Natural; Found : out Dash_Feeds.Series_Infos; Listed, Total : out Natural;
+      Result : out Dash_Feeds.Status);
    overriding procedure Read_Raw
      (F : in out Synthetic_Feed; Id : Dash_Feeds.Series_Id; From_Us, To_Us, Skip : Unsigned_64;
       Times, Values : out Charts_Quantiles.Sample_Array; Rows, Total : out Natural; Result : out Dash_Feeds.Status);

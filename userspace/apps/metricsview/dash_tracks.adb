@@ -83,6 +83,7 @@ package body Dash_Tracks is
       T.Width_Us := V.Width;
       T.Lo := 0;
       T.Next := 0;
+      T.Fetched_To := 0;
       T.Stats_Stale := True;
    end Configure;
 
@@ -151,6 +152,7 @@ package body Dash_Tracks is
          T.Width_Us := V.Width;
          T.Lo := 0;
          T.Next := 0;
+         T.Fetched_To := 0;
          Mark (T, Axis.First (V));
          Mark (T, V.Last);
       else
@@ -382,8 +384,14 @@ package body Dash_Tracks is
             T.Next := Start;
          end;
       end if;
+      --  Nothing new in the store: what was fetched up to the edge stands.
+      if T.Next <= V.Last and then T.Latest_Published = T.Seen_Published and then T.Seen_Published > 0
+        and then T.Fetched_To >= V.Last
+      then
+         T.Next := Unsigned_64'Max (T.Next, Unsigned_64'Min (Horizon, V.Last + 1));
+      end if;
       --  The right: the live edge, and what panning right uncovered.
-      if T.Next <= V.Last then
+      if T.Next <= V.Last and then (T.Latest_Published /= T.Seen_Published or else T.Fetched_To < V.Last) then
          declare
             R0 : constant Column_Number := T.Next;
             R1 : constant Column_Number :=
@@ -392,6 +400,10 @@ package body Dash_Tracks is
             Fetch (T, F, R0, R1, Ok);
             if Ok then
                T.Next := Unsigned_64'Max (T.Next, Unsigned_64'Min (R1 + 1, Horizon));
+               if R1 = V.Last then
+                  T.Seen_Published := T.Latest_Published;
+                  T.Fetched_To := V.Last;
+               end if;
             end if;
          end;
       end if;

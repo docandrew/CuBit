@@ -1,0 +1,12 @@
+# Metrics (MET-002's app). The charts core (userspace/lib/charts: axes,
+# per-column level of detail, quantiles, buckets, palette) is proved at
+# level 2 (tests/metricsview/run.sh --prove: every check) and compiled
+# -O3 -gnatp; CCL checks the dashboards.
+(Component name => "metricsview" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/charts" "userspace/ccl/src"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022
+    debug_info => false
+    units => [(Unit_Code ["charts_time_axis.adb" "charts_value_axis.adb" "charts_quantiles.adb"
+                          "charts_columns.adb" "charts_buckets.adb" "charts_palette.adb"] "proved")])))

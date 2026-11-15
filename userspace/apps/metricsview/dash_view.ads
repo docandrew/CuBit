@@ -32,7 +32,8 @@ package Dash_View is
    type View is limited private;
 
    procedure Initialize (V : in out View; Source : Feed_Access; D : Dash_Model.Dashboard);
-   procedure Set_Bounds (V : in out View; Bounds : Rect);
+   --  The window's client area at its density (the retained frame's size).
+   procedure Set_Bounds (V : in out View; Bounds : Rect; Numerator, Denominator : Positive := 1);
    function Bounds (V : View) return Rect;
 
    --  One frame's fetch: Fetch_Budget_Us of feed time at most for loading
@@ -54,7 +55,12 @@ package Dash_View is
    end record;
    procedure Handle (V : in out View; E : Event; Damage : in out Rect);
 
+   --  Damage of the window's canvas C, from the retained frame (only what
+   --  changed since the last Render is drawn; the rest is copied).
    procedure Render (V : in out View; C : CuBit.UI.Canvas; Damage : Rect);
+
+   --  R must be drawn again (a colour scheme change: the whole window).
+   procedure Invalidate (V : in out View; R : Rect; Damage : in out Rect);
 
    --  The drill-down's CCL expression for the selected slice's logs
    --  ((logs.between (LogWindow "service" from to)), boot milliseconds),

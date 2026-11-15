@@ -37,6 +37,8 @@ package Dash_Feeds is
       --  The newest sample's time, and the oldest raw sample still held
       --  (older ranges have only tier windows).
       Last_Us, Raw_From_Us : Unsigned_64 := 0;
+      --  Samples published so far: a change means something to fetch.
+      Published : Unsigned_64 := 0;
    end record;
    type Series_Infos is array (Positive range <>) of Series_Info;
 
@@ -56,6 +58,13 @@ package Dash_Feeds is
    --  length of them, Listed how many, Total how many matched in all.
    procedure Find
      (F : in out Feed; Spec : Dash_Model.Series_Spec; Found : out Series_Infos; Listed, Total : out Natural;
+      Result : out Status) is abstract;
+
+   --  Every series the reader may see (one page of them, Skip passed):
+   --  how a refresh learns which series have anything new, in a few calls
+   --  instead of one per series.
+   procedure List_All
+     (F : in out Feed; Skip : Natural; Found : out Series_Infos; Listed, Total : out Natural;
       Result : out Status) is abstract;
 
    --  Raw samples of Id with times From_Us .. To_Us, skipping the first

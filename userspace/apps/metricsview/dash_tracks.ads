@@ -80,6 +80,12 @@ package Dash_Tracks is
       Previous_Due_Us : Unsigned_64 := 0;
       --  Columns from tier windows (quantiles merged): the panel says so.
       From_Windows : Boolean := False;
+      --  The store's count of samples published (the last probe's, and the
+      --  one this track's columns were last fetched at).
+      Latest_Published, Seen_Published : Unsigned_64 := 0;
+      --  The newest column the last fetch reached (columns after it have
+      --  not been asked for, published or not).
+      Fetched_To : Column_Number := 0;
    end record;
 
    --  Make T's rings for a plot Columns wide at width W ending at V.Last
@@ -96,6 +102,9 @@ package Dash_Tracks is
 
    --  Refetch the provisional columns and extend the final run, while
    --  F's clock is before Budget_End_Us (the live edge is always fetched).
+   --  With nothing published since the last fetch (Latest_Published =
+   --  Seen_Published) the provisional columns are already right: they
+   --  become final with no call.
    procedure Refresh
      (T : in out Track; F : in out Dash_Feeds.Feed'Class; V : Axis.Viewport; Now_Us, Budget_End_Us : Unsigned_64);
 
