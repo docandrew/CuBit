@@ -48,4 +48,16 @@ package Dash_Layers is
    --  invalidate and redraw. Only at whole physical pixels: at a density
    --  where Dx is not, R is invalidated whole instead.
    procedure Shift (R : Rect; Dx : Integer);
+
+   --  Move blocks of pixels inside the retained frame, all at once (every
+   --  source is read before any target is written, so blocks may trade
+   --  places): an edit that moves panels moves their pixels instead of
+   --  drawing them again. Done False (nothing moved): a block's source and
+   --  target differ in size, or cover a different number of physical pixels
+   --  at this density; the caller then redraws the targets.
+   type Block_Move is record
+      From, To : Rect;
+   end record;
+   type Block_Moves is array (Positive range <>) of Block_Move;
+   procedure Move_Blocks (Moves : Block_Moves; Done : out Boolean);
 end Dash_Layers;

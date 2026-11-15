@@ -4062,10 +4062,17 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 sleep 3
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-metricsview-end.ppm"
                 sleep 0.5
-                # The editor: select the next panel, move it, widen it, the
-                # CCL overlay, then done (which saves the dashboard).
+                # The editor (input_cost_edit_us): select, move and size
+                # panels back and forth, then one move and one widening that
+                # stay, the CCL overlay, the keys, then done (which saves).
                 printf 'sendkey e\n'
                 sleep 0.3
+                for ((round = 0; round < 8; round++)); do
+                    for key in tab right left shift-right shift-left; do
+                        printf 'sendkey %s\n' "$key"
+                        sleep 0.15
+                    done
+                done
                 printf 'sendkey tab\n'
                 sleep 0.3
                 printf 'sendkey right\n'

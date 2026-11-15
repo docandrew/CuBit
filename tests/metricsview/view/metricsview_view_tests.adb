@@ -8,8 +8,8 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Ada.Calendar;
-with Ada.Command_Line;
 with Ada.Environment_Variables;
+with Ada.Command_Line;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -496,6 +496,37 @@ begin
       Plot : constant CuBit.UI.Rect := Dash_View.Plot_Bounds (View, 1);
    begin
       Sequence ("hover", Dash_View.Pointer_Move, Plot.x + 40, Plot.y + 60, 7, 60);
+      --  Zoom keys as a person presses them: in, out, a frame between
+      --  (the frame's own refresh is not the key's cost).
+      declare
+         Total, Worst, Handled : Natural := 0;
+         Rounds : constant Natural :=
+           (if Ada.Environment_Variables.Exists ("METRICSVIEW_ZOOM_ROUNDS")
+            then Natural'Value (Ada.Environment_Variables.Value ("METRICSVIEW_ZOOM_ROUNDS")) else 40);
+      begin
+         for I in 1 .. Rounds loop
+            declare
+               Damage : CuBit.UI.Rect := (others => 0);
+               Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+               Taken : Natural;
+            begin
+               Dash_View.Handle (View, (Kind => Dash_View.Key_Press,
+                                        Pressed => (if I mod 2 = 1 then Dash_View.Zoom_In else Dash_View.Zoom_Out),
+                                        others => <>), Damage);
+               Handled := Handled + Elapsed_Us (Started);
+               if not CuBit.UI.Is_Empty (Damage) then
+                  Dash_View.Render (View, CuBit.UI.With_Clip (Whole, Damage), Damage);
+               end if;
+               Taken := Elapsed_Us (Started);
+               Total := Total + Taken;
+               Worst := Natural'Max (Worst, Taken);
+            end;
+            Frame;
+         end loop;
+         Put_Line ("sequence zoom keys:" & Rounds'Image & " events, mean" & Natural'Image (Total / Rounds)
+                   & " us (handle" & Natural'Image (Handled / Rounds) & "), worst" & Worst'Image
+                   & " us (handle + render)");
+      end;
       Interact ((Kind => Dash_View.Pointer_Press, X => Plot.x + 500, Y => Plot.y + 60, others => <>), "drag press");
       Sequence ("drag pan", Dash_View.Pointer_Move, Plot.x + 500, Plot.y + 60, -6, 40);
       Interact ((Kind => Dash_View.Pointer_Release, X => Plot.x + 260, Y => Plot.y + 60, others => <>),
@@ -548,6 +579,8 @@ begin
    Repaint_All;
    Save_PPM ("07-light");
    CuBit.UI.Set_Color_Scheme (CuBit.Appearance.Alloy_Dark);
+   --  A new scheme repaints the window (the app gets a configure event).
+   Repaint_All;
 
    --  The editor: keys and the pointer edit the layout; the tracks (and
    --  their data) follow their panels; undo gives the original back.
@@ -680,6 +713,60 @@ begin
       Check_Coherent ("edit-undone");
    end;
 
+   --  Editor keys as the headless test presses them (select, move and size
+   --  back and forth), each with a frame after it: per key, its handle and
+   --  render. Then undone, and the editor left.
+   Interact ((Kind => Dash_View.Key_Press, Pressed => Dash_View.Edit, others => <>), "edit again");
+   declare
+      type Edit_Key is record
+         Pressed : Dash_View.Key;
+         Shift : Boolean;
+         Name : access constant String;
+      end record;
+      N_Tab : aliased constant String := "tab";
+      N_Right : aliased constant String := "right";
+      N_Left : aliased constant String := "left";
+      N_Wider : aliased constant String := "shift-right";
+      N_Narrower : aliased constant String := "shift-left";
+      Keys : constant array (1 .. 5) of Edit_Key :=
+        [(Dash_View.Next_Panel, False, N_Tab'Access), (Dash_View.Right, False, N_Right'Access),
+         (Dash_View.Left, False, N_Left'Access), (Dash_View.Right, True, N_Wider'Access),
+         (Dash_View.Left, True, N_Narrower'Access)];
+      Totals, Worsts : array (Keys'Range) of Natural := [others => 0];
+      Rounds : constant := 8;
+   begin
+      for Round in 1 .. Rounds loop
+         for K in Keys'Range loop
+            declare
+               Damage : CuBit.UI.Rect := (others => 0);
+               Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+               Taken : Natural;
+            begin
+               Dash_View.Handle (View, (Kind => Dash_View.Key_Press, Pressed => Keys (K).Pressed, Shift => Keys (K).Shift, others => <>), Damage);
+               if not CuBit.UI.Is_Empty (Damage) then
+                  Dash_View.Render (View, CuBit.UI.With_Clip (Whole, Damage), Damage);
+               end if;
+               Taken := Elapsed_Us (Started);
+               Totals (K) := Totals (K) + Taken;
+               Worsts (K) := Natural'Max (Worsts (K), Taken);
+            end;
+            Frame;
+         end loop;
+      end loop;
+      for K in Keys'Range loop
+         Put_Line ("sequence edit " & Keys (K).Name.all & ":" & Natural'Image (Rounds) & " keys, mean"
+                   & Natural'Image (Totals (K) / Rounds) & " us, worst" & Worsts (K)'Image
+                   & " us (handle + render)");
+      end loop;
+      Check_Coherent ("edit-keys");
+      --  Back to the layout the checks below start from.
+      while Dash_Edit.Can_Undo loop
+         Interact ((Kind => Dash_View.Key_Press, Pressed => Dash_View.Undo, others => <>), "undo the key sequence");
+      end loop;
+   end;
+   Interact ((Kind => Dash_View.Key_Press, Pressed => Dash_View.Escape, others => <>), "done again");
+   Frame;
+
    --  Repaint cost of the whole window.
    declare
       Started : constant Ada.Calendar.Time := Ada.Calendar.Clock;
@@ -688,6 +775,17 @@ begin
       for I in 1 .. Rounds loop
          Repaint_All;
       end loop;
+      declare
+         Took, Best : Unsigned_64 := Unsigned_64'Last;
+         Probe_Started : Ada.Calendar.Time;
+      begin
+         for I in 1 .. Rounds loop
+            Probe_Started := Ada.Calendar.Clock;
+            Dash_View.Probe_Full_Redraw (View, Took);
+            Best := Unsigned_64'Min (Best, Unsigned_64 (Elapsed_Us (Probe_Started)));
+         end loop;
+         Put_Line ("full redraw into the retained frame (the native probe's work): best" & Best'Image & " us");
+      end;
       Put_Line ("full redraw:" & Natural'Image (Elapsed_Us (Started) / Rounds) & " us at"
                 & Natural'Image (WIDTH) & "x" & Natural'Image (HEIGHT));
       declare

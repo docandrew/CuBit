@@ -14,6 +14,8 @@ package body Dash_Layers is
    procedure Free is new Ada.Unchecked_Deallocation (Pixel_Array, Pixel_Access);
 
    Buffer : Pixel_Access;
+   --  Move_Blocks' sources, grown as needed and kept.
+   Scratch : Pixel_Access;
    Logical_W, Logical_H : Natural := 0;
    Physical_W, Physical_H : Natural := 0;
    Num, Den : G.Component := 1;
@@ -182,4 +184,138 @@ package body Dash_Layers is
          end loop;
       end;
    end Shift;
+   procedure Move_Blocks (Moves : Block_Moves; Done : out Boolean) is
+      type Box is record
+         X0, X1, Y0, Y1 : Natural := 0;
+      end record;
+      type Box_List is array (Moves'Range) of Box;
+      type Flag_List is array (Moves'Range) of Boolean;
+      Sources, Targets : Box_List;
+      Pending : Flag_List := [others => True];
+      --  A block whose source went to Scratch (it closed a cycle), and where.
+      Saved : Flag_List := [others => False];
+      Saved_At : array (Moves'Range) of Natural := [others => 0];
+      Scratch_Used : Natural := 0;
+      Left : Natural := Moves'Length;
+
+      function Overlap (A, B : Box) return Boolean is
+        (A.X0 < B.X1 and then B.X0 < A.X1 and then A.Y0 < B.Y1 and then B.Y0 < A.Y1);
+
+      --  Rows of the block, in the order that keeps an overlapping move
+      --  of a block onto itself intact (a slice assignment is a memmove).
+      procedure Copy_Rows (From, To : Box) is
+         W : constant Natural := From.X1 - From.X0;
+         H : constant Natural := From.Y1 - From.Y0;
+      begin
+         if To.Y0 > From.Y0 then
+            for R in reverse 0 .. H - 1 loop
+               Buffer ((To.Y0 + R) * Physical_W + To.X0 .. (To.Y0 + R) * Physical_W + To.X0 + W - 1) :=
+                 Buffer ((From.Y0 + R) * Physical_W + From.X0 .. (From.Y0 + R) * Physical_W + From.X0 + W - 1);
+            end loop;
+         else
+            for R in 0 .. H - 1 loop
+               Buffer ((To.Y0 + R) * Physical_W + To.X0 .. (To.Y0 + R) * Physical_W + To.X0 + W - 1) :=
+                 Buffer ((From.Y0 + R) * Physical_W + From.X0 .. (From.Y0 + R) * Physical_W + From.X0 + W - 1);
+            end loop;
+         end if;
+      end Copy_Rows;
+   begin
+      Done := False;
+      if not Ready then
+         return;
+      end if;
+      for I in Moves'Range loop
+         declare
+            S : Box renames Sources (I);
+            T : Box renames Targets (I);
+         begin
+            Physical (Moves (I).From, Physical_W, Physical_H, S.X0, S.X1, S.Y0, S.Y1);
+            Physical (Moves (I).To, Physical_W, Physical_H, T.X0, T.X1, T.Y0, T.Y1);
+            if Moves (I).From.w /= Moves (I).To.w or else Moves (I).From.h /= Moves (I).To.h
+              or else S.X1 - S.X0 /= T.X1 - T.X0 or else S.Y1 - S.Y0 /= T.Y1 - T.Y0
+            then
+               return;
+            end if;
+         end;
+      end loop;
+      --  A block goes once no other pending block still has to be read
+      --  from where it lands; a cycle (blocks trading places) puts one
+      --  source aside in Scratch first. Most moves never touch Scratch.
+      while Left > 0 loop
+         declare
+            Moved_One : Boolean := False;
+         begin
+            for I in Moves'Range loop
+               if Pending (I) then
+                  declare
+                     Blocked : Boolean := False;
+                  begin
+                     for J in Moves'Range loop
+                        if J /= I and then Pending (J) and then not Saved (J)
+                          and then Overlap (Targets (I), Sources (J))
+                        then
+                           Blocked := True;
+                        end if;
+                     end loop;
+                     if not Blocked then
+                        if Saved (I) then
+                           declare
+                              W : constant Natural := Targets (I).X1 - Targets (I).X0;
+                              At_Pixel : Natural := Saved_At (I);
+                           begin
+                              for Y in Targets (I).Y0 .. Targets (I).Y1 - 1 loop
+                                 Buffer (Y * Physical_W + Targets (I).X0 .. Y * Physical_W + Targets (I).X0 + W - 1) :=
+                                   Scratch (At_Pixel .. At_Pixel + W - 1);
+                                 At_Pixel := At_Pixel + W;
+                              end loop;
+                           end;
+                        else
+                           Copy_Rows (Sources (I), Targets (I));
+                        end if;
+                        Pending (I) := False;
+                        Left := Left - 1;
+                        Moved_One := True;
+                     end if;
+                  end;
+               end if;
+            end loop;
+            if not Moved_One then
+               --  A cycle: the first pending source that is still in place
+               --  goes aside.
+               for I in Moves'Range loop
+                  if Pending (I) and then not Saved (I) then
+                     declare
+                        S : constant Box := Sources (I);
+                        W : constant Natural := S.X1 - S.X0;
+                        Need : constant Natural := Scratch_Used + W * (S.Y1 - S.Y0);
+                     begin
+                        if Scratch = null or else Scratch'Length < Need then
+                           declare
+                              Grown : constant Pixel_Access :=
+                                new Pixel_Array (0 .. Natural'Max (Need, 2 * (if Scratch = null then 0
+                                                                               else Scratch'Length)) - 1);
+                           begin
+                              if Scratch /= null then
+                                 Grown (0 .. Scratch_Used - 1) := Scratch (0 .. Scratch_Used - 1);
+                                 Free (Scratch);
+                              end if;
+                              Scratch := Grown;
+                           end;
+                        end if;
+                        Saved_At (I) := Scratch_Used;
+                        for Y in S.Y0 .. S.Y1 - 1 loop
+                           Scratch (Scratch_Used .. Scratch_Used + W - 1) :=
+                             Buffer (Y * Physical_W + S.X0 .. Y * Physical_W + S.X0 + W - 1);
+                           Scratch_Used := Scratch_Used + W;
+                        end loop;
+                        Saved (I) := True;
+                     end;
+                     exit;
+                  end if;
+               end loop;
+            end if;
+         end;
+      end loop;
+      Done := True;
+   end Move_Blocks;
 end Dash_Layers;

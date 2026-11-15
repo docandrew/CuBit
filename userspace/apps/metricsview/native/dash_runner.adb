@@ -62,16 +62,32 @@ package body Dash_Runner is
    --  The headless markers' read-back of this app's own series (store
    --  calls: here, never on the UI thread).
    type Name_Access is access constant String;
-   Input_Name : aliased constant String := "metricsview.input_to_render_us";
-   Cost_Name : aliased constant String := "metricsview.input_cost_us";
-   Update_Name : aliased constant String := "metricsview.update_us";
-   Data_Name : aliased constant String := "metricsview.data_us";
-   Render_Name : aliased constant String := "metricsview.render_us";
-   Handle_Name : aliased constant String := "metricsview.handle_us";
-   Wait_Name : aliased constant String := "metricsview.lock_wait_us";
-   Own_Names : constant array (1 .. 7) of Name_Access :=
-     [Input_Name'Access, Cost_Name'Access, Update_Name'Access, Data_Name'Access, Render_Name'Access,
-      Handle_Name'Access, Wait_Name'Access];
+   Name_1 : aliased constant String := "metricsview.input_to_render_us";
+   Name_2 : aliased constant String := "metricsview.input_cost_us";
+   Name_3 : aliased constant String := "metricsview.update_us";
+   Name_4 : aliased constant String := "metricsview.data_us";
+   Name_5 : aliased constant String := "metricsview.render_us";
+   Name_6 : aliased constant String := "metricsview.handle_us";
+   Name_7 : aliased constant String := "metricsview.lock_wait_us";
+   Name_8 : aliased constant String := "metricsview.input_cost_edit_us";
+   Name_9 : aliased constant String := "metricsview.input_to_render_edit_us";
+   Name_10 : aliased constant String := "metricsview.input_cost_zoom_us";
+   Name_11 : aliased constant String := "metricsview.input_to_render_zoom_us";
+   Name_12 : aliased constant String := "metricsview.input_cost_hover_us";
+   Name_13 : aliased constant String := "metricsview.input_to_render_hover_us";
+   Name_14 : aliased constant String := "metricsview.input_cost_pan_us";
+   Name_15 : aliased constant String := "metricsview.input_to_render_pan_us";
+   Name_16 : aliased constant String := "metricsview.input_cost_other_us";
+   Name_17 : aliased constant String := "metricsview.input_to_render_other_us";
+   Name_18 : aliased constant String := "metricsview.copy_us";
+   Name_19 : aliased constant String := "metricsview.copy_union_px";
+   Name_20 : aliased constant String := "metricsview.copy_exact_px";
+   Name_21 : aliased constant String := "metricsview.paint_us";
+   Own_Names : constant array (1 .. 21) of Name_Access :=
+     [Name_1'Access, Name_2'Access, Name_3'Access, Name_4'Access, Name_5'Access, Name_6'Access,
+      Name_7'Access, Name_8'Access, Name_9'Access, Name_10'Access, Name_11'Access, Name_12'Access,
+      Name_13'Access, Name_14'Access, Name_15'Access, Name_16'Access, Name_17'Access, Name_18'Access,
+      Name_19'Access, Name_20'Access, Name_21'Access];
 
    procedure Report_Own;
    procedure Report_Own is

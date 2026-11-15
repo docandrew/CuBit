@@ -3,7 +3,8 @@ with "../../userspace/allocator/allocator_runtime_host.gpr";
 --  dashboard model (userspace/apps/metricsview), the charts core, the real
 --  toolkit and fonts, CCL for the dashboard type, and a synthetic store
 --  (view/synthetic_feeds) on Linux. VIEW_MODE: checked (assertions on),
---  release (-O3 -gnatp, as the native app builds: the timings).
+--  release (as the native app builds, component.ccl and build-catalog.ccl:
+--  -O3 with run-time checks on, the proved charts units -gnatp): the timings.
 with "../../userspace/lib/ui/fonts_host.gpr";
 project Metricsview_View is
    type Build_Mode is ("checked", "release");
@@ -31,7 +32,13 @@ project Metricsview_View is
          when "checked" =>
             for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatVa");
          when "release" =>
-            for Default_Switches ("Ada") use ("-O3", "-g", "-gnat2022", "-gnatp", "-gnatwa", "-gnatwJ");
+            for Default_Switches ("Ada") use ("-O3", "-g", "-gnat2022", "-gnatwa", "-gnatwJ");
+            for Switches ("charts_time_axis.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_value_axis.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_quantiles.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_columns.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_buckets.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_palette.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
       end case;
       for Switches ("client_glyph_blend.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp");
       for Switches ("client_raster.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp");

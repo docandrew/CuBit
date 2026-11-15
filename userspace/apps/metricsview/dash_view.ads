@@ -115,6 +115,18 @@ package Dash_View is
    function Push_Active (V : View) return Boolean;
    --  How long the UI thread waited for the shared lock since the last take.
    procedure Take_Lock_Wait (V : View; Waited_Us : out Unsigned_64);
+
+   --  The last Render's copy out of the retained frame: its time, the
+   --  pixels of the toolkit's one damage rectangle it copied, and the
+   --  pixels of the rectangles that changed (what a multi-rectangle damage
+   --  list would copy and present; overlaps counted once per mark, so an
+   --  upper bound).
+   procedure Take_Copy_Stats (V : View; Paint_Us, Copy_Us, Union_Pixels, Exact_Pixels : out Unsigned_64);
+
+   --  Draw the whole window into the retained frame now and say how long
+   --  it took (a probe: the same work hosted and on CuBit compares the two
+   --  machines; the frame shown next is a copy, as always).
+   procedure Probe_Full_Redraw (V : in out View; Took_Us : out Unsigned_64);
    --  Panel P's card and its plot (tests aim the pointer with these).
    function Panel_Count (V : View) return Natural;
    function Panel_Bounds (V : View; P : Positive) return Rect;

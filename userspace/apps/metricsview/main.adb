@@ -90,6 +90,29 @@ procedure Main is
      CuBit.Metrics.Series_Named ("metricsview.lock_wait_us", CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds);
    Handle_Cost : constant CuBit.Metrics.Series :=
      CuBit.Metrics.Series_Named ("metricsview.handle_us", CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds);
+   --  Per kind of input (edit, zoom, hover, pan, other): its cost and its
+   --  input-to-rendered, so each can be held to the budget on its own.
+   type Input_Kind is (Edit_Input, Zoom_Input, Hover_Input, Pan_Input, Other_Input);
+   type Kind_Series is array (Input_Kind) of CuBit.Metrics.Series;
+   function Named (Name : String) return CuBit.Metrics.Series is
+     (CuBit.Metrics.Series_Named (Name, CuBit.Metrics.Distribution, CuBit.Metrics.Microseconds));
+   Cost_By_Kind : constant Kind_Series :=
+     [Named ("metricsview.input_cost_edit_us"), Named ("metricsview.input_cost_zoom_us"),
+      Named ("metricsview.input_cost_hover_us"), Named ("metricsview.input_cost_pan_us"),
+      Named ("metricsview.input_cost_other_us")];
+   Render_By_Kind : constant Kind_Series :=
+     [Named ("metricsview.input_to_render_edit_us"), Named ("metricsview.input_to_render_zoom_us"),
+      Named ("metricsview.input_to_render_hover_us"), Named ("metricsview.input_to_render_pan_us"),
+      Named ("metricsview.input_to_render_other_us")];
+   --  The copy of the toolkit's one damage rectangle out of the retained
+   --  frame, and its pixels against the pixels that changed.
+   Copy_Cost : constant CuBit.Metrics.Series := Named ("metricsview.copy_us");
+   --  Drawing what changed into the retained frame, per frame.
+   Paint_Cost : constant CuBit.Metrics.Series := Named ("metricsview.paint_us");
+   Copy_Union : constant CuBit.Metrics.Series :=
+     CuBit.Metrics.Series_Named ("metricsview.copy_union_px", CuBit.Metrics.Distribution, CuBit.Metrics.Count);
+   Copy_Exact : constant CuBit.Metrics.Series :=
+     CuBit.Metrics.Series_Named ("metricsview.copy_exact_px", CuBit.Metrics.Distribution, CuBit.Metrics.Count);
    Frames : constant CuBit.Metrics.Series :=
      CuBit.Metrics.Series_Named ("metricsview.frames", CuBit.Metrics.Counter, CuBit.Metrics.Count);
 
@@ -110,6 +133,7 @@ procedure Main is
    Input_Started_Us : Unsigned_64 := 0;
    --  Handling time of the inputs waiting for their render.
    Input_Work_Us : Unsigned_64 := 0;
+   Pending_Kind : Input_Kind := Other_Input;
    Last_Cost_Us, Worst_Cost_Us : Unsigned_64 := 0;
    --  Measured here, reported at the markers.
    Last_Input_Us, Worst_Input_Us, Inputs_Measured : Unsigned_64 := 0;
@@ -125,12 +149,22 @@ procedure Main is
    begin
       Dash_View.Render (View, CuBit.UI.App.Canvas (Win, Damage), Damage);
       Dash_Runner.Observe (Render_Cost, Now_Us - Started);
+      declare
+         Paint_Us, Copy_Us, Union_Pixels, Exact_Pixels : Unsigned_64;
+      begin
+         Dash_View.Take_Copy_Stats (View, Paint_Us, Copy_Us, Union_Pixels, Exact_Pixels);
+         Dash_Runner.Observe (Paint_Cost, Paint_Us);
+         Dash_Runner.Observe (Copy_Cost, Copy_Us);
+         Dash_Runner.Observe (Copy_Union, Union_Pixels);
+         Dash_Runner.Observe (Copy_Exact, Exact_Pixels);
+      end;
       Dash_Runner.Observe (Frames, 1);
       if Input_Pending then
          Input_Pending := False;
          Last_Cost_Us := Input_Work_Us + (Now_Us - Started);
          Worst_Cost_Us := Unsigned_64'Max (Worst_Cost_Us, Last_Cost_Us);
          Dash_Runner.Observe (Input_Cost, Last_Cost_Us);
+         Dash_Runner.Observe (Cost_By_Kind (Pending_Kind), Last_Cost_Us);
          Dash_Runner.Observe (Handle_Cost, Input_Work_Us);
          declare
             Waited : Unsigned_64;
@@ -143,6 +177,7 @@ procedure Main is
          Worst_Input_Us := Unsigned_64'Max (Worst_Input_Us, Last_Input_Us);
          Inputs_Measured := Inputs_Measured + 1;
          Dash_Runner.Observe (Input_To_Render, Last_Input_Us);
+         Dash_Runner.Observe (Render_By_Kind (Pending_Kind), Last_Input_Us);
       end if;
       if First_Frame then
          First_Frame := False;
@@ -184,6 +219,8 @@ procedure Main is
       Before : constant Rect := Dirty;
       Shift : constant Boolean :=
         (I.Pointer_Modifiers (Event) and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
+      Was_Editing : constant Boolean := Dash_View.Editing (View);
+      Kind : Input_Kind := Other_Input;
    begin
       if Event.kind = I.INPUT_CLOSE_REQUEST then
          Running := False;
@@ -215,6 +252,17 @@ procedure Main is
                Pressed : constant Dash_View.Key :=
                  (if Control then Control_Key_Of (Event.payload0) else Key_Of (Event.payload0));
             begin
+               --  The CCL and keys overlays are not edits (they draw a page
+               --  of text once): Other.
+               Kind :=
+                 (if Pressed in Dash_View.Show_Source | Dash_View.Show_Keys then Other_Input
+                  elsif Was_Editing or else Pressed in Dash_View.Edit .. Dash_View.Redo then Edit_Input
+                  elsif Pressed in Dash_View.Zoom_In | Dash_View.Zoom_Out | Dash_View.Range_1 .. Dash_View.Range_6
+                  then Zoom_Input
+                  elsif Pressed in Dash_View.Left | Dash_View.Right | Dash_View.Home | Dash_View.End_Key
+                    | Dash_View.Live
+                  then Pan_Input
+                  else Other_Input);
                if Pressed /= Dash_View.No_Key then
                   Dash_View.Handle
                     (View, (Kind => Dash_View.Key_Press, Pressed => Pressed,
@@ -223,12 +271,17 @@ procedure Main is
             end;
          end if;
       elsif Event.kind in I.INPUT_POINTER_MOVE | I.INPUT_POINTER_DOWN | I.INPUT_POINTER_UP then
+         Kind := (if Was_Editing then Edit_Input
+                  elsif Event.kind = I.INPUT_POINTER_MOVE and then I.Pointer_Buttons (Event) = 0 then Hover_Input
+                  elsif Event.kind = I.INPUT_POINTER_MOVE then Pan_Input
+                  else Other_Input);
          Dash_View.Handle
            (View, (Kind => (if Event.kind = I.INPUT_POINTER_DOWN then Dash_View.Pointer_Press
                             elsif Event.kind = I.INPUT_POINTER_UP then Dash_View.Pointer_Release
                             else Dash_View.Pointer_Move),
                    X => I.Pointer_X (Event), Y => I.Pointer_Y (Event), Shift => Shift, others => <>), Dirty);
       elsif Event.kind = I.INPUT_POINTER_WHEEL then
+         Kind := Zoom_Input;
          Dash_View.Handle (View, (Kind => Dash_View.Wheel, X => I.Pointer_X (Event), Y => I.Pointer_Y (Event),
                                   Steps => I.Pointer_Wheel_Delta (Event), others => <>), Dirty);
       end if;
@@ -244,6 +297,7 @@ procedure Main is
       then
          Input_Pending := True;
          Input_Started_Us := Started;
+         Pending_Kind := Kind;
       end if;
       if Input_Pending then
          Input_Work_Us := Input_Work_Us + (Now_Us - Started);
@@ -254,6 +308,10 @@ procedure Main is
 
 
    procedure Report;
+   --  Full redraws probed so far (a few, then stop: Probe_Full_Redraw).
+   Probes_Done : Natural := 0;
+   PROBES : constant := 5;
+
    procedure Report is
       Samples, P99, From_Us, To_Us : Unsigned_64;
       Found : Boolean;
@@ -261,6 +319,17 @@ procedure Main is
       Pushed : Unsigned_64;
       Push_On : Boolean;
    begin
+      if Probes_Done < PROBES then
+         declare
+            Took : Unsigned_64;
+            B : constant Rect := Dash_View.Bounds (View);
+         begin
+            Dash_View.Probe_Full_Redraw (View, Took);
+            Probes_Done := Probes_Done + 1;
+            debugPrint ("metricsview: full redraw " & Decimal (Took) & " us at " & Decimal (Unsigned_64 (B.w)) & "x"
+                        & Decimal (Unsigned_64 (B.h)) & ASCII.LF);
+         end;
+      end if;
       Dash_Sync.Lock;
       Dash_View.Probe (View, "Input to ready", Samples, P99, From_Us, To_Us, Found);
       Resolved := Dash_View.Resolved_Tracks (View);
