@@ -7,6 +7,13 @@ package body Intel_GPU_Vblank_Clock with SPARK_Mode is
       return Default_Period_Us;
    end Measure;
 
+   function Lines_Since_Vblank (Word : Unsigned_32; G : Scan_Geometry) return Line is
+      Position : constant Natural := Natural (Word and Scanline_Mask) mod G.Total;
+      Scanline : constant Natural := (Position + G.Lead) mod G.Total;
+   begin
+      return (Scanline + G.Total - G.Blank_Start) mod G.Total;
+   end Lines_Since_Vblank;
+
    function Next_Vblank (Last_Vblank, Now : Time_Us; Each : Period) return Time_Us is
    begin
       if Now - Last_Vblank < Each then

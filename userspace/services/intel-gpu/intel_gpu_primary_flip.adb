@@ -11,14 +11,21 @@ package body Intel_GPU_Primary_Flip is
    Problem_Buffer : Index := Index'First;
    Frame_Width, Frame_Height, Frame_Pitch : Positive := 1;
 
-   --  Vblank clock: when the counter was last seen to change, and the period.
+   --  Vblank clock: the frame count last read, the CPU time at which that
+   --  frame's vblank began (estimated from PIPEDSL with a Valid geometry,
+   --  else when the count was first seen to change), its pipe timestamp,
+   --  and the period (pipe timestamps when they read, else CPU time).
    Last_Count : Unsigned_32 := 0;
-   Last_Change_Us : Unsigned_64 := 0;
+   Last_Vblank_Us : Unsigned_64 := 0;
+   Last_Stamp : VC.Stamp := 0;
+   Stamps_Read : Boolean := False;
    Clock_Known : Boolean := False;
    Period : VC.Period := VC.Default_Period_Us;
+   Geometry : VC.Scan_Geometry;
    --  The owed flip: counter and time at its arm.
    Armed_Count : Unsigned_32 := 0;
    Armed_Us : Unsigned_64 := 0;
+   Latch : CuBit.Present_Timing.Timing := CuBit.Present_Timing.No_Timing;
    --  Counter at the last Take, for vblanks per interval.
    Report_Count : Unsigned_32 := 0;
    Report_Known : Boolean := False;
@@ -114,28 +121,112 @@ package body Intel_GPU_Primary_Flip is
       end loop;
    end Decode_Live;
 
-   procedure Note_Counter (Now : Unsigned_64) is
-      Count_Now : constant Unsigned_32 := Read (Frame_Count_Offset);
+   procedure Set_Geometry (Item : VC.Scan_Geometry) is
    begin
+      Geometry := Item;
+   end Set_Geometry;
+
+   function Last_Latch return CuBit.Present_Timing.Timing is (Latch);
+
+   --  Read the frame count, its timestamp and the scan line together (a
+   --  vblank between the two count reads repeats them once), then note the
+   --  vblank clock. Now is the CPU time of the scan-line read.
+   procedure Note_Counter (Now : out Unsigned_64) is
+      Count_Now : Unsigned_32 := Read (Frame_Count_Offset);
+      Stamp_Now : VC.Stamp := Read (Frame_Stamp_Offset);
+      Line_Word : Unsigned_32 := Read (Scanline_Offset);
+      Count_After : Unsigned_32;
+      Vblank_Us : Unsigned_64;
+   begin
+      Now := Now_Us;
+      Count_After := Read (Frame_Count_Offset);
+      if Count_After /= Count_Now then
+         Count_Now := Count_After;
+         Stamp_Now := Read (Frame_Stamp_Offset);
+         Line_Word := Read (Scanline_Offset);
+         Now := Now_Us;
+      end if;
+      if Now = Unsigned_64'Last then return; end if;
+      Vblank_Us := Now;
+      if VC.Valid (Geometry) and then Line_Word /= Unsigned_32'Last then
+         Vblank_Us := Now - VC.Since_Vblank_Us (VC.Lines_Since_Vblank (Line_Word, Geometry),
+                                                Geometry, Period);
+      end if;
       if not Clock_Known then
          Last_Count := Count_Now;
-         Last_Change_Us := Now;
+         Last_Vblank_Us := Vblank_Us;
+         Last_Stamp := Stamp_Now;
          Clock_Known := True;
       elsif Count_Now /= Last_Count then
-         if Now > Last_Change_Us then
-            Period := VC.Measure (Now - Last_Change_Us,
+         --  PIPE_FRMTMSTMP moves with every vblank; all ones is an
+         --  unreadable page, a constant one an unsupported register.
+         Stamps_Read := Stamp_Now /= Unsigned_32'Last and then Stamp_Now /= Last_Stamp;
+         if Stamps_Read then
+            Period := VC.Measure (VC.Stamp_Delta (Last_Stamp, Stamp_Now),
+                                  VC.Frames_Between (Last_Count, Count_Now));
+         elsif Vblank_Us > Last_Vblank_Us then
+            Period := VC.Measure (Vblank_Us - Last_Vblank_Us,
                                   VC.Frames_Between (Last_Count, Count_Now));
          end if;
          Last_Count := Count_Now;
-         Last_Change_Us := Now;
+         Last_Vblank_Us := Vblank_Us;
+         Last_Stamp := Stamp_Now;
+      elsif VC.Valid (Geometry) then
+         --  Same frame: the scan line refines its vblank's time.
+         Last_Vblank_Us := Vblank_Us;
       end if;
    end Note_Counter;
+
+   --  The owed frame was seen latched at Now: when did it latch? Frames
+   --  since the flip by PIPE_FLIPTMSTMP when that is plausible (within the
+   --  frames since the arm), else the vblank after the arm's frame.
+   procedure Time_Latch (Now : Unsigned_64; Late_Latch : out Boolean) is
+      Since_Arm : constant Unsigned_64 := Unsigned_64 (VC.Frames_Between (Armed_Count, Last_Count));
+      Flip_Word : constant VC.Stamp := Read (Flip_Stamp_Offset);
+      Ago : Unsigned_64;
+      Latched_Us : Unsigned_64;
+   begin
+      Ago := (if Since_Arm > 0 then Since_Arm - 1 else 0);
+      if Stamps_Read and then Flip_Word /= Unsigned_32'Last and then
+        VC.Frames_Since_Flip (Last_Stamp, Flip_Word, Period) <= Since_Arm
+      then
+         if VC.Frames_Since_Flip (Last_Stamp, Flip_Word, Period) /= Ago then
+            --  The flip timestamp says the latch was not the vblank after
+            --  the arm's frame (a late latch, or another flip's stamp).
+            Count (Stats.Disagreed);
+         end if;
+         Ago := VC.Frames_Since_Flip (Last_Stamp, Flip_Word, Period);
+         Count (Stats.Flip_Timed);
+      else
+         Count (Stats.Count_Timed);
+      end if;
+      --  The latch's frame is more than one after the arm's: late.
+      Late_Latch := Since_Arm > Ago + 1;
+      Latched_Us := (if Ago * Period <= Last_Vblank_Us then Last_Vblank_Us - Ago * Period else 0);
+      if Latched_Us < Armed_Us then
+         Latched_Us := Armed_Us;
+         Count (Stats.Clamped);
+      end if;
+      if Latched_Us > Now then
+         Latched_Us := Now;
+      end if;
+      if Now - Latched_Us > CuBit.Present_Timing.Maximum_Lag_Us then
+         Latched_Us := Now - CuBit.Present_Timing.Maximum_Lag_Us;
+      end if;
+      Latch := (CuBit.Present_Timing.Hardware_Latch, Armed_Us, Latched_Us, Now,
+                (if Period <= CuBit.Present_Timing.Maximum_Period_Us then Period else 0));
+      Stats.Slack_Total_Us := Stats.Slack_Total_Us + (Latched_Us - Armed_Us);
+      Stats.Slack_Max_Us := Unsigned_64'Max (Stats.Slack_Max_Us, Latched_Us - Armed_Us);
+      Stats.Lag_Total_Us := Stats.Lag_Total_Us + (Now - Latched_Us);
+      Stats.Lag_Max_Us := Unsigned_64'Max (Stats.Lag_Max_Us, Now - Latched_Us);
+   end Time_Latch;
 
    --  Observe PLANE_SURFLIVE once; Latched when the owed frame is live.
    procedure Observe_Once (Latched : out Boolean) is
       Live : FS.Source;
       Known : Boolean;
-      Now : constant Unsigned_64 := Now_Us;
+      Now : Unsigned_64;
+      Late_Latch : Boolean;
    begin
       Latched := False;
       Decode_Live (Read (Live_Surface_Offset), Live, Known);
@@ -152,12 +243,18 @@ package body Intel_GPU_Primary_Flip is
       end if;
       if Latched then
          Count (Stats.Latched);
-         if VC.Late (Armed_Count, Last_Count) then
-            Count (Stats.Late);
-         end if;
          if Now /= Unsigned_64'Last and then Now >= Armed_Us then
+            Time_Latch (Now, Late_Latch);
+            if Late_Latch then
+               Count (Stats.Late);
+            end if;
             Stats.Latency_Total_Us := Stats.Latency_Total_Us + (Now - Armed_Us);
             Stats.Latency_Max_Us := Unsigned_64'Max (Stats.Latency_Max_Us, Now - Armed_Us);
+         else
+            Latch := CuBit.Present_Timing.No_Timing;
+            if VC.Late (Armed_Count, Last_Count) then
+               Count (Stats.Late);
+            end if;
          end if;
       end if;
    end Observe_Once;
@@ -296,10 +393,10 @@ package body Intel_GPU_Primary_Flip is
       then
          return Unsigned_64'Last;
       end if;
-      if not Clock_Known or else Last_Change_Us > Now then
+      if not Clock_Known or else Last_Vblank_Us > Now then
          return Now;
       end if;
-      return VC.Poll_At (Last_Change_Us, Now, Period);
+      return VC.Poll_At (Last_Vblank_Us, Now, Period);
    end Next_Poll_Us;
 
    procedure Clear (Color : Unsigned_32; Success : out Boolean) is

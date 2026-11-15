@@ -31,6 +31,8 @@ with CuBit.Graphics_Metrics_IO;
 with CuBit.Display_Protocol;
 with CuBit.Display_Planes;
 with CuBit.GPU_Plane_Protocol;
+with CuBit.Monotonic;
+with CuBit.Present_Timing;
 with GPU_Test_Policy;
 with CuBit.Device_Interrupts;
 with Startup;
@@ -306,6 +308,8 @@ procedure main is
       Label : Unsigned_32 := OP_GPU_PRESENT_BUFFER;
       Fence : Unsigned_64 := 0;
       Deadline : Unsigned_64 := 0;
+      --  When the Present was accepted (LAT-002, microseconds).
+      Armed_Us : Unsigned_64 := 0;
    end record;
    Pending : array (Head_Index) of Pending_Presentation;
    Fence_Sequence : Unsigned_64 := 0;
@@ -1439,12 +1443,31 @@ procedure main is
       bumpRevision;
    end applyMode;
 
+   --  A presented frame's answer carries its host fence timing (LAT-002):
+   --  armed when the Present was accepted, latched when the flush fence was
+   --  seen complete. No refresh exists, so no period.
+   function presentTiming (Item : Pending_Presentation; Success : Boolean)
+     return CuBit.Present_Timing.Reply_Words is
+      Seen : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+   begin
+      if not Success or else Item.Clearing or else Item.Label /= OP_GPU_PRESENT_BUFFER or else
+        Seen = CuBit.Monotonic.Unavailable_Us or else Item.Armed_Us = CuBit.Monotonic.Unavailable_Us or else
+        Item.Armed_Us > Seen
+      then
+         return [0, 0, 0];
+      end if;
+      return CuBit.Present_Timing.Encode_Reply
+        ((CuBit.Present_Timing.Host_Fence, Item.Armed_Us, Seen, Seen, 0));
+   end presentTiming;
+
    procedure finishPresentation (Head : Head_Index; Success : Boolean) is
       Item : Pending_Presentation renames Pending (Head);
+      Timing : constant CuBit.Present_Timing.Reply_Words := presentTiming (Item, Success);
+      Timed : constant Boolean := Timing (1) /= 0 or else Timing (2) /= 0 or else Timing (3) /= 0;
       Response : constant Message :=
-        (tag => (label => Item.Label, length => 1,
+        (tag => (label => Item.Label, length => (if Timed then 4 else 1),
                  protocol => 0, ipc => <>, reserved => 0), authorityTag => 0,
-         words => [(if Success then GPU_OK else GPU_ERR_BAD_STATE), 0, 0, 0]);
+         words => [(if Success then GPU_OK else GPU_ERR_BAD_STATE), Timing (1), Timing (2), Timing (3)]);
       Ignored : Unsigned_64;
    begin
       if Success then
@@ -2020,6 +2043,7 @@ procedure main is
                         W => Natural (packedWH and 16#FFFF_FFFF#),
                         H => Natural (Shift_Right (packedWH, 32)),
                         Clearing => False, Label => OP_GPU_PRESENT_BUFFER,
+                        Armed_Us => CuBit.Monotonic.Microseconds,
                         others => <>);
                      Pending (selectedHead).W := Natural'Min
                        (Pending (selectedHead).W, Natural (Frame_Width (selectedHead)) - Pending (selectedHead).X);

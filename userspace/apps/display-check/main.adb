@@ -160,7 +160,8 @@ procedure Main is
       begin
          Check (Completion.valid and then Completion.status = COMPLETION_OK and then
                 Completion.token = Frame_Token and then Result.Valid and then
-                Result.Value = (Session, ID, Outcome, Disposition), "frame result identity/lifetime");
+                Result.Value = (Session, ID, Outcome, Disposition, Result.Value.Timing),
+                "frame result identity/lifetime");
       end;
    end Frame;
    procedure Exercise is
@@ -412,7 +413,7 @@ procedure Main is
                begin
                   Check (not Finished (Output) and then Completion.valid and then
                     Completion.status = COMPLETION_OK and then Result.Valid and then
-                    Result.Value = (Sessions (Output), 1, Published, Released),
+                    Result.Value = (Sessions (Output), 1, Published, Released, Result.Value.Timing),
                     "concurrent result identity and acquisition return");
                end;
                if Output = 0 and then GPU_Test_Policy.Delay_First_Output_Ms /= 0 then
@@ -529,7 +530,8 @@ procedure Main is
                  with Import, Address => To_Address (Addresses (Other)), Volatile;
             begin
                Check (Rejected_Reply.Valid and then Rejected_Reply.Value =
-                 (Other, (Session, ID + 100, Rejected, Not_Acquired)), "pool overload rejects without retargeting held slot");
+                 (Other, (Session, ID + 100, Rejected, Not_Acquired, others => <>)),
+                 "pool overload rejects without retargeting held slot");
                -- Independent root allocation remains writable during the hold.
                Pixels := [others => 16#FFAABBCC#];
             end;
@@ -545,7 +547,7 @@ procedure Main is
          declare R : constant P.Completion_Decoding := P.Decode_Completion (To_Wire (C.msg));
          begin
             Check (C.valid and then C.status = COMPLETION_OK and then C.token = Frame_Token and then
-              R.Valid and then R.Value = (Slot, (Session, ID, Outcome, Disposition)),
+              R.Valid and then R.Value = (Slot, (Session, ID, Outcome, Disposition, R.Value.Result.Timing)),
               "pool completion slot/session/frame/disposition");
          end;
       end Pool_Frame;

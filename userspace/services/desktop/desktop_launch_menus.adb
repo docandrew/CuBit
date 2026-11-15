@@ -98,11 +98,15 @@ package body Desktop_Launch_Menus is
       end if;
    end Open_Row;
 
+   --  The rows the keyboard selects, in order: the categories, then the
+   --  enabled power rows.
+   function Selectable (M : Desktop_Launch.Menu; Row : Row_Count) return Boolean is
+     (Row in 1 .. Rows (M) or else Row = Shut_Down_Row (M)
+      or else (Restart_Enabled and then Row = Restart_Row (M)));
+
    procedure Press (S : in out Menu_State; M : Desktop_Launch.Menu; Pressed : Key; Result : out Choice;
                     Entry_Index : out Item_Count) is
-      --  Keys move among the categories; Power is for the pointer, as
-      --  before (it takes no keyboard selection).
-      Top : constant Row_Count := Natural'Max (1, Rows (M));
+      Last : constant Row_Count := Shut_Down_Row (M);
    begin
       Result := Nothing;
       Entry_Index := 0;
@@ -129,16 +133,26 @@ package body Desktop_Launch_Menus is
       end if;
       case Pressed is
          when Up =>
-            S.Row := (if S.Row <= 1 then Top else S.Row - 1);
+            loop
+               S.Row := (if S.Row <= 1 then Last else S.Row - 1);
+               exit when Selectable (M, S.Row);
+            end loop;
             S.Open := 0;
          when Down =>
-            S.Row := (if S.Row >= Top then 1 else S.Row + 1);
+            loop
+               S.Row := (if S.Row >= Last then 1 else S.Row + 1);
+               exit when Selectable (M, S.Row);
+            end loop;
             S.Open := 0;
          when Right | Enter =>
             if S.Row in 1 .. Rows (M) then
                Open_Row (S, M, S.Row);
                S.In_Submenu := True;
                S.Item := 1;
+            elsif Pressed = Enter and then S.Row = Shut_Down_Row (M) then
+               Result := Shut_Down;
+            elsif Pressed = Enter and then Restart_Enabled and then S.Row = Restart_Row (M) then
+               Result := Restart;
             end if;
          when Left => S.Open := 0;
          when Escape => Result := Close;
@@ -154,8 +168,10 @@ package body Desktop_Launch_Menus is
             Open_Row (S, M, Row);
             S.In_Submenu := False;
          end if;
-      elsif Row = Power_Row (M) then
-         S.Row := Row;
+      elsif Row in Restart_Row (M) | Shut_Down_Row (M) then
+         if Selectable (M, Row) then
+            S.Row := Row;
+         end if;
          S.Open := 0;
          S.In_Submenu := False;
       end if;
@@ -173,8 +189,10 @@ package body Desktop_Launch_Menus is
    procedure Click_Row (S : in out Menu_State; M : Desktop_Launch.Menu; Row : Row_Count; Result : out Choice) is
    begin
       Result := Nothing;
-      if Row = Power_Row (M) then
-         Result := Power;
+      if Row = Shut_Down_Row (M) then
+         Result := Shut_Down;
+      elsif Row = Restart_Row (M) then
+         Result := (if Restart_Enabled then Restart else Nothing);
       elsif Row in 1 .. Rows (M) then
          Open_Row (S, M, Row);
          S.In_Submenu := True;

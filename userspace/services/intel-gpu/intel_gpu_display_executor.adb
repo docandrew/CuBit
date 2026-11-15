@@ -16,6 +16,8 @@ with Intel_GPU_Cursor_Surfaces;
 with Intel_GPU_Cursor_Plane;
 with Intel_GPU_Cursor_DDB;
 with Intel_GPU_Primary_Flip;
+with Intel_GPU_Vblank_Clock;
+with CuBit.Present_Timing;
 with CuBit.Monotonic;
 with Intel_GPU_Display_Topology;
 with Intel_GPU_DMA_Cache;
@@ -544,6 +546,15 @@ package body Intel_GPU_Display_Executor is
    --  The scanout row bytes for a width (64-byte aligned, PLANE_STRIDE).
    function Pitch_For (Width : Positive) return Positive is
      ((Width * 4 + MP.Stride_Unit - 1) / MP.Stride_Unit * MP.Stride_Unit);
+
+   --  The flip clock's scan geometry (LAT-002) for a transcoder timing: the
+   --  scanline lead is i915's intel_crtc_scanline_offset (2 for HDMI).
+   function Scan_Geometry_Of (Item : TT.Timing; Mode : DD.Signal_Mode)
+     return Intel_GPU_Vblank_Clock.Scan_Geometry is
+     ((Total => Natural'Min (Item.Vertical.Total, Intel_GPU_Vblank_Clock.Maximum_Lines),
+       Blank_Start => Natural'Min (Item.Vertical.Blank_Start, Intel_GPU_Vblank_Clock.Maximum_Lines - 1),
+       Lead => (if Mode = DD.HDMI then Intel_GPU_Vblank_Clock.Scanline_Lead_HDMI
+                else Intel_GPU_Vblank_Clock.Scanline_Lead_Other)));
 
    procedure Identify (Register_Base : Unsigned_64) is
       Pixel : DD.Clock_kHz := 0;
@@ -1252,6 +1263,7 @@ package body Intel_GPU_Display_Executor is
                Live_Config := Wanted;
                Live_Mode := (if Back_To_Firmware then Firmware_Mode else Index);
                Flip.Resize (Width, Height, Pitch, Resized);
+               Flip.Set_Geometry (Scan_Geometry_Of (TT.Decode (Live_Config.Timing), Lit.Mode));
                if Output_Revision < OD.Catalog_Revision'Last then
                   Output_Revision := Output_Revision + 1;
                end if;
@@ -1655,6 +1667,9 @@ package body Intel_GPU_Display_Executor is
       Scanout_Buffer_Bytes := Unsigned_64 (Pages) * Page_Bytes;
       Flip.Configure (Bases, CPU, Selection.Shape.Width, Selection.Shape.Height,
                       Selection.Shape.Pitch, Selection.Surface);
+      if Lit.Found then
+         Flip.Set_Geometry (Scan_Geometry_Of (Lit.Timing, Lit.Mode));
+      end if;
       Log ("intel-gpu: scanout configure " & Flip.Problem_Text);
       Flip.Take_Over (Boot_Color, Scanout_Status);
       if Scanout_Status = Flip.Taken then
@@ -1787,14 +1802,22 @@ package body Intel_GPU_Display_Executor is
    GPU_Status_Stalled : constant Unsigned_64 := 7;
    Last_Stall_Log_Us : Unsigned_64 := 0;
 
-   procedure Answer_Present (Code : Unsigned_64) is
+   --  Timing: the latched frame's (LAT-002), in words 1 .. 3.
+   procedure Answer_Present (Code : Unsigned_64;
+                             Timing : CuBit.Present_Timing.Timing := CuBit.Present_Timing.No_Timing) is
       Reply_Message : Message := NULL_MESSAGE;
       Replied : Unsigned_64;
       pragma Unreferenced (Replied);
+      use type CuBit.Present_Timing.Latch_Source;
+      Timed : constant Boolean :=
+        Timing.Source /= CuBit.Present_Timing.None and then CuBit.Present_Timing.Valid (Timing);
+      Words : constant CuBit.Present_Timing.Reply_Words :=
+        (if Timed then CuBit.Present_Timing.Encode_Reply (Timing) else [0, 0, 0]);
    begin
-      Reply_Message.tag := (label => OP_GPU_Present_Buffer, length => 1,
+      Reply_Message.tag := (label => OP_GPU_Present_Buffer,
+                            length => (if Timed then 4 else 1),
                             protocol => 0, ipc => <>, reserved => 0);
-      Reply_Message.words := [Code, 0, 0, 0];
+      Reply_Message.words := [Code, Words (1), Words (2), Words (3)];
       Replied := Intel_GPU_Replies.Answer (Present_Reply, Reply_Message);
       Present_Reply_Owed := False;
    end Answer_Present;
@@ -1818,7 +1841,7 @@ package body Intel_GPU_Display_Executor is
       Service_Hotplug (Clock_Ms);
       Flip.Service (Latched);
       if Latched and then Present_Reply_Owed then
-         Answer_Present (GPU_Status_OK);
+         Answer_Present (GPU_Status_OK, Flip.Last_Latch);
       end if;
       if not Present_Reply_Owed or else Now = Unsigned_64'Last then
          return;
@@ -2017,6 +2040,16 @@ package body Intel_GPU_Display_Executor is
                     " latch_us_avg=" & Unsigned_64'Image
                       (if F.Latched = 0 then 0 else F.Latency_Total_Us / Unsigned_64 (F.Latched)) &
                     " latch_us_max=" & Unsigned_64'Image (F.Latency_Max_Us) &
+                    " slack_us_avg=" & Unsigned_64'Image
+                      (if F.Latched = 0 then 0 else F.Slack_Total_Us / Unsigned_64 (F.Latched)) &
+                    " slack_us_max=" & Unsigned_64'Image (F.Slack_Max_Us) &
+                    " lag_us_avg=" & Unsigned_64'Image
+                      (if F.Latched = 0 then 0 else F.Lag_Total_Us / Unsigned_64 (F.Latched)) &
+                    " lag_us_max=" & Unsigned_64'Image (F.Lag_Max_Us) &
+                    " flip_timed=" & Natural'Image (F.Flip_Timed) &
+                    " count_timed=" & Natural'Image (F.Count_Timed) &
+                    " disagreed=" & Natural'Image (F.Disagreed) &
+                    " clamped=" & Natural'Image (F.Clamped) &
                     " period_us=" & Unsigned_64'Image (F.Period_Us));
             end if;
          end;

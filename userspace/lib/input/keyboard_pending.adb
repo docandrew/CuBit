@@ -1,6 +1,7 @@
 package body Keyboard_Pending with SPARK_Mode is
    procedure Append_Byte (S : in out State; Value : Byte;
-                          Added : out Frame_Length; Lost : out Boolean) is
+                          Added : out Frame_Length; Lost : out Boolean;
+                          Observed_Us : Word := Word'Last) is
       N : Positive range 1 .. 6;
       Ignored : Boolean;
    begin
@@ -35,7 +36,7 @@ package body Keyboard_Pending with SPARK_Mode is
          Before : constant Input_Pending.Queue := S.Pending with Ghost;
       begin
          for I in 1 .. N loop
-            Input_Pending.Append (S.Pending, Word (S.Partial (I)), Ignored);
+            Input_Pending.Append (S.Pending, Word (S.Partial (I)), Ignored, Observed_Us => Observed_Us);
             pragma Assert (not Ignored);
             pragma Loop_Invariant (Count (S) = Input_Pending.Count (Before) + I);
             pragma Loop_Invariant

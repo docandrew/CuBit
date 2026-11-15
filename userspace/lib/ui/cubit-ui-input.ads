@@ -20,6 +20,15 @@ package CuBit.UI.Input is
    INPUT_RESYNC        : constant Unsigned_64 := 9;
    INPUT_CLOSE_REQUEST : constant Unsigned_64 := 10;
 
+   --  Why an INPUT_CLOSE_REQUEST came (payload0, Close_Reason'Enum_Rep):
+   --  User_Close, the window's close (Desktop sends 0); System_Shutdown,
+   --  procmgr's Stop during the root stop (PWR-003: CuBit.UI.App.Run turns
+   --  the kernel's Stop control event into this event); Replace, the
+   --  program is being replaced (LIVE-001; reserved: no switch of a UI app
+   --  sends it yet).
+   type Close_Reason is (User_Close, System_Shutdown, Replace);
+   for Close_Reason use (User_Close => 0, System_Shutdown => 1, Replace => 2);
+
    type Input_Event is record
       kind     : Unsigned_64 := INPUT_NONE;
       serial   : Unsigned_64 := 0;
@@ -31,6 +40,14 @@ package CuBit.UI.Input is
    --  KEYMOD_* modifiers and its high word the key flags. Text events:
    --  payload1 holds the key flags alone. The values are the desktop
    --  protocol's (CuBit.Desktop_Protocol.Key_Repeat_Flag).
+   function Close_Reason_Of (event : Input_Event) return Close_Reason is
+     (if event.payload0 = Close_Reason'Enum_Rep (System_Shutdown) then System_Shutdown
+      elsif event.payload0 = Close_Reason'Enum_Rep (Replace) then Replace
+      else User_Close);
+
+   function Close_Event (Reason : Close_Reason) return Input_Event is
+     ((kind => INPUT_CLOSE_REQUEST, serial => 0, payload0 => Close_Reason'Enum_Rep (Reason), payload1 => 0));
+
    KEY_MODIFIERS_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
    KEY_REPEAT_FLAG    : constant Unsigned_64 := 16#1_0000_0000#;
 

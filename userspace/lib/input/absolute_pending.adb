@@ -1,7 +1,7 @@
 package body Absolute_Pending with SPARK_Mode is
    procedure Append
      (S : in out State; R : Report; Observed_Ms : Word;
-      Outcome : out Append_Outcome)
+      Outcome : out Append_Outcome; Observed_Us : Word := Word'Last)
    is
       Lost : Boolean;
    begin
@@ -11,7 +11,7 @@ package body Absolute_Pending with SPARK_Mode is
          Outcome := Replaced;
          return;
       end if;
-      Input_Pending.Append (S.Pending, Encode (R), Lost, Observed_Ms);
+      Input_Pending.Append (S.Pending, Encode (R), Lost, Observed_Ms, Observed_Us);
       S.Mergeable := not Lost and then S.Known and then
         R.Buttons = S.Newest.Buttons and then R.Flags = S.Newest.Flags;
       S.Previous := S.Newest;

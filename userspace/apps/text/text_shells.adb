@@ -107,6 +107,8 @@ package body Text_Shells is
       Loaded : Byte_Count := 0;
       Started_Us : Unsigned_64 := 0;
       Close_Armed : Boolean := False;
+      --  Opened by Open_If_Present: a missing file closes it quietly.
+      Quiet : Boolean := False;
    end record;
    type Tab_Array is array (Tab_Index) of Tab;
 
@@ -131,6 +133,11 @@ package body Text_Shells is
    type Save_Phase is (Idle, Writing, Committing);
 
    type Shell_State is limited record
+      --  How the last Open_If_Present ended (PWR-003 recovery copies), and
+      --  the quiet tab of a missing copy, closed at the next Pump's start
+      --  (never under a document reference the pump holds).
+      Last_Probe : Probe_Result := No_Probe;
+      Quiet_Close : Tab_Count := 0;
       Host : access Host_Type;
       Tab_List : Tab_Array;
       Count : Tab_Count := 0;
@@ -397,6 +404,22 @@ package body Text_Shells is
    begin
       Open_State (S.State.all, Name);
    end Open;
+
+   procedure Open_If_Present (S : in out Shell; Name : String) is
+      St : Shell_State renames S.State.all;
+      Before : constant Tab_Count := St.Count;
+   begin
+      St.Last_Probe := Probing;
+      Open_State (St, Name);
+      if St.Load_Tab /= 0 and then St.Count > Before then
+         St.Tab_List (St.Load_Tab).Quiet := True;
+      elsif St.Count = Before then
+         --  Refused at once (not granted, not found): nothing opened.
+         St.Last_Probe := Missing;
+      end if;
+   end Open_If_Present;
+
+   function Probe (S : Shell) return Probe_Result is (S.State.Last_Probe);
 
    procedure Open_State (St : in out Shell_State; Name : String) is
       Size : Byte_Count;
@@ -2112,7 +2135,17 @@ package body Text_Shells is
             Say (S, Display_Name (S.Host.all, Name (D.all)) & ": larger than its capacity; stopped");
             Status := Text_Hosts.Done;
          end if;
-         if Status = Text_Hosts.Done then
+         if Status = Text_Hosts.Done and then S.Tab_List (T).Quiet then
+            End_Load (D.all);
+            S.Tab_List (T).Loading := False;
+            S.Tab_List (T).Quiet := False;
+            S.Load_Tab := 0;
+            S.Last_Probe := Found;
+            Changed := True;
+            S.Everything := True;
+            Say (S, "Restored unsaved work from the last shutdown: " & Display_Name (S.Host.all, Name (D.all))
+                    & "; save it to keep it");
+         elsif Status = Text_Hosts.Done then
             End_Load (D.all);
             S.Tab_List (T).Loading := False;
             S.Load_Tab := 0;
@@ -2121,6 +2154,14 @@ package body Text_Shells is
             Say (S, "Opened " & Display_Name (S.Host.all, Name (D.all)) & ":" & Line_Number'Image (Line_Total (D.all)) & " lines, "
                     & Image (Long_Long_Integer (Length (D.all))) & " bytes in"
                     & Unsigned_64'Image ((S.Now - S.Tab_List (T).Started_Us) / MICROSECONDS_PER_MILLISECOND) & " ms");
+         elsif Status /= Text_Hosts.Pending and then S.Tab_List (T).Quiet then
+            --  No recovery copy there: no tab, no message.
+            End_Load (D.all);
+            S.Tab_List (T).Loading := False;
+            S.Load_Tab := 0;
+            S.Last_Probe := Missing;
+            S.Quiet_Close := T;
+            Changed := True;
          elsif Status /= Text_Hosts.Pending then
             End_Load (D.all);
             S.Tab_List (T).Loading := False;
@@ -2130,7 +2171,20 @@ package body Text_Shells is
       end;
    end Pump_Load;
 
+   procedure Pump_Inner (S : in out Shell; Budget : Work_Budget; Busy, Changed : out Boolean);
+
    procedure Pump (S : in out Shell; Budget : Work_Budget; Busy, Changed : out Boolean) is
+      St : Shell_State renames S.State.all;
+   begin
+      --  A missing recovery copy's quiet tab, before anything holds its document.
+      if St.Quiet_Close in 1 .. St.Count then
+         Close_Tab (St, St.Quiet_Close);
+      end if;
+      St.Quiet_Close := 0;
+      Pump_Inner (S, Budget, Busy, Changed);
+   end Pump;
+
+   procedure Pump_Inner (S : in out Shell; Budget : Work_Budget; Busy, Changed : out Boolean) is
       St : Shell_State renames S.State.all;
       D : constant Document_Access := Doc (St);
    begin
@@ -2204,7 +2258,7 @@ package body Text_Shells is
       if Changed then
          St.Prepared := False;
       end if;
-   end Pump;
+   end Pump_Inner;
 
    ---------------------------------------------------------------------------
    --  Drawing.

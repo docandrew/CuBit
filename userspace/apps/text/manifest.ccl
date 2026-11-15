@@ -9,4 +9,6 @@
   (request-service desktop read-write desktop)
   (request-service filesystem read-write text-filesystem)
   (filesystem-scope (rights read write create) "@nvme:0/Documents/")
+  # Recovery copies of unsaved work at shutdown (CuBit.UI.Recovery).
+  (filesystem-scope (rights read write create) "@system/Recovery/com.cubit.text/")
   (filesystem-scope (rights read) "@nvme:0/"))

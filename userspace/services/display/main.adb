@@ -17,6 +17,8 @@ with CuBit.System_Facts;
 with CuBit.Messages; use CuBit.Messages;
 with Display_Logs;
 with CuBit.Display_Protocol;
+with CuBit.Present_Timing;
+with CuBit.Monotonic;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.Process_IDs.Text;
@@ -291,6 +293,11 @@ procedure main is
    statsWaitMs   : Unsigned_64 := 0;
    statsCopyMs   : Unsigned_64 := 0;
    statsPixels   : Unsigned_64 := 0;
+   --  LAT-002: a pool frame's time in display.svc, from its request to the
+   --  backend Present (target repair and copy included), in microseconds.
+   statsForwardUs    : Unsigned_64 := 0;
+   statsForwardMaxUs : Unsigned_64 := 0;
+   statsForwarded    : Unsigned_64 := 0;
 
    function memcpy
       (dest : System.Address;
@@ -665,6 +672,10 @@ procedure main is
          printDec (statsCopyMs);
          debugPrint (" px=");
          printDec (statsPixels);
+         debugPrint (" forward_us_avg=");
+         printDec (if statsForwarded = 0 then 0 else statsForwardUs / statsForwarded);
+         debugPrint (" forward_us_max=");
+         printDec (statsForwardMaxUs);
          debugPrint ("" & LF);
       end if;
 
@@ -679,6 +690,9 @@ procedure main is
       statsWaitMs := 0;
       statsCopyMs := 0;
       statsPixels := 0;
+      statsForwardUs := 0;
+      statsForwardMaxUs := 0;
+      statsForwarded := 0;
    end maybePrintStats;
 
    function ownsDisplay (pid : Process_ID) return Boolean is
@@ -1123,6 +1137,16 @@ procedure main is
          end if;
       end loop;
    end noteFlipped;
+
+   --  A backend's Present answer: the status alone, or (LAT-002) the status
+   --  and the frame's present timing in words 1 .. 3.
+   function presentAnswer (C : CompletionEntry) return Boolean is
+     (C.msg.tag.label = OP_GPU_PRESENT_BUFFER and then C.msg.tag.length in 1 | 4 and then
+      C.msg.tag.protocol = 0 and then C.msg.tag.reserved = 0);
+   function presentTiming (C : CompletionEntry) return CuBit.Present_Timing.Timing is
+     (if C.msg.tag.length = 4
+      then CuBit.Present_Timing.Decode_Reply ([C.msg.words (1), C.msg.words (2), C.msg.words (3)])
+      else CuBit.Present_Timing.No_Timing);
 
    procedure collectFrames;
    --  Legacy (non-pool) presentation on a native output: copy into the
@@ -2052,7 +2076,7 @@ procedure main is
                   Matched := True;
                   BT.Complete (State.Targets, Completion.token,
                                Completion.valid and then Completion.status = COMPLETION_OK and then
-                               Completion.msg.tag = (label => OP_GPU_PRESENT_BUFFER, length => 1, protocol => 0, ipc => <>, reserved => 0) and then
+                               presentAnswer (Completion) and then
                                Completion.msg.words (0) = 0 and then
                                State.legacyTarget = BT.Target (State.Targets));
                   State.legacyToken := 0;
@@ -2091,7 +2115,7 @@ procedure main is
                   --  shown; 6: superseded before latching) drops this frame:
                   --  the targets stay as they were and the client redraws.
                   if Completion.valid and then Completion.status = COMPLETION_OK and then
-                    Completion.msg.tag = (label => OP_GPU_PRESENT_BUFFER, length => 1, protocol => 0, ipc => <>, reserved => 0) and then
+                    presentAnswer (Completion) and then
                     Completion.msg.words (0) in GPU_Present_Refused | GPU_Present_Superseded
                   then
                      BT.Abandon (State.Targets, Completion.token);
@@ -2111,7 +2135,7 @@ procedure main is
                      end if;
                   end if;
                   Published := Completion.valid and then Completion.status = COMPLETION_OK and then
-                    Completion.msg.tag = (label => OP_GPU_PRESENT_BUFFER, length => 1, protocol => 0, ipc => <>, reserved => 0) and then
+                    presentAnswer (Completion) and then
                     Completion.msg.words (0) = 0 and then
                     State.backendFrame.Session = State.activeSession and then
                     State.sessionOutput = State.currentOutput;
@@ -2135,8 +2159,11 @@ procedure main is
                      declare
                         Flipped : constant Gpu_Buffer_Index := State.backendTarget;
                         Damage : constant Rect := State.backendDamage;
+                        Timing : constant CuBit.Present_Timing.Timing := presentTiming (Completion);
                      begin
                         noteFlipped (State, Flipped, Damage);
+                        --  The client learns when its frame reached the screen.
+                        State.backendFrame.Timing := CuBit.Present_Timing.To_Compact (Timing);
                      end;
                   end if;
                   finishFrame (Output, State.backendID, State.backendFrame,
@@ -2214,6 +2241,7 @@ procedure main is
       started : Unsigned_64;
       backendRequest : Message;
       token : Unsigned_64;
+      Received_Us : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
    begin
       replyMsg := NULL_MESSAGE;
       replyMsg.tag := (label => request.tag.label, length => 1,
@@ -2229,7 +2257,7 @@ procedure main is
       end if;
       if not decoded.Valid then return; end if;
       result := (decoded.Value.Session, decoded.Value.Frame,
-                 DSP.Rejected, DSP.Not_Acquired);
+                 DSP.Rejected, DSP.Not_Acquired, others => <>);
       r := (Natural (decoded.Value.Area.X), Natural (decoded.Value.Area.Y),
             Natural (decoded.Value.Area.Width), Natural (decoded.Value.Area.Height));
       if State.presentationFault or else not ownsDisplay (from) or else
@@ -2301,6 +2329,17 @@ procedure main is
             then
                State.backendToken := token;
                State.backendStarted := syscall (SYSCALL_GETTIME);
+               declare
+                  Forwarded_Us : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+               begin
+                  if Received_Us /= CuBit.Monotonic.Unavailable_Us and then
+                    Forwarded_Us /= CuBit.Monotonic.Unavailable_Us and then Forwarded_Us >= Received_Us
+                  then
+                     statsForwardUs := statsForwardUs + (Forwarded_Us - Received_Us);
+                     statsForwardMaxUs := Unsigned_64'Max (statsForwardMaxUs, Forwarded_Us - Received_Us);
+                     statsForwarded := statsForwarded + 1;
+                  end if;
+               end;
                statsPresents := statsPresents + 1;
                statsPixels := statsPixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
                statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
@@ -2317,7 +2356,21 @@ procedure main is
             return;
          end if;
       elsif State.backend.Kind = Firmware_Framebuffer then
-         presentFirmwareRect (State.backend.Address, r.x, r.y, r.w, r.h);
+         declare
+            Copy_Started : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+            Copied : Unsigned_64;
+         begin
+            presentFirmwareRect (State.backend.Address, r.x, r.y, r.w, r.h);
+            Copied := CuBit.Monotonic.Microseconds;
+            --  The firmware framebuffer scans out what was written: the copy's
+            --  end stands for the latch (no refresh is known).
+            if Copy_Started /= CuBit.Monotonic.Unavailable_Us and then
+              Copied /= CuBit.Monotonic.Unavailable_Us and then Copy_Started <= Copied
+            then
+               result.Timing := CuBit.Present_Timing.To_Compact
+                 ((CuBit.Present_Timing.Host_Fence, Copy_Started, Copied, Copied, 0));
+            end if;
+         end;
          published := True;
       end if;
       statsPresents := statsPresents + 1;

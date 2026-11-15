@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with Interfaces.C;
 with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
 with CuBit.Display_Protocol;
+with CuBit.Present_Timing;
 with CuBit.Grant_References;
 procedure Main is
    use type Interfaces.C.int;
@@ -191,7 +192,10 @@ begin
          for Disposition in DSP.Buffer_Disposition loop
             declare
                Result : constant DSP.Frame_Result :=
-                 (DSP.Live_ID'Last, DSP.Live_ID'Last, Outcome, Disposition);
+                 (DSP.Live_ID'Last, DSP.Live_ID'Last, Outcome, Disposition,
+                  (if DSP."=" (Outcome, DSP.Published)
+                   then (CuBit.Present_Timing.Hardware_Latch, 16_667, 321, 16#FFFF_FFF0#, 16#0000_0010#)
+                   else CuBit.Present_Timing.No_Compact));
             begin
                Canonical := DSP.Encode_Frame_Result (Result);
                pragma Assert

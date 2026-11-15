@@ -5,6 +5,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Intel_GPU_Flip_State;
 with Intel_GPU_Vblank_Clock;
 with Intel_GPU_Primary_Flip;
+with CuBit.Present_Timing;
 --  Hosted (Linux) tests of DISP-000a primary-plane flips against a register
 --  model of one pipe whose behaviour follows i915 v6.16 facts: PLANE_SURF
 --  is double-buffered and latches only at a vblank, PLANE_SURFLIVE reports
@@ -46,6 +47,17 @@ procedure Primary_Flip_Tests is
       Writes_To_Live, Vblanks, Surf_Writes : Natural := 0;
       Latch_Percent : Natural := 30;
       Bogus_Live : Boolean := False;
+      --  Timed mode (LAT-002): vblanks every Period_Us of model time, the
+      --  pipe timestamps on a clock Display_Offset ahead of the CPU's, the
+      --  scan line moving through Total lines per frame.
+      Timed, Stamps : Boolean := False;
+      Period_Us : Unsigned_64 := 16_667;
+      Next_Vblank_At, Last_Vblank_At, Last_Flip_At : Unsigned_64 := 0;
+      Display_Offset : Unsigned_64 := 16#7FFF_0000#;
+      Frame_Stamp, Flip_Stamp : Unsigned_32 := 0;
+      Total : Natural := 1_125;
+      Blank_Start : Natural := 1_080;
+      Lead : Natural := 1;
    end record;
    M : Model;
 
@@ -60,9 +72,38 @@ procedure Primary_Flip_Tests is
       M.Vblanks := M.Vblanks + 1;
    end Vblank;
 
+   --  Timed mode: every vblank up to the model clock.
+   procedure Advance is
+   begin
+      while M.Timed and then M.Next_Vblank_At <= M.Clock loop
+         M.Frame_Stamp := Unsigned_32 ((M.Next_Vblank_At + M.Display_Offset) mod 2 ** 32);
+         if M.Live /= M.Surf then
+            M.Flip_Stamp := M.Frame_Stamp;
+            M.Last_Flip_At := M.Next_Vblank_At;
+         end if;
+         Vblank;
+         M.Last_Vblank_At := M.Next_Vblank_At;
+         M.Next_Vblank_At := M.Next_Vblank_At + M.Period_Us;
+      end loop;
+   end Advance;
+
+   function Scan_Line return Unsigned_32 is
+      Lines : constant Natural :=
+        Natural ((M.Clock - M.Last_Vblank_At) * Unsigned_64 (M.Total) / M.Period_Us);
+   begin
+      return Unsigned_32 ((M.Blank_Start + Lines + M.Total - M.Lead) mod M.Total);
+   end Scan_Line;
+
    function Model_Read (Offset : Unsigned_32) return Unsigned_32 is
    begin
-      if Offset = 16#1AC# then
+      Advance;
+      if M.Timed and then Offset = 16#048# then
+         return (if M.Stamps then M.Frame_Stamp else Unsigned_32'Last);
+      elsif M.Timed and then Offset = 16#04C# then
+         return (if M.Stamps then M.Flip_Stamp else Unsigned_32'Last);
+      elsif M.Timed and then Offset = 16#000# then
+         return (if M.Stamps then Scan_Line else Unsigned_32'Last);
+      elsif Offset = 16#1AC# then
          return (if M.Bogus_Live then 16#0FFF_F000# else M.Live);
       elsif Offset = 16#19C# then return M.Surf;
       elsif Offset = 16#040# then return M.Frame;
@@ -71,6 +112,7 @@ procedure Primary_Flip_Tests is
    end Model_Read;
    procedure Model_Write (Offset, Value : Unsigned_32; Written : out Boolean) is
    begin
+      Advance;
       Written := Offset = 16#19C#;
       if Written then
          M.Surf := Value;
@@ -92,13 +134,14 @@ procedure Primary_Flip_Tests is
    procedure Model_Pause is
    begin
       M.Clock := M.Clock + 100;
-      if Coin.Random (G) < M.Latch_Percent then
+      if not M.Timed and then Coin.Random (G) < M.Latch_Percent then
          Vblank;
       end if;
    end Model_Pause;
 
    package Flip is new Intel_GPU_Primary_Flip
      (Model_Read, Model_Write, Model_Flush, Model_Now, Model_Pause);
+   subtype CuBit_Timing is CuBit.Present_Timing.Timing;
    use type Flip.Takeover_Result, Flip.Submit_Result, Flip.Configure_Problem;
 
    procedure Configure (Firmware : Unsigned_32 := Firmware_Surface) is
@@ -292,9 +335,90 @@ procedure Primary_Flip_Tests is
         Natural'Image (Total_Superseded) & " refused" & Natural'Image (Total_Rejected) &
         " vblanks" & Natural'Image (M.Vblanks));
    end Random_Cases;
+   --  LAT-002: the driver polls at Next_Poll_Us rounded up to a
+   --  millisecond plus a scheduling delay, as intel_gpu_display_executor
+   --  does. With pipe timestamps and the scan line the period stays exact
+   --  and each latch is timed to within a line; with neither (Stamps
+   --  False) the clock is anchored at observations, as it was before.
+   procedure Timed_Run (Stamps : Boolean; Period_Low, Period_High : out Unsigned_64;
+                        Worst_Latch_Error : out Unsigned_64) is
+      R : Flip.Takeover_Result;
+      Result : Flip.Submit_Result;
+      Superseded, Latched : Boolean;
+      Active : Natural := 0;
+      C : Flip.Counters;
+      T : CuBit_Timing;
+      Wake : Unsigned_64;
+      Line_Us : Unsigned_64;
+      use type CuBit.Present_Timing.Latch_Source;
+   begin
+      M := (others => <>);
+      M.Timed := True;
+      M.Stamps := Stamps;
+      M.Clock := 1_000_000;
+      M.Next_Vblank_At := 1_000_000 + 3_217;
+      Line_Us := M.Period_Us / Unsigned_64 (M.Total) + 1;
+      Coin.Reset (G, 11);
+      Configure;
+      Flip.Set_Geometry ((Total => M.Total, Blank_Start => M.Blank_Start, Lead => M.Lead));
+      Flip.Take_Over (0, R);
+      Check (R = Flip.Taken, "timed: takeover");
+      Period_Low := Unsigned_64'Last;
+      Period_High := 0;
+      Worst_Latch_Error := 0;
+      for Frame in 1 .. 2_000 loop
+         --  Render time before the next present: 0 .. 25 ms.
+         M.Clock := M.Clock + Unsigned_64 (Coin.Random (G)) * 250;
+         Flip.Submit (Flip.Index ((Active + 1) mod 3), 0, Frame_H, Result, Superseded);
+         Check (Result = Flip.Armed, "timed: armed");
+         loop
+            Wake := Flip.Next_Poll_Us;
+            exit when Wake = Unsigned_64'Last;
+            Wake := ((Wake + 999) / 1_000) * 1_000 + Unsigned_64 (Coin.Random (G)) * 10;
+            M.Clock := Unsigned_64'Max (M.Clock + 1, Wake);
+            Flip.Service (Latched);
+            exit when Latched;
+         end loop;
+         Active := (Active + 1) mod 3;
+         T := Flip.Last_Latch;
+         Check (T.Source = CuBit.Present_Timing.Hardware_Latch and then
+                T.Armed_Us <= T.Latched_Us and then T.Latched_Us <= T.Observed_Us,
+                "timed: latch timing ordered");
+         if Frame > 10 then
+            Period_Low := Unsigned_64'Min (Period_Low, T.Period);
+            Period_High := Unsigned_64'Max (Period_High, T.Period);
+            Worst_Latch_Error := Unsigned_64'Max
+              (Worst_Latch_Error,
+               (if T.Latched_Us >= M.Last_Flip_At then T.Latched_Us - M.Last_Flip_At
+                else M.Last_Flip_At - T.Latched_Us));
+         end if;
+      end loop;
+      Flip.Take (C);
+      Check (M.Writes_To_Live = 0, "timed: writes_to_live = 0");
+      Ada.Text_IO.Put_Line ("timed run (stamps " & Boolean'Image (Stamps) & "): period" &
+        Unsigned_64'Image (Period_Low) & " .." & Unsigned_64'Image (Period_High) &
+        " us (true" & Unsigned_64'Image (M.Period_Us) & "), worst latch error" &
+        Unsigned_64'Image (Worst_Latch_Error) & " us (line" & Unsigned_64'Image (Line_Us) & " us)");
+      if Stamps then
+         Check (Period_Low >= M.Period_Us - 1 and then Period_High <= M.Period_Us + 1,
+                "timed: period exact from PIPE_FRMTMSTMP");
+         Check (Worst_Latch_Error <= 2 * Line_Us, "timed: latch timed within two lines");
+      end if;
+   end Timed_Run;
+
+   procedure Timed_Cases is
+      Low, High, Error : Unsigned_64;
+   begin
+      Timed_Run (True, Low, High, Error);
+      --  The old observation-anchored clock: the estimate ratchets with the
+      --  polling lag (the laptop's 9 .. 22 ms readings at 60 Hz).
+      Timed_Run (False, Low, High, Error);
+      Check (High - Low > 1_000, "timed: observation-anchored period wanders (documents the bug)");
+   end Timed_Cases;
 begin
    Pure_Cases;
    Takeover_Cases;
    Random_Cases;
+   Timed_Cases;
    Ada.Text_IO.Put_Line ("PASS primary flip:" & Natural'Image (Checks) & " checks");
 end Primary_Flip_Tests;

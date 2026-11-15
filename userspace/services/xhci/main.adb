@@ -28,6 +28,7 @@ with USB_Keyboards;
 with Input_Pending;
 with Pointer_Pending;
 with Keyboard_Pending;
+with Input_Stamps;
 
 procedure main is
    use type XHCI.Init_Result;
@@ -121,8 +122,8 @@ procedure main is
             delivery => ACCUMULABLE_DISPLACEMENT,
             flags => [RESYNCHRONIZE => pending.Recover],
             payload => pending.Payload,
-            snapshot => Pointer_Snapshot (pending.Payload, pending.Observed_Ms));
-         if not trySendEvent (mouseConsumer, Encode (report), Startup.Mouse_Events) then
+            snapshot => Input_Stamps.Snapshot (pending.Payload, pending));
+         if not trySendEvent (mouseConsumer, Input_Stamps.Encode (report, pending), Startup.Mouse_Events) then
             publishBusy := publishBusy + 1;
             exit;
          end if;
@@ -146,10 +147,11 @@ procedure main is
       for Attempt in 1 .. Input_Pending.Capacity loop
          exit when keyboardConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
          Pending := Keyboard_Pending.Element (keyboardPending, 0);
-         if not trySendEvent (keyboardConsumer, Encode
+         if not trySendEvent (keyboardConsumer, Input_Stamps.Encode
            (Source_Report'(sourceIdentity => 0, sequence => Pending.Sequence,
              generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
-             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload, snapshot => 0)),
+             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload,
+             snapshot => Input_Stamps.Snapshot (0, Pending)), Pending),
            Startup.Keyboard_Events)
          then
             publishBusy := publishBusy + 1;
@@ -179,11 +181,13 @@ procedure main is
          224 => 29, 225 => 42, 226 => 56, 227 => 16#15B#,
          228 => 16#11D#, 229 => 54, 230 => 16#138#, 231 => 16#15C#, others => 0];
       Code : constant Unsigned_16 := Codes (Usage);
+      --  The acquisition stamp (LAT-002): the report was decoded just now.
+      Stamp : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
       procedure Send_Byte (Byte : Unsigned_8) is
          Added : Keyboard_Pending.Frame_Length;
          Lost : Boolean;
       begin
-         Keyboard_Pending.Append_Byte (keyboardPending, Byte, Added, Lost);
+         Keyboard_Pending.Append_Byte (keyboardPending, Byte, Added, Lost, Observed_Us => Stamp);
          if Lost and then not keyboardOverflowReported then
             Boot_Log.Line ("xhci: " & Location & " keyboard retention overflow; resynchronizing", True);
             keyboardOverflowReported := True;
@@ -423,7 +427,7 @@ begin
          Pointer_Pending.Append
            (pointerPending,
             (Buttons => buttons, X => deltaX, Y => -deltaY, Wheel => deltaZ, Flags => 0),
-            CuBit.Monotonic.Milliseconds, pointerOutcome);
+            CuBit.Monotonic.Milliseconds, pointerOutcome, CuBit.Monotonic.Microseconds);
          case pointerOutcome is
             when Pointer_Pending.Appended => null;
             when Pointer_Pending.Coalesced =>

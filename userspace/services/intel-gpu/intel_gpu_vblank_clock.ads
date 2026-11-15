@@ -45,6 +45,56 @@ package Intel_GPU_Vblank_Clock with SPARK_Mode is
                   (if Now - Last_Vblank < Each then
                      Next_Vblank'Result = Last_Vblank + Each);
 
+   ---------------------------------------------------------------------------
+   --  The pipe's own clock (LAT-002). PIPE_FRMTMSTMP (0x70048, i915 v6.16
+   --  i915_reg.h "g4x+, except vlv/chv") holds TIMESTAMP_CTR sampled at
+   --  every start of vertical blank; PIPE_FLIPTMSTMP (0x7004C) the same
+   --  counter at the last flip. i915 intel_vblank.c
+   --  intel_crtc_scanlines_since_frame_timestamp converts their difference
+   --  to lines as delta * crtc_clock (kHz) / (1000 * htotal): the counter
+   --  ticks once per microsecond. PIPEDSL (0x70000, PIPEDSL_LINE_MASK 19:0)
+   --  is the scan line; __intel_get_crtc_scanline adds scanline_offset
+   --  (display version 9+: 2 for HDMI, else 1) modulo vtotal, and the
+   --  vblank starts at line crtc_vblank_start.
+   ---------------------------------------------------------------------------
+   subtype Stamp is Unsigned_32;
+   --  Microseconds between two pipe timestamps, across the wrap.
+   function Stamp_Delta (Earlier, Later : Stamp) return Unsigned_64 is
+     (Unsigned_64 (Later - Earlier));
+
+   Maximum_Lines : constant := 2 ** 20;
+   subtype Line_Count is Positive range 1 .. Maximum_Lines;
+   subtype Line is Natural range 0 .. Maximum_Lines - 1;
+   Scanline_Mask : constant Unsigned_32 := 16#000F_FFFF#;
+   --  i915 intel_crtc_scanline_offset for display version 9 and later.
+   Scanline_Lead_HDMI : constant := 2;
+   Scanline_Lead_Other : constant := 1;
+   subtype Scanline_Lead is Natural range 0 .. Scanline_Lead_HDMI;
+   type Scan_Geometry is record
+      Total : Line_Count := 1;          --  crtc_vtotal
+      Blank_Start : Line := 0;          --  crtc_vblank_start
+      Lead : Scanline_Lead := Scanline_Lead_Other;
+   end record;
+   function Valid (Item : Scan_Geometry) return Boolean is
+     (Item.Total > 1 and then Item.Blank_Start < Item.Total);
+
+   --  Lines scanned since the current vblank began, from a PIPEDSL word.
+   function Lines_Since_Vblank (Word : Unsigned_32; G : Scan_Geometry) return Line
+     with Pre => Valid (G),
+          Post => Lines_Since_Vblank'Result < G.Total;
+   --  Microseconds those lines took at the measured period.
+   function Since_Vblank_Us (Lines : Line; G : Scan_Geometry; Each : Period) return Unsigned_64 is
+     --  Lines < Total keeps the quotient below Each; the minimum states it
+     --  for the prover without a nonlinear lemma.
+     (Unsigned_64'Min (Unsigned_64 (Lines) * Each / Unsigned_64 (G.Total), Each - 1))
+     with Pre => Valid (G) and then Lines < G.Total,
+          Post => Since_Vblank_Us'Result < Each;
+
+   --  Whole periods between the latch (PIPE_FLIPTMSTMP) and the current
+   --  frame's start (PIPE_FRMTMSTMP), rounded to the nearest frame.
+   function Frames_Since_Flip (Frame, Flip : Stamp; Each : Period) return Unsigned_64 is
+     ((Stamp_Delta (Flip, Frame) + Each / 2) / Each);
+
    --  Poll a little after the vblank, when the latch has happened.
    Latch_Margin_Us : constant := 500;
    function Poll_At (Last_Vblank, Now : Time_Us; Each : Period) return Time_Us is

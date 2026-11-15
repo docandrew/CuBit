@@ -3,11 +3,12 @@
 --    gprbuild -P tests/intel-gpu/primary_flip.gpr && tests/intel-gpu/build-primary-flip/primary_flip_tests
 --    gnatprove -P tests/intel-gpu/primary_flip.gpr -u intel_gpu_flip_state.adb intel_gpu_vblank_clock.adb --level=2
 project Primary_Flip is
-   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu", "../../userspace/runtime/gnat");
    for Source_Files use ("primary_flip_tests.adb",
      "intel_gpu_flip_state.ads", "intel_gpu_flip_state.adb",
      "intel_gpu_vblank_clock.ads", "intel_gpu_vblank_clock.adb",
-     "intel_gpu_primary_flip.ads", "intel_gpu_primary_flip.adb");
+     "intel_gpu_primary_flip.ads", "intel_gpu_primary_flip.adb",
+     "cubit.ads", "cubit-present_timing.ads", "cubit-present_timing.adb");
    for Object_Dir use "build-primary-flip";
    for Main use ("primary_flip_tests.adb");
    package Compiler is

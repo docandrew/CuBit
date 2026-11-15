@@ -1,13 +1,16 @@
 with Interfaces;
 with Intel_GPU_Flip_State;
 with Intel_GPU_Vblank_Clock;
+with CuBit.Present_Timing;
 --  Tear-free flips of the firmware pipe's primary plane between three
 --  driver-owned scanout buffers (DISP-000a, docs/display-modesetting.md 2).
 --  The firmware mode, size, format, stride and PLANE_CTL stay as the
 --  firmware left them; only PLANE_SURF changes, one 32-bit write per flip,
 --  latched by the display engine at the next vblank. Completion is polled:
 --  PLANE_SURFLIVE shows the new surface (Intel_GPU_Flip_State.Observe),
---  with PIPE_FRMCOUNT for the vblank clock and late-latch counting.
+--  with PIPE_FRMCOUNT for the vblank clock and late-latch counting, and
+--  (LAT-002) PIPE_FRMTMSTMP, PIPE_FLIPTMSTMP and PIPEDSL for the exact
+--  period, the vblank's time and the latch's time (Intel_GPU_Vblank_Clock).
 --
 --  The writable-buffer rule is Intel_GPU_Flip_State's: display.svc writes
 --  only a buffer that is neither armed, last seen live, nor possibly
@@ -78,9 +81,18 @@ package Intel_GPU_Primary_Flip is
                      Result : out Submit_Result; Superseded : out Boolean);
    function Owed return Boolean;
 
+   --  The scan geometry of the current mode (TRANS_VTOTAL, TRANS_VBLANK,
+   --  the port's scanline lead): with it the vblank's time is the
+   --  observation's minus the lines scanned since; without it (or when the
+   --  geometry is not Valid) the observation's time stands in.
+   procedure Set_Geometry (Item : Intel_GPU_Vblank_Clock.Scan_Geometry);
+
    --  One loop turn: while a flip is owed, read PLANE_SURFLIVE and
    --  PIPE_FRMCOUNT. Latched: the owed frame is on screen.
    procedure Service (Latched : out Boolean);
+   --  The last latched frame's timing (Hardware_Latch): armed, estimated
+   --  latch, observation, period. No_Timing before the first latch.
+   function Last_Latch return CuBit.Present_Timing.Timing;
    --  Microseconds at which the next poll is useful (Unsigned_64'Last when
    --  nothing is owed).
    function Next_Poll_Us return Unsigned_64;
@@ -106,7 +118,15 @@ package Intel_GPU_Primary_Flip is
    type Counters is record
       Vblanks : Unsigned_32 := 0;
       Armed, Latched, Superseded, Late, Writes_To_Live, Faults : Natural := 0;
+      --  Arm to observed latch (the Present answer's wait).
       Latency_Max_Us, Latency_Total_Us : Unsigned_64 := 0;
+      --  Arm to the latch's estimated time (time spent waiting for the
+      --  vblank), and latch to observation (polling lag).
+      Slack_Max_Us, Slack_Total_Us, Lag_Max_Us, Lag_Total_Us : Unsigned_64 := 0;
+      --  Latches timed by PIPE_FLIPTMSTMP, by the arm's frame count, and
+      --  estimates moved to the arm (they preceded it); Disagreed: flip
+      --  timestamp and arm count named different vblanks.
+      Flip_Timed, Count_Timed, Clamped, Disagreed : Natural := 0;
       Period_Us : Intel_GPU_Vblank_Clock.Period := Intel_GPU_Vblank_Clock.Default_Period_Us;
    end record;
    procedure Take (Item : out Counters);
@@ -126,6 +146,9 @@ package Intel_GPU_Primary_Flip is
    Surface_Offset      : constant Unsigned_32 := 16#19C#;
    Live_Surface_Offset : constant Unsigned_32 := 16#1AC#;
    Frame_Count_Offset  : constant Unsigned_32 := 16#040#;
+   Frame_Stamp_Offset  : constant Unsigned_32 := 16#048#;  --  PIPE_FRMTMSTMP
+   Flip_Stamp_Offset   : constant Unsigned_32 := 16#04C#;  --  PIPE_FLIPTMSTMP
+   Scanline_Offset     : constant Unsigned_32 := 16#000#;  --  PIPEDSL
    Surface_Page_Mask   : constant Unsigned_32 := 16#FFFF_F000#;
    --  Two vblanks at 24 Hz, with margin.
    Latch_Deadline_Us : constant := 250_000;

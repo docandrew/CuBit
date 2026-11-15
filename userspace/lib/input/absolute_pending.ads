@@ -58,7 +58,7 @@ package Absolute_Pending with SPARK_Mode, Pure is
 
    procedure Append
      (S : in out State; R : Report; Observed_Ms : Word;
-      Outcome : out Append_Outcome)
+      Outcome : out Append_Outcome; Observed_Us : Word := Word'Last)
      with Pre => Valid (S),
        Post => Valid (S) and then
          (case Outcome is
@@ -77,6 +77,8 @@ package Absolute_Pending with SPARK_Mode, Pure is
                 Element (S'Old, Count (S) - 1).Sequence and then
               Element (S, Count (S) - 1).Observed_Ms =
                 Element (S'Old, Count (S) - 1).Observed_Ms and then
+              Element (S, Count (S) - 1).Observed_Us =
+                Element (S'Old, Count (S) - 1).Observed_Us and then
               Element (S, Count (S) - 1).Recover =
                 Element (S'Old, Count (S) - 1).Recover and then
               (for all I in Input_Pending.Offset_Type =>
@@ -89,6 +91,7 @@ package Absolute_Pending with SPARK_Mode, Pure is
               Last (S) = R and then
               Element (S, Count (S) - 1).Sequence = Sequence (S) and then
               Element (S, Count (S) - 1).Observed_Ms = Observed_Ms and then
+              Element (S, Count (S) - 1).Observed_Us = Observed_Us and then
               (for all I in Input_Pending.Offset_Type =>
                  (if I < Count (S'Old) then Element (S, I) = Element (S'Old, I))),
             when Overflowed =>

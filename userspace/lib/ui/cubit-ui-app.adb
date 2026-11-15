@@ -9,6 +9,9 @@ with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Control_Events;
+with CuBit.Process_Events;
+with CuBit.Process_IDs;
 with CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
@@ -984,6 +987,54 @@ package body CuBit.UI.App is
          end if;
          Present (win, Repair);
       end Paint;
+      --  procmgr's Stop (PWR-003): the kernel's control event becomes a
+      --  System_Shutdown close request, after the app's recovery hook.
+      --  Grant events taken on the way are filed back (none is lost).
+      procedure Take_Stop is
+         Item : CuBit.Control_Events.Event;
+         Found : Boolean;
+         Stop_Seen : Boolean := False;
+         Kept : array (1 .. CuBit.Process_Events.Kept_Events) of CuBit.Control_Events.Event;
+         Kept_Count : Natural := 0;
+         dirty : CuBit.UI.Rect := (others => 0);
+         use type CuBit.Control_Events.Event_Kind, CuBit.Control_Events.Control_Kind;
+      begin
+         loop
+            CuBit.Process_Events.Next (Item, Found);
+            exit when not Found;
+            if Item.Kind = CuBit.Control_Events.Control then
+               Stop_Seen := Stop_Seen or else Item.Control = CuBit.Control_Events.Stop;
+            elsif Item.Kind in CuBit.Control_Events.Grant_Revoked | CuBit.Control_Events.Grant_Returned
+              and then Kept_Count < Kept'Last
+            then
+               Kept_Count := Kept_Count + 1;
+               Kept (Kept_Count) := Item;
+            end if;
+         end loop;
+         for K in 1 .. Kept_Count loop
+            exit when not CuBit.Process_Events.Has_Room;
+            declare
+               M : Message := NULL_MESSAGE;
+            begin
+               M.tag := (label => (if Kept (K).Kind = CuBit.Control_Events.Grant_Revoked
+                                   then CuBit.Control_Events.Grant_Revoked_Label
+                                   else CuBit.Control_Events.Grant_Returned_Label),
+                         length => CuBit.Control_Events.Grant_Event_Words,
+                         protocol => 0, ipc => <>, reserved => 0);
+               M.words (0) := Kept (K).Slot;
+               M.words (1) := Kept (K).Generation;
+               M.words (2) := CuBit.Process_IDs.To_Word (Kept (K).Peer);
+               CuBit.Process_Events.File (M);
+            end;
+         end loop;
+         if Stop_Seen and then running then
+            debugPrint ("ui-app: Stop received: closing (System_Shutdown)" & LF);
+            Save_Recovery (win, CuBit.UI.Input.System_Shutdown);
+            Handle_Event (win, CuBit.UI.Input.Close_Event (CuBit.UI.Input.System_Shutdown), dirty, running);
+            --  Shutdown never waits on an app: it ends whatever it chose.
+            running := False;
+         end if;
+      end Take_Stop;
    begin
       if not Is_Open (win) then
          return;
@@ -992,6 +1043,8 @@ package body CuBit.UI.App is
       Paint (Full_Rect (win));
 
       while running and then not win.inputStopped loop
+         Take_Stop;
+         exit when not running;
          declare
             dirty : CuBit.UI.Rect := (others => 0);
             dirtyEvents : Natural := 0;
@@ -1112,6 +1165,7 @@ package body CuBit.UI.App is
                               On_Completion (win, receipt, consumed, timerDirty, running);
                            end if;
                         end loop;
+                        Take_Stop;
                         if win.inputStopped then
                            running := False;
                         elsif not hasPendingEvent and then appDeadline /= 0 and then

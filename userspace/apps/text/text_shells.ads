@@ -83,6 +83,12 @@ package Text_Shells is
 
    --  A new tab loading Name, or an empty one.
    procedure Open (S : in out Shell; Name : String);
+   --  Open Name only if it is there (a recovery copy, PWR-003): a missing
+   --  file leaves no tab and no message. Probe tells how the last such open
+   --  ended.
+   type Probe_Result is (No_Probe, Probing, Found, Missing);
+   procedure Open_If_Present (S : in out Shell; Name : String);
+   function Probe (S : Shell) return Probe_Result;
    procedure New_Document (S : in out Shell; Name : String := "untitled.txt");
 
    procedure Set_Clock (S : in out Shell; Now_Us : Unsigned_64);

@@ -37,6 +37,8 @@ with Startup;
 with Input_Pending;
 with Absolute_Pointer;
 with Absolute_Pending;
+with Input_Stamps;
+with CuBit.Monotonic;
 with Virtio_Input_Events;
 with Virtio_Input_Transport;
 
@@ -194,14 +196,14 @@ procedure main is
       for Attempt in 1 .. Input_Pending.Capacity loop
          exit when Consumer = No_Process or else Absolute_Pending.Count (Pending) = 0;
          Item := Absolute_Pending.Element (Pending, 0);
-         if not trySendEvent (Consumer, Encode
+         if not trySendEvent (Consumer, Input_Stamps.Encode
            (Source_Report'(sourceIdentity => 0, sequence => Item.Sequence,
              generation => 1, device => CuBit.Input.ABSOLUTE_POINTER,
              delivery => REPLACEABLE_STATE,
              flags => [RESYNCHRONIZE => Item.Recover],
              payload => Item.Payload,
-             snapshot => Pointer_Snapshot
-               (Item.Payload and AP.Byte_Mask, Item.Observed_Ms))), Startup.Pointer_Events)
+             snapshot => Input_Stamps.Snapshot
+               (Item.Payload and AP.Byte_Mask, Item)), Item), Startup.Pointer_Events)
          then
             Busy := Busy + 1;
             exit;
@@ -220,7 +222,8 @@ procedure main is
       if Consumer = No_Process then
          return;
       end if;
-      Absolute_Pending.Append (Pending, R, syscall (SYSCALL_GETTIME), Outcome);
+      Absolute_Pending.Append (Pending, R, syscall (SYSCALL_GETTIME), Outcome,
+                               CuBit.Monotonic.Microseconds);
       case Outcome is
          when Absolute_Pending.Appended => null;
          when Absolute_Pending.Replaced => Replaced := Replaced + 1;

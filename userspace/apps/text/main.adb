@@ -17,7 +17,9 @@ with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
+with CuBit.UI.Recovery;
 with CuBit.UI.State;
+with Text_Hosts;
 with Startup;
 with Text_Commands; use Text_Commands;
 with Text_Documents;
@@ -226,12 +228,122 @@ procedure Main is
       Report;
    end Collect;
 
+   ---------------------------------------------------------------------------
+   --  Recovery copies (PWR-003, CuBit.UI.Recovery): at a System_Shutdown
+   --  close every modified document is written, as it would be saved, to
+   --  Text's recovery place, never over its own file; at the next launch
+   --  each copy there is opened again with a note.
+   ---------------------------------------------------------------------------
+   IDENTITY : constant String := "com.cubit.text";
+   --  Between polls of a recovery write (the filesystem queue answers).
+   RECOVERY_POLL_MS : constant := 2;
+   Copy_Chunk : String (1 .. 65_536);
+   --  The next recovery copy to look for at launch (0: done).
+   Restore_Next : Natural := 1;
+
+   --  Write Document's bytes to Copy within Deadline (GETTIME ms).
+   procedure Write_Copy
+     (D : Text_Documents.Document; Copy : String; Deadline : Unsigned_64; Ok : out Boolean)
+   is
+      use type Text_Hosts.File_Status;
+      Status : Text_Hosts.File_Status;
+      Total : constant Natural := Natural (Text_Documents.Length (D));
+      Step : constant Positive := Positive'Min (Copy_Chunk'Length, Text_Host_Native.Chunk_Limit (Host));
+      Offset : Natural := 0;
+      Ignore : Unsigned_64;
+      function Late return Boolean is (syscall (SYSCALL_GETTIME) >= Deadline);
+   begin
+      Ok := False;
+      Text_Host_Native.Start_Save (Host, Copy, Status);
+      if Status not in Text_Hosts.Done | Text_Hosts.Pending then
+         return;
+      end if;
+      while Offset < Total loop
+         declare
+            Count : constant Positive := Natural'Min (Step, Total - Offset);
+         begin
+            Text_Documents.Read (D, Text_Limits.Byte_Offset (Offset), Copy_Chunk (1 .. Count));
+            loop
+               Text_Host_Native.Save_Chunk (Host, Copy_Chunk (1 .. Count), Status);
+               exit when Status /= Text_Hosts.Busy;
+               Text_Host_Native.Poll_Save (Host, Status);
+               if Status not in Text_Hosts.Pending | Text_Hosts.Done or else Late then
+                  return;
+               end if;
+               Ignore := syscall (SYSCALL_SLEEP, RECOVERY_POLL_MS);
+            end loop;
+            if Status not in Text_Hosts.Done | Text_Hosts.Pending then
+               return;
+            end if;
+            Offset := Offset + Count;
+         end;
+      end loop;
+      Text_Host_Native.Finish_Save (Host, Status);
+      loop
+         Text_Host_Native.Poll_Save (Host, Status);
+         exit when Status /= Text_Hosts.Pending or else Late;
+         Ignore := syscall (SYSCALL_SLEEP, RECOVERY_POLL_MS);
+      end loop;
+      Ok := Status = Text_Hosts.Done;
+   end Write_Copy;
+
+   procedure Save_Recovery (Win : in out CuBit.UI.App.Window; Reason : CuBit.UI.Input.Close_Reason) is
+      pragma Unreferenced (Win);
+      use type CuBit.UI.Input.Close_Reason;
+      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + CuBit.UI.Recovery.Budget_Milliseconds;
+      Written : Natural := 0;
+   begin
+      if Reason /= CuBit.UI.Input.System_Shutdown then
+         return;
+      end if;
+      for T in 1 .. Text_Shell.Tabs (App) loop
+         declare
+            D : constant Text_Documents.Document_Access := Text_Shell.Document (App, T);
+            Ok : Boolean;
+         begin
+            if D /= null and then Text_Documents.Modified (D.all) then
+               if Written = CuBit.UI.Recovery.Maximum_Copies then
+                  debugPrint ("text: recovery: more unsaved documents than copies; "
+                              & Text_Documents.Name (D.all) & " is left out" & ASCII.LF);
+               else
+                  Written := Written + 1;
+                  declare
+                     Copy : constant String := CuBit.UI.Recovery.Copy_Name (IDENTITY, Written);
+                  begin
+                     Write_Copy (D.all, Copy, Deadline, Ok);
+                     debugPrint ("text: recovery copy of " & Text_Documents.Name (D.all) & " -> " & Copy
+                                 & (if Ok then " written bytes=" & Decimal (Unsigned_64 (Text_Documents.Length (D.all)))
+                                    else " FAILED") & ASCII.LF);
+                  end;
+               end if;
+            end if;
+         end;
+      end loop;
+      debugPrint ("text: shutdown: " & Decimal (Unsigned_64 (Written)) & " recovery copies; exiting" & ASCII.LF);
+   end Save_Recovery;
+
+   --  At launch, after the first document: open each recovery copy there,
+   --  one at a time, until one is missing.
+   procedure Restore_Step is
+      use type Text_Shell.Probe_Result;
+   begin
+      if Restore_Next = 0 or else Text_Shell.Loading (App) then
+         return;
+      elsif Text_Shell.Probe (App) = Text_Shell.Missing or else Restore_Next > CuBit.UI.Recovery.Maximum_Copies then
+         Restore_Next := 0;
+      elsif Text_Shell.Probe (App) /= Text_Shell.Probing then
+         Text_Shell.Open_If_Present (App, CuBit.UI.Recovery.Copy_Name (IDENTITY, Restore_Next));
+         Restore_Next := Restore_Next + 1;
+      end if;
+   end Restore_Step;
+
    procedure Pump_Shell (Dirty : in out Rect) is
       Start : constant Unsigned_64 := Now_Us;
       Changed : Boolean;
    begin
       Text_Shell.Set_Clock (App, Start);
       Text_Shell.Pump (App, PUMP_BUDGET, Busy, Changed);
+      Restore_Step;
       Last_Pump_Us := Now_Us - Start;
       Text_Host_Native.Arm_Wake (Host);
       Collect (Dirty);
@@ -359,7 +471,8 @@ procedure Main is
 
    procedure Run is new CuBit.UI.App.Run
      (UI, Controls, Render => Render, Handle_Event => Handle_Event, Next_Deadline => Deadline,
-      On_Deadline => Tick, Activity_Wait => True, On_Completion => Completed);
+      On_Deadline => Tick, Activity_Wait => True, On_Completion => Completed,
+      Save_Recovery => Save_Recovery);
 
    Queue_Ready : Boolean;
 begin

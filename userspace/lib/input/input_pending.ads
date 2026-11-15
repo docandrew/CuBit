@@ -10,6 +10,9 @@ package Input_Pending with SPARK_Mode, Pure is
       Sequence : Word := 0;
       Recover : Boolean := False;
       Observed_Ms : Word := Word'Last;
+      --  Acquisition in microseconds (CuBit.Monotonic.Read), Word'Last when
+      --  the driver stamps milliseconds only (LAT-002).
+      Observed_Us : Word := Word'Last;
    end record;
    type Queue is private;
    function Count (Q : Queue) return Count_Type;
@@ -40,12 +43,13 @@ package Input_Pending with SPARK_Mode, Pure is
    -- the stale backlog, retain the newest state, and explicitly flag recovery.
    -- This is loss reporting, not a claim to recover unbounded input history.
    procedure Append (Q : in out Queue; Payload : Word; Lost : out Boolean;
-                     Observed_Ms : Word := Word'Last)
+                     Observed_Ms : Word := Word'Last; Observed_Us : Word := Word'Last)
      with Post =>
        Lost = (Count (Q'Old) = Capacity) and then
        Count (Q) = (if Lost then 1 else Count (Q'Old) + 1) and then
        Sequence (Q) = Next_Sequence (Sequence (Q'Old)) and then
        Element (Q, Count (Q) - 1).Observed_Ms = Observed_Ms and then
+       Element (Q, Count (Q) - 1).Observed_Us = Observed_Us and then
        Element (Q, Count (Q) - 1).Payload = Payload and then
        Element (Q, Count (Q) - 1).Sequence = Sequence (Q) and then
        Element (Q, Count (Q) - 1).Recover =
@@ -70,6 +74,8 @@ package Input_Pending with SPARK_Mode, Pure is
            Element (Q'Old, Count (Q) - 1).Recover and then
          Element (Q, Count (Q) - 1).Observed_Ms =
            Element (Q'Old, Count (Q) - 1).Observed_Ms and then
+         Element (Q, Count (Q) - 1).Observed_Us =
+           Element (Q'Old, Count (Q) - 1).Observed_Us and then
          (for all I in Offset_Type =>
             (if I < Count (Q) - 1 then Element (Q, I) = Element (Q'Old, I)));
    -- The source lost input upstream: keep every retained report and flag

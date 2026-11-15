@@ -25,6 +25,8 @@ with PS2_Boot_Probe;
 with Input_Pending;
 with Pointer_Pending;
 with Keyboard_Pending;
+with Input_Stamps;
+with CuBit.Monotonic;
 
 procedure main is
    use ASCII;
@@ -229,8 +231,8 @@ procedure main is
             delivery => ACCUMULABLE_DISPLACEMENT,
             flags => (RESYNCHRONIZE => pending.Recover),
             payload => pending.Payload,
-            snapshot => Pointer_Snapshot (pending.Payload, pending.Observed_Ms));
-         exit when not trySendEvent (mouseConsumer, Encode (report), Startup.Mouse_Events);
+            snapshot => Input_Stamps.Snapshot (pending.Payload, pending));
+         exit when not trySendEvent (mouseConsumer, Input_Stamps.Encode (report, pending), Startup.Mouse_Events);
          Pointer_Pending.Acknowledge (pointerPending);
       end loop;
    end flushPointer;
@@ -244,11 +246,12 @@ procedure main is
       for Attempt in 1 .. Input_Pending.Capacity loop
          exit when kbdConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
          pending := Keyboard_Pending.Element (keyboardPending, 0);
-         exit when not trySendEvent (kbdConsumer, Encode
+         exit when not trySendEvent (kbdConsumer, Input_Stamps.Encode
            (Source_Report'(sourceIdentity => 0, sequence => pending.Sequence,
             generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
             flags => (RESYNCHRONIZE => pending.Recover),
-            payload => pending.Payload, snapshot => 0)), Startup.Keyboard_Events);
+            payload => pending.Payload, snapshot => Input_Stamps.Snapshot (0, pending)), pending),
+            Startup.Keyboard_Events);
          Keyboard_Pending.Acknowledge (keyboardPending);
       end loop;
    end flushKeyboard;
@@ -257,7 +260,9 @@ procedure main is
       added : Keyboard_Pending.Frame_Length;
       lost : Boolean;
    begin
-      Keyboard_Pending.Append_Byte (keyboardPending, code, added, lost);
+      --  The acquisition stamp (LAT-002): the byte was read just now.
+      Keyboard_Pending.Append_Byte (keyboardPending, code, added, lost,
+                                    Observed_Us => CuBit.Monotonic.Microseconds);
       if kbdConsumer = No_Process then
          -- Consume framing even without a receiver; never retain old input
          -- for a replacement consumer or deliver an orphan prefix suffix.
@@ -333,7 +338,8 @@ procedure main is
             end if;
 
             Pointer_Pending.Append
-              (pointerPending, report, syscall (SYSCALL_GETTIME), outcome);
+              (pointerPending, report, syscall (SYSCALL_GETTIME), outcome,
+               Observed_Us => CuBit.Monotonic.Microseconds);
             if outcome = Pointer_Pending.Overflowed and then
               not pointerOverflowReported
             then

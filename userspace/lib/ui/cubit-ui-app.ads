@@ -224,6 +224,9 @@ package CuBit.UI.App is
        dirty : in out CuBit.UI.Rect;
        running : in out Boolean) is null;
 
+   --  The default recovery hook: nothing unsaved to keep.
+   procedure No_Recovery (win : in out Window; reason : CuBit.UI.Input.Close_Reason) is null;
+
    generic
       --  Run owns pointer routing and minimal damage. Migrated controls update
       --  retained state before paint; Render declaratively reconciles them by
@@ -266,6 +269,19 @@ package CuBit.UI.App is
           dirty : in out CuBit.UI.Rect;
           running : in out Boolean)
          is No_Completion;
+      --  Closing (PWR-003): procmgr's Stop (the kernel's control event)
+      --  reaches every app as an INPUT_CLOSE_REQUEST whose reason is
+      --  System_Shutdown (CuBit.UI.Input.Close_Reason_Of), with no
+      --  per-app plumbing. Before Handle_Event sees it, Run calls
+      --  Save_Recovery: an app with unsaved work writes a recovery copy
+      --  there (CuBit.UI.Recovery: its place and format), never over the
+      --  user's file, and promptly: shutdown is never stalled by default
+      --  (procmgr ends an app after its grace). Handle_Event then ends Run
+      --  (running := False) as for any close. Programs that wait without
+      --  Activity_Wait see the Stop at their next input or deadline.
+      with procedure Save_Recovery
+         (win : in out Window; reason : CuBit.UI.Input.Close_Reason)
+         is No_Recovery;
    procedure Run (win : in out Window);
    APPLICATION_TOKEN_FIRST : constant Interfaces.Unsigned_64 := 2 ** 48;
 

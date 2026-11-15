@@ -26,6 +26,7 @@ with Text_Test_Support; use Text_Test_Support;
 --  screenshot set (build/screen-*.ppm; run.sh converts them to PNG).
 procedure Text_View_Tests is
    use type Text_Syntax.Language;
+   use type Text_Shell.Probe_Result;
    REPO : constant String := "/home/doc/git/cubit";
    SCRATCH : constant String := "/home/doc/cubit-build-tmp/text-editor/files";
    WIDTH : constant := 1400;
@@ -795,6 +796,23 @@ begin
    Hit (End_Key, Control => True);
    Check (Primary (D.all).Head = Length (D.all), "Ctrl+End: the end of the line");
    Shot ("long-line");
+
+   Section ("recovery copies open only when present (PWR-003)");
+   declare
+      Before : constant Tab_Count := Tabs (App);
+   begin
+      Open_If_Present (App, SCRATCH & "/no-recovery-copy.txt");
+      Check (Settle (App, Target), "a missing copy settles");
+      Check (Probe (App) = Missing and then Tabs (App) = Before, "a missing copy: no tab, Missing");
+      Write_File (SCRATCH & "/recovery-1.txt", "unsaved work" & ASCII.LF);
+      Open_If_Present (App, SCRATCH & "/recovery-1.txt");
+      Check (Settle (App, Target), "a present copy settles");
+      Check (Probe (App) = Found and then Tabs (App) = Before + 1
+             and then Content (D.all) = "unsaved work" & ASCII.LF, "a present copy: opened, Found");
+      Check (Status_Message (App)'Length > 0
+             and then Status_Message (App) (Status_Message (App)'First .. Status_Message (App)'First + 8) = "Restored ",
+             "a present copy: the restore note");
+   end;
 
    Summary;
 end Text_View_Tests;

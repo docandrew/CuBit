@@ -14,8 +14,11 @@ package Keyboard_Pending with SPARK_Mode, Pure is
    -- E0 pairs and E1 six-byte groups enter the queue as complete groups.
    -- Reserve room for the whole group before appending any byte. Overflow
    -- drops the old backlog and marks the FIRST new byte for resynchronization.
+   --  Observed_Us: the group's acquisition time in microseconds, stored on
+   --  each of its bytes (Word'Last: unstamped).
    procedure Append_Byte (S : in out State; Value : Byte;
-                          Added : out Frame_Length; Lost : out Boolean)
+                          Added : out Frame_Length; Lost : out Boolean;
+                          Observed_Us : Word := Word'Last)
      with Pre => Valid (S), Post => Valid (S) and
        (if Added = 0 then not Lost and Count (S) = Count (S'Old)
         else Count (S) = (if Lost then Added else Count (S'Old) + Added)) and

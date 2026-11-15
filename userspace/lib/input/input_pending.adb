@@ -6,7 +6,7 @@ package body Input_Pending with SPARK_Mode is
    end Acknowledge;
 
    procedure Append (Q : in out Queue; Payload : Word; Lost : out Boolean;
-                     Observed_Ms : Word := Word'Last) is
+                     Observed_Ms : Word := Word'Last; Observed_Us : Word := Word'Last) is
    begin
       Lost := Q.Used = Capacity;
       if Lost then
@@ -15,7 +15,7 @@ package body Input_Pending with SPARK_Mode is
       end if;
       Q.Last_Sequence := Next_Sequence (Q.Last_Sequence);
       Q.Data ((Q.Head + Q.Used) mod Capacity) :=
-        (Payload, Q.Last_Sequence, Lost or Q.Recover_Next, Observed_Ms);
+        (Payload, Q.Last_Sequence, Lost or Q.Recover_Next, Observed_Ms, Observed_Us);
       Q.Recover_Next := False;
       Q.Used := Q.Used + 1;
    end Append;

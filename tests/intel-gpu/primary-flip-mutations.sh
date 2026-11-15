@@ -13,7 +13,8 @@ mutate() { # name file python-replace-old python-replace-new
   for mode in contracts model; do
     rm -rf "$WORK/src" "$WORK/obj"; mkdir -p "$WORK/src" "$WORK/obj"
     cp "$SRC"/intel_gpu_flip_state.ad? "$SRC"/intel_gpu_vblank_clock.ad? \
-       "$SRC"/intel_gpu_primary_flip.ad? "$HERE/primary_flip_tests.adb" "$WORK/src/"
+       "$SRC"/intel_gpu_primary_flip.ad? "$HERE/primary_flip_tests.adb" \
+       "$ROOT"/userspace/runtime/gnat/cubit.ads "$ROOT"/userspace/runtime/gnat/cubit-present_timing.ad? "$WORK/src/"
     OLD="$old" NEW="$new" python3 - "$WORK/src/$file" <<'PY'
 import os,sys
 p=sys.argv[1]; s=open(p).read(); o=os.environ['OLD']; n=os.environ['NEW']
@@ -53,4 +54,15 @@ mutate zero-surface-sentinel intel_gpu_primary_flip.adb \
   "      Problem := Ready_To_Flip;
       if (Firmware_Surface" "      Problem := (if Firmware_Surface = 0 then Not_Called else Ready_To_Flip);
       if (Firmware_Surface"
+# LAT-002: the vblank clock and latch timing (timed model).
+mutate vblank-at-observation intel_gpu_primary_flip.adb \
+  "      Vblank_Us := Now;
+      if VC.Valid (Geometry)" "      Vblank_Us := Now;
+      if False and then VC.Valid (Geometry)"
+mutate period-from-cpu-clock intel_gpu_primary_flip.adb \
+  "         Stamps_Read := Stamp_Now /= Unsigned_32'Last and then Stamp_Now /= Last_Stamp;" \
+  "         Stamps_Read := False;"
+mutate scanline-lead-ignored intel_gpu_vblank_clock.adb \
+  "      Scanline : constant Natural := (Position + G.Lead) mod G.Total;" \
+  "      Scanline : constant Natural := (Position + G.Lead + 40) mod G.Total;"
 exit $status

@@ -38,6 +38,10 @@ package Desktop_Endpoints with SPARK_Mode => Off is
      (if Startup.Wifi.Present then Startup.Wifi.Value else CuBit.Handles.No_Endpoint);
    Net_Manager     : constant CuBit.Handles.Endpoint :=
      (if Startup.Netmgr.Present then Startup.Netmgr.Value else CuBit.Handles.No_Endpoint);
+   --  power.svc, badged as Desktop's requester (Shut Down...); null when the
+   --  profile starts no power.svc (the item then says so).
+   Power_Service   : constant CuBit.Handles.Endpoint :=
+     (if Startup.Power.Present then Startup.Power.Value else CuBit.Handles.No_Endpoint);
 
    --  The admitted render session, or the null handle (software start).
    function Render return CuBit.Handles.Endpoint with Global => null;

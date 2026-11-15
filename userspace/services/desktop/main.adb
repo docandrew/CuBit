@@ -46,6 +46,9 @@ with Glyph_Pen;
 with Compositor_Sampling;
 with Compositor_Row_Copy;
 with Compositor_Elapsed;
+with Compositor_Latency;
+with Desktop_Latency_Report;
+with CuBit.Present_Timing;
 with Compositor_Stage_Metrics;
 with Compositor_Work_Metrics;
 with Compositor_Frame_Trace;
@@ -126,6 +129,7 @@ with Desktop_Deskbar_Style;
 with Desktop_Status_Items;
 with Desktop_Launch_Refresh;
 with CuBit.Child_Exits;
+with CuBit.Control_Events;
 with CuBit.Launch_Arguments;
 with Desktop_Status_Refresh;
 with Desktop_Network_Refresh;
@@ -143,6 +147,7 @@ with CuBit.Net_Manager_Report;
 with CuBit.Net_Link;
 with Desktop_GPU_Wake;
 with Desktop_Launch_Menus;
+with Desktop_Shutdown;
 with Desktop_Clipboard;
 with Desktop_Capture;
 with Desktop_Capture_Policy;
@@ -1177,8 +1182,12 @@ procedure main is
    --  category's submenu lists its entries (Desktop_Launch_Menus).
    launchMenuState : Desktop_Launch_Menus.Menu_State;
    package LM renames Desktop_Launch_Menus;
+   use type Desktop_Shutdown.Phase;
    function launchRows return Natural is (LM.Rows (launchMenu));
-   function launchPowerRow return Natural is (LM.Power_Row (launchMenu));
+   --  The power rows under the separator: Restart... (disabled until there
+   --  is a platform reset path) and Shut Down... (PWR-003).
+   function launchRestartRow return Natural is (LM.Restart_Row (launchMenu));
+   function launchShutDownRow return Natural is (LM.Shut_Down_Row (launchMenu));
 
    type Pointer_Action is
      (DRAG_NONE, DRAG_MOVE, DRAG_RESIZE_E, DRAG_RESIZE_S, DRAG_RESIZE_SE,
@@ -1226,7 +1235,7 @@ procedure main is
    SUBMENU_PAD    : constant Natural := CuBit.UI_Metrics.Space_S + CuBit.UI_Metrics.Space_XS;
 
    function MENU_H return Natural is
-     (LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2 + 8 + LAUNCH_STEP);
+     (LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2 + 8 + LM.POWER_ROWS * LAUNCH_STEP);
    pragma Compile_Time_Error
      (MAX_SURFACES /= TG.Max_Windows, "Desktop_Task_Groups covers the surface table");
    pragma Compile_Time_Error
@@ -1527,6 +1536,12 @@ procedure main is
    --  Intake of the oldest input not yet shown by a submitted frame
    --  (Input_To_Present metric); Unavailable when none is waiting.
    pendingInputUs    : Unsigned_64 := Compositor_Elapsed.Unavailable;
+   --  LAT-002: key presses followed to their photon (Compositor_Latency),
+   --  the press being dispatched now, and the interval's statistics.
+   latencyLedger : Compositor_Latency.Ledger;
+   latencyStats : Compositor_Latency.Stats;
+   latencyInput : Compositor_Latency.Slot := Compositor_Latency.No_Slot;
+   use type Compositor_Latency.Slot;
    MICROSECONDS_PER_MILLISECOND : constant := 1_000;
    lastEventDrops    : Unsigned_64 := 0;
    lastInputQueueOverflows : Unsigned_64 := 0;
@@ -2477,7 +2492,8 @@ procedure main is
                          w => MENU_W, h => MENU_H));
    end launchMenuRect;
 
-   --  A top row: a category (1 .. launchRows) or Power (launchPowerRow).
+   --  A top row: a category (1 .. launchRows), then Restart... and Shut
+   --  Down... under the separator.
    function launchItemRect (row : Natural) return Rect is
       menu : constant Rect := launchMenuRect;
       y    : Natural;
@@ -2486,8 +2502,9 @@ procedure main is
          return (others => 0);
       end if;
 
-      if row = launchPowerRow then
-         y := menu.y + LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2 + 8;
+      if row in launchRestartRow | launchShutDownRow then
+         y := menu.y + LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2 + 8
+              + (row - launchRestartRow) * LAUNCH_STEP;
       elsif row <= launchRows then
          y := menu.y + LAUNCH_FIRST_Y + (row - 1) * LAUNCH_STEP;
       else
@@ -2876,7 +2893,7 @@ procedure main is
    --  The top row under (x, y), 0 for none.
    function hitLaunchItem (x, y : Natural) return Natural is
    begin
-      for row in 1 .. launchPowerRow loop
+      for row in 1 .. launchShutDownRow loop
          if pointInRect (x, y, launchItemRect (row)) then
             return row;
          end if;
@@ -3570,9 +3587,21 @@ procedure main is
                         end if;
                         framePending := True;
                         frameDamage := (x => 0, y => 0, w => fbWidth, h => fbHeight);
+                        Compositor_Latency.Dropped (latencyLedger, latencyStats, Expected_Token);
                      else
                         CP.Complete (P.Transfer, Reply);
                         if CP.Writable (P.Transfer) then P.Dropped_In_Row := 0; end if;
+                        --  LAT-002: the backend's timing of this frame's latch.
+                        declare
+                           Seen : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+                        begin
+                           Compositor_Latency.Completed
+                             (latencyLedger, latencyStats, Expected_Token,
+                              (if result.Valid and then result.Value.Result.Outcome = DSP.Published and then
+                                  Seen /= CuBit.Monotonic.Unavailable_Us
+                               then CuBit.Present_Timing.Expand (result.Value.Result.Timing, Seen)
+                               else CuBit.Present_Timing.No_Timing), Seen);
+                        end;
                      end if;
                      BP.Retire_Display (P.Pool, BP.Displayed (P.Pool), CP.Writable (P.Transfer));
                      if not CP.Writable (P.Transfer) or else BP.Faulted (P.Pool) or else
@@ -3694,6 +3723,9 @@ procedure main is
       Accepted := capSubmit (Desktop_Endpoints.Display_Service, request, CP.Token (P.Transfer));
       CP.Submitted (P.Transfer, Accepted, Attempt_Time);
       if Accepted then
+         Compositor_Latency.Submitted
+           (latencyLedger, Compositor_Latency.Output_Number (Output), CP.Token (P.Transfer),
+            CuBit.Monotonic.Microseconds);
          if Desktop_Compositor.Full_Output and then not gpuProgress (Output).Published then
             gpuProgress (Output).Submitted := Held;
          end if;
@@ -3729,6 +3761,29 @@ procedure main is
          noteTiming (Submit_Call, P.Started_Us);
       end if;
    end submitPreparedOutput;
+
+   --  LAT-002: Output's damage was captured for a new frame.
+   procedure latencyCompose (Output : Output_Index; Damage : Compositor_Damage.State) is
+      Pixels : Unsigned_64 := 0;
+   begin
+      for I in 1 .. Compositor_Damage.Count (Damage) loop
+         declare
+            B : constant Compositor_Damage.Box := Compositor_Damage.Item (Damage, I);
+         begin
+            if Compositor_Damage.Valid (B) then
+               Pixels := Pixels + Unsigned_64 (B.Right - B.Left) * Unsigned_64 (B.Bottom - B.Top);
+            end if;
+         end;
+      end loop;
+      Compositor_Latency.Compose
+        (latencyLedger, Compositor_Latency.Output_Number (Output),
+         --  The GPU renders full output frames (Vulkan); the CPU software
+         --  renderer behind the native scene, the direct back buffer and the
+         --  bootstrap frame are the CPU path (desktop.render.gpu false).
+         (if nativeScene and then Desktop_Compositor.Full_Output and then not Bootstrap_CPU
+          then Compositor_Latency.GPU else Compositor_Latency.CPU),
+         Pixels, Unsigned_64 (Compositor_Damage.Count (Damage)), CuBit.Monotonic.Microseconds);
+   end latencyCompose;
 
    procedure pumpOutput (Output : Output_Index) is
       P : Output_Presentation renames presentations (Output);
@@ -3853,6 +3908,7 @@ procedure main is
          end if;
          Compositor_Damage.Capture (P.Damage, P.Frame_Damage, Captured);
          if not Captured then exitCompositor (1); end if;
+         latencyCompose (Output, P.Frame_Damage);
          if Bootstrap_CPU then
             renderOutput (Output, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
          elsif not directOutput then
@@ -3992,6 +4048,8 @@ procedure main is
          backBufferAddr := P.Buffer;
          cursorSaveValid := False;
       end if;
+      Compositor_Latency.Frame_Ready
+        (latencyLedger, Compositor_Latency.Output_Number (Output), CuBit.Monotonic.Microseconds);
       -- A refused IPC must not leave input drawing into the held target.
       submitPreparedOutput (Output);
    end pumpOutput;
@@ -5385,6 +5443,7 @@ procedure main is
 
                if not occluded then
                   declare Draw_Started : constant Unsigned_64 := timingNow;
+                     Latency_Draw_Started : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
                   begin
                   statsFastFrames := statsFastFrames + 1;
                   restoreCursorOverlay;
@@ -5404,6 +5463,7 @@ procedure main is
                   noteCursorPresented;
 
                   flushBackBufferRect (r);
+                  Compositor_Latency.Drew (latencyLedger, Latency_Draw_Started, CuBit.Monotonic.Microseconds);
                   noteTiming (Scene_Draw, Draw_Started);
                   return True;
                   end;
@@ -5856,6 +5916,79 @@ procedure main is
          when CCL.Interfaces.Desktop_Launch.Tools => Desktop_Icons.Category_Tools,
          when CCL.Interfaces.Desktop_Launch.Reference => Desktop_Icons.Category_Reference);
 
+   ---------------------------------------------------------------------------
+   --  The shutdown confirmation (Desktop_Shutdown): a small system dialog,
+   --  centred on the primary output, keyboard first (Enter = Shut Down,
+   --  Escape = Cancel); the default button in the accent. After power.svc
+   --  accepts, it says "Shutting down..." until Desktop is stopped.
+   ---------------------------------------------------------------------------
+   DIALOG_W : constant Natural := 30 * CuBit.UI_Metrics.Base_Em;
+   DIALOG_H : constant Natural := 8 * CuBit.UI_Metrics.Base_Em;
+   DIALOG_BUTTON_W : constant Natural := 7 * CuBit.UI_Metrics.Base_Em;
+   DIALOG_BUTTON_H : constant Natural := 2 * CuBit.UI_Metrics.Base_Em;
+   DIALOG_PAD : constant Natural := CuBit.UI_Metrics.Space_M;
+
+   function shutdownDialogRect return Rect is
+      B : constant Rect := primaryBounds;
+   begin
+      if Desktop_Shutdown.Current = Desktop_Shutdown.Closed or else B.w < DIALOG_W or else B.h < DIALOG_H then
+         return (others => 0);
+      end if;
+      return clampRect ((x => B.x + (B.w - DIALOG_W) / 2, y => B.y + (B.h - DIALOG_H) / 3,
+                         w => DIALOG_W, h => DIALOG_H));
+   end shutdownDialogRect;
+
+   --  The default (Shut Down) button, or Cancel to its left.
+   function shutdownButtonRect (default : Boolean) return Rect is
+      D : constant Rect := shutdownDialogRect;
+   begin
+      if isEmpty (D) or else Desktop_Shutdown.Current = Desktop_Shutdown.Shutting_Down then
+         return (others => 0);
+      end if;
+      return clampRect
+        ((x => D.x + D.w - DIALOG_PAD - DIALOG_BUTTON_W - (if default then 0 else DIALOG_BUTTON_W + DIALOG_PAD),
+          y => D.y + D.h - DIALOG_PAD - DIALOG_BUTTON_H, w => DIALOG_BUTTON_W, h => DIALOG_BUTTON_H));
+   end shutdownButtonRect;
+
+   procedure drawShutdownDialog is
+      D : constant Rect := shutdownDialogRect;
+      Line : constant Natural := CuBit.Fonts.Line_Height;
+
+      procedure Button (default : Boolean; label : String) is
+         R : constant Rect := shutdownButtonRect (default);
+         bg : constant Unsigned_32 := (if default then C_ACCENT else C_PANEL);
+         fg : constant Unsigned_32 := (if default then C_WHITE else C_TEXT);
+      begin
+         if isEmpty (R) then
+            return;
+         end if;
+         fillRect (R.x, R.y, R.w, R.h, bg);
+         strokeRect (R.x, R.y, R.w, R.h, C_EDGE, C_SHADOW);
+         drawUIText (R.x + (R.w - Natural'Min (R.w, uiTextWidth (label))) / 2,
+                     R.y + (R.h - Natural'Min (R.h, Line)) / 2, label, fg, bg);
+      end Button;
+   begin
+      if isEmpty (D) then
+         return;
+      end if;
+      fillRect (D.x, D.y, D.w, D.h, C_PANEL);
+      strokeRect (D.x, D.y, D.w, D.h, C_EDGE, C_SHADOW);
+      fillRect (D.x, D.y, 4, D.h, C_ACCENT);
+      case Desktop_Shutdown.Current is
+         when Desktop_Shutdown.Shutting_Down =>
+            drawUIText (D.x + DIALOG_PAD + 4, D.y + DIALOG_PAD, Desktop_Shutdown.Progress_Text, C_TEXT, C_PANEL);
+         when Desktop_Shutdown.Refused =>
+            drawUIText (D.x + DIALOG_PAD + 4, D.y + DIALOG_PAD, Desktop_Shutdown.Note, C_TEXT, C_PANEL);
+            Button (True, "OK");
+         when others =>
+            drawUIText (D.x + DIALOG_PAD + 4, D.y + DIALOG_PAD, Desktop_Shutdown.Title_Text, C_TEXT, C_PANEL);
+            drawUIText (D.x + DIALOG_PAD + 4, D.y + DIALOG_PAD + Line + CuBit.UI_Metrics.Space_XS,
+                        Desktop_Shutdown.Body_Text, C_MUTED, C_PANEL);
+            Button (False, Desktop_Shutdown.Cancel_Text);
+            Button (True, Desktop_Shutdown.Confirm_Text);
+      end case;
+   end drawShutdownDialog;
+
    procedure drawLaunchMenu is
       r : constant Rect := launchMenuRect;
 
@@ -5915,7 +6048,15 @@ procedure main is
       begin
          fillRect (sep.x, sep.y, sep.w, sep.h, C_EDGE);
       end;
-      drawRow (launchItemRect (launchPowerRow), False, Desktop_Icons.Power, "Power", C_MUTED, False);
+      --  Restart... is shown greyed (LM.Restart_Enabled): no platform reset
+      --  path yet. Shut Down... asks for one confirmation.
+      drawRow (launchItemRect (launchRestartRow),
+               LM.Restart_Enabled and then launchMenuState.Row = launchRestartRow
+                 and then not launchMenuState.In_Submenu,
+               Desktop_Icons.Power, "Restart...", (if LM.Restart_Enabled then C_TEXT else C_MUTED), False);
+      drawRow (launchItemRect (launchShutDownRow),
+               launchMenuState.Row = launchShutDownRow and then not launchMenuState.In_Submenu,
+               Desktop_Icons.Power, "Shut Down...", C_TEXT, False);
 
       --  The open category's submenu, in the same look.
       declare
@@ -6579,6 +6720,7 @@ procedure main is
       drawDeskbarPanel;
       panelShown := (if deskbarPanelOpen then panelRect else (others => 0));
       drawClipboardMenu;
+      drawShutdownDialog;
       drawToast;
       drawTooltip;
    end drawDesktopShell;
@@ -7255,6 +7397,7 @@ procedure main is
 
    procedure flushFrame is
       damage : Rect := frameDamage;
+      Latency_Draw_Started : Unsigned_64;
       t0 : Unsigned_64;
       t1 : Unsigned_64;
       Draw_Started : Unsigned_64;
@@ -7274,6 +7417,7 @@ procedure main is
          damage.w = fbWidth and then damage.h = fbHeight;
 
       Draw_Started := timingNow;
+      Latency_Draw_Started := CuBit.Monotonic.Microseconds;
       t0 := syscall (SYSCALL_GETTIME);
       if full then
          redraw;
@@ -7292,6 +7436,7 @@ procedure main is
       end if;
       noteCursorPresented;
       t1 := syscall (SYSCALL_GETTIME);
+      Compositor_Latency.Drew (latencyLedger, Latency_Draw_Started, CuBit.Monotonic.Microseconds);
 
       noteTiming (Scene_Draw, Draw_Started);
       statsFrames := statsFrames + 1;
@@ -8134,7 +8279,14 @@ procedure main is
                -- A wrapped serial could alias an already consumed event.
                debugPrint ("desktop: input serials exhausted" & LF);
                exitCompositor (1);
-            when IQ.Appended | IQ.Motion_Replaced => null;
+            when IQ.Appended =>
+               if kind = INPUT_KEY_DOWN and then latencyInput /= Compositor_Latency.No_Slot and then
+                 IQ.Newest (queue) /= -1
+               then
+                  Compositor_Latency.Route
+                    (latencyLedger, latencyInput, target, queue (IQ.Newest (queue)).Serial);
+               end if;
+            when IQ.Motion_Replaced => null;
          end case;
       end;
 
@@ -8169,6 +8321,10 @@ procedure main is
             found := Selected /= -1;
          end if;
       end;
+      if found then
+         Compositor_Latency.Delivered
+           (latencyLedger, target, event.serial, CuBit.Monotonic.Microseconds);
+      end if;
       if found and then Trace_Enabled then
          -- Removal from the queue precedes the IPC reply. This timestamp is
          -- neither hardware arrival nor proof the application handled input.
@@ -8918,6 +9074,9 @@ procedure main is
                                     S.serial := S.serial + 1;
                                     noteContentChange (S, Source_Rows);
                                     S.publicationInputAfter := Decoded.Value.Input_After;
+                                    Compositor_Latency.Published
+                                      (latencyLedger, S.id, Decoded.Value.Input_After,
+                                       CuBit.Monotonic.Microseconds);
                                     if Trace_Enabled then
                                        -- Capture the accepted publication identity; both
                                        -- exporters perform bounded appends without IPC.
@@ -11618,7 +11777,24 @@ procedure main is
          end;
       end if;
 
-      if leftDown and then not leftWasDown then
+      if leftDown and then not leftWasDown
+        and then Desktop_Shutdown.Current in Desktop_Shutdown.Confirming | Desktop_Shutdown.Refused
+      then
+         --  The confirmation is modal: its buttons, nothing else.
+         damage := unionRect (damage, inflateRect (shutdownDialogRect, 4));
+         if pointInRect (cursorX, cursorY, shutdownButtonRect (True)) then
+            if Desktop_Shutdown.Current = Desktop_Shutdown.Confirming then
+               Desktop_Shutdown.Confirm;
+            else
+               Desktop_Shutdown.Dismiss;
+            end if;
+         elsif pointInRect (cursorX, cursorY, shutdownButtonRect (False)) then
+            Desktop_Shutdown.Cancel;
+            Desktop_Shutdown.Dismiss;
+         end if;
+         damage := unionRect (damage, inflateRect (shutdownDialogRect, 4));
+         handledChromeClick := True;
+      elsif leftDown and then not leftWasDown then
          leaveTaskbarFocus (damage);
          if shellSurfaceVisible and then
             pointInRect (cursorX, cursorY, launchButtonRect)
@@ -11657,8 +11833,10 @@ procedure main is
             begin
                damage := unionRect (damage, inflateRect (launchMenuArea, 4));
                LM.Click_Row (launchMenuState, launchMenu, hitLaunchItem (cursorX, cursorY), result);
-               if result = LM.Power then
+               if result = LM.Shut_Down then
                   launchMenuOpen := False;
+                  Desktop_Shutdown.Ask;
+                  damage := unionRect (damage, inflateRect (shutdownDialogRect, 4));
                end if;
                damage := unionRect (damage, inflateRect (launchMenuArea, 4));
             end;
@@ -12005,7 +12183,9 @@ procedure main is
          return KR.Deskbar;
       elsif clipboardMenuOpen then
          return KR.Clipboard_Manager;
-      elsif launchMenuOpen then
+      --  The shutdown confirmation owns the keyboard as the Apps menu does.
+      elsif launchMenuOpen or else Desktop_Shutdown.Current in Desktop_Shutdown.Confirming | Desktop_Shutdown.Refused
+      then
          return KR.Apps_Menu;
       elsif toastShown and then not extended and then code = KEY_ESCAPE then
          return KR.Notice_Toast;
@@ -12110,7 +12290,24 @@ procedure main is
             --  The compositor owns keyboard input while its Apps menu
             --  is open. Swallow both presses and releases so the focused
             --  client cannot observe half of a key transition.
-            if not release then
+            if not release and then
+              Desktop_Shutdown.Current in Desktop_Shutdown.Confirming | Desktop_Shutdown.Refused
+            then
+               --  The confirmation: Enter = Shut Down, Escape = Cancel.
+               damage := unionRect (damage, inflateRect (shutdownDialogRect, 4));
+               if code = KEY_ENTER then
+                  if Desktop_Shutdown.Current = Desktop_Shutdown.Confirming then
+                     Desktop_Shutdown.Confirm;
+                  else
+                     Desktop_Shutdown.Dismiss;
+                  end if;
+               elsif code = KEY_ESCAPE then
+                  Desktop_Shutdown.Cancel;
+                  Desktop_Shutdown.Dismiss;
+               end if;
+               damage := unionRect (damage, inflateRect (shutdownDialogRect, 4));
+               scheduleRedrawRect (inflateRect (damage, 2));
+            elsif not release then
                declare
                   --  Set-1 arrow scancodes (sent after the extended prefix).
                   KEY_LEFT_ARROW : constant Unsigned_8 := 16#4B#;
@@ -12136,7 +12333,11 @@ procedure main is
                   if result = LM.Launch then
                      launchMenuOpen := False;
                      performLaunchAction (entryIndex, damage);
-                  elsif result in LM.Close | LM.Power then
+                  elsif result = LM.Shut_Down then
+                     launchMenuOpen := False;
+                     Desktop_Shutdown.Ask;
+                     damage := unionRect (damage, inflateRect (shutdownDialogRect, 4));
+                  elsif result in LM.Close | LM.Restart then
                      launchMenuOpen := False;
                   end if;
                end;
@@ -12250,6 +12451,35 @@ procedure main is
          end if;
          return;
       end if;
+      --  procmgr's Stop (a kernel control event, LIVE-002): a system
+      --  generation is replacing Desktop ((replace graceful) in the startup
+      --  plan), or the system is shutting down. Desktop leaves its loop the
+      --  way the exit key does: every surface buffer and output lease goes
+      --  back to Display, output retirement drains, then it exits 0 (the
+      --  end of main), which procmgr reads as "quiesced". The GPU session
+      --  ends with the process; the driver reclaims it as for any client
+      --  that ends. Windows of apps Desktop hosts are not handed over
+      --  (UI-037): they disappear with this instance.
+      if publisher = No_Process and then
+        eventMsg.tag.label = CuBit.Control_Events.Control_Label
+      then
+         declare
+            use type CuBit.Control_Events.Event_Kind;
+            use type CuBit.Control_Events.Control_Kind;
+            Event : constant CuBit.Control_Events.Event :=
+              CuBit.Control_Events.Decode
+                (eventMsg.tag.label, eventMsg.tag.length,
+                 eventMsg.words (0), eventMsg.words (1), eventMsg.words (2));
+         begin
+            if Event.Kind = CuBit.Control_Events.Control and then
+              Event.Control = CuBit.Control_Events.Stop and then running
+            then
+               Desktop_Logs.Write ("desktop: stop requested; releasing the display" & LF);
+               running := False;
+            end if;
+         end;
+         return;
+      end if;
       DI.Observe_Raw (Input_Diagnostic, eventMsg.tag.label = CuBit.Input.OP_SOURCE_REPORT, eventMsg.tag.label,
         eventMsg.words (1), eventMsg.words (2), eventMsg.words (3), Diagnostic_Last_Us);
 
@@ -12342,7 +12572,15 @@ procedure main is
                   if updateDesktopModifierKey (raw) then
                      null;
                   end if;
+                  --  LAT-002: follow a driver's key press to its photon.
+                  if sourceAccepted and then (raw and 16#80#) = 0 then
+                     Compositor_Latency.Intake
+                       (latencyLedger, CuBit.Input.Source_Time_Us (eventMsg),
+                        CuBit.Monotonic.Microseconds, sourceReport.sequence, latencyInput);
+                  end if;
                   deliverKey (raw, extended, where, False, running);
+                  Compositor_Latency.Forget_Unrouted (latencyLedger, latencyInput);
+                  latencyInput := Compositor_Latency.No_Slot;
                end if;
             end;
          end if;
@@ -14004,6 +14242,7 @@ begin
          turnStartedUs := dispatchNow;
          turnWork := (statsEvents, statsRequests, statsPresentOps);
          collectPresentations;
+         Desktop_Latency_Report.Tick (latencyLedger, latencyStats, CuBit.Monotonic.Microseconds);
          if outputChangeNoticed and then not outputDrainRequested and then
            not outputReopenPending and then not shutdownRequested
          then
@@ -14252,6 +14491,8 @@ begin
       end;
    end if;
 
+   Desktop_Logs.Write ("desktop: stopped; display released, exiting 0" & LF);
+   Desktop_Log_IO.Flush;
    if syscall (SYSCALL_EXIT, 0) = Unsigned_64'Last then
       null;
    end if;

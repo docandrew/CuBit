@@ -32,6 +32,9 @@
   # Absent on profiles without them; the items then stay hidden.
   (request-service-optional wifi read-write wifi)
   (request-service-optional netmgr read-write netmgr)
+  # Shut Down... in the Apps menu (PWR-003): power.svc, as Desktop's own
+  # requester badge (CuBit.Power_Requests; startup plan only).
+  (request-service-optional power-desktop read-write power)
   # The status area's CPU and memory bars (UI-027): the kernel's per-CPU
   # times page, mapped read-only (KERN-002); read without a system call.
   (request-publication cpu-times)

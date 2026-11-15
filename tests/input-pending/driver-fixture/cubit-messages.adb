@@ -106,6 +106,8 @@ package body CuBit.Messages is
       pragma Assert (Report.payload = Payload);
       pragma Assert ((Report.snapshot and 16#FF#) = (Payload and 16#FF#));
       pragma Assert (CuBit.Input.Pointer_Time (Report.snapshot) = 100);
+      --  LAT-002: the sub-millisecond part rides in the header.
+      pragma Assert (CuBit.Input.Source_Time_Us (Authenticated) = 100_250);
       return True;
    end trySendEvent;
    function Poll_Event (Msg : out Message) return Boolean is
