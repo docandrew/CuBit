@@ -17,7 +17,6 @@ with Process_Memory_Budget;
 with Boot_Framebuffer;
 with Multiboot;
 with Capabilities;
-with Capabilities.IRQ;
 with Capabilities.Operations;
 with Capability_ABI;
 with Capability_Install;

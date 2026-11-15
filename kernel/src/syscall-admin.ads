@@ -146,11 +146,19 @@ is
         arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
         retval           : out Unsigned_64);
 
-    -- SYSCALL_ENABLE_IRQ: a legacy IOAPIC/PIC line (vectors PS2KEYBOARD ..
-    -- IDE2) only; message-signaled devices take allocated device vectors.
-    -- arg0 = vector, arg1 = owner identity, arg2 = route (Line_Route).
-    -- arg3 = a process handle with RIGHT_GRANT for the owner, arg4 = a
-    -- CAP_IRQ handle (RIGHT_GRANT) whose range holds the line.
+    -- SYSCALL_ENABLE_IRQ: a legacy I/O APIC/PIC line (Interrupt_Line_ABI.
+    -- Line_Vector) only; message-signaled devices take allocated device
+    -- vectors. arg0 = vector, arg1 = owner identity, arg2 = the route word
+    -- (Interrupt_Line_ABI.Route_Word: CPU, trigger, polarity). arg3 = a
+    -- process handle with RIGHT_GRANT for the owner, arg4 = a CAP_IRQ handle
+    -- (RIGHT_GRANT) whose range holds the line. Returns an
+    -- Interrupt_Line_ABI.Route_Outcome word (0 = Routed).
+    -- The owner form (arg2 = Interrupt_Line_ABI.Route_Acknowledge): the
+    -- line's owner has cleared its source; a level line held masked since
+    -- its last delivery is unmasked once no owner is still waiting. arg0 =
+    -- the vector, arg4 = the caller's CAP_IRQ (RIGHT_READ) naming exactly
+    -- that line, arg1 = arg3 = 0. Returns Acknowledged_Word (the line's
+    -- delivery count) or a Route_Outcome word.
     procedure handleEnableIrq (callerPID  : Process.ProcessID;
                                arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
                                retval     : out Unsigned_64);

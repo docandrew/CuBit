@@ -20,6 +20,7 @@ with Config;
 with Cpuid;
 with Ioapic;
 with Interrupts;
+with Interrupt_Lines;
 with IPI;
 with TLB_Shootdown;
 with Lapic;
@@ -476,9 +477,9 @@ begin
                     println ("Enabling IDE1");
                     io_apic.enableIRQ (InterruptNumbers.IDE1, 0);
 
-                    -- Store IOAPIC base for later use by modules
-                    Interrupts.setIOAPICBaseAddress (
-                        To_Address (ioapicVirtBase));
+                    -- The legacy lines' controller (Interrupt_Lines).
+                    Interrupt_Lines.Set_IO_APIC (
+                        To_Address (ioapicVirtBase), acpi.ioapicGSIBase);
                 end if;
             end setupIOAPIC;
         end if;

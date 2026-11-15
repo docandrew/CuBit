@@ -7,7 +7,6 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Capabilities.IRQ;
 with Build;
 with Boot_Timer_Probe;
 with Boot_Diagnostics;
@@ -17,7 +16,7 @@ with DMA_Remapping;
 with Device_Memory_Diagnostics;
 with Process_Stops;
 with Device_Memory_Publication;
-with ioapic;
+with Interrupt_Lines;
 with IPC_Labels;
 with InterruptNumbers; use InterruptNumbers;
 with Lapic;
@@ -116,27 +115,31 @@ is
     end eoi;
 
     ---------------------------------------------------------------------------
-    -- dispatchDeviceIRQ
+    -- lineInterrupt
     --
-    -- Legacy PCI INTx is level-triggered and shareable. Deliver the event to
-    -- every process that was explicitly registered for this vector; each
-    -- driver is responsible for checking its own device status before
-    -- acknowledging it.
+    -- A legacy line (Interrupt_Lines): every owner is told. A level line is
+    -- masked before the EOI and stays masked until its owners acknowledge
+    -- (ACKNOWLEDGE_INTERRUPT_LINE) after clearing their source, so it cannot
+    -- re-fire while they work; an edge line is only EOIed. Legacy PCI INTx
+    -- is shareable: each owner checks its own device before acknowledging.
     ---------------------------------------------------------------------------
-    procedure dispatchDeviceIRQ (vector : x86Interrupt) with
+    procedure lineInterrupt (vector : Interrupt_Lines.Line_Vector) with
         SPARK_Mode => On
     is
+        recipients : Interrupt_Lines.Recipient_List;
         dest : Interfaces.Unsigned_64;
     begin
-        for index in Capabilities.IRQ.IRQOwnerIndex loop
-            dest := Capabilities.IRQ.getOwner (vector, index);
+        Interrupt_Lines.Deliver (vector, recipients);
+        eoi (vector);
+        for index in recipients'Range loop
+            dest := recipients (index);
             if dest > 0 and then
                dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
             then
                 Process.IPC.notifyIRQ (Process.ProcessID (dest));
             end if;
         end loop;
-    end dispatchDeviceIRQ;
+    end lineInterrupt;
 
     ---------------------------------------------------------------------------
     -- Interrupt Handler - called from interrupt_handlers.asm. Note that this
@@ -296,18 +299,8 @@ is
                     end if;
                 end if;
                 
-            when PS2KEYBOARD =>
-                -- println ("PS2 Interrupt");
-                eoi (PS2KEYBOARD);
-                dispatchDeviceIRQ (PS2KEYBOARD);
-
-            when IDE1 =>
-                eoi (IDE1);
-                dispatchDeviceIRQ (IDE1);
-
-            when IDE2 =>
-                eoi (IDE2);
-                dispatchDeviceIRQ (IDE2);
+            when Interrupt_Lines.Line_Vector =>
+                lineInterrupt (interruptNumber);
 
             when Device_Vector =>
                 --  A message-signaled vector with at most one owner
@@ -317,10 +310,6 @@ is
                 --  device, so a message arriving after this is not lost.
                 eoi (interruptNumber);
                 Device_Interrupts.deliver (interruptNumber);
-
-            when INVALID .. COPROCESSOR =>
-                eoi (interruptNumber);
-                dispatchDeviceIRQ (interruptNumber);
 
             when RESCHEDULE =>
                 eoi (RESCHEDULE);
@@ -780,21 +769,6 @@ is
     end createIDT;
 
     ---------------------------------------------------------------------------
-    -- IOAPIC base address for enableDeviceIRQ
-    ---------------------------------------------------------------------------
-    ioapicAddr : System.Address := System.Null_Address;
-
-    ---------------------------------------------------------------------------
-    -- setIOAPICBaseAddress
-    ---------------------------------------------------------------------------
-    procedure setIOAPICBaseAddress (addr : in System.Address) with
-        SPARK_Mode => On
-    is
-    begin
-        ioapicAddr := addr;
-    end setIOAPICBaseAddress;
-
-    ---------------------------------------------------------------------------
     -- Shared LAPIC timer interval (BSP-calibrated, used by APs)
     ---------------------------------------------------------------------------
     lapicTimerInterval : Unsigned_32 := 0;
@@ -808,31 +782,5 @@ is
     begin
         lapicTimerInterval := interval;
     end setLAPICTimerInterval;
-
-    ---------------------------------------------------------------------------
-    -- enableDeviceIRQ
-    --  If IOAPIC is available, route via IOAPIC.  Otherwise fall back to
-    --  legacy 8259 PIC unmask.
-    ---------------------------------------------------------------------------
-    procedure enableDeviceIRQ
-      (vector         : in InterruptNumbers.x86Interrupt;
-       cpu            : in Unsigned_32;
-       levelTriggered : in Boolean := False;
-       activeLow      : in Boolean := False) with
-        SPARK_Mode => Off   -- generic instantiation
-    is
-    begin
-        if System."/=" (ioapicAddr, System.Null_Address) then
-            enableIOAPIC : declare
-                package myIOAPIC is new ioapic (ioapicAddr);
-            begin
-                myIOAPIC.enableIRQ
-                  (vector, cpu, levelTriggered, activeLow);
-            end enableIOAPIC;
-        else
-            --  No IOAPIC; unmask on legacy PIC instead
-            Pic.enableIRQ (vector);
-        end if;
-    end enableDeviceIRQ;
 
 end Interrupts;

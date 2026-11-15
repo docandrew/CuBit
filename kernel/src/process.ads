@@ -43,6 +43,9 @@ with Device_Vector_ABI;
 with Execution_Accounting;
 with Process_Launch;
 with Process_Layout;
+with Owned_Memory_Layout;
+with Clock_Publication;
+with Launch_Configuration;
 with Process_Identities;
 with Kernel_Controls;
 with Kernel_Credits;
@@ -98,6 +101,29 @@ package Process is
     --  ASLR, and make the process' stack top some random negative offset
     --  from here.
     PROCESS_STACK_TOP_VIRT : constant System.Address := To_Address (Process_Layout.Stack_Top);
+
+    -- The device-mapping arena (Process_Layout.Device_Mapping_First ..
+    -- Device_Mapping_Limit) is the user range a program places its own
+    -- MAP_DEVICE mappings in. Everything the kernel places by itself lies
+    -- below it (checked here, where the kernel sees every layout unit):
+    -- received grants, the owned-memory aperture, the clock page, the
+    -- launch argument block and the boot image. The main stack lies above
+    -- it (checked in Process_Layout). MAP_FB maps the boot framebuffer at
+    -- the arena's base only for a program that asks for it.
+    pragma Compile_Time_Error
+      (Memory_Grants.Received_Region_Limit > Process_Layout.Device_Mapping_First,
+       "received grants must lie below the device-mapping arena (Process_Layout)");
+    pragma Compile_Time_Error
+      (Owned_Memory_Layout.Limit > Process_Layout.Device_Mapping_First,
+       "owned memory must lie below the device-mapping arena (Process_Layout)");
+    pragma Compile_Time_Error
+      (Clock_Publication.Page_Address + Clock_Publication.Page_Bytes >
+         Process_Layout.Device_Mapping_First,
+       "the clock page must lie below the device-mapping arena (Process_Layout)");
+    pragma Compile_Time_Error
+      (Launch_Configuration.Block_Address >= Process_Layout.Device_Mapping_First
+         or else Launch_Configuration.Boot_Image_Address >= Process_Layout.Device_Mapping_First,
+       "the launch block and boot image must lie below the device-mapping arena");
 
     -- Every userspace ELF must declare its primary-stack reservation in its
     -- PT_GNU_STACK program header.  These are loader policy limits, not a

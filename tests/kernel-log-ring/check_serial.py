@@ -34,7 +34,7 @@ SUMMARY = re.compile(
     r"through sequence (\d+); earliest t=(\d+)ms, logstore started t=(\d+)ms; "
     r"(\d+) restricted withheld")
 ENTRY = re.compile(r'\(LogEntry (\d+) Severity\.(\w+) (\d+) "((?:[^"\\]|\\.)*)"\)')
-REPL = "ccl-console: REPL completed: List<LogEntry>: "
+REPL = "ccl-console: REPL completed: List<LogItem>: "
 # EXC-001: the exception's name and message, then "; traceback 0x..."
 LAST_WORDS = "unhandled exception PROGRAM_ERROR: main.adb:25 explicit raise"
 SUMMARY_TEXT = "{}: stopped by a page fault (write); details restricted"

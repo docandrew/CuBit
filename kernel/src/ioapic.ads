@@ -84,8 +84,29 @@ is
     --  interrupt_numbers.ads, i.e. the timer interrupt would be 32, NOT 0.
     -- @param cpu - The value used here is the CPU's LAPIC ID.
     ---------------------------------------------------------------------------
+    -- @param masked - write the entry with its mask bit set (a level line
+    --  whose owners have not acknowledged yet, Interrupt_Lines).
     procedure enableIRQ (irq            : in InterruptNumbers.x86interrupt;
                          cpu            : in Unsigned_32;
                          levelTriggered : in Boolean := False;
-                         activeLow      : in Boolean := False);
+                         activeLow      : in Boolean := False;
+                         masked         : in Boolean := False);
+
+    ---------------------------------------------------------------------------
+    -- setMasked
+    -- Set or clear only the mask bit of the redirection entry for irq (an
+    -- interrupt/vector number, as for enableIRQ). Clearing it re-evaluates a
+    -- level-triggered input: one still asserted is delivered again.
+    ---------------------------------------------------------------------------
+    procedure setMasked (irq    : in InterruptNumbers.x86interrupt;
+                         masked : in Boolean);
+
+    ---------------------------------------------------------------------------
+    -- redirectionEntries
+    -- The number of inputs (redirection entries) this I/O APIC has: its
+    -- version register's maximum redirection entry, plus one.
+    ---------------------------------------------------------------------------
+    MAX_REDIRECTION_SHIFT : constant := 16;
+    MAX_REDIRECTION_MASK  : constant Unsigned_32 := 16#00FF_0000#;
+    function redirectionEntries return Natural;
 end ioapic;

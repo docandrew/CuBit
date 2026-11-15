@@ -1,0 +1,33 @@
+--  Hosted tests and proofs of legacy interrupt lines: the ABI, the kernel's
+--  mask-until-acknowledged policy and the FADT/MADT SCI route (run.sh).
+project Interrupt_Lines is
+   --  Mutations (mutations.sh) substitute edited copies of the units.
+   for Source_Dirs use
+     (".", external ("LINES_SHARED_SRC", "../../shared/interrupts"),
+      external ("LINES_KERNEL_SRC", "../../kernel/src"),
+      external ("LINES_RUNTIME_SRC", "../../userspace/runtime/gnat"),
+      "../../userspace/services/acpi/native", "../../userspace/services/acpi/lib",
+      "../../shared/firmware");
+   for Source_Files use
+     ("main.adb",
+      "interrupt_line_abi.ads", "interrupt_line_abi.adb",
+      "interrupt_line_policy.ads", "interrupt_line_policy.adb",
+      "cubit.ads", "cubit-acpi_fixed_windows.ads", "cubit-acpi_fixed_windows.adb",
+      "cubit-acpi_sci_route.ads", "cubit-acpi_sci_route.adb",
+      "acpi_sci_registers.ads", "acpi_sci_registers.adb",
+      "acpi_sci_quiesce.ads", "acpi_sci_quiesce.adb",
+      "acpi_fadt.ads", "acpi_fadt.adb", "firmware_tables.ads", "firmware_tables.adb");
+   for Object_Dir use external ("LINES_OBJ", "build/obj");
+   for Exec_Dir use external ("LINES_EXEC", "build");
+   for Main use ("main.adb");
+   --  Mutation runs build without contract checks, so the tests' own
+   --  checks must catch each mutation (the proof is run separately).
+   Assertions := external ("LINES_ASSERTIONS", "-gnata");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", Assertions, "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Interrupt_Lines;

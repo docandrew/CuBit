@@ -28,7 +28,7 @@ with Memory_Accounting;
 with Process_Memory_Budget;
 with Build;
 with Trace;
-with Capabilities.IRQ;
+with Interrupt_Lines;
 with Device_Interrupts;
 with DMA_Remapping;
 with Platform_Pool;
@@ -2074,7 +2074,11 @@ package body Process is
         --  Unregister IRQ and service registrations. Device vectors
         --  are retired, not freed: the device may still send until the
         --  device manager masks it and releases them.
-        Capabilities.IRQ.unregisterAllByPID (Unsigned_64 (pid));
+        --  A level line it still had to acknowledge is opened for the
+        --  remaining owners, or masked when none remains (Interrupt_Lines).
+        if pid /= NO_PROCESS then
+            Interrupt_Lines.Release_Process (Unsigned_64 (pid));
+        end if;
         Device_Interrupts.retireProcess (pid);
         -- Its devices' IOMMU domains may be bound again; their mappings go
         -- with its DMA blocks (Process.DMA, unmap then invalidate).

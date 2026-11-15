@@ -14,7 +14,6 @@ with acpi;
 with Boot_Timeline;
 with Boot_Timeline_Layout;
 with Capabilities;
-with Capabilities.IRQ;
 with Config;
 with Cpu_Times_Page;
 with Device_Interrupts;
@@ -33,10 +32,10 @@ with Capabilities.Operations;
 with Capability_ABI;
 with Capability_Install;
 with Process_Capabilities;
-with InterruptNumbers;
 with IPC_Labels;
 with Kernel_Controls;
-with Interrupts;
+with Interrupt_Lines;
+with Interrupt_Line_ABI;
 with PerCpuData;
 with PerCPUData;
 with Process;
@@ -1317,17 +1316,9 @@ package body Syscall.Admin is
                                retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        use type Capabilities.CapabilityType;
-
-        -- The route word: target CPU in the low byte, then trigger and
-        -- polarity for the IOAPIC redirection entry.
-        ROUTE_CPU_MASK     : constant Unsigned_64 := 16#00FF#;
-        ROUTE_LEVEL        : constant Unsigned_64 := 16#0100#;
-        ROUTE_ACTIVE_LOW   : constant Unsigned_64 := 16#0200#;
-        ROUTE_DEFINED_BITS : constant Unsigned_64 :=
-          ROUTE_CPU_MASK or ROUTE_LEVEL or ROUTE_ACTIVE_LOW;
-
-        irqOk  : Boolean;
+        package LA renames Interrupt_Line_ABI;
+        use type LA.Route_Outcome;
+        outcome   : LA.Route_Outcome;
         targetPID : Process.ProcessID;
 
         -- The caller's handle names a CAP_IRQ (RIGHT_GRANT: it may route the
@@ -1342,66 +1333,97 @@ package body Syscall.Admin is
               and then vector >= found.Cap.object.ref
               and then vector - found.Cap.object.ref < found.Cap.object.param;
         end legacyLineHeld;
+
+        procedure refuse (why : LA.Route_Outcome; text : String) is
+        begin
+            println ("ENABLE_IRQ: " & text);
+            retval := LA.Outcome_Word (why);
+        end refuse;
+        -- The owner form (Interrupt_Line_ABI.Route_Acknowledge): the caller
+        -- has cleared its source and enables its own line again. arg4 is its
+        -- read handle naming exactly the one line arg0; it names no one
+        -- else (arg1, arg3 zero). No routing authority is involved: only
+        -- an owner the device manager routed the line to is accepted.
+        procedure acknowledge is
+            found : constant Process_Capabilities.Found :=
+              findOwn (callerPID, arg4, Capabilities.CAP_IRQ,
+                       onlyRight (Capabilities.RIGHT_READ));
+            accepted  : Boolean;
+            delivered : LA.Delivery_Count;
+        begin
+            if arg1 /= LA.No_Owner_Word or else arg3 /= LA.No_Authority_Word then
+                retval := LA.Outcome_Word (LA.Malformed_Acknowledge);
+            elsif not found.OK or else found.Cap.object.param /= 1 or else
+                  found.Cap.object.ref not in Unsigned_64 (LA.Line_Vector'First) ..
+                                              Unsigned_64 (LA.Line_Vector'Last)
+            then
+                --  No handle, or a device-vector block or several lines.
+                retval := LA.Outcome_Word (LA.No_Line_Authority);
+            elsif found.Cap.object.ref /= arg0 then
+                retval := LA.Outcome_Word (LA.Malformed_Acknowledge);
+            else
+                Interrupt_Lines.Acknowledge
+                  (LA.Line_Vector (arg0), Unsigned_64 (callerPID),
+                   accepted, delivered);
+                retval := (if accepted then LA.Acknowledged_Word (delivered)
+                           else LA.Outcome_Word (LA.Not_Line_Owner));
+            end if;
+        end acknowledge;
     begin
         -- Validate args before cap check (arg1 is the owner PID)
         -- Only legacy lines with installed device-interrupt stubs may be
         -- routed. Never turn a missing IDT entry (or an exception/IPI
         -- vector) into a device route, even for a process-management
         -- authority holder; device vectors are allocated, never enabled.
-        if arg0 not in Unsigned_64 (InterruptNumbers.PS2KEYBOARD) ..
-          Unsigned_64 (InterruptNumbers.IDE2)
+        if arg0 not in Unsigned_64 (LA.Line_Vector'First) ..
+          Unsigned_64 (LA.Line_Vector'Last)
         then
-            println ("ENABLE_IRQ: not a legacy line vector");
-            retval := reterr;
+            refuse (LA.Not_A_Line, "not a legacy line vector");
             return;
-        elsif (arg2 and not ROUTE_DEFINED_BITS) /= 0 then
-            println ("ENABLE_IRQ: undefined route bits");
-            retval := reterr;
+        elsif LA.Is_Acknowledge_Route (arg2) then
+            -- The hot path (one per level interrupt): no logging.
+            acknowledge;
+            return;
+        elsif not LA.Defined_Route (arg2) then
+            refuse (LA.Undefined_Route, "undefined route bits");
             return;
         end if;
 
         targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg1));
         if targetPID = Process.NO_PROCESS then
-            println ("ENABLE_IRQ: invalid owner identity");
-            retval := reterr;
+            refuse (LA.Invalid_Owner, "invalid owner identity");
             return;
         end if;
         Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
         if not Process.proctab(targetPID).admitted or else
            Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
         then
-            retval := reterr;
+            outcome := LA.Invalid_Owner;
+        elsif not holdsProcessAuthority (callerPID, arg3, targetPID,
+                                         Capabilities.RIGHT_GRANT)
+        then
+            outcome := LA.No_Process_Authority;
+        elsif not legacyLineHeld (arg4, arg0) then
+            outcome := LA.No_Line_Authority;
         else
-            if not holdsProcessAuthority (callerPID, arg3, targetPID,
-                                          Capabilities.RIGHT_GRANT)
-            then
-                println ("ENABLE_IRQ: denied, no RIGHT_GRANT");
-                retval := reterr;
-            elsif not legacyLineHeld (arg4, arg0) then
-                println ("ENABLE_IRQ: denied, no interrupt capability for the line");
-                retval := reterr;
-            else
-                --  The resolved slot: delivery finds owners by slot.
-                Capabilities.IRQ.registerIRQ (
-                    vector => Natural (arg0),
-                    pid    => Unsigned_64 (targetPID),
-                    status => irqOk);
-
-                if irqOk then
-                    Interrupts.enableDeviceIRQ (
-                        InterruptNumbers.x86Interrupt (arg0),
-                        Unsigned_32 (arg2 and ROUTE_CPU_MASK),
-                        levelTriggered => (arg2 and ROUTE_LEVEL) /= 0,
-                        activeLow      => (arg2 and ROUTE_ACTIVE_LOW) /= 0);
-                    retval := 0;
-                else
-                    println ("ENABLE_IRQ: shared subscriber set full");
-                    retval := reterr;
-                end if;
-            end if;
-
+            --  The owner set, the trigger/polarity agreement and the
+            --  I/O APIC entry, under the lines' lock.
+            Interrupt_Lines.Route
+              (Vector   => LA.Line_Vector (arg0),
+               Owner    => Unsigned_64 (targetPID),
+               CPU      => LA.CPU_Of (arg2),
+               Trigger  => LA.Trigger_Of (arg2),
+               Polarity => LA.Polarity_Of (arg2),
+               Outcome  => outcome);
         end if;
         Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        if outcome /= LA.Routed then
+            print ("ENABLE_IRQ: refused, vector");
+            print (Unsigned_32 (arg0));
+            print (" outcome");
+            println (Unsigned_32 (LA.Outcome_Word (outcome)));
+        end if;
+        retval := LA.Outcome_Word (outcome);
     end handleEnableIrq;
 
     ---------------------------------------------------------------------------
