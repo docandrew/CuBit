@@ -13,12 +13,17 @@ fi
 awk '
 BEGIN {
  n=split("acpi: stage runtime ok LOCAL_IDLE|acpi: stage runtime-selection ok one-service mode=LOCAL_RUNTIME|acpi: SCI armed|acpi: SCI 1 fixed=[PWRBTN ]|power: power button pressed (FIXED_EVENT, count 1)|power: POWER_OFF requested by POWER_BUTTON|power: procmgr stopped the apps|power: asking acpi.svc to prepare to sleep (S5)|power: prepare to sleep PREPARED|procmgr: shutdown: stopping com.cubit.test.shutdown-stubborn pid|procmgr: shutdown: stopping com.cubit.test.shutdown-cooperative pid|shutdown-cooperative: quiesced; exiting 0|procmgr: shutdown: stopping com.cubit.logstore pid|FS: stop: storage COMMITTED|devmgr: shutdown: drivers stopped|procmgr: shutdown: stopped in|power: procmgr stopped the system:|power: asking acpi.svc to enter S5", need, "[|]")
- # The last three (the procmgr report, then the power.svc lines after it)
- # come microseconds before S5, which can stop the kernel console ring
- # before it drains them (seen cut at "stopped i"), so they are optional,
- # ordered when present; the QEMU exit 0 above is the S5 evidence: a halt
- # keeps QEMU running to the timeout (console drain: LOG-009).
- tail_first=n-2
+ # From logstore'"'"'s stop on (logstore, the storage commit, the drivers,
+ # the procmgr report, then the power.svc lines), everything comes within
+ # milliseconds of S5 now that services and drivers end on Stop at once,
+ # and S5 can stop the kernel console ring before it drains them (seen cut
+ # at "stopped i", and inside devmgr'"'"'s lines: LOG-009). So the log may end
+ # anywhere in that tail: each is optional, but the log is a prefix, so
+ # once one is missing every later one must be too (a later line without
+ # an earlier one is a misordering). The QEMU exit 0 above is the S5
+ # evidence: a halt keeps QEMU running to the timeout; the disk checks in
+ # run.sh are the storage evidence; tests/driver-stop checks the drivers.
+ tail_first=13
 }
 { for(i=1;i<=n;i++) if(index($0,need[i])) { count[i]++; if(!at[i]) at[i]=NR }
   if(index($0,"procmgr: shutdown: keeping com.cubit.acpi pid")) kept=1
@@ -28,12 +33,13 @@ END {
  for(i=1;i<=n;i++) if(count[i]>1 && (i==4 || i==5 || i==6 || i==8 || i==9 || i==n)) {
    print "acpi-shutdown: repeated transition: " need[i] > "/dev/stderr"; exit 1
  }
- last=0
+ last=0; cut=0
  for(i=1;i<=n;i++) {
    if(!at[i]) {
-     if(i>=tail_first) continue
+     if(i>=tail_first) { if(!cut) cut=i; continue }
      print "acpi-shutdown: missing: " need[i] > "/dev/stderr"; exit 1
    }
+   if(cut) { print "acpi-shutdown: \"" need[i] "\" without \"" need[cut] "\" before it" > "/dev/stderr"; exit 1 }
    if(at[i]<=last) { print "acpi-shutdown: misordered: " need[i] > "/dev/stderr"; exit 1 }
    last=at[i]
  }

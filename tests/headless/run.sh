@@ -6693,6 +6693,12 @@ desktop: shut down: cancelled; nothing sent
     acpi-shutdown)
         required_markers=""
         bash "$ROOT_DIR/tests/headless/check-acpi-shutdown.sh" "$SERIAL_LOG" "$qemu_status" || exit 1
+        # No driver forced, none slow, nothing after the drivers' report
+        # before it; S5 may cut the console's tail (LOG-009).
+        if ! python3 -I "$ROOT_DIR/tests/driver-stop/check_driver_stops.py" --lossy-tail "$SERIAL_LOG"; then
+            echo "headless: acpi-shutdown: a driver missed its Stop, or the drivers' report was not before S5" >&2
+            exit 1
+        fi
         if dumpe2fs -h "$TEMP_DISK" 2>/dev/null | grep -q needs_recovery ||
            ! e2fsck -fn "$TEMP_DISK" >/dev/null 2>&1; then
             echo "headless: acpi-shutdown: filesystem did not detach cleanly" >&2
@@ -6829,6 +6835,12 @@ procmgr: shutdown: com.cubit.test.shutdown-stubborn pid
                 echo "headless: shutdown-text: the user's file changed" >&2
                 exit 1
             fi
+        fi
+        # Every driver devmgr started ended on its Stop, quickly, and its
+        # report came before S5 (PWR-003; the stand-in drains the console).
+        if ! python3 -I "$ROOT_DIR/tests/driver-stop/check_driver_stops.py" "$SERIAL_LOG"; then
+            echo "headless: $TEST_NAME: a driver missed its Stop, or the drivers' report was not before S5" >&2
+            exit 1
         fi
         ;;
     program-parameters)
