@@ -3,9 +3,11 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
 with CuBit.String;
+with CuBit.Shared_Copies;
 
 package body ISO9660 is
    use type System.Address;
+   package Copies is new CuBit.Shared_Copies (Natural, Interfaces.Unsigned_8, ISO_Records.Bytes);
    --  The USB optical drive's endpoint, once devmgr attached it.
    Optical_Endpoint : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
    procedure Attach (Endpoint : CuBit.Handles.Endpoint; Attached : out Boolean) is
@@ -67,8 +69,10 @@ package body ISO9660 is
             return;
          end if;
          declare
-            Data : ISO_Records.Sector with Import, Address => Buffer;
+            --  A private copy: the buffer stays lent to the driver (SEC-025).
+            Data : ISO_Records.Sector;
          begin
+            Copies.Copy_At (Buffer, Data);
             Entry_Offset := 0;
             while Entry_Offset < 2048 loop
                exit when Data (Entry_Offset) = 0;
@@ -119,9 +123,10 @@ package body ISO9660 is
       for Block in Unsigned_64 range 16 .. 47 loop
          if not Fetch (Block, 1) then return False; end if;
          declare
-            Data : ISO_Records.Sector with Import, Address => Buffer;
+            Data : ISO_Records.Sector;
             Blocks : Unsigned_64;
          begin
+            Copies.Copy_At (Buffer, Data);
             if not ISO_Records.Header_Valid (Data) or else Data (0) = 255 then
                Failed := True; return False;
             end if;

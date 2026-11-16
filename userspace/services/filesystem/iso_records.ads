@@ -2,7 +2,10 @@
 with Interfaces; use Interfaces;
 package ISO_Records with SPARK_Mode => On is
    Block_Bytes : constant := 2048;
-   type Sector is array (Natural range 0 .. Block_Bytes - 1) of Unsigned_8;
+   type Bytes is array (Natural range <>) of Unsigned_8;
+   --  A sector is decoded from a private copy only: the buffer it is read
+   --  into stays lent to the optical driver (iso9660, SEC-025).
+   subtype Sector is Bytes (0 .. Block_Bytes - 1);
    type File_Record is record
       Extent : Unsigned_32 := 0;
       Bytes : Unsigned_32 := 0;

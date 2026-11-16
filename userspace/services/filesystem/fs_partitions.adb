@@ -5,8 +5,10 @@
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with Partition_Tables; use Partition_Tables;
+with CuBit.Shared_Copies;
 
 package body Fs_Partitions is
+   package Copies is new CuBit.Shared_Copies (Positive, Unsigned_8, Bytes);
 
    use type Partition_Tables.MBR_Kind, Partition_Tables.Header_Result, Partition_Tables.GUID;
 
@@ -55,9 +57,12 @@ package body Fs_Partitions is
          if not Read (0, 1) then
             return;
          end if;
+         --  Every block is decoded from a private copy: the buffer stays
+         --  lent to the block driver (SEC-025).
          declare
-            Zero_Block : constant Sector with Import, Address => Buffer;
+            Zero_Block : Sector;
          begin
+            Copies.Copy_At (Buffer, Zero_Block);
             if Classify_MBR (Zero_Block) /= Protective_GPT then
                Result := Whole_Device;
                return;
@@ -67,8 +72,9 @@ package body Fs_Partitions is
             return;
          end if;
          declare
-            Header_Block : constant Bytes (1 .. Block) with Import, Address => Buffer;
+            Header_Block : Bytes (1 .. Block);
          begin
+            Copies.Copy_At (Buffer, Header_Block);
             Decode_Header (Header_Block, GPT_Header_LBA, Description.blockCount, Header, Outcome);
          end;
          if Outcome /= Header_Valid then
@@ -90,8 +96,12 @@ package body Fs_Partitions is
                return;
             end if;
             declare
-               Entries : constant Bytes (1 .. Natural (Array_Bytes)) with Import, Address => Buffer;
+               --  One copy for the checksum and the decode: what is checked
+               --  is what is decoded (at most the transfer buffer, on the
+               --  16 MiB stack).
+               Entries : Bytes (1 .. Natural (Array_Bytes));
             begin
+               Copies.Copy_At (Buffer, Entries);
                if CRC32 (Entries) /= Header.Entries_CRC then
                   Result := No_Root_Partition;
                   return;

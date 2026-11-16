@@ -409,8 +409,10 @@ package body NVMe is
             idBuf : constant System.Address :=
               System.Storage_Elements.To_Address
                 (DMA_VIRT_BASE + IDENTIFY_OFFSET);
-            mdtsByte : Unsigned_8 with Import,
+            --  The device can still write its identify page: one read.
+            mdtsShared : Unsigned_8 with Import, Volatile,
               Address => idBuf + 77;
+            mdtsByte : constant Unsigned_8 := mdtsShared;
             vwcByte : Unsigned_8 with Import,
               Address => idBuf + IDENTIFY_VWC_OFFSET;
             bufLimit : constant Unsigned_64 :=

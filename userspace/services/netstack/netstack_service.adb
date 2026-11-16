@@ -12,6 +12,7 @@
 --  (CuBit.Net_Management) and hears of their changes through a Watch it
 --  parks here.
 ------------------------------------------------------------------------------
+with CuBit.Shared_Copies;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -3815,12 +3816,13 @@ package body Netstack_Service is
       address    : Net.IPv4Address := [others => 0];
    end record;
 
+   package Text_Copies is new CuBit.Shared_Copies (Positive, Character, String);
    --  The client's target text, parsed by the proved CuBit.Net_Locator.
    procedure parseNetScheme (addr   : System.Address;
                              len    : Natural;
                              result : out ParsedScheme) is
-      text : String (1 .. Natural'Min (len, CuBit.Locators.Maximum_Length))
-        with Import, Address => addr;
+      --  The client can still write its arena: parse a private copy.
+      text : String (1 .. Natural'Min (len, CuBit.Locators.Maximum_Length));
       parsed : CuBit.Net_Locator.Target;
       use type CuBit.Net_Locator.Protocol;
    begin
@@ -3831,6 +3833,7 @@ package body Netstack_Service is
       if len > CuBit.Locators.Maximum_Length then
          return;
       end if;
+      Text_Copies.Copy_At (addr, text);
       CuBit.Net_Locator.Parse (text, parsed);
       --  IPv6 addresses are refused until netstack speaks IPv6.
       if not parsed.Valid or else

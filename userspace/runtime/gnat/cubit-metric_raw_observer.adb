@@ -57,14 +57,16 @@ package body CuBit.Metric_Raw_Observer with SPARK_Mode => Off is
          Item.Off := True;
          return;
       end if;
-      if not CuBit.Metric_Raw_Validation.Valid (P.Raw_Page (Item.Page),
+      --  metrics.svc keeps the page mapped writable: validate a copy taken
+      --  once and return that copy, never the page itself (SEC-025).
+      Page := P.Raw_Page (Item.Page);
+      if not CuBit.Metric_Raw_Validation.Valid (Page,
         Cursor, Msg.words (0), Msg.words (1), Msg.words (2))
       then
          Item.Off := True;
          Result := P.Invalid_Request;
          return;
       end if;
-      Page := P.Raw_Page (Item.Page);
       Written := P.Raw_Row_Count (Msg.words (0));
       Next := Msg.words (1);
       Gap := Msg.words (2);
