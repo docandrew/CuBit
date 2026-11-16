@@ -170,6 +170,9 @@ package body CuBit.Launch_Authority with SPARK_Mode is
          return Held_Prefix'Length <= Prefix'Length
            and then (for all I in 0 .. Held_Prefix'Length - 1 =>
                        Prefix (Prefix'First + I) = Held_Prefix (Held_Prefix'First + I));
+      elsif Service = Config_Service and then Held_Prefix'Length = 0 then
+         --  config-all (Everything: no prefix) covers every key prefix.
+         return True;
       else
          return Held_Prefix = Prefix;
       end if;

@@ -510,6 +510,15 @@ begin
              and then not LT.Scope_Covered (LT.Metrics_Service, 1, "desktop.", LT.Metrics_Service, 1, "")
              and then not LT.Scope_Covered (LT.Metrics_Service, 1, "desktop.", LT.Metrics_Service, 1, "display."),
              "metrics scopes are covered by prefix");
+      --  Config: config-all (no prefix) covers any key prefix at its
+      --  rights; a prefix covers only itself.
+      Check (LT.Scope_Covered (LT.Config_Service, 3, "", LT.Config_Service, 3, "calculator.")
+             and then LT.Scope_Covered (LT.Config_Service, 1, "", LT.Config_Service, 1, "system.assets.")
+             and then not LT.Scope_Covered (LT.Config_Service, 1, "", LT.Config_Service, 3, "calculator.")
+             and then LT.Scope_Covered (LT.Config_Service, 3, "bible.", LT.Config_Service, 3, "bible.")
+             and then not LT.Scope_Covered (LT.Config_Service, 3, "bible.", LT.Config_Service, 3, "")
+             and then not LT.Scope_Covered (LT.Config_Service, 3, "bible.", LT.Config_Service, 1, "calculator."),
+             "config-all covers every config prefix; a prefix only itself");
    end;
 
    --  Launch failure codes: every reason round-trips through its reply

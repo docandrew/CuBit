@@ -144,12 +144,15 @@ package CuBit.Launch_Authority with SPARK_Mode is
    --  bits, prefix). A child's scope is covered when the launcher holds one
    --  for the same service with at least the same rights and, for the
    --  filesystem, a prefix that matches the child's prefix as a path
-   --  (CuBit.File_Access.Scope_Matches); other services need the same
-   --  prefix exactly.
+   --  (CuBit.File_Access.Scope_Matches); for metrics, a series-name prefix
+   --  (empty: every series); for Config, config-all (empty: every key)
+   --  covers every prefix; other services need the same prefix exactly.
    ---------------------------------------------------------------------------
    Filesystem_Service : constant Unsigned_8 := 0;
    --  A metrics read scope (MET-002): a series-name prefix, empty for all.
    Metrics_Service : constant Unsigned_8 := 3;
+   --  A Config scope: a key prefix, empty for config-all (every key).
+   Config_Service : constant Unsigned_8 := 1;
    Maximum_Prefix_Bytes : constant := 256;   --  CuBit.File_Access
 
    function Rights_Within (Held, Requested : Unsigned_8) return Boolean is
