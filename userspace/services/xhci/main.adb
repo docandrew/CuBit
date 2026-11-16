@@ -286,6 +286,9 @@ procedure main is
    function Earliest (A, B : Unsigned_64) return Unsigned_64 is (Unsigned_64'Min (A, B));
 
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    declare
       Configuration : Launch_Configuration.Controller_Configuration;
       Configured : Boolean;

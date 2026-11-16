@@ -810,6 +810,9 @@ procedure main is
    end Reject_Configuration;
    --  devQSz is used in queue setup debug output
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("virtio-net: starting..." & LF);
    --  The legacy transport's register ports (absent for a modern device,
    --  whose BAR devmgr maps).

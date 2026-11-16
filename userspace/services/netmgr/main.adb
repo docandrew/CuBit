@@ -43,6 +43,7 @@ with System.Address_To_Access_Conversions;
 with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Events;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Memory_Grants;
@@ -1067,6 +1068,9 @@ procedure main is
 
    Ignore : Unsigned_64;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    Say ("netmgr: starting");
    Ignore := registerDriver (DRIVER_NETMGR, Startup.Registration);
 
@@ -1098,6 +1102,9 @@ begin
          Found : Boolean;
       begin
          exit when Activity = Unavailable;
+         --  Kernel notices (a Stop among them) are read, not left to wake
+         --  the wait again at once.
+         CuBit.Process_Events.Serve_Defaults;
          while Poll_Completion (Entry_Found'Address) = 1 loop
             if not CuBit.Granted_Logs.Take (Entry_Found) then
                Completed (Entry_Found);

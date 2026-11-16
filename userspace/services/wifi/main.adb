@@ -27,6 +27,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Events;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
 with CuBit.Kernel_ABI;
@@ -925,6 +926,9 @@ procedure Main is
 
    Ignore : Unsigned_64;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    Say ("wifi: starting");
    Ignore := registerDriver (DRIVER_WIFI, Startup.Registration);
    ST.Reset (Station, NL.No_Address, Join_Limits, Beacon_Timeout);
@@ -947,6 +951,9 @@ begin
          L : ST.Outputs;
       begin
          exit when Activity = Unavailable;
+         --  Kernel notices (a Stop among them) are read, not left to wake
+         --  the wait again at once.
+         CuBit.Process_Events.Serve_Defaults;
          while Poll_Completion (Entry_Found'Address) = 1 loop
             if not CuBit.Granted_Logs.Take (Entry_Found) then
                null;

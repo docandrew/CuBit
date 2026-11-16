@@ -16,6 +16,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Events;
 with CuBit.Busy_Poll;
 with CuBit.Driver_Readiness;
 with CuBit.Handles.Devices;
@@ -156,6 +157,9 @@ procedure Main is
    Progressed : Boolean;
    Ignored_Activity : Activity_Result;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    CuBit.Busy_Poll.Calibrate;
    CuBit.Launch_Configurations.Get (Config, Configured);
    if not Configured or else Config.Window_Total < 1
@@ -278,6 +282,9 @@ begin
            (if UFS_Service.Outstanding
             then Deadline_After (Poll_Interval_Milliseconds)
             else Wait_Forever);
+         --  Kernel notices (a Stop among them) are read, not left to wake
+         --  the wait again at once.
+         CuBit.Process_Events.Serve_Defaults;
       end if;
    end loop;
 end Main;

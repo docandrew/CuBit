@@ -362,8 +362,13 @@ procedure main is
    --  if a batch fills, the controller is checked again before blocking so
    --  coalesced IRQs cannot strand a partial mouse packet in port 0x60.
    MAX_INPUT_BYTES_PER_BATCH : constant Positive := 64;
+   --  How often the start looks for a registered input consumer.
+   CONSUMER_POLL_MS : constant := 100;
 
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("ps2: starting" & LF);
 
    --  Discard firmware/bootloader residue before enabling live reports.  A
@@ -406,11 +411,29 @@ begin
           words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
 
-   --  Wait for at least one consumer to register before starting
+   --  Wait for at least one consumer to register before starting. Not a
+   --  bare sleep: events are read meanwhile, so a Stop (a system without a
+   --  desktop is shut down before one registers) ends the driver here.
+   --  Input before any consumer is dropped, as handleKeyboard does; the
+   --  controller keeps its byte for the event loop.
    loop
       refreshConsumers;
       exit when kbdConsumer /= No_Process or mouseConsumer /= No_Process;
-      ignore := syscall (SYSCALL_SLEEP, 100);
+      declare
+         Event : Message;
+         Drained : Boolean := False;
+         Woke : constant Activity_Result :=
+           Wait_For_Activity_Until (Deadline_After (CONSUMER_POLL_MS));
+      begin
+         --  What woke the wait (a Stop ends the driver in Poll_Event).
+         while Poll_Event (Event) loop
+            Drained := True;
+         end loop;
+         if Woke = Work_Available and then not Drained then
+            --  A request, not this loop's to take: pace the look instead.
+            ignore := syscall (SYSCALL_SLEEP, CONSUMER_POLL_MS);
+         end if;
+      end;
    end loop;
 
    debugPrint ("ps2: consumer registered, entering event loop" & LF);

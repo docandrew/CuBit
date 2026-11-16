@@ -132,6 +132,9 @@ procedure main is
    configValid : Boolean;
    queuesOk : Boolean;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("NVMe Driver: Starting..." & LF);
 
    --  0. The first message is devmgr's interrupt configuration, bound to

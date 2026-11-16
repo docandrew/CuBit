@@ -2158,6 +2158,9 @@ procedure main is
    msg : Message;
    found : Boolean;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("virtio-gpu: starting" & LF);
 
    trace ("read launch configuration");

@@ -36,6 +36,9 @@ procedure main is
    received   : Boolean := False;
    volumesOk  : Boolean;
 begin
+   --  Stop (devmgr's, after procmgr's storage stage): commit anything that
+   --  stage left, then end (CuBit.Messages.On_Stop).
+   On_Stop (Fs_Server.Commit_On_Stop'Access);
    debugPrint ("FS Server: Starting..." & LF);
 
    --  The boot image devmgr mapped for us, from its launch configuration.

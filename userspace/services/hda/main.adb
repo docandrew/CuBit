@@ -63,6 +63,9 @@ procedure main is
    end sendReply;
 
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("hda: starting" & ASCII.LF);
 
    --  Initialize HDA controller

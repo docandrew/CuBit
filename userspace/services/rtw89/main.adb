@@ -28,6 +28,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Messages;
+with CuBit.Process_Events;
 with CuBit.Logging;
 with CuBit.Log_Records;
 with CuBit.Net_Link;
@@ -313,6 +314,9 @@ procedure Main is
             Found := RTW89_Link.Take (Entry_Found);
          end if;
       end loop;
+      --  Kernel notices (a Stop among them) are read, not left to wake
+      --  Pause's wait again at once.
+      CuBit.Process_Events.Serve_Defaults;
       --  Nobody calls the driver; anything that does is refused.
       loop
          CuBit.Messages.Poll_Service_Request (Sender, Request, Found);
@@ -518,6 +522,9 @@ procedure Main is
       & " refused=" & Dec (Unsigned_64 (Counts.Refused)));
 
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    --  Startup's elaboration already checked the capability table.
    ---------------------------------------------------------------------------
    --  probe: launch resources, register window, sanity read, identity

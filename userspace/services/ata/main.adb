@@ -427,6 +427,9 @@ procedure main is
      (Writes => Any_Client_Writes, Transfer => transfer, Flush => flush);
 
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("ATA Driver: Starting..." & LF);
 
    --  Run IDENTIFY to detect primary master drive

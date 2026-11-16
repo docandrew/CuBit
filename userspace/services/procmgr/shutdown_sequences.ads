@@ -46,10 +46,15 @@ package Shutdown_Sequences with SPARK_Mode is
    subtype Grace_Ms is Unsigned_32 range 1 .. Maximum_Grace_Ms;
    --  How long an ended process has for its exit report to arrive.
    End_Deadline_Ms : constant := 2_000;
-   --  How often devmgr is asked how its drivers' stop is going.
-   Driver_Poll_Ms : constant := 50;
-   --  devmgr's own end deadline after the drivers' grace, plus a poll.
-   Driver_Allowance_Ms : constant := End_Deadline_Ms + 2 * Driver_Poll_Ms;
+   --  How often devmgr is asked how its drivers' stop is going. Drivers
+   --  that answer Stop end within a few milliseconds, and the stop waits
+   --  for this poll to learn it: one call per 5 ms, a handful per stop.
+   Driver_Poll_Ms : constant := 5;
+   --  How late devmgr's report may be after its own end deadline (its
+   --  loop wakes and answers) before procmgr goes on without it.
+   Driver_Report_Margin_Ms : constant := 100;
+   --  devmgr's own end deadline after the drivers' grace, plus that margin.
+   Driver_Allowance_Ms : constant := End_Deadline_Ms + Driver_Report_Margin_Ms;
 
    --  The latest time a deadline is set from, so additions never wrap.
    Latest_Time : constant := Unsigned_64'Last - 2 * (Maximum_Grace_Ms + Driver_Allowance_Ms);

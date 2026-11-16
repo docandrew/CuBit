@@ -42,6 +42,9 @@ procedure Main is
       debugPrint ("ramdisk: boot image view released" & ASCII.LF);
    end Release_Boot_View;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    --  The boot image devmgr mapped for us, from its launch configuration.
    declare
       Configuration : Launch_Configuration.Boot_Image_Configuration;

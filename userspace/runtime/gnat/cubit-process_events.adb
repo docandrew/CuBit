@@ -18,6 +18,14 @@ package body CuBit.Process_Events is
    package KA renames CuBit.Kernel_ABI;
    use type CV.Event_Kind;
 
+   --  CuBit.Messages recognises Stop by itself (it cannot name this
+   --  package's units): the same label, length and kind as here.
+   pragma Compile_Time_Error
+     (CuBit.Messages.Control_Event_Label /= CV.Control_Label
+      or else CuBit.Messages.Control_Event_Length /= CV.Control_Words
+      or else CuBit.Messages.Stop_Control_Kind /= CV.Control_Kind'Enum_Rep (CV.Stop),
+      "CuBit.Messages' control-message constants differ from CuBit.Control_Events");
+
    subtype Kept_Index is Positive range 1 .. Kept_Events;
    subtype Kept_Count is Natural range 0 .. Kept_Events;
 
@@ -79,6 +87,9 @@ package body CuBit.Process_Events is
                      Keep_Event (Item);
                   end if;
                when CV.Control =>
+                  --  The program's declared answer to Stop, if any (does
+                  --  not return then); otherwise it reads it with Next.
+                  CuBit.Messages.Answer_Stop (Event, CuBit.Messages.No_Process);
                   Keep_Event (Item);
                when CV.Not_Ours =>
                   null;
@@ -99,6 +110,16 @@ package body CuBit.Process_Events is
          File (M);
       end loop;
    end Poll;
+
+   procedure Serve_Defaults is
+      Item : CV.Event;
+      Found : Boolean;
+   begin
+      loop
+         Next (Item, Found);
+         exit when not Found;
+      end loop;
+   end Serve_Defaults;
 
    procedure Take_Exit
      (Process : CuBit.Process_IDs.Process_ID; Found : out Boolean; Report : out CE.Report) is

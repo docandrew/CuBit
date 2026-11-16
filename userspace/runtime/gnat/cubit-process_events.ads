@@ -46,4 +46,14 @@ package CuBit.Process_Events is
    --  The oldest kept grant event or control message: polls.
    procedure Next (Item : out CuBit.Control_Events.Event; Found : out Boolean);
 
+   --  For a program with no use for grant events or control messages
+   --  beyond the runtime's own answers (a revoked adopted ring returned;
+   --  Stop as CuBit.Messages.Exit_On_Stop or On_Stop declared): reads the
+   --  lane, gives those answers, and lets go of the rest. Child exits stay
+   --  for Take_Exit. A loop that waits with Wait_For_Activity_Until and
+   --  takes only requests and completions calls it each turn, so that its
+   --  notices neither wait unread (the wait would return at once, again
+   --  and again) nor keep a Stop from it.
+   procedure Serve_Defaults;
+
 end CuBit.Process_Events;

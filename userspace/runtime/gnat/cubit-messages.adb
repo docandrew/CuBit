@@ -70,6 +70,42 @@ package body CuBit.Messages is
    Activity_Work     : constant Unsigned_64 := 1;
    Activity_Event    : constant Unsigned_64 := 2;
 
+   --  Stop (see the spec). Set once at startup, before the first receive.
+   Disposition : Stop_Disposition := Program_Reads_Stop;
+   Quiesce_Step : Quiesce_Procedure := null;
+   --  The Stop is being answered: a receive inside Quiesce_Step that sees
+   --  another Stop leaves it to the answer already running.
+   Answering_Stop : Boolean := False;
+
+   procedure Exit_On_Stop is
+   begin
+      Quiesce_Step := null;
+      Disposition := Exit_At_Once;
+   end Exit_On_Stop;
+
+   procedure On_Stop (Quiesce : not null Quiesce_Procedure) is
+   begin
+      Quiesce_Step := Quiesce;
+      Disposition := Quiesce_Then_Exit;
+   end On_Stop;
+
+   function Stop_Answer return Stop_Disposition is (Disposition);
+
+   procedure Answer_Stop (Msg : Message; From : Process_ID) is
+      Ignore : Unsigned_64;
+   begin
+      if Disposition = Program_Reads_Stop or else Answering_Stop
+        or else not Is_Kernel_Stop (Msg.tag.label, Msg.tag.length, From, Msg.words (0))
+      then
+         return;
+      end if;
+      Answering_Stop := True;
+      if Disposition = Quiesce_Then_Exit and then Quiesce_Step /= null then
+         Quiesce_Step.all;
+      end if;
+      Ignore := syscall (SYSCALL_EXIT, Stopped_Exit_Code);
+   end Answer_Stop;
+
    function Wait_For_Activity_Until (Deadline : Unsigned_64)
       return Activity_Result
    is
@@ -98,6 +134,9 @@ package body CuBit.Messages is
                    when Activity_Work     => Work_Available,
                    when Activity_Deadline => Deadline_Reached,
                    when others            => Unavailable);
+      if Result = Event_Taken then
+         Answer_Stop (Event, No_Process);   --  only kernel notices are taken
+      end if;
    end Wait_For_Activity_Or_Event;
 
    --  Conversion helpers
@@ -114,6 +153,7 @@ package body CuBit.Messages is
    procedure receive (from : out Process_ID; msg : out Message) is
    begin
       from := From_Word (syscall (SYSCALL_RECEIVE, toNum (msg'Address)));
+      Answer_Stop (msg, from);
    end receive;
 
    procedure receiveUntil
@@ -133,6 +173,7 @@ package body CuBit.Messages is
       else
          from := From_Word (result);
          received := True;
+         Answer_Stop (msg, from);
       end if;
    end receiveUntil;
 
@@ -172,6 +213,7 @@ package body CuBit.Messages is
    begin
       msg := replyMsg;
       from := From_Word (syscall (SYSCALL_REPLY_WAIT, To_Word (replyTo), toNum (msg'Address)));
+      Answer_Stop (msg, from);
    end replyWait;
 
    --  Poll_Service_Request
@@ -211,6 +253,9 @@ package body CuBit.Messages is
       ret := syscall (SYSCALL_POLL_ANY_IPC, toNum (msg'Address));
       from := From_Word (ret);
       found := (ret /= 0);
+      if found then
+         Answer_Stop (msg, from);
+      end if;
    end Poll_Any_Ipc;
 
    --  waitCompletion
@@ -308,6 +353,11 @@ package body CuBit.Messages is
    begin
       msg := NULL_MESSAGE;
       ret := syscall (SYSCALL_POLL_EVENT, toNum (msg'Address));
+      if ret = 1 then
+         --  An event lane entry: the kernel's, or one a process published
+         --  (never with the control label, which the kernel refuses).
+         Answer_Stop (msg, No_Process);
+      end if;
       return (ret = 1);
    end Poll_Event;
 
@@ -318,6 +368,9 @@ package body CuBit.Messages is
       msg := NULL_MESSAGE;
       ret := syscall (SYSCALL_POLL_EVENT, toNum (msg'Address), toNum (identity'Address));
       publisher := (if ret = 1 then From_Word (identity) else No_Process);
+      if ret = 1 then
+         Answer_Stop (msg, publisher);
+      end if;
       return (ret = 1);
    end Poll_Event;
 

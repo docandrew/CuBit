@@ -17,6 +17,7 @@ with Interfaces; use Interfaces;
 with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Events;
 with CuBit.Memory_Grants;
 with CuBit.Handles.IPC;
 with Startup;
@@ -434,6 +435,9 @@ procedure main is
    sender : Process_ID;
    msg    : Message;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("Config: starting..." & LF);
 
    --  Register as DRIVER_CONFIG so other services can discover us
@@ -476,6 +480,9 @@ begin
                debugPrint ("Config: activity wait unavailable" & LF);
                exit;
             end if;
+            --  Kernel notices (a Stop among them) are read, not left to wake
+            --  the wait again at once.
+            CuBit.Process_Events.Serve_Defaults;
          else
 
             case msg.tag.label is

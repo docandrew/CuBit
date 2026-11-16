@@ -329,6 +329,9 @@ procedure main is
          authorityTag => 0, words => [others => 0]));
    end Reject;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("virtio-input: starting" & LF);
 
    --  Startup is bound to the registered device manager's kernel-supplied

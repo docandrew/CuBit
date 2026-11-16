@@ -223,6 +223,55 @@ package CuBit.Messages is
    function Is_Process (Process : Process_ID) return Boolean
      renames CuBit.Process_IDs.Is_Process;
 
+   --  Stop (docs/data-plane.md, "Control messages"; docs/power-states.md,
+   --  3.2): how this program answers the kernel's Stop control message,
+   --  which its supervisor (procmgr, devmgr) sends to end it cleanly.
+   --    Program_Reads_Stop: the program reads Stop itself (with
+   --      CuBit.Process_Events or its own event decoding); the runtime does
+   --      nothing with it. Every program starts here, so one that already
+   --      handles Stop is unchanged.
+   --    Exit_At_Once: the program has nothing to finish. When a receive
+   --      here (receive, receiveUntil, replyWait, Poll_Any_Ipc, Poll_Event,
+   --      Wait_For_Activity_Or_Event) or CuBit.Process_Events returns the
+   --      Stop, the runtime ends the process with Stopped_Exit_Code.
+   --    Quiesce_Then_Exit: the same, after the program's Quiesce step
+   --      (stop its device's engines, commit its state). It runs where the
+   --      receive saw the Stop, so it must not rely on that receive's
+   --      caller finishing first.
+   --  A program declares one of the last two once, before its first
+   --  receive. Wait_For_Activity_Until takes no event: a loop that waits
+   --  with it alone reads its kernel notices with
+   --  CuBit.Process_Events.Serve_Defaults, so that a Stop reaches here.
+   type Stop_Disposition is (Program_Reads_Stop, Exit_At_Once, Quiesce_Then_Exit);
+   type Quiesce_Procedure is access procedure;
+   Stopped_Exit_Code : constant Unsigned_64 := 0;
+
+   procedure Exit_On_Stop;
+   procedure On_Stop (Quiesce : not null Quiesce_Procedure);
+   function Stop_Answer return Stop_Disposition;
+
+   --  The kernel's control message (kernel ipc_labels.ads EVENT_CONTROL;
+   --  CuBit.Control_Events, which CuBit.Process_Events checks these
+   --  against at compile time): its label, its length, and Stop's kind.
+   Control_Event_Label  : constant := 16#010E#;
+   Control_Event_Length : constant := 2;
+   Stop_Control_Kind    : constant := 1;
+
+   --  Whether what a receive returned is the kernel's Stop. Only the kernel
+   --  posts the label: it refuses a process's events carrying it, and a
+   --  process's call carrying it has a sender (From /= No_Process).
+   function Is_Kernel_Stop
+     (Label : Unsigned_32; Length : Unsigned_8; From : Process_ID; Kind : Unsigned_64)
+      return Boolean is
+     (Label = Control_Event_Label and then Length = Control_Event_Length
+      and then From = No_Process and then Kind = Stop_Control_Kind);
+
+   --  Called with what a receive returned (From: its sender, No_Process
+   --  for a kernel notice): the kernel's Stop, under Exit_At_Once or
+   --  Quiesce_Then_Exit, ends the process here and does not return.
+   --  Anything else returns at once.
+   procedure Answer_Stop (Msg : Message; From : Process_ID);
+
    --  Async completion queue types (matching kernel process.ads)
 
    NO_COMPLETION_TOKEN : constant Unsigned_64 := Unsigned_64'Last;

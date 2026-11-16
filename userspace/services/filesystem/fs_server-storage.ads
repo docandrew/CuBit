@@ -44,4 +44,9 @@ private package Fs_Server.Storage is
    --  from then on. Answered when done.
    procedure handleStorageStop (sender : Process_ID; msg : Message);
 
+   --  The service's Stop (CuBit.Messages.On_Stop): the same commit and
+   --  detach for every volume the storage stage has not detached already
+   --  (none written twice), before the process ends.
+   procedure commitOnStop;
+
 end Fs_Server.Storage;

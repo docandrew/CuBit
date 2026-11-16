@@ -18,6 +18,7 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Events;
 with CuBit.Launch_Configurations;
 with Launch_Configuration;
 with CuBit.Handles.Devices;
@@ -173,6 +174,9 @@ procedure Main is
       Report (CuBit.Driver_Readiness.Not_Present_Label);
    end Decline;
 begin
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    CuBit.Launch_Configurations.Get (Config, Valid);
    if not Stage ("identify", Valid and then Config.Window_Total >= 1,
                  "device=" & Hex (Config.Vendor) & ":" & Hex (Config.Device) &
@@ -319,6 +323,9 @@ begin
             Ignore := reply (From, NULL_MESSAGE);
          else
             Waited := Wait_For_Activity_Until (Unsigned_64'Last);
+            --  Kernel notices (a Stop among them) are read, not left to wake
+            --  the wait again at once.
+            CuBit.Process_Events.Serve_Defaults;
          end if;
       end;
    end loop;

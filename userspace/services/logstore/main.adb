@@ -79,6 +79,10 @@ procedure Main is
    Op : Operation := Get_Minimum;
    Ended_Event : CuBit.Control_Events.Event;
    Have_Event : Boolean;
+   --  procmgr's Stop (shutdown): this pass drains and persists what the
+   --  publishers wrote, then logstore ends.
+   Stop_Requested : Boolean := False;
+   use type CuBit.Control_Events.Event_Kind, CuBit.Control_Events.Control_Kind;
    Decoded : Logs.Decoded;
 
 
@@ -344,6 +348,10 @@ begin
          From, Request, Received);
       Publisher_Rings.Disarm (Publishers);
       Source_Registrars.Disarm (Registrars);
+      --  The receive takes kernel notices too: a Stop is one.
+      if Received and then Is_Kernel_Stop (Request.tag.label, Request.tag.length, From, Request.words (0)) then
+         Stop_Requested := True;
+      end if;
       Now_Ms := syscall (SYSCALL_GETTIME);
       if not Minimum_Settled then
          Read_Minimum_Setting;
@@ -362,6 +370,11 @@ begin
       loop
          CuBit.Process_Events.Next (Ended_Event, Have_Event);
          exit when not Have_Event;
+         if Ended_Event.Kind = CuBit.Control_Events.Control
+           and then Ended_Event.Control = CuBit.Control_Events.Stop
+         then
+            Stop_Requested := True;
+         end if;
          Publisher_Rings.Ended (Publishers, Store, Budgets, Ended_Event, Minimum, Now_Ms);
          Source_Registrars.Ended (Registrars, Identities, Ended_Event, Now_Ms);
          Stream_Writers.Ended (Writers, Ended_Event);
@@ -507,5 +520,7 @@ begin
       Stream_Writers.Drain (Writers, Store, Backlog);
       Log_Persistence.Pump (Store, Now_Ms);
       Publisher_Rings.Release (Publishers);
+      exit when Stop_Requested;
    end loop;
+   Note ("logstore: Stop: drained and persisted; exiting");
 end Main;
