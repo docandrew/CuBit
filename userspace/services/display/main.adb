@@ -3467,6 +3467,91 @@ procedure main is
    end handleRequest;
 
    ret     : Unsigned_64;
+   --  PWR-003: procmgr's Stop (shutdown). How long a present already
+   --  submitted to the GPU driver may take to complete before display lets
+   --  go of its buffers anyway: a flip lands at the next vertical blank
+   --  (17 ms at 60 Hz), well inside display's 500 ms stop grace.
+   Stop_Present_Wait_Ms : constant := 100;
+
+   --  The Stop: every output lets go of what it holds, in order, and the
+   --  GPU keeps scanning out the last frame (nothing is cleared: the screen
+   --  stays as it was until S5).
+   --    1. A present in flight completes (bounded by Stop_Present_Wait_Ms).
+   --    2. The owner's session ends (detachOwnerBuffer): the loans display
+   --       derived for Desktop are revoked (children before their parents),
+   --       then the grants Desktop lent are returned. Desktop may have
+   --       stopped already: its grants are then gone, and returning one
+   --       that is gone is not an error here.
+   --    3. The GPU driver's forwardable grants behind the loans are
+   --       returned, then display's mappings of its scanout buffers.
+   procedure stopOutputs is
+      Saved : constant Output_Index := selectedOutput;
+      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Activity : Activity_Result;
+      Returned : Boolean;
+      Loans, Lent, Mapped, Lent_Held, Mapped_Held : Natural;
+      pragma Unreferenced (Activity);
+   begin
+      --  1. Presents in flight, on every output.
+      loop
+         collectFrames;
+         exit when (for all O in Output_Index =>
+                      not readyOutputs (O) or else
+                      (outputStates (O).backendToken = 0 and then outputStates (O).legacyToken = 0));
+         exit when syscall (SYSCALL_GETTIME) - Started >= Stop_Present_Wait_Ms;
+         Activity := Wait_For_Activity_Until (Started + Stop_Present_Wait_Ms);
+      end loop;
+      for O in Output_Index loop
+         if readyOutputs (O) then
+            selectedOutput := O;
+            declare
+               State : Output_State renames outputStates (O);
+            begin
+               Loans := 0;
+               for B in Pool_Wire.Buffer_Slot loop
+                  if State.lendChildLive (B) then
+                     Loans := Loans + 1;
+                  end if;
+               end loop;
+               --  2. Loans revoked, Desktop's grants returned.
+               detachOwnerBuffer;
+               --  3. The GPU driver's grants, loans' parents first.
+               Lent := 0;
+               Mapped := 0;
+               Lent_Held := 0;
+               Mapped_Held := 0;
+               for Index in 0 .. BT.Count (State.Targets) - 1 loop
+                  if State.lendParentLive (Index) then
+                     Lent_Held := Lent_Held + 1;
+                     MG.Return_Acquisition (State.lendParent (Index), Returned);
+                     State.lendParentLive (Index) := False;
+                     if Returned then
+                        Lent := Lent + 1;
+                     end if;
+                  end if;
+               end loop;
+               for Index in 0 .. BT.Count (State.Targets) - 1 loop
+                  if State.gpuScanoutAddr (Index) /= System.Null_Address then
+                     Mapped_Held := Mapped_Held + 1;
+                     MG.Return_Acquisition (State.gpuScanoutGrant (Index), Returned);
+                     State.gpuScanoutAddr (Index) := System.Null_Address;
+                     if Returned then
+                        Mapped := Mapped + 1;
+                     end if;
+                  end if;
+               end loop;
+               debugPrint ("display: Stop: output" & Output_Index'Image (O) & ":" &
+                           Natural'Image (Loans) & " loans revoked; returned to the GPU driver" &
+                           Natural'Image (Lent) & " of" & Natural'Image (Lent_Held) & " lent buffers and" &
+                           Natural'Image (Mapped) & " of" & Natural'Image (Mapped_Held) & " scanout mappings" &
+                           (if State.backendToken /= 0 or else State.legacyToken /= 0
+                            then " (a present was still in flight)" else "") & LF);
+            end;
+         end if;
+      end loop;
+      selectedOutput := Saved;
+   end stopOutputs;
+
    from    : Process_ID;
    msg     : Message;
    replyMsg : Message := NULL_MESSAGE;
@@ -3557,8 +3642,15 @@ begin
          if not deferredReply then ret := reply (from, replyMsg); end if;
       end if;
       maybePrintStats;
-      if not found and then not Poll_Event (eventMsg) then
-         if Wait_For_Activity_Until
+      if not found then
+         if Poll_Event (eventMsg) then
+            --  The kernel's Stop (only the kernel posts its label): let go
+            --  of the buffers in order, then end (exit code 0).
+            if Is_Kernel_Stop (eventMsg.tag.label, eventMsg.tag.length, No_Process, eventMsg.words (0)) then
+               stopOutputs;
+               return;
+            end if;
+         elsif Wait_For_Activity_Until
               (if presentPending then syscall (SYSCALL_GETTIME) + Present_Check_Ms
                else Unsigned_64'Last) = Unavailable
          then

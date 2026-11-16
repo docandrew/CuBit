@@ -26,6 +26,9 @@ procedure Main is
    Completion : CompletionEntry;
    Found, Handled, Submitted : Boolean;
 begin
+   --  Stop (procmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
    debugPrint ("clock: starting" & LF);
    Wall_Clock.Initialize;
    Ignore := registerDriver (DRIVER_CLOCK, Startup.Registration);

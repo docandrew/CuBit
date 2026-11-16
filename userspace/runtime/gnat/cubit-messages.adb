@@ -255,6 +255,10 @@ package body CuBit.Messages is
       found := (ret /= 0);
       if found then
          Answer_Stop (msg, from);
+      elsif msg.tag.label /= NULL_TAG.label then
+         --  A kernel notice: the kernel reports its sender (none) as 0,
+         --  the same word as "nothing", so the message is the only sign.
+         Answer_Stop (msg, No_Process);
       end if;
    end Poll_Any_Ipc;
 
