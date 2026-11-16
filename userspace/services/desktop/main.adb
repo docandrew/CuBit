@@ -8161,6 +8161,24 @@ procedure main is
 
    procedure requestClose (target : Unsigned_64);
 
+   --  Why Desktop ended a client's surface; each end is logged with it
+   --  (UI-039: the console's surface vanished on the laptop with no word).
+   type Surface_End_Reason is
+     (User_Closed,        --  the close button of a window that does not close itself
+      Client_Destroyed,   --  the client's Destroy_Surface
+      Client_Said_Bye,    --  the client's Bye (all its surfaces)
+      Client_Ended);      --  its process ended (reaped)
+   procedure noteSurfaceEnded (S : Surface; Reason : Surface_End_Reason) is
+   begin
+      debugPrint ("desktop: surface" & Decimal (S.id) &
+        (if S.title.Text'Length > 0 then " (" & S.title.Text & ")" else "") & " ended: " &
+        (case Reason is
+           when User_Closed => "closed by the user",
+           when Client_Destroyed => "the client destroyed it",
+           when Client_Said_Bye => "the client said bye",
+           when Client_Ended => "its process ended") & LF);
+   end noteSurfaceEnded;
+
    procedure closeSurface (idx : SurfaceIndex; damage : in out Rect) is
       oldBounds : constant Rect := surfaceRect (store.Surfaces (idx));
       oldId     : constant Unsigned_64 := store.Surfaces (idx).id;
@@ -8186,6 +8204,7 @@ procedure main is
       end if;
       clearInputForTarget (oldId);
 
+      noteSurfaceEnded (store.Surfaces (idx), User_Closed);
       releaseSurfaceBuffer (store.Surfaces (idx));
       retireSurfaceSource (store.Surfaces (idx));
       store.Surfaces (idx) := (others => <>);
@@ -8231,6 +8250,7 @@ procedure main is
             if focusSurface = store.Surfaces (i).id then
                focusSurface := 0;
             end if;
+            noteSurfaceEnded (store.Surfaces (i), Client_Ended);
             if store.Surfaces (i).bufferAttached or else store.Surfaces (i).publicationMode then
                releaseSurfaceBuffer (store.Surfaces (i));
                debugPrint ("desktop: dead client buffer retirement requested" & LF);
@@ -10141,6 +10161,7 @@ procedure main is
                      endDrag;
                   end if;
                   clearInputForTarget (target);
+                  noteSurfaceEnded (store.Surfaces (SurfaceIndex (idx)), Client_Destroyed);
                   releaseSurfaceBuffer (store.Surfaces (SurfaceIndex (idx)));
                   retireSurfaceSource (store.Surfaces (SurfaceIndex (idx)));
                   store.Surfaces (SurfaceIndex (idx)) := (others => <>);
@@ -10227,6 +10248,7 @@ procedure main is
                      endDrag;
                   end if;
                   clearInputForTarget (store.Surfaces (i).id);
+                  noteSurfaceEnded (store.Surfaces (i), Client_Said_Bye);
                   releaseSurfaceBuffer (store.Surfaces (i));
                   retireSurfaceSource (store.Surfaces (i));
                   store.Surfaces (i) := (others => <>);
