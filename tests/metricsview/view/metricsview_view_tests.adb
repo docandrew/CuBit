@@ -1393,6 +1393,110 @@ begin
       end;
    end if;
 
+   --  A window shorter than the dashboard (QEMU's 1024x768 screen): the
+   --  last cards run under the status bar. Live scrolls move plot pixels
+   --  and edits move cards; neither may carry the status bar's pixels (its
+   --  hint read garbled there), and its text stays exact as the hint
+   --  changes.
+   declare
+      Short : Positive := HEIGHT / 2;
+      --  Rows wholly inside the status bar.
+      Band : constant := 16;
+      function Key (K : Dash_View.Key) return Dash_View.Event is
+        (Kind => Dash_View.Key_Press, Pressed => K, others => <>);
+      --  Pixels of the status bar (and of the whole frame) that differ
+      --  from a full redraw (which the frame then is).
+      procedure Differences (In_Band, In_Frame : out Natural; What : String) is
+         Built : constant Pixels_Access := new Pixels'(Image.all);
+      begin
+         Repaint_All;
+         In_Band := 0;
+         In_Frame := 0;
+         for I in Image'Range loop
+            if Image (I) /= Built (I) then
+               In_Frame := In_Frame + 1;
+               if I in (Short - Band) * WIDTH .. Short * WIDTH - 1 then
+                  In_Band := In_Band + 1;
+               end if;
+            end if;
+         end loop;
+         if In_Frame > 0 and then Screens then
+            declare
+               Redrawn : constant Pixels := Image.all;
+            begin
+               Image.all := Built.all;
+               Save_PPM ("diff-status-" & What & "-built");
+               Image.all := Redrawn;
+            end;
+         end if;
+      end Differences;
+      procedure Check_Status (What : String) is
+         In_Band, In_Frame : Natural;
+      begin
+         Differences (In_Band, In_Frame, What);
+         Check (In_Band = 0, What & ": the status bar built from damage equals a full redraw (" & In_Band'Image
+                & " pixels differ)");
+         Check (In_Frame = 0, What & ": the frame built from damage equals a full redraw (" & In_Frame'Image
+                & " pixels differ)");
+      end Check_Status;
+   begin
+      Dash_View.Initialize (View, Feed'Unchecked_Access, Board);
+      Dash_View.Set_Bounds (View, (0, 0, WIDTH, Short));
+      Repaint_All;
+      --  The status bar over the top of a time series' plot (the input-to-
+      --  rendered lines, the last card), as on QEMU's screen.
+      declare
+         Plot : constant CuBit.UI.Rect := Dash_View.Plot_Bounds (View, Dash_View.Panel_Count (View));
+      begin
+         Short := Plot.y + Band + Band / 2;
+         Dash_View.Set_Bounds (View, (0, 0, WIDTH, Short));
+         Repaint_All;
+         Check (CuBit.UI."=" (Dash_View.Plot_Bounds (View, Dash_View.Panel_Count (View)), Plot)
+                and then Plot.y + Plot.h > Short and then Plot.y < Short - Band,
+                "a live plot runs under the short window's status bar");
+      end;
+      --  Long enough for the live edge to cross a few columns; no new
+      --  samples, so a crossing only scrolls (a new sample redraws the whole
+      --  card, status bar and all, and would hide a wrong scroll). Each
+      --  scroll is checked as it lands (a later status change redraws it).
+      declare
+         Scrolls, Worst_Band, Worst_Frame : Natural := 0;
+         In_Band, In_Frame : Natural;
+      begin
+         for F in 1 .. 200 loop
+            Now := Now + FRAME_US;
+            Frame;
+            if Damage_Total.w > WIDTH / 2 then
+               Scrolls := Scrolls + 1;
+               Differences (In_Band, In_Frame, "short-scroll");
+               Worst_Band := Natural'Max (Worst_Band, In_Band);
+               Worst_Frame := Natural'Max (Worst_Frame, In_Frame);
+            end if;
+         end loop;
+         Check (Scrolls > 0, "the short window's plots scroll:" & Scrolls'Image);
+         Check (Worst_Band = 0, "short live: a scroll leaves the status bar as a full redraw draws it (" & Worst_Band'Image
+                & " pixels differ)");
+         Check (Worst_Frame = 0, "short live: a scroll's frame equals a full redraw (" & Worst_Frame'Image
+                & " pixels differ)");
+      end;
+      --  The hint changes (editing); the card under the status bar is
+      --  selected (its ring is painted straight into the frame) and moved
+      --  (its pixels move); the hint again.
+      Interact (Key (Dash_View.Edit), "short edit");
+      Check_Status ("short edit");
+      for P in 2 .. Dash_View.Panel_Count (View) loop
+         Interact (Key (Dash_View.Next_Panel), "short select");
+      end loop;
+      Check (Dash_View.Selected (View) = Dash_View.Panel_Count (View), "the card under the status bar is selected");
+      Check_Status ("short select");
+      Interact (Key (Dash_View.Right), "short move");
+      Check_Status ("short move");
+      Interact (Key (Dash_View.Left), "short move back");
+      Interact (Key (Dash_View.Escape), "short done");
+      Check_Status ("short done");
+      Save_PPM ("19-short-window");
+   end;
+
    --  A series outside the reader's scope.
    declare
       Small : Dash_Model.Dashboard;

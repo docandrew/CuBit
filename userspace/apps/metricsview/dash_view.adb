@@ -417,6 +417,24 @@ package body Dash_View is
    function Touches_Layer (R : Rect) return Boolean is
      (Intersects (R, Menu_Popup) or else Intersects (R, Picker_Cover) or else Intersects (R, Dialog_Box));
 
+   --  The page between the toolbar and the status bar. Cards past its foot
+   --  (more rows than the window holds) run under the status bar, which is
+   --  drawn over them: a plot's scroll moves only its pixels on the page,
+   --  or it would carry the status bar's.
+   function Content_Area return Rect is
+     (Whole.x, Toolbar.y + Toolbar.h, Whole.w,
+      (if Status.y > Toolbar.y + Toolbar.h then Status.y - Toolbar.y - Toolbar.h else 0));
+   --  R's part on the page.
+   function On_Page (R : Rect) return Rect is
+      P : constant Rect := Content_Area;
+      X0 : constant Natural := Natural'Max (R.x, P.x);
+      Y0 : constant Natural := Natural'Max (R.y, P.y);
+      X1 : constant Natural := Natural'Min (R.x + R.w, P.x + P.w);
+      Y1 : constant Natural := Natural'Min (R.y + R.h, P.y + P.h);
+   begin
+      return (if X1 > X0 and then Y1 > Y0 then (X0, Y0, X1 - X0, Y1 - Y0) else (others => 0));
+   end On_Page;
+
    --  R changed: the retained frame redraws exactly R (Dash_Layers), the
    --  toolkit's frame grows by it.
    --  Pixels marked since the last Render (Take_Copy_Stats), and its copy.
@@ -1089,7 +1107,8 @@ package body Dash_View is
       end if;
       O := Panels (P).Outer;
       if not Dash_Layers.Ready or else Source_Shown or else Touches_Layer (O) then
-         --  Painted straight in, it would land over a layer.
+         --  Painted straight in, it would land over a layer. (Over the
+         --  status bar it is drawn again: a selection marks the status bar.)
          Mark (Damage, O);
          return;
       end if;
@@ -1282,7 +1301,8 @@ package body Dash_View is
             end if;
          end;
       end loop;
-      --  A layer's pixels must not move with a panel's.
+      --  A layer's pixels must not move with a panel's. (The status bar's
+      --  may: an edit marks the status bar, drawn after the move.)
       if (for some M of Moves (1 .. Move_Count) => Touches_Layer (M.From) or else Touches_Layer (M.To)) then
          Moved_Pixels := False;
       else
@@ -3260,10 +3280,7 @@ package body Dash_View is
 
    procedure Paint (C : Canvas; Damage : Rect) is
       K : constant Colors := Current_Colors;
-      Above : constant Natural := Menu_Area.h + Toolbar.h;
-      Content : constant Rect :=
-        (Whole.x, Toolbar.y + Toolbar.h, Whole.w,
-         (if Whole.h > Above + Status.h then Whole.h - Above - Status.h else 0));
+      Content : constant Rect := Content_Area;
       --  Wholly under a layer: only the layers are drawn.
       Hidden : constant Boolean := Under_Layer (Damage);
    begin
@@ -3600,7 +3617,8 @@ package body Dash_View is
             return;
          end if;
          --  Later: the picture moves left and the right edge scrolls in.
-         Dash_Layers.Shift (Plot, (if New_Port.Last > Old.Last then -Moved else Moved));
+         --  Only its part on the page: the status bar is drawn over the rest.
+         Dash_Layers.Shift (On_Page (Plot), (if New_Port.Last > Old.Last then -Moved else Moved));
          --  The toolkit copies the moved picture; nothing in it is redrawn.
          Damage := Add_Rect (Damage, Plot);
          if New_Port.Last > Old.Last then
