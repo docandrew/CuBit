@@ -2,6 +2,10 @@
 # the installed root (@ufs:0), which devmgr attaches before procmgr.
 (startup v1
   (start "logstore.svc" (priority 5))
+  # MET-002: the metrics store, before every program that declares a
+  # com.cubit-os.stdmetric outlet (every program may), so their outlets are
+  # wired at launch; and before ccl-remote, which passes its series on.
+  (start "metrics.svc" (priority 5))
   (start "clock.svc" (priority 5))
   # The agent path (AGENT-002): tls.svc holds the trust store (tls/roots.der)
   # and connects for llm.svc, whose one tls-scope is the Messages API host.
