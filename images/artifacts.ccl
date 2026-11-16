@@ -63,6 +63,7 @@
   (artifact "doom" repository "kernel/isodir/boot/doom.elf")
   (artifact "sameboy" repository "kernel/isodir/boot/sameboy.app")
   (artifact "teapots" repository "kernel/isodir/boot/teapots.app")
+  (artifact "text" repository "kernel/isodir/boot/text.app")
   (artifact "calculator" repository "kernel/isodir/boot/calculator.app")
   (artifact "lexicon" repository "kernel/isodir/boot/lexicon.svc")
   (artifact "dictionary" repository "kernel/isodir/boot/dictionary.app")

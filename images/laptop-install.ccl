@@ -79,6 +79,7 @@
   (file optical "doom" "apps/doom.elf")
   (file optical "sameboy" "apps/sameboy.app")
   (file optical "teapots" "apps/teapots.app")
+  (file optical "text" "apps/text.app")
   (file optical "calculator" "apps/calculator.app")
   # Dictionary asks lexicon.svc (docs/lexicon.md).
   (file optical "lexicon" "apps/lexicon.svc")

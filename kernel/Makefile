@@ -2673,10 +2673,15 @@ device-build-root: libc user_runtime ccl-manifest ccl-build ccl-remote
 # with builds granted, and its installer carries the same payload onto the
 # installed root (cubit_live_build_uefi.img). The -test image differs only
 # in showing the pairing code on the serial console (tests/device-builds/run-live.sh).
+# Every program the Apps menu can launch ships in every laptop image.
+.PHONY: check-image-apps
+check-image-apps:
+	python3 -I ../tests/image-apps/check_launch_programs.py ..
+
 .PHONY: usb-live-build-uefi-iso usb-live-build-test-uefi-iso
-usb-live-build-uefi-iso: usb-live-iso installer install-efi installed-initrd device-build-root
+usb-live-build-uefi-iso: check-image-apps usb-live-iso installer install-efi installed-initrd device-build-root
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --device-build
-usb-live-build-test-uefi-iso: usb-live-iso installer install-efi installed-initrd device-build-root
+usb-live-build-test-uefi-iso: check-image-apps usb-live-iso installer install-efi installed-initrd device-build-root
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --device-build-test
 
 # Match the working desktop frontend: SDL's native Wayland display can leave
