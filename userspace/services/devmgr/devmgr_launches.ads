@@ -176,7 +176,8 @@ package Devmgr_Launches is
    with Pre => Item /= No_Child;
    --  Its root-stop stage is Power_Tail (devmgr states it at launch: the
    --  driver of an ACPI device acpi.svc reported, which AML may use until
-   --  the firmware's last step).
+   --  the firmware's last step, or the GPU driver scanning out the screen,
+   --  which keeps its last frame until S5).
    procedure Set_Power_Tail (Item : Child)
    with Pre => Item /= No_Child;
    function Power_Tail (Item : Child) return Boolean

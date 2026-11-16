@@ -7660,6 +7660,12 @@ begin
             if Intel_Child /= DL.No_Child then
                Child := DL.PID (Intel_Child);
                Intel_Inspection_PID := Child;
+               --  PWR-003: it scans out the visible screen, from buffers
+               --  that end with it (and under the IOMMU its mappings go
+               --  too), so a power-off keeps it to the firmware's last step:
+               --  the screen holds its last frame until S5. A reboot or a
+               --  halt stops it (it then touches no display register).
+               DL.Set_Power_Tail (Intel_Child);
                Intel_Control := DL.Control (Intel_Child);
                Intel_Mailbox := DL.Mailbox (Intel_Child);
                --  devmgr's own endpoint to it, badged as the broker: the

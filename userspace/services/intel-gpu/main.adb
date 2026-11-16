@@ -71,6 +71,7 @@ with Intel_GPU_Metadata_Bundle.Releasing;
 with Intel_GPU_Metadata_Release;
 with Intel_GPU_Record_Growth.Releasing;
 with CuBit.Control_Events;
+with Intel_GPU_Stop_Policy;
 with Intel_GPU_Submission_Image;
 with Intel_GPU_Submission_Buffer;
 with Intel_GPU_Submission_Buffer.Updates;
@@ -7593,6 +7594,16 @@ procedure Main is
    --  session's queue channel when its client closes it or dies. Everything
    --  else here (another grant's end) needs no action. Never lost: the
    --  kernel keeps each until read (docs/ipc-delivery.md).
+   --  PWR-003: the supervisor's Stop, read here; the main loop ends by
+   --  Intel_GPU_Stop_Policy.Decide (no display register is touched).
+   Stopping : Intel_GPU_Stop_Policy.State;
+   pragma Compile_Time_Error
+     (Intel_GPU_Stop_Policy.Control_Label /= CuBit.Control_Events.Control_Label
+      or else Intel_GPU_Stop_Policy.Control_Length /= CuBit.Control_Events.Control_Words
+      or else Intel_GPU_Stop_Policy.Stop_Kind /=
+        CuBit.Control_Events.Control_Kind'Enum_Rep (CuBit.Control_Events.Stop),
+      "Intel_GPU_Stop_Policy's control-message constants differ from CuBit.Control_Events");
+
    procedure Service_Kernel_Events is
       Event : Message;
       Notice : CuBit.Control_Events.Event;
@@ -7606,6 +7617,13 @@ procedure Main is
                Device_Doorbells := Device_Doorbells + 1;
                Handle_Device_Interrupt;
             end if;
+         elsif Intel_GPU_Stop_Policy.Is_Stop (Event.tag.label, Event.tag.length, Event.words (0)) then
+            if not Stopping.Requested then
+               debugPrint ("intel-gpu: Stop received; finishing submitted GPU work (at most" &
+                           Unsigned_64'Image (Intel_GPU_Stop_Policy.Drain_Ms) &
+                           " ms), display left as it is" & ASCII.LF);
+            end if;
+            Intel_GPU_Stop_Policy.Note_Stop (Stopping, syscall (SYSCALL_GETTIME));
          else
             Notice := CuBit.Control_Events.Decode
               (Event.tag.label, Event.tag.length, Event.words (0), Event.words (1),
@@ -9921,6 +9939,23 @@ begin
    loop
       Refresh_Runtime_Health;
       Service_Kernel_Events;
+      --  A Stop ends the driver here, at the top of a turn (no request or
+      --  GPU step is half done): once the queues are idle, or after the
+      --  drain bound. Nothing below runs again, and no display register is
+      --  written: the screen keeps its last frame.
+      declare
+         use type Intel_GPU_Stop_Policy.Verdict;
+         Idle : constant Boolean := Queue_Service.Idle (Queue_State);
+      begin
+         if Intel_GPU_Stop_Policy.Decide (Stopping, Idle, syscall (SYSCALL_GETTIME)) =
+           Intel_GPU_Stop_Policy.End_Now
+         then
+            debugPrint ("intel-gpu: Stop: ending" &
+                        (if Idle then " (GPU queues idle)"
+                         else " (GPU work still in flight after the drain bound)") & ASCII.LF);
+            return;
+         end if;
+      end;
       Service_Context_Events;
       Process_Retained_Events;
       Report_Slow_Requests;
