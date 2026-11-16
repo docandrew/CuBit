@@ -20,6 +20,7 @@ with CuBit.UI.Window_Chrome;
 with Client_Frame_Wakeup;
 with Client_Input_Channel;
 with UI_Desktop_Service;
+with CuBit.Log;
 
 package body CuBit.UI.App is
    use ASCII;
@@ -41,6 +42,53 @@ package body CuBit.UI.App is
    end Align_Up_Page;
 
    function Input_Stopped (win : Window) return Boolean is (win.inputStopped);
+
+   --  A window the toolkit stops, or whose input stalls, without the user
+   --  closing it says why (UI-039), through the program's logstore binding
+   --  (CuBit.Log, echoed to the debug console) so `logs` shows it.
+   type Stop_Reason is
+     (Reply_Failed,          --  the input wait completed with a failure status
+      Reply_Rejected,        --  its reply did not decode as a Wait_Input result
+      Surface_Ended,         --  Desktop answered Bad_Object: the surface is gone
+      Wait_Returned_Nothing, --  a blocking wait with no deadline gave no event
+      Wait_Not_Reserved,     --  no input wait could be reserved (one is pending)
+      Wait_Not_Submitted);   --  the kernel refused the input wait's submission
+
+   function Completion_Image (Status : Unsigned_64) return String is
+     (case Status is
+        when COMPLETION_OK => "ok",
+        when COMPLETION_TARGET_DIED => "target-died",
+        when COMPLETION_CANCELLED => "cancelled",
+        when COMPLETION_QUEUE_OVERFLOW => "queue-overflow",
+        when others => "code" & Unsigned_64'Image (Status));
+
+   procedure Report_Stop
+     (win : in out Window; Reason : Stop_Reason; Detail : String := "")
+   is
+      Window_Text : constant String := "ui-app: window" & Unsigned_64'Image (win.surfaceId);
+      Tail : constant String := (if Detail = "" then "" else " " & Detail);
+   begin
+      --  A stall repeats on every loop turn: report it once until a wait
+      --  is submitted again.
+      if Reason in Wait_Not_Reserved | Wait_Not_Submitted then
+         if win.inputStallReported then return; end if;
+         win.inputStallReported := True;
+      end if;
+      case Reason is
+         when Reply_Failed =>
+            CuBit.Log.Warning (Window_Text & " stopped: input reply failed" & Tail);
+         when Reply_Rejected =>
+            CuBit.Log.Warning (Window_Text & " stopped: input reply rejected" & Tail);
+         when Surface_Ended =>
+            CuBit.Log.Warning (Window_Text & " stopped: Desktop ended the surface" & Tail);
+         when Wait_Returned_Nothing =>
+            CuBit.Log.Warning (Window_Text & " stopped: input wait returned no event" & Tail);
+         when Wait_Not_Reserved =>
+            CuBit.Log.Warning (Window_Text & " input stalled: wait not reserved" & Tail);
+         when Wait_Not_Submitted =>
+            CuBit.Log.Warning (Window_Text & " input stalled: wait not submitted" & Tail);
+      end case;
+   end Report_Stop;
 
    function Is_Open (win : Window) return Boolean is
    begin
@@ -492,6 +540,7 @@ package body CuBit.UI.App is
          if decoded.Status = DP.Bad_Object then
             -- The decoder accepts this only from a valid status response.
             -- Do not clear the surface identity or free uncertain frame loans.
+            Report_Stop (win, Surface_Ended, "verdict=" & DP.Status_Code'Image (decoded.Status));
             win.inputStopped := True;
             Client_Input_Batch_Cache.Clear (win.inputCache);
          end if;
@@ -541,14 +590,26 @@ package body CuBit.UI.App is
       request : Message;
    begin
       accepted := False;
-      if win.surfaceId = 0 or else win.inputStopped or else win.sentBye or else win.batchedInput or else
-        not CuBit.Async_Requests.Can_Reserve (win.inputRequest, token)
-      then return; end if;
+      if win.surfaceId = 0 or else win.inputStopped or else win.sentBye or else win.batchedInput then
+         return;
+      end if;
+      if not CuBit.Async_Requests.Can_Reserve (win.inputRequest, token) then
+         Report_Stop (win, Wait_Not_Reserved, "token=" & Unsigned_64'Image (token));
+         return;
+      end if;
       request := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Input_Request ((DP.Wait_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent, deadline)));
       CuBit.Async_Requests.Reserve (win.inputRequest, token, accepted);
-      if not accepted then return; end if;
+      if not accepted then
+         Report_Stop (win, Wait_Not_Reserved, "token=" & Unsigned_64'Image (token));
+         return;
+      end if;
       accepted := capSubmit (UI_Desktop_Service.Endpoint, request, token);
+      if accepted then
+         win.inputStallReported := False;
+      else
+         Report_Stop (win, Wait_Not_Submitted);
+      end if;
       CuBit.Async_Requests.Submitted (win.inputRequest, accepted);
    end Submit_Input_Wait;
 
@@ -562,10 +623,20 @@ package body CuBit.UI.App is
       CuBit.Async_Requests.Capture (win.inputRequest, receipt.token, receipt.valid, consumed);
       if not consumed then return; end if;
       CuBit.Async_Requests.Release (win.inputRequest);
-      healthy := receipt.status = COMPLETION_OK and not win.sentBye;
-      if not healthy then return; end if;
+      --  After Close the window ended by the program's own choice: no report.
+      if win.sentBye then healthy := False; return; end if;
+      healthy := receipt.status = COMPLETION_OK;
+      if not healthy then
+         Report_Stop (win, Reply_Failed, "status=" & Completion_Image (receipt.status));
+         return;
+      end if;
       decoded := DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (receipt.msg), DP.Wait_Input);
       healthy := decoded.Status = DP.Success;
+      --  Bad_Object is reported by Apply_Input_Result, which stops input.
+      if not healthy and then decoded.Status /= DP.Bad_Object then
+         Report_Stop (win, Reply_Rejected, "status=ok verdict=" & DP.Status_Code'Image (decoded.Status) &
+           " label=" & Unsigned_32'Image (receipt.msg.tag.label));
+      end if;
       Apply_Input_Result (win, decoded, event, found);
    end Complete_Input_Wait;
 
@@ -1177,7 +1248,10 @@ package body CuBit.UI.App is
                      end;
                   elsif deadline = 0 then
                      Wait_Input (win, pendingEvent, hasPendingEvent);
-                     if not hasPendingEvent then running := False; end if;
+                     if not hasPendingEvent then
+                        if not win.inputStopped then Report_Stop (win, Wait_Returned_Nothing); end if;
+                        running := False;
+                     end if;
                   else
                      Wait_Input_Until (win, deadline, pendingEvent, hasPendingEvent);
                      if win.inputStopped then
@@ -1193,6 +1267,9 @@ package body CuBit.UI.App is
             end if;
          end;
       end loop;
+      --  A stop the user did not ask for was reported: let logstore take
+      --  the record before the program exits.
+      if win.inputStopped then CuBit.Log.Flush; end if;
    end Run;
 
    procedure Close (win : in out Window) is

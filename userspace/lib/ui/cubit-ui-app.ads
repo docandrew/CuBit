@@ -320,6 +320,8 @@ private
       inputMayRemain : Boolean := False;
       inputStopped : Boolean := False;
       inputErrorReported : Boolean := False;
+      --  An input-wait stall was logged (CuBit.UI.App.Report_Stop).
+      inputStallReported : Boolean := False;
       batchedInput : Boolean := False;
       inputCache : Client_Input_Batch_Cache.State;
       inputStats : Input_Diagnostics;
