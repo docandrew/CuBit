@@ -1966,16 +1966,6 @@ logs: ccl-build user_runtime ccl-manifest ui-fonts-native
 	$(CCL_BUILD) ../userspace/apps/logs/component.ccl
 	cp ../userspace/apps/logs/build/logs.app isodir/boot/logs.app
 
-.PHONY : trace-viewer
-# Read-only checked desktop trace archive viewer.
-trace-viewer: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/trace-viewer/build
-	$(CCL_BUILD) ../userspace/apps/trace-viewer/component.ccl
-	cp ../userspace/apps/trace-viewer/build/trace-viewer.app isodir/boot/trace-viewer.app
-
-isodir/boot/trace-viewer.app: trace-viewer
-	@test -s $@
-
 .PHONY : boot-logs
 boot-logs: ccl-build user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/boot-logs/build
@@ -2509,7 +2499,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/capability-test.app \
 	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app isodir/boot/text.app \
 	isodir/boot/calculator.app \
-	isodir/boot/config-inspector.app isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app isodir/boot/trace-viewer.app \
+	isodir/boot/config-inspector.app isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc isodir/boot/timesync.svc isodir/boot/tls.svc isodir/boot/config-storage.svc \
 	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/bible.app \
@@ -2543,7 +2533,7 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app isodir/boot/text.app \
 	isodir/boot/calculator.app isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
-	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/metricsview.app isodir/boot/trace-viewer.app isodir/boot/config-storage.svc \
+	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/metricsview.app isodir/boot/config-storage.svc \
 	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/bible.app \
 	$(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
@@ -2574,7 +2564,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop metricsvc display logstore \
-	desktop-shell devices files text calculator config-inspector ccl-workbench ccl-console logs trace-viewer config-storage clock timesync tls doom sameboy \
+	desktop-shell devices files text calculator config-inspector ccl-workbench ccl-console logs config-storage clock timesync tls doom sameboy \
 	lexicon dictionary bible
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
@@ -2842,7 +2832,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations trace-viewer test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview
+world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview
 
 .PHONY : headless-test
 headless-test: world

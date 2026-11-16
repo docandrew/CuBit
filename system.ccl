@@ -23,9 +23,6 @@
   (setting "desktop.launch.15-metrics"
     (Launch_Entry label => "Metrics" action => (Launch_Action.Program "metricsview.app") icon => (Launch_Icon "Trace") category => App_Category.System
       color => (App_Color.RGB (RGB_Color red => 57 green => 135 blue => 229))))
-  (setting "desktop.launch.16-trace"
-    (Launch_Entry label => "Desktop trace" action => (Launch_Action.Program "trace-viewer.app") icon => (Launch_Icon "Trace") category => App_Category.System
-      color => (App_Color.RGB (RGB_Color red => 30 green => 157 blue => 181))))
   # The in-CuBit agent (AGENT-002): Diagnose missions through llm.svc; the
   # API key goes into secrets.svc from its masked entry.
   (setting "desktop.launch.13-agent"

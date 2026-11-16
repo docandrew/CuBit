@@ -277,7 +277,6 @@ SHIPPED = {
     "metricsview": ["stdmetric"],
     "sameboy": ["mixer"],
     "text": [],
-    "trace-viewer": [],
 }
 
 
