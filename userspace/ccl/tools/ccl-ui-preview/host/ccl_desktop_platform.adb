@@ -1,3 +1,4 @@
+with CCL_Window;
 with CCL_Application;
 with Ada.Unchecked_Deallocation;
 ------------------------------------------------------------------------------
@@ -5,14 +6,6 @@ with Ada.Unchecked_Deallocation;
 ------------------------------------------------------------------------------
 
 package body CCL_Desktop_Platform is
-   procedure Finish_Input is null;
-   function Host_Yield return Interfaces.Integer_32
-     with Import, Convention => C, External_Name => "sched_yield";
-   procedure Yield_Input is
-      Ignore : Interfaces.Integer_32;
-   begin
-      Ignore := Host_Yield;
-   end Yield_Input;
 
    type Image is array (Natural range <>) of Interfaces.Unsigned_32;
    type Image_Access is access Image;
@@ -53,9 +46,6 @@ package body CCL_Desktop_Platform is
         Interfaces.Integer_32 (Rendered.x), Interfaces.Integer_32 (Rendered.y),
         Interfaces.Integer_32 (Rendered.w), Interfaces.Integer_32 (Rendered.h)) = 0;
    end Submit_Frame;
-   function Frame_Pending return Boolean is (False);
-   function Frame_Deadline (Application : Interfaces.Unsigned_64)
-     return Interfaces.Unsigned_64 is (Application);
 
    procedure Live_Label_Changed (Event : Live_Label_Event) is null;
    procedure REPL_Completed (Result : String) is null;
@@ -92,4 +82,53 @@ package body CCL_Desktop_Platform is
       Typed := Clip_Typed;
       Pasted := Count > 0;
    end Paste;
+   --  Linux preview: the SDL loop (poll, work, draw, wait).
+   procedure Run_Window (Handle_Window : System.Address) is
+      use type Interfaces.Integer_32, Interfaces.Unsigned_64;
+      Kind, X, Y : aliased Interfaces.Integer_32;
+      Code, Modifiers : aliased Interfaces.Unsigned_32;
+      Width, Height : aliased Interfaces.Integer_32;
+   begin
+      while Running loop
+         while CCL_Window.Poll
+           (Handle_Window, Kind'Access, Code'Access, Modifiers'Access, X'Access, Y'Access) /= 0
+         loop
+            Handle (Event_Of (Kind), Code, Modifiers, X, Y);
+            exit when not Running;
+         end loop;
+         exit when not Running;
+         Work;
+         exit when not Running;
+         declare
+            Area : constant CuBit.UI.Rect := Take_Damage;
+            Canvas : CuBit.UI.Canvas;
+            Repair : CuBit.UI.Rect;
+            Ready : Boolean;
+         begin
+            if not CuBit.UI.Is_Empty (Area) and then
+              CCL_Window.Prepare_Frame (Handle_Window, 1, 1, 0, 0, Width'Access, Height'Access) = 0
+            then
+               Canvas.width := Natural (Width);
+               Canvas.height := Natural (Height);
+               Begin_Frame (Canvas, Area, Repair, Ready);
+               if Ready then
+                  Canvas := CuBit.UI.With_Clip (Canvas, Repair);
+                  Draw (Canvas, Repair);
+                  exit when not Submit_Frame (Handle_Window, Canvas, Repair);
+               end if;
+            end if;
+         end;
+         declare
+            Wanted : constant Interfaces.Unsigned_64 := Wake_At;
+         begin
+            if Wanted = 0 then
+               CCL_Window.Wait (1);
+            elsif Wanted <= CCL_Window.Ticks then
+               CCL_Window.Wait (0);
+            else
+               CCL_Window.Wait_Until (Wanted);
+            end if;
+         end;
+      end loop;
+   end Run_Window;
 end CCL_Desktop_Platform;

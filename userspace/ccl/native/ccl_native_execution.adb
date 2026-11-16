@@ -28,7 +28,12 @@ package body CCL_Native_Execution is
      [for Action in D.Operation =>
         CCL.Binding_Blocks.First (CCL.Binding_Blocks.Config_Values) + D.Operation'Pos (Action)];
    Host : H.Runner (1);
-   Tokens : Interfaces.Unsigned_64 := 0;
+   --  From the toolkit's application token range: its loop's input waits
+   --  use the tokens below (CuBit.UI.App.Run, UI-039).
+   --  (CuBit.UI.App.APPLICATION_TOKEN_FIRST; this unit also serves
+   --  programs without the toolkit).
+   Application_Token_First : constant := 2 ** 48;
+   Tokens : Interfaces.Unsigned_64 := Application_Token_First;
    Dirty : Boolean := False;
    Reported : Boolean := False;
 

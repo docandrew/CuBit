@@ -20,7 +20,6 @@ with CCL.VM;
 with CCL_Execution;
 with CCL_Desktop_Platform;
 with CCL_Window;
-with Client_Input_Budget;
 with CCL_Workspace;
 with CCL.Sessions;
 with CCL.Periodic_Programs;
@@ -2582,7 +2581,7 @@ package body CCL_Workbench is
          Draw_Title_Controls;
       end if;
 
-      --  The menu bar is drawn over the content by Paint (Draw_Menus).
+      --  The menu bar is drawn over the content by Draw (Draw_Menus).
 
       CuBit.UI.Widgets.Toolbar
         (Canvas, (x => 0, y => CLIENT_TITLE_HEIGHT + MENU_BAR_HEIGHT,
@@ -3201,43 +3200,6 @@ package body CCL_Workbench is
          "bounded document, proved viewport");
    end Render_Pointer_Feedback;
 
-   type Paint_Kind is (All_Content, Output_Only, Label_Only, Button_And_Label,
-                       REPL_Only, Dialog_Only, Pointer_Only);
-   function Paint (Handle : System.Address; Changed : CuBit.UI.Rect;
-                   Kind : Paint_Kind := All_Content) return Boolean is
-      use type CuBit.UI.Rect;
-      Repair : CuBit.UI.Rect;
-      Ready : Boolean;
-   begin
-      CCL_Desktop_Platform.Begin_Frame (Canvas, Changed, Repair, Ready);
-      if not Ready then return True; end if; -- debt remains for a timed retry
-      Canvas := CuBit.UI.With_Clip (Canvas, Repair);
-      Set_Tooltips;
-      if Kind = All_Content or else Repair /= Changed then
-         Render; -- repair older candidate content from current application state
-      else
-         case Kind is
-            when All_Content => null;
-            when Output_Only => Render_Output;
-            when Label_Only => Render_Live_Label;
-            when Button_And_Label =>
-               CuBit.UI.Fill_Rect (Canvas, Repair, Colors.face);
-               Render_Live_Label;
-               Render_Handler_Button;
-            when REPL_Only => CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
-            when Dialog_Only => CuBit.UI.File_Dialogs.Draw (Canvas, File_Dialog, Colors);
-            when Pointer_Only => Render_Pointer_Feedback;
-         end case;
-      end if;
-      Draw_Menus;
-      --  The tooltip over whatever this paint repaired.
-      if not REPL_Visible and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
-        and then not Menus.Is_Open (Menu)
-      then
-         Tooltips.Draw (Canvas, Tip, Tips, (0, 0, Canvas.width, Canvas.height), Colors);
-      end if;
-      return CCL_Desktop_Platform.Submit_Frame (Handle, Canvas, Repair);
-   end Paint;
 
 procedure Run is
 begin
@@ -3296,17 +3258,15 @@ begin
    declare
       Handle : constant System.Address :=
         CCL_Window.Open (Integer_32 (WIDTH), Integer_32 (HEIGHT));
-      Kind : aliased Integer_32 := 0;
+      Kind : Integer_32 := 0;
       Polled : Platform.Window_Event := Platform.No_Event;
-      Code : aliased Unsigned_32 := 0;
-      Modifiers : aliased Unsigned_32 := 0;
-      Mouse_X : aliased Integer_32 := 0;
-      Mouse_Y : aliased Integer_32 := 0;
+      Code : Unsigned_32 := 0;
+      Modifiers : Unsigned_32 := 0;
+      Mouse_X : Integer_32 := 0;
+      Mouse_Y : Integer_32 := 0;
       Surface_Width : aliased Integer_32 := Integer_32 (WIDTH);
       Surface_Height : aliased Integer_32 := Integer_32 (HEIGHT);
       Running : Boolean := Handle /= System.Null_Address;
-      Input_Batch : Client_Input_Budget.Batch;
-      Input_Drained : Boolean := False;
       Dragging : Boolean := False;
       type Scrollbar_Axis is
         (No_Scrollbar, Vertical_Scrollbar, Horizontal_Scrollbar);
@@ -3723,24 +3683,27 @@ begin
             end if;
          end if;
       end Menu_Input;
-   begin
-      if not Running then raise Program_Error; end if;
-      Prepare_Surface;
-      if not Running then raise Program_Error; end if;
-      while Running loop
-         Input_Batch := Client_Input_Budget.Open (CCL_Window.Ticks);
-         Input_Drained := False;
-         while Running and then
-           Client_Input_Budget.Can_Poll (Input_Batch, CCL_Window.Ticks)
-         loop
-            Client_Input_Budget.Charge (Input_Batch);
-            if CCL_Window.Poll
-              (Handle, Kind'Access, Code'Access, Modifiers'Access,
-               Mouse_X'Access, Mouse_Y'Access) = 0
-            then
-               Input_Drained := True;
-               exit;
-            end if;
+      --  UI-039: the platform's loop (CuBit.UI.App.Run on CuBit) polls,
+      --  waits and presents; the Workbench handles input, works and draws.
+      Pending_Damage : CuBit.UI.Rect := (others => 0);
+      procedure Note_Damage (Area : CuBit.UI.Rect) is
+      begin
+         if not CuBit.UI.Is_Empty (Area) then
+            Pending_Damage := (if CuBit.UI.Is_Empty (Pending_Damage) then Area
+                               else CuBit.UI.Union_Rect (Pending_Damage, Area));
+         end if;
+      end Note_Damage;
+
+      procedure Handle_Input
+        (Event : Platform.Window_Event; Event_Code, Event_Modifiers : Unsigned_32;
+         X, Y : Integer_32)
+      is
+      begin
+         Kind := Platform.Window_Event'Enum_Rep (Event);
+         Code := Event_Code;
+         Modifiers := Event_Modifiers;
+         Mouse_X := X;
+         Mouse_Y := Y;
             Polled := Platform.Event_Of (Kind);
             declare
                Consumed, Shift : Boolean;
@@ -3836,7 +3799,7 @@ begin
                end if;
                --  Output interaction never edits the source or REPL, and
                --  does not repaint their expensive text areas.
-               if not Paint (Handle, Output_Bounds, Output_Only) then Running := False; end if;
+               Note_Damage (Output_Bounds);
                Needs_Render := False;
             elsif Output_Focused and then
               Polled in Platform.Text_Input .. Platform.Select_All | Platform.Up .. Platform.Page_Down | Platform.Undo .. Platform.Redo | Platform.Wheel_Left .. Platform.Find_Next
@@ -4439,270 +4402,291 @@ begin
                when others => null;
             end case;
             end if;
-            CCL_Desktop_Platform.Finish_Input;
-            exit when REPL_Only_Render;
-            --  Immediate-mode controls must observe every pointer edge and
-            --  captured drag position before a later event can overwrite it.
-            exit when Polled = Platform.Pointer_Down or else Polled = Platform.Pointer_Drag or else Polled = Platform.Pointer_Up or else
-              Polled = Platform.Double_Click or else Polled = Platform.Triple_Click;
-         end loop;
-         exit when not Running;
-         declare
-            Ran : Boolean;
-            Outcome : CCL.Language.Interpretation_Result;
-         begin
-            Dispatch_Button (Live_Button, Granted_Interfaces, Live_Host, Ran, Outcome);
-            if Ran then
-               Set_Result ("Button: " & CCL.Sessions.Result_Image (Outcome));
-               Needs_Render := True;
-               REPL_Only_Render := False;
-               Dialog_Background_Dirty := True;
-            end if;
-         end;
-         declare
-            Desired : constant Integer_32 := Desired_Pointer_Cursor;
-         begin
-            if Desired /= Last_Pointer_Cursor then
-               CCL_Window.Set_Cursor (Handle, Desired);
-               Last_Pointer_Cursor := Desired;
-            end if;
-         end;
-         if Active_Source_Scrollbar /= No_Scrollbar and then
-           (CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
-              CuBit.UI.Scrollbar_Decrement or else
-            CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
-              CuBit.UI.Scrollbar_Increment) and then
-           Next_Scrollbar_Repeat /= 0 and then
-           CCL_Window.Ticks >= Next_Scrollbar_Repeat
-         then
-            Needs_Render := True;
+      end Handle_Input;
+
+      procedure Work is
+      begin
             declare
-               Moving_Back : constant Boolean :=
-                 CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
-                   CuBit.UI.Scrollbar_Decrement;
-               Old_Value, New_Value, Maximum_Value : Natural;
+               Ran : Boolean;
+               Outcome : CCL.Language.Interpretation_Result;
             begin
-               if Active_Source_Scrollbar = Vertical_Scrollbar then
-                  Old_Value :=
-                    CuBit.UI.Editor.Viewports.First_Line (Source_View);
-                  Maximum_Value := Natural'Max
-                    (1, CuBit.UI.Editor.Documents.Line_Count (Source) -
-                       Natural'Min
-                         (CuBit.UI.Editor.Documents.Line_Count (Source),
-                          CuBit.UI.Editor.Viewports.Line_Capacity
-                            (Source_View)) + 1);
-                  New_Value := Old_Value;
-                  CuBit.UI.Apply_Wheel_Scroll
-                    (New_Value, 1, Maximum_Value,
-                     (if Moving_Back then 1 else -1), 1);
-                  if New_Value /= Old_Value then
-                     CuBit.UI.Editor.Viewports.Scroll_Lines
-                       (Source_View,
-                        Integer (New_Value) - Integer (Old_Value),
-                        CuBit.UI.Editor.Documents.Line_Count (Source));
-                  end if;
-               else
-                  Old_Value :=
-                    CuBit.UI.Editor.Viewports.First_Column (Source_View);
-                  Maximum_Value := Natural'Max
-                    (1, Maximum_Source_Columns -
-                       Natural'Min
-                         (Maximum_Source_Columns,
-                          CuBit.UI.Editor.Viewports.Column_Capacity
-                            (Source_View)) + 1);
-                  New_Value := Old_Value;
-                  CuBit.UI.Apply_Wheel_Scroll
-                    (New_Value, 1, Maximum_Value,
-                     (if Moving_Back then 1 else -1), 1);
-                  if New_Value /= Old_Value then
-                     CuBit.UI.Editor.Viewports.Scroll_Columns
-                       (Source_View,
-                        Integer (New_Value) - Integer (Old_Value),
-                        Maximum_Source_Columns);
-                  end if;
-               end if;
-               if New_Value /= Old_Value then
-                  Next_Scrollbar_Repeat :=
-                    CCL_Window.Ticks + SCROLL_REPEAT_INTERVAL;
-               else
-                  Active_Source_Scrollbar := No_Scrollbar;
-                  Next_Scrollbar_Repeat := 0;
+               Dispatch_Button (Live_Button, Granted_Interfaces, Live_Host, Ran, Outcome);
+               if Ran then
+                  Set_Result ("Button: " & CCL.Sessions.Result_Image (Outcome));
+                  Needs_Render := True;
+                  REPL_Only_Render := False;
+                  Dialog_Background_Dirty := True;
                end if;
             end;
-         end if;
-         declare Changed : Boolean; begin
-            CCL_Execution.Take_Changed (Changed);
-            if Changed and VM_Has_State then
-               Advance_Bytecode (0);
-               Needs_Render := True;
-               REPL_Only_Render := False;
-               Dialog_Background_Dirty := True;
-            end if;
-         end;
-         if VM_Continuous and then not CCL_Execution.Waiting_For_IO and then
-           not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
-         then
-            Needs_Render := True;
             declare
-               Current_PC : constant CCL.VM.Instruction_Index :=
-                 VM_Snapshot.Instruction;
+               Desired : constant Integer_32 := Desired_Pointer_Cursor;
             begin
-               if Breakpoints (Current_PC) and then
-                 not Ignore_Current_Breakpoint
-               then
-                  VM_Continuous := False;
-                  VM_Step_Over_Active := False;
-                  Breakpoint_Paused := True;
-                  Set_Result
-                    ("breakpoint at PC" &
-                     Natural'Image (Natural (Current_PC)));
-               else
-                  Ignore_Current_Breakpoint := False;
-                  Advance_Bytecode (1);
-                  if VM_Step_Over_Active and then
-                    (VM_Snapshot.Terminal or else VM_Snapshot.Waiting or else
-                     CCL.VM.Program_Length (VM_Snapshot.Instruction) >=
-                       Step_Over_End)
+               if Desired /= Last_Pointer_Cursor then
+                  CCL_Window.Set_Cursor (Handle, Desired);
+                  Last_Pointer_Cursor := Desired;
+               end if;
+            end;
+            if Active_Source_Scrollbar /= No_Scrollbar and then
+              (CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+                 CuBit.UI.Scrollbar_Decrement or else
+               CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+                 CuBit.UI.Scrollbar_Increment) and then
+              Next_Scrollbar_Repeat /= 0 and then
+              CCL_Window.Ticks >= Next_Scrollbar_Repeat
+            then
+               Needs_Render := True;
+               declare
+                  Moving_Back : constant Boolean :=
+                    CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+                      CuBit.UI.Scrollbar_Decrement;
+                  Old_Value, New_Value, Maximum_Value : Natural;
+               begin
+                  if Active_Source_Scrollbar = Vertical_Scrollbar then
+                     Old_Value :=
+                       CuBit.UI.Editor.Viewports.First_Line (Source_View);
+                     Maximum_Value := Natural'Max
+                       (1, CuBit.UI.Editor.Documents.Line_Count (Source) -
+                          Natural'Min
+                            (CuBit.UI.Editor.Documents.Line_Count (Source),
+                             CuBit.UI.Editor.Viewports.Line_Capacity
+                               (Source_View)) + 1);
+                     New_Value := Old_Value;
+                     CuBit.UI.Apply_Wheel_Scroll
+                       (New_Value, 1, Maximum_Value,
+                        (if Moving_Back then 1 else -1), 1);
+                     if New_Value /= Old_Value then
+                        CuBit.UI.Editor.Viewports.Scroll_Lines
+                          (Source_View,
+                           Integer (New_Value) - Integer (Old_Value),
+                           CuBit.UI.Editor.Documents.Line_Count (Source));
+                     end if;
+                  else
+                     Old_Value :=
+                       CuBit.UI.Editor.Viewports.First_Column (Source_View);
+                     Maximum_Value := Natural'Max
+                       (1, Maximum_Source_Columns -
+                          Natural'Min
+                            (Maximum_Source_Columns,
+                             CuBit.UI.Editor.Viewports.Column_Capacity
+                               (Source_View)) + 1);
+                     New_Value := Old_Value;
+                     CuBit.UI.Apply_Wheel_Scroll
+                       (New_Value, 1, Maximum_Value,
+                        (if Moving_Back then 1 else -1), 1);
+                     if New_Value /= Old_Value then
+                        CuBit.UI.Editor.Viewports.Scroll_Columns
+                          (Source_View,
+                           Integer (New_Value) - Integer (Old_Value),
+                           Maximum_Source_Columns);
+                     end if;
+                  end if;
+                  if New_Value /= Old_Value then
+                     Next_Scrollbar_Repeat :=
+                       CCL_Window.Ticks + SCROLL_REPEAT_INTERVAL;
+                  else
+                     Active_Source_Scrollbar := No_Scrollbar;
+                     Next_Scrollbar_Repeat := 0;
+                  end if;
+               end;
+            end if;
+            declare Changed : Boolean; begin
+               CCL_Execution.Take_Changed (Changed);
+               if Changed and VM_Has_State then
+                  Advance_Bytecode (0);
+                  Needs_Render := True;
+                  REPL_Only_Render := False;
+                  Dialog_Background_Dirty := True;
+               end if;
+            end;
+            if VM_Continuous and then not CCL_Execution.Waiting_For_IO and then
+              not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+            then
+               Needs_Render := True;
+               declare
+                  Current_PC : constant CCL.VM.Instruction_Index :=
+                    VM_Snapshot.Instruction;
+               begin
+                  if Breakpoints (Current_PC) and then
+                    not Ignore_Current_Breakpoint
                   then
                      VM_Continuous := False;
                      VM_Step_Over_Active := False;
-                     if not VM_Snapshot.Terminal and then
-                       not VM_Snapshot.Waiting
+                     Breakpoint_Paused := True;
+                     Set_Result
+                       ("breakpoint at PC" &
+                        Natural'Image (Natural (Current_PC)));
+                  else
+                     Ignore_Current_Breakpoint := False;
+                     Advance_Bytecode (1);
+                     if VM_Step_Over_Active and then
+                       (VM_Snapshot.Terminal or else VM_Snapshot.Waiting or else
+                        CCL.VM.Program_Length (VM_Snapshot.Instruction) >=
+                          Step_Over_End)
                      then
-                        Set_Result ("step over complete");
+                        VM_Continuous := False;
+                        VM_Step_Over_Active := False;
+                        if not VM_Snapshot.Terminal and then
+                          not VM_Snapshot.Waiting
+                        then
+                           Set_Result ("step over complete");
+                        end if;
                      end if;
                   end if;
+               end;
+            end if;
+            Prepare_Surface;
+            if not Running then return; end if;
+            declare
+               Updated : Boolean;
+            begin
+               Pump_Live (Live_Program, Visible_Interfaces, Granted_Interfaces, Live_Host, Updated);
+               if Updated and then CCL.Periodic_Programs.State (Live_Program) =
+                 CCL.Periodic_Programs.Faulted
+               then
+                  Needs_Render := True;
+                  REPL_Only_Render := False;
+                  Dialog_Background_Dirty := True;
+                  CCL_Desktop_Platform.Live_Label_Changed (CCL_Desktop_Platform.Faulted);
+               elsif Updated and then CCL.Periodic_Programs.Completed_Runs (Live_Program) <= 2 then
+                  CCL_Desktop_Platform.Live_Label_Changed (CCL_Desktop_Platform.Sampled);
+               end if;
+               if Updated and then REPL_Only_Render then
+                  REPL_Only_Render := False;
+               end if;
+               if Updated and then not Needs_Render and then
+                 not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+               then
+                  Note_Damage (Live_Label_Bounds);
                end if;
             end;
-         end if;
-         Prepare_Surface;
-         exit when not Running;
-         declare
-            Updated : Boolean;
-         begin
-            Pump_Live (Live_Program, Visible_Interfaces, Granted_Interfaces, Live_Host, Updated);
-            if Updated and then CCL.Periodic_Programs.State (Live_Program) =
-              CCL.Periodic_Programs.Faulted
-            then
-               Needs_Render := True;
-               REPL_Only_Render := False;
-               Dialog_Background_Dirty := True;
-               CCL_Desktop_Platform.Live_Label_Changed (CCL_Desktop_Platform.Faulted);
-            elsif Updated and then CCL.Periodic_Programs.Completed_Runs (Live_Program) <= 2 then
-               CCL_Desktop_Platform.Live_Label_Changed (CCL_Desktop_Platform.Sampled);
-            end if;
-            if Updated and then REPL_Only_Render then
-               REPL_Only_Render := False;
-            end if;
-            if Updated and then not Needs_Render and then
+            if CCL.UI_Buttons.Changed (Live_Button) and then
               not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
             then
-               exit when not Paint (Handle, Live_Label_Bounds, Label_Only);
+               --  Restore both the previous and current label positions.
+               declare Area : constant CuBit.UI.Rect :=
+                 (HANDLER_X, TOOL_TOP, Canvas.width - HANDLER_X - LIVE_RIGHT_MARGIN, TOOL_SIZE); begin
+                  Note_Damage (Area);
+               end;
+               Needs_Render := True; -- also update Stop's enabled state
+               REPL_Only_Render := False;
             end if;
-         end;
-         if CCL.UI_Buttons.Changed (Live_Button) and then
-           not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
-         then
-            --  Restore both the previous and current label positions.
-            declare Area : constant CuBit.UI.Rect :=
-              (HANDLER_X, TOOL_TOP, Canvas.width - HANDLER_X - LIVE_RIGHT_MARGIN, TOOL_SIZE); begin
-               exit when not Paint (Handle, Area, Button_And_Label);
-            end;
-            Needs_Render := True; -- also update Stop's enabled state
-            REPL_Only_Render := False;
-         end if;
-         if CCL.UI_Labels.Changed (Live_Host.Label) and then
-           not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
-         then
-            exit when not Paint (Handle, Live_Label_Bounds, Label_Only);
-         end if;
-         if CCL.UI_Outputs.Changed (Live_Host.Output) then
-            Dialog_Background_Dirty := True;
-            if not CuBit.UI.File_Dialogs.Is_Open (File_Dialog) then
-               exit when not Paint (Handle, Output_Bounds, Output_Only);
+            if CCL.UI_Labels.Changed (Live_Host.Label) and then
+              not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+            then
+               Note_Damage (Live_Label_Bounds);
             end if;
-         end if;
-         if Needs_Render or else CCL_Desktop_Platform.Frame_Pending then
-            declare
-               Damage : CuBit.UI.Rect :=
-                 (if Needs_Render then (0, 0, Canvas.width, Canvas.height) else (0, 0, 0, 0));
-               Kind : Paint_Kind := All_Content;
-            begin
-               if Needs_Render and then REPL_Visible and then REPL_Only_Render and then
-                 not REPL_Full_Render and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
-               then
-                  Damage := REPL_Bounds; Kind := REPL_Only;
-               elsif Needs_Render and then CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then
-                 not Dialog_Background_Dirty
-               then
-                  Damage := CuBit.UI.File_Dialogs.Bounds (Canvas.width, Canvas.height);
-                  Kind := Dialog_Only;
+            if CCL.UI_Outputs.Changed (Live_Host.Output) then
+               Dialog_Background_Dirty := True;
+               if not CuBit.UI.File_Dialogs.Is_Open (File_Dialog) then
+                  Note_Damage (Output_Bounds);
                end if;
-               exit when not Paint (Handle, Damage, Kind);
+            end if;
+            if Needs_Render then
+               declare
+                  Damage : CuBit.UI.Rect :=
+                    (if Needs_Render then (0, 0, Canvas.width, Canvas.height) else (0, 0, 0, 0));
+               begin
+                  if Needs_Render and then REPL_Visible and then REPL_Only_Render and then
+                    not REPL_Full_Render and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+                  then
+                     Damage := REPL_Bounds;
+                  elsif Needs_Render and then CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then
+                    not Dialog_Background_Dirty
+                  then
+                     Damage := CuBit.UI.File_Dialogs.Bounds (Canvas.width, Canvas.height);
+                  end if;
+                  Note_Damage (Damage);
+               end;
+               Needs_Render := False;
+               REPL_Only_Render := False;
+               REPL_Full_Render := False;
+               Needs_Pointer_Feedback := False;
+            elsif Needs_Pointer_Feedback then
+               Note_Damage (Inspector_Splitter);
+               Note_Damage (Disassembly_Splitter);
+               Note_Damage ((0, Canvas.height - STATUS_HEIGHT, Canvas.width, STATUS_HEIGHT));
+               Needs_Pointer_Feedback := False;
+            end if;
+            if Active_Source_Scrollbar /= No_Scrollbar and then
+              Next_Scrollbar_Repeat = 0 and then
+              (CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+                 CuBit.UI.Scrollbar_Decrement or else
+               CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+                 CuBit.UI.Scrollbar_Increment)
+            then
+               Next_Scrollbar_Repeat :=
+                 CCL_Window.Ticks + SCROLL_REPEAT_DELAY;
+            end if;
+            if not CuBit.UI.Is_Empty (Menu_Repair) then
+               Note_Damage (Menu_Repair);
+               Menu_Repair := (others => 0);
+            end if;
+            declare
+               Tip_Damage : CuBit.UI.Rect;
+            begin
+               Tooltips.Tick (Tip, Tips, CCL_Window.Ticks, Tip_Damage);
+               Note_Tip (Tip_Damage);
+               if not CuBit.UI.Is_Empty (Tip_Repair) then
+                  Note_Damage (Tip_Repair);
+                  Tip_Repair := (others => 0);
+               end if;
             end;
-            Needs_Render := False;
-            REPL_Only_Render := False;
-            REPL_Full_Render := False;
-            Needs_Pointer_Feedback := False;
-         elsif Needs_Pointer_Feedback then
-            exit when not Paint (Handle, Inspector_Splitter, Pointer_Only);
-            exit when not Paint (Handle, Disassembly_Splitter, Pointer_Only);
-            exit when not Paint (Handle, (0, Canvas.height - STATUS_HEIGHT, Canvas.width, STATUS_HEIGHT),
-                                 Pointer_Only);
-            Needs_Pointer_Feedback := False;
+      end Work;
+
+      function Take_Damage return CuBit.UI.Rect is
+         Area : constant CuBit.UI.Rect := Pending_Damage;
+      begin
+         Pending_Damage := (others => 0);
+         return Area;
+      end Take_Damage;
+
+      --  Everything the window shows, clipped to Area (Paint's full repair).
+      procedure Draw (Target : in out CuBit.UI.Canvas; Area : CuBit.UI.Rect) is
+         pragma Unreferenced (Area);
+      begin
+         Canvas := Target;
+         Set_Tooltips;
+         Render;
+         Draw_Menus;
+         if not REPL_Visible and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+           and then not Menus.Is_Open (Menu)
+         then
+            Tooltips.Draw (Canvas, Tip, Tips, (0, 0, Canvas.width, Canvas.height), Colors);
+         end if;
+         Target := Canvas;
+      end Draw;
+
+      --  The live program, tooltips and scrollbar repeat; now when the VM
+      --  or a button has runnable work.
+      function Wake_At return Unsigned_64 is
+         Wakeup : Unsigned_64 :=
+           Unsigned_64'Min (CCL.Periodic_Programs.Next_Deadline (Live_Program), Tooltips.Next_Deadline (Tip));
+      begin
+         if (VM_Continuous and not CCL_Execution.Waiting_For_IO) or else
+           CCL.UI_Buttons.Pending (Live_Button) > 0
+         then
+            return CCL_Window.Ticks;
          end if;
          if Active_Source_Scrollbar /= No_Scrollbar and then
-           Next_Scrollbar_Repeat = 0 and then
-           (CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
-              CuBit.UI.Scrollbar_Decrement or else
-            CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
-              CuBit.UI.Scrollbar_Increment)
+           Next_Scrollbar_Repeat /= 0 and then
+           CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) in
+             CuBit.UI.Scrollbar_Decrement | CuBit.UI.Scrollbar_Increment
          then
-            Next_Scrollbar_Repeat :=
-              CCL_Window.Ticks + SCROLL_REPEAT_DELAY;
+            Wakeup := Unsigned_64'Min (Wakeup, Next_Scrollbar_Repeat);
          end if;
-         if not CuBit.UI.Is_Empty (Menu_Repair) then
-            exit when not Paint (Handle, Menu_Repair, All_Content);
-            Menu_Repair := (others => 0);
-         end if;
-         declare
-            Tip_Damage : CuBit.UI.Rect;
-         begin
-            Tooltips.Tick (Tip, Tips, CCL_Window.Ticks, Tip_Damage);
-            Note_Tip (Tip_Damage);
-            if not CuBit.UI.Is_Empty (Tip_Repair) then
-               exit when not Paint (Handle, Tip_Repair, All_Content);
-               Tip_Repair := (others => 0);
-            end if;
-         end;
-         declare
-            Wakeup : Unsigned_64 :=
-              Unsigned_64'Min (CCL.Periodic_Programs.Next_Deadline (Live_Program), Tooltips.Next_Deadline (Tip));
-         begin
-            if Active_Source_Scrollbar /= No_Scrollbar and then
-              Next_Scrollbar_Repeat /= 0 and then
-              CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) in
-                CuBit.UI.Scrollbar_Decrement | CuBit.UI.Scrollbar_Increment
-            then
-               Wakeup := Unsigned_64'Min (Wakeup, Next_Scrollbar_Repeat);
-            end if;
-            Wakeup := CCL_Desktop_Platform.Frame_Deadline (Wakeup);
-            if not Input_Drained then
-               -- A budget or semantic barrier stopped this batch. Render and
-               -- service local work before polling again; never sleep while
-               -- an unobserved input backlog may remain.
-               CCL_Desktop_Platform.Yield_Input;
-            elsif (VM_Continuous and not CCL_Execution.Waiting_For_IO) or else
-              CCL.UI_Buttons.Pending (Live_Button) > 0
-            then
-               CCL_Window.Wait (0); -- VM has runnable work; yield between slices.
-            elsif Wakeup /= Unsigned_64'Last then
-               CCL_Window.Wait_Until (Wakeup);
-            else
-               CCL_Window.Wait (1);
-            end if;
-         end;
-      end loop;
+         return (if Wakeup = Unsigned_64'Last then 0 else Wakeup);
+      end Wake_At;
+
+      function Is_Running return Boolean is (Running);
+
+      procedure Event_Loop is new Platform.Run_Window
+        (Handle => Handle_Input, Work => Work, Take_Damage => Take_Damage, Draw => Draw,
+         Wake_At => Wake_At, Running => Is_Running);
+   begin
+      if not Running then raise Program_Error; end if;
+      Prepare_Surface;
+      if not Running then raise Program_Error; end if;
+      Event_Loop (Handle);
       CCL.Periodic_Programs.Stop (Live_Program);
       CCL.UI_Buttons.Close (Live_Button);
       CCL_Execution.Stop;

@@ -12,6 +12,8 @@ with CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Input;
 with CuBit.UI.Clipboard;
+with CuBit.UI.State;
+with CuBit.UI.Controls;
 with CCL_Workspace;
 with CCL_Application;
 with CCL_Native_Execution;
@@ -21,7 +23,7 @@ with CCL_Native_Bindings;
 package body CCL_Desktop_Platform is
    function Code_Of (Event : Window_Event) return Integer_32 is
      (Window_Event'Enum_Rep (Event));
-   --  Key commands that act once per press (Window_Poll drops their
+   --  Key commands that act once per press (Translate drops their
    --  auto-repeats): running, files, panes, completion, copy/cut, Escape.
    Once_Per_Press : constant array (Positive range <>) of Window_Event :=
      [Run_Source, Open_Source, Save_Source, Open_Find, Toggle_REPL, Toggle_Watch,
@@ -179,39 +181,7 @@ package body CCL_Desktop_Platform is
    Click_Origin_X : Integer_64 := 0;
    Click_Origin_Y : Integer_64 := 0;
    Click_Count : Natural range 0 .. 3 := 0;
-   Pending_Event : CuBit.UI.App.Input_Event;
-   Handling_Event : CuBit.UI.App.Input_Event;
-   Pending_Found : Boolean := False;
-   Skip_Empty_Poll : Boolean := False;
-   Completions_Seen : Boolean := False;
 
-   procedure Pump_Completions is
-      Receipt : aliased CompletionEntry;
-      Consumed, Healthy, Found : Boolean;
-      Event : CuBit.UI.App.Input_Event;
-   begin
-      Completions_Seen := False;
-      for Count in 1 .. 32 loop
-         exit when Poll_Completion (Receipt'Address) /= 1;
-         Completions_Seen := True;
-         CuBit.UI.App.Complete_Input_Wait (Native_Window, Receipt, Event, Found, Consumed, Healthy);
-         if Consumed then
-            if not Healthy then
-               Native_Open := False;
-            elsif Found then
-               Pending_Event := Event; Pending_Found := True;
-            end if;
-         else
-            --  llm.* pulls carry their own token marker (CCL_Llm_Link).
-            CCL_Llm_Link.Deliver (Receipt, Consumed);
-            if not Consumed then
-               CCL_Native_Execution.Deliver (Receipt, Consumed);
-            end if;
-            if not Consumed then debugPrint (Name & ": unclaimed IPC completion" & ASCII.LF); end if;
-         end if;
-      end loop;
-      CCL_Native_Execution.Maintain;
-   end Pump_Completions;
 
    procedure Activate (Name, Title : String) is
    begin
@@ -289,13 +259,6 @@ package body CCL_Desktop_Platform is
       return 0;
    end Window_Prepare_Frame;
 
-   procedure Decode_Pointer
-     (Packed : Unsigned_64; X, Y : access Integer_32)
-   is
-   begin
-      X.all := Integer_32 (Packed and 16#FFFF_FFFF#);
-      Y.all := Integer_32 (Shift_Right (Packed, 32));
-   end Decode_Pointer;
 
    function Count_Click (X, Y : Integer_32) return Natural is
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
@@ -318,208 +281,143 @@ package body CCL_Desktop_Platform is
       return Click_Count;
    end Count_Click;
 
-   function Window_Poll
-     (Handle : System.Address; Kind : access Integer_32;
-      Code, Modifiers : access Unsigned_32;
-      X, Y : access Integer_32) return Integer_32
-   with Export, Convention => C, External_Name => "ccl_window_poll";
-
-   function Window_Poll
-     (Handle : System.Address; Kind : access Integer_32;
-      Code, Modifiers : access Unsigned_32;
-      X, Y : access Integer_32) return Integer_32
+   --  The application event an input event is, if any.
+   function Translate
+     (Event : CuBit.UI.App.Input_Event; Kind_Code : out Integer_32;
+      Code, Modifiers : out Unsigned_32; X, Y : out Integer_32) return Boolean
    is
-      pragma Unreferenced (Handle);
-      Event : CuBit.UI.App.Input_Event;
-      Found : Boolean;
+      Kind : Integer_32 renames Kind_Code;
       Key : Unsigned_64;
       Mods : Unsigned_64;
       Clicks : Natural;
       Wheel : Unsigned_64;
    begin
-      Kind.all := Code_Of (No_Event);
-      Code.all := 0;
-      Modifiers.all := 0;
-      X.all := 0;
-      Y.all := 0;
-      Pump_Completions;
-      if not Native_Open then
-         return 0;
-      end if;
-
-      if Pending_Found then
-         Event := Pending_Event;
-         Found := True;
-         Pending_Found := False;
-         Skip_Empty_Poll := not CuBit.UI.App.Input_May_Remain (Native_Window);
-      elsif Skip_Empty_Poll then
-         Skip_Empty_Poll := False;
-         return 0;
-      elsif CuBit.UI.App.Input_Wait_Pending (Native_Window) then
-         return 0;
-      else
-         CuBit.UI.App.Poll_Input (Native_Window, Event, Found);
-      end if;
-      if not Found then
-         return 0;
-      end if;
-
+      Kind := Code_Of (No_Event);
+      Code := 0;
+      Modifiers := 0;
+      X := 0;
+      Y := 0;
       case Event.kind is
          when CuBit.UI.App.INPUT_TEXT =>
-            Kind.all := Code_Of (Text_Input);
-            Code.all := Unsigned_32
+            Kind := Code_Of (Text_Input);
+            Code := Unsigned_32
               (Event.payload0 and 16#FFFF_FFFF#);
          when CuBit.UI.App.INPUT_POINTER_DOWN =>
-            Decode_Pointer (Event.payload0, X, Y);
+            X := Integer_32 (Event.payload0 and 16#FFFF_FFFF#); Y := Integer_32 (Shift_Right (Event.payload0, 32));
             --  A click's modifiers are its own (the desktop sends them with
             --  it): a Ctrl release that went to another window never sticks.
             Current_Modifiers := CuBit.UI.Input.Pointer_Modifiers (Event);
-            Modifiers.all := Unsigned_32 (Current_Modifiers and 7);
-            Clicks := Count_Click (X.all, Y.all);
-            Kind.all := Code_Of ((if Clicks = 3 then Triple_Click
+            Modifiers := Unsigned_32 (Current_Modifiers and 7);
+            Clicks := Count_Click (X, Y);
+            Kind := Code_Of ((if Clicks = 3 then Triple_Click
                          elsif Clicks = 2 then Double_Click else Pointer_Down));
          when CuBit.UI.App.INPUT_POINTER_MOVE =>
-            Decode_Pointer (Event.payload0, X, Y);
+            X := Integer_32 (Event.payload0 and 16#FFFF_FFFF#); Y := Integer_32 (Shift_Right (Event.payload0, 32));
             --  Wheel events carry no modifiers: they use the last pointer's.
             Current_Modifiers := CuBit.UI.Input.Pointer_Modifiers (Event);
-            Kind.all := Code_Of ((if (Event.payload1 and 1) /= 0 then Pointer_Drag else Pointer_Hover));
+            Kind := Code_Of ((if (Event.payload1 and 1) /= 0 then Pointer_Drag else Pointer_Hover));
          when CuBit.UI.App.INPUT_POINTER_UP =>
-            Decode_Pointer (Event.payload0, X, Y);
+            X := Integer_32 (Event.payload0 and 16#FFFF_FFFF#); Y := Integer_32 (Shift_Right (Event.payload0, 32));
             Current_Modifiers := CuBit.UI.Input.Pointer_Modifiers (Event);
-            Kind.all := Code_Of (Pointer_Up);
+            Kind := Code_Of (Pointer_Up);
          when CuBit.UI.App.INPUT_POINTER_WHEEL =>
-            Decode_Pointer (Event.payload0, X, Y);
+            X := Integer_32 (Event.payload0 and 16#FFFF_FFFF#); Y := Integer_32 (Shift_Right (Event.payload0, 32));
             Wheel := Event.payload1 and 16#FFFF_FFFF#;
-            Modifiers.all := Unsigned_32 (Current_Modifiers and 7);
+            Modifiers := Unsigned_32 (Current_Modifiers and 7);
             if (Current_Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0 then
-               Kind.all := Code_Of ((if (Wheel and 16#8000_0000#) = 0 then Wheel_Left else Wheel_Right));
+               Kind := Code_Of ((if (Wheel and 16#8000_0000#) = 0 then Wheel_Left else Wheel_Right));
             else
-               Kind.all := Code_Of ((if (Wheel and 16#8000_0000#) = 0 then Wheel_Up else Wheel_Down));
+               Kind := Code_Of ((if (Wheel and 16#8000_0000#) = 0 then Wheel_Up else Wheel_Down));
             end if;
          when CuBit.UI.App.INPUT_CONFIGURE =>
             --  Returning an otherwise ignored event invalidates the shared
             --  layout; Prepare_Frame observes the newly attached canvas.
-            Kind.all := Code_Of (No_Event);
+            Kind := Code_Of (No_Event);
          when CuBit.UI.App.INPUT_KEY_UP =>
             Current_Modifiers := Event.payload1;
             if Event.payload0 /= KEY_ALT then
-               return 0;
+               return False;
             end if;
-            Kind.all := Code_Of (Alt_Changed);
-            Code.all := 0;
+            Kind := Code_Of (Alt_Changed);
+            Code := 0;
          when CuBit.UI.App.INPUT_KEY_DOWN =>
             Key := Event.payload0;
             Mods := CuBit.UI.Input.Key_Modifiers (Event);
             Current_Modifiers := Mods;
-            Modifiers.all := Unsigned_32 (Mods and 7);
+            Modifiers := Unsigned_32 (Mods and 7);
             if Key = KEY_ALT then
-               Kind.all := Code_Of (Alt_Changed);
-               Code.all := 1;
+               Kind := Code_Of (Alt_Changed);
+               Code := 1;
             elsif Clipboard_Event (Key, Mods) /= No_Event then
-               Kind.all := Code_Of (Clipboard_Event (Key, Mods));
+               Kind := Code_Of (Clipboard_Event (Key, Mods));
             elsif Key = KEY_O and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of (Open_Source);
+               Kind := Code_Of (Open_Source);
             elsif Key = KEY_S and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of (Save_Source);
+               Kind := Code_Of (Save_Source);
             elsif Key = KEY_Z and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of ((if (Mods and 1) /= 0 then Redo else Undo));
+               Kind := Code_Of ((if (Mods and 1) /= 0 then Redo else Undo));
             elsif Key = KEY_Y and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of (Redo);
+               Kind := Code_Of (Redo);
             elsif Key = KEY_D and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of (Add_Next_Occurrence);
+               Kind := Code_Of (Add_Next_Occurrence);
             elsif Key = KEY_F and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of (Open_Find);
+               Kind := Code_Of (Open_Find);
             elsif Key = KEY_F3 then
-               Kind.all := Code_Of (Find_Next);
+               Kind := Code_Of (Find_Next);
             elsif Key = KEY_F6 then
-               Kind.all := Code_Of (Toggle_REPL);
+               Kind := Code_Of (Toggle_REPL);
             elsif Key = KEY_F7 then
-               Kind.all := Code_Of (Toggle_Watch);
+               Kind := Code_Of (Toggle_Watch);
             elsif Key = KEY_F8 then
-               Kind.all := Code_Of (Toggle_Syntax);
+               Kind := Code_Of (Toggle_Syntax);
             elsif Key = KEY_F10 and then (Mods and 7) = 0 then
-               Kind.all := Code_Of (Open_Menu);
-               Code.all := 0;
+               Kind := Code_Of (Open_Menu);
+               Code := 0;
             elsif (Mods and 7) = Unsigned_64 (ALT_MODIFIER) and then Letter_Of (Key) /= ' ' then
-               Kind.all := Code_Of (Open_Menu);
-               Code.all := Character'Pos (Letter_Of (Key));
+               Kind := Code_Of (Open_Menu);
+               Code := Character'Pos (Letter_Of (Key));
             elsif Key = KEY_SPACE and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of (Complete_Operation);
+               Kind := Code_Of (Complete_Operation);
             elsif Key = KEY_F5 or else
               (Key = KEY_ENTER and then (Mods and 2) /= 0)
             then
-               Kind.all := Code_Of (Run_Source);
+               Kind := Code_Of (Run_Source);
             elsif Key = KEY_RIGHT_BRACKET and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of ((if (Mods and 1) /= 0 then Select_To_Parenthesis else Match_Parenthesis));
+               Kind := Code_Of ((if (Mods and 1) /= 0 then Select_To_Parenthesis else Match_Parenthesis));
             elsif Key = KEY_BACKSLASH and then (Mods and 3) = 3 then
-               Kind.all := Code_Of (Match_Parenthesis);
-            elsif Key = CuBit.UI.App.KEY_ESC then Kind.all := Code_Of (Escape);
-            elsif Key = KEY_TAB then Kind.all := Code_Of (Tab);
-            elsif Key = KEY_BACKSPACE then Kind.all := Code_Of (Backspace);
-            elsif Key = KEY_ENTER then Kind.all := Code_Of (Enter);
-            elsif Key = KEY_LEFT then Kind.all := Code_Of (Left);
-            elsif Key = KEY_RIGHT then Kind.all := Code_Of (Right);
-            elsif Key = KEY_HOME then Kind.all := Code_Of (Home);
-            elsif Key = KEY_END then Kind.all := Code_Of (End_Key);
-            elsif Key = KEY_DELETE then Kind.all := Code_Of (Delete);
-            elsif Key = KEY_UP then Kind.all := Code_Of (Up);
-            elsif Key = KEY_DOWN then Kind.all := Code_Of (Down);
-            elsif Key = KEY_PAGE_UP then Kind.all := Code_Of (Page_Up);
-            elsif Key = KEY_PAGE_DOWN then Kind.all := Code_Of (Page_Down);
+               Kind := Code_Of (Match_Parenthesis);
+            elsif Key = CuBit.UI.App.KEY_ESC then Kind := Code_Of (Escape);
+            elsif Key = KEY_TAB then Kind := Code_Of (Tab);
+            elsif Key = KEY_BACKSPACE then Kind := Code_Of (Backspace);
+            elsif Key = KEY_ENTER then Kind := Code_Of (Enter);
+            elsif Key = KEY_LEFT then Kind := Code_Of (Left);
+            elsif Key = KEY_RIGHT then Kind := Code_Of (Right);
+            elsif Key = KEY_HOME then Kind := Code_Of (Home);
+            elsif Key = KEY_END then Kind := Code_Of (End_Key);
+            elsif Key = KEY_DELETE then Kind := Code_Of (Delete);
+            elsif Key = KEY_UP then Kind := Code_Of (Up);
+            elsif Key = KEY_DOWN then Kind := Code_Of (Down);
+            elsif Key = KEY_PAGE_UP then Kind := Code_Of (Page_Up);
+            elsif Key = KEY_PAGE_DOWN then Kind := Code_Of (Page_Down);
             elsif Key = KEY_A and then (Mods and 2) /= 0 then
-               Kind.all := Code_Of (Select_All);
+               Kind := Code_Of (Select_All);
             else
-               return 0;
+               return False;
             end if;
             --  Commands and toggles act once per press, never on the
             --  desktop's auto-repeat; editing and movement keys repeat.
             if CuBit.UI.Input.Is_Repeat (Event) and then
-              (for some Command of Once_Per_Press => Kind.all = Code_Of (Command))
+              (for some Command of Once_Per_Press => Kind = Code_Of (Command))
             then
-               return 0;
+               return False;
             end if;
          when others =>
-            return 0;
+            return False;
       end case;
-      Handling_Event := Event;
-      CuBit.UI.App.Begin_Input_Event (Native_Window, Handling_Event);
-      return 1;
-   end Window_Poll;
-   procedure Finish_Input is
-   begin
-      CuBit.UI.App.Finish_Input_Event (Native_Window, Handling_Event);
-   end Finish_Input;
+      return True;
+   end Translate;
 
-   procedure Begin_Frame
-     (Canvas : in out CuBit.UI.Canvas; Changed : CuBit.UI.Rect;
-      Repair : out CuBit.UI.Rect; Ready : out Boolean)
-   is
-   begin
-      CuBit.UI.App.Begin_Paint (Native_Window, Changed, Repair, Ready);
-      Canvas := CuBit.UI.App.Canvas (Native_Window);
-   end Begin_Frame;
-   function Submit_Frame
-     (Handle : System.Address; Canvas : in out CuBit.UI.Canvas;
-      Rendered : CuBit.UI.Rect) return Boolean
-   is
-      pragma Unreferenced (Handle);
-   begin
-      CuBit.UI.App.Present (Native_Window, Rendered);
-      Canvas.addr := System.Null_Address;
-      if not CuBit.UI.App.Frame_Pending (Native_Window) and then not First_Frame_Presented then
-         debugPrint (Name & ": first frame presented" & ASCII.LF);
-         First_Frame_Presented := True;
-      end if;
-      return CuBit.UI.App.Is_Open (Native_Window);
-   end Submit_Frame;
-   function Frame_Pending return Boolean is
-     (CuBit.UI.App.Frame_Pending (Native_Window));
-   function Frame_Deadline (Application : Unsigned_64) return Unsigned_64 is
-      Deadline : constant Unsigned_64 := Client_Frame_Wakeup.Deadline
-        (syscall (SYSCALL_GETTIME), (if Application = Unsigned_64'Last then 0 else Application), Frame_Pending);
-   begin
-      return (if Deadline = 0 then Unsigned_64'Last else Deadline);
-   end Frame_Deadline;
+
 
    procedure Window_Set_Cursor
      (Handle : System.Address; Style : Integer_32)
@@ -541,61 +439,6 @@ package body CCL_Desktop_Platform is
       end if;
    end Window_Set_Cursor;
 
-   procedure Window_Wait (May_Block : Integer_32)
-   with Export, Convention => C, External_Name => "ccl_window_wait";
-
-   procedure Wait_Events (Deadline : Unsigned_64) is
-      Accepted : Boolean;
-      Activity : Activity_Result;
-      Wakeup : Unsigned_64 := Deadline;
-   begin
-      Pump_Completions;
-      if not Native_Open or Pending_Found or Completions_Seen then return; end if;
-      if not CuBit.UI.App.Input_Wait_Pending (Native_Window) then
-         CuBit.UI.App.Submit_Input_Wait
-           (Native_Window, CCL_Native_Execution.Next_Token, Accepted);
-         if not Accepted then
-            debugPrint (Name & ": asynchronous input wait rejected" & ASCII.LF);
-            Native_Open := False; return;
-         end if;
-      end if;
-      if CCL_Native_Execution.Cleanup_Needs_Retry then
-         Wakeup := Unsigned_64'Min (Wakeup, syscall (SYSCALL_GETTIME) + 10);
-      end if;
-      -- Atomic kernel wait covers BOTH the desktop reply and Config receipts.
-      -- A reply queued between Pump and this call prevents sleeping.
-      Activity := Wait_For_Activity_Until (Wakeup);
-      if Activity = Unavailable then Native_Open := False; end if;
-      Pump_Completions;
-   end Wait_Events;
-
-   procedure Yield_Input is
-      Ignore : Unsigned_64;
-   begin
-      Ignore := syscall (SYSCALL_YIELD);
-   end Yield_Input;
-
-   procedure Window_Wait (May_Block : Integer_32) is
-      Ignore : Unsigned_64;
-   begin
-      if May_Block /= 0 and then Native_Open and then not Pending_Found then
-         Wait_Events (Unsigned_64'Last);
-      else
-         --  Continuous VM execution and scrollbar repeat have local timer
-         --  work. Yield briefly rather than blocking indefinitely.
-         Ignore := syscall (SYSCALL_SLEEP, 1);
-      end if;
-   end Window_Wait;
-
-   procedure Window_Wait_Until (Deadline : Unsigned_64)
-   with Export, Convention => C, External_Name => "ccl_window_wait_until";
-
-   procedure Window_Wait_Until (Deadline : Unsigned_64) is
-   begin
-      if Native_Open and then not Pending_Found then
-         Wait_Events (Deadline);
-      end if;
-   end Window_Wait_Until;
 
    function Window_Ticks return Unsigned_64
    with Export, Convention => C, External_Name => "ccl_window_ticks";
@@ -659,4 +502,97 @@ package body CCL_Desktop_Platform is
          Native_Open := False;
       end if;
    end Window_Close;
+   procedure Run_Window (Handle_Window : System.Address) is
+      pragma Unreferenced (Handle_Window);
+      UI : CuBit.UI.State.UI_State;
+      Controls : CuBit.UI.Controls.Control_Map;
+
+      procedure Render (Win : in out CuBit.UI.App.Window; Damage : CuBit.UI.Rect) is
+         Canvas : CuBit.UI.Canvas := CuBit.UI.With_Clip (CuBit.UI.App.Canvas (Win), Damage);
+      begin
+         Draw (Canvas, Damage);
+         if not First_Frame_Presented then
+            --  The toolkit presents this frame as Render returns.
+            debugPrint (Name & ": first frame presented" & ASCII.LF);
+            First_Frame_Presented := True;
+         end if;
+      end Render;
+
+      --  The application's work and whatever it now wants drawn.
+      procedure After (Dirty : in out CuBit.UI.Rect; Keep_Running : in out Boolean) is
+         Area : CuBit.UI.Rect;
+      begin
+         Work;
+         CCL_Native_Execution.Maintain;
+         Area := Take_Damage;
+         if not CuBit.UI.Is_Empty (Area) then
+            Dirty := (if CuBit.UI.Is_Empty (Dirty) then Area else CuBit.UI.Union_Rect (Dirty, Area));
+         end if;
+         Keep_Running := Keep_Running and then Running;
+      end After;
+
+      procedure Handle_Event
+        (Win : in out CuBit.UI.App.Window; Event : CuBit.UI.App.Input_Event;
+         Dirty : in out CuBit.UI.Rect; Keep_Running : in out Boolean)
+      is
+         pragma Unreferenced (Win);
+         Kind : Integer_32;
+         Code, Modifiers : Unsigned_32;
+         X, Y : Integer_32;
+      begin
+         if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
+            Handle (Close_Request, 0, 0, 0, 0);
+         elsif Translate (Event, Kind, Code, Modifiers, X, Y) then
+            Handle (Event_Of (Kind), Code, Modifiers, X, Y);
+         end if;
+         After (Dirty, Keep_Running);
+      end Handle_Event;
+
+      function Next_Deadline return Unsigned_64 is
+         Wanted : constant Unsigned_64 := Wake_At;
+         Retry : constant Unsigned_64 :=
+           (if CCL_Native_Execution.Cleanup_Needs_Retry then syscall (SYSCALL_GETTIME) + 10 else 0);
+      begin
+         return (if Wanted = 0 then Retry
+                 elsif Retry = 0 then Wanted
+                 else Unsigned_64'Min (Wanted, Retry));
+      end Next_Deadline;
+
+      procedure On_Deadline
+        (Win : in out CuBit.UI.App.Window; Dirty : in out CuBit.UI.Rect; Keep_Running : in out Boolean)
+      is
+         pragma Unreferenced (Win);
+      begin
+         After (Dirty, Keep_Running);
+      end On_Deadline;
+
+      --  The CCL engine's own completions: llm pulls and host calls.
+      procedure On_Completion
+        (Win : in out CuBit.UI.App.Window; Receipt : CompletionEntry;
+         Consumed : out Boolean; Dirty : in out CuBit.UI.Rect; Keep_Running : in out Boolean)
+      is
+         pragma Unreferenced (Win);
+      begin
+         CCL_Llm_Link.Deliver (Receipt, Consumed);
+         if not Consumed then
+            CCL_Native_Execution.Deliver (Receipt, Consumed);
+         end if;
+         if Consumed then
+            After (Dirty, Keep_Running);
+         else
+            debugPrint (Name & ": unclaimed IPC completion" & ASCII.LF);
+         end if;
+      end On_Completion;
+
+      procedure Toolkit_Loop is new CuBit.UI.App.Run
+        (UI, Controls, Render => Render, Handle_Event => Handle_Event,
+         Next_Deadline => Next_Deadline, On_Deadline => On_Deadline,
+         Activity_Wait => True, On_Completion => On_Completion);
+   begin
+      if not Native_Open then return; end if;
+      Toolkit_Loop (Native_Window);
+      if not CuBit.UI.App.Is_Open (Native_Window) then
+         Native_Open := False;
+      end if;
+   end Run_Window;
 end CCL_Desktop_Platform;

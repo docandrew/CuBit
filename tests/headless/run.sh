@@ -4584,6 +4584,28 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'sendkey esc\n'
                 sleep 0.5
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ "${CCL_CONSOLE_DEMO:-}" = keys ]; then
+            # UI-039 (CCL_CONSOLE_DEMO=keys): real keys, i8042 -> ps2.drv ->
+            # Desktop -> the console, as on the laptop where the console
+            # ended on the first key after a click (image 26). A click into
+            # the window, one key alone, a pause (the console must still be
+            # there), then an entry it must evaluate and show.
+            printf 'mouse_button 1\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 0.1
+            printf 'mouse_button 0\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 0.5
+            printf 'sendkey 1\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 1.5
+            printf 'sendkey backspace\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 0.5
+            {
+                type_keys shift-9 shift-equal spc 1 spc 2 shift-0
+                printf 'sendkey ret\n'
+                sleep 1
+            } | nc -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-keys.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
             elif [ "${CCL_CONSOLE_DEMO:-}" = log-exited ]; then
             # LOG-003 (CCL_CONSOLE_DEMO=log-exited): once boot-logs has seen
             # log-exit-probe exit, its records by name at the console.
@@ -8156,6 +8178,11 @@ logstore: kernel log caught up:
 withheld the restricted fault detail of com.cubit.fault-check (null page)
 withheld the restricted fault detail of com.cubit.stack-probe (stack overflow)
 "
+        elif [ "${CCL_CONSOLE_DEMO:-}" = keys ]; then
+            required_markers="$required_markers
+desktop: keys to CCL Console
+ccl-console: REPL completed: Integer: 3
+"
         elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
             required_markers="$required_markers
 ccl-console: REPL completed: Integer: 42
@@ -8932,6 +8959,16 @@ if [ "$TEST_NAME" = "desktop-restart" ]; then
         exit 1
     fi
     echo "headless: desktop restarted after its failure and presents again"
+fi
+
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = keys ]; then
+    # UI-039: typing never ends the console (image 26: it exited, code 0,
+    # on the first key).
+    if grep -aE "procmgr: process com\.cubit\.ccl-console pid[0-9]+ exited" "$SERIAL_LOG"; then
+        echo "headless: the console ended while it was typed into" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
 fi
 
 if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = kernel-log ]; then

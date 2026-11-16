@@ -18,7 +18,6 @@ with CCL_Agent_Bindings;
 with CCL_Console_Bindings;
 with CCL.Interfaces.Console;
 with CCL_REPL_Commands;
-with Client_Input_Budget;
 with CuBit.Failures;
 with CuBit.UI;
 
@@ -444,16 +443,10 @@ package body CCL_Console is
       declare
          Handle_Window : constant System.Address :=
            CCL_Window.Open (Integer_32 (WIDTH), Integer_32 (HEIGHT));
-         Kind : aliased Integer_32 := 0;
-         Code : aliased Unsigned_32 := 0;
-         Modifiers : aliased Unsigned_32 := 0;
-         Mouse_X, Mouse_Y : aliased Integer_32 := 0;
          Surface_Width : aliased Integer_32 := Integer_32 (WIDTH);
          Surface_Height : aliased Integer_32 := Integer_32 (HEIGHT);
          Running : Boolean := Handle_Window /= System.Null_Address;
          Needs_Render : Boolean := True;
-         Input_Batch : Client_Input_Budget.Batch;
-         Input_Drained : Boolean;
          Last_Pointer : CuBit.UI.Pointer_Cursor_Style := CuBit.UI.Pointer_Default;
 
          procedure Prepare_Surface is
@@ -474,57 +467,38 @@ package body CCL_Console is
             end if;
          end Prepare_Surface;
 
-         function Paint return Boolean is
-            Repair : CuBit.UI.Rect;
-            Ready : Boolean;
+         --  One input event (UI-039: the platform's loop polls and waits).
+         procedure Handle_Input
+           (Polled : Platform.Window_Event; Event_Code, Event_Modifiers : Unsigned_32;
+            X, Y : Integer_32)
+         is
+            Submitted, Redraw : Boolean;
          begin
-            Platform.Begin_Frame (Canvas, (0, 0, Canvas.width, Canvas.height), Repair, Ready);
-            if not Ready then return True; end if;
-            Canvas := CuBit.UI.With_Clip (Canvas, Repair);
-            CCL_Console_View.Draw (Console, Canvas, (0, 0, Canvas.width, Canvas.height));
-            return Platform.Submit_Frame (Handle_Window, Canvas, Repair);
-         end Paint;
-      begin
-         Window_Handle := Handle_Window;
-         while Running loop
-            Prepare_Surface;
-            exit when not Running;
-            Input_Batch := Client_Input_Budget.Open (CCL_Window.Ticks);
-            Input_Drained := False;
-            while Running and then Client_Input_Budget.Can_Poll (Input_Batch, CCL_Window.Ticks) loop
-               Client_Input_Budget.Charge (Input_Batch);
-               if CCL_Window.Poll
-                 (Handle_Window, Kind'Access, Code'Access, Modifiers'Access,
-                  Mouse_X'Access, Mouse_Y'Access) = 0
-               then
-                  Input_Drained := True;
-                  exit;
+            if Polled = Platform.Close_Request then
+               Running := False;
+            elsif Polled in Platform.Copy_Selection | Platform.Cut_Selection |
+              Platform.Paste_Clipboard
+            then
+               Clipboard_Event (Polled, Needs_Render);
+            else
+               Handle (Console, View_Event_Of (Polled, Event_Code, Event_Modifiers, X, Y),
+                       Submitted, Redraw);
+               Needs_Render := Needs_Render or else Redraw;
+               if Submitted then
+                  Follow_Started (Console);
+                  Apply_Program_Refresh;
+                  Retain_Streams;
+                  Platform.REPL_Completed (CCL_Console_View.Latest_Result (Console));
                end if;
-               declare
-                  Polled : constant Platform.Window_Event := Platform.Event_Of (Kind);
-                  Submitted, Redraw : Boolean;
-               begin
-                  if Polled = Platform.Close_Request then
-                     Running := False;
-                  elsif Polled in Platform.Copy_Selection | Platform.Cut_Selection |
-                    Platform.Paste_Clipboard
-                  then
-                     Clipboard_Event (Polled, Needs_Render);
-                  else
-                     Handle (Console, View_Event_Of (Polled, Code, Modifiers, Mouse_X, Mouse_Y),
-                             Submitted, Redraw);
-                     Needs_Render := Needs_Render or else Redraw;
-                     if Submitted then
-                        Follow_Started (Console);
-                        Apply_Program_Refresh;
-                        Retain_Streams;
-                        Platform.REPL_Completed (CCL_Console_View.Latest_Result (Console));
-                     end if;
-                  end if;
-                  Platform.Finish_Input;
-               end;
-            end loop;
-            exit when not Running;
+            end if;
+         end Handle_Input;
+
+         --  After input and when a deadline passes: the window's size,
+         --  the pointer, stream elements, finished tasks and live cells.
+         procedure Work is
+         begin
+            Prepare_Surface;
+            if not Running then return; end if;
             if CCL_Console_View.Pointer_Style (Console) /= Last_Pointer then
                Last_Pointer := CCL_Console_View.Pointer_Style (Console);
                CCL_Window.Set_Cursor
@@ -556,32 +530,46 @@ package body CCL_Console is
                   Needs_Render := Needs_Render or else Redraw;
                end if;
             end;
-            if Needs_Render or else Platform.Frame_Pending then
-               exit when not Paint;
-               Needs_Render := False;
-            end if;
-            if not Input_Drained then
-               Platform.Yield_Input;
-            else
-               declare
-                  Due : constant Unsigned_64 := CCL_Console_View.Next_Deadline (Console);
-                  Stream_Delay : constant Unsigned_64 := Host.Next_Stream_Delay;
-                  Ticks : constant Unsigned_64 := CCL_Window.Ticks;
-                  --  The next live cell, or the next stream element.
-                  Next : constant Unsigned_64 := Unsigned_64'Min
-                    ((if Due = 0 then Unsigned_64'Last else Due),
-                     (if Stream_Delay > Unsigned_64'Last - Ticks then Unsigned_64'Last
-                      else Ticks + Stream_Delay));
-                  Wakeup : constant Unsigned_64 := Platform.Frame_Deadline (Next);
-               begin
-                  if Wakeup /= Unsigned_64'Last then
-                     CCL_Window.Wait_Until (Wakeup);
-                  else
-                     CCL_Window.Wait (1);
-                  end if;
-               end;
-            end if;
-         end loop;
+         end Work;
+
+         function Take_Damage return CuBit.UI.Rect is
+         begin
+            if not Needs_Render then return (others => 0); end if;
+            Needs_Render := False;
+            return (0, 0, Canvas.width, Canvas.height);
+         end Take_Damage;
+
+         procedure Draw (Target : in out CuBit.UI.Canvas; Area : CuBit.UI.Rect) is
+            pragma Unreferenced (Area);
+         begin
+            Canvas := Target;
+            CCL_Console_View.Draw (Console, Target, (0, 0, Target.width, Target.height));
+         end Draw;
+
+         --  The next live cell, or the next stream element.
+         function Wake_At return Unsigned_64 is
+            Due : constant Unsigned_64 := CCL_Console_View.Next_Deadline (Console);
+            Stream_Delay : constant Unsigned_64 := Host.Next_Stream_Delay;
+            Ticks : constant Unsigned_64 := CCL_Window.Ticks;
+            Next : constant Unsigned_64 := Unsigned_64'Min
+              ((if Due = 0 then Unsigned_64'Last else Due),
+               (if Stream_Delay > Unsigned_64'Last - Ticks then Unsigned_64'Last
+                else Ticks + Stream_Delay));
+         begin
+            return (if Next = Unsigned_64'Last then 0 else Next);
+         end Wake_At;
+
+         function Is_Running return Boolean is (Running);
+
+         procedure Event_Loop is new Platform.Run_Window
+           (Handle => Handle_Input, Work => Work, Take_Damage => Take_Damage, Draw => Draw,
+            Wake_At => Wake_At, Running => Is_Running);
+      begin
+         Window_Handle := Handle_Window;
+         Prepare_Surface;
+         if Running then
+            Event_Loop (Handle_Window);
+         end if;
          CCL_Execution.Stop;
          CCL_Window.Close (Handle_Window);
       end;
