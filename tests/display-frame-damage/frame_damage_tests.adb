@@ -5,6 +5,7 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Desktop_Protocol;
 with CuBit.Display_Frame_Damage; use CuBit.Display_Frame_Damage;
+with CuBit.Display_Frame_Damage.Shared;
 with CuBit.Display_Box_Copy;
 procedure Frame_Damage_Tests is
    package D renames CuBit.Desktop_Protocol;
@@ -87,6 +88,40 @@ begin
       end loop;
       Check (Wrong = 0, "only the boxes' pixels change, all of them");
       Check (Copied = (10 * 5 + 14 * 8 + Width * 2) * 4, "the bytes copied are the boxes'");
+   end;
+   --  A record in memory the compositor can still write (security fix):
+   --  the count word changes to 1000 right after display first reads it.
+   --  The snapshot reads every word exactly once, so decoding sees the
+   --  first count (3), never one past Maximum_Boxes. Deterministic: the
+   --  change is made by the read itself.
+   declare
+      Shared : Word_Array;
+      Reads : array (Word_Index) of Natural := [others => 0];
+      function Hostile_Read (Index : Word_Index) return Unsigned_64 is
+         Value : constant Unsigned_64 := Shared (Index);
+      begin
+         Reads (Index) := Reads (Index) + 1;
+         if Index = 2 then Shared (2) := 1000; end if;
+         return Value;
+      end Hostile_Read;
+      function Decode_Hostile is new CuBit.Display_Frame_Damage.Shared.Snapshot_And_Decode (Hostile_Read);
+      Three : Damage;
+   begin
+      Three.Count := 3;
+      Three.Boxes (1) := Canvas;
+      Three.Boxes (2) := Caret;
+      Three.Boxes (3) := (100, 100, 4, 4);
+      Shared := Encode (7, Three);
+      R := Decode_Hostile (7, Area);
+      Check ((for all N of Reads => N = 1), "each shared word is read exactly once");
+      Check (R.Valid and then R.Value.Count = 3 and then R.Value.Boxes (3) = (100, 100, 4, 4),
+        "the snapshot decodes the count first read");
+      R := Decode_Hostile (7, Area);
+      Check (not R.Valid, "the changed record (count 1000) is refused");
+      --  The production path: the record at an address.
+      Shared := Encode (9, Three);
+      R := CuBit.Display_Frame_Damage.Shared.Decode_At (Shared'Address, 9, Area);
+      Check (R.Valid and then R.Value.Count = 3, "a record at an address decodes from its snapshot");
    end;
    Ada.Text_IO.Put_Line ("FRAME-DAMAGE: PASS checks=" & Natural'Image (Checks));
 end Frame_Damage_Tests;

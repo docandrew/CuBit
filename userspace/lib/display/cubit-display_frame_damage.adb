@@ -11,13 +11,15 @@ package body CuBit.Display_Frame_Damage with SPARK_Mode is
    function Decode (Words : Word_Array; Frame : Unsigned_64; Area : DP.Rectangle) return Decoding is
       Result : Damage;
       Count : Box_Count;
+      --  Each word is read once (hardening; Shared snapshots anyway).
+      Count_Word : constant Unsigned_64 := Words (2);
    begin
       if Words (0) /= Magic or else Words (1) /= Frame or else
-        Words (2) not in 1 .. Maximum_Boxes
+        Count_Word not in 1 .. Maximum_Boxes
       then
          return (Valid => False);
       end if;
-      Count := Box_Count (Words (2));
+      Count := Box_Count (Count_Word);
       Result.Count := Count;
       for I in 1 .. Count loop
          Result.Boxes (I) := Unpack (Words (Header_Words + I - 1));

@@ -48,6 +48,7 @@ with CuBit.Display_Planes;
 with CuBit.Display_Plane_Protocol;
 with CuBit.GPU_Plane_Protocol;
 with CuBit.Display_Frame_Damage;
+with CuBit.Display_Frame_Damage.Shared;
 with CuBit.Display_Box_Copy;
 
 procedure main is
@@ -2344,10 +2345,10 @@ procedure main is
       frameBoxes := Single_Box (r.x, r.y, r.w, r.h);
       if Slot /= 0 and then not State.lentPool then
          declare
-            Words : FD.Word_Array with Import,
-              Address => mapped + Storage_Offset (State.srcPitch * State.srcHeight);
-            Record_Item : constant FD.Decoding := FD.Decode
-              (Words, decoded.Value.Frame,
+            --  The client can still write this page: decode a snapshot read
+            --  once (FD.Shared), never the page itself.
+            Record_Item : constant FD.Decoding := CuBit.Display_Frame_Damage.Shared.Decode_At
+              (mapped + Storage_Offset (State.srcPitch * State.srcHeight), decoded.Value.Frame,
                (FD.DP.Pixel_Coordinate (r.x), FD.DP.Pixel_Coordinate (r.y),
                 FD.DP.Pixel_Extent (r.w), FD.DP.Pixel_Extent (r.h)));
          begin

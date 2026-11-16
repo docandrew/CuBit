@@ -42,7 +42,8 @@ package CuBit.Display_Frame_Damage with Pure, SPARK_Mode is
    Header_Words : constant := 3;
    Record_Words : constant := Header_Words + Maximum_Boxes;
    pragma Compile_Time_Error (Record_Words * 8 > Record_Bytes, "the record must fit its page");
-   type Word_Array is array (0 .. Record_Words - 1) of Unsigned_64;
+   subtype Word_Index is Natural range 0 .. Record_Words - 1;
+   type Word_Array is array (Word_Index) of Unsigned_64;
 
    type Box_Array is array (Box_Index) of DP.Rectangle;
    type Damage is record
@@ -77,6 +78,8 @@ package CuBit.Display_Frame_Damage with Pure, SPARK_Mode is
          when False => null;
       end case;
    end record;
+   --  Words is a value: never pass a record another process can still
+   --  write (an overlay of its page); decode a snapshot of it (Shared).
    function Decode (Words : Word_Array; Frame : Unsigned_64; Area : DP.Rectangle) return Decoding
      with Post => (if Decode'Result.Valid then
        Decode'Result.Value.Count >= 1 and
