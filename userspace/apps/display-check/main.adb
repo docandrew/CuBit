@@ -5,6 +5,7 @@ with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol; use CuBit.Display_Protocol;
 with CuBit.Display_Pool_Protocol;
+with CuBit.Display_Frame_Damage;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
 with CuBit.Output_Discovery;
 with CuBit.Display_Planes;
@@ -512,7 +513,12 @@ procedure Main is
          C : CompletionEntry := NULL_COMPLETION;
          Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 5000;
          Activity : Activity_Result;
+         --  The frame's damage record after its one page of rows (LAT-002).
+         Record_Words : CuBit.Display_Frame_Damage.Word_Array
+           with Import, Address => To_Address (Addresses (Slot) + 4096);
       begin
+         Record_Words := CuBit.Display_Frame_Damage.Encode
+           (ID, (Count => 1, Boxes => [1 => Area, others => (others => <>)]));
          Frame_Token := Frame_Token + 1;
          Check (capSubmit (Display_Service, Msg, Frame_Token), "pool submit transport");
          if not Passed then return; end if;
@@ -556,11 +562,12 @@ procedure Main is
       if Presentation_Test_Policy.Rebind_Enabled then return; end if;
       Expect (Encode_Lease_Request (Acquire_Display), DP.Success, "pool lease");
       for B in P.Buffer_Slot loop
-         Raw := syscall (SYSCALL_SBRK, 8192);
+         --  One page of rows, one of the frame's damage record (LAT-002).
+         Raw := syscall (SYSCALL_SBRK, 12288);
          Check (Raw /= Unsigned_64'Last, "pool storage");
          if not Passed then return; end if;
          Addresses (B) := Integer_Address ((Raw + 4095) and not Unsigned_64'(4095));
-         MG.Create_Via_Capability (Display_Service, To_Address (Addresses (B)), 1, False, Grants (B), Ok);
+         MG.Create_Via_Capability (Display_Service, To_Address (Addresses (B)), 2, False, Grants (B), Ok);
          Check (Ok, "pool root grant");
          if not Passed then return; end if;
          Expect (P.Encode (P.Attachment'(B, (Grants (B), (32, 32, 128)))),

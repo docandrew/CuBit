@@ -15,6 +15,7 @@ with Desktop_Input_Diagnostic;
 with Desktop_Breadcrumbs;
 with Compositor_Backend_Selection;
 with Compositor_Pacing;
+with CuBit.Display_Frame_Damage;
 with Desktop_Composition_Settings;
 with Compositor_Focus;
 with Compositor_Source_Damage;
@@ -326,6 +327,9 @@ procedure main is
    package CP renames Compositor_Presentation;
    package BP renames Compositor_Pool;
    package RP renames Compositor_Repaint;
+   package FD renames CuBit.Display_Frame_Damage;
+   pragma Compile_Time_Error (FD.Maximum_Boxes /= Compositor_Damage.Capacity,
+     "a frame's damage record must hold every box of a frame");
    package PS is new Compositor_Storage;
    use type PS.Ticket, PS.Phase;
    -- Two outputs with three targets each, one scene reserve and one drag layer.
@@ -3750,6 +3754,28 @@ procedure main is
    begin
       if not CP.Can_Attempt (P.Transfer, Attempt_Time) then return; end if;
       if Held = BP.None or else isEmpty (r) then exitCompositor (1); end if;
+      --  The frame's damage boxes, after its rows, before Display sees it:
+      --  display.svc copies only these (LAT-002 multi-rect submit).
+      declare
+         Item : FD.Damage;
+         Words : FD.Word_Array with Import,
+           Address => P.Targets (Held.Buffer).Address +
+             Storage_Offset (P.Pitch * Natural (P.Geometry.Height));
+      begin
+         for I in 1 .. Compositor_Damage.Count (P.Frame_Damage) loop
+            declare
+               B : constant Rect := damageRectangle (Compositor_Damage.Item (P.Frame_Damage, I));
+            begin
+               if not isEmpty (B) then
+                  Item.Count := Item.Count + 1;
+                  Item.Boxes (Item.Count) :=
+                    (DP.Pixel_Coordinate (B.x), DP.Pixel_Coordinate (B.y),
+                     DP.Pixel_Extent (B.w), DP.Pixel_Extent (B.h));
+               end if;
+            end;
+         end loop;
+         Words := FD.Encode (CP.Token (P.Transfer), Item);
+      end;
       declare
          use type CuBit.Display_Planes.Plan_Epoch;
          Item : constant PW.Frame :=
@@ -13218,7 +13244,9 @@ procedure main is
       Layout := (DP.Positive_Extent (Info.words (0)),
                  DP.Positive_Extent (Info.words (1)),
                  DP.Buffer_Pitch (Info.words (2)));
-      Pages := (DP.Byte_Length (Layout) + 4095) / 4096;
+      --  Each buffer's rows, then the page of its frames' damage records
+      --  (CuBit.Display_Frame_Damage, LAT-002 multi-rect submit).
+      Pages := (DP.Byte_Length (Layout) + 4095) / 4096 + FD.Record_Bytes / 4096;
       P.Pitch := Natural (Layout.Pitch);
       P.Geometry := (Width => DG.Physical_Extent (Layout.Width),
                      Height => DG.Physical_Extent (Layout.Height), others => <>);

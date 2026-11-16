@@ -47,6 +47,8 @@ with CuBit.Backend_Targets;
 with CuBit.Display_Planes;
 with CuBit.Display_Plane_Protocol;
 with CuBit.GPU_Plane_Protocol;
+with CuBit.Display_Frame_Damage;
+with CuBit.Display_Box_Copy;
 
 procedure main is
    --  Every line also reaches logstore (Display_Logs), not only the console.
@@ -70,6 +72,15 @@ procedure main is
    package DPL renames CuBit.Display_Planes;
    package PP renames CuBit.Display_Plane_Protocol;
    package GP renames CuBit.GPU_Plane_Protocol;
+   package FD renames CuBit.Display_Frame_Damage;
+   --  The frame being presented's damage boxes (LAT-002): its record
+   --  (CuBit.Display_Frame_Damage), or its one announced area.
+   frameBoxes : FD.Damage;
+   frameRecordWarned : Boolean := False;
+   function Single_Box (x, y, w, h : Natural) return FD.Damage is
+     ((Count => 1, Boxes => [1 => (FD.DP.Pixel_Coordinate (x), FD.DP.Pixel_Coordinate (y),
+                                   FD.DP.Pixel_Extent (w), FD.DP.Pixel_Extent (h)),
+                             others => (others => <>)]));
    use type DPL.Plan, DPL.Plan_Epoch, DPL.Backing_Kind, DPL.Plane_Count,
             DPL.Request_Count, DPL.Plane_Kind, DPL.Anchor_Coordinate;
    use type PP.Operation;
@@ -1091,9 +1102,11 @@ procedure main is
          -- New source pixels replace the overlap, so only preserve the
          -- previous damage outside it. The shared SPARK policy returns at
          -- most four nonempty outside strips when the cursor is empty.
+         -- With several boxes the new pixels do not cover r: carry all of
+         -- the previous damage forward, then the boxes over it.
          for Region of Repair.Before_Draw
            ((previous.x, previous.y, previous.x + previous.w, previous.y + previous.h),
-            (r.x, r.y, r.x + r.w, r.y + r.h), (0, 0, 0, 0), True)
+            (r.x, r.y, r.x + r.w, r.y + r.h), (0, 0, 0, 0), frameBoxes.Count = 1)
          loop
             if Compositor_Damage.Valid (Region) then
                copyGpuRect
@@ -1107,9 +1120,15 @@ procedure main is
          transfer := unionRect (previous, r);
       end if;
 
-      copyGpuRect
-        (outputStates (selectedOutput).gpuScanoutAddr (target), outputStates (selectedOutput).fbPitch,
-         outputStates (selectedOutput).srcAddr, outputStates (selectedOutput).srcPitch, r, backendCopies);
+      --  Only the frame's boxes (LAT-002 multi-rect submit), each clamped.
+      for I in 1 .. frameBoxes.Count loop
+         copyGpuRect
+           (outputStates (selectedOutput).gpuScanoutAddr (target), outputStates (selectedOutput).fbPitch,
+            outputStates (selectedOutput).srcAddr, outputStates (selectedOutput).srcPitch,
+            clampGpuRect ((Natural (frameBoxes.Boxes (I).X), Natural (frameBoxes.Boxes (I).Y),
+                           Natural (frameBoxes.Boxes (I).Width), Natural (frameBoxes.Boxes (I).Height))),
+            backendCopies);
+      end loop;
 
       packedXY := Unsigned_64 (transfer.x) or
         Shift_Left (Unsigned_64 (transfer.y), 32);
@@ -1190,6 +1209,7 @@ procedure main is
       if BT.Current (State.Targets) /= BT.Idle then
          return False;
       end if;
+      frameBoxes := Single_Box (damage.x, damage.y, damage.w, damage.h);
       request := prepareGpuRect (damage);
       if request.tag.length = 0 then
          BT.Quarantine (State.Targets);
@@ -2278,12 +2298,33 @@ procedure main is
       --  Attachment is not authority for new work after grant revocation.
       Source_Grant := (if Slot = 0 then State.srcGrant else
         Pool_Registry.Item (State.Pool, Pool_Wire.Buffer_Slot (Slot)).Grant);
+      --  A pool buffer carries its frame's damage record after its rows.
       MG.Acquire (Source_Grant, from, 0,
-                  Unsigned_64 (State.srcPitch) * Unsigned_64 (State.srcHeight),
+                  Unsigned_64 (State.srcPitch) * Unsigned_64 (State.srcHeight) +
+                    (if Slot = 0 then 0 else FD.Record_Bytes),
                   MG.Read_Access, mapped, acquired);
       if not acquired then
          replyMsg := frameResponse (result, Slot);
          return;
+      end if;
+      frameBoxes := Single_Box (r.x, r.y, r.w, r.h);
+      if Slot /= 0 then
+         declare
+            Words : FD.Word_Array with Import,
+              Address => mapped + Storage_Offset (State.srcPitch * State.srcHeight);
+            Record_Item : constant FD.Decoding := FD.Decode
+              (Words, decoded.Value.Frame,
+               (FD.DP.Pixel_Coordinate (r.x), FD.DP.Pixel_Coordinate (r.y),
+                FD.DP.Pixel_Extent (r.w), FD.DP.Pixel_Extent (r.h)));
+         begin
+            --  A refused record leaves the announced area (always correct).
+            if Record_Item.Valid then
+               frameBoxes := Record_Item.Value;
+            elsif not frameRecordWarned then
+               frameRecordWarned := True;
+               debugPrint ("display: a frame's damage record was refused; copying its area" & LF);
+            end if;
+         end;
       end if;
       PS.Submit (State.frameState, admission, id);
       if admission /= PS.Accepted then
@@ -2341,7 +2382,9 @@ procedure main is
                   end if;
                end;
                statsPresents := statsPresents + 1;
-               statsPixels := statsPixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
+               for I in 1 .. frameBoxes.Count loop
+                  statsPixels := statsPixels + CuBit.Display_Box_Copy.Bytes (frameBoxes.Boxes (I)) / 4;
+               end loop;
                statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
                return;
             end if;
@@ -2360,7 +2403,11 @@ procedure main is
             Copy_Started : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
             Copied : Unsigned_64;
          begin
-            presentFirmwareRect (State.backend.Address, r.x, r.y, r.w, r.h);
+            for I in 1 .. frameBoxes.Count loop
+               presentFirmwareRect (State.backend.Address,
+                 Natural (frameBoxes.Boxes (I).X), Natural (frameBoxes.Boxes (I).Y),
+                 Natural (frameBoxes.Boxes (I).Width), Natural (frameBoxes.Boxes (I).Height));
+            end loop;
             Copied := CuBit.Monotonic.Microseconds;
             --  The firmware framebuffer scans out what was written: the copy's
             --  end stands for the latch (no refresh is known).
@@ -2374,7 +2421,9 @@ procedure main is
          published := True;
       end if;
       statsPresents := statsPresents + 1;
-      statsPixels := statsPixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
+      for I in 1 .. frameBoxes.Count loop
+         statsPixels := statsPixels + CuBit.Display_Box_Copy.Bytes (frameBoxes.Boxes (I)) / 4;
+      end loop;
       statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
       finishFrame (selectedOutput, id, result, published, True, replyMsg);
    end submitFrame;
