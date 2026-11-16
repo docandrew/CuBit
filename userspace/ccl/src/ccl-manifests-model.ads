@@ -6,6 +6,7 @@ with CuBit.Render_Authority;
 with CuBit.Firmware_Snapshot_Authority;
 with CuBit.ACPI_Hardware_Authority;
 with CuBit.Publication_Grants;
+with CuBit.Self_Offers;
 with CuBit.Launch_Authority;
 with CuBit.Program_Descriptions;
 with CuBit.Startup_Tables;
@@ -27,7 +28,7 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    type Request_Kind is
      (Framebuffer_Request, Service_Request, Notification_Request, Network_Request,
       Render_Request, Firmware_Snapshot_Request, ACPI_Hardware_Request, Publication_Request,
-      Device_Memory_Request, IO_Port_Request, Interrupt_Request, DMA_Request, Scheduling_Request);
+      Offerable_Self_Request, Device_Memory_Request, IO_Port_Request, Interrupt_Request, DMA_Request, Scheduling_Request);
    package Sections renames CCL.Resource_Sections;
    for Request_Kind use
      (Framebuffer_Request => 1, Service_Request => 2, Notification_Request => 7,
@@ -36,6 +37,7 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Firmware_Snapshot_Request => CuBit.Firmware_Snapshot_Authority.Manifest_Request,
       ACPI_Hardware_Request => CuBit.ACPI_Hardware_Authority.Manifest_Request,
       Publication_Request => CuBit.Publication_Grants.Manifest_Request,
+      Offerable_Self_Request => CuBit.Self_Offers.Manifest_Request,
       Device_Memory_Request => Sections.Resource_Kind'Enum_Rep (Sections.Device_Memory),
       IO_Port_Request => Sections.Resource_Kind'Enum_Rep (Sections.IO_Ports),
       Interrupt_Request => Sections.Resource_Kind'Enum_Rep (Sections.Interrupt),

@@ -29,6 +29,8 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
          when Firmware_Snapshot_Request => ST.Firmware_Snapshot,
          when ACPI_Hardware_Request => ST.ACPI_Hardware,
          when Publication_Request   => ST.Publication,
+         --  An endpoint (to the program itself; CuBit.Self_Offers).
+         when Offerable_Self_Request => ST.Endpoint,
          when Device_Memory_Request => ST.Device_Memory,
          when IO_Port_Request       => ST.IO_Ports,
          when Interrupt_Request     => ST.Interrupt,

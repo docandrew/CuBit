@@ -30,7 +30,14 @@
   (Firmware_Snapshot String) (ACPI_Hardware String)
   # A kernel publication page by name, mapped read-only (KERN-002):
   # "cpu-times" (CuBit.Publication_Grants).
-  (Publication String)))
+  (Publication String)
+  # An endpoint to the program itself that it may offer to another process
+  # (UI-020, CuBit.Self_Offers), under this binding: read-only, so no holder
+  # can call the program, with the grant right, so it can be offered (the
+  # kernel's own "self" endpoint cannot). A holder can only deliver grants
+  # to it (Derive_Via_Capability). The launcher installs it at spawn only
+  # for a manifest that declares it.
+  (Offerable_Self String)))
 (type File_Right (enum Read Write Execute Create))
 (type Scope_Place (variant (Everything) (Under String)))
 (type Access_Scope (record (rights (List File_Right)) (place Scope_Place)))

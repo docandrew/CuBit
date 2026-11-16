@@ -91,6 +91,7 @@ with CuBit.Network_Authority;
 with CuBit.Render_Authority;
 with CuBit.Firmware_Snapshot_Authority;
 with CuBit.Publication_Grants;
+with CuBit.Self_Offers;
 with System_Publications;
 with CuBit.Firmware_Snapshot;
 with CuBit.ACPI_Hardware_Authority;
@@ -314,6 +315,9 @@ procedure main is
       --  process's port rings; returned when it ends.
       Ring_Parents : Ring_Parent_Array := [others => (others => <>)];
       Ring_Parent_Count : Natural range 0 .. CuBit.Outlet_Rings.Maximum_Entries := 0;
+      --  It holds an offerable self endpoint (CuBit.Self_Offers): a child
+      --  it launches may declare one too.
+      Offerable_Self : Boolean := False;
    end record;
    --  Keyed by process identity (KERN-003): one entry per process seen.
    Empty_Launch_State : constant Launch_State := (others => <>);
@@ -1454,6 +1458,10 @@ procedure main is
          return (Launches.Values (launchIndex (attenuateFor)).Services and
                  Shift_Left (Unsigned_64'(1), Natural (role))) /= 0;
       end if;
+      --  An offerable self endpoint passes on only from a launcher that has one.
+      if reqType = CuBit.Self_Offers.Manifest_Request then
+         return Launches.Values (launchIndex (attenuateFor)).Offerable_Self;
+      end if;
       return False;
    end launcherHolds;
 
@@ -1622,7 +1630,8 @@ procedure main is
                   Kind : constant Unsigned_8 := View.Caps (Next).Kind;
                begin
                   if (case View.Declared.Entries (I).Kind is
-                        when ST.Endpoint     => Kind /= REQ_SERVICE,
+                        when ST.Endpoint     =>
+                          Kind not in REQ_SERVICE | CuBit.Self_Offers.Manifest_Request,
                         when ST.Notification => Kind /= REQ_NOTIFICATION,
                         when ST.Framebuffer  => Kind /= REQ_FRAMEBUFFER,
                         when ST.Render       => Kind /= CuBit.Render_Authority.Manifest_Request,
@@ -3955,6 +3964,37 @@ procedure main is
             0, Unsigned_64 (R.Param0));
       end Mint_Publication;
 
+      --  An offerable self endpoint (Request.Offerable_Self, UI-020): a copy
+      --  of procmgr's endpoint to the child, to the child, with Read and
+      --  Grant only. Never Write: no holder of it, or of a copy offered on,
+      --  can call the child. Installed only because the child's own
+      --  manifest declares it.
+      procedure Mint_Self_Offer
+        (R : Caps_Request; Index : ST.Entry_Index; Item : ST.Startup_Entry;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+         Kept : constant H.Rights := (Read | Grant => True, others => False);
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if R.Rights /= CuBit.Self_Offers.Manifest_Rights or else R.Param0 /= 0 or else R.Param1 /= 0
+           or else not Valid (Child.Mailbox)
+         then
+            Warnings.Warn ("procmgr: offerable self request malformed for pid" & Image (newPID));
+         else
+            Install (Copy (Child.Mailbox, Kept), Handle, Outcome);
+            if Outcome = SB.Granted and then launchIndex (newPID) /= 0 then
+               Launches.Values (launchIndex (newPID)).Offerable_Self := True;
+            end if;
+            debugPrint ("procmgr: " & name & " pid" & Image (newPID) & ": offerable self endpoint """ &
+                        String (Item.Label.Text (1 .. Item.Label.Length)) & """ (read, grant) " &
+                        (if Outcome = SB.Granted then "installed" else "refused") & LF);
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_MANIFEST, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_ENDPOINT, True, Outcome = SB.Granted, Mask (Kept), To_Word (newPID), 0);
+      end Mint_Self_Offer;
+
       procedure Mint
         (Into : in out Build_Context; Item : ST.Startup_Entry; Index : ST.Entry_Index;
          Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
@@ -3971,7 +4011,12 @@ procedure main is
          end if;
          R := View.Caps (View.Request_Of (Index));
          case Item.Kind is
-            when ST.Endpoint     => Mint_Service (R, Index, Item, Handle, Outcome, Into.Logged);
+            when ST.Endpoint     =>
+               if R.Kind = CuBit.Self_Offers.Manifest_Request then
+                  Mint_Self_Offer (R, Index, Item, Handle, Outcome);
+               else
+                  Mint_Service (R, Index, Item, Handle, Outcome, Into.Logged);
+               end if;
             when ST.Notification => Mint_Notification (R, Index, Handle, Outcome);
             when ST.Framebuffer  => Mint_Framebuffer (R, Index, Handle, Outcome);
             when ST.Network      => Mint_Network (R, Index, Handle, Outcome);
@@ -4037,7 +4082,9 @@ procedure main is
       begin
          Refused := False;
          for I in 1 .. View.Declared.Count loop
-            if View.Declared.Entries (I).Kind = ST.Endpoint and then View.Request_Of (I) /= 0 then
+            if View.Declared.Entries (I).Kind = ST.Endpoint and then View.Request_Of (I) /= 0
+              and then View.Caps (View.Request_Of (I)).Kind = REQ_SERVICE
+            then
                declare
                   Item : ST.Startup_Entry renames View.Declared.Entries (I);
                   Role : constant Unsigned_64 :=

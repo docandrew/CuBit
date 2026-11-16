@@ -158,6 +158,33 @@ class Manifests(unittest.TestCase):
         self.reject(self.PUBLICATION_TYPED.replace('cpu-times', 'cpu-secrets'),
                     diagnostic='no kernel publication is named "cpu-secrets"')
 
+    # The offerable self endpoint (UI-020, CuBit.Self_Offers): .cubit.caps
+    # kind 15, read-only, no parameter; a startup entry of kind Endpoint (1).
+    # Declared once; a typed value only (no keyword form).
+    OFFERABLE_SELF_TYPED = """(Executable_Manifest
+  identity => "com.cubit.self-offer-check"
+  version => "0.1.0"
+  requests => [(Request.Offerable_Self "self-offer")])
+"""
+    OFFERABLE_SELF_REQUEST, ENDPOINT_KIND = 15, 1
+
+    def test_offerable_self_request(self):
+        typed = self.compile(self.OFFERABLE_SELF_TYPED)
+        self.assertEqual(typed.returncode, 0, typed.stderr)
+        sections = self.sections(typed.stdout)
+        caps = sections['.cubit.caps']
+        magic, version, count = struct.unpack_from('<IHH', caps, 0)
+        self.assertEqual((magic, version, count), (0x43424954, 1, 1))
+        kind, rights, param0, param1 = struct.unpack_from('<BBxxIQ', caps, 8)
+        self.assertEqual((kind, rights, param0, param1), (self.OFFERABLE_SELF_REQUEST, 1, 0, 0))
+        _, entries = self.startup(sections['.cubit.startup'])
+        self.assertIn(('self-offer', self.ENDPOINT_KIND, 1, 1, 0), entries)
+        twice = self.OFFERABLE_SELF_TYPED.replace(
+            '[(Request.Offerable_Self "self-offer")]',
+            '[(Request.Offerable_Self "self-offer") (Request.Offerable_Self "again")]')
+        self.reject(twice, diagnostic='a second offerable self endpoint')
+        self.reject(self.OFFERABLE_SELF_TYPED.replace('"self-offer"', '"self"'))
+
     def test_typed_manifest_named_fields_and_defaults(self):
         catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
         named = self.TLS_TYPED.replace(

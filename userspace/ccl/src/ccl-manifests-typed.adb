@@ -426,6 +426,18 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                   return;
                end if;
                Binding (Body_Cursor, Item);
+         elsif Kind = "Offerable_Self" then
+               --  The program's own endpoint, Read and Grant (CuBit.Self_Offers).
+               for Existing of Decl.Requests (1 .. Decl.Count) loop
+                  if Existing.Kind = Offerable_Self_Request then
+                     Fail (Duplicate_Field, "a second offerable self endpoint",
+                           "declare (Request.Offerable_Self ...) once");
+                     return;
+                  end if;
+               end loop;
+               Item.Kind := Offerable_Self_Request;
+               Item.Rights := Read_Only;
+               Binding (Body_Cursor, Item);
          elsif Kind = "Network" then
                Item.Kind := Network_Request;
                Item.Rights := Read_Write;
