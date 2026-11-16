@@ -3,7 +3,7 @@
 desktop-live-replace): desktop.svc replaced live through system
 generations (LIVE-002), as the laptop's live and installed plans allow.
 
-Usage: desktop_live_replace.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT DESKTOP_SVC TIMESYNC_SVC
+Usage: desktop_live_replace.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT DESKTOP_SVC TIMESYNC_SVC METRICSVIEW_APP PROBE_APP
 
 The guest runs desktop.svc with (restart on-failure) (replace graceful)
 (tests/desktop-live-replace/init.ccl). Like a LAN host this pairs with the
@@ -44,8 +44,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "cubit-remote"))
 import cubit_remote as cr  # noqa: E402
 
-serial, qmp_socket, timeout, port, desktop_svc, timesync_svc = (
-    sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), Path(sys.argv[5]), Path(sys.argv[6]))
+serial, qmp_socket, timeout, port, desktop_svc, timesync_svc, metricsview_app, probe_app = (
+    sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), Path(sys.argv[5]), Path(sys.argv[6]),
+    Path(sys.argv[7]), Path(sys.argv[8]))
 deadline = time.monotonic() + timeout
 CODE = re.compile(rb"ccl-remote: pairing code ([0-9A-Z-]{31})")
 LISTENING = b"ccl-remote: listening on "
@@ -233,6 +234,59 @@ def activate(host, product, grace=STOP_GRACE_MS, service=SERVICE):
     return report
 
 
+APP_REPLACED, APP_START_FAILED = 0, 4
+NOT_GRANTED = 5
+INSTANCE_RUNNING = 1
+METRICSVIEW_PRODUCT = "metricsview/metricsview.app"
+METRICSVIEW_SHOWN = b"metricsview: first frame presented"
+# A staged app swapped from the workspace runs with at most ccl-remote's
+# authority (procmgr attenuates it as for any launch). metricsview declares
+# its saved dashboards' place, "@nvme:0/Documents/Dashboards", which
+# ccl-remote does not hold: procmgr refuses the launch (Not_Granted).
+DASHBOARDS = b"@nvme:0/Documents/Dashboards"
+# ccl-remote's activity line for it (CuBit.Launch_Failure_Text's words).
+WHY_LINE = (b"ccl-remote: app metricsview not started: metricsview the new generation did not start "
+            b"(procmgr: it needs authority its launcher does not hold, failure 5)")
+PROBE_PRODUCT = "probe/log-exit-probe.app"
+PROBE_LINE = b"log-exit-probe: published "
+
+
+def app_replace(host, product, when):
+    try:
+        report = cr.app_call(host, "app_replace", product)
+        report["refused"] = None
+    except cr.AppRefused as refused:
+        report = refused.report
+        report["refused"] = refused.name
+        print("desktop-live-replace: app replace %s (%s) refused: %s" % (product, when, refused), flush=True)
+    print("desktop-live-replace: app replace %s (%s): %s" % (product, when, report), flush=True)
+    return report
+
+
+def replace_apps(host, when):
+    """cubit-remote app replace, as on the laptop: the built metricsview
+    (refused, and the refusal says why, on the host and on the device),
+    and a staged app within ccl-remote's authority (it starts)."""
+    shown = serial_bytes().count(METRICSVIEW_SHOWN)
+    refusals = serial_bytes().count(b"refused: its launcher does not hold the scope " + DASHBOARDS)
+    said = serial_bytes().count(WHY_LINE)
+    report = app_replace(host, METRICSVIEW_PRODUCT, when)
+    check(report["refused"] == "Start_Failed" and report["result"] == APP_START_FAILED
+          and report["failure"] == NOT_GRANTED,
+          "%s: metricsview's replace is Start_Failed, procmgr's reason on the wire: Not_Granted (%s, failure %d)"
+          % (when, report["refused"], report["failure"]))
+    check(wait_for_serial(b"refused: its launcher does not hold the scope " + DASHBOARDS, 10, refusals + 1),
+          "%s: procmgr's log line names the scope ccl-remote does not hold" % when)
+    check(wait_for_serial(WHY_LINE, 10, said + 1),
+          "%s: ccl-remote's activity line says why" % when)
+    check(serial_bytes().count(METRICSVIEW_SHOWN) == shown, "%s: no metricsview started" % when)
+    lines = serial_bytes().count(PROBE_LINE)
+    report = app_replace(host, PROBE_PRODUCT, when)
+    check(report["refused"] is None and report["result"] == APP_REPLACED and report["current"] > 0,
+          "%s: a staged app within ccl-remote's authority starts: generation %d" % (when, report["current"]))
+    check(wait_for_serial(PROBE_LINE, 10, lines + 1), "%s: the staged log-exit-probe ran" % when)
+
+
 def desktop_processes(host):
     ok, text = cr.evaluate_whole(host, "(proc.list)")
     return len(re.findall(r'\(Process \d+ "[^"]*" "com\.cubit\.desktop"', text)) if ok else -1
@@ -250,12 +304,16 @@ def main():
     paths["timesync-good.svc"] = (timesync_good, hashlib.sha256(Path(timesync_good).read_bytes()).hexdigest())
     for name, (path, _) in paths.items():
         cr.put_file(host, "workspace", path, "desktop/" + name)
+    cr.put_file(host, "workspace", str(metricsview_app), METRICSVIEW_PRODUCT)
+    cr.put_file(host, "workspace", str(probe_app), PROBE_PRODUCT)
     good_hash = paths["desktop-good.svc"][1]
     good_program = (STOREHOUSE + good_hash).encode()
     presented = 1
     stops = 0
 
     allow_app_replacement()
+    # An app swapped on a fresh boot (the image's Desktop).
+    replace_apps(host, "fresh boot")
 
     report = activate(host, "desktop/desktop-good.svc", grace=0)
     check(report["refused"] == "Refused" and report["detail"] == 1 and report["current"] == 0,
@@ -279,6 +337,9 @@ def main():
     check(wait_for_serial(b"procmgr: switch desktop.svc switched; it runs " + good_program),
           "procmgr runs desktop from the storehouse by content address")
     check(wait_for_serial(PRESENTED, 30, presented), "the new Desktop presents: the display came back")
+    # An app swapped once the Desktop itself was replaced live (procmgr
+    # keeps the switch's state; the new Desktop reads it).
+    replace_apps(host, "after the live Desktop replace")
 
     # A program that faults at once: rolled back to desktop-good.
     report = activate(host, "desktop/desktop-crash.svc")

@@ -400,11 +400,15 @@ begin
       R : constant App_Response := Encode_App_Response
         (Replaced, 2, 1, Running, Stopped, [others => 16#AB#], [others => 16#01#]);
       Expected : constant Byte_Array :=
-        [0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 1] & [1 .. Digest_Bytes => 16#AB#] & [1 .. Digest_Bytes => 16#01#];
+        [0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 1] & [1 .. Digest_Bytes => 16#AB#] & [1 .. Digest_Bytes => 16#01#] & [0];
    begin
-      Check (R'Length = 75 and then R = Expected, "the app response vector");
+      Check (R'Length = 76 and then R = Expected, "the app response vector");
       Check (Encode_App_Response (Switch_Off, 0, 0, Not_Started, None_Running, [others => 0], [others => 0])
                = [3] & [2 .. App_Response_Bytes => 0], "a refused app response");
+      --  Start_Failed names procmgr's Launch_Failure (Manifest_Refused: 9).
+      Check (Encode_App_Response (Start_Failed, 1, 0, Exited, None_Running, [others => 0], [others => 0], 9)
+               = [4, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0] & [1 .. 2 * Digest_Bytes => 0] & [9],
+             "a start failure carries procmgr's reason");
    end;
 
    --  Responses.

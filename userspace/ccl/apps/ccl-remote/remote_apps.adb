@@ -3,6 +3,7 @@ with Interfaces;
 with CuBit.Child_Exits;
 with CuBit.Control_Events;
 with CuBit.Launch_Arguments;
+with CuBit.Launch_Failure_Text;
 with CuBit.Launch_Grants;
 with CuBit.Launching;
 with CuBit.Messages;
@@ -363,18 +364,24 @@ package body Remote_Apps is
       A.State.Instance := (if Started then W.Running else W.Exited);
    end Start;
 
+   --  procmgr's reason on the wire (App_Response's failure).
+   function Code_Of (Failure : LA.Launch_Failure) return W.Failure_Code is
+     (W.Failure_Code (LA.Launch_Failure'Enum_Rep (Failure)));
+
    --  Whether procmgr would admit generation N (OP_DESCRIBE runs the
    --  launch's admission, the Desktop's switch included): Switched_Off when
-   --  it refused as not granted.
-   procedure Admitted (App : String; N : W.Generation; Yes, Switched_Off : out Boolean) is
+   --  it refused as not granted; Failure, its reason otherwise.
+   procedure Admitted (App : String; N : W.Generation; Yes, Switched_Off : out Boolean;
+                       Failure : out W.Failure_Code) is
       Descriptor : PP.Bytes (1 .. PP.Maximum_Descriptor_Bytes);
       Length : PP.Descriptor_Length;
       Result : CuBit.Launching.Launch_Result;
-      Failure : LA.Launch_Failure;
+      Reason : LA.Launch_Failure;
    begin
-      CuBit.Launching.Describe (Launcher, Program (App, N), Descriptor, Length, Result, Failure);
+      CuBit.Launching.Describe (Launcher, Program (App, N), Descriptor, Length, Result, Reason);
       Yes := Result = CuBit.Launching.Launched;
-      Switched_Off := Result = CuBit.Launching.Refused and then Failure = LA.Not_Granted;
+      Switched_Off := Result = CuBit.Launching.Refused and then Reason = LA.Not_Granted;
+      Failure := (if Result = CuBit.Launching.Refused then Code_Of (Reason) else W.No_Failure);
    end Admitted;
 
    --  Swap A's running instance for generation N (Hash its SHA-256), the
@@ -383,15 +390,17 @@ package body Remote_Apps is
       App : constant String := A.Name (1 .. A.Length);
       Yes, Switched_Off, Stopped, Started, Restarted : Boolean;
       How : W.Stop_Kind;
-      Ignore : LA.Launch_Failure;
+      Failure, Ignore : LA.Launch_Failure;
+      Refusal : W.Failure_Code;
       Was_Running : Boolean;
    begin
       Success := False;
       Refresh (A);
       Item := A.State;
-      Admitted (App, N, Yes, Switched_Off);
+      Admitted (App, N, Yes, Switched_Off, Refusal);
       if not Yes then
          Item.Result := (if Switched_Off then W.Switch_Off else W.Start_Failed);
+         Item.Failure := (if Switched_Off then W.No_Failure else Refusal);
          return;
       end if;
       Was_Running := A.State.Instance = W.Running;
@@ -401,7 +410,7 @@ package body Remote_Apps is
          Item.Result := W.Stop_Failed;
          return;
       end if;
-      Start (A, N, Started, Ignore);
+      Start (A, N, Started, Failure);
       if not Started then
          if Was_Running then
             --  Its predecessor again, as it was.
@@ -409,6 +418,7 @@ package body Remote_Apps is
          end if;
          Item := A.State;
          Item.Result := W.Start_Failed;
+         Item.Failure := Code_Of (Failure);
          Item.Stop := How;
          return;
       end if;
@@ -568,7 +578,7 @@ package body Remote_Apps is
    begin
       Data (1 .. W.App_Response_Bytes) := W.Encode_App_Response
         (Item.Result, Item.Current, Item.Previous, Item.Instance, Item.Stop,
-         Item.Current_Hash, Item.Previous_Hash);
+         Item.Current_Hash, Item.Previous_Hash, Item.Failure);
    end Encode;
 
    function Image (App : String; Item : Report) return String is
@@ -584,6 +594,18 @@ package body Remote_Apps is
                   when W.None_Running => "",
                   when W.Stopped => " stopped",
                   when W.Ended => " ended after the stop deadline"));
+      --  procmgr's reason, in its words and by code (the runtime keeps no
+      --  enumeration names).
+      function Why return String is
+      begin
+         for Reason in LA.Launch_Failure loop
+            if Code_Of (Reason) = Item.Failure then
+               return " (procmgr: " & CuBit.Launch_Failure_Text.Explanation (Reason) & ", failure " &
+                 Decimal (Unsigned_64 (Item.Failure)) & ")";
+            end if;
+         end loop;
+         return "";
+      end Why;
    begin
       return App & " " &
         (case Item.Result is
@@ -591,7 +613,7 @@ package body Remote_Apps is
               (if Item.Current = W.No_Generation then "no generation"
                else Gen (Item.Current) & " " & Instance) & Previous,
             when W.Switch_Off => "refused: Allow app replacement is off on the device",
-            when W.Start_Failed => "the new generation did not start; " &
+            when W.Start_Failed => "the new generation did not start" & Why & "; " &
               (if Item.Current = W.No_Generation then "nothing runs"
                else Gen (Item.Current) & " " & Instance),
             when W.Stop_Failed => Gen (Item.Current) & " did not stop; nothing started",

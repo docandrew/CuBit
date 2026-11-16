@@ -67,7 +67,8 @@ class Framing(unittest.TestCase):
 
 class Apps(unittest.TestCase):
     # The same bytes as tests/ccl-remote/remote_wire_tests.adb's vector.
-    VECTOR = bytes([0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 1]) + b"\xab" * 32 + b"\x01" * 32
+    VECTOR = bytes([0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 1]) + b"\xab" * 32 + b"\x01" * 32 + b"\x00"
+    START_FAILED = bytes([4, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0]) + b"\x00" * 64 + b"\x09"
 
     def test_response_vector(self):
         report = cr.parse_app(self.VECTOR)
@@ -75,8 +76,17 @@ class Apps(unittest.TestCase):
                           report["stop"]), (0, 2, 1, 1, 1))
         self.assertEqual(report["current_sha256"], "ab" * 32)
         self.assertEqual(report["previous_sha256"], "01" * 32)
+        self.assertEqual(report["failure"], 0)
         with self.assertRaises(cr.RemoteError):
             cr.parse_app(self.VECTOR[:-1])
+
+    def test_start_failure_names_the_reason(self):
+        report = cr.parse_app(self.START_FAILED)
+        self.assertEqual((report["result"], report["failure"]), (4, 9))
+        refused = cr.AppRefused(report)
+        self.assertEqual(refused.name, "Start_Failed")
+        self.assertEqual(refused.failure, ("Manifest_Refused", "its manifest was refused"))
+        self.assertIn("procmgr: Manifest_Refused, its manifest was refused", str(refused))
 
     def test_request_frames(self):
         place, body = cr.app_request("app_replace", "out/x/build/swap-probe.app")
@@ -127,6 +137,7 @@ class StandIn:
         # Apps: what the next app operation answers (App_Result), and the
         # generations the stand-in keeps: app -> [current, previous].
         self.app_result = 0
+        self.app_failure = 0
         self.apps = {}
         # System generations: what the next activation answers
         # (Generation_Result, detail), the records (service -> sha256 hex
@@ -242,7 +253,7 @@ class StandIn:
             elif result == 0:
                 result = 2
             return 0, (struct.pack(">BIIBB", result, gens[0], gens[1], 1 if gens[0] else 0, 1 if op != 15 else 0)
-                       + b"\x11" * 32 + b"\x22" * 32)
+                       + b"\x11" * 32 + b"\x22" * 32 + bytes([self.app_failure]))
         if op in (16, 17):
             if op == 16:
                 (p, product), rest = name()
@@ -579,6 +590,14 @@ class AppCommands(Commands):
         self.assertEqual(code, 2)
         self.assertIn("Switch_Off", err)
         self.assertIn("Allow app replacement", err)
+
+    def test_start_failed_names_procmgrs_reason(self):
+        self.device.app_result = 4
+        self.device.app_failure = 9
+        code, _, err = self.err("app", "replace", "out/a/build/swap-probe.app")
+        self.assertEqual(code, 2)
+        self.assertIn("Start_Failed", err)
+        self.assertIn("procmgr: Manifest_Refused, its manifest was refused", err)
 
     def test_rollback_without_previous(self):
         self.run_cli("app", "replace", "out/a/build/swap-probe.app")

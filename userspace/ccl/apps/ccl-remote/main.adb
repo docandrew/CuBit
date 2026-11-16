@@ -454,6 +454,11 @@ procedure Main is
                                      when W.Replaced | W.Rolled_Back | W.Reported => Remote_Activity.OK,
                                      when W.Switch_Off | W.No_Previous => Remote_Activity.Refused,
                                      when W.Start_Failed | W.Stop_Failed => Remote_Activity.Failed)));
+                     --  The activity entry is cut to its width; procmgr's
+                     --  reason is the line that matters, whole.
+                     if Result = W.OK and then W."=" (Done.Result, W.Start_Failed) then
+                        Log ("app " & App & " not started: " & Remote_Apps.Image (App, Done));
+                     end if;
                   end;
 
                when W.System_Activate | W.System_Rollback =>

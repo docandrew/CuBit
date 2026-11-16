@@ -61,6 +61,9 @@ package Remote_Apps is
       Instance : W.Instance_State := W.Not_Started;
       Stop     : W.Stop_Kind := W.None_Running;
       Current_Hash, Previous_Hash : W.Digest := [others => 0];
+      --  Start_Failed: why procmgr refused the generation (its
+      --  Launch_Failure code), when it said.
+      Failure  : W.Failure_Code := W.No_Failure;
    end record;
 
    --  Status: OK (Item says what happened), or why nothing could be done

@@ -2123,8 +2123,8 @@ procedure main is
                   SERVICE_FS, rights, name);
             end loop;
             if not covered or else idx >= batchEntries then
-               debugPrint ("procmgr: delegated place not held by the launcher: " &
-                           name & LF);
+               --  A logstore line: the launcher hears only Not_Granted.
+               Warnings.Warn ("procmgr: launch refused: its launcher does not hold the delegated place " & name);
                attenuationRefused := True;
                ok := False;
                return;
@@ -2434,10 +2434,12 @@ procedure main is
                                  end loop;
                                  if not Covered then
                                     attenuationRefused := True;
-                                    debugPrint ("procmgr: launched child scope " &
-                                      "not held by its launcher: " &
+                                    --  A logstore line: the launcher hears
+                                    --  only Not_Granted.
+                                    Warnings.Warn ("procmgr: launch of " & binaryName &
+                                      " refused: its launcher does not hold the scope " &
                                       locals (j).prefix
-                                        (1 .. Natural (locals (j).prefixLen)) & LF);
+                                        (1 .. Natural (locals (j).prefixLen)) & " it declares");
                                     policyReady := False;
                                     return;
                                  end if;
@@ -4433,8 +4435,10 @@ procedure main is
             begin
                if attenuateFor /= No_Process and then not launcherHolds (R.Kind, R.Param0) then
                   attenuationRefused := True;
-                  debugPrint ("procmgr: launched child requests " &
-                              "authority its launcher does not hold" & LF);
+                  Warnings.Warn ("procmgr: launch of " & name & " refused: it requests the service """ &
+                                 String (View.Declared.Entries (I).Label.Text
+                                           (1 .. View.Declared.Entries (I).Label.Length)) &
+                                 """, which its launcher does not hold");
                elsif R.Kind = CuBit.Render_Authority.Manifest_Request then
                   -- A render endpoint is admitted by devmgr, never copied by
                   -- the generic service path.

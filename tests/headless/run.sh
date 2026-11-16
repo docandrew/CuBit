@@ -5671,7 +5671,8 @@ if [ "$TEST_NAME" = "desktop-live-replace" ]; then
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/desktop-live-replace/desktop_live_replace.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$DESKTOP_LIVE_REPLACE_PORT" \
-        "$KERNEL_DIR/isodir/boot/desktop.svc" "$KERNEL_DIR/isodir/boot/timesync.svc" &
+        "$KERNEL_DIR/isodir/boot/desktop.svc" "$KERNEL_DIR/isodir/boot/timesync.svc" \
+        "$KERNEL_DIR/isodir/boot/metricsview.app" "$KERNEL_DIR/isodir/boot/log-exit-probe.app" &
     INPUT_INJECTOR_PID=$!
 fi
 if [ "$TEST_NAME" = "service-switch-reboot" ]; then

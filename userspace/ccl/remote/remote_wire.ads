@@ -222,8 +222,9 @@ package Remote_Wire with SPARK_Mode is
    --    Switch_Off      procmgr refused the staged program: the Desktop's
    --                    "Allow app replacement" switch is off. Nothing was
    --                    stopped or started
-   --    Start_Failed    the generation did not start (the device's log says
-   --                    why); the instance stopped for it was started again
+   --    Start_Failed    the generation did not start (the response's
+   --                    failure and the device's log say why); the
+   --                    instance stopped for it was started again
    --    Stop_Failed     the running instance did not end, even when ended
    --                    after its deadline; nothing was started
    --    No_Previous     a rollback with no previous generation
@@ -247,16 +248,23 @@ package Remote_Wire with SPARK_Mode is
    No_Generation : constant Generation := 0;
    Generation_Bytes : constant := 4;
 
+   --  Why procmgr did not start a generation (Start_Failed): its
+   --  CuBit.Launch_Arguments.Launch_Failure code (1 ..), or No_Failure.
+   subtype Failure_Code is Unsigned_8;
+   No_Failure : constant Failure_Code := 0;
+
    --  App_Response: result (1), current generation (4), previous
    --  generation (4), instance (1), stop (1), the current generation's
-   --  SHA-256 (32), the previous one's (32; zero when none).
+   --  SHA-256 (32), the previous one's (32; zero when none), the failure
+   --  (1; No_Failure but for Start_Failed).
    App_Response_Bytes : constant :=
-     1 + 2 * Generation_Bytes + 1 + 1 + 2 * Digest_Bytes;
+     1 + 2 * Generation_Bytes + 1 + 1 + 2 * Digest_Bytes + 1;
 
    subtype App_Response is Byte_Array (1 .. App_Response_Bytes);
    function Encode_App_Response
      (Result : App_Result; Current, Previous : Generation; Instance : Instance_State;
-      Stop : Stop_Kind; Current_Hash, Previous_Hash : Digest) return App_Response;
+      Stop : Stop_Kind; Current_Hash, Previous_Hash : Digest;
+      Failure : Failure_Code := No_Failure) return App_Response;
 
    --  An app's name: one component of a valid name, at most
    --  Maximum_App_Name_Bytes ("swap-probe").

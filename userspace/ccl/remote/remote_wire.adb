@@ -183,7 +183,8 @@ package body Remote_Wire with SPARK_Mode is
 
    function Encode_App_Response
      (Result : App_Result; Current, Previous : Generation; Instance : Instance_State;
-      Stop : Stop_Kind; Current_Hash, Previous_Hash : Digest) return App_Response
+      Stop : Stop_Kind; Current_Hash, Previous_Hash : Digest;
+      Failure : Failure_Code := No_Failure) return App_Response
    is
       Hashes_At : constant := 1 + 2 * Generation_Bytes + 2;
       Data : App_Response := [others => 0];
@@ -197,6 +198,7 @@ package body Remote_Wire with SPARK_Mode is
          Data (Hashes_At + I) := Current_Hash (I);
          Data (Hashes_At + Digest_Bytes + I) := Previous_Hash (I);
       end loop;
+      Data (App_Response_Bytes) := Failure;
       return Data;
    end Encode_App_Response;
 

@@ -162,15 +162,44 @@ APP_RESULTS = [
     ("Reported", "reported"),
     ("Switch_Off", "app replacement is off on the device: the person there turns on "
                    "Allow app replacement (Deskbar, Remote access)"),
-    ("Start_Failed", "the generation did not start (see the device's log); "
-                     "the one stopped for it runs again"),
+    ("Start_Failed", "the generation did not start; the one stopped for it runs again"),
     ("Stop_Failed", "the running instance did not end, even when ended; nothing was started"),
     ("No_Previous", "the app has no previous generation"),
 ]
 APP_RESULT_DONE = (0, 1, 2)
 INSTANCE_STATES = {0: "not started", 1: "running", 2: "exited"}
 STOP_KINDS = {0: "", 1: "stopped", 2: "ended after the stop deadline"}
-APP_RESPONSE_BYTES = 1 + 4 + 4 + 1 + 1 + 32 + 32
+APP_RESPONSE_BYTES = 1 + 4 + 4 + 1 + 1 + 32 + 32 + 1
+# CuBit.Launch_Arguments.Launch_Failure (App_Response's failure byte, from
+# 1) and CuBit.Launch_Failure_Text's words for it.
+LAUNCH_FAILURES = [
+    ("Malformed_Request", "the launch request was malformed"),
+    ("Grant_Unavailable", "procmgr could not read the launch request"),
+    ("Arguments_Rejected", "its arguments were refused"),
+    ("Spawn_Failed", "its process could not be set up"),
+    ("Not_Granted", "it needs authority its launcher does not hold"),
+    ("Executable_Not_Found", "the program file was not found"),
+    ("Startup_Table_Missing", "it has no startup table (rebuild it)"),
+    ("Startup_Table_Invalid", "its startup table is invalid"),
+    ("Manifest_Refused", "its manifest was refused"),
+    ("Capability_Denied", "a capability it requires was denied"),
+    ("Service_Unavailable", "a service it requires is not running"),
+    ("Render_Denied", "GPU rendering was not admitted"),
+    ("Out_Of_Memory", "the system is out of memory"),
+    ("Parameters_Missing", "it requires typed parameters and the launch gave none"),
+    ("Parameters_Rejected", "its typed parameters are not of its parameter record"),
+    ("Parameters_Unexpected", "it declares no parameters and the launch gave some"),
+    ("Parameter_Signature_Invalid", "its parameter signature (.cubit.parameters) is malformed"),
+]
+
+
+def launch_failure(code):
+    """(name, words) of a Launch_Failure code; None for 0 (none)."""
+    if code == 0:
+        return None
+    if code <= len(LAUNCH_FAILURES):
+        return LAUNCH_FAILURES[code - 1]
+    return ("failure %d" % code, "")
 MAXIMUM_APP_NAME_BYTES = 64
 PRODUCT_SUFFIX = ".app"
 # Remote_Wire.Generation_Result, and CuBit.Service_Replacement's Refusal
@@ -606,17 +635,22 @@ class AppRefused(Exception):
         code = report["result"]
         name, why = APP_RESULTS[code] if code < len(APP_RESULTS) else ("result %d" % code, "")
         self.name = name
+        self.failure = launch_failure(report.get("failure", 0))
+        if self.failure:
+            why = "%s (procmgr: %s, %s)" % (why, self.failure[0], self.failure[1])
         super().__init__("%s: %s" % (name, why))
 
 
 def parse_app(body):
     """App_Response as a dict: result, current, previous, instance, stop,
-    current_sha256, previous_sha256 (hex)."""
+    current_sha256, previous_sha256 (hex), failure (procmgr's Launch_Failure
+    code when a generation did not start; 0 otherwise)."""
     if len(body) != APP_RESPONSE_BYTES:
         raise RemoteError(1, "an app response of %d bytes" % len(body))
     result, current, previous, instance, stop = struct.unpack(">BIIBB", body[:11])
     return {"result": result, "current": current, "previous": previous, "instance": instance,
-            "stop": stop, "current_sha256": body[11:43].hex(), "previous_sha256": body[43:75].hex()}
+            "stop": stop, "current_sha256": body[11:43].hex(), "previous_sha256": body[43:75].hex(),
+            "failure": body[75]}
 
 
 def app_request(operation, name):
