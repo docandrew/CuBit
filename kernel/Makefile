@@ -224,6 +224,15 @@ prove-process-lifetime:
 		--subdirs=proof-process-lifetime --mode=all --level=1 -j2
 	@cat build/proof-process-lifetime/gnatprove/gnatprove.out
 
+# SEC-025: decoders read peer-writable memory once (a private copy); every
+# Import/Address overlay is reviewed; procmgr's images are in private pages.
+.PHONY : test-sec025
+test-sec025:
+	python3 -I ../tests/sec025/check_shared_overlays.py
+	python3 -I ../tests/sec025/check_procmgr_image_buffer.py
+	$(ALR) gprbuild -p -q -P ../tests/sec025/shared_copies.gpr
+	../tests/sec025/build/shared_copies_tests
+
 .PHONY: test-boot-framebuffer prove-boot-framebuffer
 .PHONY: test-boot-panel prove-boot-panel
 test-boot-panel:
