@@ -759,12 +759,13 @@ procedure Main is
             Activity : Activity_Result;
          begin
             for B in P.Buffer_Slot loop
-               Raw := syscall (SYSCALL_SBRK, 8192);
+               --  One page of rows, one of the frame's damage record (LAT-002).
+               Raw := syscall (SYSCALL_SBRK, 12288);
                Check (Raw /= Unsigned_64'Last, "plan frame storage");
                if not Passed then return; end if;
                MG.Create_Via_Capability
                  (Display_Service, To_Address (Integer_Address ((Raw + 4095) and not Unsigned_64'(4095))),
-                  1, False, Grant, Ok);
+                  2, False, Grant, Ok);
                Expect (P.Encode (P.Attachment'(B, (Grant, (32, 32, 128)))),
                        DP.Success, "plan frame slot");
             end loop;
