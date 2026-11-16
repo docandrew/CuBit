@@ -6,13 +6,19 @@ its grace: none FORCED, NOT_ENDED or EXITED_FAILING, and each within
 Maximum_Stop_Ms. Prints each one's stop latency (milliseconds from devmgr's
 Stops to the exit devmgr took).
 
+With --services, procmgr's units (apps and services) too: each must be
+STOPPED_CLEAN (or ENDED_EARLY, KEPT) within Maximum_Stop_Ms, except those
+named with --fixture (a test fixture that ignores Stop or quiesces slowly on
+purpose).
+
 Ordering: devmgr's "drivers stopped" report comes before procmgr's own
 report, power.svc's S5 request and the stand-in's S5 entry. A log that
 ends before the report (the kernel console ring still held it at S5,
 LOG-009) is accepted only with --lossy-tail, and only when none of those
 later lines is present: then the tail was lost, not reordered.
 
-Usage: check_driver_stops.py [--lossy-tail] [--maximum-stop-ms N] SERIAL_LOG
+Usage: check_driver_stops.py [--lossy-tail] [--maximum-stop-ms N]
+                             [--services [--fixture NAME]...] SERIAL_LOG
 Exit 0: pass; 1: a driver missed Stop, too slow, or misordered; 2: usage.
 """
 import argparse
@@ -31,6 +37,9 @@ ENDED = re.compile(
 MISSED = re.compile(r"devmgr: shutdown: (\S+) (did not end within its grace|NOT_ENDED|could not be ended)")
 REPORT = re.compile(
     r"devmgr: shutdown: drivers stopped(?: in (\d+) ms: (\d+) clean, (\d+) failing, (\d+) forced, (\d+) not ended)?")
+UNIT = re.compile(
+    r"procmgr: shutdown: (\S+) pid\d+ (STOPPED_CLEAN|EXITED_FAILING|ENDED_EARLY|FORCED|NOT_ENDED|KEPT)"
+    r"(?: after (\d+) ms)? \((app|service|power tail), grace (\d+) ms")
 #  What may only follow the report: procmgr's own, then power.svc's S5
 #  request, then the firmware step (the stand-in's line; acpi.svc prints
 #  none before S5).
@@ -42,6 +51,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lossy-tail", action="store_true")
     parser.add_argument("--maximum-stop-ms", type=int, default=Maximum_Stop_Ms)
+    parser.add_argument("--services", action="store_true")
+    parser.add_argument("--fixture", action="append", default=[])
     parser.add_argument("serial")
     args = parser.parse_args()
     with open(args.serial, "rb") as f:
@@ -53,6 +64,7 @@ def main() -> int:
     report_at = None
     report = None
     later_at = {}
+    units = {}       # procmgr's: name -> (outcome, ms or None, stage, grace)
     failures = []
     for number, line in enumerate(lines, 1):
         if m := STOPPING.search(line):
@@ -61,6 +73,9 @@ def main() -> int:
             ended[m.group(1)] = (m.group(2).split()[0], None if m.group(3) is None else int(m.group(3)))
         elif m := MISSED.search(line):
             missed.setdefault(m.group(1), m.group(2))
+        elif m := UNIT.search(line):
+            units.setdefault(m.group(1), (m.group(2), None if m.group(3) is None else int(m.group(3)),
+                                          m.group(4), int(m.group(5))))
         elif (m := REPORT.search(line)) and report_at is None:
             report_at = number
             report = m
@@ -116,6 +131,24 @@ def main() -> int:
               % report.group(1, 2, 3, 4, 5))
         if int(report.group(4)) or int(report.group(5)) or int(report.group(3)):
             failures.append("devmgr's report: %s failing, %s forced, %s not ended" % report.group(3, 4, 5))
+
+    if args.services:
+        if not units:
+            failures.append("procmgr stopped no units (no 'procmgr: shutdown: NAME pid' outcome line)")
+        else:
+            width = max(len(name) for name in units)
+            print("driver-stop: procmgr's units")
+        for name, (outcome, ms, stage, grace) in units.items():
+            allowed = name in args.fixture
+            print("  %-*s  %-13s %s  (%s, grace %d ms%s)" % (
+                width, name, outcome, "" if ms is None else "%5d ms" % ms, stage, grace,
+                ", a fixture: not judged" if allowed else ""))
+            if allowed:
+                continue
+            if outcome not in ("STOPPED_CLEAN", "ENDED_EARLY", "KEPT"):
+                failures.append("procmgr's %s: %s (grace %d ms)" % (name, outcome, grace))
+            elif ms is not None and ms > args.maximum_stop_ms:
+                failures.append("procmgr's %s: stopped in %d ms, over %d ms" % (name, ms, args.maximum_stop_ms))
 
     for failure in failures:
         print("driver-stop: FAIL " + failure, file=sys.stderr)

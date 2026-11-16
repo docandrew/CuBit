@@ -3435,6 +3435,7 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "config-tree" ] ||
    [ "$TEST_NAME" = "display-grants-virtio-vga" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+   [ "$TEST_NAME" = "shutdown-console" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "metricsview" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
@@ -6695,7 +6696,8 @@ desktop: shut down: cancelled; nothing sent
         bash "$ROOT_DIR/tests/headless/check-acpi-shutdown.sh" "$SERIAL_LOG" "$qemu_status" || exit 1
         # No driver forced, none slow, nothing after the drivers' report
         # before it; S5 may cut the console's tail (LOG-009).
-        if ! python3 -I "$ROOT_DIR/tests/driver-stop/check_driver_stops.py" --lossy-tail "$SERIAL_LOG"; then
+        if ! python3 -I "$ROOT_DIR/tests/driver-stop/check_driver_stops.py" --lossy-tail --services \
+               --fixture com.cubit.test.shutdown-stubborn --fixture com.cubit.test.shutdown-cooperative "$SERIAL_LOG"; then
             echo "headless: acpi-shutdown: a driver missed its Stop, or the drivers' report was not before S5" >&2
             exit 1
         fi
@@ -6713,6 +6715,7 @@ desktop: shut down: confirmation shown
 desktop: shut down: power.svc answered ACCEPTED
 power: POWER_OFF requested by DESKTOP
 procmgr: shutdown: stopping com.cubit.desktop pid
+display: Stop: output 0:
 "
             SHUTDOWN_ORDER="com.cubit.test.shutdown-stubborn com.cubit.desktop com.cubit.display com.cubit.logstore"
         elif [ "$TEST_NAME" = "shutdown-text" ]; then
@@ -6748,6 +6751,8 @@ power: POWER_OFF requested by CONSOLE
 procmgr: shutdown: stopping com.cubit.ccl-console pid
 procmgr: shutdown: stopping com.cubit.desktop pid
 procmgr: shutdown: stopping com.cubit.display pid
+display: session lent scanout: the compositor composes into the scanout buffers
+display: Stop: output 0: 0 loans revoked; returned to the GPU driver 3 of 3 lent buffers and 3 of 3 scanout mappings
 "
             SHUTDOWN_ORDER="com.cubit.ccl-console com.cubit.test.shutdown-stubborn com.cubit.desktop com.cubit.display com.cubit.logstore"
         fi
@@ -6836,9 +6841,16 @@ procmgr: shutdown: com.cubit.test.shutdown-stubborn pid
                 exit 1
             fi
         fi
-        # Every driver devmgr started ended on its Stop, quickly, and its
-        # report came before S5 (PWR-003; the stand-in drains the console).
-        if ! python3 -I "$ROOT_DIR/tests/driver-stop/check_driver_stops.py" "$SERIAL_LOG"; then
+        # Every driver devmgr started and every unit procmgr stopped (but
+        # the two fixtures) ended on its Stop, quickly, and devmgr's report
+        # came before S5 (PWR-003; the stand-in drains the console).
+        # Not judged yet: the CCL console's window loop does not read its
+        # Stop (forced at its grace; PWR-003 follow-up for its owner).
+        STOP_EXEMPT=(--fixture com.cubit.test.shutdown-stubborn --fixture com.cubit.test.shutdown-cooperative)
+        if [ "$TEST_NAME" = "shutdown-console" ]; then
+            STOP_EXEMPT+=(--fixture com.cubit.ccl-console)
+        fi
+        if ! python3 -I "$ROOT_DIR/tests/driver-stop/check_driver_stops.py" --services "${STOP_EXEMPT[@]}" "$SERIAL_LOG"; then
             echo "headless: $TEST_NAME: a driver missed its Stop, or the drivers' report was not before S5" >&2
             exit 1
         fi
