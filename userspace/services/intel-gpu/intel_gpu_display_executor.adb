@@ -11,7 +11,6 @@ with CuBit.Display_Protocol;
 with CuBit.Display_Planes;
 with CuBit.GPU_Plane_Protocol;
 with CuBit.Memory_Grants;
-with CuBit.Process_IDs;
 with Intel_GPU_Cursor_Program;
 with Intel_GPU_Cursor_Surfaces;
 with Intel_GPU_Cursor_Plane;
@@ -195,7 +194,10 @@ package body Intel_GPU_Display_Executor is
    --  freeze 2026-10-12 had slot 13 already holding the GT frequency page).
    Present_Reply : Intel_GPU_Replies.Owed;
    Present_Reply_Owed : Boolean := False;
-   --  Scanout buffers lent to a compositor (Map_Framebuffer word 1).
+   --  Map_Framebuffer word 1: a forwardable grant (UI-020).
+   Map_Forwardable : constant Unsigned_64 := 1;
+   --  Each buffer's forwardable grant, from which display.svc derives the
+   --  compositor's loan.
    type Lent_Grant is record
       Live : Boolean := False;
       Reference : CuBit.Memory_Grants.Grant_Reference;
@@ -1716,28 +1718,34 @@ package body Intel_GPU_Display_Executor is
             Reference : CuBit.Memory_Grants.Grant_Reference;
             Granted : Boolean := False;
             Revoked : Boolean;
-            --  Word 1: the process the buffer is for (UI-020: display.svc
-            --  lends the scanout buffers to the compositor); 0: the sender.
-            Lending : constant Boolean := Request.words (1) /= 0;
-            Grantee : constant Process_ID :=
-              (if Lending then CuBit.Process_IDs.From_Word (Request.words (1)) else Sender);
+            --  Word 1: 1 asks for a forwardable grant (UI-020: display.svc
+            --  derives the compositor's loan of this buffer from it); 0 an
+            --  ordinary one. Either way the grant is the sender's.
+            Forwardable : constant Boolean := Request.words (1) = Map_Forwardable;
+            Pages : constant Natural := Natural ((Flip.Frame_Bytes + Page_Bytes - 1) / Page_Bytes);
          begin
             if Item <= Unsigned_64 (Flip.Index'Last) and then Request.tag.length = 4 and then
-              Request.words (2 .. 3) = [0, 0]
+              Request.words (1) in 0 | Map_Forwardable and then Request.words (2 .. 3) = [0, 0]
             then
-               --  One loan per buffer: a newer one (a restarted compositor)
-               --  ends the previous.
-               if Lending and then Lent (Flip.Index (Item)).Live then
-                  CuBit.Memory_Grants.Revoke (Lent (Flip.Index (Item)).Reference, Revoked);
-                  Lent (Flip.Index (Item)).Live := False;
-               end if;
-               CuBit.Memory_Grants.Create_For_Process
-                 (grantee => Grantee,
-                  localAddr => To_Address (Integer_Address (Flip.CPU_Of (Flip.Index (Item)))),
-                  numPages => Natural ((Flip.Frame_Bytes + Page_Bytes - 1) / Page_Bytes),
-                  readWrite => True, reference => Reference, success => Granted);
-               if Granted and then Lending then
-                  Lent (Flip.Index (Item)) := (True, Reference);
+               if Forwardable then
+                  --  One forwardable grant per buffer: a newer one (display
+                  --  restarted) ends the previous, and what was derived from it.
+                  if Lent (Flip.Index (Item)).Live then
+                     CuBit.Memory_Grants.Revoke (Lent (Flip.Index (Item)).Reference, Revoked);
+                     Lent (Flip.Index (Item)).Live := False;
+                  end if;
+                  CuBit.Memory_Grants.Create_Forwardable_For_Process
+                    (grantee => Sender,
+                     localAddr => To_Address (Integer_Address (Flip.CPU_Of (Flip.Index (Item)))),
+                     numPages => Pages, readWrite => True, reference => Reference, success => Granted);
+                  if Granted then
+                     Lent (Flip.Index (Item)) := (True, Reference);
+                  end if;
+               else
+                  CuBit.Memory_Grants.Create_For_Process
+                    (grantee => Sender,
+                     localAddr => To_Address (Integer_Address (Flip.CPU_Of (Flip.Index (Item)))),
+                     numPages => Pages, readWrite => True, reference => Reference, success => Granted);
                end if;
             end if;
             if Granted then

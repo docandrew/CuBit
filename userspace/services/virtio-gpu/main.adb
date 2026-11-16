@@ -21,7 +21,6 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Launch_Configurations;
 with Launch_Configuration;
 with CuBit.Memory_Grants;
-with CuBit.Process_IDs;
 with CuBit.Output_Discovery;
 with CuBit.Output_Modes;
 with CuBit.Monitor_EDID;
@@ -318,7 +317,10 @@ procedure main is
       Latch_Us : Unsigned_64 := 0;
    end record;
    Pending : array (Head_Index) of Pending_Presentation;
-   --  Scanout buffers lent to a compositor (OP_GPU_MAP_FRAMEBUFFER word 1).
+   --  OP_GPU_MAP_FRAMEBUFFER word 1: a forwardable grant (UI-020).
+   GPU_MAP_FORWARDABLE : constant Unsigned_64 := 1;
+   --  Each buffer's forwardable grant, from which display.svc derives the
+   --  compositor's loan.
    type Lent_Grant is record
       Live : Boolean := False;
       Reference : CuBit.Memory_Grants.Grant_Reference;
@@ -2021,35 +2023,45 @@ procedure main is
                   Natural ((Unsigned_64 (Frame_Bytes (selectedHead)) + 4095) / 4096);
                reference : CuBit.Memory_Grants.Grant_Reference;
                grantOk : Boolean;
-               --  Word 1: the process the buffer is for (UI-020: display.svc
-               --  lends its scanout buffers to the compositor); 0: the caller.
-               Grantee : constant Process_ID :=
-                 (if request.words (1) = 0 then from
-                  else CuBit.Process_IDs.From_Word (request.words (1)));
+               --  Word 1: 1 asks for a forwardable grant (UI-020: display.svc
+               --  derives the compositor's loan of this buffer from it); 0 an
+               --  ordinary one. Either way the grant is the caller's.
+               Forwardable : constant Boolean := request.words (1) = GPU_MAP_FORWARDABLE;
                Revoked : Boolean;
             begin
                replyMsg.tag := (label => OP_GPU_MAP_FRAMEBUFFER,
                                 length => 4, protocol => 0, ipc => <>, reserved => 0);
                if bufferIndexRaw <= Unsigned_64 (Buffer_Index'Last) and then
+                 request.words (1) in 0 | GPU_MAP_FORWARDABLE and then
                  request.words (2) = 0 and then request.words (3) = 0
                then
                   bufferIndex := Natural (bufferIndexRaw);
-                  --  One lent grant per buffer: a newer loan (another
-                  --  compositor instance) ends the previous one.
-                  if request.words (1) /= 0 and then Lent (selectedHead, bufferIndex).Live then
-                     CuBit.Memory_Grants.Revoke (Lent (selectedHead, bufferIndex).Reference, Revoked);
-                     Lent (selectedHead, bufferIndex).Live := False;
-                  end if;
-                  CuBit.Memory_Grants.Create_For_Process
-                    (grantee   => Grantee,
-                     localAddr =>
-                       DMA_BASE + framebufferOffset (bufferIndex),
-                     numPages  => pages,
-                     readWrite => True,
-                     reference => reference,
-                     success   => grantOk);
-                  if grantOk and then request.words (1) /= 0 then
-                     Lent (selectedHead, bufferIndex) := (True, reference);
+                  if Forwardable then
+                     --  One forwardable grant per buffer: a newer one (display
+                     --  restarted) ends the previous, and what was derived from it.
+                     if Lent (selectedHead, bufferIndex).Live then
+                        CuBit.Memory_Grants.Revoke (Lent (selectedHead, bufferIndex).Reference, Revoked);
+                        Lent (selectedHead, bufferIndex).Live := False;
+                     end if;
+                     CuBit.Memory_Grants.Create_Forwardable_For_Process
+                       (grantee   => from,
+                        localAddr => DMA_BASE + framebufferOffset (bufferIndex),
+                        numPages  => pages,
+                        readWrite => True,
+                        reference => reference,
+                        success   => grantOk);
+                     if grantOk then
+                        Lent (selectedHead, bufferIndex) := (True, reference);
+                     end if;
+                  else
+                     CuBit.Memory_Grants.Create_For_Process
+                       (grantee   => from,
+                        localAddr =>
+                          DMA_BASE + framebufferOffset (bufferIndex),
+                        numPages  => pages,
+                        readWrite => True,
+                        reference => reference,
+                        success   => grantOk);
                   end if;
                else
                   grantOk := False;

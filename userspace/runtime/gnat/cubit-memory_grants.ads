@@ -63,6 +63,14 @@ package CuBit.Memory_Grants is
       reference : out Grant_Reference; success : out Boolean;
       notify : Boolean := False);
 
+   --  The same to a process named by identity, under Create_For_Process's
+   --  rule (an endpoint between the two, with RIGHT_GRANT).
+   procedure Create_Forwardable_For_Process
+     (grantee : CuBit.Messages.Process_ID; localAddr : System.Address;
+      numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean;
+      notify : Boolean := False);
+
    --  The same, to the process a saved reply answers (the requester of a
    --  request this process set aside): no endpoint to it is needed.
    procedure Create_Via_Reply

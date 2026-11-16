@@ -13297,6 +13297,13 @@ procedure main is
       Response := callDisplay (OP_DISPLAY_GET_STATUS, Output => Output);
       P.Lent := Response.tag.label = OP_DISPLAY_GET_STATUS and then Response.tag.length = 4 and then
         (Response.words (1) and Display_Lends_Scanout) /= 0;
+      --  Desktop reaches the GPU only through Display: it holds no endpoint
+      --  to the GPU driver, so it can neither present nor clear there. A
+      --  loan is display's derived grant, not authority over the GPU.
+      if P.Lent and then CuBit.Handles.Valid (CuBit.Handles.Startup.Endpoint_Named ("gpu")) then
+         debugPrint ("desktop: holds a GPU endpoint; not composing into lent scanout" & LF);
+         P.Lent := False;
+      end if;
       --  Each buffer's rows, then the page of its frames' damage records
       --  (CuBit.Display_Frame_Damage, LAT-002 multi-rect submit). Lent
       --  slots keep their rows too: a refused first loan copies instead.
@@ -13313,7 +13320,18 @@ procedure main is
          Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
            ((if P.Lent then PW.Encode_Lend_Request (PW.Attachment'(B, (P.Targets (B).Grant, Layout)))
              else PW.Encode (PW.Attachment'(B, (P.Targets (B).Grant, Layout)))), Output));
-         Response.tag := capCall (Desktop_Endpoints.Display_Service, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
+         if P.Lent and then B = BP.Live_Slot'First then
+            --  The first loan request offers Display a read-only endpoint to
+            --  this process: what the kernel needs to derive the loans for
+            --  it, and no more (no send right: Display cannot call Desktop).
+            Response.tag := CuBit.Handles.IPC.Call_Offering
+              (Desktop_Endpoints.Display_Service, Response,
+               CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms),
+               CuBit.Handles.Copy (CuBit.Handles.Startup.Endpoint_Named (CuBit.Startup_Tables.Self_Text),
+                                   CuBit.Handles.Read_Only));
+         else
+            Response.tag := capCall (Desktop_Endpoints.Display_Service, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
+         end if;
          if P.Lent then
             declare
                Loan : constant PW.Loan_Decoding :=
@@ -13341,8 +13359,8 @@ procedure main is
                   debugPrint ("desktop: display lent no scanout buffer for slot" & B'Image & LF);
                   closeOutput (Output); return;
                end if;
-               --  Only the GPU driver's own grant, made for this process.
-               MG.Acquire (Loan.Value.Source.Grant, Registered_Driver (DRIVER_GPU), 0,
+               --  Display's derived grant (it owns and revokes the loan).
+               MG.Acquire_Via_Capability (Desktop_Endpoints.Display_Service, Loan.Value.Source.Grant, 0,
                            DP.Byte_Length (Layout), MG.Write_Access, Mapped, Acquired);
                if not Acquired then
                   debugPrint ("desktop: lent scanout buffer not acquired, slot" & B'Image & LF);
@@ -13370,7 +13388,8 @@ procedure main is
       --  The lent buffer on screen now is the front until a frame latches.
       if P.Lent and then On_Screen /= 0 then BP.Seed_Front (P.Pool, On_Screen); end if;
       debugPrint ("desktop: output" & Output'Image &
-        (if P.Lent then " composes into the lent scanout buffers" else " copies frames to Display") & LF);
+        (if P.Lent then " composes into the lent scanout buffers (no GPU endpoint held)"
+         else " copies frames to Display") & LF);
       P.Repaint := RP.Open ((0, 0, Natural (Layout.Width), Natural (Layout.Height)));
       declare Writer : BP.Ticket;
       begin

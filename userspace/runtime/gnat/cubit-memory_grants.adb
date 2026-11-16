@@ -125,6 +125,30 @@ package body CuBit.Memory_Grants is
       Finish_Creation (Raw, reference, success);
    end Create_Forwardable_Via_Capability;
 
+   procedure Create_Forwardable_For_Process
+     (grantee : CuBit.Messages.Process_ID; localAddr : System.Address;
+      numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean;
+      notify : Boolean := False)
+   is
+      package KA renames CuBit.Kernel_ABI;
+      Raw : Unsigned_64;
+   begin
+      reference := (slot => 0, generation => 1);
+      success := False;
+      if numPages not in 1 .. 4096 then
+         return;
+      end if;
+      Raw := CuBit.Messages.syscall
+        (CuBit.Messages.SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
+         CuBit.Messages.To_Word (grantee), To_Number (localAddr), Unsigned_64 (numPages),
+         KA.Grant_Forwardable + Creation_Flags (readWrite, notify));
+      if Raw = Unsigned_64'Last then
+         return;
+      end if;
+      Finish_Creation (Raw, reference, success);
+   end Create_Forwardable_For_Process;
+
    procedure Create_Via_Reply
      (peer      : CuBit.Handles.Reply;
       localAddr : System.Address;

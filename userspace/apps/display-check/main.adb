@@ -13,6 +13,9 @@ with CuBit.Display_Plane_Protocol;
 with Presentation_Test_Policy;
 with GPU_Test_Policy;
 with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Startup;
+with CuBit.Startup_Tables;
 with Startup;
 
 --  Dedicated fixture: never starts alongside a desktop session. Only authority
@@ -637,6 +640,15 @@ procedure Main is
       Mapped : System.Address;
       function Lend (Slot : P.Buffer_Slot; L : DP.Buffer_Layout) return Wire_Message is
         (Send (P.Encode_Lend_Request (P.Attachment'(Slot, (Records (Slot), L)))));
+      --  The same, offering a copy of this process's own endpoint.
+      function Lend_Offering (Slot : P.Buffer_Slot; Kept : CuBit.Handles.Rights) return Wire_Message is
+         Msg : Message := From_Wire (P.Encode_Lend_Request (P.Attachment'(Slot, (Records (Slot), Layout))));
+      begin
+         Msg.tag := CuBit.Handles.IPC.Call_Offering
+           (Display_Service, Msg, CuBit.Messages.Wait_Forever,
+            CuBit.Handles.Copy (CuBit.Handles.Startup.Endpoint_Named (CuBit.Startup_Tables.Self_Text), Kept));
+         return To_Wire (Msg);
+      end Lend_Offering;
    begin
       if Presentation_Test_Policy.Rebind_Enabled then return; end if;
       --  Each slot's own buffer (its rows and damage record page), as for
@@ -666,22 +678,31 @@ procedure Main is
       Wire := Lend (1, (Layout.Width, Layout.Height, Layout.Pitch + 64));
       Check (Wire.Length = 1 and then Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Unsupported),
         "a loan has the output's own layout");
-      for B in P.Buffer_Slot loop
-         Wire := Lend (B, Layout);
-         Loans (B) := P.Decode_Loan (Wire);
-         if B = 1 and then not Loans (B).Valid and then Wire.Length = 1 and then
-           Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Bad_State)
-         then
-            --  The GPU driver may grant only to a process it shares an
-            --  endpoint with (the kernel's grant rule); this client has
-            --  none, so nothing is lent and nothing was registered.
-            Expect (Encode_Lease_Request (Release_Display), DP.Success, "lend release");
-            for R of Records loop MG.Revoke (R, Ok); end loop;
-            if Passed then
-               debugPrint ("DISPLAY-LEND-CHECK: BLOCKED the GPU driver cannot grant to this client" & ASCII.LF);
-            end if;
-            return;
+      --  Display derives the loans for the process an offered endpoint
+      --  names; it takes only a read-only one to the requester itself.
+      Wire := Lend (1, Layout);
+      Check (Wire.Length = 1 and then Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Bad_State),
+        "no loan without an offered endpoint");
+      Wire := Lend_Offering (1, CuBit.Handles.Read_Write);
+      if Wire.Label /= P.Lend_Buffer then
+         --  The kernel refused the offer itself: a process's own endpoint
+         --  ("self") carries no RIGHT_GRANT, so it cannot offer one, and
+         --  display has no endpoint to derive a loan for it.
+         Expect (Encode_Lease_Request (Release_Display), DP.Success, "lend release");
+         for R of Records loop MG.Revoke (R, Ok); end loop;
+         if Passed then
+            debugPrint ("DISPLAY-LEND-CHECK: BLOCKED no endpoint to this client can be offered (self has no RIGHT_GRANT)" & ASCII.LF);
          end if;
+         return;
+      end if;
+      Check (Wire.Length = 1 and then Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Bad_State),
+        "no loan for an offered endpoint that can call");
+      --  No GPU endpoint here, as in Desktop: a loan gives no GPU authority.
+      Check (not CuBit.Handles.Valid (CuBit.Handles.Startup.Endpoint_Named ("gpu")),
+        "the client holds no GPU endpoint");
+      for B in P.Buffer_Slot loop
+         Wire := (if B = 1 then Lend_Offering (B, CuBit.Handles.Read_Only) else Lend (B, Layout));
+         Loans (B) := P.Decode_Loan (Wire);
          Check (Loans (B).Valid and then Loans (B).Value.Buffer = B and then
            Loans (B).Value.Source.Layout = Layout, "loan reply");
          if not Passed then return; end if;
@@ -691,13 +712,17 @@ procedure Main is
               "no copied slot in a lent pool");
          end if;
          Check (Lend (B, Layout).Length = 1, "a slot is lent once");
-         --  Only the GPU driver owns it: naming display as the owner fails.
-         MG.Acquire (Loans (B).Value.Source.Grant, Registered_Driver (DRIVER_DISPLAY), 0,
-           DP.Byte_Length (Layout), MG.Write_Access, Mapped, Ok);
-         Check (not Ok, "a loan is not display's grant");
+         --  Display's derived grant: naming the GPU driver as its owner
+         --  fails, more than one buffer fails, display's maps writable.
          MG.Acquire (Loans (B).Value.Source.Grant, Registered_Driver (DRIVER_GPU), 0,
            DP.Byte_Length (Layout), MG.Write_Access, Mapped, Ok);
-         Check (Ok, "the GPU driver's loan maps writable");
+         Check (not Ok, "a loan is not the GPU driver's grant");
+         MG.Acquire_Via_Capability (Display_Service, Loans (B).Value.Source.Grant, 0,
+           DP.Byte_Length (Layout) + 8 * 4096 * 1024, MG.Read_Access, Mapped, Ok);
+         Check (not Ok, "a loan is one buffer long");
+         MG.Acquire_Via_Capability (Display_Service, Loans (B).Value.Source.Grant, 0,
+           DP.Byte_Length (Layout), MG.Write_Access, Mapped, Ok);
+         Check (Ok, "display's loan maps writable");
          if not Passed then return; end if;
       end loop;
       Check (Shown <= 1, "at most one lent buffer on screen");
@@ -747,10 +772,14 @@ procedure Main is
       for B in P.Buffer_Slot loop
          MG.Return_Acquisition (Loans (B).Value.Source.Grant, Ok);
          Check (Ok, "loan returned");
+         --  Display revoked the loan when the session ended.
+         MG.Acquire_Via_Capability (Display_Service, Loans (B).Value.Source.Grant, 0,
+           DP.Byte_Length (Layout), MG.Read_Access, Mapped, Ok);
+         Check (not Ok, "a loan ends with the session");
          MG.Revoke (Records (B), Ok);
          Check (Ok, "lend record revoke");
       end loop;
-      if Passed then debugPrint ("DISPLAY-LEND-CHECK: PASS three loans, owner, layout, mixing, lent frames" & ASCII.LF); end if;
+      if Passed then debugPrint ("DISPLAY-LEND-CHECK: PASS three loans, offered endpoint, owner, extent, layout, mixing, lent frames, revocation" & ASCII.LF); end if;
    end Exercise_Lending;
 
    --  Display planes: two cursors (primary and agent pointer). On virtio-gpu

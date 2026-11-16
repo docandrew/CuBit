@@ -127,6 +127,8 @@ procedure main is
    DISPLAY_CAP_PAGE_FLIP    : constant Unsigned_64 := 16#0008#;
    --  UI-020: Lend_Buffer lends the scanout buffers (three) to the owner.
    DISPLAY_CAP_LEND_SCANOUT : constant Unsigned_64 := 16#0010#;
+   --  OP_GPU_MAP_FRAMEBUFFER word 1: a forwardable grant (to derive loans).
+   GPU_MAP_FORWARDABLE : constant Unsigned_64 := 1;
 
    --  The GPU service (optional: without one, the firmware framebuffer).
    function Lookup_GPU return CuBit.Handles.Endpoint is
@@ -142,6 +144,9 @@ procedure main is
    --  written; a buffer's stale area is the damage presented since it was
    --  last written, repaired from the active buffer before reuse.
    subtype Gpu_Buffer_Index is BT.Buffer;
+   type Gpu_Flag_Array is array (Gpu_Buffer_Index) of Boolean;
+   type Lend_Grant_Array is array (CuBit.Display_Pool_Protocol.Buffer_Slot) of MG.Grant_Reference;
+   type Lend_Flag_Array is array (CuBit.Display_Pool_Protocol.Buffer_Slot) of Boolean;
    type Gpu_Address_Array is
      array (Gpu_Buffer_Index) of System.Address;
    type Gpu_Grant_Array is
@@ -182,6 +187,18 @@ procedure main is
       --  the compositor (Lend_Buffer); its grants are the slots' one-page
       --  damage records. No copy: a frame names its slot as the target.
       lentPool : Boolean := False;
+      --  The owner's endpoint, offered with its first loan request: read
+      --  only (no send), used for nothing but deriving its loans (never a
+      --  call: Desktop is above display in the IPC DAG). Closed with the
+      --  session.
+      ownerEndpoint : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+      --  Per scanout buffer, the GPU driver's forwardable grant (acquired,
+      --  kept across sessions until a mode change) and, per slot, the loan
+      --  derived from it for the owner (display's, revoked at session end).
+      lendParent : Gpu_Grant_Array;
+      lendParentLive : Gpu_Flag_Array := [others => False];
+      lendChild : Lend_Grant_Array;
+      lendChildLive : Lend_Flag_Array := [others => False];
       activeSession : Unsigned_64 := 0;
       lastFrame : Unsigned_64 := 0;
       frameState : PS.State;
@@ -339,8 +356,9 @@ procedure main is
    begin
       if outputStates (selectedOutput).backend.Kind = Native_GPU then
          --  The owner may compose into the scanout buffers themselves
-         --  (UI-020): the GPU driver makes a grant for the owner (never a
-         --  re-grant of display's own) and ends it when it lends again.
+         --  (UI-020): display derives each loan from the GPU driver's
+         --  forwardable grant (kernel-tracked, one buffer, display's to
+         --  revoke), never re-granting its own mapping.
          return DISPLAY_CAP_COPY_PRESENT or DISPLAY_CAP_GPU_PRESENT or
            DISPLAY_CAP_PAGE_FLIP or
            (if BT.Count (outputStates (selectedOutput).Targets) = Pool_Wire.Buffer_Slot'Last
@@ -722,6 +740,26 @@ procedure main is
         outputStates (selectedOutput).leasedOutput = outputStates (selectedOutput).currentOutput and then outputUsable (outputStates (selectedOutput).leasedOutput);
    end ownsDisplay;
 
+   --  UI-020: the session's loans end (display owns the derived grants)
+   --  and the owner's endpoint is closed.
+   procedure endLoans (State : in out Output_State) is
+      Revoked : Boolean;
+      Closed : CuBit.Handles.IPC.Close_Result;
+      pragma Unreferenced (Closed);
+   begin
+      for B in Pool_Wire.Buffer_Slot loop
+         if State.lendChildLive (B) then
+            MG.Revoke (State.lendChild (B), Revoked);
+            if not Revoked then debugPrint ("display: loan revoke refused" & LF); end if;
+            State.lendChildLive (B) := False;
+         end if;
+      end loop;
+      if CuBit.Handles.Valid (State.ownerEndpoint) then
+         Closed := CuBit.Handles.IPC.Close (State.ownerEndpoint);
+         State.ownerEndpoint := CuBit.Handles.No_Endpoint;
+      end if;
+   end endLoans;
+
    procedure detachOwnerBuffer is
       returned : Boolean;
       Empty_Pool : Pool_Registry.State;
@@ -743,6 +781,7 @@ procedure main is
       outputStates (selectedOutput).pendingRect := (others => 0);
       outputStates (selectedOutput).gpuStale := [others => (others => 0)];
       outputStates (selectedOutput).lentPool := False;
+      endLoans (outputStates (selectedOutput));
       for B in Pool_Wire.Buffer_Slot loop
          if Pool_Registry.Registered (outputStates (selectedOutput).Pool, B) then
             MG.Return_Acquisition (Pool_Registry.Item (outputStates (selectedOutput).Pool, B).Grant, returned);
@@ -1151,6 +1190,85 @@ procedure main is
               authorityTag => 0,
               words => [Unsigned_64 (target), packedXY, packedWH, 0]);
    end prepareGpuRect;
+
+   --  UI-020: lend scanout buffer Item.Buffer - 1 to Owner, which offered a
+   --  read-only endpoint to itself with its first loan request (taken
+   --  here, checked to be exactly that). The loan is a grant derived from
+   --  the GPU driver's forwardable one: that buffer's pages, writable,
+   --  owned (and revoked) by display. Accepted False: nothing lent.
+   procedure lendSlot (State : in out Output_State; Owner : Process_ID;
+                       Item : Pool_Wire.Attachment; Accepted : out Boolean) is
+      package HIPC renames CuBit.Handles.IPC;
+      Index : constant Gpu_Buffer_Index := Gpu_Buffer_Index (Item.Buffer - 1);
+      Pages : constant Natural := Natural ((DSP.DP.Byte_Length (Item.Source.Layout) + 4095) / 4096);
+      Mapped : System.Address;
+      Ok, Revoked : Boolean;
+      use type DSP.DP.Buffer_Layout, CuBit.Handles.Rights;
+   begin
+      Accepted := False;
+      if not CuBit.Handles.Valid (State.ownerEndpoint) then
+         declare
+            Taken : constant HIPC.Accepted_Endpoint := HIPC.Accept_Endpoint (HIPC.Accept_Offered (Owner));
+            Closed : CuBit.Handles.IPC.Close_Result;
+            pragma Unreferenced (Closed);
+         begin
+            if not Taken.OK then
+               debugPrint ("display: lend refused: the owner offered no endpoint" & LF);
+               return;
+            end if;
+            declare
+               D : constant HIPC.Description := HIPC.Describe (Taken.Value);
+            begin
+               --  Exactly a read-only endpoint to the owner: enough to derive
+               --  a loan for it, never enough to call it.
+               if not D.Current or else D.Object /= To_Word (Owner) or else
+                 D.Held /= CuBit.Handles.Read_Only
+               then
+                  debugPrint ("display: lend refused: the offered endpoint is not read-only to the owner" & LF);
+                  Closed := HIPC.Close (Taken.Value);
+                  return;
+               end if;
+            end;
+            State.ownerEndpoint := Taken.Value;
+         end;
+      end if;
+      if not State.lendParentLive (Index) then
+         declare
+            Reply : constant Message := callGpu (OP_GPU_MAP_FRAMEBUFFER, Unsigned_64 (Index), GPU_MAP_FORWARDABLE, 0, 0);
+            Wire : DSP.Wire_Message := CuBit.Desktop_Messages.To_Wire (Reply);
+            Decoded : DSP.Attachment_Decoding;
+         begin
+            Wire.Label := DSP.Code (DSP.Attach_Buffer);
+            Decoded := DSP.Decode_Attachment (Wire);
+            if Reply.tag.label /= OP_GPU_MAP_FRAMEBUFFER or else not Decoded.Valid or else
+              Decoded.Value.Layout /= Item.Source.Layout
+            then
+               debugPrint ("display: lend refused: the GPU made no forwardable grant for buffer" & Index'Image & LF);
+               return;
+            end if;
+            MG.Acquire_Via_Capability (GPU_Service, Decoded.Value.Grant, 0,
+              DSP.DP.Byte_Length (Item.Source.Layout), MG.Write_Access, Mapped, Ok);
+            if not Ok then
+               debugPrint ("display: lend refused: forwardable grant not acquired" & LF);
+               return;
+            end if;
+            State.lendParent (Index) := Decoded.Value.Grant;
+            State.lendParentLive (Index) := True;
+         end;
+      end if;
+      if State.lendChildLive (Item.Buffer) then
+         MG.Revoke (State.lendChild (Item.Buffer), Revoked);
+         State.lendChildLive (Item.Buffer) := False;
+      end if;
+      MG.Derive_Via_Capability (State.ownerEndpoint, State.lendParent (Index), 0, Pages, True,
+                                State.lendChild (Item.Buffer), Ok);
+      if not Ok then
+         debugPrint ("display: lend refused: the loan was not derived" & LF);
+         return;
+      end if;
+      State.lendChildLive (Item.Buffer) := True;
+      Accepted := True;
+   end lendSlot;
 
    --  UI-020: a lent pool's frame: the compositor composed into the scanout
    --  buffer of its slot (and repaired what it missed); nothing to copy.
@@ -2621,6 +2739,11 @@ procedure main is
             end if;
             State.gpuScanoutAddr (Index) := System.Null_Address;
          end if;
+         if State.lendParentLive (Index) then
+            MG.Return_Acquisition (State.lendParent (Index), Returned);
+            if not Returned then State.presentationFault := True; end if;
+            State.lendParentLive (Index) := False;
+         end if;
       end loop;
       State.fbWidth := Natural (Mode.Width);
       State.fbHeight := Natural (Mode.Height);
@@ -2936,9 +3059,6 @@ procedure main is
                  Pool_Wire.Decode_Lend_Request (CuBit.Desktop_Messages.To_Wire (request));
                Mapped : System.Address;
                Acquired, Accepted, Returned : Boolean;
-               Lent : Message;
-               Wire : DSP.Wire_Message;
-               Loan : DSP.Attachment_Decoding;
                use type DSP.DP.Buffer_Layout;
             begin
                if not ownsDisplay (from) then
@@ -2968,21 +3088,12 @@ procedure main is
                               DSP.DP.Byte_Length (A.Value.Source.Layout) + FD.Record_Bytes,
                               MG.Read_Access, Mapped, Acquired);
                   if not Acquired then
-                     debugPrint ("display: lend refused: record grant not acquired" & LF);
+                     debugPrint ("display: lend refused: slot buffer not acquired" & LF);
                      replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
                   else
-                     Lent := callGpu (OP_GPU_MAP_FRAMEBUFFER, Unsigned_64 (A.Value.Buffer - 1),
-                                      To_Word (from), 0, 0);
-                     Wire := CuBit.Desktop_Messages.To_Wire (Lent);
-                     Wire.Label := DSP.Code (DSP.Attach_Buffer);
-                     Loan := DSP.Decode_Attachment (Wire);
-                     Accepted := Lent.tag.label = OP_GPU_MAP_FRAMEBUFFER and then Loan.Valid and then
-                       Loan.Value.Layout = A.Value.Source.Layout;
+                     lendSlot (State, from, A.Value, Accepted);
                      if Accepted then
                         Pool_Registry.Register (State.Pool, A.Value, Accepted);
-                     else
-                        debugPrint ("display: lend refused: the GPU lent no buffer" &
-                          Natural'Image (Natural (A.Value.Buffer) - 1) & LF);
                      end if;
                      if Accepted then
                         State.lentPool := True;
@@ -2992,9 +3103,14 @@ procedure main is
                         State.srcHeight := State.fbHeight;
                         State.srcPitch := State.fbPitch;
                         replyMsg := CuBit.Desktop_Messages.From_Wire (Pool_Wire.Encode
-                          (Pool_Wire.Loan'(A.Value.Buffer, Loan.Value,
+                          (Pool_Wire.Loan'(A.Value.Buffer, (State.lendChild (A.Value.Buffer), A.Value.Source.Layout),
                             Gpu_Buffer_Index (A.Value.Buffer - 1) = BT.Active (State.Targets))));
                      else
+                        if State.lendChildLive (A.Value.Buffer) then
+                           MG.Revoke (State.lendChild (A.Value.Buffer), Returned);
+                           State.lendChildLive (A.Value.Buffer) := False;
+                        end if;
+                        if Pool_Registry.Count (State.Pool) = 0 then endLoans (State); end if;
                         MG.Return_Acquisition (A.Value.Source.Grant, Returned);
                         if not Returned then
                            State.presentationFault := True;
