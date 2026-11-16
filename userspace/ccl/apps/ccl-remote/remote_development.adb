@@ -22,6 +22,15 @@ package body Remote_Development is
      [L01'Access, L02'Access, L03'Access, L04'Access, L05'Access, L06'Access, L07'Access, L08'Access,
       L09'Access, L10'Access, L11'Access];
 
+   --  The observer roles it passes on to apps it swaps in (procmgr:
+   --  CuBit.Authority_Policy.Launcher_Approves), each held only as the
+   --  trusted plan approved ccl-remote's own entry.
+   O1 : aliased constant String := "log-observer";
+   O2 : aliased constant String := "process-observer";
+   O3 : aliased constant String := "series";
+   O4 : aliased constant String := "log-control";
+   Observers : constant array (1 .. 4) of Label := [O1'Access, O2'Access, O3'Access, O4'Access];
+
    --  The manifest's DEVELOPMENT-ONLY scopes, as written there.
    Scopes : constant String :=
      "@nvme:0/ (read write create), @mem:0/ (read), @cd:0/ (read), " &
@@ -36,9 +45,14 @@ package body Remote_Development is
         (if I > Services'Last then ""
          else (if I > Services'First then ", " else "") & Services (I).all &
               (if Granted (Services (I).all) then "" else " (absent)") & From (I + 1));
+      function Passed (I : Positive) return String is
+        (if I > Observers'Last then ""
+         else (if I > Observers'First then ", " else "") & Observers (I).all &
+              (if Granted (Observers (I).all) then "" else " (absent)") & Passed (I + 1));
    begin
       return "development-only authority for app replace: services " & From (Services'First) &
-        "; outlet com.cubit-os.stdmetric; scopes " & Scopes;
+        "; outlet com.cubit-os.stdmetric; observer roles passed on " & Passed (Observers'First) &
+        "; scopes " & Scopes;
    end Summary;
 
 end Remote_Development;

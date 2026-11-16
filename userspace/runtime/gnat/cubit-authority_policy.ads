@@ -50,6 +50,20 @@ package CuBit.Authority_Policy with Pure, SPARK_Mode is
      (Authority in Log_Publication | Metric_Publication or else
       (Trusted_Startup and then Authority not in Declared_Authority));
 
+   --  Observation a launcher passes on: a program it starts (OP_LAUNCH,
+   --  attenuated) is approved for one of these when its launcher holds
+   --  the role itself (the trusted plan approved the launcher's own entry,
+   --  or its launcher passed it on), exactly as any service. Never ambient:
+   --  a launcher that does not hold the role passes nothing, and no other
+   --  startup-only authority passes on this way.
+   function Delegable (Authority : Bootstrap_Authority) return Boolean is
+     (Authority in Log_Observation | Metric_Observation | Process_Observation | Log_Control);
+
+   function Launcher_Approves
+     (Authority : Bootstrap_Authority; Launcher_Holds : Boolean) return Boolean is
+     (Delegable (Authority) and then Launcher_Holds)
+     with Post => Launcher_Approves'Result = (Delegable (Authority) and Launcher_Holds);
+
    --  The plan's approval of Authority for one of its entries: a declared
    --  authority needs that entry's own approval as well.
    function Startup_Approves

@@ -3242,9 +3242,13 @@ procedure main is
       end Install;
 
       --  Whether a service request for Role is for a startup-only authority
-      --  this launch is not approved for: startup approval, or the trusted
-      --  Desktop's narrowly selected system log viewer. This exception
-      --  grants observation only, not the other startup-only authorities.
+      --  this launch is not approved for: startup approval; for an
+      --  observer role, a launcher that holds it (attenuated launches,
+      --  CuBit.Authority_Policy.Launcher_Approves); or the trusted
+      --  Desktop's narrowly selected system log viewer (its launches are
+      --  not attenuated; follow-up: Desktop holding the roles instead).
+      --  These grant observation only, not the other startup-only
+      --  authorities.
       function Startup_Only_Denied (Role : Unsigned_64) return Boolean is
          isAudioControl : constant Boolean := Role = CuBit.Audio_Control.Service_Role;
          isLogObserver : constant Boolean := Role = CuBit.Log_Protocol.Observer_Service_Role;
@@ -3285,6 +3289,11 @@ procedure main is
               Startup_Approves
                 (Authority, systemStartup,
                  isDisplayCapture and then approveDisplayCapture) or else
+              Launcher_Approves
+                (Authority,
+                 attenuateFor /= No_Process and then launchIndex (attenuateFor) /= 0
+                 and then Role <= Unsigned_64 (Unsigned_32'Last)
+                 and then launcherHolds (REQ_SERVICE, Unsigned_32 (Role))) or else
               (isLogObserver and then Log_Viewer_Approved) or else
               (isProcessObserver and then Process_Viewer_Approved) or else
               (isLogControl and then Log_Control_Approved),

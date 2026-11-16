@@ -43,5 +43,20 @@ package body Policy_Proof with SPARK_Mode is
         (CuBit.Log_Protocol.Control_Tag (1), CuBit.Log_Protocol.Subscribe));
       pragma Assert (not CuBit.Log_Protocol.May_Publish (CuBit.Log_Protocol.Control_Tag (1)));
       pragma Assert (CuBit.Log_Protocol.May_Publish (CuBit.Log_Protocol.Publisher_Authority_Tag));
+      --  A launcher passes on observation it holds, and only that: never
+      --  without holding it, never another startup-only authority.
+      pragma Assert (Launcher_Approves (Log_Observation, True));
+      pragma Assert (Launcher_Approves (Process_Observation, True));
+      pragma Assert (Launcher_Approves (Log_Control, True));
+      pragma Assert (Launcher_Approves (Metric_Observation, True));
+      pragma Assert (not Launcher_Approves (Log_Observation, False));
+      pragma Assert (not Launcher_Approves (Log_Control, False));
+      pragma Assert (not Launcher_Approves (Master_Audio, True));
+      pragma Assert (not Launcher_Approves (Clock_Adjustment, True));
+      pragma Assert (not Launcher_Approves (Disk_Installation, True));
+      pragma Assert (not Launcher_Approves (Installer_Use, True));
+      pragma Assert (not Launcher_Approves (Network_Configuration, True));
+      pragma Assert (not Launcher_Approves (Display_Capture, True));
+      pragma Assert (not Launcher_Approves (ACPI_Register_Frontend, True));
    end Check;
 end Policy_Proof;

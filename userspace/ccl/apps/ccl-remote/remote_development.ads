@@ -13,7 +13,8 @@ pragma Ada_2022;
 package Remote_Development is
 
    --  "development-only authority for app replace: services log-control,
-   --  lexicon (absent), ...; outlet com.cubit-os.stdmetric; scopes ...".
+   --  lexicon (absent), ...; outlet com.cubit-os.stdmetric; observer roles
+   --  passed on log-observer, ...; scopes ...".
    --  An entry is "(absent)" when its provider was not running at start
    --  (it is then not passed on to a swapped app either).
    function Summary return String;

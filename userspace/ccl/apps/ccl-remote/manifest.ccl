@@ -54,7 +54,11 @@ requests => [
 # program, through this manifest and the startup plan's approval; each
 # is optional (absent while its provider is not running, and then not
 # passed on). Listed by (hello) and in the "development-only authority"
-# log line at start (Remote_Development). A release strips this block,
+# log line at start (Remote_Development). The observer roles it holds
+# (log-observer, process-observer and series above, log-control here) it
+# also passes on to the apps it swaps in, as procmgr passes any role a
+# launcher holds (Logs, Boot Logs, the Workbench, the console, Metrics'
+# series). A release strips this block,
 # the scopes block below and the outlet. Which apps need each:
 #   log-control      ccl-console, ccl-workbench, logs
 #   lexicon          ccl-console, ccl-workbench, dictionary

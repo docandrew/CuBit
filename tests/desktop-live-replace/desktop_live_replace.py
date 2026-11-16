@@ -257,12 +257,10 @@ TEAPOTS_WHY = (b"ccl-remote: app teapots not started: teapots the new generation
 # hold (its manifest's block). ccl-remote holds an optional service only
 # while its provider runs at its start ("(absent)" in hello otherwise): an
 # app starts when swapped in exactly when none it needs is absent; teapots
-# (render) never. The log and process viewers (VIEWERS) get their observer
-# roles only when the Desktop launches them by name (procmgr's
-# Log_Viewer_Approved / Process_Viewer_Approved): swapped in by ccl-remote
-# they are refused, Capability_Denied, until that policy changes.
-VIEWERS = {"boot-logs", "ccl-console", "ccl-workbench", "logs"}
-CAPABILITY_DENIED = 10
+# (render) never. The observer roles the viewers need (log-observer,
+# process-observer, log-control, series) ccl-remote holds by its plan entry
+# and passes on, as procmgr passes any role a launcher holds.
+OBSERVERS_PASSED = "observer roles passed on log-observer, process-observer, series, log-control;"
 SHIPPED = {
     "agent": ["llm", "secrets"],
     "bible": [],
@@ -341,11 +339,7 @@ def survey(host, absent):
     for app, needs in sorted(SHIPPED.items()):
         missing = sorted(set(needs) & absent)
         report = app_replace(host, "shipped/%s.app" % app, "survey")
-        if not missing and app in VIEWERS:
-            check(report["refused"] == "Start_Failed" and report["failure"] == CAPABILITY_DENIED,
-                  "survey: %s, a viewer the Desktop alone may start with its observer roles: refused, "
-                  "Capability_Denied (%s)" % (app, report["refused"]))
-        elif not missing:
+        if not missing:
             check(report["refused"] is None and report["result"] == APP_REPLACED,
                   "survey: %s starts when swapped in (%s)" % (app, report["refused"]))
         else:
@@ -376,7 +370,7 @@ def main():
     _, _, _, more = cr.hello_full(host)
     development = [line for line in more if line.startswith(DEVELOPMENT)]
     check(development and "stdmetric;" in development[0] and "lexicon," in development[0]
-          and "@nvme:0/ (read write create)" in development[0],
+          and "@nvme:0/ (read write create)" in development[0] and OBSERVERS_PASSED in development[0],
           "hello names ccl-remote's development-only authority: %s" % more)
     absent = absent_services(development[0]) if development else set(SHIPPED)
     check(wait_for_serial(b"ccl-remote: " + DEVELOPMENT.encode(), 1),
