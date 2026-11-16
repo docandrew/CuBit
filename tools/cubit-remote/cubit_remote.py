@@ -405,11 +405,20 @@ def grant_names(bits):
 
 
 # --- Operations ---------------------------------------------------------------
-def hello(host):
+def hello_full(host):
+    """(grant bits, chunk limit, the endpoint's name, its further lines):
+    after the name, ccl-remote names the development-only authority it
+    holds for app replace."""
     body = host.call("hello")
     bits = body[0]
     chunk = struct.unpack(">I", body[1:5])[0]
-    return bits, chunk, body[5:].decode("ascii", "replace")
+    lines = body[5:].decode("ascii", "replace").split("\n")
+    return bits, chunk, lines[0], [line for line in lines[1:] if line]
+
+
+def hello(host):
+    bits, chunk, server, _ = hello_full(host)
+    return bits, chunk, server
 
 
 def evaluate(host, source):
@@ -856,8 +865,10 @@ def command_unpair(args):
 
 
 def command_hello(args):
-    bits, chunk, server = hello(selected_host(args))
+    bits, chunk, server, more = hello_full(selected_host(args))
     print("%s; the host may: %s; chunk %d bytes" % (server, grant_names(bits), chunk))
+    for line in more:
+        print("  " + line)
 
 
 def command_eval(args):

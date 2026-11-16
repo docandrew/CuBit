@@ -7,12 +7,20 @@
 # timesync.svc (replace transparent), as in the laptop plans, is switched
 # too: it exits 0 on Stop (no NTP server answers in QEMU's user network;
 # it waits between polls, where it reads Stop).
+# metrics.svc and lexicon.svc, as in the laptop plans, before ccl-remote:
+# what it holds for app replace (its development-only block) is what they
+# grant it at its start; the survey swaps in apps that need them.
 (startup v1
   (start "logstore.svc" (priority 5))
+  (start "metrics.svc" (priority 5))
+  (start "lexicon.svc" (priority 4))
   (start "clock.svc" (priority 5))
   (start "timesync.svc" (priority 5) (network approve-declared) (replace transparent))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4) (restart on-failure) (replace graceful))
+  # DEVELOPMENT-ONLY: this entry also approves what ccl-remote's manifest
+  # asks for so app replace can swap in any shipped app (its marked block;
+  # named in (hello) and its start log line). A release strips that block.
   (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
       display => Pairing_Display.Kernel_Console work => "@system/work"

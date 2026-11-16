@@ -176,7 +176,8 @@ class StandIn:
             n = struct.unpack(">H", body[:2])[0]
             return (place, body[2:2 + n].decode()), body[2 + n:]
         if op == 1:
-            return 0, bytes([self.grants]) + struct.pack(">I", cr.MAXIMUM_CHUNK_BYTES) + b"stand-in"
+            return 0, (bytes([self.grants]) + struct.pack(">I", cr.MAXIMUM_CHUNK_BYTES) + b"stand-in"
+                       + b"\ndevelopment-only authority for app replace: services lexicon (absent)")
         if op == 2:
             # As the device: ok, the whole text's length, its first chunk;
             # the rest is kept for read_result (op 19).
@@ -590,6 +591,15 @@ class AppCommands(Commands):
         self.assertEqual(code, 2)
         self.assertIn("Switch_Off", err)
         self.assertIn("Allow app replacement", err)
+
+    def test_hello_names_development_authority(self):
+        code, out = self.run_cli("hello")
+        self.assertEqual(code, 0)
+        lines = out.splitlines()
+        self.assertTrue(lines[0].startswith("stand-in; the host may:"), lines[0])
+        self.assertEqual(lines[1], "  development-only authority for app replace: services lexicon (absent)")
+        host = cr.Host("dev", "127.0.0.1", self.device.port, COUNTING)
+        self.assertEqual(cr.hello(host)[2], "stand-in")
 
     def test_start_failed_names_procmgrs_reason(self):
         self.device.app_result = 4

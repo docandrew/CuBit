@@ -46,10 +46,41 @@ requests => [
 (service "desktop" "desktop")
 # Screenshots: only with (display-capture approve-declared) and the
 # Deskbar's "Allow screen capture" on (its Remote access section).
-(service "display-capture" "display-capture")]
-optional => ["series" "log-observer" "process-observer" "process-manager" "desktop" "display-capture"]
+(service "display-capture" "display-capture")
+# ---- DEVELOPMENT-ONLY: app replace (SELF-002) -------------------------
+# A staged app runs with at most this endpoint's authority (procmgr
+# attenuates it as for any launch), so swapping a shipped app in from the
+# workspace needs what that app asks for. Granted here, as for any
+# program, through this manifest and the startup plan's approval; each
+# is optional (absent while its provider is not running, and then not
+# passed on). Listed by (hello) and in the "development-only authority"
+# log line at start (Remote_Development). A release strips this block,
+# the scopes block below and the outlet. Which apps need each:
+#   log-control      ccl-console, ccl-workbench, logs
+#   lexicon          ccl-console, ccl-workbench, dictionary
+#   installer wifi power-console
+#                    ccl-console
+#   llm secrets      agent, ccl-console
+#   device-manager   devices, gpu-viewer
+#   gpu              gpu-viewer
+#   mixer            sameboy
+(service "log-control" "log-control")
+(service "lexicon" "lexicon")
+(service "installer" "installer")
+(service "wifi" "wifi")
+(service "power-console" "power")
+(service "llm" "llm")
+(service "secrets" "secrets")
+(service "device-manager" "device-manager")
+(service "gpu" "gpu-probe")
+(service "mixer" "mixer")]
+# ---- end DEVELOPMENT-ONLY ---------------------------------------------
+optional => ["series" "log-observer" "process-observer" "process-manager" "desktop" "display-capture"
+  # DEVELOPMENT-ONLY (app replace), as above.
+  "log-control" "lexicon" "installer" "wifi" "power" "llm" "secrets" "device-manager" "gpu-probe" "mixer"]
 scopes => [
-(config-all [File_Right.Read])
+# Global non-secret Config: read (config-all [File_Right.Read]); widened to
+# read write in the DEVELOPMENT-ONLY block below (one scope per service).
 # Every series, read only.
 (Scope.Metrics Scope_Place.Everything)
 # The workspace and the mailbox, under the work root.
@@ -61,7 +92,32 @@ scopes => [
 (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
 (filesystem [File_Right.Read] "@system/toolchain")
 (filesystem [File_Right.Read] "@system/tools")
-(filesystem [File_Right.Read] "@system/cubit-src")]
+(filesystem [File_Right.Read] "@system/cubit-src")
+# ---- DEVELOPMENT-ONLY: app replace (SELF-002), as above ---------------
+# Each covers a shipped app's own declared scopes (at most 16 scopes a
+# manifest: hence whole volumes where one app reads a volume).
+#   @nvme:0/ read write create   metricsview (Documents/Dashboards), text
+#                                (Documents/, and reading the disk), files,
+#                                bible, sameboy, ccl-console (toolchain)
+#   @mem:0/ read                 files
+#   @cd:0/ read                  bible, sameboy, ccl-console (bible assets)
+#   @ufs:0/Assets/cubit-bible/   bible
+#   @system/Recovery/com.cubit.text/   text
+#   config-all read write        bible ("bible."), calculator
+#                                ("calculator."), ccl-workbench (its demo
+#                                key); a release puts back
+#                                (config-all [File_Right.Read]) here
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/")
+(filesystem [File_Right.Read] "@mem:0/")
+(filesystem [File_Right.Read] "@cd:0/")
+(filesystem [File_Right.Read] "@ufs:0/Assets/cubit-bible/")
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/Recovery/com.cubit.text/")
+(config-all [File_Right.Read File_Right.Write])]
+# ---- end DEVELOPMENT-ONLY ---------------------------------------------
+# DEVELOPMENT-ONLY (app replace): metricsview's com.cubit-os.stdmetric
+# outlet asks for metrics.svc's publisher endpoint, which a launcher must
+# hold to pass on; declaring the outlet is how a program asks for it.
+outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)]
 # Builds; apps built here (procmgr asks "Allow app replacement").
 may_launch => [(Launch "ccl-build.app") (Launch "@system/work/generations/")]
 parameters => (Parameter_Signature.Declared "Remote_Parameters"))

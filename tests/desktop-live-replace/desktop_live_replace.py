@@ -3,7 +3,7 @@
 desktop-live-replace): desktop.svc replaced live through system
 generations (LIVE-002), as the laptop's live and installed plans allow.
 
-Usage: desktop_live_replace.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT DESKTOP_SVC TIMESYNC_SVC METRICSVIEW_APP PROBE_APP
+Usage: desktop_live_replace.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT DESKTOP_SVC TIMESYNC_SVC BOOT_DIR
 
 The guest runs desktop.svc with (restart on-failure) (replace graceful)
 (tests/desktop-live-replace/init.ccl). Like a LAN host this pairs with the
@@ -44,9 +44,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "cubit-remote"))
 import cubit_remote as cr  # noqa: E402
 
-serial, qmp_socket, timeout, port, desktop_svc, timesync_svc, metricsview_app, probe_app = (
+serial, qmp_socket, timeout, port, desktop_svc, timesync_svc, boot_dir = (
     sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), Path(sys.argv[5]), Path(sys.argv[6]),
-    Path(sys.argv[7]), Path(sys.argv[8]))
+    Path(sys.argv[7]))
 deadline = time.monotonic() + timeout
 CODE = re.compile(rb"ccl-remote: pairing code ([0-9A-Z-]{31})")
 LISTENING = b"ccl-remote: listening on "
@@ -236,19 +236,57 @@ def activate(host, product, grace=STOP_GRACE_MS, service=SERVICE):
 
 APP_REPLACED, APP_START_FAILED = 0, 4
 NOT_GRANTED = 5
-INSTANCE_RUNNING = 1
 METRICSVIEW_PRODUCT = "metricsview/metricsview.app"
 METRICSVIEW_SHOWN = b"metricsview: first frame presented"
-# A staged app swapped from the workspace runs with at most ccl-remote's
-# authority (procmgr attenuates it as for any launch). metricsview declares
-# its saved dashboards' place, "@nvme:0/Documents/Dashboards", which
-# ccl-remote does not hold: procmgr refuses the launch (Not_Granted).
-DASHBOARDS = b"@nvme:0/Documents/Dashboards"
-# ccl-remote's activity line for it (CuBit.Launch_Failure_Text's words).
-WHY_LINE = (b"ccl-remote: app metricsview not started: metricsview the new generation did not start "
-            b"(procmgr: it needs authority its launcher does not hold, failure 5)")
-PROBE_PRODUCT = "probe/log-exit-probe.app"
-PROBE_LINE = b"log-exit-probe: published "
+# What metricsview publishes through its com.cubit-os.stdmetric outlet each
+# frame, read back from metrics.svc.
+METRICSVIEW_SERIES = "metricsview.render_us"
+METRICS_SECONDS = 15
+# ccl-remote holds, DEVELOPMENT-ONLY, what the shipped apps ask for
+# (its manifest), and names it in (hello) and at start.
+DEVELOPMENT = "development-only authority for app replace: services "
+# An attenuated launcher never passes on a render request (procmgr's
+# launcherHolds counts services only): teapots' swap stays refused, and
+# says why on the wire and in both logs.
+TEAPOTS_PRODUCT = "refused/teapots.app"
+TEAPOTS_REFUSAL = b'refused: it requests "render", which its launcher does not hold'
+TEAPOTS_WHY = (b"ccl-remote: app teapots not started: teapots the new generation did not start "
+               b"(procmgr: it needs authority its launcher does not hold, failure 5)")
+# Every app the laptop images ship (images/laptop-install.ccl; cubitshell is
+# not built), with the development-only services each needs ccl-remote to
+# hold (its manifest's block). ccl-remote holds an optional service only
+# while its provider runs at its start ("(absent)" in hello otherwise): an
+# app starts when swapped in exactly when none it needs is absent; teapots
+# (render) never. The log and process viewers (VIEWERS) get their observer
+# roles only when the Desktop launches them by name (procmgr's
+# Log_Viewer_Approved / Process_Viewer_Approved): swapped in by ccl-remote
+# they are refused, Capability_Denied, until that policy changes.
+VIEWERS = {"boot-logs", "ccl-console", "ccl-workbench", "logs"}
+CAPABILITY_DENIED = 10
+SHIPPED = {
+    "agent": ["llm", "secrets"],
+    "bible": [],
+    "boot-logs": [],
+    "calculator": [],
+    "ccl-console": ["log-control", "lexicon", "installer", "wifi", "power", "llm", "secrets"],
+    "ccl-workbench": ["log-control", "lexicon"],
+    "config-inspector": [],
+    "devices": ["device-manager"],
+    "dictionary": ["lexicon"],
+    "files": [],
+    "gpu-viewer": ["gpu-probe", "device-manager"],
+    "logs": ["log-control"],
+    "metricsview": ["stdmetric"],
+    "sameboy": ["mixer"],
+    "text": [],
+    "trace-viewer": [],
+}
+
+
+def absent_services(line):
+    """The services hello names "(absent)"."""
+    services = line[len(DEVELOPMENT):].split(";")[0]
+    return {item.split(" (absent)")[0].strip() for item in services.split(",") if "(absent)" in item}
 
 
 def app_replace(host, product, when):
@@ -263,28 +301,57 @@ def app_replace(host, product, when):
     return report
 
 
+def series_published(host, name):
+    end = time.monotonic() + METRICS_SECONDS
+    text = ""
+    while time.monotonic() < end:
+        ok, text = cr.evaluate_whole(host, cr.series_expression(name, ""))
+        if ok and name in text:
+            return True, text
+        time.sleep(0.5)
+    return False, text
+
+
 def replace_apps(host, when):
     """cubit-remote app replace, as on the laptop: the built metricsview
-    (refused, and the refusal says why, on the host and on the device),
-    and a staged app within ccl-remote's authority (it starts)."""
+    starts, shows its window and publishes; teapots is refused, and the
+    refusal says why on the host and on the device."""
     shown = serial_bytes().count(METRICSVIEW_SHOWN)
-    refusals = serial_bytes().count(b"refused: its launcher does not hold the scope " + DASHBOARDS)
-    said = serial_bytes().count(WHY_LINE)
     report = app_replace(host, METRICSVIEW_PRODUCT, when)
+    check(report["refused"] is None and report["result"] == APP_REPLACED and report["current"] > 0,
+          "%s: app replace starts metricsview: generation %d (%s)" % (when, report["current"], report["refused"]))
+    check(wait_for_serial(METRICSVIEW_SHOWN, 30, shown + 1), "%s: the swapped-in metricsview shows its window" % when)
+    found, text = series_published(host, METRICSVIEW_SERIES)
+    check(found, "%s: it publishes through its stdmetric outlet: %s in metrics.svc (%s)"
+          % (when, METRICSVIEW_SERIES, text[:160]))
+    refusals = serial_bytes().count(TEAPOTS_REFUSAL)
+    said = serial_bytes().count(TEAPOTS_WHY)
+    report = app_replace(host, TEAPOTS_PRODUCT, when)
     check(report["refused"] == "Start_Failed" and report["result"] == APP_START_FAILED
           and report["failure"] == NOT_GRANTED,
-          "%s: metricsview's replace is Start_Failed, procmgr's reason on the wire: Not_Granted (%s, failure %d)"
+          "%s: teapots' replace is Start_Failed, procmgr's reason on the wire: Not_Granted (%s, failure %d)"
           % (when, report["refused"], report["failure"]))
-    check(wait_for_serial(b"refused: its launcher does not hold the scope " + DASHBOARDS, 10, refusals + 1),
-          "%s: procmgr's log line names the scope ccl-remote does not hold" % when)
-    check(wait_for_serial(WHY_LINE, 10, said + 1),
-          "%s: ccl-remote's activity line says why" % when)
-    check(serial_bytes().count(METRICSVIEW_SHOWN) == shown, "%s: no metricsview started" % when)
-    lines = serial_bytes().count(PROBE_LINE)
-    report = app_replace(host, PROBE_PRODUCT, when)
-    check(report["refused"] is None and report["result"] == APP_REPLACED and report["current"] > 0,
-          "%s: a staged app within ccl-remote's authority starts: generation %d" % (when, report["current"]))
-    check(wait_for_serial(PROBE_LINE, 10, lines + 1), "%s: the staged log-exit-probe ran" % when)
+    check(wait_for_serial(TEAPOTS_REFUSAL, 10, refusals + 1),
+          "%s: procmgr's log line names the request ccl-remote cannot pass on" % when)
+    check(wait_for_serial(TEAPOTS_WHY, 10, said + 1), "%s: ccl-remote's log line says why" % when)
+
+
+def survey(host, absent):
+    """Every shipped app swapped in from the workspace."""
+    for app, needs in sorted(SHIPPED.items()):
+        missing = sorted(set(needs) & absent)
+        report = app_replace(host, "shipped/%s.app" % app, "survey")
+        if not missing and app in VIEWERS:
+            check(report["refused"] == "Start_Failed" and report["failure"] == CAPABILITY_DENIED,
+                  "survey: %s, a viewer the Desktop alone may start with its observer roles: refused, "
+                  "Capability_Denied (%s)" % (app, report["refused"]))
+        elif not missing:
+            check(report["refused"] is None and report["result"] == APP_REPLACED,
+                  "survey: %s starts when swapped in (%s)" % (app, report["refused"]))
+        else:
+            check(report["refused"] == "Start_Failed" and report["failure"] == NOT_GRANTED,
+                  "survey: %s needs %s, absent in this plan: refused, Not_Granted (%s)"
+                  % (app, ", ".join(missing), report["refused"]))
 
 
 def desktop_processes(host):
@@ -304,8 +371,16 @@ def main():
     paths["timesync-good.svc"] = (timesync_good, hashlib.sha256(Path(timesync_good).read_bytes()).hexdigest())
     for name, (path, _) in paths.items():
         cr.put_file(host, "workspace", path, "desktop/" + name)
-    cr.put_file(host, "workspace", str(metricsview_app), METRICSVIEW_PRODUCT)
-    cr.put_file(host, "workspace", str(probe_app), PROBE_PRODUCT)
+    cr.put_file(host, "workspace", str(boot_dir / "metricsview.app"), METRICSVIEW_PRODUCT)
+    cr.put_file(host, "workspace", str(boot_dir / "teapots.app"), TEAPOTS_PRODUCT)
+    _, _, _, more = cr.hello_full(host)
+    development = [line for line in more if line.startswith(DEVELOPMENT)]
+    check(development and "stdmetric;" in development[0] and "lexicon," in development[0]
+          and "@nvme:0/ (read write create)" in development[0],
+          "hello names ccl-remote's development-only authority: %s" % more)
+    absent = absent_services(development[0]) if development else set(SHIPPED)
+    check(wait_for_serial(b"ccl-remote: " + DEVELOPMENT.encode(), 1),
+          "ccl-remote's start names its development-only authority")
     good_hash = paths["desktop-good.svc"][1]
     good_program = (STOREHOUSE + good_hash).encode()
     presented = 1
@@ -383,6 +458,11 @@ def main():
     check(wait_for_serial(b"timesync: stop requested; exiting", 10, timesync_exits + 2),
           "timesync-good read Stop and exited too")
     time.sleep(2)
+
+    # Every shipped app, swapped in from the workspace.
+    for app in sorted(SHIPPED):
+        cr.put_file(host, "workspace", str(boot_dir / (app + ".app")), "shipped/%s.app" % app)
+    survey(host, absent)
 
     data = serial_bytes()
     check(data.count(STOPPED) == data.count(STOP_TAKEN) >= stops,

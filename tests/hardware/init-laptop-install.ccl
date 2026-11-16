@@ -46,6 +46,9 @@
   # The LAN remote session (tools/cubit-remote): off. To let a host on
   # the LAN connect, change listen to Remote_Listen.LAN (port 8445; grant
   # files/builds/mail as wanted); it then shows a pairing code in a window.
+  # DEVELOPMENT-ONLY: this entry also approves what ccl-remote's manifest
+  # asks for so app replace can swap in any shipped app (its marked block;
+  # named in (hello) and its start log line). A release strips that block.
   (start "ccl-remote.app" (priority 4) (network approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.Off
       display => Pairing_Display.Window work => "@mem:0/work"

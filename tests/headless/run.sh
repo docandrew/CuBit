@@ -755,7 +755,9 @@ with open(sys.argv[1], "wb") as f:
         # ccl-remote: Stop hands the display back and exits 0, the new
         # program presents again; a crash rolled back; rollback to the
         # image (tests/desktop-live-replace/desktop_live_replace.py).
+        # 2 GiB: the app-replace survey runs every shipped app at once.
         INIT_PROFILE="$ROOT_DIR/tests/desktop-live-replace/init.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
         ;;
     device-build|console-run-staged|bench-build)
         # bench-build (PERF-010): the same system, timing builds instead
@@ -1362,6 +1364,15 @@ if [ -n "$INIT_PROFILE" ]; then
     if ! debugfs -w -R "write $INIT_PROFILE init.ccl" "$TEMP_DISK" >/dev/null 2>&1; then
         echo "headless: failed to install $TEST_NAME init.ccl" >&2
         exit 1
+    fi
+    if [ "$TEST_NAME" = "desktop-live-replace" ]; then
+        # The app-replace survey puts every shipped app in the workspace and
+        # keeps each as a generation: room beyond the base disk's.
+        truncate -s 2G "$TEMP_DISK"
+        if ! "$(command -v resize2fs || echo /usr/sbin/resize2fs)" -f "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to grow the $TEST_NAME disk" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "metricsview" ]; then
         # MET-002: a saved dashboard that does not check (no time), which
@@ -2473,7 +2484,8 @@ if [ -n "$INIT_PROFILE" ]; then
     if [ "$TEST_NAME" = "desktop-live-replace" ]; then
         # Desktop and the remote session, as built now.
         for SWITCH_PAIR in logstore.svc:logstore.svc clock.svc:clock.svc ccl-remote.app:ccl-remote.app \
-            display.svc:display.svc desktop.svc:desktop.svc timesync.svc:timesync.svc; do
+            display.svc:display.svc desktop.svc:desktop.svc timesync.svc:timesync.svc \
+            metrics.svc:metrics.svc lexicon.svc:lexicon.svc; do
             SWITCH_SOURCE="$KERNEL_DIR/isodir/boot/${SWITCH_PAIR%%:*}"
             SWITCH_TARGET="${SWITCH_PAIR##*:}"
             if [ ! -f "$SWITCH_SOURCE" ]; then
@@ -5672,7 +5684,7 @@ if [ "$TEST_NAME" = "desktop-live-replace" ]; then
     python3 "$ROOT_DIR/tests/desktop-live-replace/desktop_live_replace.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$DESKTOP_LIVE_REPLACE_PORT" \
         "$KERNEL_DIR/isodir/boot/desktop.svc" "$KERNEL_DIR/isodir/boot/timesync.svc" \
-        "$KERNEL_DIR/isodir/boot/metricsview.app" "$KERNEL_DIR/isodir/boot/log-exit-probe.app" &
+        "$KERNEL_DIR/isodir/boot" &
     INPUT_INJECTOR_PID=$!
 fi
 if [ "$TEST_NAME" = "service-switch-reboot" ]; then

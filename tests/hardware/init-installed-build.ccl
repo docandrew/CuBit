@@ -78,6 +78,9 @@
   # beside /toolchain and /storehouse. Replacing a running app with its
   # build needs the person's "Allow app replacement" (the Deskbar's
   # Remote access section, off at boot).
+  # DEVELOPMENT-ONLY: this entry also approves what ccl-remote's manifest
+  # asks for so app replace can swap in any shipped app (its marked block;
+  # named in (hello) and its start log line). A release strips that block.
   (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
       display => Pairing_Display.Window work => "@system/work"

@@ -37,6 +37,7 @@ with Remote_Apps;
 with Remote_Generations;
 with Remote_Activity;
 with Remote_Capture;
+with Remote_Development;
 with System;
 
 procedure Main is
@@ -267,7 +268,9 @@ procedure Main is
                when W.Hello =>
                   Reply (1) := W.Grant_Bits (Grants);
                   W.Put_U32 (Reply, 2, W.Maximum_Chunk_Bytes);
-                  Put_Text ("ccl-remote 0.1.0", 6, Length);
+                  --  The name, then (its own line) the development-only
+                  --  authority this endpoint holds (Remote_Development).
+                  Put_Text ("ccl-remote 0.1.0" & ASCII.LF & Remote_Development.Summary, 6, Length);
                   Length := Length + 5;
                   if not Paired then
                      Paired := True;
@@ -564,6 +567,8 @@ begin
    end if;
    --  Desktop's Remote access section (only with the display-capture grant).
    Remote_Capture.Announce (Remote_Capture.Listening, "");
+   --  Never held unseen: what the startup plan granted for app replace.
+   Log (Remote_Development.Summary);
    Log ("ready");
    loop
       if Now >= Next_Refresh then

@@ -49,8 +49,9 @@ package Remote_Apps is
    --  procmgr was asked to end it (milliseconds).
    Stop_Deadline_Ms : constant := 5_000;
    End_Deadline_Ms  : constant := 5_000;
-   --  Named ceiling: apps this endpoint keeps track of (Capacity beyond).
-   Maximum_Apps : constant := 8;
+   --  Named ceiling: apps this endpoint keeps track of (Capacity beyond):
+   --  every app the image ships, with room.
+   Maximum_Apps : constant := 32;
 
    procedure Initialize (Work : String);
 

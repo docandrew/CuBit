@@ -4435,7 +4435,7 @@ procedure main is
             begin
                if attenuateFor /= No_Process and then not launcherHolds (R.Kind, R.Param0) then
                   attenuationRefused := True;
-                  Warnings.Warn ("procmgr: launch of " & name & " refused: it requests the service """ &
+                  Warnings.Warn ("procmgr: launch of " & name & " refused: it requests """ &
                                  String (View.Declared.Entries (I).Label.Text
                                            (1 .. View.Declared.Entries (I).Label.Length)) &
                                  """, which its launcher does not hold");
