@@ -3633,8 +3633,12 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
         if [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ]; then
             # LAT-002: presses at swept refresh phases into the focused
             # Calculator, then two of Desktop's report intervals.
+            LATENCY_READY="calculator: first frame presented"
+            if [ "${CUBIT_DISPLAY_LATENCY_ANIMATION:-0}" = 1 ]; then
+                LATENCY_READY="frame-ticker: first frame presented"
+            fi
             for ((attempt = 0; attempt < 600; attempt++)); do
-                grep -aF "calculator: first frame presented" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                grep -aF "$LATENCY_READY" "$SERIAL_LOG" >/dev/null 2>&1 && break
                 sleep 0.1
             done
             sleep 1
@@ -8573,6 +8577,15 @@ calculator: first frame presented
 desktop: latency inputs=
 desktop: latency stage=input_to_ready
 "
+        if [ "${CUBIT_DISPLAY_LATENCY_ANIMATION:-0}" = 1 ]; then
+            required_markers="
+display: backend virtio-gpu
+frame-ticker: first frame presented
+frame-ticker: animating
+desktop: latency inputs=
+desktop: latency stage=input_to_ready
+"
+        fi
         ;;
     metrics-latency)
         required_markers="
