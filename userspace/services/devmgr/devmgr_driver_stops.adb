@@ -17,7 +17,9 @@ package body Devmgr_Driver_Stops is
    type Track is (Not_Tracked, Running, Ending, Stopped_Clean, Exited_Failing, Forced, Not_Ended);
    Tracks : array (DL.Child range 1 .. DL.Child'Last) of Track := [others => Not_Tracked];
    Current : STP.Driver_Phase := STP.Not_Asked;
-   Grace_End, Final_End : Unsigned_64 := 0;
+   --  When the Stops went out (each child's stop latency, and the stage's,
+   --  is measured from it), the grace's end and the end deadline.
+   Began, Grace_End, Final_End : Unsigned_64 := 0;
    Grace_Passed : Boolean := False;
 
    function Image (Value : Unsigned_64) return String is
@@ -25,6 +27,14 @@ package body Devmgr_Driver_Stops is
    begin
       return Text (Text'First + 1 .. Text'Last);
    end Image;
+
+   --  Milliseconds from the Stops to Now (the monotonic clock).
+   function Since_Began (Now : Unsigned_64) return Unsigned_64 is
+     (if Now >= Began then Now - Began else 0);
+
+   --  How many children stopped clean, exited failing, were forced, and
+   --  are still running or could not be ended.
+   procedure Count (Clean, Failing, Ended, Running_Now : out Natural);
 
    procedure Begin_Stop
      (Grace : STP.Grace_Ms; Except : Process_ID; Keep_Tail : Boolean;
@@ -38,6 +48,7 @@ package body Devmgr_Driver_Stops is
          return;
       end if;
       Current := STP.Stopping;
+      Began := Now;
       Grace_End := Now + Unsigned_64 (Grace);
       Final_End := Grace_End + End_Deadline_Ms;
       --  Reverse launch order: later children first (the Stop is one-way,
@@ -85,7 +96,8 @@ package body Devmgr_Driver_Stops is
                            (case Tracks (C) is
                               when Stopped_Clean => "STOPPED_CLEAN",
                               when Forced => "FORCED (ended after its grace)",
-                              when others => "EXITED_FAILING") & LF);
+                              when others => "EXITED_FAILING") &
+                           " after " & Image (Since_Began (Now)) & " ms" & LF);
             end if;
          end if;
       end loop;
@@ -117,15 +129,27 @@ package body Devmgr_Driver_Stops is
             end if;
          end loop;
          Current := STP.Finished;
-         debugPrint ("devmgr: shutdown: drivers stopped (" & Image (Counts_Word) & ")" & LF);
+         --  Before procmgr can see Finished (it asks this loop, after Step
+         --  returns), so the line precedes every later stop step and S5.
+         declare
+            Clean, Failing, Ended, Running_Now : Natural;
+         begin
+            Count (Clean, Failing, Ended, Running_Now);
+            debugPrint ("devmgr: shutdown: drivers stopped in " & Image (Since_Began (Now)) & " ms:" &
+                        Natural'Image (Clean) & " clean," & Natural'Image (Failing) & " failing," &
+                        Natural'Image (Ended) & " forced," & Natural'Image (Running_Now) & " not ended" & LF);
+         end;
       end if;
    end Step;
 
    function Phase return STP.Driver_Phase is (Current);
 
-   function Counts_Word return Unsigned_64 is
-      Clean, Failing, Ended, Running_Now : Natural := 0;
+   procedure Count (Clean, Failing, Ended, Running_Now : out Natural) is
    begin
+      Clean := 0;
+      Failing := 0;
+      Ended := 0;
+      Running_Now := 0;
       for T of Tracks loop
          case T is
             when Stopped_Clean  => Clean := Clean + 1;
@@ -135,6 +159,12 @@ package body Devmgr_Driver_Stops is
             when Not_Tracked    => null;
          end case;
       end loop;
+   end Count;
+
+   function Counts_Word return Unsigned_64 is
+      Clean, Failing, Ended, Running_Now : Natural;
+   begin
+      Count (Clean, Failing, Ended, Running_Now);
       return STP.Counts_Word (Clean, Failing, Ended, Running_Now);
    end Counts_Word;
 
