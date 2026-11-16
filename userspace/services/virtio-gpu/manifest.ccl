@@ -14,7 +14,7 @@
     # Entry 0: control and cursor queues; entry 1: configuration changes
     # (display events). One vector if the device has only one entry.
     (interrupt "device" Interrupt_Mode.MSI_X 2)
-    (dma "frames" 16777216)
+    (dma "frames" 33554432)
     (device-memory "notify" 4 1048576 Access.Read_Write)
     (service "device-manager" "ready")
     # The GPU service registration (DRIVER_GPU); absent when another GPU

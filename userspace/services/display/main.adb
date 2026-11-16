@@ -124,6 +124,8 @@ procedure main is
    DISPLAY_CAP_COPY_PRESENT : constant Unsigned_64 := 16#0001#;
    DISPLAY_CAP_GPU_PRESENT  : constant Unsigned_64 := 16#0004#;
    DISPLAY_CAP_PAGE_FLIP    : constant Unsigned_64 := 16#0008#;
+   --  UI-020: Lend_Buffer lends the scanout buffers (three) to the owner.
+   DISPLAY_CAP_LEND_SCANOUT : constant Unsigned_64 := 16#0010#;
 
    --  The GPU service (optional: without one, the firmware framebuffer).
    function Lookup_GPU return CuBit.Handles.Endpoint is
@@ -175,6 +177,10 @@ procedure main is
       srcAcquired : Boolean := False;
       Pool : Pool_Registry.State;
       Pool_Slot : Natural range 0 .. 3 := 0;
+      --  UI-020: the pool's slots are the backend's scanout buffers, lent to
+      --  the compositor (Lend_Buffer); its grants are the slots' one-page
+      --  damage records. No copy: a frame names its slot as the target.
+      lentPool : Boolean := False;
       activeSession : Unsigned_64 := 0;
       lastFrame : Unsigned_64 := 0;
       frameState : PS.State;
@@ -331,12 +337,13 @@ procedure main is
    function backendCaps return Unsigned_64 is
    begin
       if outputStates (selectedOutput).backend.Kind = Native_GPU then
-         --  Directly handing the GPU's received framebuffer grant to a
-         --  client would be an untracked re-grant. Until CuBit has an
-         --  explicit attenuating derived-loan operation, display.svc owns
-         --  the scanout mapping and copies client damage into it.
+         --  The owner may compose into the scanout buffers themselves
+         --  (UI-020): the GPU driver makes a grant for the owner (never a
+         --  re-grant of display's own) and ends it when it lends again.
          return DISPLAY_CAP_COPY_PRESENT or DISPLAY_CAP_GPU_PRESENT or
-           DISPLAY_CAP_PAGE_FLIP;
+           DISPLAY_CAP_PAGE_FLIP or
+           (if BT.Count (outputStates (selectedOutput).Targets) = Pool_Wire.Buffer_Slot'Last
+            then DISPLAY_CAP_LEND_SCANOUT else 0);
       else
          --  A bootloader/firmware linear framebuffer does not provide a
          --  trustworthy vertical-blank event. In particular, polling the
@@ -444,7 +451,9 @@ procedure main is
          --  driver startup. Native outputs need no firmware mapping, even
          --  for diagnostics: kernel panic cannot reactivate that renderer.
          State.backend := (Kind => Native_GPU);
-         debugPrint ("display: backend virtio-gpu" & LF);
+         --  Three buffers, as Intel: one shown, one latching, one composing.
+         BT.Set_Count (State.Targets, BT.Maximum_Buffers);
+         debugPrint ("display: backend virtio-gpu (3 buffers)" & LF);
          debugPrint ("display: native boot handoff" &
            Firmware.Width'Image & " x" & Firmware.Height'Image &
            " ->" & Width'Image & " x" & Height'Image & "; firmware rendering retired" & LF);
@@ -732,6 +741,7 @@ procedure main is
       outputStates (selectedOutput).pendingPresent := False;
       outputStates (selectedOutput).pendingRect := (others => 0);
       outputStates (selectedOutput).gpuStale := [others => (others => 0)];
+      outputStates (selectedOutput).lentPool := False;
       for B in Pool_Wire.Buffer_Slot loop
          if Pool_Registry.Registered (outputStates (selectedOutput).Pool, B) then
             MG.Return_Acquisition (Pool_Registry.Item (outputStates (selectedOutput).Pool, B).Grant, returned);
@@ -1140,6 +1150,30 @@ procedure main is
               authorityTag => 0,
               words => [Unsigned_64 (target), packedXY, packedWH, 0]);
    end prepareGpuRect;
+
+   --  UI-020: a lent pool's frame: the compositor composed into the scanout
+   --  buffer of its slot (and repaired what it missed); nothing to copy.
+   --  The slot is the target (never the one on screen) and the frame's area
+   --  is what the backend uploads (virtio-gpu) or flushes (Intel).
+   function prepareLentRect (damage : Rect; Slot : Pool_Wire.Buffer_Slot) return Message is
+      r : constant Rect := clampGpuRect (damage);
+      accepted : Boolean;
+   begin
+      if outputStates (selectedOutput).backend.Kind /= Native_GPU or else isEmpty (r) then
+         return NULL_MESSAGE;
+      end if;
+      BT.Prepare_Target (outputStates (selectedOutput).Targets, Gpu_Buffer_Index (Slot - 1), accepted);
+      if not accepted then
+         debugPrint ("display: lent frame named the buffer on screen; refused" & LF);
+         return NULL_MESSAGE;
+      end if;
+      return (tag => (label => OP_GPU_PRESENT_BUFFER, length => 4,
+                      protocol => 0, ipc => <>, reserved => Unsigned_16 (selectedOutput)),
+              authorityTag => 0,
+              words => [Unsigned_64 (Slot - 1),
+                        Unsigned_64 (r.x) or Shift_Left (Unsigned_64 (r.y), 32),
+                        Unsigned_64 (r.w) or Shift_Left (Unsigned_64 (r.h), 32), 0]);
+   end prepareLentRect;
 
    --  A published flip made Target the active buffer with Damage new:
    --  every other buffer now lacks Damage, the new active one lacks nothing.
@@ -2308,7 +2342,7 @@ procedure main is
          return;
       end if;
       frameBoxes := Single_Box (r.x, r.y, r.w, r.h);
-      if Slot /= 0 then
+      if Slot /= 0 and then not State.lentPool then
          declare
             Words : FD.Word_Array with Import,
               Address => mapped + Storage_Offset (State.srcPitch * State.srcHeight);
@@ -2349,12 +2383,15 @@ procedure main is
       started := syscall (SYSCALL_GETTIME);
       if Presentation_Test_Policy.Enabled and then
         not Presentation_Test_Policy.Verify_Buffer
-          (mapped, Unsigned_64 (State.srcPitch) * Unsigned_64 (State.srcHeight),
+          ((if Slot /= 0 and then State.lentPool then State.gpuScanoutAddr (Gpu_Buffer_Index (Slot - 1))
+            else mapped), Unsigned_64 (State.srcPitch) * Unsigned_64 (State.srcHeight),
            decoded.Value.Frame)
       then
          State.presentationFault := True;
       elsif State.backend.Kind = Native_GPU then
-         backendRequest := prepareGpuRect (r);
+         backendRequest :=
+           (if Slot /= 0 and then State.lentPool
+            then prepareLentRect (r, Pool_Wire.Buffer_Slot (Slot)) else prepareGpuRect (r));
          if backendRequest.tag.length /= 0 and then
            saveInto (frameReplies (selectedOutput))
          then
@@ -2382,9 +2419,12 @@ procedure main is
                   end if;
                end;
                statsPresents := statsPresents + 1;
-               for I in 1 .. frameBoxes.Count loop
-                  statsPixels := statsPixels + CuBit.Display_Box_Copy.Bytes (frameBoxes.Boxes (I)) / 4;
-               end loop;
+               --  A lent frame is not copied (copy px/frame counts copies).
+               if not State.lentPool then
+                  for I in 1 .. frameBoxes.Count loop
+                     statsPixels := statsPixels + CuBit.Display_Box_Copy.Bytes (frameBoxes.Boxes (I)) / 4;
+                  end loop;
+               end if;
                statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
                return;
             end if;
@@ -2849,7 +2889,7 @@ procedure main is
                elsif not A.Valid then
                   debugPrint ("display: pool attach refused: malformed request" & LF);
                   replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
-               elsif State.presentationFault or else State.srcAcquired or else
+               elsif State.presentationFault or else State.srcAcquired or else State.lentPool or else
                  State.activeSession /= 0 or else not Pool_Registry.Admits (State.Pool, A.Value)
                then null;
                elsif Natural (A.Value.Source.Layout.Width) > State.fbWidth or else
@@ -2874,6 +2914,85 @@ procedure main is
                         State.srcHeight := Natural (A.Value.Source.Layout.Height);
                         State.srcPitch := A.Value.Source.Layout.Pitch;
                         replyMsg.words (0) := DISPLAY_OK;
+                     else
+                        MG.Return_Acquisition (A.Value.Source.Grant, Returned);
+                        if not Returned then
+                           State.presentationFault := True;
+                           Pool_Registry.Quarantine (State.Pool);
+                        end if;
+                     end if;
+                  end if;
+               end if;
+            end;
+
+         when Pool_Wire.Lend_Buffer =>
+            replyMsg.tag := (label => request.tag.label, length => 1,
+                             protocol => 0, ipc => <>, reserved => 0);
+            replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            declare
+               State : Output_State renames outputStates (selectedOutput);
+               A : constant Pool_Wire.Attachment_Result :=
+                 Pool_Wire.Decode_Lend_Request (CuBit.Desktop_Messages.To_Wire (request));
+               Mapped : System.Address;
+               Acquired, Accepted, Returned : Boolean;
+               Lent : Message;
+               Wire : DSP.Wire_Message;
+               Loan : DSP.Attachment_Decoding;
+               use type DSP.DP.Buffer_Layout;
+            begin
+               if not ownsDisplay (from) then
+                  replyMsg.words (0) := DISPLAY_ERR_DENIED;
+               elsif not A.Valid then
+                  debugPrint ("display: lend refused: malformed request" & LF);
+                  replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+               elsif State.backend.Kind /= Native_GPU or else
+                 BT.Count (State.Targets) /= Pool_Wire.Buffer_Slot'Last or else
+                 A.Value.Source.Layout /= (DSP.DP.Positive_Extent (State.fbWidth),
+                   DSP.DP.Positive_Extent (State.fbHeight), DSP.DP.Buffer_Pitch (State.fbPitch))
+               then
+                  --  The firmware framebuffer (or two buffers): copy instead.
+                  replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
+               elsif State.presentationFault or else State.srcAcquired or else
+                 State.activeSession /= 0 or else
+                 (Pool_Registry.Count (State.Pool) /= 0 and then not State.lentPool) or else
+                 not Pool_Registry.Admits (State.Pool, A.Value)
+               then null;
+               elsif not ensureGpuScanout then
+                  State.presentationFault := True;
+               else
+                  --  The client's own slot buffer (as Attach_Buffer): proof of
+                  --  who asks, and its end tells display the owner ended
+                  --  (ownerEnded). A lent frame reads none of it.
+                  MG.Acquire (A.Value.Source.Grant, from, 0,
+                              DSP.DP.Byte_Length (A.Value.Source.Layout) + FD.Record_Bytes,
+                              MG.Read_Access, Mapped, Acquired);
+                  if not Acquired then
+                     debugPrint ("display: lend refused: record grant not acquired" & LF);
+                     replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+                  else
+                     Lent := callGpu (OP_GPU_MAP_FRAMEBUFFER, Unsigned_64 (A.Value.Buffer - 1),
+                                      To_Word (from), 0, 0);
+                     Wire := CuBit.Desktop_Messages.To_Wire (Lent);
+                     Wire.Label := DSP.Code (DSP.Attach_Buffer);
+                     Loan := DSP.Decode_Attachment (Wire);
+                     Accepted := Lent.tag.label = OP_GPU_MAP_FRAMEBUFFER and then Loan.Valid and then
+                       Loan.Value.Layout = A.Value.Source.Layout;
+                     if Accepted then
+                        Pool_Registry.Register (State.Pool, A.Value, Accepted);
+                     else
+                        debugPrint ("display: lend refused: the GPU lent no buffer" &
+                          Natural'Image (Natural (A.Value.Buffer) - 1) & LF);
+                     end if;
+                     if Accepted then
+                        State.lentPool := True;
+                        State.srcOwner := from;
+                        State.sourceOutput := State.currentOutput;
+                        State.srcWidth := State.fbWidth;
+                        State.srcHeight := State.fbHeight;
+                        State.srcPitch := State.fbPitch;
+                        replyMsg := CuBit.Desktop_Messages.From_Wire (Pool_Wire.Encode
+                          (Pool_Wire.Loan'(A.Value.Buffer, Loan.Value,
+                            Gpu_Buffer_Index (A.Value.Buffer - 1) = BT.Active (State.Targets))));
                      else
                         MG.Return_Acquisition (A.Value.Source.Grant, Returned);
                         if not Returned then
@@ -2910,6 +3029,10 @@ procedure main is
                      replyMsg.words (1) := State.activeSession;
                      replyMsg.words (2) := 3;
                      replyMsg.words (3) := 1; -- contract version
+                     --  Which path this session runs (UI-020).
+                     debugPrint ((if State.lentPool
+                       then "display: session lent scanout: the compositor composes into the scanout buffers"
+                       else "display: session copies frames into the scanout") & LF);
                   end if;
                end if;
             end;

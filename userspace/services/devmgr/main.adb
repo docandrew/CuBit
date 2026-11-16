@@ -3257,20 +3257,23 @@ procedure main is
       dmaPhys : Unsigned_64;
       ret : Unsigned_64;
 
-      -- Two independently owned banks, one per head, within the allocator's
-      -- supported block size. A 16 MiB bank holds two fixed scanout buffers
-      -- of up to 1920x1080, so a mode change (a resized VM window) never
-      -- reallocates; a machine without that much contiguous memory gets
-      -- 8 MiB banks (up to 1280x800). Both banks have one size, which
-      -- virtio-gpu reads from its launch configuration. A missing second
-      -- bank must not prevent the boot output.
+      -- Two independently owned banks, one per head, at most the
+      -- allocator's largest block (Contiguous_Memory.Maximum_Order). A
+      -- 32 MiB bank holds three fixed scanout buffers of up to 1920x1080
+      -- (UI-020: the compositor composes into them, one on screen, one
+      -- latching, one being written), so a mode change (a resized VM
+      -- window) never reallocates; a machine without that much contiguous
+      -- memory gets 16 MiB banks (up to 1280x1024), and virtio-gpu says so.
+      -- Both banks have one size, which virtio-gpu reads from its launch
+      -- configuration. A missing second bank must not prevent the boot output.
       secondDmaPhys : Unsigned_64;
-      LARGE_DMA_ORDER : constant Unsigned_64 := 12;
-      SMALL_DMA_ORDER : constant Unsigned_64 := 11;
-      --  32 MiB of large banks is a desktop VM's budget, not a small VM's:
-      --  below this much RAM (the kernel's system facts) the banks stay
-      --  8 MiB, as before resizable modes, so 128 MiB guests keep their
-      --  memory.
+      LARGE_DMA_ORDER : constant Unsigned_64 := 13;
+      SMALL_DMA_ORDER : constant Unsigned_64 := 12;
+      pragma Compile_Time_Error (LARGE_DMA_ORDER > Contiguous_Memory.Maximum_Order,
+        "a GPU bank exceeds the largest contiguous block");
+      --  64 MiB of large banks is a desktop VM's budget, not a small VM's:
+      --  below this much RAM (the kernel's system facts) the banks are
+      --  16 MiB, so small guests keep their memory.
       LARGE_BANK_MINIMUM_MEMORY : constant Unsigned_64 := 1024 * 1024 * 1024;
       DMA_ORDER : Unsigned_64 :=
         (if CuBit.System_Facts.Memory_Bytes >= LARGE_BANK_MINIMUM_MEMORY

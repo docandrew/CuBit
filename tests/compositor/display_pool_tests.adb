@@ -7,13 +7,13 @@ procedure Display_Pool_Tests is
    package P renames CuBit.Display_Pool_Protocol;
    package R renames CuBit.Display_Pool_Registry;
    package D renames P.D;
-   use type P.Attachment, P.Frame, P.Completion, D.Attachment_Request;
+   use type P.Attachment, P.Frame, P.Completion, D.Attachment_Request, D.DP.Protocol_Flags;
    S : R.State;
    Accepted : Boolean;
    Wire, Bad : D.Wire_Message;
    A : P.Attachment := (1, ((1, 2), (32, 24, 128)));
    F : P.Frame := (1, (7, 9, (1, 2, 3, 4)));
-   C : P.Completion := (1, (7, 9, D.Published, D.Released));
+   C : P.Completion := (1, (7, 9, D.Published, D.Released, others => <>));
 begin
    for Op in D.Operation loop
       pragma Assert (D.Code (Op) /= P.Attach_Buffer and D.Code (Op) /= P.Open_Session and
@@ -28,7 +28,7 @@ begin
       A.Buffer := B; A.Source.Grant.slot := Unsigned_64 (B);
       Wire := P.Encode (A);
       pragma Assert (P.Decode_Attachment (Wire).Valid and then P.Decode_Attachment (Wire).Value = A);
-      for Flags in Unsigned_8 loop
+      for Flags in D.DP.Protocol_Flags loop
          Bad := Wire; Bad.Flags := Flags;
          pragma Assert (P.Decode_Attachment (Bad).Valid = (Flags in 1 .. 3));
       end loop;
@@ -42,7 +42,7 @@ begin
       F.Buffer := B;
       Wire := P.Encode (F);
       pragma Assert (P.Decode_Frame (Wire).Valid and then P.Decode_Frame (Wire).Value = F);
-      for Flags in Unsigned_8 loop
+      for Flags in D.DP.Protocol_Flags loop
          Bad := Wire; Bad.Flags := Flags;
          pragma Assert (P.Decode_Frame (Bad).Valid = (Flags in 1 .. 3));
       end loop;
@@ -52,10 +52,10 @@ begin
       end loop;
       for Outcome in D.Frame_Outcome loop
          for Disposition in D.Buffer_Disposition loop
-            C := (B, (7, 9, Outcome, Disposition));
+            C := (B, (7, 9, Outcome, Disposition, others => <>));
             Wire := P.Encode (C);
             pragma Assert (P.Decode_Completion (Wire).Valid and then P.Decode_Completion (Wire).Value = C);
-            for Flags in Unsigned_8 loop
+            for Flags in D.DP.Protocol_Flags loop
                Bad := Wire; Bad.Flags := Flags;
                pragma Assert (P.Decode_Completion (Bad).Valid = (Flags in 1 .. 3));
             end loop;
@@ -87,5 +87,47 @@ begin
       R.Register (Fresh, A, Accepted); pragma Assert (not Accepted);
       pragma Assert (R.Count (Fresh) = 1);
    end;
-   Put_Line ("display pool: PASS slot codecs, hostile envelopes, immutable registration/session lifecycle");
+   --  UI-020 loans: the request is an attachment under its own label; the
+   --  reply carries the slot and whether its buffer is on screen. Neither
+   --  decodes as the other, nor as an attachment, frame or completion.
+   for B in P.Buffer_Slot loop
+      for Shown in Boolean loop
+         declare
+            Item : constant P.Loan := (B, ((Unsigned_64 (B) + 10, 3), (32, 24, 128)), Shown);
+            Request : constant P.Attachment := (B, ((Unsigned_64 (B), 1), (32, 24, 128)));
+            Decoded : P.Loan_Decoding;
+            use type P.Loan;
+         begin
+            Wire := P.Encode (Item);
+            Decoded := P.Decode_Loan (Wire);
+            pragma Assert (Decoded.Valid and then Decoded.Value = Item);
+            pragma Assert (not P.Decode_Attachment (Wire).Valid and not P.Decode_Frame (Wire).Valid and
+                           not P.Decode_Completion (Wire).Valid);
+            --  Request and reply share the label (as frames and completions
+            --  do): they travel opposite ways and are told apart by that.
+            pragma Assert (P.Decode_Lend_Request (Wire).Valid = not Shown);
+            for Flags in D.DP.Protocol_Flags loop
+               Bad := Wire; Bad.Flags := Flags;
+               pragma Assert (P.Decode_Loan (Bad).Valid = (Flags in 1 .. 3 | 5 .. 7));
+               if Flags in 1 .. 3 | 5 .. 7 then
+                  pragma Assert (P.Decode_Loan (Bad).Value.On_Screen = (Flags > 4) and
+                                 Natural (P.Decode_Loan (Bad).Value.Buffer) = Natural (Flags mod 4));
+               end if;
+            end loop;
+            for Bit in 0 .. 15 loop
+               Bad := Wire; Bad.Reserved := Shift_Left (Unsigned_16 (1), Bit);
+               pragma Assert (not P.Decode_Loan (Bad).Valid);
+            end loop;
+            Bad := Wire; Bad.Words (1) := 0;  --  generation 0 names no grant
+            pragma Assert (not P.Decode_Loan (Bad).Valid);
+            Wire := P.Encode_Lend_Request (Request);
+            pragma Assert (P.Decode_Lend_Request (Wire).Valid and then
+                           P.Decode_Lend_Request (Wire).Value = Request);
+            pragma Assert (not P.Decode_Attachment (Wire).Valid);
+            Bad := Wire; Bad.Flags := 5;
+            pragma Assert (not P.Decode_Lend_Request (Bad).Valid);
+         end;
+      end loop;
+   end loop;
+   Put_Line ("display pool: PASS slot codecs, hostile envelopes, immutable registration/session lifecycle, loans");
 end Display_Pool_Tests;

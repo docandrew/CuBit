@@ -1,0 +1,13 @@
+project Lent_Scanout is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display",
+     "../../userspace/runtime/gnat");
+   for Source_Files use ("lent_scanout_tests.adb", "compositor_repaint.ads", "compositor_repaint.adb",
+     "compositor_damage.ads", "compositor_damage.adb", "compositor_pool.ads", "compositor_pool.adb",
+     "cubit-backend_targets.ads", "cubit-backend_targets.adb", "cubit.ads");
+   for Object_Dir use "build/lent-scanout/obj";
+   for Exec_Dir use "build/lent-scanout";
+   for Main use ("lent_scanout_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Lent_Scanout;

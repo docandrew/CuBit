@@ -73,6 +73,13 @@ package body Compositor_Pool with SPARK_Mode is
          S.D := None;
       else S.Failed := True; end if;
    end Latch_Display;
+   procedure Seed_Front (S : in out State; B : Live_Slot) is
+   begin
+      if not S.Failed and S.Generation /= 0 and S.Sequence = 0 then
+         S.Sequence := 1;
+         S.F := (B, S.Generation, 1);
+      else S.Failed := True; end if;
+   end Seed_Front;
    procedure Retire_Front (S : in out State; T : Ticket; Confirmed : Boolean) is
    begin
       if not S.Failed and T /= None and T = S.F and Confirmed then S.F := None;

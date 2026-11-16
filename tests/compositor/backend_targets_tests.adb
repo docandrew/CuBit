@@ -78,5 +78,54 @@ begin
          pragma Assert (B.Current (Item) = B.Failed);
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("BACKEND-TARGETS: PASS 10000 two-buffer and 3000 three-buffer flips and stale/unknown/faulted lease retention; abandon");
+   --  UI-020: the compositor names the target (lent scanout buffers).
+   --  Any buffer but the active one is accepted; the active one, one past
+   --  the count, or a second prepare is refused and changes nothing. The
+   --  named target becomes active on completion, never another.
+   declare
+      T, Before : B.State;
+      Choice : B.Buffer;
+      Seed : Natural := 7;
+   begin
+      B.Set_Count (T, 3); B.Cleared (T);
+      for I in B.Identifier range 1 .. 3000 loop
+         Seed := (Seed * 1103 + 12345) mod 65536;
+         Choice := (B.Active (T) + 1 + Seed mod 2) mod 3;
+         Before := T;
+         B.Prepare_Target (T, B.Active (T), Accepted);
+         pragma Assert (not Accepted and T = Before);
+         B.Prepare_Target (T, Choice, Accepted);
+         pragma Assert (Accepted and B.Target (T) = Choice and B.Writable (T, Choice) and
+                        not B.Writable (T, B.Active (T)));
+         Before := T;
+         B.Prepare_Target (T, (Choice + 1) mod 3, Accepted);
+         pragma Assert (not Accepted and T = Before);
+         B.Seal (T, I);
+         pragma Assert (for all X in B.Buffer => not B.Writable (T, X));
+         if Seed mod 5 = 0 then
+            --  A certain refusal keeps the active buffer.
+            declare Old : constant B.Buffer := B.Active (T); begin
+               B.Abandon (T, I);
+               pragma Assert (B.Current (T) = B.Idle and B.Active (T) = Old);
+            end;
+         else
+            B.Complete (T, I, True);
+            pragma Assert (B.Active (T) = Choice and B.Current (T) = B.Idle);
+         end if;
+      end loop;
+      --  Two buffers: the only choice is the one not shown.
+      declare U : B.State; begin
+         B.Cleared (U);
+         B.Prepare_Target (U, 2, Accepted); pragma Assert (not Accepted);
+         B.Prepare_Target (U, 0, Accepted); pragma Assert (not Accepted);
+         B.Prepare_Target (U, 1, Accepted); pragma Assert (Accepted);
+      end;
+      --  Unconfigured or failed instances accept no target.
+      declare U : B.State; begin
+         B.Prepare_Target (U, 1, Accepted); pragma Assert (not Accepted);
+         B.Cleared (U); B.Quarantine (U);
+         B.Prepare_Target (U, 1, Accepted); pragma Assert (not Accepted);
+      end;
+   end;
+   Ada.Text_IO.Put_Line ("BACKEND-TARGETS: PASS 10000 two-buffer and 3000 three-buffer flips and stale/unknown/faulted lease retention; abandon; 3000 named targets");
 end Backend_Targets_Tests;

@@ -21,6 +21,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Launch_Configurations;
 with Launch_Configuration;
 with CuBit.Memory_Grants;
+with CuBit.Process_IDs;
 with CuBit.Output_Discovery;
 with CuBit.Output_Modes;
 with CuBit.Monitor_EDID;
@@ -87,14 +88,17 @@ procedure main is
      (CURSOR_CMD_OFF + 16 * CURSOR_CMD_STRIDE > CURSOR_IMAGE_OFF or else
       CURSOR_IMAGE_OFF + 2 * CURSOR_IMAGE_BYTES > FB0_OFF,
       "cursor queue and backing overlap other DMA regions");
-   --  One DMA bank per head: 16 MiB, or 8 MiB on a machine without that
+   --  One DMA bank per head: 32 MiB, or 16 MiB on a machine without that
    --  much contiguous memory (devmgr decides; read from the DMA capability
    --  at startup). After the first bank's 64 KiB of rings, each head holds
-   --  two scanout buffers of bufferCapacity bytes at fixed offsets, so a
-   --  mode change never moves a buffer: up to 1920x1080 (16 MiB banks) or
-   --  1280x800 (8 MiB) at 32 bits per pixel.
-   LARGE_BANK_BYTES : constant Storage_Offset := 16#1000000#;
-   SMALL_BANK_BYTES : constant Storage_Offset := 16#800000#;
+   --  Scanout_Buffers scanout buffers of bufferCapacity bytes at fixed
+   --  offsets, so a mode change never moves a buffer: up to 1920x1080 (32
+   --  MiB banks) or 1280x1024 (16 MiB) at 32 bits per pixel. Three, so a
+   --  compositor composing into them (UI-020, buffers lent by display.svc)
+   --  has one on screen, one armed and one to write.
+   Scanout_Buffers : constant := 3;
+   LARGE_BANK_BYTES : constant Storage_Offset := 16#2000000#;
+   SMALL_BANK_BYTES : constant Storage_Offset := 16#1000000#;
    bankBytes : Storage_Offset := SMALL_BANK_BYTES;
    PAGE_BYTES : constant := 4096;
 
@@ -103,14 +107,14 @@ procedure main is
    FALLBACK_WIDTH : constant EDID.Extent := 1024;
    FALLBACK_HEIGHT : constant EDID.Extent := 768;
    function bufferCapacity return Storage_Offset is
-     ((bankBytes - FB0_OFF) / 2 / PAGE_BYTES * PAGE_BYTES);
+     ((bankBytes - FB0_OFF) / Scanout_Buffers / PAGE_BYTES * PAGE_BYTES);
    --  The smallest mode the desktop is laid out for; hosts asking for less
    --  (a tiny window) get this, scaled by the host.
    MINIMUM_MODE : constant OM.Mode := (800, 600);
    pragma Compile_Time_Error
      (Storage_Offset ((FALLBACK_WIDTH * FALLBACK_HEIGHT * 4 + 4095) / 4096 * 4096) >
-        (SMALL_BANK_BYTES - FB0_OFF) / 2,
-      "Fallback GPU double buffers exceed their owned DMA bank");
+        (SMALL_BANK_BYTES - FB0_OFF) / Scanout_Buffers,
+      "Fallback GPU scanout buffers exceed their owned DMA bank");
    edidSupported : Boolean := False;
 
    VIRTIO_STATUS_ACKNOWLEDGE : constant Unsigned_8 := 1;
@@ -299,7 +303,7 @@ procedure main is
 
    type Command_Phase is
      (Idle, Transfer, Awaiting_Scanout, Set_Scanout, Flush, Awaiting_Vblank, Quarantined);
-   subtype Buffer_Index is Natural range 0 .. 1;
+   subtype Buffer_Index is Natural range 0 .. Scanout_Buffers - 1;
    type Pending_Presentation is record
       Phase : Command_Phase := Idle;
       Buffer : Buffer_Index := 0;
@@ -314,6 +318,12 @@ procedure main is
       Latch_Us : Unsigned_64 := 0;
    end record;
    Pending : array (Head_Index) of Pending_Presentation;
+   --  Scanout buffers lent to a compositor (OP_GPU_MAP_FRAMEBUFFER word 1).
+   type Lent_Grant is record
+      Live : Boolean := False;
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+   end record;
+   Lent : array (Head_Index, Buffer_Index) of Lent_Grant;
    Fence_Sequence : Unsigned_64 := 0;
    Command_Timeout_Ms : constant Unsigned_64 := 500;
    Command_Stride : constant Storage_Offset := 512;
@@ -360,7 +370,7 @@ procedure main is
         Unsigned_64 (FB0_OFF) + Unsigned_64 (index) * Unsigned_64 (bufferCapacity));
 
    function resourceId (index : Natural) return Unsigned_32 is
-     (Unsigned_32 (1 + selectedHead * 2 + index));
+     (Unsigned_32 (1 + selectedHead * Scanout_Buffers + index));
 
    procedure printDec (val : Unsigned_64) is
       buf : String (1 .. 20);
@@ -932,8 +942,10 @@ procedure main is
    CURSOR_TRANSFER_RESP : constant Storage_Offset := RESP_OFF + 2 * 512;
    UPDATE_CURSOR_BYTES : constant Unsigned_32 := 56;
 
+   --  Above every scanout resource (1 + Head * Scanout_Buffers + index).
+   Cursor_Resource_Base : constant := 16#100#;
    function cursorResource (Head : Head_Index) return Unsigned_32 is
-     (Unsigned_32 (5 + Head));
+     (Unsigned_32 (Cursor_Resource_Base + Head));
    function cursorImageOffset (Head : Head_Index) return Storage_Offset is
      (CURSOR_IMAGE_OFF + Storage_Offset (Head) * CURSOR_IMAGE_BYTES);
 
@@ -1063,7 +1075,7 @@ procedure main is
    function bringUpScanout return Boolean is
       ok : Boolean;
    begin
-      for index in 0 .. 1 loop
+      for index in Buffer_Index loop
          trace ("cmd RESOURCE_CREATE_2D");
          beginCmd (CMD_RESOURCE_CREATE_2D);
          put32 (CMD_OFF, 24, resourceId (index));
@@ -1422,7 +1434,7 @@ procedure main is
          return;
       end if;
       selectedHead := Head;
-      for index in 0 .. 1 loop
+      for index in Buffer_Index loop
          beginCmd (CMD_RESOURCE_UNREF);
          put32 (CMD_OFF, 24, resourceId (index));
          if not submitCmd (32, 24, RESP_OK_NODATA) then
@@ -1505,7 +1517,7 @@ procedure main is
       Cmd : constant Storage_Offset := Command_Offset (Head);
       Resp : constant Storage_Offset := Response_Offset (Head);
       ID : constant Natural := Head * 2;
-      Resource : constant Unsigned_32 := Unsigned_32 (1 + Head * 2 + Item.Buffer);
+      Resource : constant Unsigned_32 := Unsigned_32 (1 + Head * Scanout_Buffers + Item.Buffer);
       Length : Unsigned_32 := 48;
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
    begin
@@ -1693,7 +1705,7 @@ procedure main is
                           GPU_Test_Policy.Delay_First_Output_Ms;
                      else
                         Pending (Head).Phase :=
-                          (if Pending (Head).Clearing and Pending (Head).Buffer = 1
+                          (if Pending (Head).Clearing and Pending (Head).Buffer > 0
                            then Flush else Set_Scanout);
                         issueCommand (Head);
                      end if;
@@ -1701,8 +1713,8 @@ procedure main is
                      Pending (Head).Phase := Flush;
                      issueCommand (Head);
                   when Flush =>
-                     if Pending (Head).Clearing and Pending (Head).Buffer = 1 then
-                        Pending (Head).Buffer := 0;
+                     if Pending (Head).Clearing and Pending (Head).Buffer > 0 then
+                        Pending (Head).Buffer := Pending (Head).Buffer - 1;
                         Pending (Head).Phase := Transfer;
                         issueCommand (Head);
                      elsif GPU_Test_Policy.Vblank_Period_Us /= 0 and then not Pending (Head).Clearing then
@@ -2004,24 +2016,41 @@ procedure main is
          when OP_GPU_MAP_FRAMEBUFFER =>
             declare
                bufferIndexRaw : constant Unsigned_64 := request.words (0);
-               bufferIndex : Natural range 0 .. 1 := 0;
+               bufferIndex : Buffer_Index := 0;
                pages : constant Natural :=
                   Natural ((Unsigned_64 (Frame_Bytes (selectedHead)) + 4095) / 4096);
                reference : CuBit.Memory_Grants.Grant_Reference;
                grantOk : Boolean;
+               --  Word 1: the process the buffer is for (UI-020: display.svc
+               --  lends its scanout buffers to the compositor); 0: the caller.
+               Grantee : constant Process_ID :=
+                 (if request.words (1) = 0 then from
+                  else CuBit.Process_IDs.From_Word (request.words (1)));
+               Revoked : Boolean;
             begin
                replyMsg.tag := (label => OP_GPU_MAP_FRAMEBUFFER,
                                 length => 4, protocol => 0, ipc => <>, reserved => 0);
-               if bufferIndexRaw <= 1 then
+               if bufferIndexRaw <= Unsigned_64 (Buffer_Index'Last) and then
+                 request.words (2) = 0 and then request.words (3) = 0
+               then
                   bufferIndex := Natural (bufferIndexRaw);
+                  --  One lent grant per buffer: a newer loan (another
+                  --  compositor instance) ends the previous one.
+                  if request.words (1) /= 0 and then Lent (selectedHead, bufferIndex).Live then
+                     CuBit.Memory_Grants.Revoke (Lent (selectedHead, bufferIndex).Reference, Revoked);
+                     Lent (selectedHead, bufferIndex).Live := False;
+                  end if;
                   CuBit.Memory_Grants.Create_For_Process
-                    (grantee   => from,
+                    (grantee   => Grantee,
                      localAddr =>
                        DMA_BASE + framebufferOffset (bufferIndex),
                      numPages  => pages,
                      readWrite => True,
                      reference => reference,
                      success   => grantOk);
+                  if grantOk and then request.words (1) /= 0 then
+                     Lent (selectedHead, bufferIndex) := (True, reference);
+                  end if;
                else
                   grantOk := False;
                end if;
@@ -2043,13 +2072,13 @@ procedure main is
          when OP_GPU_PRESENT_BUFFER =>
             declare
                bufferIndexRaw : constant Unsigned_64 := request.words (0);
-               bufferIndex : Natural range 0 .. 1 := 0;
+               bufferIndex : Buffer_Index := 0;
                packedXY : constant Unsigned_64 := request.words (1);
                packedWH : constant Unsigned_64 := request.words (2);
             begin
                replyMsg.tag := (label => OP_GPU_PRESENT_BUFFER,
                                 length => 1, protocol => 0, ipc => <>, reserved => 0);
-               if bufferIndexRaw > 1 or else request.words (3) /= 0 or else
+               if bufferIndexRaw > Unsigned_64 (Buffer_Index'Last) or else request.words (3) /= 0 or else
                  (packedXY and 16#FFFF_FFFF#) >= Unsigned_64 (Frame_Width (selectedHead)) or else
                  Shift_Right (packedXY, 32) >= Unsigned_64 (Frame_Height (selectedHead)) or else
                  (packedWH and 16#FFFF_FFFF#) not in 1 .. Unsigned_64 (Frame_Width (selectedHead)) or else
@@ -2090,10 +2119,11 @@ procedure main is
                if GPU_Test_Policy.Reject_Client_Clear then
                   Test_Startup_Clear_Seen (selectedHead) := True;
                end if;
-               clearFb (0, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
-               clearFb (1, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
+               for B in Buffer_Index loop
+                  clearFb (B, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
+               end loop;
                Pending (selectedHead) :=
-                 (Phase => Transfer, Buffer => 1, X => 0, Y => 0,
+                 (Phase => Transfer, Buffer => Buffer_Index'Last, X => 0, Y => 0,
                   W => Natural (Frame_Width (selectedHead)), H => Natural (Frame_Height (selectedHead)),
                   Clearing => True, Label => OP_GPU_CLEAR, others => <>);
                issueCommand (selectedHead);
@@ -2175,6 +2205,10 @@ begin
          bankBytes := LARGE_BANK_BYTES;
       elsif Total = Unsigned_64 (SMALL_BANK_BYTES) then
          bankBytes := SMALL_BANK_BYTES;
+         --  devmgr gives 32 MiB banks to guests of 1 GiB or more with the
+         --  contiguous memory; say what this one allows.
+         debugPrint ("virtio-gpu: DMA bank 16 MiB, not 32: three buffers of" &
+           Storage_Offset'Image (bufferCapacity) & " bytes (modes up to 1280x1024)" & LF);
       else
          fail ("unexpected DMA bank size");
          return;

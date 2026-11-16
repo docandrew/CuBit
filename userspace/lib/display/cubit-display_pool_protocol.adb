@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 package body CuBit.Display_Pool_Protocol with SPARK_Mode is
+   use type D.DP.Protocol_Flags;
    function Encode (Item : Attachment) return D.Wire_Message is
      (D.Encode_Attachment (Item.Source) with delta Label => Attach_Buffer,
       Flags => D.DP.Protocol_Flags (Item.Buffer));
@@ -15,6 +16,30 @@ package body CuBit.Display_Pool_Protocol with SPARK_Mode is
       if not Decoded.Valid then return (Valid => False); end if;
       return (True, (Buffer_Slot (Wire.Flags), Decoded.Value));
    end Decode_Attachment;
+   function Encode_Lend_Request (Item : Attachment) return D.Wire_Message is
+     (Encode (Item) with delta Label => Lend_Buffer);
+   function Decode_Lend_Request (Wire : D.Wire_Message) return Attachment_Result is
+     (if Wire.Label /= Lend_Buffer then (Valid => False)
+      else Decode_Attachment ((Wire with delta Label => Attach_Buffer)));
+   On_Screen_Flag : constant := 4;
+   function Encode (Item : Loan) return D.Wire_Message is
+     (D.Encode_Attachment (Item.Source) with delta Label => Lend_Buffer,
+      Flags => D.DP.Protocol_Flags (Item.Buffer) +
+        (if Item.On_Screen then On_Screen_Flag else 0));
+   function Decode_Loan (Wire : D.Wire_Message) return Loan_Decoding is
+      Decoded : D.Attachment_Decoding;
+   begin
+      if Wire.Label /= Lend_Buffer or else
+        Wire.Flags not in 1 .. 3 | On_Screen_Flag + 1 .. On_Screen_Flag + 3
+      then
+         return (Valid => False);
+      end if;
+      Decoded := D.Decode_Attachment
+        ((Wire with delta Label => D.Code (D.Attach_Buffer), Flags => 0));
+      if not Decoded.Valid then return (Valid => False); end if;
+      return (True, (Buffer_Slot (Wire.Flags mod On_Screen_Flag), Decoded.Value,
+                     Wire.Flags > On_Screen_Flag));
+   end Decode_Loan;
    function Encode (Item : Frame) return D.Wire_Message is
      (D.Encode_Frame (Item.Request) with delta Label => Submit_Frame,
       Flags => D.DP.Protocol_Flags (Item.Buffer));

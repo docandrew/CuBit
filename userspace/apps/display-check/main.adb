@@ -614,6 +614,145 @@ procedure Main is
       if Passed then debugPrint ("DISPLAY-POOL-CHECK: PASS three slots, exact replies, revocation and release" & ASCII.LF); end if;
    end Exercise_Pool;
 
+   --  UI-020: Display lends its scanout buffers (three, GPU outputs only).
+   --  Firmware framebuffer: no capability, a loan is refused as unsupported.
+   --  GPU: refused before the lease, with a foreign layout, or mixed with
+   --  copied slots; three loans, at most one on screen; a loan is the GPU
+   --  driver's grant (no other owner acquires it), and frames that name a
+   --  slot not on screen publish.
+   procedure Exercise_Lending is
+      package P renames CuBit.Display_Pool_Protocol;
+      Lend_Cap : constant Unsigned_64 := 16#0010#;
+      Status : constant Wire_Message := Send ((Label => Code (Get_Status), others => <>));
+      Info : constant Wire_Message := Send ((Label => Code (Get_Information), others => <>));
+      Lends : constant Boolean := Status.Length = 4 and then (Status.Words (1) and Lend_Cap) /= 0;
+      use type DP.Buffer_Layout;
+      Layout : constant DP.Buffer_Layout :=
+        (DP.Positive_Extent (Info.Words (0)), DP.Positive_Extent (Info.Words (1)),
+         DP.Buffer_Pitch (Info.Words (2)));
+      Records : array (P.Buffer_Slot) of MG.Grant_Reference;
+      Loans : array (P.Buffer_Slot) of P.Loan_Decoding;
+      Shown : Natural := 0;
+      Session : Unsigned_64;
+      Mapped : System.Address;
+      function Lend (Slot : P.Buffer_Slot; L : DP.Buffer_Layout) return Wire_Message is
+        (Send (P.Encode_Lend_Request (P.Attachment'(Slot, (Records (Slot), L)))));
+   begin
+      if Presentation_Test_Policy.Rebind_Enabled then return; end if;
+      --  Each slot's own buffer (its rows and damage record page), as for
+      --  Attach_Buffer: a refused loan falls back to copying from it.
+      for B in P.Buffer_Slot loop
+         Raw := syscall (SYSCALL_SBRK, DP.Byte_Length (Layout) + 8192);
+         Check (Raw /= Unsigned_64'Last, "lend record storage");
+         if not Passed then return; end if;
+         MG.Create_Via_Capability (Display_Service,
+           To_Address (Integer_Address ((Raw + 4095) and not Unsigned_64'(4095))),
+           Natural (DP.Byte_Length (Layout) / 4096) + 1, False, Records (B), Ok);
+         Check (Ok, "lend record grant");
+         if not Passed then return; end if;
+      end loop;
+      Wire := Lend (1, Layout);
+      Check (Wire.Label = P.Lend_Buffer and then Wire.Length = 1 and then
+        Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Denied), "lend needs the lease");
+      Expect (Encode_Lease_Request (Acquire_Display), DP.Success, "lend lease");
+      if not Lends then
+         Wire := Lend (1, Layout);
+         Check (Wire.Length = 1 and then Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Unsupported),
+           "firmware framebuffer lends nothing");
+         Expect (Encode_Lease_Request (Release_Display), DP.Success, "lend release");
+         if Passed then debugPrint ("DISPLAY-LEND-CHECK: PASS copy only (firmware framebuffer)" & ASCII.LF); end if;
+         return;
+      end if;
+      Wire := Lend (1, (Layout.Width, Layout.Height, Layout.Pitch + 64));
+      Check (Wire.Length = 1 and then Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Unsupported),
+        "a loan has the output's own layout");
+      for B in P.Buffer_Slot loop
+         Wire := Lend (B, Layout);
+         Loans (B) := P.Decode_Loan (Wire);
+         if B = 1 and then not Loans (B).Valid and then Wire.Length = 1 and then
+           Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Bad_State)
+         then
+            --  The GPU driver may grant only to a process it shares an
+            --  endpoint with (the kernel's grant rule); this client has
+            --  none, so nothing is lent and nothing was registered.
+            Expect (Encode_Lease_Request (Release_Display), DP.Success, "lend release");
+            for R of Records loop MG.Revoke (R, Ok); end loop;
+            if Passed then
+               debugPrint ("DISPLAY-LEND-CHECK: BLOCKED the GPU driver cannot grant to this client" & ASCII.LF);
+            end if;
+            return;
+         end if;
+         Check (Loans (B).Valid and then Loans (B).Value.Buffer = B and then
+           Loans (B).Value.Source.Layout = Layout, "loan reply");
+         if not Passed then return; end if;
+         if Loans (B).Value.On_Screen then Shown := Shown + 1; end if;
+         if B = 1 then
+            Expect (P.Encode (P.Attachment'(2, (Records (2), Layout))), DP.Bad_State,
+              "no copied slot in a lent pool");
+         end if;
+         Check (Lend (B, Layout).Length = 1, "a slot is lent once");
+         --  Only the GPU driver owns it: naming display as the owner fails.
+         MG.Acquire (Loans (B).Value.Source.Grant, Registered_Driver (DRIVER_DISPLAY), 0,
+           DP.Byte_Length (Layout), MG.Write_Access, Mapped, Ok);
+         Check (not Ok, "a loan is not display's grant");
+         MG.Acquire (Loans (B).Value.Source.Grant, Registered_Driver (DRIVER_GPU), 0,
+           DP.Byte_Length (Layout), MG.Write_Access, Mapped, Ok);
+         Check (Ok, "the GPU driver's loan maps writable");
+         if not Passed then return; end if;
+      end loop;
+      Check (Shown <= 1, "at most one lent buffer on screen");
+      Wire := Send (P.Encode_Open);
+      Check (Wire.Label = P.Open_Session and then Wire.Words (0) = 0 and then Wire.Words (1) /= 0,
+        "lent pool session");
+      if not Passed then return; end if;
+      Session := Wire.Words (1);
+      declare
+         Front : P.Buffer_Slot := 1;
+         Next : P.Buffer_Slot;
+      begin
+         for B in P.Buffer_Slot loop
+            if Loans (B).Value.On_Screen then Front := B; end if;
+         end loop;
+         for ID in 1 .. 6 loop
+            --  The slot after the one on screen; the latch makes it the front.
+            Next := (if Front = 3 then 1 else Front + 1);
+            declare
+               C : CompletionEntry := NULL_COMPLETION;
+               Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 5000;
+               Activity : Activity_Result;
+               R : P.Completion_Decoding;
+            begin
+               Frame_Token := Frame_Token + 1;
+               Check (capSubmit (Display_Service, From_Wire
+                 (P.Encode (P.Frame'(Next, (Session, Unsigned_64 (ID), (0, 0, 32, 32))))), Frame_Token),
+                 "lent frame transport");
+               if not Passed then return; end if;
+               loop
+                  exit when Poll_Completion (C'Address) = 1;
+                  Activity := Wait_For_Activity_Until (Deadline);
+                  if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+                     Check (False, "lent completion deadline"); return;
+                  end if;
+               end loop;
+               R := P.Decode_Completion (To_Wire (C.msg));
+               Check (C.valid and then C.token = Frame_Token and then R.Valid and then
+                 R.Value.Buffer = Next and then R.Value.Result.Outcome = Published,
+                 "lent frame published");
+               if not Passed then return; end if;
+               Front := Next;
+            end;
+         end loop;
+      end;
+      Expect (Encode_Lease_Request (Release_Display), DP.Success, "lent pool release");
+      for B in P.Buffer_Slot loop
+         MG.Return_Acquisition (Loans (B).Value.Source.Grant, Ok);
+         Check (Ok, "loan returned");
+         MG.Revoke (Records (B), Ok);
+         Check (Ok, "lend record revoke");
+      end loop;
+      if Passed then debugPrint ("DISPLAY-LEND-CHECK: PASS three loans, owner, layout, mixing, lent frames" & ASCII.LF); end if;
+   end Exercise_Lending;
+
    --  Display planes: two cursors (primary and agent pointer). On virtio-gpu
    --  the primary takes the head's single hardware cursor plane and the
    --  agent pointer is composited; a priority swap waits for a plan frame.
@@ -848,6 +987,7 @@ begin
       Exercise;
       if Passed then Exercise_Outputs; end if;
       if Passed then Exercise_Pool; end if;
+      if Passed then Exercise_Lending; end if;
       if Passed then Exercise_Planes; end if;
    end if;
    if Passed then

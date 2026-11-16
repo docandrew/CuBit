@@ -8363,6 +8363,8 @@ mixer: HDA period IRQ active
     desktop-display)
         required_markers="
 display: gpu not primary, using linear-fb
+display: session copies frames
+desktop: output 0 copies frames to Display
 desktop: wallpaper catalog @nvme:0/Assets/cubit-wallpapers/2/catalog.ccl loaded 1 wallpaper(s)
 desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/2/cubes.qoi size= 2048 x 576
 desktop: icons loaded @nvme:0/Assets/cubit-icons/5/applications.qoi
@@ -8436,6 +8438,7 @@ display: boot output registered
 display: gpu not primary, using linear-fb
 DISPLAY-GRANTS-CHECK: PASS
 DISPLAY-POOL-CHECK: PASS
+DISPLAY-LEND-CHECK: PASS copy only (firmware framebuffer)
 DISPLAY-PLANES-CHECK: PASS composited
 "
         ;;
@@ -8454,6 +8457,7 @@ display: boot output registered
 display: backend virtio-gpu
 display: gpu copy buffer attached
 display: output 0 hardware cursor planes 1
+DISPLAY-LEND-CHECK: 
 DISPLAY-PLANES-CHECK: PASS hardware
 DISPLAY-GRANTS-CHECK: PASS
 "
@@ -8572,14 +8576,14 @@ text: closed
         ;;
     display-latency)
         required_markers="
-display: backend virtio-gpu
+display: backend virtio-gpu (3 buffers)
 calculator: first frame presented
 desktop: latency inputs=
 desktop: latency stage=input_to_ready
 "
         if [ "${CUBIT_DISPLAY_LATENCY_ANIMATION:-0}" = 1 ]; then
             required_markers="
-display: backend virtio-gpu
+display: backend virtio-gpu (3 buffers)
 frame-ticker: first frame presented
 frame-ticker: animating
 desktop: latency inputs=

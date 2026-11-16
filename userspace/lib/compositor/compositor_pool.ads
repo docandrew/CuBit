@@ -37,6 +37,17 @@ package Compositor_Pool with SPARK_Mode, Pure is
        Writer (Open'Result) = None and Ready (Open'Result) = None and
        Displayed (Open'Result) = None and Front (Open'Result) = None and
        Readback (Open'Result) = None;
+   -- UI-020: a fresh pool whose slot B is already on screen (a lent scanout
+   -- buffer the backend shows now): B starts as the front, never a writer
+   -- until a later latch retires it. Only before any other ticket; else faults.
+   procedure Seed_Front (S : in out State; B : Live_Slot)
+     with Pre => Valid (S), Post => Valid (S) and Epoch (S) = Epoch (S'Old) and
+       Writer (S) = Writer (S'Old) and Ready (S) = Ready (S'Old) and
+       Displayed (S) = Displayed (S'Old) and Readback (S) = Readback (S'Old) and
+       Rendering (S) = Rendering (S'Old) and
+       (if not Faulted (S'Old) and Epoch (S'Old) /= 0 and Last_Serial (S'Old) = 0
+        then not Faulted (S) and Front (S) = (B, Epoch (S), 1) and Last_Serial (S) = 1
+        else Faulted (S) and Front (S) = Front (S'Old) and Last_Serial (S) = Last_Serial (S'Old));
    -- Busy returns None unchanged. Exhausted/unopened pools become faulted.
    -- Replace_Ready is opt-in only when newer scene work will be rendered.
    -- If all slots are held, reclaim the quiescent ready frame, never front or

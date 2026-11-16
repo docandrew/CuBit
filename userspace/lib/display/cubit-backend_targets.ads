@@ -1,7 +1,9 @@
 with Interfaces;
 package CuBit.Backend_Targets with SPARK_Mode, Pure is
-   --  Two buffers (virtio-gpu) or three (Intel, DISP-000a). The writable
-   --  target rotates: the buffer after the active (on-screen) one.
+   --  Two or three buffers (virtio-gpu and Intel use three). The writable
+   --  target rotates, the buffer after the active (on-screen) one, unless
+   --  the frame names its own (UI-020: the compositor composes straight
+   --  into lent scanout buffers and chooses which, Prepare_Target).
    Maximum_Buffers : constant := 3;
    subtype Buffer is Natural range 0 .. Maximum_Buffers - 1;
    subtype Buffer_Count is Natural range 2 .. Maximum_Buffers;
@@ -12,13 +14,13 @@ package CuBit.Backend_Targets with SPARK_Mode, Pure is
    function Current (S : State) return Phase;
    function Active (S : State) return Buffer;
    function Count (S : State) return Buffer_Count;
-   function Target (S : State) return Buffer is ((Active (S) + 1) mod Count (S))
-     with Post => Target'Result /= Active (S) and Target'Result < Count (S);
+   function Target (S : State) return Buffer
+     with Post => (if Valid (S) then Target'Result /= Active (S) and Target'Result < Count (S));
    function Token (S : State) return Identifier;
    function Valid (S : State) return Boolean;
    function Writable (S : State; B : Buffer) return Boolean is
      (Current (S) = Preparing and B = Target (S))
-     with Post => (if Writable'Result then B /= Active (S));
+     with Post => (if Writable'Result and Valid (S) then B /= Active (S));
    -- Audited adapter calls only after a successful, quiescent GPU clear.
    -- A failed/uncertain instance cannot be reopened by ordinary clear requests.
    --  The backend's buffer count, before the first clear.
@@ -34,8 +36,17 @@ package CuBit.Backend_Targets with SPARK_Mode, Pure is
    procedure Prepare (S : in out State; Accepted : out Boolean)
      with Pre => Valid (S), Post => Valid (S) and
        Accepted = (Current (S'Old) = Idle) and Active (S) = Active (S'Old) and
-       Token (S) = Token (S'Old) and
-       (if Accepted then Current (S) = Preparing and Writable (S, Target (S)) else S = S'Old);
+       Token (S) = Token (S'Old) and Count (S) = Count (S'Old) and
+       (if Accepted then Current (S) = Preparing and Writable (S, Target (S)) and
+          Target (S) = (Active (S) + 1) mod Count (S)
+        else S = S'Old);
+   --  Prepare with the frame's own target: any buffer but the active one.
+   procedure Prepare_Target (S : in out State; B : Buffer; Accepted : out Boolean)
+     with Pre => Valid (S), Post => Valid (S) and
+       Accepted = (Current (S'Old) = Idle and B < Count (S'Old) and B /= Active (S'Old)) and
+       Active (S) = Active (S'Old) and Token (S) = Token (S'Old) and Count (S) = Count (S'Old) and
+       (if Accepted then Current (S) = Preparing and Target (S) = B and Writable (S, B)
+        else S = S'Old);
    -- Seal before the foreign submission, so neither target is writable during IO.
    procedure Seal (S : in out State; ID : Identifier)
      with Pre => Valid (S), Post => Valid (S) and Active (S) = Active (S'Old) and
@@ -48,7 +59,7 @@ package CuBit.Backend_Targets with SPARK_Mode, Pure is
      with Pre => Valid (S), Post => Valid (S) and
        (if Current (S'Old) = In_Flight and ID = Token (S'Old) and Published then
           Current (S) = Idle and Active (S) = Target (S'Old) and Token (S) = 0 and
-          Count (S) = Count (S'Old)
+          Count (S) = Count (S'Old) and Target (S) = (Active (S) + 1) mod Count (S)
         else Current (S) = Failed and Active (S) = Active (S'Old) and Token (S) = Token (S'Old));
    -- The backend refused the sealed frame with certainty (nothing was armed,
    -- so nothing will be scanned out from it): the stage returns to Idle and
@@ -68,13 +79,16 @@ private
       Front : Buffer := 0;
       Pending : Identifier := 0;
       Buffers : Buffer_Count := 2;
+      Next : Buffer := 1;
    end record;
    function Current (S : State) return Phase is (S.Stage);
    function Active (S : State) return Buffer is (S.Front);
    function Count (S : State) return Buffer_Count is (S.Buffers);
    function Token (S : State) return Identifier is (S.Pending);
+   function Target (S : State) return Buffer is (S.Next);
    function Valid (S : State) return Boolean is
-     (S.Front < S.Buffers and then (if S.Stage = Unconfigured then S.Front = 0) and then
+     (S.Front < S.Buffers and then S.Next < S.Buffers and then S.Next /= S.Front and then
+      (if S.Stage = Unconfigured then S.Front = 0 and S.Next = 1) and then
       (if S.Stage = In_Flight then S.Pending /= 0
        elsif S.Stage /= Failed then S.Pending = 0 else True));
 end CuBit.Backend_Targets;

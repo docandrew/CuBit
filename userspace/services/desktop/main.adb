@@ -242,6 +242,8 @@ procedure main is
    OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Attach_Buffer);
    OP_DISPLAY_CLEAR         : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Clear);
    OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Status);
+   --  Get_Status word 1: Display lends its scanout buffers (UI-020).
+   Display_Lends_Scanout : constant Unsigned_64 := 16#0010#;
    OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Acquire_Display);
    OP_DISPLAY_RELEASE       : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Release_Display);
 
@@ -466,6 +468,11 @@ procedure main is
       Address : System.Address := System.Null_Address;
       Grant : MG.Grant_Reference;
       Granted : Boolean := False;
+      --  UI-020: Address is the backend's scanout buffer, lent (Loan, an
+      --  acquisition returned at close); Allocation and Grant are only the
+      --  slot's one-page damage record.
+      Lent : Boolean := False;
+      Loan : MG.Grant_Reference;
    end record;
    type Target_Array is array (BP.Live_Slot) of Target_Storage;
    type Output_Presentation is record
@@ -476,6 +483,9 @@ procedure main is
       Buffer : System.Address := System.Null_Address;
       Targets : Target_Array;
       Pool : BP.State;
+      --  UI-020: the targets are the scanout buffers themselves (lent):
+      --  a published frame stays on screen until the next one latches.
+      Lent : Boolean := False;
       Repaint : RP.State;
       Started : Unsigned_64 := 0;
       Started_Us : Unsigned_64 := Compositor_Elapsed.Unavailable;
@@ -3656,7 +3666,14 @@ procedure main is
                            end if;
                         end;
                      end if;
-                     BP.Retire_Display (P.Pool, BP.Displayed (P.Pool), CP.Writable (P.Transfer));
+                     --  A lent frame stays on screen, held as the front, until
+                     --  the next one latches (which frees this front).
+                     if P.Lent and then not Dropped and then Reply.Published then
+                        BP.Latch_Display (P.Pool, BP.Displayed (P.Pool), BP.Front (P.Pool),
+                                          CP.Writable (P.Transfer));
+                     else
+                        BP.Retire_Display (P.Pool, BP.Displayed (P.Pool), CP.Writable (P.Transfer));
+                     end if;
                      if not CP.Writable (P.Transfer) or else BP.Faulted (P.Pool) or else
                        P.Dropped_In_Row > Max_Dropped_In_Row
                      then
@@ -3755,8 +3772,9 @@ procedure main is
       if not CP.Can_Attempt (P.Transfer, Attempt_Time) then return; end if;
       if Held = BP.None or else isEmpty (r) then exitCompositor (1); end if;
       --  The frame's damage boxes, after its rows, before Display sees it:
-      --  display.svc copies only these (LAT-002 multi-rect submit).
-      declare
+      --  display.svc copies only these (LAT-002 multi-rect submit). A lent
+      --  frame is not copied: its area is what the backend uploads.
+      if not P.Lent then declare
          Item : FD.Damage;
          Words : FD.Word_Array with Import,
            Address => P.Targets (Held.Buffer).Address +
@@ -3775,7 +3793,7 @@ procedure main is
             end;
          end loop;
          Words := FD.Encode (CP.Token (P.Transfer), Item);
-      end;
+      end; end if;
       declare
          use type CuBit.Display_Planes.Plan_Epoch;
          Item : constant PW.Frame :=
@@ -4019,7 +4037,16 @@ procedure main is
                else
                   copyRegion (damageRectangle (Compositor_Damage.Item (Repair, I)));
                end if;
+               --  A lent target is the scanout buffer: what its repair
+               --  changed must reach the screen too (tests/compositor
+               --  lent-scanout checks this rule).
+               if P.Lent then
+                  Compositor_Damage.Add (P.Frame_Damage, Compositor_Damage.Item (Repair, I));
+               end if;
             end loop;
+         end if;
+         if Bootstrap_CPU and then P.Lent then
+            Compositor_Damage.Add (P.Frame_Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
          end if;
          BP.Start_Render (P.Pool, BP.Writer (P.Pool));
          if Bootstrap_CPU then
@@ -7147,6 +7174,12 @@ procedure main is
       -- Retained slots may contain a prior cursor. Always repaint the current
       -- cursor footprint before saving its clean underlay and blending once.
       addOutputDamage (Areas, C);
+      --  A lent target is the scanout buffer: its repair goes to the screen.
+      if P.Lent then
+         for I in 1 .. Compositor_Damage.Count (Areas) loop
+            Compositor_Damage.Add (P.Damage, Compositor_Damage.Item (Areas, I));
+         end loop;
+      end if;
       repairingTarget := True;
       drawingBackBuffer := True;
       for I in 1 .. Compositor_Damage.Count (Areas) loop
@@ -13107,7 +13140,17 @@ procedure main is
          exitCompositor (1);
       end if;
       if Output_Retirement.Status (R) = Output_Retirement.Storage_Ready then
-         for Target of P.Targets loop releasePixelStorage (Target.Allocation); end loop;
+         for Target of P.Targets loop
+            if Target.Lent then
+               --  The renderer and Display are done with it: give the
+               --  scanout buffer back (the GPU driver keeps showing it).
+               MG.Return_Acquisition (Target.Loan, Confirmed);
+               if not Confirmed then debugPrint ("desktop: lent scanout return failed" & LF); end if;
+               Target.Lent := False;
+               Target.Address := System.Null_Address;
+            end if;
+            releasePixelStorage (Target.Allocation);
+         end loop;
          Output_Retirement.Observe_Storage (R, True);
          debugPrint ("desktop: output readers retired=" & Output_Index'Image (Output) & LF);
       end if;
@@ -13203,6 +13246,7 @@ procedure main is
       Pages, Raw : Unsigned_64;
       Ignored : Unsigned_64;
       Granted : Boolean;
+      On_Screen : BP.Slot := 0;
    begin
       Ok := False;
       if outputDrainRequested then return; end if;
@@ -13244,12 +13288,19 @@ procedure main is
       Layout := (DP.Positive_Extent (Info.words (0)),
                  DP.Positive_Extent (Info.words (1)),
                  DP.Buffer_Pitch (Info.words (2)));
-      --  Each buffer's rows, then the page of its frames' damage records
-      --  (CuBit.Display_Frame_Damage, LAT-002 multi-rect submit).
-      Pages := (DP.Byte_Length (Layout) + 4095) / 4096 + FD.Record_Bytes / 4096;
       P.Pitch := Natural (Layout.Pitch);
       P.Geometry := (Width => DG.Physical_Extent (Layout.Width),
                      Height => DG.Physical_Extent (Layout.Height), others => <>);
+      --  UI-020: where the backend lends its scanout buffers (three: GPU
+      --  outputs), compose straight into them; else (the firmware
+      --  framebuffer) Display copies each frame's damage from ours.
+      Response := callDisplay (OP_DISPLAY_GET_STATUS, Output => Output);
+      P.Lent := Response.tag.label = OP_DISPLAY_GET_STATUS and then Response.tag.length = 4 and then
+        (Response.words (1) and Display_Lends_Scanout) /= 0;
+      --  Each buffer's rows, then the page of its frames' damage records
+      --  (CuBit.Display_Frame_Damage, LAT-002 multi-rect submit). Lent
+      --  slots keep their rows too: a refused first loan copies instead.
+      Pages := (DP.Byte_Length (Layout) + 4095) / 4096 + FD.Record_Bytes / 4096;
       for B in BP.Live_Slot loop
          allocatePixelStorage (Pages, Raw, P.Targets (B).Allocation);
          if Raw = Unsigned_64'Last then closeOutput (Output); return; end if;
@@ -13260,11 +13311,52 @@ procedure main is
          P.Targets (B).Granted := Granted;
          if not Granted then closeOutput (Output); return; end if;
          Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
-           (PW.Encode (PW.Attachment'(B, (P.Targets (B).Grant, Layout))), Output));
+           ((if P.Lent then PW.Encode_Lend_Request (PW.Attachment'(B, (P.Targets (B).Grant, Layout)))
+             else PW.Encode (PW.Attachment'(B, (P.Targets (B).Grant, Layout)))), Output));
          Response.tag := capCall (Desktop_Endpoints.Display_Service, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
-         if Response.tag.label /= PW.Attach_Buffer or else Response.tag.length /= 1 or else
+         if P.Lent then
+            declare
+               Loan : constant PW.Loan_Decoding :=
+                 PW.Decode_Loan (CuBit.Desktop_Messages.To_Wire (Response));
+               Mapped : System.Address;
+               Acquired : Boolean;
+               use type DP.Buffer_Layout;
+            begin
+               if (not Loan.Valid or else Loan.Value.Buffer /= B or else Loan.Value.Source.Layout /= Layout)
+                 and then B = BP.Live_Slot'First
+               then
+                  --  Nothing lent yet: copy frames to Display instead.
+                  debugPrint ("desktop: display lent no scanout buffer; copying frames" & LF);
+                  P.Lent := False;
+                  Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
+                    (PW.Encode (PW.Attachment'(B, (P.Targets (B).Grant, Layout))), Output));
+                  Response.tag := capCall (Desktop_Endpoints.Display_Service, Response,
+                    CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
+                  if Response.tag.label /= PW.Attach_Buffer or else Response.tag.length /= 1 or else
+                    Response.tag.protocol /= 0 or else Response.tag.reserved /= 0 or else Response.words (0) /= 0
+                  then closeOutput (Output); return; end if;
+                  goto Next_Slot;
+               end if;
+               if not Loan.Valid or else Loan.Value.Buffer /= B or else Loan.Value.Source.Layout /= Layout then
+                  debugPrint ("desktop: display lent no scanout buffer for slot" & B'Image & LF);
+                  closeOutput (Output); return;
+               end if;
+               --  Only the GPU driver's own grant, made for this process.
+               MG.Acquire (Loan.Value.Source.Grant, Registered_Driver (DRIVER_GPU), 0,
+                           DP.Byte_Length (Layout), MG.Write_Access, Mapped, Acquired);
+               if not Acquired then
+                  debugPrint ("desktop: lent scanout buffer not acquired, slot" & B'Image & LF);
+                  closeOutput (Output); return;
+               end if;
+               P.Targets (B).Lent := True;
+               P.Targets (B).Loan := Loan.Value.Source.Grant;
+               P.Targets (B).Address := Mapped;
+               if Loan.Value.On_Screen then On_Screen := B; end if;
+            end;
+         elsif Response.tag.label /= PW.Attach_Buffer or else Response.tag.length /= 1 or else
            Response.tag.protocol /= 0 or else Response.tag.reserved /= 0 or else Response.words (0) /= 0
          then closeOutput (Output); return; end if;
+         <<Next_Slot>> null;
       end loop;
       Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output (PW.Encode_Open, Output));
       Response.tag := capCall (Desktop_Endpoints.Display_Service, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
@@ -13275,6 +13367,10 @@ procedure main is
       then closeOutput (Output); return; end if;
       P.Transfer := CP.Open (Response.words (1));
       P.Pool := BP.Open (Response.words (1));
+      --  The lent buffer on screen now is the front until a frame latches.
+      if P.Lent and then On_Screen /= 0 then BP.Seed_Front (P.Pool, On_Screen); end if;
+      debugPrint ("desktop: output" & Output'Image &
+        (if P.Lent then " composes into the lent scanout buffers" else " copies frames to Display") & LF);
       P.Repaint := RP.Open ((0, 0, Natural (Layout.Width), Natural (Layout.Height)));
       declare Writer : BP.Ticket;
       begin

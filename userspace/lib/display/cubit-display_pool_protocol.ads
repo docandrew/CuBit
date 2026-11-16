@@ -8,6 +8,13 @@ package CuBit.Display_Pool_Protocol with Pure, SPARK_Mode is
    Attach_Buffer : constant := 16#0910#;
    Open_Session : constant := 16#0911#;
    Submit_Frame : constant := 16#0912#;
+   -- UI-020: the compositor composes straight into the backend's scanout
+   -- buffers. The request is an attachment of the slot's one-page damage
+   -- record (the client's own grant, as Attach_Buffer); the reply lends
+   -- the backend's buffer for that slot: its grant (owned by the GPU
+   -- driver, made for the requester) and layout, and whether that buffer
+   -- is the one on screen now (never a frame's first target).
+   Lend_Buffer : constant := 16#0913#;
    -- Fixed three-slot registration, immutable throughout a presentation session.
    -- Flags carry the pool-local slot; Reserved retains Display output routing.
    -- Decode only normalized output-zero messages, as the existing protocol does.
@@ -24,6 +31,23 @@ package CuBit.Display_Pool_Protocol with Pure, SPARK_Mode is
    function Encode (Item : Attachment) return D.Wire_Message
      with Pre => D.DP.Valid_Layout (Item.Source.Layout);
    function Decode_Attachment (Wire : D.Wire_Message) return Attachment_Result;
+   function Encode_Lend_Request (Item : Attachment) return D.Wire_Message
+     with Pre => D.DP.Valid_Layout (Item.Source.Layout);
+   function Decode_Lend_Request (Wire : D.Wire_Message) return Attachment_Result;
+   type Loan is record
+      Buffer : Buffer_Slot;
+      Source : D.Attachment_Request;
+      On_Screen : Boolean;
+   end record;
+   type Loan_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Loan;
+         when False => null;
+      end case;
+   end record;
+   function Encode (Item : Loan) return D.Wire_Message
+     with Pre => D.DP.Valid_Layout (Item.Source.Layout);
+   function Decode_Loan (Wire : D.Wire_Message) return Loan_Decoding;
    function Encode_Open return D.Wire_Message is
      (Label => Open_Session, Length => 4, others => <>);
    function Valid_Open (Wire : D.Wire_Message) return Boolean is (Wire = Encode_Open);
