@@ -16,7 +16,7 @@
  *     before it (a ring), so frees cross threads.
  *
  * First two checks (a FAIL line ends the run as failed):
- *   reserve: RESERVE_OWNED_MEMORY's alignment argument, the raw syscall:
+ *   reserve: RESERVE_OWNED_REGION's alignment argument, the raw syscall:
  *     32 MiB at 32 MiB lands on a 32 MiB boundary, 0 still means a page,
  *     a non-power-of-two alignment is refused.
  *   stress: generations of threads that allocate mixed sizes, fill them
@@ -46,18 +46,19 @@ static uint64_t kernel_call(uint64_t number, uint64_t a0, uint64_t a1) {
                      : "rcx", "r11", "memory");
     return result;
 }
-enum { RESERVE_OWNED_MEMORY = 123, RELEASE_OWNED_RESERVATION = 125 };
+/* Owned regions (kernel Process.Owned_Memory, ABI-002). */
+enum { RESERVE_OWNED_REGION = 146, RELEASE_OWNED_REGION = 148 };
 
 static int reserve_check(void) {
     const uint64_t span = 32u << 20;
     char line[160];
-    uint64_t a = kernel_call(RESERVE_OWNED_MEMORY, span, span);
-    uint64_t b = kernel_call(RESERVE_OWNED_MEMORY, 4096, 0);
-    uint64_t c = kernel_call(RESERVE_OWNED_MEMORY, span, 3 * 4096);
-    uint64_t d = kernel_call(RESERVE_OWNED_MEMORY, 4096, 1ull << 31);
+    uint64_t a = kernel_call(RESERVE_OWNED_REGION, span, span);
+    uint64_t b = kernel_call(RESERVE_OWNED_REGION, 4096, 0);
+    uint64_t c = kernel_call(RESERVE_OWNED_REGION, span, 3 * 4096);
+    uint64_t d = kernel_call(RESERVE_OWNED_REGION, 4096, 1ull << 31);
     int ok = a != 0 && a % span == 0 && b != 0 && b % 4096 == 0 && c == 0 && d == 0;
-    if (a) kernel_call(RELEASE_OWNED_RESERVATION, a, span);
-    if (b) kernel_call(RELEASE_OWNED_RESERVATION, b, 4096);
+    if (a) kernel_call(RELEASE_OWNED_REGION, a, span);
+    if (b) kernel_call(RELEASE_OWNED_REGION, b, 4096);
     snprintf(line, sizeof line, "cualloc-bench: reserve %s aligned=%#llx page=%#llx odd=%#llx huge=%#llx\n",
              ok ? "ok" : "FAIL", (unsigned long long)a, (unsigned long long)b, (unsigned long long)c,
              (unsigned long long)d);

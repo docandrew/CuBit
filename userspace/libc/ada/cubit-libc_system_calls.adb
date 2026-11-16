@@ -330,17 +330,72 @@ package body CuBit.Libc_System_Calls is
       return To_Long (Wanted);
    end Grow_Break;
 
+   --  mmap's memory is one owned region (kernel Process.Owned_Memory,
+   --  ABI-002) per mapping: Length rounded up to pages, committed whole.
+   function Region_Bytes (Length : Unsigned_64) return Unsigned_64 is
+     (if Length = 0 or else Length > K.Maximum_Owned_Region_Bytes then 0
+      else (Length + Page_Mask) and not Page_Mask);
+
+   function Change_Range (Base, Length : Unsigned_64;
+                          Operation : K.Owned_Range_Operation) return Boolean;
+   function Change_Range (Base, Length : Unsigned_64;
+                          Operation : K.Owned_Range_Operation) return Boolean is
+     (Region_Bytes (Length) /= 0 and then
+      Kernel (K.Change_Owned_Range, Base, Region_Bytes (Length),
+              K.Owned_Range_Operation'Pos (Operation)) = 0);
+
+   function Release_Region (Base, Length : Unsigned_64) return Boolean;
+   function Release_Region (Base, Length : Unsigned_64) return Boolean is
+     (Region_Bytes (Length) /= 0 and then
+      Kernel (K.Release_Owned_Region, Base, Region_Bytes (Length)) = 0);
+
+   --  A region committed whole, or 0 (nothing kept).
+   function Allocate_Region (Length : Unsigned_64) return Unsigned_64;
+   function Allocate_Region (Length : Unsigned_64) return Unsigned_64 is
+      Size : constant Unsigned_64 := Region_Bytes (Length);
+      Base : Unsigned_64;
+      Done, Step : Unsigned_64 := 0;
+   begin
+      if Size = 0 then
+         return 0;
+      end if;
+      Base := Kernel (K.Reserve_Owned_Region, Size, 0);
+      if Base = 0 or else Base = K.Failed then
+         return 0;
+      end if;
+      while Done < Size loop
+         Step := Unsigned_64'Min (Size - Done, K.Maximum_Owned_Commit_Bytes);
+         if not Change_Range (Base + Done, Step, K.Commit) then
+            declare
+               Ignore : constant Boolean := Release_Region (Base, Size);
+            begin
+               return 0;
+            end;
+         end if;
+         Done := Done + Step;
+      end loop;
+      return Base;
+   end Allocate_Region;
+
+   --  The kernel access a supported mprotect value names (owned memory is
+   --  never executable).
+   function Access_Operation (Protection : long) return K.Owned_Range_Operation is
+     (case Protection is
+        when PROT_NONE => K.Make_Inaccessible,
+        when PROT_READ => K.Make_Read_Only,
+        when others    => K.Make_Read_Write)
+   with Pre => Protection in PROT_NONE | PROT_READ | PROT_READ + PROT_WRITE;
+
    function Protect_Or_Release (Base : Unsigned_64; Length : Unsigned_64;
                                 Protection : long) return long;
    function Protect_Or_Release (Base : Unsigned_64; Length : Unsigned_64;
                                 Protection : long) return long is
    begin
       if Protection /= PROT_READ + PROT_WRITE
-        and then Kernel (K.Protect_Owned_Memory, Base, Length, Bits (Protection)) /= 0
+        and then not Change_Range (Base, Length, Access_Operation (Protection))
       then
          declare
-            Ignore : constant Unsigned_64 :=
-              Kernel (K.Release_Owned_Memory, Base, Length);
+            Ignore : constant Boolean := Release_Region (Base, Length);
          begin
             return Error (ENOMEM);
          end;
@@ -366,11 +421,9 @@ package body CuBit.Libc_System_Calls is
         or else (Bits (Flags) and not Allowed_Flags) /= 0
       then
          return Error (ENOTSUP);
-      elsif Length > K.Maximum_Owned_Bytes then
-         return Error (ENOMEM);
       end if;
-      Base := Kernel (K.Allocate_Owned_Memory, Length);
-      if Base = 0 or else Base = K.Failed then
+      Base := Allocate_Region (Length);
+      if Base = 0 then
          return Error (ENOMEM);
       end if;
       if not Has (Flags, MAP_ANONYMOUS) then
@@ -378,16 +431,16 @@ package body CuBit.Libc_System_Calls is
          --  back), from a page-aligned offset.
          declare
             Got : long;
-            Ignore : Unsigned_64;
+            Ignore : Boolean;
          begin
             if (Bits (Offset) and Page_Mask) /= 0 then
-               Ignore := Kernel (K.Release_Owned_Memory, Base, Length);
+               Ignore := Release_Region (Base, Length);
                return Error (EINVAL);
             end if;
             Got := Fd_Pread (Fd, To_Address (Integer_Address (Base)),
                              size_t (Length), Offset);
             if Got < 0 then
-               Ignore := Kernel (K.Release_Owned_Memory, Base, Length);
+               Ignore := Release_Region (Base, Length);
                return Got;
             end if;
          end;
@@ -979,12 +1032,14 @@ package body CuBit.Libc_System_Calls is
          when SYS_mmap =>
             return Map (Bits (B), C, D, Low (E), F);
          when SYS_munmap =>
-            return (if Kernel (K.Release_Owned_Memory, Bits (A), Bits (B)) = 0
-                    then 0 else Error (EINVAL));
+            --  A whole mapping only: its region goes back.
+            return (if Release_Region (Bits (A), Bits (B)) then 0 else Error (EINVAL));
          when SYS_madvise =>
             --  Advisory no-ops only. In particular no fork-related mapping
             --  semantics: AWS-LC probes support with invalid advice.
-            --  DONTNEED does not reclaim backing yet.
+            --  DONTNEED does not reclaim backing: the kernel's decommit
+            --  makes a range fault until it is committed again, and Linux
+            --  programs expect to touch it at once (zero-filled).
             return (if C in MADV_NORMAL | MADV_RANDOM | MADV_SEQUENTIAL
                           | MADV_WILLNEED | MADV_DONTNEED | MADV_FREE
                     then 0 else Error (EINVAL));
@@ -992,7 +1047,7 @@ package body CuBit.Libc_System_Calls is
             if C not in PROT_NONE | PROT_READ | PROT_READ + PROT_WRITE then
                return Error (ENOSYS);
             end if;
-            return (if Kernel (K.Protect_Owned_Memory, Bits (A), Bits (B), Bits (C)) = 0
+            return (if Change_Range (Bits (A), Bits (B), Access_Operation (C))
                     then 0 else Error (EINVAL));
          when SYS_mremap =>
             return Error (ENOMEM);                 --  musl falls back to copying

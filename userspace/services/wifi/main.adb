@@ -32,6 +32,7 @@ with CuBit.Handles;
 with CuBit.Handles.IPC;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.Owned_Reservations;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Granted_Logs;
@@ -707,9 +708,8 @@ procedure Main is
          Answer (From, REPLY_ERR);
          return;
       end if;
-      Base := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Allocate_Owned_Memory, Unsigned_64 (D.Grant_Bytes));
-      if Base = CuBit.Kernel_ABI.Failed then
+      Base := CuBit.Owned_Reservations.Allocate (Unsigned_64 (D.Grant_Bytes));
+      if Base = 0 then
          Answer (From, REPLY_ERR);
          return;
       end if;

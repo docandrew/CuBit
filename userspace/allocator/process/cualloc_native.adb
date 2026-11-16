@@ -6,18 +6,27 @@ with CuBit.Kernel_Calls;
 package body CuAlloc_Native is
    package ABI renames CuBit.Kernel_ABI;
 
-   --  RESERVE_OWNED_MEMORY (bytes, alignment): the kernel places the
-   --  reservation at a multiple of the alignment.
+   --  The kernel's owned regions (ABI-002), one call each. Reserve: the
+   --  region's base is a multiple of the alignment. Commit: CuAlloc asks
+   --  for the next prefix of a region, [Base + Offset, + Bytes), fresh
+   --  zero pages. Release: the whole region with everything committed.
    function Reserve (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
-     (CuBit.Kernel_Calls.Call (ABI.Reserve_Owned_Memory, Bytes, Alignment));
+     (CuBit.Kernel_Calls.Call (ABI.Reserve_Owned_Region, Bytes, Alignment));
    function Commit (Base, Offset, Bytes : Unsigned_64) return Boolean is
-     (CuBit.Kernel_Calls.Call (ABI.Commit_Owned_Memory_Prefix, Base, Offset, Bytes) = 0);
+     (CuBit.Kernel_Calls.Call
+        (ABI.Change_Owned_Range, Base + Offset, Bytes,
+         ABI.Owned_Range_Operation'Pos (ABI.Commit)) = 0);
    function Release (Base, Bytes : Unsigned_64) return Boolean is
-     (CuBit.Kernel_Calls.Call (ABI.Release_Owned_Reservation, Base, Bytes) = 0);
+     (CuBit.Kernel_Calls.Call (ABI.Release_Owned_Region, Base, Bytes) = 0);
    --  CuBit's thread exits call cualloc_thread_exit themselves.
    procedure Attached is null;
 
    package Heap is new CuAlloc (Reserve, Commit, Release, ABI.Maximum_Owned_Commit_Bytes, Attached);
+
+   function Decommit (Address, Bytes : Unsigned_64) return Boolean is
+     (CuBit.Kernel_Calls.Call
+        (ABI.Change_Owned_Range, Address, Bytes,
+         ABI.Owned_Range_Operation'Pos (ABI.Decommit)) = 0);
 
    function Allocate (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
      (Heap.Allocate (Bytes, Alignment));

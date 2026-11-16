@@ -6,6 +6,7 @@ with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Messages;
 with CuBit.Monotonic;
+with CuBit.Owned_Reservations;
 with CuBit.Thread_Areas;
 with Charts_Format;
 with Dash_Feeds;
@@ -19,8 +20,6 @@ package body Dash_Runner is
    package ABI renames CuBit.Kernel_ABI;
    use type Dash_Feeds.Status;
 
-   --  PROTECT_OWNED_MEMORY: no access (the stack's guard page).
-   Inaccessible : constant := 0;
    --  A SysV function expects RSP + 8 to be 16-byte aligned at entry.
    Stack_Alignment : constant := 16;
    Return_Address_Bytes : constant := 8;
@@ -289,13 +288,15 @@ package body Dash_Runner is
       Stack, Area : Unsigned_64;
    begin
       Started := False;
-      Stack := CuBit.Kernel_Calls.Call (ABI.Allocate_Owned_Memory, Data_Stack_Bytes);
-      if Stack = 0 or else Stack = ABI.Failed then
+      Stack := CuBit.Owned_Reservations.Reserve (Data_Stack_Bytes);
+      if Stack = 0 then
          return;
       end if;
-      --  A guard page at the bottom: an overflow faults instead of writing
-      --  over a neighbour.
-      if CuBit.Kernel_Calls.Call (ABI.Protect_Owned_Memory, Stack, ABI.Page_Bytes, Inaccessible) /= 0 then
+      --  A guard page at the bottom: it is never committed, so an overflow
+      --  faults instead of writing over a neighbour.
+      if not CuBit.Owned_Reservations.Commit_Steps
+           (Stack + ABI.Page_Bytes, Data_Stack_Bytes - ABI.Page_Bytes)
+      then
          return;
       end if;
       Area := CuBit.Thread_Areas.Create;

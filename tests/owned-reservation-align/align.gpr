@@ -1,4 +1,4 @@
---  Owned_Reservation_Policy's alignment rules (RESERVE_OWNED_MEMORY's
+--  Owned_Reservation_Policy's alignment rules (RESERVE_OWNED_REGION's
 --  alignment argument): hosted checks and the SPARK proof (run.sh).
 project Align is
    for Languages use ("Ada");

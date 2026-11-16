@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Owned_Reservations;
 with CuBit.Desktop_Messages;
 with UI_Desktop_Service;
 package body Client_Frame_Buffer is
@@ -38,7 +39,7 @@ package body Client_Frame_Buffer is
       if B.Policy.Mode /= P.Empty or else Bytes = 0 then
          return;
       end if;
-      B.Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Unsigned_64 (Bytes));
+      B.Base := CuBit.Owned_Reservations.Allocate (Unsigned_64 (Bytes));
       if B.Base = 0 then return; end if;
       B.Bytes := ((Bytes - 1) / 4096 + 1) * 4096;
       P.Allocate (B.Policy);
@@ -67,7 +68,8 @@ package body Client_Frame_Buffer is
          P.Retire (B.Policy, P.Identity (Result.Epoch), P.Identity (Result.Ticket), True);
       end if;
       if B.Policy.Mode = P.Sealed then
-         Protection_OK := syscall (SYSCALL_PROTECT_OWNED_MEMORY, B.Base, Unsigned_64 (B.Bytes), 3) = 0;
+         Protection_OK := CuBit.Owned_Reservations.Change
+           (B.Base, Unsigned_64 (B.Bytes), CuBit.Owned_Reservations.Make_Read_Write);
          P.Reopen (B.Policy, Protection_OK);
       end if;
       Ready := B.Policy.Mode = P.Writable;
@@ -82,7 +84,8 @@ package body Client_Frame_Buffer is
    begin
       Accepted := False;
       if B.Policy.Mode /= P.Writable or else not DP.Valid_Damage (Area) then return; end if;
-      Protection_OK := syscall (SYSCALL_PROTECT_OWNED_MEMORY, B.Base, Unsigned_64 (B.Bytes), 1) = 0;
+      Protection_OK := CuBit.Owned_Reservations.Change
+        (B.Base, Unsigned_64 (B.Bytes), CuBit.Owned_Reservations.Make_Read_Only);
       P.Seal (B.Policy, Protection_OK);
       if not Protection_OK then return; end if;
       Receipt (Pub.Encode_Stage ((Surface, Epoch, B.Grant)), Pub.Stage_Label, Staged, Canonical);
@@ -231,7 +234,7 @@ package body Client_Frame_Buffer is
          if Retired then B.Has_Grant := False; end if;
       end if;
       if Retired then
-         Released := syscall (SYSCALL_RELEASE_OWNED_MEMORY, B.Base, Unsigned_64 (B.Bytes)) = 0;
+         Released := CuBit.Owned_Reservations.Free (B.Base, Unsigned_64 (B.Bytes));
       end if;
       P.Release (B.Policy, Retired, Released);
       if Released then

@@ -1,11 +1,15 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
--- Disposable startup fixture. Uses only caller-owned mapping syscalls.
+with CuBit.Owned_Reservations;
+-- Disposable startup fixture. Uses only caller-owned mapping syscalls
+-- (owned regions, ABI-002).
 procedure Native_Records_Check is
    Addresses : array (1 .. 8193) of Unsigned_64 := (others => 0);
    Ignore, Base, Other : Unsigned_64;
-   Rejected : constant Unsigned_64 := Unsigned_64'Last;
+   package Owned renames CuBit.Owned_Reservations;
+   function Allocate (Bytes : Unsigned_64) return Unsigned_64 renames Owned.Allocate;
+   function Free (Base, Bytes : Unsigned_64) return Boolean renames Owned.Free;
    procedure Check (OK : Boolean; Detail : String) is
    begin
       if not OK then
@@ -27,38 +31,38 @@ begin
       declare
          Size : constant Unsigned_64 := 20 * 1024 * 1024;
       begin
-         Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Size);
+         Base := Allocate (Size);
          Check (Base /= 0, "20 MiB allocation");
          for Page in 0 .. Size / 4096 - 1 loop
             Sentinel (Base + Page * 4096, 0, False);
             Sentinel (Base + Page * 4096, Page + 1, True);
          end loop;
-         Check (syscall (SYSCALL_PROTECT_OWNED_MEMORY, Base, Size, 1) = 0, "large read-only");
+         Check (Owned.Change (Base, Size, Owned.Make_Read_Only), "large read-only");
          for Page in 0 .. Size / 4096 - 1 loop
             Sentinel (Base + Page * 4096, Page + 1, False);
          end loop;
-         Check (syscall (SYSCALL_PROTECT_OWNED_MEMORY, Base + 16 * 1024 * 1024 - 4096, 8192, 3) = 0, "boundary write protection");
+         Check (Owned.Change (Base + 16 * 1024 * 1024 - 4096, 8192, Owned.Make_Read_Write), "boundary write protection");
          Sentinel (Base + 16 * 1024 * 1024, 42, True);
-         Check (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Base, Size) = 0, "large release");
-         Check (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Base, Size) = Rejected, "large duplicate release");
+         Check (Free (Base, Size), "large release");
+         Check (not Free (Base, Size), "large duplicate release");
       end;
    end loop;
-   Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 256 * 1024 * 1024);
+   Base := Allocate (256 * 1024 * 1024);
    Check (Base /= 0, "maximum mapping size");
    Sentinel (Base, 0, False);
    Sentinel (Base + 256 * 1024 * 1024 - 8, 0, False);
    Sentinel (Base + 256 * 1024 * 1024 - 8, 99, True);
-   Check (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Base, 256 * 1024 * 1024) = 0, "maximum mapping release");
-   Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 16 * 1024 * 1024 + 1);
+   Check (Free (Base, 256 * 1024 * 1024), "maximum mapping release");
+   Base := Allocate (16 * 1024 * 1024 + 1);
    Check (Base /= 0, "rounding across old bound");
    Sentinel (Base + 16 * 1024 * 1024, 0, False);
-   Check (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Base, 16 * 1024 * 1024 + 1) = 0, "rounded large release");
-   Check (syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 256 * 1024 * 1024 + 1) = 0, "above mapping limit");
-   Check (syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Unsigned_64'Last) = 0, "mapping size overflow");
+   Check (Free (Base, 16 * 1024 * 1024 + 1), "rounded large release");
+   Check (Owned.Reserve (2**31 + 4096) = 0, "above region limit");
+   Check (Allocate (Unsigned_64'Last) = 0, "mapping size overflow");
    debugPrint ("TEST: PASS large owned mappings lifecycle" & ASCII.LF);
    for Round in 1 .. 2 loop
       for I in Addresses'Range loop
-         Addresses(I) := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+         Addresses(I) := Allocate (4096);
          Check (Addresses(I) /= 0, "8193 simultaneous allocations");
          Sentinel (Addresses(I), 0, False);
          Sentinel (Addresses(I), Unsigned_64(I) + Unsigned_64(Round)*65536, True);
@@ -67,12 +71,12 @@ begin
       for I in Addresses'Range loop
          Sentinel (Addresses(I), Unsigned_64(I) + Unsigned_64(Round)*65536, False);
          if I mod 2 = 1 then
-            Check (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Addresses(I), 4096) = 0, "release holes");
+            Check (Free (Addresses(I), 4096), "release holes");
          end if;
       end loop;
       for I in Addresses'Range loop
          if I mod 2 = 1 then
-            Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+            Base := Allocate (4096);
             Check (Base = Addresses(I), "first-fit hole reuse");
             Sentinel (Base, 0, False);
             Sentinel (Base, Unsigned_64(I)+Unsigned_64(Round)*65536, True);
@@ -80,33 +84,33 @@ begin
       end loop;
       for I in reverse Addresses'Range loop
          Sentinel (Addresses(I), Unsigned_64(I)+Unsigned_64(Round)*65536, False);
-         Check (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Addresses(I), 4096)=0, "full release");
+         Check (Free (Addresses(I), 4096), "full release");
       end loop;
-      Check (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Addresses(1), 4096)=Rejected, "duplicate release");
+      Check (not Free (Addresses(1), 4096), "duplicate release");
    end loop;
    for Round in 1 .. 8 loop
-      Base := syscall (SYSCALL_RESERVE_OWNED_MEMORY, 2**31);
+      Base := Owned.Reserve (2**31);
       Check (Base/=0, "reserve virtual capacity");
-      Check (syscall (SYSCALL_COMMIT_OWNED_MEMORY_PREFIX,Base,4096,4096)=Rejected,"skip prefix");
-      Check (syscall (SYSCALL_COMMIT_OWNED_MEMORY_PREFIX,Base,0,4096)=0,"first chunk");
+      Check (not Owned.Change (Base + 2**31, 4096, Owned.Commit), "past the region");
+      Check (Owned.Change (Base, 4096, Owned.Commit), "first run");
       Sentinel(Base,Unsigned_64(Round),True);
-      Other := syscall(SYSCALL_ALLOCATE_OWNED_MEMORY,4096);
+      Other := Allocate (4096);
       Check(Other/=0 and then (Other<Base or Other>=Base+2**31),"reservation excludes mapping");
       Sentinel(Other,1234,True);
-      Check(syscall(SYSCALL_COMMIT_OWNED_MEMORY_PREFIX,Base,4096,8192)=0,"second chunk");
+      Check (Owned.Change (Base + 4096, 8192, Owned.Commit), "second run");
       Sentinel(Base,Unsigned_64(Round),False);
       Sentinel(Base+8192,0,False);
-      Check(syscall(SYSCALL_PROTECT_OWNED_MEMORY,Base,4096,1)=0,"read-only chunk");
+      Check (Owned.Change (Base, 4096, Owned.Make_Read_Only), "read-only run");
       Sentinel(Base,Unsigned_64(Round),False);
-      Check(syscall(SYSCALL_PROTECT_OWNED_MEMORY,Base,4096,3)=0,"restore write access");
-      Check(syscall(SYSCALL_RELEASE_OWNED_MEMORY,Base,4096)=Rejected,"cannot release chunk directly");
-      Check(syscall(SYSCALL_RELEASE_OWNED_RESERVATION,Base,2**31)=0,"reservation retirement");
+      Check (Owned.Change (Base, 4096, Owned.Make_Read_Write), "restore write access");
+      Check (not Owned.Release (Base, 4096), "cannot release a run directly");
+      Check (Owned.Release (Base, 2**31), "region retirement");
       Sentinel(Other,1234,False);
-      Check(syscall(SYSCALL_RELEASE_OWNED_MEMORY,Other,4096)=0,"unrelated release");
+      Check (Free (Other, 4096), "unrelated release");
    end loop;
    debugPrint("TEST: PASS native owned records 8193 pages twice, hole reuse, protection, interleaved reservation retirement" & ASCII.LF);
    for I in 1 .. 64 loop
-      Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+      Base := Allocate (4096);
       Check (Base /= 0, "exit cleanup allocation");
       Sentinel (Base, Unsigned_64(I), True);
    end loop;

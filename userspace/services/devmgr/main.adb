@@ -6979,7 +6979,7 @@ begin
             Done := Seed_First;
             while Done < Seed_Limit loop
                Count := Unsigned_64'Min (MAX_MAP_INTO_PAGES_PER_CALL, Seed_Limit - Done);
-               exit when syscall (SYSCALL_RELEASE_OWNED_MEMORY,
+               exit when syscall (SYSCALL_RELEASE_OWNED_REGION,
                                   INITRD_BASE + Done * Page_Bytes,
                                   Count * Page_Bytes) /= 0;
                Done := Done + Count;

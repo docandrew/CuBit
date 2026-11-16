@@ -1,6 +1,7 @@
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Owned_Reservations;
 with CuBit.Memory_Grants;
 with CuBit.Desktop_Messages;
 with CuBit.Desktop_Protocol;
@@ -33,7 +34,7 @@ package body CuBit.UI.Clipboard is
       Created : Boolean := False;
    begin
       if State = Unset then
-         Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, P.Maximum_Payload);
+         Base := CuBit.Owned_Reservations.Allocate (P.Maximum_Payload);
          if Base /= 0 and then Base mod P.Page_Bytes = 0 and then
            Base <= Unsigned_64'Last - P.Maximum_Payload
          then

@@ -88,6 +88,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Owned_Reservations;
 with CuBit.System_Facts;
 with CuBit.CPU_Times;
 with CuBit.CPU_Load;
@@ -13485,7 +13486,7 @@ procedure main is
             debugPrint ("desktop: pixel storage budget exhausted" & LF);
             return;
          end if;
-         Raw := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Unsigned_64 (Bytes));
+         Raw := CuBit.Owned_Reservations.Allocate (Unsigned_64 (Bytes));
          -- Zero may conceal a quarantined allocation prefix. Retain its charge
          -- and descriptor; never infer rollback from the address sentinel.
          PS.Allocated (pixelStorage, Ticket, Raw /= 0 and Raw mod 4096 = 0);
@@ -13507,7 +13508,7 @@ procedure main is
 
    -- Call only after Mesa imports and every external grant reader retire.
    procedure releasePixelStorage (Allocation : in out PS.Ticket) is
-      Result : Unsigned_64;
+      Released : Boolean;
       Bytes : Positive;
    begin
       if Allocation = PS.No_Ticket then return; end if;
@@ -13520,10 +13521,10 @@ procedure main is
       end if;
       Bytes := PS.Bytes (pixelStorage, Allocation);
       PS.Begin_Release (pixelStorage, Allocation, Readers_Retired => True);
-      Result := syscall (SYSCALL_RELEASE_OWNED_MEMORY,
-        pixelAllocations (PS.Index (Allocation)).Address, Unsigned_64 (Bytes));
-      PS.Released (pixelStorage, Allocation, Confirmed => Result = 0);
-      if Result /= 0 then
+      Released := CuBit.Owned_Reservations.Free
+        (pixelAllocations (PS.Index (Allocation)).Address, Unsigned_64 (Bytes));
+      PS.Released (pixelStorage, Allocation, Confirmed => Released);
+      if not Released then
          debugPrint ("desktop: pixel storage release uncertain" & LF);
          exitCompositor (1);
       end if;

@@ -1,7 +1,6 @@
 with Owned_Record_Tables;
 with Capabilities;
 with Owned_Memory_Layout;
-with Owned_Reservation_Policy;
 with BuddyAllocator;
 with Heap_Admission;
 with Region_Release;
@@ -10,23 +9,33 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Spinlocks;
 with Virtmem.Regions;
 package body Process.Owned_Memory is
+   package Policy renames Owned_Reservation_Policy;
    use type FrameLists.NodePtr;
    use type Capabilities.Generation;
+   use type Policy.Page_Access;
+
+   -- Building: a run being backed by a commit, or a record reserved for
+   -- the upper part of a decommit's middle cut. Quarantined: a page-table
+   -- retirement failed part way; the run keeps its frames (and the frame
+   -- list keeps them for process exit) and is never retried piecemeal.
    type Phase is (Empty, Building, Live, Quarantined);
-   type Entry_Kind is (Buffer, Reservation, Chunk);
+   -- A Region is reserved address space (no RAM). A Run is a committed,
+   -- page-backed part of one region: Count pages from Base, whose frames
+   -- are consecutive in the owner's frame list, the highest page first
+   -- (tryAddPage prepends, and a commit backs its pages upward), so
+   -- First_Node is the highest page's frame and Last_Node the lowest's.
+   -- Runs of a region never overlap (a commit is refused over any run).
+   type Entry_Kind is (Region, Run);
    subtype Slot is Positive range 1 .. 65_536;
    type Entry_Record is record
       Status : Phase := Empty;
-      Kind : Entry_Kind := Buffer;
-      Parent : Natural range 0 .. Slot'Last := 0;
-      Committed : Unsigned_64 := 0;
+      Kind : Entry_Kind := Region;
+      Parent : Natural range 0 .. Slot'Last := 0;    -- a run's region
       Owner : ProcessID := NO_PROCESS;
       Generation : Capabilities.Generation := 0;
-      Base, Bytes : Unsigned_64 := 0;
+      Base, Bytes : Unsigned_64 := 0;                -- a run's Bytes: Count pages
       Count : Natural := 0;
       First_Node, Last_Node : FrameLists.NodePtr := null;
-      Detached : Boolean := False;
-      Remaining : FrameLists.List := (null, null, 0, 0);
    end record;
    -- Process-local metadata ceilings; backing is allocated on demand and
    -- returned when its block becomes empty. No shared fixed record pool.
@@ -45,13 +54,11 @@ package body Process.Owned_Memory is
    procedure Unlock is
    begin Spinlocks.exitCriticalSection (Registry_Lock); end Unlock;
 
-   function Rounded (Bytes : Unsigned_64) return Unsigned_64 is
-     (if Bytes = 0 or Bytes > Maximum_Bytes then 0
-      else ((Bytes + 4095) / 4096) * 4096);
+   Page : constant Unsigned_64 := Policy.Page_Bytes;
+   function Bytes_Of (Pages : Natural) return Unsigned_64 is (Unsigned_64 (Pages) * Page);
 
    function Physical_Conflict (Base, Bytes : Unsigned_64) return Boolean is
       Node : FrameLists.NodePtr;
-      Count : Natural;
    begin
       if Bytes = 0 or else Bytes > Unsigned_64'Last - Base then return True; end if;
       for PID in ProcessID loop
@@ -59,15 +66,14 @@ package body Process.Owned_Memory is
         declare
          Item : Entry_Record renames Entries(PID, Index).Value.all;
         begin
-         if Item.Status /= Empty then
-            Node := (if Item.Detached then Item.Remaining.head else Item.First_Node);
-            Count := (if Item.Detached then Item.Remaining.length else Item.Count);
-            for I in 1 .. Count loop
+         if Item.Status /= Empty and then Item.Kind = Run then
+            Node := Item.First_Node;
+            for I in 1 .. Item.Count loop
                if Node = null then return True; end if;
                declare
                   Frame : constant Unsigned_64 := Unsigned_64 (Node.element);
                begin
-                  if Base < Frame + 4096 and then Frame < Base + Bytes then return True; end if;
+                  if Base < Frame + Page and then Frame < Base + Bytes then return True; end if;
                end;
                Node := Node.next;
             end loop;
@@ -78,13 +84,13 @@ package body Process.Owned_Memory is
       return False;
    end Physical_Conflict;
 
-   -- All pages of this allocation were added consecutively under the address
-   -- lock. Later allocations prepend nodes but cannot interleave this range.
+   -- The run's frames are still a contiguous segment of the owner's frame
+   -- list, in descending address order, and each is what its page maps.
    function Inventory_Valid (Item : Entry_Record) return Boolean is
       Node : FrameLists.NodePtr := proctab(Item.Owner).frames.head;
       Position : Natural := 0;
    begin
-      if Item.Detached or Item.Count = 0 or Item.First_Node = null then return False; end if;
+      if Item.Kind /= Run or Item.Count = 0 or Item.First_Node = null then return False; end if;
       for I in 1 .. proctab(Item.Owner).frames.length loop
          if Node = Item.First_Node then Position := I; exit; end if;
          Node := Node.next;
@@ -102,26 +108,49 @@ package body Process.Owned_Memory is
       return False;
    end Inventory_Valid;
 
-   procedure Retire (PID : ProcessID; Index : Slot; Success : out Boolean) is
+   -- Policy.Run_Split in the frame-list's terms (a run's Count).
+   type Run_Cut is record
+      Lower, Dropped, Upper : Natural := 0;
+   end record;
+   function Cut_Of (Item : Entry_Record; Address, Bytes : Unsigned_64) return Run_Cut is
+      Split : constant Policy.Run_Split :=
+        Policy.Split (Item.Base, Policy.Page_Count (Item.Count), Address, Bytes);
+   begin
+      return (Natural (Split.Lower), Natural (Split.Dropped), Natural (Split.Upper));
+   end Cut_Of;
+
+   -- Drop the Cut.Dropped pages of run Index (Policy.Split), keeping its
+   -- Cut.Lower and Cut.Upper pages as runs. Order: every PTE removed, then
+   -- the TLBs invalidated, then the frames detached from the frame list
+   -- and freed (Region_Release); freeing returns each frame's quota charge,
+   -- deferred while a grant pins it. The run keeps the lower part (or the
+   -- upper one when there is no lower); Spare, a record the caller
+   -- reserved, takes the upper part of a middle cut. On failure the run is
+   -- quarantined with all its frames, and Spare is left for the caller.
+   procedure Drop (PID : ProcessID; Index : Slot; Cut : Run_Cut;
+                   Spare : Natural; Success : out Boolean) is
       Item : Entry_Record renames Entries(PID, Index).Value.all;
-      procedure Unmap (Page : Natural; OK : out Boolean) is
+      Drop_Base : constant Unsigned_64 := Item.Base + Bytes_Of (Cut.Lower);
+      Upper_Base : constant Unsigned_64 := Drop_Base + Bytes_Of (Cut.Dropped);
+      Highest : constant FrameLists.NodePtr := Item.First_Node;
+      Upper_Last, Drop_First, Drop_Last, Lower_First : FrameLists.NodePtr := null;
+      Node : FrameLists.NodePtr;
+      Freed : FrameLists.List := (null, null, 0, 0);
+      procedure Unmap (Page_Index : Natural; OK : out Boolean) is
       begin
-         Virtmem.unmapPage (Integer_Address (Item.Base) + Integer_Address (Page) * 4096,
-                           addrtab(proctab(Item.Owner).pgTable), OK);
+         Virtmem.unmapPage (Integer_Address (Drop_Base) + Integer_Address (Page_Index) * 4096,
+                            addrtab(proctab(PID).pgTable), OK);
       end Unmap;
       procedure Synchronize (OK : out Boolean) is
       begin TLB_Shootdown.Invalidate_All; OK := True; end Synchronize;
       procedure Free (OK : out Boolean) is
       begin
-         FrameLists.detachRange (proctab(Item.Owner).frames, Item.First_Node,
-                                 Item.Last_Node, Item.Count, Item.Remaining, OK);
+         FrameLists.detachRange (proctab(PID).frames, Drop_First, Drop_Last,
+                                 Cut.Dropped, Freed, OK);
          if not OK then return; end if;
-         Item.Detached := True;
-         Item.First_Node := null;
-         Item.Last_Node := null;
-         while Item.Remaining.length > 0 loop
-            BuddyAllocator.freeFrame (FrameLists.front (Item.Remaining));
-            FrameLists.popFront (Item.Remaining);
+         while Freed.length > 0 loop
+            BuddyAllocator.freeFrame (FrameLists.front (Freed));
+            FrameLists.popFront (Freed);
          end loop;
       end Free;
       package Retirement is new Region_Release (Unmap, Synchronize, Free);
@@ -129,17 +158,64 @@ package body Process.Owned_Memory is
       Attempt : Retirement.Attempt;
    begin
       Success := False;
-      if not Inventory_Valid (Item) then Item.Status := Quarantined; return; end if;
-      Item.Status := Quarantined;
-      Retirement.Apply (Attempt, Item.Count, True);
-      if Retirement.State (Attempt) = Retirement.Released then
-         Records.Release (Tables(PID), Index);
-         Success := True;
+      if Cut.Dropped = 0 or else Cut.Lower + Cut.Dropped + Cut.Upper /= Item.Count
+        or else (Cut.Lower > 0 and Cut.Upper > 0 and Spare = 0)
+        or else not Inventory_Valid (Item)
+      then
+         Item.Status := Quarantined;
+         return;
       end if;
-   end Retire;
+      -- Frame-list positions, highest page first: Upper, Dropped, Lower.
+      Node := Highest;
+      for Position in 0 .. Item.Count - 1 loop
+         if Position + 1 = Cut.Upper then Upper_Last := Node; end if;
+         if Position = Cut.Upper then Drop_First := Node; end if;
+         if Position + 1 = Cut.Upper + Cut.Dropped then Drop_Last := Node; end if;
+         if Position = Cut.Upper + Cut.Dropped then Lower_First := Node; end if;
+         Node := Node.next;
+      end loop;
+      Item.Status := Quarantined;
+      Retirement.Apply (Attempt, Cut.Dropped, True);
+      if Retirement.State (Attempt) /= Retirement.Released then return; end if;
+      Success := True;
+      if Cut.Lower = 0 and Cut.Upper = 0 then
+         Records.Release (Tables(PID), Index);
+         return;
+      end if;
+      if Cut.Lower > 0 then
+         Item.First_Node := Lower_First;
+         Item.Count := Cut.Lower;
+         if Cut.Upper > 0 then
+            Entries(PID, Spare).Value.all :=
+              (Status => Live, Kind => Run, Parent => Item.Parent, Owner => Item.Owner,
+               Generation => Item.Generation, Base => Upper_Base,
+               Bytes => Bytes_Of (Cut.Upper), Count => Cut.Upper,
+               First_Node => Highest, Last_Node => Upper_Last);
+         end if;
+      else
+         -- The record's table key stays its old base; Find_Base orders by
+         -- regions only, so a run's key is never used for placement.
+         Item.Base := Upper_Base;
+         Item.Last_Node := Upper_Last;
+         Item.Count := Cut.Upper;
+      end if;
+      Item.Bytes := Bytes_Of (Item.Count);
+      Item.Status := Live;
+   end Drop;
+
+   -- Every page of the run, for retirement with its region.
+   function Whole (Item : Entry_Record) return Run_Cut is
+     ((Lower => 0, Dropped => Item.Count, Upper => 0));
+
+   function Is_Run_Of (Item : Entry_Record; Region_Index : Slot) return Boolean is
+     (Item.Status /= Empty and then Item.Kind = Run and then Item.Parent = Region_Index);
+
+   function Cuts (Item : Entry_Record; Address, Bytes : Unsigned_64) return Boolean is
+     (Item.Count > 0 and then Policy.Overlaps (Item.Base, Policy.Page_Count (Item.Count), Address, Bytes));
 
    -- The lowest free range of Bytes in the aperture whose base is a
-   -- multiple of Alignment (a page multiple), or 0.
+   -- multiple of Alignment (a page multiple), or 0. Runs lie inside their
+   -- regions, so only regions take part.
    function Find_Base (PID : ProcessID; Bytes, Alignment : Unsigned_64) return Unsigned_64 is
       use Owned_Reservation_Policy;
       Candidate : Unsigned_64 := Align_Up (Owned_Memory_Layout.First, Alignment);
@@ -148,80 +224,34 @@ package body Process.Owned_Memory is
          declare
             Item : Entry_Record renames Entries(PID, I).Value.all;
          begin
-            if Candidate = 0 or else Candidate > Owned_Memory_Layout.Limit - Bytes then return 0; end if;
-            if Candidate <= Item.Base and then Bytes <= Item.Base - Candidate then
-               return Candidate;
+            if Item.Kind = Region then
+               if Candidate = 0 or else Candidate > Owned_Memory_Layout.Limit - Bytes then return 0; end if;
+               if Candidate <= Item.Base and then Bytes <= Item.Base - Candidate then
+                  return Candidate;
+               end if;
+               Candidate := Align_Up (Unsigned_64'Max (Candidate, Item.Base + Item.Bytes), Alignment);
             end if;
-            Candidate := Align_Up (Unsigned_64'Max (Candidate, Item.Base + Item.Bytes), Alignment);
          end;
       end loop;
       return (if Candidate /= 0 and then Candidate <= Owned_Memory_Layout.Limit - Bytes then Candidate
               else 0);
    end Find_Base;
 
-   procedure Allocate (PID : ProcessID; Bytes : Unsigned_64; Base : out Unsigned_64) is
-      Size : constant Unsigned_64 := Rounded (Bytes);
-      Index : Records.Id;
-      Candidate : Unsigned_64;
-      Storage : System.Address;
-      Result : Page_Allocation_Result;
-      Ignored : Boolean;
-      Capacity : Natural;
-   begin
-      Base := 0;
-      if PID = NO_PROCESS or Size = 0 then return; end if;
-      Lock;
-      lockAddressSpace (PID);
-      if not proctab(PID).admitted then
-         unlockAddressSpace (PID); Unlock; return;
-      end if;
-      Candidate := Find_Base (PID, Size, Owned_Reservation_Policy.Page_Bytes);
-      Capacity := Heap_Admission.Expanded_Capacity
-        (Positive'Max (1, proctab(PID).frames.length),
-         Natural (Size / 4096) + Natural (proctab(PID).stackSize / 4096) +
-           INITIAL_HEAP_FRAME_HEADROOM);
-      if Candidate = 0 or Capacity = 0 then
-         unlockAddressSpace (PID); Unlock; return;
-      end if;
-      Records.Insert (Tables(PID), Candidate,
-        (Status => Building, Owner => PID, Generation => generationOf (PID),
-         Base => Candidate, Bytes => Size, others => <>), Index);
-      if Index = 0 then unlockAddressSpace (PID); Unlock; return; end if;
-      proctab(PID).frames.capacity := Natural'Max (Capacity, proctab(PID).frames.capacity);
-      for Page in 0 .. Natural (Size / 4096) - 1 loop
-         tryAddPage (proctab(PID), To_Address (Integer_Address (Candidate) +
-                       Integer_Address (Page) * 4096), Storage, Result);
-         if Result /= Page_Added then
-            if Entries(PID, Index).Count = 0 then Records.Release (Tables(PID), Index);
-            else Retire (PID, Index, Ignored); end if;
-            unlockAddressSpace (PID); Unlock; return;
-         end if;
-         if Entries(PID, Index).Count = 0 then Entries(PID, Index).Last_Node := proctab(PID).frames.head; end if;
-         Entries(PID, Index).First_Node := proctab(PID).frames.head;
-         Entries(PID, Index).Count := Entries(PID, Index).Count + 1;
-      end loop;
-      Entries(PID, Index).Status := Live;
-      Base := Candidate;
-      unlockAddressSpace (PID);
-      Unlock;
-   end Allocate;
-
    procedure Reserve (PID : ProcessID; Bytes, Alignment : Unsigned_64; Base : out Unsigned_64) is
       Candidate : Unsigned_64;
       Index : Records.Id;
    begin
       Base := 0;
-      if PID = NO_PROCESS or else not Owned_Reservation_Policy.Valid_Capacity (Bytes)
-        or else not Owned_Reservation_Policy.Valid_Alignment (Alignment)
+      if PID = NO_PROCESS or else not Policy.Valid_Capacity (Bytes)
+        or else not Policy.Valid_Alignment (Alignment)
       then return; end if;
       Lock;
       lockAddressSpace (PID);
       if proctab(PID).admitted then
-         Candidate := Find_Base
-           (PID, Bytes, Owned_Reservation_Policy.Effective_Alignment (Alignment));
+         Candidate := Find_Base (PID, Bytes, Policy.Effective_Alignment (Alignment));
          if Candidate /= 0 then
             Records.Insert (Tables(PID), Candidate,
-              (Status => Live, Kind => Reservation, Owner => PID,
+              (Status => Live, Kind => Region, Owner => PID,
                Generation => generationOf (PID), Base => Candidate, Bytes => Bytes,
                others => <>), Index);
             if Index /= 0 then Base := Candidate; end if;
@@ -231,141 +261,160 @@ package body Process.Owned_Memory is
       Unlock;
    end Reserve;
 
-   procedure Commit_Prefix (PID : ProcessID; Base, Offset, Bytes : Unsigned_64;
-                            Success : out Boolean) is
-      Parent_Index, Index : Natural range 0 .. Slot'Last := 0;
+   -- Back every page of [Address, Address + Bytes) with a fresh zero page,
+   -- read/write. Refused if any run of the region overlaps the range: a
+   -- page is never mapped twice. A run that ends at Address and whose
+   -- frames lead the frame list grows in place (one record for a region
+   -- grown upward in steps); otherwise the range is a new run. All or
+   -- nothing: the pages this call backed are dropped again on failure.
+   -- Hand-off (huge pages): a commit of a 2 MiB-aligned, 2 MiB-multiple
+   -- range is where a 2 MiB leaf could be chosen automatically, with no
+   -- new parameter; that needs a run kind with one frame per 2 MiB and a
+   -- Drop that splits a leaf, so it is not done here (ABI-002 results).
+   procedure Commit (PID : ProcessID; Region_Index : Slot; Address, Bytes : Unsigned_64;
+                     Success : out Boolean) is
+      Index : Records.Id := 0;
+      Extending : Boolean := False;
+      Before, Added : Natural := 0;
       Storage : System.Address;
       Result : Page_Allocation_Result;
-      Reclaimed : Boolean;
       Capacity : Natural;
+      Undone : Boolean;
    begin
       Success := False;
-      if PID = NO_PROCESS then return; end if;
-      -- Exclude grant acquisition throughout provisional mapping and rollback.
-      Spinlocks.enterCriticalSection (grantLock);
-      Lock;
-      lockAddressSpace (PID);
-      if proctab(PID).admitted then
-         for I of Records.Iterate (Tables(PID)'Access) loop
-            if Entries(PID, I).Status = Live and then Entries(PID, I).Kind = Reservation and then
-              Entries(PID, I).Owner = PID and then Entries(PID, I).Generation = generationOf (PID)
-              and then Entries(PID, I).Base = Base and then Entries(PID, I).Committed = Offset
-              and then Owned_Reservation_Policy.Can_Commit (Entries(PID, I).Bytes, Offset, Bytes)
-            then Parent_Index := I; exit; end if;
-         end loop;
-      end if;
-      if Parent_Index /= 0 then
-         Capacity := Heap_Admission.Expanded_Capacity
-           (Positive'Max (1, proctab(PID).frames.length),
-            Natural (Bytes / 4096) + Natural (proctab(PID).stackSize / 4096) +
-              INITIAL_HEAP_FRAME_HEADROOM);
-         if Capacity /= 0 then
-            Records.Insert (Tables(PID), Base + Offset,
-              (Status => Building, Kind => Chunk, Parent => Parent_Index,
-               Owner => PID, Generation => generationOf (PID), Base => Base + Offset,
-               Bytes => Bytes, others => <>), Index);
-         end if;
-         if Index /= 0 then
-            proctab(PID).frames.capacity := Natural'Max (Capacity, proctab(PID).frames.capacity);
-            Success := True;
-            for Page in 0 .. Natural (Bytes / 4096) - 1 loop
-               tryAddPage (proctab(PID), To_Address (Integer_Address (Base + Offset) +
-                            Integer_Address (Page) * 4096), Storage, Result);
-               if Result /= Page_Added then
-                  Success := False;
-                  if Entries(PID, Index).Count = 0 then Records.Release (Tables(PID), Index);
-                  else
-                     Retire (PID, Index, Reclaimed);
-                     if not Reclaimed then Entries(PID, Parent_Index).Status := Quarantined; end if;
-                  end if;
-                  exit;
+      for I of Records.Iterate (Tables(PID)'Access) loop
+         declare
+            Item : Entry_Record renames Entries(PID, I).Value.all;
+         begin
+            if Is_Run_Of (Item, Region_Index) then
+               if Cuts (Item, Address, Bytes) then return; end if;
+               if Item.Status = Live and then Item.Count > 0
+                 and then Policy.Adjoins (Item.Base, Policy.Page_Count (Item.Count), Address)
+                 and then Item.First_Node = proctab(PID).frames.head
+               then
+                  Index := I;
+                  Extending := True;
                end if;
-               if Entries(PID, Index).Count = 0 then
-                  Entries(PID, Index).Last_Node := proctab(PID).frames.head;
-               end if;
-               Entries(PID, Index).First_Node := proctab(PID).frames.head;
-               Entries(PID, Index).Count := Entries(PID, Index).Count + 1;
-            end loop;
-            if Success then
-               Entries(PID, Index).Status := Live;
-               Entries(PID, Parent_Index).Committed :=
-                 Owned_Reservation_Policy.After_Commit (Entries(PID, Parent_Index).Bytes, Offset, Bytes);
             end if;
-         end if;
+         end;
+      end loop;
+      Capacity := Heap_Admission.Expanded_Capacity
+        (Positive'Max (1, proctab(PID).frames.length),
+         Natural (Bytes / Page) + Natural (proctab(PID).stackSize / 4096) +
+           INITIAL_HEAP_FRAME_HEADROOM);
+      if Capacity = 0 then return; end if;
+      if not Extending then
+         Records.Insert (Tables(PID), Address,
+           (Status => Building, Kind => Run, Parent => Region_Index, Owner => PID,
+            Generation => generationOf (PID), Base => Address, others => <>), Index);
+         if Index = 0 then return; end if;
       end if;
-      unlockAddressSpace (PID);
-      Unlock;
-      Spinlocks.exitCriticalSection (grantLock);
-   end Commit_Prefix;
-
-   procedure Release_Reservation (PID : ProcessID; Base, Bytes : Unsigned_64;
-                                  Success : out Boolean) is
-      Reclaimed : Boolean;
-   begin
-      Success := False;
-      if PID = NO_PROCESS or else not Owned_Reservation_Policy.Valid_Capacity (Bytes)
-      then return; end if;
-      Spinlocks.enterCriticalSection (grantLock);
-      Lock;
-      lockAddressSpace (PID);
-      for I of Records.Iterate (Tables(PID)'Access) loop
-         if Entries(PID, I).Status in Live | Quarantined and then Entries(PID, I).Kind = Reservation
-           and then Entries(PID, I).Owner = PID and then
-           Entries(PID, I).Generation = generationOf (PID) and then
-           Entries(PID, I).Base = Base and then Entries(PID, I).Bytes = Bytes
-         then
-            Entries(PID, I).Status := Quarantined;
-            Success := True;
-            for Child of Records.Iterate (Tables(PID)'Access) loop
-               if Entries(PID, Child).Status /= Empty and then Entries(PID, Child).Parent = I then
-                  Retire (PID, Child, Reclaimed);
-                  Success := Success and Reclaimed;
-               end if;
-            end loop;
-            if Success then Records.Release (Tables(PID), I); end if;
-            exit;
+      Before := Entries(PID, Index).Count;
+      proctab(PID).frames.capacity := Natural'Max (Capacity, proctab(PID).frames.capacity);
+      for Page_Index in 0 .. Natural (Bytes / Page) - 1 loop
+         tryAddPage (proctab(PID), To_Address (Integer_Address (Address) +
+                       Integer_Address (Page_Index) * 4096), Storage, Result);
+         if Result /= Page_Added then
+            Added := Entries(PID, Index).Count - Before;
+            if Added > 0 then
+               -- A new run is dropped whole (and its record released); an
+               -- extended one goes back to its Before pages. A failed drop
+               -- quarantines the run with its frames, kept until exit.
+               Drop (PID, Index, (Lower => Before, Dropped => Added, Upper => 0), 0, Undone);
+            elsif not Extending then
+               Records.Release (Tables(PID), Index);
+            end if;
+            return;
          end if;
+         declare
+            Item : Entry_Record renames Entries(PID, Index).Value.all;
+         begin
+            if Item.Count = 0 then Item.Last_Node := proctab(PID).frames.head; end if;
+            Item.First_Node := proctab(PID).frames.head;
+            Item.Count := Item.Count + 1;
+            Item.Bytes := Bytes_Of (Item.Count);
+         end;
       end loop;
-      unlockAddressSpace (PID);
-      Unlock;
-      Spinlocks.exitCriticalSection (grantLock);
-   end Release_Reservation;
+      Entries(PID, Index).Status := Live;
+      Success := True;
+   end Commit;
 
-   procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean) is
-      Size : constant Unsigned_64 := Rounded (Bytes);
+   -- Drop every backed page of [Address, Address + Bytes); the range stays
+   -- reserved. Every run it cuts must be live, checked before any change.
+   -- Runs are disjoint, so only a range strictly inside one run cuts it in
+   -- the middle; that cut's upper part needs a record, reserved first, so
+   -- a refusal changes nothing.
+   procedure Decommit (PID : ProcessID; Region_Index : Slot; Address, Bytes : Unsigned_64;
+                       Success : out Boolean) is
+      Spare : Records.Id := 0;
+      Cut : Run_Cut;
+      Middle_Base : Unsigned_64 := 0;
+      Dropped : Boolean;
    begin
       Success := False;
-      if PID = NO_PROCESS or Size = 0 then return; end if;
-      Spinlocks.enterCriticalSection (grantLock);
-      Lock;
-      lockAddressSpace (PID);
       for I of Records.Iterate (Tables(PID)'Access) loop
-         if Entries(PID, I).Status = Live and Entries(PID, I).Kind = Buffer and Entries(PID, I).Owner = PID and
-           Entries(PID, I).Generation = generationOf (PID) and
-           Entries(PID, I).Base = Base and Entries(PID, I).Bytes = Size
-         then Retire (PID, I, Success); exit; end if;
+         declare
+            Item : Entry_Record renames Entries(PID, I).Value.all;
+         begin
+            if Is_Run_Of (Item, Region_Index) and then Cuts (Item, Address, Bytes) then
+               if Item.Status /= Live then return; end if;
+               Cut := Cut_Of (Item, Address, Bytes);
+               if Cut.Lower > 0 and Cut.Upper > 0 then Middle_Base := Address + Bytes; end if;
+            end if;
+         end;
       end loop;
-      unlockAddressSpace (PID);
-      Unlock;
-      Spinlocks.exitCriticalSection (grantLock);
-   end Release;
+      if Middle_Base /= 0 then
+         Records.Insert (Tables(PID), Middle_Base,
+           (Status => Building, Kind => Run, Parent => Region_Index, Owner => PID,
+            Generation => generationOf (PID), Base => Middle_Base, others => <>), Spare);
+         if Spare = 0 then return; end if;
+      end if;
+      Success := True;
+      for I of Records.Iterate (Tables(PID)'Access) loop
+         declare
+            Item : Entry_Record renames Entries(PID, I).Value.all;
+         begin
+            if Is_Run_Of (Item, Region_Index) and then Item.Status = Live
+              and then Cuts (Item, Address, Bytes)
+            then
+               Cut := Cut_Of (Item, Address, Bytes);
+               Drop (PID, I, Cut, Spare, Dropped);
+               Success := Success and Dropped;
+               -- A middle cut is the only run the range touches.
+               exit when Cut.Lower > 0 and Cut.Upper > 0;
+            end if;
+         end;
+      end loop;
+      if Spare /= 0 and then Entries(PID, Spare).Status = Building then
+         Records.Release (Tables(PID), Spare);
+      end if;
+   end Decommit;
 
-   procedure Protect (PID : ProcessID; Base, Bytes, Mode : Unsigned_64;
-                      Success : out Boolean) is
-      Size : constant Unsigned_64 := Rounded (Bytes);
-      Selected : Virtmem.Regions.Access_Mode;
+   -- Set the access of every page of [Address, Address + Bytes), which must
+   -- all be committed (the runs cutting it cover it exactly). Revoke before
+   -- installing, so no CPU keeps a wider translation; retain backing on
+   -- every failure. Existing grants are unchanged.
+   procedure Set_Access (PID : ProcessID; Region_Index : Slot; Address, Bytes : Unsigned_64;
+                         Wanted : Policy.Page_Access; Success : out Boolean) is
+      -- Only these three: owned memory is never executable.
+      Selected : constant Virtmem.Regions.Access_Mode :=
+        (case Wanted is
+           when Policy.Inaccessible => Virtmem.Regions.Inaccessible,
+           when Policy.Read_Only    => Virtmem.Regions.Read_Only,
+           when Policy.Read_Write   => Virtmem.Regions.Read_Write);
+      Covered : Natural := 0;
       procedure Change (Item : Entry_Record; Access_Value : Virtmem.Regions.Access_Mode;
                         OK : out Boolean) is
          Node : FrameLists.NodePtr := Item.First_Node;
-         Address : Unsigned_64;
+         Address_Of_Page : Unsigned_64;
          Changed : Boolean;
       begin
          OK := True;
          for I in reverse 0 .. Item.Count - 1 loop
-            Address := Item.Base + Unsigned_64 (I) * 4096;
-            if Address >= Base and then Address - Base < Size then
+            Address_Of_Page := Item.Base + Bytes_Of (I);
+            if Address_Of_Page >= Address and then Address_Of_Page - Address < Bytes then
                Virtmem.Regions.Set_Access
-                 (addrtab(proctab(PID).pgTable), Integer_Address (Address),
+                 (addrtab(proctab(PID).pgTable), Integer_Address (Address_Of_Page),
                   Virtmem.PFN (Node.element / 4096), Access_Value, Changed);
                OK := OK and Changed;
             end if;
@@ -375,45 +424,113 @@ package body Process.Owned_Memory is
       OK : Boolean;
    begin
       Success := False;
-      if PID = NO_PROCESS or Size = 0 or Base mod 4096 /= 0 then return; end if;
-      case Mode is
-         when 0 => Selected := Virtmem.Regions.Inaccessible;
-         when 1 => Selected := Virtmem.Regions.Read_Only;
-         when 3 => Selected := Virtmem.Regions.Read_Write;
-         when others => return;
-      end case;
+      for I of Records.Iterate (Tables(PID)'Access) loop
+         declare
+            Item : Entry_Record renames Entries(PID, I).Value.all;
+         begin
+            if Is_Run_Of (Item, Region_Index) and then Cuts (Item, Address, Bytes) then
+               if Item.Status /= Live then return; end if;
+               if not Inventory_Valid (Item) then Item.Status := Quarantined; return; end if;
+               Covered := Covered + Cut_Of (Item, Address, Bytes).Dropped;
+            end if;
+         end;
+      end loop;
+      if Bytes_Of (Covered) /= Bytes then return; end if;
+      Success := True;
+      for I of Records.Iterate (Tables(PID)'Access) loop
+         declare
+            Item : Entry_Record renames Entries(PID, I).Value.all;
+         begin
+            if Is_Run_Of (Item, Region_Index) and then Cuts (Item, Address, Bytes) then
+               Item.Status := Quarantined;
+               Change (Item, Virtmem.Regions.Inaccessible, OK);
+               TLB_Shootdown.Invalidate_All;
+               if OK and Wanted /= Policy.Inaccessible then
+                  Change (Item, Selected, OK);
+                  TLB_Shootdown.Invalidate_All;
+               end if;
+               if OK then Item.Status := Live; else Success := False; end if;
+            end if;
+         end;
+      end loop;
+   end Set_Access;
+
+   procedure Change_Range (PID : ProcessID; Address, Bytes : Unsigned_64;
+                           Operation : Owned_Reservation_Policy.Range_Operation;
+                           Success : out Boolean) is
+      Region_Index : Natural := 0;
+   begin
+      Success := False;
+      if PID = NO_PROCESS then return; end if;
+      -- Exclude grant acquisition throughout mapping changes and rollback.
       Spinlocks.enterCriticalSection (grantLock);
       Lock;
       lockAddressSpace (PID);
-      for Index of Records.Iterate (Tables(PID)'Access) loop
-       declare
-         Item : Entry_Record renames Entries(PID, Index).Value.all;
-       begin
-         if Item.Status = Live and then Item.Kind /= Reservation and then Item.Owner = PID and then
-           Item.Generation = generationOf (PID) and then Base >= Item.Base and then
-           Base - Item.Base < Item.Bytes and then Size <= Item.Bytes - (Base - Item.Base)
+      if proctab(PID).admitted then
+         for I of Records.Iterate (Tables(PID)'Access) loop
+            declare
+               Item : Entry_Record renames Entries(PID, I).Value.all;
+            begin
+               if Item.Status = Live and then Item.Kind = Region and then Item.Owner = PID
+                 and then Item.Generation = generationOf (PID)
+                 and then Policy.Within (Item.Base, Item.Bytes, Address, Bytes)
+               then Region_Index := I; exit; end if;
+            end;
+         end loop;
+      end if;
+      if Region_Index /= 0 then
+         case Operation is
+            when Policy.Commit =>
+               if Policy.Commit_Admitted
+                 (Entries(PID, Region_Index).Base, Entries(PID, Region_Index).Bytes, Address, Bytes)
+               then
+                  Commit (PID, Region_Index, Address, Bytes, Success);
+               end if;
+            when Policy.Decommit =>
+               Decommit (PID, Region_Index, Address, Bytes, Success);
+            when Policy.Access_Operation =>
+               Set_Access (PID, Region_Index, Address, Bytes, Policy.Access_Of (Operation), Success);
+         end case;
+      end if;
+      unlockAddressSpace (PID);
+      Unlock;
+      Spinlocks.exitCriticalSection (grantLock);
+   end Change_Range;
+
+   procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean) is
+      Reclaimed : Boolean;
+   begin
+      Success := False;
+      if PID = NO_PROCESS or else not Policy.Valid_Capacity (Bytes) then return; end if;
+      Spinlocks.enterCriticalSection (grantLock);
+      Lock;
+      lockAddressSpace (PID);
+      for I of Records.Iterate (Tables(PID)'Access) loop
+         if Entries(PID, I).Status in Live | Quarantined and then Entries(PID, I).Kind = Region
+           and then Entries(PID, I).Owner = PID and then
+           Entries(PID, I).Generation = generationOf (PID) and then
+           Entries(PID, I).Base = Base and then Entries(PID, I).Bytes = Bytes
          then
-            if not Inventory_Valid (Item) then
-               Item.Status := Quarantined;
-               exit;
-            end if;
-            -- Revoke before installation, and retain backing on every failure.
-            Item.Status := Quarantined;
-            Change (Item, Virtmem.Regions.Inaccessible, OK);
-            TLB_Shootdown.Invalidate_All;
-            if OK and Mode /= 0 then
-               Change (Item, Selected, OK);
-               TLB_Shootdown.Invalidate_All;
-            end if;
-            if OK then Item.Status := Live; Success := True; end if;
+            Entries(PID, I).Status := Quarantined;
+            Success := True;
+            for Child of Records.Iterate (Tables(PID)'Access) loop
+               if Is_Run_Of (Entries(PID, Child).Value.all, I) then
+                  if Entries(PID, Child).Count = 0 then
+                     Records.Release (Tables(PID), Child);
+                  else
+                     Drop (PID, Child, Whole (Entries(PID, Child).Value.all), 0, Reclaimed);
+                     Success := Success and Reclaimed;
+                  end if;
+               end if;
+            end loop;
+            if Success then Records.Release (Tables(PID), I); end if;
             exit;
          end if;
-       end;
       end loop;
       unlockAddressSpace (PID);
       Unlock;
       Spinlocks.exitCriticalSection (grantLock);
-   end Protect;
+   end Release;
 
    procedure Forget_Exited (PID : ProcessID; Retired : out Natural) is
    begin
@@ -426,11 +543,9 @@ package body Process.Owned_Memory is
          Item : Entry_Record renames Entries(PID, Index).Value.all;
        begin
          if Item.Status /= Empty and Item.Owner = PID then
-            if Item.Detached and Item.Remaining.length /= 0 then
-               raise ProcessException with "Owned region detached cleanup incomplete";
-            end if;
+            -- Counted in regions; their runs' frames went with the list.
+            if Item.Kind = Region then Retired := Retired + 1; end if;
             Records.Release (Tables(PID), Index);
-            Retired := Retired + 1;
          end if;
        end;
       end loop;

@@ -5,6 +5,7 @@
 pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Owned_Reservations;
 with CuBit.Handles;
 with CuBit.Handles.Startup;
 with CuBit.Startup_Tables;
@@ -119,7 +120,8 @@ package body Remote_Capture is
    --  loan of them is retired (never while it might still map them).
    procedure Reserve (Bytes : Unsigned_64; OK : out Boolean) is
       Wanted : constant Unsigned_64 := (Bytes + Page_Bytes - 1) / Page_Bytes * Page_Bytes;
-      Raw, Ignore : Unsigned_64;
+      Raw : Unsigned_64;
+      Ignore : Boolean;
    begin
       OK := Capacity >= Bytes and then Buffer /= 0;
       if OK then
@@ -133,12 +135,12 @@ package body Remote_Capture is
             Log ("the previous capture buffer is still lent; keeping it (a capture of this size waits)");
             return;
          end if;
-         Ignore := syscall (SYSCALL_RELEASE_OWNED_MEMORY, Buffer, Capacity);
+         Ignore := CuBit.Owned_Reservations.Free (Buffer, Capacity);
          Buffer := 0;
          Capacity := 0;
       end if;
-      Raw := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Wanted);
-      if Raw = 0 or else Raw = Unsigned_64'Last or else Raw mod Page_Bytes /= 0 then
+      Raw := CuBit.Owned_Reservations.Allocate (Wanted);
+      if Raw = 0 then
          return;
       end if;
       Buffer := Raw;

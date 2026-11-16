@@ -9,7 +9,7 @@ with CuBit.Datagram_Rings;
 with CuBit.Doorbells;
 with CuBit.Grant_References;
 with CuBit.Kernel_ABI;
-with CuBit.Kernel_Calls;
+with CuBit.Owned_Reservations;
 with CuBit.Protocols;
 with CuBit.Stream_Regions;
 
@@ -19,7 +19,6 @@ package body CuBit.Channels is
    package Rings renames CuBit.Channel_Rings;
    package DR renames CuBit.Datagram_Rings;
    package KA renames CuBit.Kernel_ABI;
-   package KC renames CuBit.Kernel_Calls;
    package MG renames CuBit.Memory_Grants;
    package GR renames CuBit.Grant_References;
    use type CC.Channel_Policy;
@@ -98,9 +97,9 @@ package body CuBit.Channels is
 
    procedure Release (Base, Bytes : Unsigned_64);
    procedure Release (Base, Bytes : Unsigned_64) is
-      Ignore : Unsigned_64;
+      Ignore : Boolean;
    begin
-      Ignore := KC.Call (KA.Release_Owned_Memory, Base, Bytes);
+      Ignore := CuBit.Owned_Reservations.Free (Base, Bytes);
    end Release;
 
    procedure Release_Retired;
@@ -146,10 +145,7 @@ package body CuBit.Channels is
 
    function Allocate (Bytes : Unsigned_64) return Unsigned_64;
    function Allocate (Bytes : Unsigned_64) return Unsigned_64 is
-      Base : constant Unsigned_64 := KC.Call (KA.Allocate_Owned_Memory, Bytes);
-   begin
-      return (if Base = KA.Failed then 0 else Base);
-   end Allocate;
+     (CuBit.Owned_Reservations.Allocate (Bytes));
 
    ---------------------------------------------------------------------------
    --  Regions

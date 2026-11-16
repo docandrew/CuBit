@@ -145,8 +145,8 @@ package Process is
     BAD_HEAP_ADDRESS       : constant System.Address := To_Address (16#DEAD_DEAD_DEAD_DEAD#);
 
     -- The user runtime's secondary stacks are not in any primary stack:
-    -- each thread's is its own owned-memory reservation (Owned_Memory
-    -- Reserve/Commit_Prefix), which the runtime makes and grows itself.
+    -- each thread's is in its own owned-memory region (Owned_Memory
+    -- Reserve/Change_Range), which the runtime makes and grows itself.
 
     subtype ProcessPriority is Integer range -1..100;
 

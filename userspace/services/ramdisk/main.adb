@@ -21,7 +21,7 @@ procedure Main is
    Tag : MessageTag;
    Boot_Image_Bytes : Unsigned_64 := 0;
 
-   --  Release (SYSCALL_RELEASE_OWNED_MEMORY) this process's read-only view
+   --  Release (SYSCALL_RELEASE_OWNED_REGION) this process's read-only view
    --  of the boot image, a bounded number of pages per call.
    procedure Release_Boot_View is
       Page_Bytes : constant := 4096;
@@ -30,7 +30,7 @@ procedure Main is
    begin
       while Done < Pages loop
          Count := Unsigned_64'Min (MAX_MAP_INTO_PAGES_PER_CALL, Pages - Done);
-         if syscall (SYSCALL_RELEASE_OWNED_MEMORY,
+         if syscall (SYSCALL_RELEASE_OWNED_REGION,
                      Launch_Configuration.Boot_Image_Address + Done * Page_Bytes,
                      Count * Page_Bytes) /= 0
          then

@@ -73,15 +73,9 @@ is
         SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
         SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND,
         SYSCALL_READ_MONOTONIC_MICROSECONDS,
-        SYSCALL_ALLOCATE_OWNED_MEMORY,
-        SYSCALL_RELEASE_OWNED_MEMORY,
-        SYSCALL_PROTECT_OWNED_MEMORY,
         SYSCALL_YIELD,
         SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND,
         SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-        SYSCALL_RESERVE_OWNED_MEMORY,
-        SYSCALL_COMMIT_OWNED_MEMORY_PREFIX,
-        SYSCALL_RELEASE_OWNED_RESERVATION,
         SYSCALL_INSTALL_LAUNCH_ARGUMENTS,
         SYSCALL_SEND_CONTROL,
         SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY,
@@ -100,6 +94,9 @@ is
         SYSCALL_REPLY_SAVED_WITH_CAPABILITY,
         SYSCALL_DERIVE_CAPABILITY,
         SYSCALL_FIRMWARE_SNAPSHOT,
+        SYSCALL_RESERVE_OWNED_REGION,
+        SYSCALL_CHANGE_OWNED_RANGE,
+        SYSCALL_RELEASE_OWNED_REGION,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -108,12 +105,6 @@ is
         SYSCALL_GETPID               => 6,
         SYSCALL_KILL                 => 7,
         SYSCALL_SBRK                 => 8,
-        SYSCALL_ALLOCATE_OWNED_MEMORY => 115,
-        SYSCALL_RELEASE_OWNED_MEMORY => 116,
-        SYSCALL_PROTECT_OWNED_MEMORY => 117,
-        SYSCALL_RESERVE_OWNED_MEMORY => 123,
-        SYSCALL_COMMIT_OWNED_MEMORY_PREFIX => 124,
-        SYSCALL_RELEASE_OWNED_RESERVATION => 125,
         -- docs/process-arguments.md
         SYSCALL_INSTALL_LAUNCH_ARGUMENTS => 126,
         -- docs/data-plane.md, "Control messages"
@@ -174,6 +165,14 @@ is
         -- The sealed boot firmware-table snapshot, read only
         -- (Firmware_Snapshot_ABI): one call, a typed operation selector.
         SYSCALL_FIRMWARE_SNAPSHOT => Firmware_Snapshot_ABI.System_Call_Number,
+        -- Owned memory, one region API (ABI-002, Process.Owned_Memory):
+        -- reserve a region, one operation on a range of it, release it.
+        -- Retired, never reused: 115 (ALLOCATE), 116 (RELEASE), 117
+        -- (PROTECT), 123 (RESERVE), 124 (COMMIT_PREFIX), 125 (RELEASE
+        -- RESERVATION). 145 is the SCI port's.
+        SYSCALL_RESERVE_OWNED_REGION => 146,
+        SYSCALL_CHANGE_OWNED_RANGE   => 147,
+        SYSCALL_RELEASE_OWNED_REGION => 148,
         SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY => 42,
         SYSCALL_REPLY_WAIT           => 48,
         SYSCALL_MOVE_REPLY_CAPABILITY              => 51,

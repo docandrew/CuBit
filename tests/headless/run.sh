@@ -8411,9 +8411,10 @@ capability-test: all tests passed
 GRANT-REFERENCE-CHECK: PASS
 GRANT-RECLAMATION-CHECK: PASS
 OWNED-MEMORY-CHECK: PASS
+OWNED-REGION-CHECK: PASS
 OWNED-GRANT-RETENTION-CHECK: PASS
 OWNED-EXIT-CHECK: leaving two allocations
-Process.reclaimProcess: owned regions retired 2
+Process.reclaimProcess: owned regions retired 3
 RAM-VOLUME-CHECK: PASS
 VOLUME-ISOLATION-CHECK: PASS
 ramdisk: volatile block device ready

@@ -6,6 +6,7 @@ pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.Owned_Reservations;
 with CuBit.Thread_Areas;
 
 package body Stack_Threads is
@@ -16,8 +17,6 @@ package body Stack_Threads is
    type Word is mod 2 ** 32 with Atomic, Size => 32;
    Exit_Words : array (Worker_Index) of aliased Word := [others => 1];
 
-   --  PROTECT_OWNED_MEMORY modes (kernel Process.Owned_Memory.Protect).
-   Inaccessible : constant := 0;
    --  The first seed of the workers' runs (the main thread's are below).
    First_Seed : constant := 10;
    --  A SysV function expects RSP + 8 to be 16-byte aligned at entry.
@@ -38,14 +37,14 @@ package body Stack_Threads is
    begin
       --  Armed again for each batch: the kernel clears it when the thread ends.
       Exit_Words (Index) := 1;
-      Thread.Stack := CuBit.Kernel_Calls.Call (ABI.Allocate_Owned_Memory, Stack_Bytes);
+      Thread.Stack := CuBit.Owned_Reservations.Reserve (Stack_Bytes);
       if Thread.Stack = 0 then
          return Thread;
       end if;
-      --  A guard page at the bottom: an overflow faults, never reaches a
-      --  neighbour.
-      if CuBit.Kernel_Calls.Call
-           (ABI.Protect_Owned_Memory, Thread.Stack, ABI.Page_Bytes, Inaccessible) /= 0
+      --  A guard page at the bottom: it is never committed, so an overflow
+      --  faults and never reaches a neighbour.
+      if not CuBit.Owned_Reservations.Commit_Steps
+           (Thread.Stack + ABI.Page_Bytes, Stack_Bytes - ABI.Page_Bytes)
       then
          return Thread;
       end if;
@@ -69,6 +68,7 @@ package body Stack_Threads is
    procedure Finish (Index : Worker_Index; Thread : Started) is
       Seen : Word;
       Ignore : Unsigned_64;
+      Ignore_Release : Boolean;
    begin
       if Thread.Created then
          loop
@@ -80,7 +80,7 @@ package body Stack_Threads is
          end loop;
       end if;
       if Thread.Stack /= 0 then
-         Ignore := CuBit.Kernel_Calls.Call (ABI.Release_Owned_Memory, Thread.Stack, Stack_Bytes);
+         Ignore_Release := CuBit.Owned_Reservations.Release (Thread.Stack, Stack_Bytes);
       end if;
    end Finish;
 

@@ -35,27 +35,17 @@ package CuBit.Messages is
    --  CuBit.Monotonic instead, docs/fast-clock.md), else the HPET's own;
    --  Last indicates unavailable. Never UTC.
    SYSCALL_READ_MONOTONIC_MICROSECONDS : constant Unsigned_64 := 114;
-   --  Allocate zero-filled RW/NX private RAM: arg0 bytes (1..16MiB), rounded
-   --  to 4KiB. Returns a page-aligned base, or zero on failure.
-   --  No fixed address selection.
-   SYSCALL_ALLOCATE_OWNED_MEMORY : constant Unsigned_64 := 115;
-   --  Release own exact allocation: arg0 base, arg1 bytes (same rounded size).
-   --  Returns zero on success, Last on rejection.
-   --  Partial unmapping unsupported.
+   --  Owned memory, one region API (kernel Process.Owned_Memory, ABI-002);
+   --  CuBit.Owned_Reservations wraps these. Reserve: arg0 page-aligned
+   --  bytes (up to 2 GiB), arg1 alignment (0: a page); the base, or zero.
+   --  No RAM. Change: arg0 address, arg1 bytes (a page range of one
+   --  region), arg2 operation (CuBit.Kernel_ABI.Owned_Range_Operation);
+   --  zero, or Last. Release: arg0 base, arg1 exact capacity; zero, or
+   --  Last. A release also gives back a read-only boot-image view range.
    --  Existing grant acquisitions retain their backing until returned.
-   SYSCALL_RELEASE_OWNED_MEMORY : constant Unsigned_64 := 116;
-   --  Page-aligned subrange of one owned allocation; bytes round upward.
-   --  Mode 0 inaccessible, 1 read-only, 3 RW; no executable mode.
-   SYSCALL_PROTECT_OWNED_MEMORY : constant Unsigned_64 := 117;
-   --  Reserve virtual capacity only: arg0 page-aligned bytes (up to 2GiB).
-   --  Returns base or zero. No RAM is committed by reservation alone.
-   SYSCALL_RESERVE_OWNED_MEMORY : constant Unsigned_64 := 123;
-   --  arg0 reservation base, arg1 exact current prefix, arg2 page-aligned
-   --  additional bytes (up to 16MiB). Returns zero or Last; old pointers stay.
-   SYSCALL_COMMIT_OWNED_MEMORY_PREFIX : constant Unsigned_64 := 124;
-   --  arg0 base, arg1 exact reserved capacity. Retires all committed chunks;
-   --  returns zero only after address-space reservation is released.
-   SYSCALL_RELEASE_OWNED_RESERVATION : constant Unsigned_64 := 125;
+   SYSCALL_RESERVE_OWNED_REGION : constant Unsigned_64 := 146;
+   SYSCALL_CHANGE_OWNED_RANGE   : constant Unsigned_64 := 147;
+   SYSCALL_RELEASE_OWNED_REGION : constant Unsigned_64 := 148;
    SYSCALL_SLEEP           : constant Unsigned_64 := 28;
    --  Give the CPU to any other ready thread and run again when next picked.
    SYSCALL_YIELD           : constant Unsigned_64 := 118;

@@ -1,4 +1,4 @@
---  RESERVE_OWNED_MEMORY's alignment argument (kernel
+--  RESERVE_OWNED_REGION's alignment argument (kernel
 --  Process.Owned_Memory.Reserve, Owned_Reservation_Policy): which
 --  alignments are accepted, and Align_Up, the step Find_Base takes past
 --  each existing reservation. A placement walk over a fixed set of

@@ -46,6 +46,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_Events;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.Owned_Reservations;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Net_Address;
@@ -331,10 +332,10 @@ procedure main is
 
    --  Lend netstack the interface's DHCP page.
    procedure Open_DHCP (R : in out Interface_Record) is
-      Base : constant Unsigned_64 := KC.Call (KA.Allocate_Owned_Memory, Page_Bytes);
+      Base : constant Unsigned_64 := CuBit.Owned_Reservations.Allocate (Page_Bytes);
       Created : Boolean;
    begin
-      if Base = KA.Failed then
+      if Base = 0 then
          Say ("netmgr: " & Name_Of (R) & ": no memory for DHCP");
          return;
       end if;
@@ -342,7 +343,7 @@ procedure main is
                                 R.Grant, Created);
       if not Created then
          declare
-            Ignore : constant Unsigned_64 := KC.Call (KA.Release_Owned_Memory, Base, Page_Bytes);
+            Ignore : constant Boolean := CuBit.Owned_Reservations.Free (Base, Page_Bytes);
          begin
             Say ("netmgr: " & Name_Of (R) & ": DHCP page not lent");
             return;
@@ -886,7 +887,7 @@ procedure main is
       for I in 1 .. Capacity loop
          if Item (I).State = Retiring and then MG.Retirement_Confirmed (Item (I).Grant) then
             declare
-               Ignore : constant Unsigned_64 := KC.Call (KA.Release_Owned_Memory, Item (I).Page, Page_Bytes);
+               Ignore : constant Boolean := CuBit.Owned_Reservations.Free (Item (I).Page, Page_Bytes);
             begin
                Item (I).all := (others => <>);
             end;

@@ -83,6 +83,7 @@ with Link_Tracker;
 with Interface_Table;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.Owned_Reservations;
 
 package body Netstack_Service is
    use ASCII;
@@ -5031,9 +5032,9 @@ package body Netstack_Service is
    package Retiring is new Interface_Table (Retiring_Region);
 
    procedure releaseOwned (base, bytes : Unsigned_64) is
-      ignore : Unsigned_64;
+      ignore : Boolean;
    begin
-      ignore := CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Release_Owned_Memory, base, bytes);
+      ignore := CuBit.Owned_Reservations.Free (base, bytes);
    end releaseOwned;
 
    procedure releaseRetired is
@@ -5073,9 +5074,8 @@ package body Netstack_Service is
          refuseAttach (NL.Malformed);
          return;
       end if;
-      base := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Allocate_Owned_Memory, Unsigned_64 (PACKET_BUF_SIZE));
-      if base = CuBit.Kernel_ABI.Failed then
+      base := CuBit.Owned_Reservations.Allocate (Unsigned_64 (PACKET_BUF_SIZE));
+      if base = 0 then
          refuseAttach (NL.Out_Of_Memory);
          return;
       end if;

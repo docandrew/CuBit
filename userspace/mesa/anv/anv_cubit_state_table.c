@@ -7,8 +7,8 @@
 
 /* Common CuBit runtime exports; no process-global emulated file descriptors. */
 extern uint64_t cubit_owned_reserve(uint64_t);
-extern uint64_t cubit_owned_commit_prefix(uint64_t, uint64_t, uint64_t);
-extern uint64_t cubit_owned_release_reservation(uint64_t, uint64_t);
+extern uint64_t cubit_owned_commit(uint64_t, uint64_t);
+extern uint64_t cubit_owned_release(uint64_t, uint64_t);
 
 VkResult
 anv_cubit_state_table_expand(struct anv_state_table *table, uint32_t size)
@@ -18,7 +18,7 @@ anv_cubit_state_table_expand(struct anv_state_table *table, uint32_t size)
    const uint64_t wanted = ((uint64_t)size + 4095) & ~UINT64_C(4095);
    while (table->cubit_committed < wanted) {
       uint64_t bytes = MIN2(wanted - table->cubit_committed, UINT64_C(16) * 1024 * 1024);
-      if (cubit_owned_commit_prefix((uintptr_t)table->map, table->cubit_committed, bytes))
+      if (cubit_owned_commit((uintptr_t)table->map + table->cubit_committed, bytes))
          return vk_error(table->device, VK_ERROR_OUT_OF_HOST_MEMORY);
       /* Preserve successful partial growth on a later failure. Logical table
        * capacity is published only once every requested byte is backed. */
@@ -33,7 +33,7 @@ anv_cubit_state_table_finish(struct anv_state_table *table)
 {
    if (!table->map)
       return;
-   if (cubit_owned_release_reservation((uintptr_t)table->map, BLOCK_POOL_MEMFD_SIZE)) {
+   if (cubit_owned_release((uintptr_t)table->map, BLOCK_POOL_MEMFD_SIZE)) {
       (void)vk_errorf(table->device, VK_ERROR_UNKNOWN,
                      "CuBit CPU table retirement failed; backing retained");
       return;

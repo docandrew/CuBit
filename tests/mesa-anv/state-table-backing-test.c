@@ -12,8 +12,8 @@ static bool fail_reserve, fail_release;
 static const uint64_t address = UINT64_C(0x580000000000);
 
 uint64_t cubit_owned_reserve(uint64_t bytes);
-uint64_t cubit_owned_commit_prefix(uint64_t base, uint64_t offset, uint64_t bytes);
-uint64_t cubit_owned_release_reservation(uint64_t base, uint64_t bytes);
+uint64_t cubit_owned_commit(uint64_t address, uint64_t bytes);
+uint64_t cubit_owned_release(uint64_t base, uint64_t bytes);
 
 uint64_t cubit_owned_reserve(uint64_t bytes)
 {
@@ -22,9 +22,9 @@ uint64_t cubit_owned_reserve(uint64_t bytes)
    return fail_reserve ? 0 : address;
 }
 
-uint64_t cubit_owned_commit_prefix(uint64_t base, uint64_t offset, uint64_t bytes)
+uint64_t cubit_owned_commit(uint64_t at, uint64_t bytes)
 {
-   assert(base == address && offset == committed);
+   assert(at == address + committed);
    assert(bytes && bytes % 4096 == 0 && bytes <= 16u * 1024 * 1024);
    ++commits;
    if (commits == fail_commit)
@@ -33,7 +33,7 @@ uint64_t cubit_owned_commit_prefix(uint64_t base, uint64_t offset, uint64_t byte
    return 0;
 }
 
-uint64_t cubit_owned_release_reservation(uint64_t base, uint64_t bytes)
+uint64_t cubit_owned_release(uint64_t base, uint64_t bytes)
 {
    assert(base == address && bytes == BLOCK_POOL_MEMFD_SIZE);
    ++releases;

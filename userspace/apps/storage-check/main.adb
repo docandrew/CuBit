@@ -19,6 +19,8 @@ with CuBit.Filesystem_Events;
 with CuBit.File_Access;
 with CuBit.Volume_Descriptions;
 with CuBit.Channels;
+with CuBit.Owned_Reservations;
+with CuBit.System_Facts;
 with CuBit.Handles;
 with CuBit.Handles.Startup;
 with CuBit.Startup_Tables;
@@ -41,11 +43,12 @@ procedure main is
    grantRef : CuBit.Memory_Grants.Grant_Reference;
    grantOk  : Boolean;
 
+   package Owned renames CuBit.Owned_Reservations;
+
    function exerciseOwnedMemory return Boolean is
       A, B, Again : Unsigned_64;
       Bytes : constant Unsigned_64 := 3 * PAGE_SIZE;
-      function Release (Base, Size : Unsigned_64) return Boolean is
-        (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Base, Size) = 0);
+      function Release (Base, Size : Unsigned_64) return Boolean renames Owned.Release;
       function Check (Base : Unsigned_64; Expected, Value : Unsigned_8) return Boolean is
          type Data is array (1 .. Natural (Bytes)) of Unsigned_8;
          Buffer : Data with Import, Volatile,
@@ -58,22 +61,24 @@ procedure main is
          return True;
       end Check;
    begin
-      if syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 0) /= 0 or else
-        syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Unsigned_64'Last) /= 0 or else
+      if Owned.Allocate (0) /= 0 or else
+        Owned.Allocate (Unsigned_64'Last) /= 0 or else
+        Owned.Reserve (Unsigned_64'Last) /= 0 or else
         Release (aligned, PAGE_SIZE)
       then return False; end if;
       for Round in 1 .. 64 loop
-         A := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Bytes - 1);
-         B := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Bytes);
+         A := Owned.Allocate (Bytes - 1);
+         B := Owned.Allocate (Bytes);
          if A = 0 or B = 0 or A = B or A mod PAGE_SIZE /= 0 or B mod PAGE_SIZE /= 0
          then return False; end if;
          if not Check (A, 0, 16#A5#) or else not Check (B, 0, 16#5A#) then return False; end if;
          -- Interior, wrong-size and non-owned releases must not change data.
          if Release (A + PAGE_SIZE, Bytes) or else Release (A, PAGE_SIZE) or else
-           not Check (A, 16#A5#, 16#A5#) or else not Release (A, Bytes - 1) or else
+           Release (A, Bytes - 1) or else
+           not Check (A, 16#A5#, 16#A5#) or else not Owned.Free (A, Bytes - 1) or else
            Release (A, Bytes)
          then return False; end if;
-         Again := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Bytes);
+         Again := Owned.Allocate (Bytes);
          -- First-fit reuses the hole, but fresh physical contents must be zero.
          if Again /= A or else not Check (Again, 0, 16#33#) or else
            not Check (B, 16#5A#, 16#5A#) or else not Release (B, Bytes) or else
@@ -82,6 +87,142 @@ procedure main is
       end loop;
       return True;
    end exerciseOwnedMemory;
+
+   --  The region API's regression check (ABI-002): commit, refusal of a
+   --  second commit over backed pages, decommit (frames go back: the
+   --  process's owned bytes drop; a recommit reads zero), access changes
+   --  only over committed pages, release of everything, and refusals out
+   --  of a region, of unknown operations and of double release. A grant
+   --  of a decommitted page keeps the receiver's view (its pin).
+   function exerciseOwnedRegions return Boolean is
+      use CuBit.Memory_Grants;
+      Pages : constant := 64;
+      Region_Bytes : constant Unsigned_64 := Pages * PAGE_SIZE;
+      R : Unsigned_64;
+      Failures : Natural := 0;
+      PID : constant Process_ID := From_Word (syscall (SYSCALL_GETPID));
+      Reference : Grant_Reference;
+      Alias_Address : System.Address;
+      OK : Boolean;
+      function P (Index : Unsigned_64) return Unsigned_64 is (R + Index * PAGE_SIZE);
+      function N (Count : Unsigned_64) return Unsigned_64 is (Count * PAGE_SIZE);
+      function Owned_Bytes return Unsigned_64 is
+         Value : CuBit.System_Facts.SP.Statistics;
+         Read : Boolean;
+      begin
+         CuBit.System_Facts.Read_Statistics (Value, Read);
+         return (if Read then Value.Owned_Bytes else 0);
+      end Owned_Bytes;
+      Start : Unsigned_64;
+      procedure Expect (Good : Boolean; What : String) is
+      begin
+         if not Good then
+            debugPrint ("OWNED-REGION-CHECK: FAIL " & What & LF);
+            Failures := Failures + 1;
+         end if;
+      end Expect;
+      procedure Fill (Address : Unsigned_64; Value : Unsigned_64) is
+         Word : Unsigned_64 with Import, Volatile, Address => To_Address (Integer_Address (Address));
+      begin
+         Word := Value;
+      end Fill;
+      function Holds (Address : Unsigned_64; Value : Unsigned_64) return Boolean is
+         Word : Unsigned_64 with Import, Volatile, Address => To_Address (Integer_Address (Address));
+         Last : Unsigned_64 with Import, Volatile,
+           Address => To_Address (Integer_Address (Address + PAGE_SIZE - 8));
+      begin
+         return Word = Value and then Last = 0;
+      end Holds;
+      function Grown (Pages_Now : Unsigned_64) return Boolean is
+        (Owned_Bytes = Start + N (Pages_Now));
+   begin
+      R := Owned.Reserve (Region_Bytes);
+      if R = 0 then
+         debugPrint ("OWNED-REGION-CHECK: FAIL reserve" & LF);
+         return False;
+      end if;
+      --  The first reading also faults in the stack it uses, so later
+      --  readings at the same depth count only owned-memory changes.
+      Expect (Owned_Bytes /= 0, "statistics");
+      Start := Owned_Bytes;
+      --  Refusals: outside or across the region, unaligned, empty, an
+      --  unknown operation, and access changes over unbacked pages.
+      Expect (not Owned.Change (R - PAGE_SIZE, PAGE_SIZE, Owned.Commit), "commit below the region");
+      Expect (not Owned.Change (P (Pages - 1), N (2), Owned.Commit), "commit across the end");
+      Expect (not Owned.Change (R + 1, PAGE_SIZE, Owned.Commit), "unaligned commit");
+      Expect (not Owned.Change (R, 0, Owned.Commit), "empty commit");
+      Expect (not Owned.Change (R, PAGE_SIZE, Owned.Make_Read_Write), "access over unbacked pages");
+      Expect (syscall (SYSCALL_CHANGE_OWNED_RANGE, R, PAGE_SIZE, 5) = Unsigned_64'Last,
+              "unknown operation (an executable one does not exist)");
+      Expect (Grown (0), "reservation holds no RAM");
+
+      --  Commit 16 pages; a second commit over any of them is refused and
+      --  changes nothing (all or nothing: pages 16 .. 23 stay unbacked).
+      Expect (Owned.Change (R, N (16), Owned.Commit), "commit 16");
+      Expect (Grown (16), "16 pages charged");
+      for I in 0 .. 15 loop
+         Expect (Holds (P (Unsigned_64 (I)), 0), "fresh page reads zero");
+         Fill (P (Unsigned_64 (I)), 16#C0DE_0000# + Unsigned_64 (I));
+      end loop;
+      Expect (not Owned.Change (P (8), N (16), Owned.Commit), "second commit over backed pages");
+      Expect (Grown (16), "refused commit charged nothing");
+      Expect (Owned.Change (P (16), N (8), Owned.Commit), "commit above, grows the run");
+      Expect (Grown (24), "24 pages charged");
+      Expect (Holds (P (20), 0) and then Holds (P (15), 16#C0DE_000F#), "growth zero, old intact");
+
+      --  Decommit the middle of a run: frames back, neighbours intact,
+      --  a recommit reads zero.
+      Expect (Owned.Change (P (4), N (4), Owned.Decommit), "decommit middle");
+      Expect (Grown (20), "decommit gave 4 frames back");
+      Expect (Holds (P (3), 16#C0DE_0003#) and then Holds (P (8), 16#C0DE_0008#),
+              "neighbours intact");
+      Expect (not Owned.Change (P (4), N (4), Owned.Make_Read_Only), "access over decommitted pages");
+      Expect (Owned.Change (P (4), N (4), Owned.Commit), "recommit");
+      Expect (Holds (P (4), 0) and then Holds (P (7), 0), "recommit reads zero");
+      Expect (Grown (24), "recommit charged 4");
+
+      --  Access: over committed pages only, and back.
+      Expect (Owned.Change (R, N (2), Owned.Make_Read_Only), "read-only");
+      Expect (Holds (P (1), 16#C0DE_0001#), "read-only readable");
+      Expect (Owned.Change (R, N (2), Owned.Make_Read_Write), "read/write again");
+      Fill (P (1), 16#C0DE_0001#);
+      Expect (not Owned.Change (P (20), N (8), Owned.Make_Read_Only), "access partly unbacked");
+
+      --  Decommit across several runs and unbacked pages, then a range
+      --  with nothing backed (nothing to do, not an error).
+      Expect (Owned.Change (P (2), N (40), Owned.Decommit), "decommit across runs");
+      Expect (Grown (2), "only 2 pages left");
+      Expect (Holds (P (1), 16#C0DE_0001#), "first pages intact");
+      Expect (Owned.Change (P (48), N (8), Owned.Decommit), "decommit unbacked");
+
+      --  A granted page outlives its decommit at the receiver (the pin).
+      Expect (Owned.Change (P (32), PAGE_SIZE, Owned.Commit), "commit for a grant");
+      Fill (P (32), 16#A7A7#);
+      Create_Via_Capability (Self_Endpoint, To_Address (Integer_Address (P (32))), 1,
+                             False, Reference, OK);
+      Expect (OK, "grant");
+      if OK then
+         Acquire (Reference, PID, 0, 4096, Read_Access, Alias_Address, OK);
+         Expect (OK, "acquire");
+         Expect (Owned.Change (P (32), PAGE_SIZE, Owned.Decommit), "decommit granted page");
+         Expect (Owned.Change (P (32), PAGE_SIZE, Owned.Commit), "recommit granted page");
+         Expect (Holds (P (32), 0), "owner sees a fresh page");
+         if OK then
+            Expect (Holds (Unsigned_64 (To_Integer (Alias_Address)), 16#A7A7#),
+                    "receiver keeps the old page");
+            Revoke (Reference, OK);
+            Return_Acquisition (Reference, OK);
+         end if;
+      end if;
+
+      --  Release: wrong size refused; the whole region back; then nothing.
+      Expect (not Owned.Release (R, Region_Bytes - PAGE_SIZE), "release of the wrong size");
+      Expect (Owned.Release (R, Region_Bytes), "release");
+      Expect (Grown (0), "release gave every frame back");
+      Expect (not Owned.Release (R, Region_Bytes), "double release");
+      Expect (not Owned.Change (R, PAGE_SIZE, Owned.Commit), "commit after release");
+      return Failures = 0;
+   end exerciseOwnedRegions;
 
    function exerciseOwnedGrantRetention return Boolean is
       use CuBit.Memory_Grants;
@@ -106,7 +247,7 @@ procedure main is
       end Fill;
    begin
       for Round in 1 .. 64 loop
-         Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+         Base := Owned.Allocate (4096);
          if Base = 0 then return False; end if;
          Fill (To_Address (Integer_Address (Base)), 16#A7#);
          --  A grant to itself, named by its own endpoint.
@@ -115,8 +256,8 @@ procedure main is
          if not OK then return False; end if;
          Acquire (Reference, PID, 0, 4096, Read_Access, Alias_Address, OK);
          if not OK or else Alias_Address = System.Null_Address then return False; end if;
-         if syscall (SYSCALL_RELEASE_OWNED_MEMORY, Base, 4096) /= 0 then return False; end if;
-         Replacement := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+         if not Owned.Free (Base, 4096) then return False; end if;
+         Replacement := Owned.Allocate (4096);
          if Replacement /= Base or else
            not Matches (To_Address (Integer_Address (Replacement)), 0)
          then return False; end if;
@@ -130,7 +271,7 @@ procedure main is
          Return_Acquisition (Reference, OK);
          if not OK or else not Retirement_Confirmed (Reference) or else
            not Matches (To_Address (Integer_Address (Replacement)), 16#3C#) or else
-           syscall (SYSCALL_RELEASE_OWNED_MEMORY, Replacement, 4096) /= 0
+           not Owned.Free (Replacement, 4096)
          then return False; end if;
       end loop;
       return True;
@@ -2825,6 +2966,13 @@ begin
       return;
    end if;
 
+   if exerciseOwnedRegions then
+      debugPrint ("OWNED-REGION-CHECK: PASS" & LF);
+   else
+      debugPrint ("OWNED-REGION-CHECK: FAIL" & LF);
+      return;
+   end if;
+
    if exerciseOwnedGrantRetention then
       debugPrint ("OWNED-GRANT-RETENTION-CHECK: PASS" & LF);
    else
@@ -2901,8 +3049,8 @@ begin
    -- Exercise reaper cleanup rather than explicit release. These allocations
    -- have no outstanding grants; a separate test covers retained grant pins.
    declare
-      First : constant Unsigned_64 := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
-      Second : constant Unsigned_64 := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 12288);
+      First : constant Unsigned_64 := Owned.Allocate (4096);
+      Second : constant Unsigned_64 := Owned.Allocate (12288);
    begin
       if First = 0 or Second = 0 then
          debugPrint ("OWNED-EXIT-CHECK: FAIL allocation" & LF);

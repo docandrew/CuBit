@@ -2,6 +2,7 @@ with Interfaces; use Interfaces;
 with System; with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Owned_Reservations;
 with CuBit.Memory_Grants;
 with CuBit.Desktop_Messages;
 with Client_Input_Channel_Policy;
@@ -39,7 +40,7 @@ package body Client_Input_Channel with SPARK_Mode => Off is
          if Cache.Remaining (S) /= 0 then return; end if;
          Policy.Begin_Setup (Control, Needed);
          if Needed then
-            Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+            Base := CuBit.Owned_Reservations.Allocate (4096);
             OK := Base /= 0 and then Base mod 4096 = 0 and then Base <= Unsigned_64'Last - 4096;
             if OK then
                MG.Create_Via_Capability (UI_Desktop_Service.Endpoint,

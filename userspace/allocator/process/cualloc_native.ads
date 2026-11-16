@@ -1,6 +1,6 @@
 ------------------------------------------------------------------------------
---  CuAlloc on CuBit: the one process heap, over the kernel's growable owned
---  memory (reserve, commit an exact prefix, release). Its C entry points are
+--  CuAlloc on CuBit: the one process heap, over the kernel's owned regions
+--  (reserve, commit the next prefix, release; ABI-002). Its C entry points are
 --  what every adapter calls: the libc malloc family (CuBit.Libc_Memory),
 --  Ada's System.Memory (CuAlloc_Gnat), and Rust's GlobalAlloc. The same
 --  objects are in libc.a, libgnat-user.a and libcualloc.a; a link pulls one
@@ -41,4 +41,13 @@ package CuAlloc_Native is
    --  and the user runtime's (CuBit.Thread_Areas.Exit_Thread).
    procedure Thread_Exit
      with Export, Convention => C, External_Name => "cualloc_thread_exit";
+
+   --  Hand-off for the CuAlloc agent (ABI-002): give the frames of a
+   --  committed page range of one of the heap's regions back to the kernel
+   --  (and the owner's quota), keeping the addresses reserved. The range
+   --  then faults until committed again, which reads zero. Not yet called:
+   --  CuAlloc's proved core tracks each region's committed prefix, so
+   --  returning emptied medium arenas, parked blocks over the cap and an
+   --  exited thread's heap needs that model to allow holes first.
+   function Decommit (Address, Bytes : Unsigned_64) return Boolean;
 end CuAlloc_Native;

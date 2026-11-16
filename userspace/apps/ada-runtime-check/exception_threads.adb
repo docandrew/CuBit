@@ -9,6 +9,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Check_Results; use Check_Results;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.Owned_Reservations;
 with CuBit.Thread_Areas;
 
 package body Exception_Threads is
@@ -72,10 +73,11 @@ package body Exception_Threads is
       Created : array (Worker_Index) of Boolean := [others => False];
       Area : Unsigned_64;
       Ignore : Unsigned_64;
+      Ignore_Release : Boolean;
       Seen : Word;
    begin
       for W in Worker_Index loop
-         Stacks (W) := CuBit.Kernel_Calls.Call (ABI.Allocate_Owned_Memory, Stack_Bytes);
+         Stacks (W) := CuBit.Owned_Reservations.Allocate (Stack_Bytes);
          Area := (if Stacks (W) = 0 then CuBit.Thread_Areas.No_Area else CuBit.Thread_Areas.Create);
          if Area /= CuBit.Thread_Areas.No_Area then
             if CuBit.Kernel_Calls.Call
@@ -102,7 +104,7 @@ package body Exception_Threads is
             end loop;
          end if;
          if Stacks (W) /= 0 then
-            Ignore := CuBit.Kernel_Calls.Call (ABI.Release_Owned_Memory, Stacks (W), Stack_Bytes);
+            Ignore_Release := CuBit.Owned_Reservations.Free (Stacks (W), Stack_Bytes);
          end if;
       end loop;
       Check ((for all W in Worker_Index => Created (W))

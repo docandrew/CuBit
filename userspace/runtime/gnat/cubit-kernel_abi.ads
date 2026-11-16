@@ -50,19 +50,18 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Futex_Wait                   : constant System_Call := 92;
    Futex_Wake                   : constant System_Call := 93;
    Read_Monotonic_Microseconds  : constant System_Call := 114;
-   Allocate_Owned_Memory        : constant System_Call := 115;
-   Release_Owned_Memory         : constant System_Call := 116;
-   Protect_Owned_Memory         : constant System_Call := 117;
    Yield                        : constant System_Call := 118;
    Sleep_Until_Monotonic_Microsecond : constant System_Call := 119;
-   --  Growable owned memory (kernel Process.Owned_Memory): reserve address
-   --  space with no backing, back an exact prefix, give it all back. CuAlloc
-   --  grows the process heap with these. Reserve takes (bytes, alignment):
-   --  the base is a multiple of the alignment (0: a page; else a power of
-   --  two up to 1 GiB).
-   Reserve_Owned_Memory         : constant System_Call := 123;
-   Commit_Owned_Memory_Prefix   : constant System_Call := 124;
-   Release_Owned_Reservation    : constant System_Call := 125;
+   --  Owned memory, one region API (kernel Process.Owned_Memory, ABI-002;
+   --  CuBit.Owned_Reservations wraps it). Reserve_Owned_Region (bytes,
+   --  alignment): page-aligned capacity, no RAM; the base is a multiple of
+   --  the alignment (0: a page; else a power of two up to 1 GiB), or 0.
+   --  Change_Owned_Range (address, bytes, Owned_Range_Operation): one
+   --  operation on a page range of one region; 0, or Failed.
+   --  Release_Owned_Region (base, bytes): the exact region; 0, or Failed.
+   Reserve_Owned_Region         : constant System_Call := 146;
+   Change_Owned_Range           : constant System_Call := 147;
+   Release_Owned_Region         : constant System_Call := 148;
    --  A control message to a child, or to a process this one holds the
    --  process capability for (CuBit.Control_Events).
    Send_Control                 : constant System_Call := 127;
@@ -70,8 +69,16 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Read_Statistics              : constant System_Call := 134;
    --  A value published through the kernel (System_Publications).
    Publish                      : constant System_Call := 135;
-   --  The most one commit may add (kernel Owned_Reservation_Policy).
+   --  The most one commit may back (kernel Owned_Reservation_Policy).
    Maximum_Owned_Commit_Bytes : constant := 16 * 1024 * 1024;
+   --  CHANGE_OWNED_RANGE's operation; the wire value is the position
+   --  (kernel Owned_Reservation_Policy.Range_Operation). Commit: fresh zero
+   --  pages, read/write, over a range with no committed page. Decommit:
+   --  the frames go back, the range stays reserved and faults until it is
+   --  committed again (then zero). The others set the access of committed
+   --  pages; owned memory is never executable.
+   type Owned_Range_Operation is
+     (Commit, Decommit, Make_Inaccessible, Make_Read_Only, Make_Read_Write);
 
    --  What a call returns when it fails or has nothing to give.
    Failed : constant Unsigned_64 := Unsigned_64'Last;
@@ -88,8 +95,8 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Futex_Retry     : constant Unsigned_64 := 1;
    Futex_Timed_Out : constant Unsigned_64 := 2;
 
-   --  The largest owned-memory region (kernel Process.Owned_Memory).
-   Maximum_Owned_Bytes : constant := 256 * 1024 * 1024;
+   --  The largest owned-memory region (kernel Owned_Reservation_Policy).
+   Maximum_Owned_Region_Bytes : constant := 2 * 1024 * 1024 * 1024;
 
    --  The service role netstack registers (CuBit.Messages.DRIVER_NETSTACK).
    Driver_Netstack   : constant := 3;

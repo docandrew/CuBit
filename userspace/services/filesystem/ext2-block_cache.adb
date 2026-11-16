@@ -9,6 +9,7 @@ pragma Ada_2022;
 with Ext2_Support; use type Ext2_Support.File_Admission;
 with Ada.Unchecked_Conversion;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Owned_Reservations;
 with Ext2.Device_IO; use Ext2.Device_IO;
 
 package body Ext2.Block_Cache is
@@ -74,10 +75,10 @@ package body Ext2.Block_Cache is
          chunks := (storeBlocks + Chunk_Blocks - 1) / Chunk_Blocks;
          failed := False;
          for index in 0 .. chunks - 1 loop
-            base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY,
-                             Unsigned_64 (Natural'Min (Chunk_Blocks,
-                               storeBlocks - index * Chunk_Blocks)) * Cached_Block_Bytes);
-            if base = 0 or else base = Unsigned_64'Last then
+            base := CuBit.Owned_Reservations.Allocate
+              (Unsigned_64 (Natural'Min (Chunk_Blocks,
+                 storeBlocks - index * Chunk_Blocks)) * Cached_Block_Bytes);
+            if base = 0 then
                failed := True;
                exit;
             end if;

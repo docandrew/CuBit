@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages;
+with CuBit.Owned_Reservations;
 with Desktop_Logs;
 with Desktop_Wallpaper;
 
@@ -31,13 +32,9 @@ package body Desktop_Wallpaper_Layers is
 
    procedure Release (Layer : Layer_Index) is
       L : Retained renames Layers (Layer);
-      Result : Unsigned_64;
    begin
       if L.Base /= System.Null_Address then
-         Result := CuBit.Messages.syscall
-           (CuBit.Messages.SYSCALL_RELEASE_OWNED_MEMORY,
-            Unsigned_64 (To_Integer (L.Base)), L.Bytes);
-         if Result /= 0 then
+         if not CuBit.Owned_Reservations.Free (Unsigned_64 (To_Integer (L.Base)), L.Bytes) then
             Desktop_Logs.Warn ("desktop: wallpaper layer release failed output=" & Layer'Image);
          end if;
       end if;
@@ -62,8 +59,8 @@ package body Desktop_Wallpaper_Layers is
          Release (Layer);
       end if;
       if L.Base = System.Null_Address then
-         Raw := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_ALLOCATE_OWNED_MEMORY, Needed);
-         if Raw = 0 or else Raw = Unsigned_64'Last or else Raw mod Page_Bytes /= 0 then
+         Raw := CuBit.Owned_Reservations.Allocate (Needed);
+         if Raw = 0 then
             if not Allocation_Reported then
                Allocation_Reported := True;
                Desktop_Logs.Warn ("desktop: wallpaper layer unavailable bytes=" & Needed'Image &

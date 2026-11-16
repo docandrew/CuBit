@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RESERVE_OWNED_MEMORY's alignment argument: hosted checks of the kernel's
+# RESERVE_OWNED_REGION's alignment argument: hosted checks of the kernel's
 # Owned_Reservation_Policy rules and Find_Base's walk, then the policy's
 # SPARK proof. Run inside nix develop; run gnatprove under a memory cap.
 set -euo pipefail

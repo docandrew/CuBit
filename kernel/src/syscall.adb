@@ -10,6 +10,7 @@ with Modules;
 with Process_Identities;
 with Process.Futex;
 with Process.Owned_Memory;
+with Owned_Reservation_Policy;
 with Process.IPC;
 with Process.User_Memory;
 with Capabilities;
@@ -99,12 +100,9 @@ package body Syscall is
             when 6    => number := SYSCALL_GETPID;
             when 7    => number := SYSCALL_KILL;
             when 8    => number := SYSCALL_SBRK;
-            when 115  => number := SYSCALL_ALLOCATE_OWNED_MEMORY;
-            when 116  => number := SYSCALL_RELEASE_OWNED_MEMORY;
-            when 117  => number := SYSCALL_PROTECT_OWNED_MEMORY;
-            when 123  => number := SYSCALL_RESERVE_OWNED_MEMORY;
-            when 124  => number := SYSCALL_COMMIT_OWNED_MEMORY_PREFIX;
-            when 125  => number := SYSCALL_RELEASE_OWNED_RESERVATION;
+            when 146  => number := SYSCALL_RESERVE_OWNED_REGION;
+            when 147  => number := SYSCALL_CHANGE_OWNED_RANGE;
+            when 148  => number := SYSCALL_RELEASE_OWNED_REGION;
             when 126  => number := SYSCALL_INSTALL_LAUNCH_ARGUMENTS;
             when 127  => number := SYSCALL_SEND_CONTROL;
             when 118  => number := SYSCALL_YIELD;
@@ -355,40 +353,38 @@ package body Syscall is
                     Process.processOf (percpu.currentThread), arg0, retval);
                 Process.unlockAddressSpace (Process.processOf (percpu.currentThread));
 
-            when SYSCALL_ALLOCATE_OWNED_MEMORY =>
-                Process.Owned_Memory.Allocate
-                  (Process.processOf (percpu.currentThread), arg0, retval);
-
-            -- Page-aligned virtual capacity only, arg1 the base's alignment
-            -- (0: a page); zero means rejected.
-            when SYSCALL_RESERVE_OWNED_MEMORY =>
+            -- Owned memory (Process.Owned_Memory, ABI-002): three calls,
+            -- no flags. Reserve: arg0 page-aligned bytes (up to 2 GiB),
+            -- arg1 the base's alignment (0: a page); the base, or zero.
+            when SYSCALL_RESERVE_OWNED_REGION =>
                 Process.Owned_Memory.Reserve
                   (Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
-            -- Exact reservation base, expected prefix offset, bounded bytes.
-            when SYSCALL_COMMIT_OWNED_MEMORY_PREFIX =>
+            -- arg0 address, arg1 bytes (a page range of one region), arg2
+            -- the operation (Owned_Reservation_Policy.Range_Operation:
+            -- 0 commit, 1 decommit, 2 inaccessible, 3 read-only, 4
+            -- read/write). Zero, or Last when refused.
+            when SYSCALL_CHANGE_OWNED_RANGE =>
                 declare
-                    Committed : Boolean;
+                    Operation : Owned_Reservation_Policy.Range_Operation;
+                    Known, Changed : Boolean := False;
                 begin
-                    Process.Owned_Memory.Commit_Prefix
-                      (Process.processOf (percpu.currentThread), arg0, arg1, arg2, Committed);
-                    retval := (if Committed then 0 else Unsigned_64'Last);
+                    Owned_Reservation_Policy.Decode (arg2, Operation, Known);
+                    if Known then
+                        Process.Owned_Memory.Change_Range
+                          (Process.processOf (percpu.currentThread), arg0, arg1,
+                           Operation, Changed);
+                    end if;
+                    retval := (if Changed then 0 else Unsigned_64'Last);
                 end;
 
-            when SYSCALL_RELEASE_OWNED_RESERVATION =>
-                declare
-                    Released : Boolean;
-                begin
-                    Process.Owned_Memory.Release_Reservation
-                      (Process.processOf (percpu.currentThread), arg0, arg1, Released);
-                    retval := (if Released then 0 else Unsigned_64'Last);
-                end;
-
-            when SYSCALL_RELEASE_OWNED_MEMORY =>
-                -- The caller's own memory: an owned allocation, or else its
-                -- read-only view of boot-image pages (Modules.Release_View),
-                -- whose pages go back to the buddy allocator with their
-                -- last mapping. One release call, whatever backs the range.
+            when SYSCALL_RELEASE_OWNED_REGION =>
+                -- The caller's own memory: an owned region (exact base and
+                -- capacity), or else its read-only view of boot-image pages
+                -- (Modules.Release_View), whose pages go back to the buddy
+                -- allocator with their last mapping. One release call,
+                -- whatever backs the range, until the boot-module handle
+                -- takes the view's release (BOOT-013).
                 declare
                     Released : Boolean;
                 begin
@@ -399,16 +395,6 @@ package body Syscall is
                           (Process.processOf (percpu.currentThread), arg0, arg1, Released);
                     end if;
                     retval := (if Released then 0 else Unsigned_64'Last);
-                end;
-
-            when SYSCALL_PROTECT_OWNED_MEMORY =>
-                declare
-                    Protected_OK : Boolean;
-                begin
-                    Process.Owned_Memory.Protect
-                      (Process.processOf (percpu.currentThread), arg0, arg1,
-                       arg2, Protected_OK);
-                    retval := (if Protected_OK then 0 else Unsigned_64'Last);
                 end;
 
             when SYSCALL_GETTIME =>

@@ -29,7 +29,7 @@ __unmapself:
 1:	add $8,%rsp
 	pop %rsi
 	pop %rdi
-	mov $116,%eax            /* RELEASE_OWNED_MEMORY(base, bytes) */
+	mov $148,%eax            /* RELEASE_OWNED_REGION(base, bytes) */
 	syscall
 	mov $91,%eax             /* THREAD_EXIT */
 	syscall

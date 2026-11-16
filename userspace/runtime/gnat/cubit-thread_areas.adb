@@ -8,6 +8,7 @@ with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.Owned_Reservations;
 with CuBit.Secondary_Stack_Layout;
 
 package body CuBit.Thread_Areas is
@@ -20,7 +21,7 @@ package body CuBit.Thread_Areas is
    pragma Compile_Time_Error
      (Layout.Page_Bytes /= ABI.Page_Bytes, "thread area pages differ from the kernel's");
    pragma Compile_Time_Error
-     (Layout.Maximum_Area_Bytes > ABI.Maximum_Owned_Bytes,
+     (Layout.Maximum_Area_Bytes > ABI.Maximum_Owned_Region_Bytes,
       "a thread area may not fit one owned-memory region");
    pragma Compile_Time_Error
      (Layout.Object_Alignment < Standard'Maximum_Alignment,
@@ -50,7 +51,7 @@ package body CuBit.Thread_Areas is
    Self_Offset  : constant := 0;
    Stack_Offset : constant := 8;
 
-   --  What ALLOCATE_OWNED_MEMORY returns when it refused.
+   --  What CuBit.Owned_Reservations.Allocate returns when it refused.
    Allocation_Refused : constant Unsigned_64 := 0;
 
    function Value_Of (Where : System.Address) return Unsigned_64 is
@@ -132,12 +133,12 @@ package body CuBit.Thread_Areas is
    procedure Release_Area (Base : Unsigned_64);
    procedure Release_Area (Base : Unsigned_64) is
       P : constant Area_Plan := Plan;
-      Ignore : Unsigned_64;
+      Ignore : Boolean;
    begin
       --  A refused release keeps the area (and its RAM) until the process
       --  exits; there is nothing better to do with it here.
       if P.Valid then
-         Ignore := CuBit.Kernel_Calls.Call (ABI.Release_Owned_Memory, Base, P.Bytes);
+         Ignore := CuBit.Owned_Reservations.Free (Base, P.Bytes);
       end if;
    end Release_Area;
 
@@ -154,7 +155,8 @@ package body CuBit.Thread_Areas is
       if not P.Valid then
          return No_Area;
       end if;
-      Base := CuBit.Kernel_Calls.Call (ABI.Allocate_Owned_Memory, P.Bytes);
+      --  One owned region, committed whole (read/write, zero-filled).
+      Base := CuBit.Owned_Reservations.Allocate (P.Bytes);
       if Base = Allocation_Refused then
          Base := 0;
          return No_Area;
