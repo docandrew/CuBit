@@ -238,8 +238,18 @@ procedure main is
    --  tls.svc.
    SERVICE_METRICS : constant Unsigned_8 := CuBit.Launch_Authority.Metrics_Service;
 
-   --  ELF buffer (also serves as grant buffer to FS for zero-copy reads)
+   --  The launch buffer. Its first INITIAL_BUF_PAGES are the exchange pages
+   --  lent for as long as procmgr runs (paths and delegated scopes to the
+   --  filesystem, keys and values to config, scope lists to tls.svc and
+   --  metrics.svc), so those peers can write them at any time. Files
+   --  procmgr reads (ELF images, init.ccl, generations) go after them, at
+   --  imageBuf, through windows lent to the filesystem only while it reads
+   --  and retired before procmgr looks at a byte (SEC-025: no peer can
+   --  change an image between procmgr's checks, its fingerprint and the
+   --  kernel's load).
    elfBuf : System.Address := System.Null_Address;
+   EXCHANGE_BYTES : constant := INITIAL_BUF_PAGES * PAGE_SIZE;
+   function imageBuf return System.Address is (elfBuf + Storage_Offset (EXCHANGE_BYTES));
 
    --  Grant to FS server covering elfBuf
    fsGrant : CuBit.Memory_Grants.Grant_Reference;
@@ -868,7 +878,7 @@ procedure main is
 
    ---------------------------------------------------------------------------
    --  readFileFromFS - open and read an entire file via FS IPC
-   --  Reads directly into elfBuf through page-aligned, bounded loans.
+   --  Reads directly into imageBuf through page-aligned, bounded loans.
    --  Returns number of bytes read, or 0 on failure.
    ---------------------------------------------------------------------------
    --  Every filesystem request procmgr makes has a deadline (IPC-000 rule
@@ -885,7 +895,7 @@ procedure main is
    --  on the read (recovering a slow command) uses the whole deadline.
    Boot_Read_Deadline_Ms : constant := File_Request_Deadline_Ms;
 
-   --  The whole file Name into elfBuf; its size, or 0 when it could not be
+   --  The whole file Name into imageBuf; its size, or 0 when it could not be
    --  read (absent, unreadable, or a request past Within_Ms: Timed_Out).
    Last_Read_Timed_Out : Boolean := False;
    function readFileFromFS (name : String; Within_Ms : Unsigned_64) return Unsigned_64
@@ -907,7 +917,7 @@ procedure main is
          Success := False;
          CuBit.Memory_Grants.Create_Via_Capability
            (slot => PH.Filesystem,
-            localAddr => elfBuf + Storage_Offset (Offset),
+            localAddr => imageBuf + Storage_Offset (Offset),
             numPages => (Count + PAGE_SIZE - 1) / PAGE_SIZE,
             readWrite => True, reference => Loan, success => Ok);
          if not Ok then
@@ -967,7 +977,9 @@ procedure main is
       handle   := CuBit.Filesystems.File_Handle (msg.words (0));
       fileSize := msg.words (1);
 
-      if fileSize > 0 and then ensureBuffer (fileSize) then
+      if fileSize > 0 and then fileSize <= Unsigned_64'Last - EXCHANGE_BYTES and then
+        ensureBuffer (fileSize + EXCHANGE_BYTES)
+      then
          --  The 1 MiB windows are page multiples; only the last is short.
          --  A short backend read is a failure, never a partially loaded ELF.
          Complete := Reader.Read_All (Natural (fileSize));
@@ -1118,7 +1130,7 @@ procedure main is
    ---------------------------------------------------------------------------
    function readU16 (offset : Unsigned_64) return Unsigned_16 is
       val : Unsigned_16 with
-         Import, Address => elfBuf + Storage_Offset (offset);
+         Import, Address => imageBuf + Storage_Offset (offset);
    begin
       return val;
    end readU16;
@@ -1128,7 +1140,7 @@ procedure main is
    ---------------------------------------------------------------------------
    function readU32 (offset : Unsigned_64) return Unsigned_32 is
       val : Unsigned_32 with
-         Import, Address => elfBuf + Storage_Offset (offset);
+         Import, Address => imageBuf + Storage_Offset (offset);
    begin
       return val;
    end readU32;
@@ -1138,7 +1150,7 @@ procedure main is
    ---------------------------------------------------------------------------
    function readU64 (offset : Unsigned_64) return Unsigned_64 is
       val : Unsigned_64 with
-         Import, Address => elfBuf + Storage_Offset (offset);
+         Import, Address => imageBuf + Storage_Offset (offset);
    begin
       return val;
    end readU64;
@@ -1148,7 +1160,7 @@ procedure main is
    ---------------------------------------------------------------------------
    function readU8 (offset : Unsigned_64) return Unsigned_8 is
       val : Unsigned_8 with
-         Import, Address => elfBuf + Storage_Offset (offset);
+         Import, Address => imageBuf + Storage_Offset (offset);
    begin
       return val;
    end readU8;
@@ -1323,7 +1335,7 @@ procedure main is
                Found_Length := Natural (sh_size);
                declare
                   Source : constant PD.Bytes (1 .. Found_Length)
-                    with Import, Address => elfBuf + Storage_Offset (sh_offset);
+                    with Import, Address => imageBuf + Storage_Offset (sh_offset);
                   Copy : constant PD.Bytes (1 .. Found_Length) := Source;
                   Decoded : PD.Signature;
                begin
@@ -1592,7 +1604,7 @@ procedure main is
                   declare
                      Length : constant ST.Table_Length := Natural (sh_size);
                      Source : constant ST.Bytes (1 .. Length)
-                       with Import, Address => elfBuf + Storage_Offset (sh_offset);
+                       with Import, Address => imageBuf + Storage_Offset (sh_offset);
                      --  One read of the image's bytes (single fetch).
                      Copy : constant ST.Bytes (1 .. Length) := Source;
                      Outcome : ST.Decode_Result;
@@ -2956,7 +2968,7 @@ procedure main is
                declare
                   Length : constant LAuth.Table_Length := Natural (sh_size);
                   Source : constant LAuth.Table_Bytes (1 .. Length)
-                    with Import, Address => elfBuf + Storage_Offset (sh_offset);
+                    with Import, Address => imageBuf + Storage_Offset (sh_offset);
                begin
                   if LAuth.Valid (Source) then
                      Launches.Values (launchIndex (pid)).Table (1 .. Length) := Source;
@@ -4188,7 +4200,7 @@ procedure main is
       t0 := syscall (SYSCALL_GETTIME);
       declare
          Spawned : constant HC.Spawn_Result := HC.Spawn
-           (Authority => PH.Process_Root, Image => elfBuf, Bytes => elfSize,
+           (Authority => PH.Process_Root, Image => imageBuf, Bytes => elfSize,
             Priority => pri,
             Name => name (name'First .. name'First + Natural'Min (name'Length, 16) - 1),
             Parent => requester, Limit => View.Declared.Limit);
@@ -4259,7 +4271,7 @@ procedure main is
                if Section_Length in 1 .. DS.MAX_SECTION_BYTES then
                   declare
                      Source : constant DS.Byte_Array (1 .. Section_Length)
-                       with Import, Address => elfBuf + Storage_Offset (Section_At);
+                       with Import, Address => imageBuf + Storage_Offset (Section_At);
                      Copy : constant DS.Byte_Array (1 .. Section_Length) := Source;
                   begin
                      DS.Decode (Copy, Table, Status);
@@ -4312,7 +4324,7 @@ procedure main is
                   else
                      declare
                         Source : constant PS.Bytes (1 .. Signature_Length)
-                          with Import, Address => elfBuf + Storage_Offset (Signature_At);
+                          with Import, Address => imageBuf + Storage_Offset (Signature_At);
                         Descriptor : constant PS.Bytes := Source;
                      begin
                         if PS.Validate (Descriptor) /= PS.Valid
@@ -4353,7 +4365,7 @@ procedure main is
             elsif Signature_Length > 0 then
                declare
                   Source : constant PS.Bytes (1 .. Natural'Min (Signature_Length, PS.Maximum_Descriptor_Bytes))
-                    with Import, Address => elfBuf + Storage_Offset (Signature_At);
+                    with Import, Address => imageBuf + Storage_Offset (Signature_At);
                   Descriptor : constant PS.Bytes := Source;
                   Checked : CCL.Typed_Values.Check_Result;
                begin
@@ -4416,7 +4428,7 @@ procedure main is
             if Accepted then
                declare
                   Source : constant LA.Block (1 .. Description_Length)
-                    with Import, Address => elfBuf + Storage_Offset (Description_At);
+                    with Import, Address => imageBuf + Storage_Offset (Description_At);
                   Rings : constant CuBit.Outlet_Rings.Table :=
                     (if Description_Length > 0 then deriveRings (newPID, Source, Child.Mailbox)
                      else (others => <>));
@@ -5584,7 +5596,7 @@ procedure main is
          if Answered and then Found_Length > 0 then
             declare
                Source : constant PP.Bytes (1 .. Found_Length)
-                 with Import, Address => elfBuf + Storage_Offset (Found_At);
+                 with Import, Address => imageBuf + Storage_Offset (Found_At);
                Target : PP.Bytes (1 .. Found_Length)
                  with Import, Address => Mapped + Storage_Offset (Name_Length);
             begin
@@ -5979,7 +5991,7 @@ procedure main is
       end if;
       declare
          Source : String (1 .. Natural (Source_Size))
-           with Import, Address => elfBuf;
+           with Import, Address => imageBuf;
       begin
          Compile (Source, Startup_Plan);
       end;
@@ -6185,7 +6197,7 @@ procedure main is
       end if;
       declare
          Elf : Manifest_Fingerprints.Bytes (1 .. Natural (Size))
-           with Import, Address => elfBuf;
+           with Import, Address => imageBuf;
       begin
          Manifest_Fingerprints.Fingerprint (Elf, Into, Length, Result);
       end;
@@ -6587,9 +6599,9 @@ procedure main is
 
       function Generation_Text return String is ("generation " & Decimal (Unsigned_64 (Number)));
 
-      --  Text of the file just read (in elfBuf).
+      --  Text of the file just read (in imageBuf).
       function Read_Text return String is
-         Text : constant String (1 .. Natural (Size)) with Import, Address => elfBuf;
+         Text : constant String (1 .. Natural (Size)) with Import, Address => imageBuf;
       begin
          return Text;
       end Read_Text;
@@ -6660,8 +6672,8 @@ procedure main is
                Facts.Program_Readable := Size >= 64 and then Size <= Unsigned_64 (Natural'Last / 4);
                if Facts.Program_Readable then
                   declare
-                     Bytes : constant Storehouse.Byte_Array (1 .. Natural (Size)) with Import, Address => elfBuf;
-                     Elf : constant Manifest_Fingerprints.Bytes (1 .. Natural (Size)) with Import, Address => elfBuf;
+                     Bytes : constant Storehouse.Byte_Array (1 .. Natural (Size)) with Import, Address => imageBuf;
+                     Elf : constant Manifest_Fingerprints.Bytes (1 .. Natural (Size)) with Import, Address => imageBuf;
                      Result : Manifest_Fingerprints.Reading;
                      use type Storehouse.Digest;
                      use type Manifest_Fingerprints.Reading;
