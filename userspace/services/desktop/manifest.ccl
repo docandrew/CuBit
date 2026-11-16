@@ -23,6 +23,12 @@
     # The status bar's time; minimal profiles start Desktop without clock.
     (service "clock" "clock")
     (service "display" "display")
+    # Scanout loans (UI-020): display.svc derives a grant of each scanout
+    # buffer for Desktop, and the kernel needs an endpoint to Desktop for
+    # that. Desktop offers display a read-only copy of this one (read and
+    # grant, never write: no holder can call Desktop) with its first
+    # Lend_Buffer request. Without it Desktop copies frames to Display.
+    (Request.Offerable_Self "self-offer")
     (service "process-manager" "process-manager")
     # Wallpapers and icons (docs/assets.md): read-only, exactly the wallpaper
     # and icon packages on each image's system volume; system.assets.root

@@ -8457,7 +8457,7 @@ display: boot output registered
 display: backend virtio-gpu
 display: gpu copy buffer attached
 display: output 0 hardware cursor planes 1
-DISPLAY-LEND-CHECK: 
+DISPLAY-LEND-CHECK: PASS three loans
 DISPLAY-PLANES-CHECK: PASS hardware
 DISPLAY-GRANTS-CHECK: PASS
 "
@@ -8577,6 +8577,8 @@ text: closed
     display-latency)
         required_markers="
 display: backend virtio-gpu (3 buffers)
+display: session lent scanout
+desktop: output 0 composes into the lent scanout buffers (no GPU endpoint held)
 calculator: first frame presented
 desktop: latency inputs=
 desktop: latency stage=input_to_ready
@@ -8584,6 +8586,9 @@ desktop: latency stage=input_to_ready
         if [ "${CUBIT_DISPLAY_LATENCY_ANIMATION:-0}" = 1 ]; then
             required_markers="
 display: backend virtio-gpu (3 buffers)
+display: session lent scanout
+desktop: output 0 composes into the lent scanout buffers (no GPU endpoint held)
+frame-ticker: no offerable self endpoint (none declared; self cannot be offered)
 frame-ticker: first frame presented
 frame-ticker: animating
 desktop: latency inputs=

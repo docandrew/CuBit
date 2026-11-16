@@ -1,5 +1,8 @@
 # Requested authority only; the existing launch path remains in control.
-(executable-manifest v1
-  (identity "com.cubit.display-check")
-  (version "0.1.0")
-  (request-service display read-write display))
+(Executable_Manifest
+  identity => "com.cubit.display-check"
+  version => "0.1.0"
+  requests => [
+    (service "display" "display")
+    # Scanout loans (UI-020), as Desktop: offered to display read-only.
+    (Request.Offerable_Self "self-offer")])

@@ -646,7 +646,7 @@ procedure Main is
       begin
          Msg.tag := CuBit.Handles.IPC.Call_Offering
            (Display_Service, Msg, CuBit.Messages.Wait_Forever,
-            CuBit.Handles.Copy (CuBit.Handles.Startup.Endpoint_Named (CuBit.Startup_Tables.Self_Text), Kept));
+            CuBit.Handles.Copy (CuBit.Handles.Startup.Endpoint_Named ("self-offer"), Kept));
          return To_Wire (Msg);
       end Lend_Offering;
    begin
@@ -683,7 +683,8 @@ procedure Main is
       Wire := Lend (1, Layout);
       Check (Wire.Length = 1 and then Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Bad_State),
         "no loan without an offered endpoint");
-      Wire := Lend_Offering (1, CuBit.Handles.Read_Write);
+      --  A copy that keeps the grant right is more than display accepts.
+      Wire := Lend_Offering (1, (Read | Grant => True, others => False));
       if Wire.Label /= P.Lend_Buffer then
          --  The kernel refused the offer itself: a process's own endpoint
          --  ("self") carries no RIGHT_GRANT, so it cannot offer one, and
@@ -691,12 +692,12 @@ procedure Main is
          Expect (Encode_Lease_Request (Release_Display), DP.Success, "lend release");
          for R of Records loop MG.Revoke (R, Ok); end loop;
          if Passed then
-            debugPrint ("DISPLAY-LEND-CHECK: BLOCKED no endpoint to this client can be offered (self has no RIGHT_GRANT)" & ASCII.LF);
+            debugPrint ("DISPLAY-LEND-CHECK: BLOCKED the offer was refused (no offerable self endpoint)" & ASCII.LF);
          end if;
          return;
       end if;
       Check (Wire.Length = 1 and then Wire.Words (0) = DP.Status_Code'Enum_Rep (DP.Bad_State),
-        "no loan for an offered endpoint that can call");
+        "no loan for an offered endpoint beyond read-only");
       --  No GPU endpoint here, as in Desktop: a loan gives no GPU authority.
       Check (not CuBit.Handles.Valid (CuBit.Handles.Startup.Endpoint_Named ("gpu")),
         "the client holds no GPU endpoint");

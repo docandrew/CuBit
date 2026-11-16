@@ -244,6 +244,10 @@ procedure main is
    OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Status);
    --  Get_Status word 1: Display lends its scanout buffers (UI-020).
    Display_Lends_Scanout : constant Unsigned_64 := 16#0010#;
+   --  Desktop's offerable self endpoint (manifest Request.Offerable_Self).
+   Self_Offer_Binding : constant String := "self-offer";
+   function Self_Offer return CuBit.Handles.Endpoint is
+     (CuBit.Handles.Startup.Endpoint_Named (Self_Offer_Binding));
    OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Acquire_Display);
    OP_DISPLAY_RELEASE       : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Release_Display);
 
@@ -13304,6 +13308,11 @@ procedure main is
          debugPrint ("desktop: holds a GPU endpoint; not composing into lent scanout" & LF);
          P.Lent := False;
       end if;
+      --  The endpoint Display derives loans through (Request.Offerable_Self).
+      if P.Lent and then not CuBit.Handles.Valid (Self_Offer) then
+         debugPrint ("desktop: no offerable self endpoint; copying frames" & LF);
+         P.Lent := False;
+      end if;
       --  Each buffer's rows, then the page of its frames' damage records
       --  (CuBit.Display_Frame_Damage, LAT-002 multi-rect submit). Lent
       --  slots keep their rows too: a refused first loan copies instead.
@@ -13327,8 +13336,7 @@ procedure main is
             Response.tag := CuBit.Handles.IPC.Call_Offering
               (Desktop_Endpoints.Display_Service, Response,
                CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms),
-               CuBit.Handles.Copy (CuBit.Handles.Startup.Endpoint_Named (CuBit.Startup_Tables.Self_Text),
-                                   CuBit.Handles.Read_Only));
+               CuBit.Handles.Copy (Self_Offer, CuBit.Handles.Read_Only));
          else
             Response.tag := capCall (Desktop_Endpoints.Display_Service, Response, CuBit.Messages.Deadline_After (Display_Call_Deadline_Ms));
          end if;

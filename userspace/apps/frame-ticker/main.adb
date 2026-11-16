@@ -21,6 +21,10 @@ with CuBit.UI.App;
 with CuBit.UI.State;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Startup;
+with CuBit.Startup_Tables;
 procedure Main is
    Win : CuBit.UI.App.Window;
    UI : CuBit.UI.State.UI_State;
@@ -89,7 +93,49 @@ procedure Main is
    procedure Run is new CuBit.UI.App.Run
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Deadline, On_Deadline => Tick, Activity_Wait => True);
+   --  UI-020 refusal check: this program declares no offerable self
+   --  endpoint (Request.Offerable_Self), so it holds none. Its own "self"
+   --  endpoint carries no RIGHT_GRANT and cannot be offered, and no
+   --  endpoint it was given names itself with Grant.
+   procedure Check_No_Offerable_Self is
+      package H renames CuBit.Handles;
+      package IPC renames CuBit.Handles.IPC;
+      use type H.Rights;
+      Self : constant H.Endpoint := H.Startup.Endpoint_Named (CuBit.Startup_Tables.Self_Text);
+      Desktop : constant H.Endpoint := H.Startup.Endpoint_Named ("desktop");
+      Self_D : constant IPC.Description := IPC.Describe (Self);
+      Desktop_D : constant IPC.Description := IPC.Describe (Desktop);
+      Probe : Message := NULL_MESSAGE;
+      Tag : MessageTag;
+      Me : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+      Ok : Boolean := True;
+   begin
+      if not Self_D.Current or else Self_D.Held.Grant then
+         debugPrint ("frame-ticker: FAIL the self endpoint carries the grant right" & ASCII.LF);
+         Ok := False;
+      end if;
+      if Desktop_D.Current and then (Desktop_D.Object = Me or else Desktop_D.Held.Grant) then
+         debugPrint ("frame-ticker: FAIL an endpoint it holds is an offerable self" & ASCII.LF);
+         Ok := False;
+      end if;
+      if H.Valid (H.Startup.Endpoint_Named ("self-offer")) then
+         debugPrint ("frame-ticker: FAIL it holds an offerable self it never declared" & ASCII.LF);
+         Ok := False;
+      end if;
+      --  Offering a copy of the plain self endpoint is refused before any call.
+      Probe.tag := (label => 0, length => 0, protocol => 0, ipc => <>, reserved => 0);
+      Tag := IPC.Call_Offering (Desktop, Probe, CuBit.Messages.Deadline_After (100),
+                                H.Copy (Self, H.Read_Only));
+      if Tag /= NULL_TAG then
+         debugPrint ("frame-ticker: FAIL its plain self endpoint was offered" & ASCII.LF);
+         Ok := False;
+      end if;
+      if Ok then
+         debugPrint ("frame-ticker: no offerable self endpoint (none declared; self cannot be offered)" & ASCII.LF);
+      end if;
+   end Check_No_Offerable_Self;
 begin
+   Check_No_Offerable_Self;
    CuBit.UI.App.Open (Win, WINDOW_W, WINDOW_H,
      CuBit.Desktop_Protocol.Feature_Bits
        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Closeable => True, others => False]),
