@@ -71,6 +71,7 @@ package body ACPI_Native_EC_Discovery is
       Data:Firmware_Tables.Bytes(1..Resource_Ceiling);
       System_IO:constant Firmware_Tables.Byte:=1;
       Excluded : array (C.Namespace.Node_ID range C.Namespace.Root .. C.Namespace_Node_Count(Service)) of Boolean := [others=>False];
+      Relevant : array (C.Namespace.Node_ID range C.Namespace.Root .. C.Namespace_Node_Count(Service)) of Boolean := [others=>False];
       Maximum_Error_Records : constant Positive := 8;
       Maximum_Path_Preview : constant Positive := 112;
       function Quiet return Boolean is
@@ -141,7 +142,7 @@ package body ACPI_Native_EC_Discovery is
       -- The prefilter owns its one possible result until attributable cleanup.
       -- Discovery sessions are fixed process-lived objects, consumed once each:
       -- one selected controller and one possible conflicting controller.
-      procedure Identify(Matched,Good:out Boolean) is
+      procedure Identify(Matched,Good:out Boolean;Passive:Boolean:=False) is
          Found:C.Namespace.Lookup_Result;Member:C.Node_Descriptor;
          Value:C.Values.Result;Shape:C.Values.Value_Description;
          Bytes:AML_Decode.Bytes(1..7);Copied:Natural;
@@ -158,7 +159,14 @@ package body ACPI_Native_EC_Discovery is
          if Found.Status/=C.Namespace.Found then return;end if;
          C.Describe_Node(Service,Found.Node,Member,Access_Result);if Access_Result/=C.Values.Available then return;end if;
          Last.Identity_Node:=Found.Node;
-         ACPI_One_Service.Runtime.Evaluate_Discovery(Service,Member,Remaining,Value,Access_Result);
+         if Passive then
+            -- A method, Field or unknown value remains a possible controller.
+            -- Only copied ordinary integer/string names can rule one out.
+            if C.Values.Node_Kind(Member) not in C.Namespace.Integer_Object|C.Namespace.String_Object then return;end if;
+            C.Observe_Named_Value(Service,Found.Node,Value,Access_Result);
+         else
+            ACPI_One_Service.Runtime.Evaluate_Discovery(Service,Member,Remaining,Value,Access_Result);
+         end if;
          Last.Identity_Access:=Access_Result;Last.Identity_Execution:=Value.Status;
          if Value.Status in AML_Execute.Object_Returned|AML_Execute.Reference_Returned|AML_Execute.Metadata_Returned then
             Identity_Handle:=Value.Handle;
@@ -189,6 +197,46 @@ package body ACPI_Native_EC_Discovery is
             Good:=Good and then Access_Result=C.Values.Available and then Identity_Handle=C.Values.No_Value;
          end if;
       end Identify;
+      function Build_Relevance return Boolean is
+         Parent:C.Node_Descriptor;Cursor,Up:C.Namespace.Node_ID;
+         function Step return Boolean is
+         begin
+            if Remaining=0 then Finish(Budget_Exhausted);return False;end if;
+            if Expired then Finish(Window_Expired);return False;end if;
+            if not Quiet then Finish(Recovery_Required);return False;end if;
+            Remaining:=Remaining-1;Last.Charged:=Budget-Remaining;return True;
+         end Step;
+      begin
+         -- Reject no identity by running AML. Unknown/method identities are
+         -- conservatively possible; missing/literal non-EC identities are not.
+         for Position in Relevant'Range loop
+            Last.At_Node:=Position;Last.At_Checkpoint:=Describe_Device;
+            if not Step then return False;end if;
+            C.Describe_Node(Service,Position,Node,Access_Result);
+            if Access_Result/=C.Values.Available then Finish(Recovery_Required);return False;end if;
+            if C.Values.Node_Kind(Node)=C.Namespace.Device_Object then
+               Identify(Matched,Good,Passive=>True);
+               if not Quiet then Finish(Recovery_Required);return False;end if;
+               Relevant(Position):=not Good or else Matched;
+            end if;
+         end loop;
+         -- Keep every ancestor of a possible controller, so its _STA still
+         -- gates descendants before any active _HID or controller evaluation.
+         for Position in Relevant'Range loop
+            if Relevant(Position) then
+               Cursor:=Position;
+               while Cursor/=C.Namespace.Root loop
+                  if not Step then return False;end if;
+                  C.Describe_Node(Service,Cursor,Parent,Access_Result);
+                  if Access_Result/=C.Values.Available then Finish(Recovery_Required);return False;end if;
+                  Up:=C.Values.Parent_Position(Parent);
+                  if Up not in Relevant'Range or else Up>=Cursor then Finish(Recovery_Required);return False;end if;
+                  Relevant(Up):=True;Cursor:=Up;
+               end loop;
+            end if;
+         end loop;
+         return True;
+      end Build_Relevance;
    begin
       Result:=Last;if Attempted or Working then return;end if;Attempted:=True;Working:=True;
       if Deadline in 0|Interfaces.Unsigned_64'Last or else Expired then Finish(Window_Expired);return;end if;
@@ -228,12 +276,17 @@ package body ACPI_Native_EC_Discovery is
          else Finish(Boot_Binding_Failed);return;
          end if;
       end if;
+      if Boot_Chosen or Reconcile then
+         Relevant:=[others=>True];
+      elsif not Build_Relevance then return;
+      end if;
       for Position in C.Namespace.Node_ID range C.Namespace.Root .. C.Namespace_Node_Count(Service) loop
          if Boot_Chosen and then Position/=C.Values.Position(Boot_Device) then goto Next_Device;end if;
          Last.At_Node:=Position;Last.At_Checkpoint:=Scan_Roots;
          if Remaining=0 then Finish(Budget_Exhausted);return;end if;
          if Natural(C.Pending_Notifications(Service))>0 then Finish(Notifications_Pending);return;end if;
          if C.Retained_Results(Service)>0 then Finish(Recovery_Code);return;end if;
+         if not Relevant(Position) then goto Next_Device;end if;
          Last.At_Checkpoint:=Describe_Device;
          C.Describe_Node(Service,Position,Node,Access_Result);
          if Access_Result=C.Values.Available and then C.Values.Node_Kind(Node)=C.Namespace.Device_Object then

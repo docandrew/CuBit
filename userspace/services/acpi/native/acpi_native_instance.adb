@@ -446,6 +446,17 @@ package body ACPI_Native_Instance is
      (ACPI_Service, Driver, ACPI_Native_HID_Detection.Discovery.Queries);
    package Runtime_HID_Paths is new ACPI_HID_Initialization
      (ACPI_Service, Driver, ACPI_Native_HID_Collection.Discovery.Queries);
+   -- Copied observation only: an absent/failed member's Raw value is not a
+   -- PCI fact. Preserve that distinction, including an observed zero.
+   function HID_PCI_Member_Image
+     (Item : ACPI_Native_HID_Collection.Reader.Report) return String is
+   begin
+      case Item.Status is
+         when ACPI_Native_HID_Collection.Reader.Observed =>
+            return Item.Status'Image & ":" & Item.Raw'Image;
+         when others => return Item.Status'Image;
+      end case;
+   end HID_PCI_Member_Image;
    function HID_Error_Path_Image (Text : String) return String is
    begin
       for I in Text'Range loop
@@ -1455,6 +1466,22 @@ package body ACPI_Native_Instance is
                         " descriptor-exec=" & ACPI_Startup_Diagnostics.Execution_Name (E.Firmware.Descriptor.Execution) &
                         " source=" & E.Source_Status'Image & " topology=" & E.Topology.Status'Image &
                         " fuel=" & E.Charged'Image, Owner_Quiet);
+                     case E.Kind is
+                        when Collection.Topology_Error =>
+                           ACPI_Native_Diagnostic_Output.Write
+                             ("acpi: stage hid-pci fail input=" & E.Input_Index'Image &
+                              " node=" & ACPI_Service.Values.Position (E.Device)'Image &
+                              " controller=" & ACPI_Service.Values.Position (E.Topology.Controller)'Image &
+                              " host=" & ACPI_Service.Values.Position (E.Topology.Host_Bridge)'Image &
+                              " seg-defaulted=" & Boolean'Image (E.Topology.Segment_Defaulted) &
+                              " _SEG=" & HID_PCI_Member_Image
+                                (E.Topology.Members (ACPI_Native_HID_Collection.Reader.Segment)) &
+                              " _BBN=" & HID_PCI_Member_Image
+                                (E.Topology.Members (ACPI_Native_HID_Collection.Reader.Base_Bus)) &
+                              " _ADR=" & HID_PCI_Member_Image
+                                (E.Topology.Members (ACPI_Native_HID_Collection.Reader.Address)), Owner_Quiet);
+                        when others => null;
+                     end case;
                   end;
                end loop;
                if Fresh.Node_Errors /= 0 then
