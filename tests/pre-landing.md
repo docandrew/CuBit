@@ -1034,3 +1034,28 @@ Passes after: `procmgr: init launched: large-manifest-probe.app` and
 make -C kernel world CUBIT_COMPOSITOR_TIMING=on
 tests/headless/run.sh --test large-manifest --accel kvm
 ```
+
+## input-rings (IPC-009, DEV-002: input on source rings, not the event lane)
+
+Input drivers feed `CuBit.Input_Source`; each device has its own ring to
+Desktop, and the kernel only sets it up and wakes.
+- Hosted (`tests/input-rings`): a full ring keeps every report in order and
+  shows the producer's overflow; wakes come once per arming; two sources at
+  once keep each one's order; a source added mid-session is read, one that
+  leaves is drained first, one that comes back is a new source; a producer
+  cannot name its source; Desktop admits only the input sources' badge.
+- desktop-restart: the input drivers' rings open again to the restarted
+  Desktop.
+- key-repeat and desktop-display (drags) still work over the rings.
+
+```sh
+bash tests/input-rings/run.sh
+make -C kernel world CUBIT_COMPOSITOR_TIMING=on
+make -C kernel desktop CUBIT_DESKTOP_FAULT=exit-once CUBIT_COMPOSITOR_TIMING=on
+cp kernel/isodir/boot/desktop.svc /home/doc/cubit-build-tmp/desktop-fault.svc
+make -C kernel desktop CUBIT_COMPOSITOR_TIMING=on
+CUBIT_DESKTOP_IMAGE=/home/doc/cubit-build-tmp/desktop-fault.svc \
+  bash tests/headless/run.sh --test desktop-restart --accel kvm --timeout 120
+bash tests/headless/run.sh --test key-repeat --accel kvm --timeout 90
+bash tests/headless/run.sh --test desktop-display --accel kvm --timeout 90
+```
