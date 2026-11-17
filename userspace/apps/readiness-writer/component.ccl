@@ -1,0 +1,2 @@
+(Component name => "readiness-writer" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

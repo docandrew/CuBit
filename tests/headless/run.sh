@@ -356,7 +356,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -836,6 +836,12 @@ with open(sys.argv[1], "wb") as f:
     futex)
         # Threads of one process on every CPU at once (default four).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex.ccl"
+        ;;
+    wait)
+        # ABI-002 slice 2 / KERN-013: WAIT's forms and the readiness page
+        # (wait-check), and a store to the page that must fault
+        # (readiness-writer).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-wait.ccl"
         ;;
     secondary-stacks)
         # secondary-stack-check (build: make -C kernel secondary-stack-check):
@@ -2325,6 +2331,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$THREADS_IMAGE $THREADS_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $THREADS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "wait" ]; then
+        for WAIT_IMAGE in logstore.svc wait-check.app readiness-writer.app; do
+            debugfs -w -R "rm $WAIT_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WAIT_IMAGE $WAIT_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $WAIT_IMAGE (make -C kernel wait-check readiness-writer)" >&2
                 exit 1
             fi
         done
@@ -7623,6 +7639,41 @@ platform-pool-check: touching the revoked mapping
            [ "$(grep -acF 'platform-pool: shared phys=' "$SERIAL_LOG")" -ne 1 ] ||
            [ "$(grep -acF 'TEST: PASS platform-pool' "$SERIAL_LOG")" -ne 1 ]; then
             echo "headless: platform-pool checks failed, or the revoked mapping stayed readable" >&2
+            exit 1
+        fi
+        ;;
+    wait)
+        required_markers="
+wait-check: Now on requests, empty PASS
+wait-check: Now on events, empty PASS
+wait-check: Now on messages, empty PASS
+wait-check: Now on completions, empty PASS
+wait-check: Now on readiness, nothing ready PASS
+wait-check: Now on a futex word holding another value PASS
+wait-check: Now on a futex word holding the value PASS
+wait-check: Now on an offered capability, no call PASS
+wait-check: a messages deadline expires PASS
+wait-check: a readiness deadline expires PASS
+wait-check: the timer sleeps until its instant PASS
+wait-check: requests counter moved by one PASS
+wait-check: Now on requests takes it PASS
+wait-check: completions counter moved by one PASS
+wait-check: Now on completions takes it PASS
+wait-check: events counter moved by one PASS
+wait-check: Now on events takes it, with its publisher PASS
+wait-check: a new request is pending PASS
+wait-check: taking every counted request needs no empty poll PASS
+wait-check: ALL PASS
+readiness-writer: page readable PASS
+readiness-writer: storing to the page
+"
+        # The store to the read-only page (its only store) must end the
+        # writer with a write-protection fault, and it never prints "wrote".
+        # Serial lines interleave, so match the kernel's one-line record.
+        if grep -aF 'wait-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aqF 'readiness-writer: wrote' "$SERIAL_LOG" ||
+           ! grep -aqE 'name=readiness-writer pid=0x[0-9A-F]+ kind=write-protection' "$SERIAL_LOG"; then
+            echo "headless: wait checks failed, or the readiness page was writable" >&2
             exit 1
         fi
         ;;

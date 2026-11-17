@@ -5,6 +5,7 @@
 --  out of measured loops so it does not dominate the numbers.
 ------------------------------------------------------------------------------
 with CuBit.Waits;
+with CuBit.Readiness;
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -311,6 +312,11 @@ procedure main is
       held : Natural := 0;
       seen : array (1 .. 64) of Boolean := (others => False);
       deadline : Unsigned_64;
+      --  KERN-013: every completion below, the target-died and cancelled
+      --  ones too, moves the readiness page's completion count by one.
+      Counted_Before : constant CuBit.Readiness.Count :=
+        CuBit.Readiness.Produced (CuBit.Readiness.Completions);
+      use type CuBit.Readiness.Count;
    begin
       -- Leave completed results unread, filling 63 of the 64 reservations.
       for i in 1 .. 63 loop
@@ -371,6 +377,9 @@ procedure main is
       end loop;
       if held /= 1 or else capSubmit (Bench, msg, 65) then
          fail ("retired-endpoint-admission"); return;
+      end if;
+      if CuBit.Readiness.Produced (CuBit.Readiness.Completions) - Counted_Before /= 64 then
+         fail ("readiness-completion-count"); return;
       end if;
       debugPrint ("IPC-RETIREMENT-CHECK: PASS" & LF);
    end runRetirement;

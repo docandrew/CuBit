@@ -1,0 +1,5 @@
+# KERN-013 regression: stores to its own readiness page, which the kernel
+# maps read-only. The store must fault and end the program.
+(executable-manifest v1
+  (identity "com.cubit.readiness-writer")
+  (version "0.1.0"))

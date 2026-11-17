@@ -1,4 +1,5 @@
 with CuBit.Waits;
+with CuBit.Readiness;
 with CuBit.Handles;
 with Startup;
 with Channel_Tests;
@@ -84,6 +85,9 @@ procedure main is
    submitOk   : Boolean;
    completion : CompletionEntry;
    ret        : Unsigned_64;
+   --  KERN-013: the readiness page's completion count before the death request.
+   Death_Counted : CuBit.Readiness.Count := 0;
+   use type CuBit.Readiness.Count;
    firstReverseValue : Unsigned_64 := 0;
    occupiedCompleted : Natural := 0;
    occupiedHoldSeen  : Boolean := False;
@@ -850,6 +854,7 @@ begin
                      length => 0,
                      protocol  => 0, ipc => <>,
                      reserved  => 0);
+         Death_Counted := CuBit.Readiness.Produced (CuBit.Readiness.Completions);
          submitOk := capSubmit (IPC_Test, msg, DEATH_TOKEN);
          if not submitOk then
             fail ("death-submit");
@@ -876,6 +881,9 @@ begin
             fail ("death-status");
          elsif completion.from = 0 then
             fail ("death-from");
+         elsif CuBit.Readiness.Produced (CuBit.Readiness.Completions) - Death_Counted /= 1 then
+            --  KERN-013: the target-died completion is counted once.
+            fail ("death-completion-not-counted");
          end if;
          if ok then
             debugPrint ("ipctest-client: activity target death wake PASS" & LF);
