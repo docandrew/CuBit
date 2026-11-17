@@ -7,6 +7,8 @@ with CuBit.UI.App;
 with Client_Input_Channel;
 with Client_Input_Batch_Cache;
 procedure Desktop_Input_Batch (Passed : out Boolean) is
+   --  How long a window waits for its ring's first answer in this check.
+   RING_WAIT_MS : constant := 1_000;
    package DP renames CuBit.Desktop_Protocol;
    package App renames CuBit.UI.App;
    package C renames Client_Input_Batch_Cache;
@@ -63,49 +65,40 @@ begin
    Client_Input_Channel.Fetch (Cache, Unsigned_64 (Created.Surface), After, Loaded);
    Check (Loaded and C.Remaining (Cache) = 0, "acknowledge final batch");
    Destroy (Created.Surface);
-   App.Open (Win, 160, 120, 0, OK, title => "Batch input probe", batched_input => True);
-   Check (OK, "opt-in UI window");
+   --  A toolkit window receives input through its surface ring (IPC-004):
+   --  one answer carries the queued batch.
+   App.Open (Win, 160, 120, 0, OK, title => "Batch input probe");
+   Check (OK, "ring UI window");
    if not OK then return; end if;
    for I in 1 .. 3 loop
       Check (DP.Decode_Resize_Result (Send (DP.Encode_Resize
         ((DP.Live_Surface_Name (App.Surface_ID (Win)), DP.Pixel_Extent (160 + I), 120)))).Status = DP.Success,
         "queue UI configure");
    end loop;
-   App.Poll_Input (Win, Event, Found);
-   Check (Found and App.Input_May_Remain (Win), "UI poll receives cached batch");
+   App.Wait_Input_Until (Win, syscall (SYSCALL_GETTIME) + RING_WAIT_MS, Event, Found);
+   Check (Found and App.Input_May_Remain (Win), "UI wait receives the ring's batch");
    Stats := App.Input_Statistics (Win);
    Check (Stats.Batch_Enabled and not Stats.Channel_Disabled and
           Stats.Successful_Fetches = 1 and Stats.Fetched_Events >= 2 and
-          Stats.Delivered_Events = 1 and Stats.Fallback_Polls = 0, "positive batch diagnostics");
+          Stats.Delivered_Events = 1 and Stats.Fallback_Polls = 0, "ring batch diagnostics");
    Previous := Event.serial;
-   App.Wait_Input_Until (Win, syscall (SYSCALL_GETTIME) + 100, Event, Found);
-   Check (Found and Event.serial > Previous, "UI wait consumes next cached event");
-   Check (App.Input_Statistics (Win).Delivered_Events = 2, "cached wait diagnostics");
+   App.Poll_Input (Win, Event, Found);
+   Check (Found and Event.serial > Previous, "UI poll takes the next received event, no call");
+   Check (App.Input_Statistics (Win).Delivered_Events = 2, "received poll diagnostics");
    App.Close (Win);
-   Check (not App.Is_Open (Win), "close with cached events");
+   Check (not App.Is_Open (Win), "close with received events");
    Check (App.Input_Statistics (Win).Delivered_Events = 2, "diagnostics survive close");
    C.Clear (Cache);
-   Created := DP.Decode_Creation_Result (Send (DP.Encode_Create ((64, 64, DP.Plain_Surface, DP.Desktop_Sized))));
-   Check (Created.Status = DP.Success, "recreate after cached close");
-   if Created.Status /= DP.Success then return; end if;
-   Client_Input_Channel.Fetch (Cache, Unsigned_64 (Created.Surface), 0, Loaded);
-   Check (Loaded, "process page survives window close");
-   Destroy (Created.Surface);
-   C.Clear (Cache);
-   -- Deliberate rejected request quarantines this process's one page. The
-   -- following opted-in window must remain usable through ordinary polling.
-   Client_Input_Channel.Fetch (Cache, Unsigned_64'Last, 0, Loaded);
-   Check (not Loaded, "rejected surface disables page reuse");
-   App.Open (Win, 160, 120, 0, OK, title => "Batch fallback probe", batched_input => True);
-   Check (OK, "fallback window");
+   --  A second window has a ring of its own and fresh diagnostics.
+   App.Open (Win, 160, 120, 0, OK, title => "Second ring window");
+   Check (OK, "second window");
    if not OK then return; end if;
-   App.Poll_Input (Win, Event, Found);
-   Check (Found, "single-event fallback after quarantine");
+   App.Wait_Input_Until (Win, syscall (SYSCALL_GETTIME) + RING_WAIT_MS, Event, Found);
+   Check (Found, "second window's ring delivers");
    Stats := App.Input_Statistics (Win);
-   Check (Stats.Channel_Disabled and Stats.Successful_Fetches = 0 and
-          Stats.Fetched_Events = 0 and Stats.Delivered_Events = 0 and
-          Stats.Fallback_Polls = 1, "fallback diagnostics and reopen reset");
+   Check (not Stats.Channel_Disabled and Stats.Successful_Fetches = 1 and
+          Stats.Delivered_Events = 1 and Stats.Fallback_Polls = 0, "reopen resets diagnostics");
    App.Close (Win);
-   Check (not App.Is_Open (Win), "fallback close");
-   if Passed then debugPrint ("DESKTOP-INPUT-BATCH-CHECK: PASS batches=2 events=12 fallback=1" & ASCII.LF); end if;
+   Check (not App.Is_Open (Win), "second close");
+   if Passed then debugPrint ("DESKTOP-INPUT-BATCH-CHECK: PASS batches=2 events=12 ring=2" & ASCII.LF); end if;
 end Desktop_Input_Batch;

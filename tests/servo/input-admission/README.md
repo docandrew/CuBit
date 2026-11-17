@@ -19,20 +19,15 @@ gprbuild -p -P tests/servo/input-admission/admission.gpr -XADMISSION_OBJECT_DIR=
 "$out/admission_tests"
 (cd kernel && alr exec -- gnatprove -P ../tests/servo/input-admission/admission.gpr \
   -XADMISSION_OBJECT_DIR="$out" -u servo_input_admission.ads --level=2 --report=all -j2)
-python3 tests/compositor/test-input-batch-client.py
 ```
 
 The policy tests exercise slow-fetch draining, stale-control rejection, the hard
 32-poll ceiling, and deadline/clock boundaries. SPARK covers the pure admission
 predicate's contract and termination, not the whole native bridge or IPC.
 
-The adapter test extracts the actual UI.App cache-consumption, Receive_Input,
-and Apply_Input_Result routines. It uses the real cache/protocol implementation,
-with mocked input transport and theme/buffer operations. It checks empty and
-ineligible windows, ordered acknowledgment, invalid cache identity/ack, no
-extra input requests, later ordinary-poll recovery, and configure/resync routing.
-Two deliberately broken variants must fail. This does not prove real theme IPC,
-frame-buffer synchronization, or input loss elimination during rendering.
+The former adapter test (tests/compositor/test-input-batch-client.py) covered
+UI.App's synchronous batch fetch, which the window's surface ring replaced
+(IPC-004); tests/surface-ring covers the ring's codec and channel.
 
 Native stress results must distinguish surviving a run from preserving input.
 Use `audit-stress.py RUN --expected urls.json` to check the completed run and

@@ -8511,7 +8511,7 @@ DPI-CLIENT: closed
 desktop: internal shell active
 DESKTOP-DENSITY-TEXT-CHECK: PASS scales=5 faces=2
 DESKTOP-FRAME-PAIR-CHECK: PASS frames=12 resize=1
-DESKTOP-INPUT-BATCH-CHECK: PASS batches=2 events=12 fallback=1
+DESKTOP-INPUT-BATCH-CHECK: PASS batches=2 events=12 ring=2
 DESKTOP-PROTOCOL-CHECK: PASS
 desktop: dead client buffer acquisition released
 "

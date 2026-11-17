@@ -244,7 +244,7 @@ begin
           CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
           CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
           others => False]),
-      Opened, title => "Calculator", protected_frames => True, batched_input => False,
+      Opened, title => "Calculator", protected_frames => True,
       minimum_width => Size.Minimum_Width, minimum_height => Size.Minimum_Height, preferred_size => True);
    if Opened then
       Calc_Host_Native.Set_Surface (Host, CuBit.UI.App.Surface_ID (Win));

@@ -2,6 +2,8 @@ with Interfaces;
 with System;
 with Client_Frame_Buffer;
 with Client_Frame_Damage;
+with Client_Surface_Ring;
+with Compositor_Surface_Wire;
 with CuBit.Desktop_Protocol.Publication;
 -- Serialized FFI owner: geometry and damage policy are delegated to the proved
 -- protocol/geometry/repaint packages; allocation/protection/IPC to Frame_Buffer.
@@ -24,6 +26,22 @@ package Client_Frame_Pair with SPARK_Mode => Off is
    procedure Publish (O : in out Owner; Rendered : Debt.Box; Accepted : out Boolean;
                       Input_After : Interfaces.Unsigned_64 := 0);
    procedure Cancel_Paint (O : in out Owner);
+
+   --  The same through the window's surface ring (IPC-004): no system call.
+   --  Publish's Accepted means submitted; the receipt comes back through the
+   --  ring (Note_Answer), and a refused publication puts the whole surface
+   --  back in debt (Refused), so the next paint repairs everything.
+   procedure Begin_Paint (O : in out Owner; Ring : in out Client_Surface_Ring.Connection;
+                          Changed : Debt.Box; Repair : out Debt.Box; Ready : out Boolean);
+   procedure Publish (O : in out Owner; Ring : in out Client_Surface_Ring.Connection;
+                      Rendered : Debt.Box; Accepted : out Boolean;
+                      Input_After : Interfaces.Unsigned_64 := 0);
+   procedure Note_Answer
+     (O : in out Owner; Ring : in out Client_Surface_Ring.Connection;
+      Tag : Client_Surface_Ring.Token; Answer : Compositor_Surface_Wire.Result;
+      Matched, Refused : out Boolean);
+   --  A ring answer for one of the buffers is still to come.
+   function Awaiting (O : Owner) return Boolean;
    function Pending (O : Owner) return Boolean;
    function Allocated_Bytes (O : Owner) return Natural;
    -- Destroy the surface first. Pending/uncertain loans remain retained.

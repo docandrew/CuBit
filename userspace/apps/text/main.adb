@@ -495,7 +495,7 @@ begin
           CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
           CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
           others => False]),
-      Opened, title => "Text", protected_frames => True, batched_input => False,
+      Opened, title => "Text", protected_frames => True,
       minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
    if Opened then
       debugPrint ("text: native window ready t_us=" & Since (Now_Us) & ASCII.LF);

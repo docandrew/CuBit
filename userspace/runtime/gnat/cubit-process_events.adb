@@ -141,6 +141,11 @@ package body CuBit.Process_Events is
    procedure Next (Item : out CV.Event; Found : out Boolean) is
    begin
       Poll;
+      Next_Filed (Item, Found);
+   end Next;
+
+   procedure Next_Filed (Item : out CV.Event; Found : out Boolean) is
+   begin
       Found := Event_Count > 0;
       if Found then
          Item := Events (1);
@@ -149,6 +154,6 @@ package body CuBit.Process_Events is
       else
          Item := (Kind => CV.Not_Ours);
       end if;
-   end Next;
+   end Next_Filed;
 
 end CuBit.Process_Events;

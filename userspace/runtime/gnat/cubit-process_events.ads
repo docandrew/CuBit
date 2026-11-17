@@ -46,6 +46,11 @@ package CuBit.Process_Events is
    --  The oldest kept grant event or control message: polls.
    procedure Next (Item : out CuBit.Control_Events.Event; Found : out Boolean);
 
+   --  The same without polling the kernel: only events already filed (by
+   --  Poll, File or an earlier Next). For a loop that polls on its own
+   --  schedule (CuBit.UI.App: after a wake, or every few tens of ms).
+   procedure Next_Filed (Item : out CuBit.Control_Events.Event; Found : out Boolean);
+
    --  For a program with no use for grant events or control messages
    --  beyond the runtime's own answers (a revoked adopted ring returned;
    --  Stop as CuBit.Messages.Exit_On_Stop or On_Stop declared): reads the

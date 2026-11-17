@@ -47,8 +47,12 @@ package body Client_Frame_Pair is
       end if;
       OK := True;
    end Configure;
-   procedure Begin_Paint (O : in out Owner; Changed : Debt.Box;
-                          Repair : out Debt.Box; Ready : out Boolean) is
+   --  No ring (Use_Ring False): the synchronous calls.
+   No_Ring : Client_Surface_Ring.Connection;
+
+   procedure Begin_Paint_With
+     (O : in out Owner; Ring : in out Client_Surface_Ring.Connection; Use_Ring : Boolean;
+      Changed : Debt.Box; Repair : out Debt.Box; Ready : out Boolean) is
       Bytes : Natural;
       Released : Boolean;
    begin
@@ -64,7 +68,11 @@ package body Client_Frame_Pair is
       if not Pending (O) then return; end if;
       Bytes := Natural (DP.Byte_Length (O.Config.Value.Layout));
       if Frames.Capacity (O.Frames (O.Next)) /= 0 then
-         Frames.Prepare_Write (O.Frames (O.Next), Ready);
+         if Use_Ring then
+            Frames.Prepare_Write (O.Frames (O.Next), Ring, Ready);
+         else
+            Frames.Prepare_Write (O.Frames (O.Next), Ready);
+         end if;
          if not Ready then return; end if;
          -- Only the retired, writable candidate may change allocation size.
          -- The other buffer stays visible throughout resize.
@@ -83,11 +91,22 @@ package body Client_Frame_Pair is
          Repair := Debt.Required (O.Damage, O.Next);
          O.Painting := True;
       end if;
+   end Begin_Paint_With;
+   procedure Begin_Paint (O : in out Owner; Changed : Debt.Box;
+                          Repair : out Debt.Box; Ready : out Boolean) is
+   begin
+      Begin_Paint_With (O, No_Ring, False, Changed, Repair, Ready);
+   end Begin_Paint;
+   procedure Begin_Paint (O : in out Owner; Ring : in out Client_Surface_Ring.Connection;
+                          Changed : Debt.Box; Repair : out Debt.Box; Ready : out Boolean) is
+   begin
+      Begin_Paint_With (O, Ring, True, Changed, Repair, Ready);
    end Begin_Paint;
    procedure Cancel_Paint (O : in out Owner) is
    begin O.Painting := False; end Cancel_Paint;
-   procedure Publish (O : in out Owner; Rendered : Debt.Box; Accepted : out Boolean;
-                      Input_After : Interfaces.Unsigned_64 := 0) is
+   procedure Publish_With
+     (O : in out Owner; Ring : in out Client_Surface_Ring.Connection; Use_Ring : Boolean;
+      Rendered : Debt.Box; Accepted : out Boolean; Input_After : Interfaces.Unsigned_64) is
       package G renames Client_Canvas_Geometry;
       Changed : Debt.Box;
       Left, Top, Right, Bottom : Natural;
@@ -106,14 +125,53 @@ package body Client_Frame_Pair is
       Bottom := G.Edge (Changed.Bottom, O.Config.Value.Numerator, O.Config.Value.Denominator);
       -- Zero physical extent can occur below unit density; publish full damage
       -- because the protocol's empty rectangle is its full-surface sentinel.
-      Frames.Present (O.Frames (O.Next), O.Surface, O.Config.Value.Epoch,
-        (DP.Pixel_Coordinate (Left), DP.Pixel_Coordinate (Top),
-         DP.Pixel_Extent (Right - Left), DP.Pixel_Extent (Bottom - Top)), Accepted, Input_After);
+      if Use_Ring then
+         Frames.Present (O.Frames (O.Next), Ring, O.Surface, O.Config.Value.Epoch,
+           (DP.Pixel_Coordinate (Left), DP.Pixel_Coordinate (Top),
+            DP.Pixel_Extent (Right - Left), DP.Pixel_Extent (Bottom - Top)), Accepted, Input_After);
+      else
+         Frames.Present (O.Frames (O.Next), O.Surface, O.Config.Value.Epoch,
+           (DP.Pixel_Coordinate (Left), DP.Pixel_Coordinate (Top),
+            DP.Pixel_Extent (Right - Left), DP.Pixel_Extent (Bottom - Top)), Accepted, Input_After);
+      end if;
       if Accepted then
          Debt.Published (O.Damage, O.Next, Rendered);
          O.Next := (if O.Next = 1 then 2 else 1);
       end if;
+   end Publish_With;
+   procedure Publish (O : in out Owner; Rendered : Debt.Box; Accepted : out Boolean;
+                      Input_After : Interfaces.Unsigned_64 := 0) is
+   begin
+      Publish_With (O, No_Ring, False, Rendered, Accepted, Input_After);
    end Publish;
+   procedure Publish (O : in out Owner; Ring : in out Client_Surface_Ring.Connection;
+                      Rendered : Debt.Box; Accepted : out Boolean;
+                      Input_After : Interfaces.Unsigned_64 := 0) is
+   begin
+      Publish_With (O, Ring, True, Rendered, Accepted, Input_After);
+   end Publish;
+
+   procedure Note_Answer
+     (O : in out Owner; Ring : in out Client_Surface_Ring.Connection;
+      Tag : Client_Surface_Ring.Token; Answer : Compositor_Surface_Wire.Result;
+      Matched, Refused : out Boolean) is
+   begin
+      Refused := False;
+      for I in O.Frames'Range loop
+         Frames.Note_Answer (O.Frames (I), Ring, Tag, Answer, Matched, Refused);
+         if Matched then
+            if Refused and then O.Config.Status = DP.Success then
+               --  Not shown: everything is owed again.
+               Debt.Invalidate (O.Damage, Debt.Bounds (O.Damage));
+            end if;
+            return;
+         end if;
+      end loop;
+   end Note_Answer;
+
+   function Awaiting (O : Owner) return Boolean is
+     (Frames.Awaiting (O.Frames (1)) or else Frames.Awaiting (O.Frames (2)));
+
    procedure Close (O : in out Owner; Released : out Boolean) is
       OK : Boolean;
    begin

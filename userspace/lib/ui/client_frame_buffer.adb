@@ -101,6 +101,122 @@ package body Client_Frame_Buffer is
       end if;
       Accepted := Published = Staged;
    end Present;
+   ---------------------------------------------------------------------------
+   --  The surface ring path.
+   ---------------------------------------------------------------------------
+   package Wire renames Compositor_Surface_Wire;
+   use type Wire.Request_Kind;
+   use type Client_Surface_Ring.Submit_Result;
+   use type Client_Surface_Ring.Token;
+
+   function Awaiting (B : Buffer) return Boolean is (B.Publish_Tag /= 0 or else B.Await_Tag /= 0);
+
+   --  Ask once for B's retirement (answered when Desktop no longer reads it).
+   procedure Request_Retirement (B : in out Buffer; Ring : in out Client_Surface_Ring.Connection) is
+      Result : Client_Surface_Ring.Submit_Result;
+   begin
+      if B.Policy.Mode /= P.Held or else B.Await_Tag /= 0 then
+         return;
+      end if;
+      Client_Surface_Ring.Submit
+        (Ring, (Kind => Wire.Await_Retirement, Surface => B.Surface,
+                Retiring_Epoch => Pub.Identity (B.Policy.Epoch), Ticket => Pub.Identity (B.Policy.Ticket)),
+         B.Await_Tag, Result);
+      if Result /= Client_Surface_Ring.Queued then
+         B.Await_Tag := 0;
+      end if;
+   end Request_Retirement;
+
+   procedure Prepare_Write
+     (B : in out Buffer; Ring : in out Client_Surface_Ring.Connection; Ready : out Boolean) is
+   begin
+      Ready := False;
+      if B.Policy.Mode = P.Held then
+         Request_Retirement (B, Ring);
+         return;
+      end if;
+      if B.Policy.Mode = P.Sealed and then B.Publish_Tag = 0 then
+         --  Unprotected on this path: reopening needs no call.
+         P.Reopen (B.Policy, True);
+      end if;
+      Ready := B.Policy.Mode = P.Writable;
+   end Prepare_Write;
+
+   procedure Present
+     (B : in out Buffer; Ring : in out Client_Surface_Ring.Connection;
+      Surface : DP.Live_Surface_Name; Epoch : Pub.Identity;
+      Area : DP.Rectangle; Accepted : out Boolean;
+      Input_After : Interfaces.Unsigned_64 := 0)
+   is
+      Result : Client_Surface_Ring.Submit_Result;
+   begin
+      Accepted := False;
+      if B.Policy.Mode /= P.Writable or else not DP.Valid_Damage (Area) or else Awaiting (B)
+        or else not Client_Surface_Ring.Can_Submit (Ring, Wire.Publish)
+      then
+         return;
+      end if;
+      P.Seal (B.Policy, True);
+      Client_Surface_Ring.Submit
+        (Ring, (Kind => Wire.Publish, Surface => Surface, Area => Area, Input_After => Input_After,
+                Epoch => Epoch, Grant => B.Grant),
+         B.Publish_Tag, Result);
+      if Result /= Client_Surface_Ring.Queued then
+         B.Publish_Tag := 0;
+         P.Reopen (B.Policy, True);
+         return;
+      end if;
+      B.Surface := Surface;
+      B.Publish_Epoch := Epoch;
+      Accepted := True;
+   end Present;
+
+   procedure Note_Answer
+     (B : in out Buffer; Ring : in out Client_Surface_Ring.Connection;
+      Tag : Client_Surface_Ring.Token; Answer : Compositor_Surface_Wire.Result;
+      Matched, Refused : out Boolean) is
+   begin
+      Matched := False;
+      Refused := False;
+      if Tag = 0 then
+         return;
+      end if;
+      if Tag = B.Publish_Tag and then Answer.Kind = Wire.Publish then
+         Matched := True;
+         B.Publish_Tag := 0;
+         if Answer.Status = DP.Success and then Answer.Epoch = B.Publish_Epoch
+           and then B.Policy.Mode = P.Sealed
+         then
+            P.Borrow (B.Policy, P.Identity (Answer.Epoch), P.Identity (Answer.Ticket));
+            --  Ask now: the answer comes as soon as the next frame replaces
+            --  this one and Desktop lets go of it.
+            Request_Retirement (B, Ring);
+         elsif Answer.Status = DP.Success then
+            --  Accepted with an epoch it was not asked for.
+            P.Quarantine (B.Policy);
+         else
+            --  Refused: no loan; the frame was not shown.
+            Refused := True;
+         end if;
+      elsif Tag = B.Await_Tag and then Answer.Kind = Wire.Await_Retirement then
+         Matched := True;
+         B.Await_Tag := 0;
+         if Answer.Status = DP.Success then
+            if B.Policy.Mode = P.Held and then Natural (Answer.Epoch) = B.Policy.Epoch
+              and then Natural (Answer.Ticket) = B.Policy.Ticket
+            then
+               P.Retire (B.Policy, P.Identity (Answer.Epoch), P.Identity (Answer.Ticket), True);
+            else
+               P.Quarantine (B.Policy);
+            end if;
+         elsif Answer.Status in DP.Bad_Object | DP.Denied | DP.Invalid_Request then
+            --  The surface is gone: the loan ends with it (Release).
+            P.Quarantine (B.Policy);
+         end if;
+         --  Otherwise (no room): asked again at the next Prepare_Write.
+      end if;
+   end Note_Answer;
+
    procedure Release (B : in out Buffer; Released : out Boolean) is
       Revoked, Retired : Boolean := True;
       pragma Unreferenced (Revoked);
@@ -118,6 +234,9 @@ package body Client_Frame_Buffer is
          Released := syscall (SYSCALL_RELEASE_OWNED_MEMORY, B.Base, Unsigned_64 (B.Bytes)) = 0;
       end if;
       P.Release (B.Policy, Retired, Released);
-      if Released then B.Base := 0; B.Bytes := 0; end if;
+      if Released then
+         B.Base := 0; B.Bytes := 0;
+         B.Publish_Tag := 0; B.Await_Tag := 0;
+      end if;
    end Release;
 end Client_Frame_Buffer;

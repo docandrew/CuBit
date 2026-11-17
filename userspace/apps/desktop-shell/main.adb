@@ -18,22 +18,32 @@ with UI_Desktop_Service;
 with CuBit.Memory_Grants;
 with CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages;
+with CuBit.Deadlines;
+with CuBit.Channels;
+with CuBit.Channel_Protocol;
+with CuBit.Process_Events;
+with CuBit.Published_Clock;
 with CuBit.UI;
+with Client_Surface_Ring;
+with Compositor_Surface_Wire;
 
 procedure main is
    use ASCII;
    package DP renames CuBit.Desktop_Protocol;
+   package Ring renames Client_Surface_Ring;
+   package Wire renames Compositor_Surface_Wire;
    use type DP.Status_Code;
+   use type DP.Input_Event_Kind;
+   use type Wire.Request_Kind;
+   use type Ring.Submit_Result;
 
    OP_SURFACE_CREATE   : constant Unsigned_32 := 16#0810#;
-   OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
 
    SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
 
-   INPUT_NONE      : constant Unsigned_64 := 0;
-   INPUT_KEY_DOWN  : constant Unsigned_64 := 1;
-   INPUT_CONFIGURE : constant Unsigned_64 := 8;
+   --  Opening the window's surface ring: one call, at most this long.
+   RING_OPEN_LIMIT_MS : constant := 2_000;
 
    KEY_ESC : constant Unsigned_64 := 16#01#;
    KEY_Q   : constant Unsigned_64 := 16#10#;
@@ -55,6 +65,10 @@ procedure main is
    running   : Boolean := True;
    sentBye   : Boolean := False;
    ignore    : Unsigned_64;
+   --  The window's surface ring (IPC-004): presents and input, no call
+   --  unless a side sleeps. presentWanted: a frame waits for a free slot.
+   surfaceRing   : Ring.Connection;
+   presentWanted : Boolean := False;
 
    function canvas return CuBit.UI.Canvas is
    begin
@@ -172,19 +186,80 @@ procedure main is
       end if;
    end attachPixelBuffer;
 
+   --  Draw and present the window's buffer through the ring; with no frame
+   --  slot free, it goes when one is (pumpRing).
    procedure present is
-      reply : Message;
-      target : Unsigned_64 := surfaceId;
+      result : Ring.Submit_Result;
+      tag : Ring.Token;
    begin
-      if windowId /= 0 then
-         target := windowId;
+      if windowId = 0 then
+         return;
       end if;
-
+      if not Ring.Can_Submit (surfaceRing, Wire.Present) then
+         presentWanted := True;
+         return;
+      end if;
       if bufferAddr /= System.Null_Address then
          drawPixelTest (lastEvent);
       end if;
-      reply := callDesktop (OP_SURFACE_PRESENT, target, 0, 0, 0);
+      Ring.Submit (surfaceRing,
+        (Kind => Wire.Present, Surface => DP.Live_Surface_Name (windowId),
+         Area => (0, 0, 0, 0), Input_After => lastEvent), tag, result);
+      presentWanted := result /= Ring.Queued;
+      --  The frame is queued: wake Desktop if it sleeps.
+      Ring.Flush (surfaceRing);
    end present;
+
+   procedure requestResize;
+
+   --  One input event from the ring.
+   procedure handleInput (item : DP.Input_Envelope) is
+   begin
+      lastEvent := item.Serial;
+      if item.Kind = DP.Surface_Configured then
+         windowW := item.Payload0;
+         windowH := item.Payload1;
+      elsif item.Kind = DP.Key_Pressed then
+         if item.Payload0 = KEY_ESC or else item.Payload0 = KEY_Q then
+            running := False;
+         elsif item.Payload0 = KEY_R then
+            requestResize;
+         end if;
+      elsif item.Kind = DP.Close_Requested then
+         running := False;
+      end if;
+   end handleInput;
+
+   --  Every answer the ring holds; then keep one input request outstanding
+   --  and send a waiting frame. No call unless Desktop sleeps.
+   procedure pumpRing is
+      tag : Ring.Token;
+      answer : Wire.Result;
+      got : Boolean;
+      result : Ring.Submit_Result;
+   begin
+      loop
+         Ring.Reap (surfaceRing, tag, answer, got);
+         exit when not got;
+         if answer.Kind = Wire.Receive_Input then
+            if answer.Status = DP.Success then
+               for i in 1 .. answer.Count loop
+                  handleInput (answer.Events (i));
+               end loop;
+            elsif answer.Status = DP.Bad_Object then
+               debugPrint ("desktop-shell: input rejected" & LF);
+               running := False;
+            end if;
+         end if;
+      end loop;
+      if presentWanted then
+         present;
+      end if;
+      if running and then Ring.Outstanding (surfaceRing, Wire.Receive_Input) = 0 then
+         Ring.Submit (surfaceRing, (Kind => Wire.Receive_Input, Surface => DP.Live_Surface_Name (windowId),
+                                    After => lastEvent), tag, result);
+      end if;
+   end pumpRing;
 
    procedure requestResize is
       reply : Message;
@@ -313,41 +388,51 @@ begin
 
    debugPrint ("desktop-shell: connected" & LF);
    attachPixelBuffer;
+   declare
+      opened : Boolean;
+      result : CuBit.Channels.Open_Result;
+      refusal : CuBit.Channel_Protocol.Open_Refusal;
+   begin
+      Ring.Open (surfaceRing, UI_Desktop_Service.Endpoint,
+                 CuBit.Deadlines.At_Monotonic (CuBit.Published_Clock.Milliseconds + RING_OPEN_LIMIT_MS),
+                 opened, result, refusal);
+      if not opened then
+         debugPrint ("desktop-shell: surface ring open failed: " &
+                     CuBit.Channels.Open_Result'Image (result) & " " &
+                     CuBit.Channel_Protocol.Open_Refusal'Image (refusal) & LF);
+         closeSession;
+         ignore := syscall (SYSCALL_EXIT, 1);
+         return;
+      end if;
+   end;
    present;
 
+   --  Input arrives in the ring; sleep until Desktop answers (it wakes this
+   --  process only while it sleeps), never polling on a timer.
    while running loop
-      declare
-         ev : Message := CuBit.Desktop_Messages.From_Wire
-           (DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (windowId), lastEvent)));
-         decoded : DP.Input_Result;
-      begin
-         ev.tag := capCall (UI_Desktop_Service.Endpoint, ev, CuBit.Messages.Wait_Forever);
-         decoded := DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (ev), DP.Poll_Input);
-         if decoded.Status /= DP.Success then
-            debugPrint ("desktop-shell: input rejected" & LF);
-            closeSession;
-            exit;
-         end if;
-         if ev.words (0) /= INPUT_NONE then
-            lastEvent := ev.words (1);
-
-            if ev.words (0) = INPUT_CONFIGURE then
-               if ev.words (1) /= 0 then
-                  windowW := ev.words (2);
-                  windowH := ev.words (3);
-               end if;
-            elsif ev.words (0) = INPUT_KEY_DOWN then
-               if ev.words (2) = KEY_ESC or else ev.words (2) = KEY_Q then
-                  closeSession;
+      pumpRing;
+      exit when not running or else not Ring.Is_Open (surfaceRing);
+      if Ring.Arm (surfaceRing) then
+         declare
+            notice : aliased Message;
+            woke : Wake_Result;
+         begin
+            Wait_For_Activity_Or_Event (Wait_Forever, notice, woke);
+            Ring.Disarm (surfaceRing);
+            case woke is
+               when Event_Taken =>
+                  if CuBit.Process_Events.Has_Room then
+                     CuBit.Process_Events.File (notice);
+                  end if;
+               when Work_Available =>
+                  CuBit.Process_Events.Poll;
+               when Deadline_Reached =>
+                  null;
+               when Unavailable =>
                   running := False;
-               elsif ev.words (2) = KEY_R then
-                  requestResize;
-               end if;
-            end if;
-         end if;
-      end;
-
-      ignore := syscall (SYSCALL_SLEEP, 25);
+            end case;
+         end;
+      end if;
    end loop;
 
    declare

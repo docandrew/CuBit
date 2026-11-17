@@ -12,7 +12,8 @@ with CuBit.Messages;
 with CuBit.Async_Requests;
 with Client_Frame_Pair;
 with Client_Input_Provenance;
-with Client_Input_Batch_Cache;
+with Client_Surface_Ring;
+with Compositor_Surface_Wire;
 
 with CuBit.UI;
 with CuBit.UI.Input;
@@ -69,8 +70,9 @@ package CuBit.UI.App is
    -- Protected frames are enabled per client during migration. Raw-renderer
    -- callers retain the existing attachment path until their density handling
    -- is adapted. Run manages acquisition, repair and publication automatically.
-   -- batched_input opts synchronous Poll/Wait into bounded batch delivery.
-   -- Asynchronous Submit_Input_Wait is unavailable in this mode.
+   -- Every window opens its surface ring (Compositor_Surface_Ring, IPC-004):
+   -- after Open, presenting, publishing, retirement and input go through
+   -- shared memory, with a system call only to wake a side that sleeps.
    -- Initial client dimensions and optional smaller resize minima are separate.
    -- A zero minimum preserves the initial-size minimum of existing callers.
    -- Explicit minima must not exceed initial dimensions; fixed-size windows
@@ -84,7 +86,6 @@ package CuBit.UI.App is
        ok : out Boolean;
        title : String := "Application";
        protected_frames : Boolean := False;
-       batched_input : Boolean := False;
        minimum_width : Natural := 0;
        minimum_height : Natural := 0;
        preferred_size : Boolean := False);
@@ -115,14 +116,18 @@ package CuBit.UI.App is
    function Canvas
       (win : Window; clip : CuBit.UI.Rect) return CuBit.UI.Canvas;
 
+   --  The next event from the window's ring, if one has arrived; never
+   --  blocks and makes no system call (it keeps one input request
+   --  outstanding, answered with a batch of events when input is queued).
    procedure Poll_Input
       (win : in out Window;
        event : out Input_Event;
        found : out Boolean);
 
-   --  Block without polling until the compositor can return the next event.
-   --  The compositor retains a one-use reply capability while this call is
-   --  parked, so a wake cannot be forged or redirected to another client.
+   --  Sleep until the next event (or the deadline). Desktop wakes the window
+   --  only when it answers while the window sleeps: one system call per
+   --  wake. Found=False: the window stopped (Wait_Input) or the deadline
+   --  passed (Wait_Input_Until).
    procedure Wait_Input
       (win : in out Window;
        event : out Input_Event;
@@ -144,22 +149,21 @@ package CuBit.UI.App is
    procedure Complete_Input_Wait
      (win : in out Window; receipt : CuBit.Messages.CompletionEntry;
       event : out Input_Event; found, consumed, healthy : out Boolean);
-   -- Nonblocking alternative for applications sharing their event loop with
-   -- other IPC. Tokens are process-wide and never reused. Deliver authenticated
-   -- completion-queue entries; foreign entries remain unconsumed. Do not mix a
-   -- synchronous input wait/poll with a pending asynchronous wait. Closing the
-   -- process retires the outstanding request; there is no borrowed buffer.
+   -- Completion-queue alternative for loops that drive the completion queue
+   -- themselves. Tokens are process-wide and never reused. Deliver authenticated
+   -- completion-queue entries; foreign entries remain unconsumed. Do not mix
+   -- with Poll_Input/Wait_Input/Run (the ring's input): whichever starts first
+   -- owns the window's input. Closing the process retires the outstanding
+   -- request; there is no borrowed buffer.
 
    --  True only when the compositor explicitly reported another queued event
    --  with the last input reply. It is a drain hint, never authority or an
    --  assertion that a later event cannot arrive.
    function Input_May_Remain (win : Window) return Boolean;
-   -- Event-thread-only observation; no fetch, take, acknowledgment or IPC.
+   -- Events already received from the ring and not yet taken; no IPC.
    function Cached_Input_Count (win : Window) return Natural;
-   -- Consume at most one cached event on the event thread; never fetch/wait for
-   -- input. Configure/resync application retains its normal theme/buffer work.
-   -- Invalid cache is cleared without advancing the acknowledged serial;
-   -- a subsequent ordinary poll can recover the server-retained input.
+   -- Consume at most one already-received event; never request more.
+   -- Configure/resync application retains its normal theme/buffer work.
    procedure Poll_Cached_Input
      (win : in out Window; event : out Input_Event; found : out Boolean);
 
@@ -169,9 +173,11 @@ package CuBit.UI.App is
       Fallback_Polls, Cache_Rejections : Unsigned_64 := 0;
    end record;
    -- Read-only, allocation-free snapshot. Counters saturate, reset on Open,
-   -- and remain readable after Close. Fetched events have passed validation;
-   -- Delivered_Events counts events actually consumed from the local cache.
-   -- Channel_Disabled is process-wide and sticky until process exit.
+   -- and remain readable after Close. Successful_Fetches counts the ring's
+   -- input answers, Fetched_Events the events they carried (validated),
+   -- Delivered_Events those taken. Fallback_Polls stays 0 (there is no
+   -- synchronous fallback); Cache_Rejections counts dropped ring answers.
+   -- Channel_Disabled: the window's ring is not open.
    -- Like other Window operations, call on the window's owning event thread.
    function Input_Statistics (win : Window) return Input_Diagnostics;
 
@@ -253,14 +259,13 @@ package CuBit.UI.App is
           dirty : in out CuBit.UI.Rect;
           running : in out Boolean)
          is No_Deadline_Work;
-      --  Activity_Wait: Run never blocks in a call. It submits the window's
-      --  input wait asynchronously and waits once, for input, the program's
-      --  other completions (a filesystem wake: CuBit.Filesystem_Sessions)
-      --  and its deadline (CuBit.Messages.Wait_For_Activity_Until). Each
-      --  completion that is not the window's input goes to On_Completion,
-      --  which says whether it was its own. The window must be opened with
-      --  batched_input => False. Input wait tokens come from below
-      --  APPLICATION_TOKEN_FIRST; the program's own tokens from it on.
+      --  Run never blocks in a call: input and frames go through the
+      --  window's surface ring, and it sleeps once per wake for the ring's
+      --  answers, the program's completions and its deadline.
+      --  Activity_Wait: the program has completions of its own (a
+      --  filesystem wake: CuBit.Filesystem_Sessions); after each wake every
+      --  completion goes to On_Completion, which says whether it was its
+      --  own. Program tokens start at APPLICATION_TOKEN_FIRST.
       Activity_Wait : Boolean := False;
       with procedure On_Completion
          (win : in out Window;
@@ -322,9 +327,20 @@ private
       inputErrorReported : Boolean := False;
       --  An input-wait stall was logged (CuBit.UI.App.Report_Stop).
       inputStallReported : Boolean := False;
-      batchedInput : Boolean := False;
-      inputCache : Client_Input_Batch_Cache.State;
       inputStats : Input_Diagnostics;
+      --  The surface ring and what came through it: events received and
+      --  not yet taken (ringNext .. ringCount), whether Desktop said more
+      --  were queued, the last serial received (the next request's After).
+      ring : Client_Surface_Ring.Connection;
+      ringEvents : Compositor_Surface_Wire.Event_Array;
+      ringCount, ringNext : Natural := 0;
+      ringMore : Boolean := False;
+      ringAcked : Unsigned_64 := 0;
+      --  Attached-buffer damage waiting for a frame slot in the ring.
+      presentBacklog : CuBit.UI.Rect := (others => 0);
+      --  Protected frames: query the configuration again before painting
+      --  (opened, configured or resynchronized, or a publication refused).
+      configStale : Boolean := True;
       inputRequest : CuBit.Async_Requests.Tracker;
       sentBye : Boolean := False;
    end record;

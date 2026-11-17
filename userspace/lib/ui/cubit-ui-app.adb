@@ -17,8 +17,11 @@ with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.UI.Theme_Data;
 with CuBit.UI.Window_Chrome;
+with CuBit.Deadlines;
+with CuBit.Channels;
+with CuBit.Channel_Protocol;
+with CuBit.Published_Clock;
 with Client_Frame_Wakeup;
-with Client_Input_Channel;
 with UI_Desktop_Service;
 with CuBit.Log;
 
@@ -36,6 +39,13 @@ package body CuBit.UI.App is
    WINDOW_CHROME_W : constant Natural := 8;
    WINDOW_CHROME_H : constant Natural := CuBit.UI.Window_Chrome.Client_Top;
 
+   package Ring renames Client_Surface_Ring;
+   package Wire renames Compositor_Surface_Wire;
+   use type Wire.Request_Kind;
+   use type Ring.Submit_Result;
+   --  Opening a window's ring is one call to Desktop, at most this long.
+   RING_OPEN_LIMIT_MS : constant := 2_000;
+
    function Align_Up_Page (value : Unsigned_64) return Unsigned_64 is
    begin
       return (value + 4095) and not Unsigned_64'(4095);
@@ -50,9 +60,10 @@ package body CuBit.UI.App is
      (Reply_Failed,          --  the input wait completed with a failure status
       Reply_Rejected,        --  its reply did not decode as a Wait_Input result
       Surface_Ended,         --  Desktop answered Bad_Object: the surface is gone
-      Wait_Returned_Nothing, --  a blocking wait with no deadline gave no event
+      Ring_Ended,            --  the window's surface ring is no longer open
+      Activity_Unavailable,  --  the process's activity wait failed
       Wait_Not_Reserved,     --  no input wait could be reserved (one is pending)
-      Wait_Not_Submitted);   --  the kernel refused the input wait's submission
+      Wait_Not_Submitted);   --  the input request could not be submitted
 
    function Completion_Image (Status : Unsigned_64) return String is
      (case Status is
@@ -81,8 +92,10 @@ package body CuBit.UI.App is
             CuBit.Log.Warning (Window_Text & " stopped: input reply rejected" & Tail);
          when Surface_Ended =>
             CuBit.Log.Warning (Window_Text & " stopped: Desktop ended the surface" & Tail);
-         when Wait_Returned_Nothing =>
-            CuBit.Log.Warning (Window_Text & " stopped: input wait returned no event" & Tail);
+         when Ring_Ended =>
+            CuBit.Log.Warning (Window_Text & " stopped: surface ring ended" & Tail);
+         when Activity_Unavailable =>
+            CuBit.Log.Warning (Window_Text & " stopped: activity wait unavailable" & Tail);
          when Wait_Not_Reserved =>
             CuBit.Log.Warning (Window_Text & " input stalled: wait not reserved" & Tail);
          when Wait_Not_Submitted =>
@@ -192,7 +205,12 @@ package body CuBit.UI.App is
       ok := False;
       if win.surfaceId = 0 then return; end if;
       if win.protectedFrames then
+         if not win.configStale then
+            ok := FP.Configuration (win.frames).Status = DP.Success;
+            return;
+         end if;
          FP.Configure (win.frames, DP.Live_Surface_Name (win.surfaceId), ok);
+         win.configStale := not ok;
          if ok then
             config := FP.Configuration (win.frames);
             win.width := Natural (config.Value.Width);
@@ -232,8 +250,11 @@ package body CuBit.UI.App is
    end Ensure_Buffer;
 
    function Frame_Pending (win : Window) return Boolean is
-     (win.protectedFrames and then
-       (FP.Pending (win.frames) or else not CuBit.UI.Is_Empty (win.deferredDamage)));
+     ((win.protectedFrames and then
+        (FP.Pending (win.frames) or else not CuBit.UI.Is_Empty (win.deferredDamage)))
+      or else not CuBit.UI.Is_Empty (win.presentBacklog));
+
+   procedure Ring_Pump (win : in out Window);
    procedure Begin_Input_Event (win : in out Window; event : Input_Event) is
       Accepted : Boolean;
    begin
@@ -275,12 +296,13 @@ package body CuBit.UI.App is
       end if;
       clipped := CuBit.UI.Clamp_Rect (Canvas (win), changed);
       win.deferredDamage := CuBit.UI.Union_Rect (win.deferredDamage, clipped);
+      Ring_Pump (win);
       Ensure_Buffer (win, win.width, win.height, ready);
       if not ready then return; end if;
       clipped := CuBit.UI.Clamp_Rect (Canvas (win), win.deferredDamage);
       changedDebt := (if CuBit.UI.Is_Empty (clipped) then FP.Debt.Empty else
         (clipped.x, clipped.y, clipped.x + clipped.w, clipped.y + clipped.h));
-      FP.Begin_Paint (win.frames, changedDebt, debt, ready);
+      FP.Begin_Paint (win.frames, win.ring, changedDebt, debt, ready);
       win.deferredDamage := (others => 0);
       if ready then
          repair := (debt.Left, debt.Top, debt.Right - debt.Left, debt.Bottom - debt.Top);
@@ -298,7 +320,6 @@ package body CuBit.UI.App is
        ok : out Boolean;
        title : String := "Application";
        protected_frames : Boolean := False;
-       batched_input : Boolean := False;
        minimum_width : Natural := 0;
        minimum_height : Natural := 0;
        preferred_size : Boolean := False)
@@ -328,9 +349,10 @@ package body CuBit.UI.App is
       win.width := 0; win.height := 0; win.pitch := 0;
       win.densityNumerator := 1; win.densityDenominator := 1;
       win.lastEvent := 0; win.inputMayRemain := False;
-      win.batchedInput := batched_input;
-      win.inputStats := (Batch_Enabled => batched_input, others => <>);
-      Client_Input_Batch_Cache.Clear (win.inputCache);
+      win.inputStats := (Batch_Enabled => True, others => <>);
+      win.ringCount := 0; win.ringNext := 0; win.ringMore := False; win.ringAcked := 0;
+      win.presentBacklog := (others => 0);
+      win.configStale := True;
       win.deferredDamage := (others => 0);
       win.firstManagedFrame := False;
       win.provenance := Fresh_Provenance; win.provenanceHealthy := True;
@@ -414,6 +436,32 @@ package body CuBit.UI.App is
          Close (win);
          return;
       end if;
+
+      --  The window's ring: from here on, frames and input take no call.
+      --  There is no synchronous fallback: without its ring the window
+      --  does not open, and says why.
+      declare
+         use type CuBit.Channels.Open_Result;
+         Result : CuBit.Channels.Open_Result;
+         Refusal : CuBit.Channel_Protocol.Open_Refusal;
+      begin
+         Ring.Open (win.ring, UI_Desktop_Service.Endpoint,
+                    CuBit.Deadlines.At_Monotonic
+                      (CuBit.Published_Clock.Milliseconds + RING_OPEN_LIMIT_MS), attached,
+                    Result, Refusal);
+         if not attached then
+            CuBit.Log.Warning
+              ("ui-app: window" & Unsigned_64'Image (win.surfaceId) & " not opened: surface ring " &
+               (case Result is
+                  when CuBit.Channels.Refused =>
+                    "refused reason=" & CuBit.Channel_Protocol.Open_Refusal'Image (Refusal),
+                  when CuBit.Channels.Failed => "open failed (no answer by" &
+                    Natural'Image (RING_OPEN_LIMIT_MS) & " ms, or no grant)",
+                  when CuBit.Channels.Opened => "attach failed"));
+            Close (win);
+            return;
+         end if;
+      end;
 
       ok := True;
    end Open;
@@ -533,7 +581,7 @@ package body CuBit.UI.App is
             -- Do not clear the surface identity or free uncertain frame loans.
             Report_Stop (win, Surface_Ended, "verdict=" & DP.Status_Code'Image (decoded.Status));
             win.inputStopped := True;
-            Client_Input_Batch_Cache.Clear (win.inputCache);
+            win.ringCount := 0; win.ringNext := 0;
          end if;
          return;
       end if;
@@ -551,6 +599,7 @@ package body CuBit.UI.App is
          payload1 => decoded.Value.Payload1);
       if event.kind = INPUT_CONFIGURE then
          Refresh_Theme;
+         win.configStale := True;
          declare
             newW : constant Natural :=
                Content_Size_From_Surface (win, event.payload0, True);
@@ -564,6 +613,7 @@ package body CuBit.UI.App is
          end;
       elsif event.kind = INPUT_RESYNC then
          Refresh_Theme;
+         win.configStale := True;
       end if;
       found := True;
    end Apply_Input_Result;
@@ -581,9 +631,9 @@ package body CuBit.UI.App is
       request : Message;
    begin
       accepted := False;
-      if win.surfaceId = 0 or else win.inputStopped or else win.sentBye or else win.batchedInput then
-         return;
-      end if;
+      if win.surfaceId = 0 or else win.inputStopped or else win.sentBye or else
+        Ring.Outstanding (win.ring, Wire.Receive_Input) > 0 or else win.ringNext < win.ringCount
+      then return; end if;
       if not CuBit.Async_Requests.Can_Reserve (win.inputRequest, token) then
          Report_Stop (win, Wait_Not_Reserved, "token=" & Unsigned_64'Image (token));
          return;
@@ -639,85 +689,135 @@ package body CuBit.UI.App is
    function Input_Statistics (win : Window) return Input_Diagnostics is
       Result : Input_Diagnostics := win.inputStats;
    begin
-      Result.Channel_Disabled := Client_Input_Channel.Is_Disabled;
+      Result.Channel_Disabled := not Ring.Is_Open (win.ring);
+      Result.Cache_Rejections := Unsigned_64'Max (Result.Cache_Rejections, Ring.Stray_Answers (win.ring));
       return Result;
    end Input_Statistics;
 
-   procedure Take_Cached_Input
-     (win : in out Window; event : out Input_Event; found, valid : out Boolean)
-   is
-      package Cache renames Client_Input_Batch_Cache;
-      Decoded : DP.Input_Result;
+   --  Count, saturating.
+   procedure Count (Value : in out Unsigned_64; Amount : Unsigned_64 := 1) renames Add_Input_Count;
+
+   --  Every answer the ring holds: input into the window's event queue,
+   --  frame answers to the frame pair; then a backlogged attached present
+   --  if a frame slot is free. Never blocks; no system call unless Desktop
+   --  sleeps and a request is submitted.
+   procedure Ring_Pump (win : in out Window) is
+      Tag : Ring.Token;
+      Answer : Wire.Result;
+      Got, Matched, Refused : Boolean;
+      Result : Ring.Submit_Result;
+      Ignore : Ring.Token;
+      r : CuBit.UI.Rect;
    begin
-      event := (others => <>); found := False; valid := False;
-      if win.surfaceId = 0 or else win.inputStopped or else Input_Wait_Pending (win) or else
-        not win.batchedInput or else Cache.Remaining (win.inputCache) = 0
-      then return; end if;
-      Cache.Take (win.inputCache, win.surfaceId, win.lastEvent, Decoded);
-      if Decoded.Status = DP.Success then
-         valid := True;
-         Add_Input_Count (win.inputStats.Delivered_Events);
-         Apply_Input_Result (win, Decoded, event, found);
-      else
-         Add_Input_Count (win.inputStats.Cache_Rejections);
-         Cache.Clear (win.inputCache);
+      if not Ring.Is_Open (win.ring) then
+         return;
       end if;
-   end Take_Cached_Input;
+      loop
+         Ring.Reap (win.ring, Tag, Answer, Got);
+         exit when not Got;
+         case Answer.Kind is
+            when Wire.Receive_Input =>
+               if Answer.Status = DP.Success and then win.ringNext >= win.ringCount then
+                  Count (win.inputStats.Successful_Fetches);
+                  Count (win.inputStats.Fetched_Events, Unsigned_64 (Answer.Count));
+                  win.ringEvents := Answer.Events;
+                  win.ringCount := Answer.Count;
+                  win.ringNext := 0;
+                  win.ringMore := Answer.More;
+                  win.ringAcked := Answer.Events (Answer.Count).Serial;
+               elsif Answer.Status = DP.Success then
+                  --  Never asked for while events wait: dropped.
+                  Count (win.inputStats.Cache_Rejections);
+               else
+                  declare
+                     Ignore_Event : Input_Event;
+                     Ignore_Found : Boolean;
+                  begin
+                     --  Bad_Object (the surface is gone) stops the window's
+                     --  input; any other refusal is reported once.
+                     Apply_Input_Result
+                       (win, (if Answer.Status = DP.Bad_Object then (Status => DP.Bad_Object)
+                              else (Status => DP.Invalid_Request)), Ignore_Event, Ignore_Found);
+                  end;
+               end if;
+            when Wire.Present =>
+               null;
+            when Wire.Publish | Wire.Await_Retirement =>
+               FP.Note_Answer (win.frames, win.ring, Tag, Answer, Matched, Refused);
+               if Refused then
+                  --  Perhaps a configuration this window has not seen yet.
+                  win.configStale := True;
+               end if;
+         end case;
+      end loop;
+      if not CuBit.UI.Is_Empty (win.presentBacklog) and then Ring.Can_Submit (win.ring, Wire.Present) then
+         r := win.presentBacklog;
+         Ring.Submit (win.ring,
+           (Kind => Wire.Present, Surface => DP.Live_Surface_Name (win.surfaceId),
+            Area => (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
+                     DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h)),
+            Input_After => win.lastEvent), Ignore, Result);
+         if Result = Ring.Queued then
+            win.presentBacklog := (others => 0);
+         end if;
+      end if;
+   end Ring_Pump;
+
+   --  Take one received event (More: others follow, here or at Desktop).
+   procedure Take_Ring_Input
+     (win : in out Window; event : out Input_Event; found : out Boolean) is
+   begin
+      event := (others => <>); found := False;
+      if win.ringNext >= win.ringCount then return; end if;
+      win.ringNext := win.ringNext + 1;
+      Count (win.inputStats.Delivered_Events);
+      declare
+         Item : DP.Input_Envelope := win.ringEvents (win.ringNext);
+      begin
+         Item.More_Pending := win.ringNext < win.ringCount or else win.ringMore;
+         Apply_Input_Result (win, (DP.Success, Item), event, found);
+      end;
+   end Take_Ring_Input;
+
+   --  Keep one input request outstanding while nothing waits here.
+   procedure Request_Ring_Input (win : in out Window) is
+      Result : Ring.Submit_Result;
+      Ignore : Ring.Token;
+   begin
+      if win.surfaceId = 0 or else win.inputStopped or else win.ringNext < win.ringCount or else
+        Input_Wait_Pending (win) or else Ring.Outstanding (win.ring, Wire.Receive_Input) > 0
+      then return; end if;
+      Ring.Submit (win.ring, (Kind => Wire.Receive_Input, Surface => DP.Live_Surface_Name (win.surfaceId),
+                              After => win.ringAcked), Ignore, Result);
+      case Result is
+         when Ring.Queued => win.inputStallReported := False;
+         when Ring.Full => Report_Stop (win, Wait_Not_Submitted, "ring=full");
+         when Ring.Ended => Report_Stop (win, Wait_Not_Submitted, "ring=ended");
+      end case;
+   end Request_Ring_Input;
 
    procedure Poll_Cached_Input
-     (win : in out Window; event : out Input_Event; found : out Boolean)
-   is
-      Valid : Boolean;
+     (win : in out Window; event : out Input_Event; found : out Boolean) is
    begin
-      Take_Cached_Input (win, event, found, Valid);
+      event := (others => <>); found := False;
+      if win.surfaceId = 0 or else win.inputStopped then return; end if;
+      Take_Ring_Input (win, event, found);
    end Poll_Cached_Input;
 
-   procedure Receive_Input
+   --  Poll_Input without the doorbell: Run wakes Desktop once a frame
+   --  (Present) or before it sleeps (Ring.Arm), not per request.
+   procedure Poll_Ring_Input
       (win : in out Window;
-       operation : DP.Input_Operation;
        event : out Input_Event;
-       found : out Boolean;
-       deadline : Unsigned_64 := 0)
+       found : out Boolean)
    is
-      reply : Message;
    begin
       event := (others => <>); found := False;
       if win.surfaceId = 0 or else win.inputStopped or else Input_Wait_Pending (win) then return; end if;
-      if win.batchedInput then
-         declare
-            package Cache renames Client_Input_Batch_Cache;
-            Loaded, Valid : Boolean;
-         begin
-            if Cache.Remaining (win.inputCache) = 0 and then operation = DP.Poll_Input then
-               Client_Input_Channel.Fetch (win.inputCache, win.surfaceId, win.lastEvent, Loaded);
-               if Loaded then
-                  Add_Input_Count (win.inputStats.Successful_Fetches);
-                  Add_Input_Count (win.inputStats.Fetched_Events, Unsigned_64 (Cache.Remaining (win.inputCache)));
-               else
-                  Add_Input_Count (win.inputStats.Fallback_Polls);
-               end if;
-               if Loaded and then Cache.Remaining (win.inputCache) = 0 then
-                  Apply_Input_Result (win, (DP.Success,
-                    (DP.No_Input, win.lastEvent, 0, 0, False)), event, found);
-                  return;
-               end if;
-            end if;
-            if Cache.Remaining (win.inputCache) > 0 then
-               Take_Cached_Input (win, event, found, Valid);
-               if Valid then return; end if;
-               -- Failed cache validation leaves the acknowledged serial intact.
-               -- Ordinary polling retains its existing fallback recovery below.
-            end if;
-         end;
-      end if;
-      reply := CuBit.Desktop_Messages.From_Wire
-        ((if operation = DP.Poll_Input then
-            DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent))
-          else DP.Encode_Input_Request ((DP.Wait_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent, deadline))));
-      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Wait_Forever);
-      Apply_Input_Result (win,
-        DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (reply), operation), event, found);
-   end Receive_Input;
+      Ring_Pump (win);
+      Take_Ring_Input (win, event, found);
+      Request_Ring_Input (win);
+   end Poll_Ring_Input;
 
    procedure Poll_Input
       (win : in out Window;
@@ -725,17 +825,42 @@ package body CuBit.UI.App is
        found : out Boolean)
    is
    begin
-      Receive_Input (win, DP.Poll_Input, event, found);
+      Poll_Ring_Input (win, event, found);
+      Ring.Flush (win.ring);
    end Poll_Input;
 
-   procedure Wait_Input
-      (win : in out Window;
-       event : out Input_Event;
-       found : out Boolean)
-   is
+   --  Kernel events (a Stop, grant notices) are taken after every wake
+   --  (Sleep_For_Activity); a loop that does not sleep looks every
+   --  EVENT_POLL_MS, not every turn (each look is a system call).
+   EVENT_POLL_MS : constant := 50;
+   Events_Polled_At : Unsigned_64 := 0;
+
+   --  Sleep until this process has activity (a ring answer Desktop rang
+   --  for, a completion, a message) or Deadline (a kernel word). Armed
+   --  first: an answer that arrived meanwhile returns at once. One system
+   --  call per wake; a kernel notice (the ring's wake) comes back with it.
+   procedure Sleep_For_Activity (win : in out Window; Deadline : Unsigned_64; Woke : out Wake_Result) is
+      Notice : aliased Message;
    begin
-      Receive_Input (win, DP.Wait_Input, event, found);
-   end Wait_Input;
+      if not Ring.Arm (win.ring) then
+         Woke := Work_Available;
+         return;
+      end if;
+      Wait_For_Activity_Or_Event (Deadline, Notice, Woke);
+      Ring.Disarm (win.ring);
+      Events_Polled_At := CuBit.Published_Clock.Milliseconds;
+      case Woke is
+         when Event_Taken =>
+            if CuBit.Process_Events.Has_Room then
+               CuBit.Process_Events.File (Notice);
+            end if;
+         when Work_Available =>
+            --  Kernel notices and events go to their one reader.
+            CuBit.Process_Events.Poll;
+         when Deadline_Reached | Unavailable =>
+            null;
+      end case;
+   end Sleep_For_Activity;
 
    procedure Wait_Input_Until
       (win : in out Window;
@@ -743,16 +868,35 @@ package body CuBit.UI.App is
        event : out Input_Event;
        found : out Boolean)
    is
+      Woke : Wake_Result;
    begin
-      Receive_Input (win, DP.Wait_Input, event, found, deadline);
+      loop
+         Poll_Input (win, event, found);
+         exit when found or else win.surfaceId = 0 or else win.inputStopped or else
+           Input_Wait_Pending (win) or else not Ring.Is_Open (win.ring);
+         exit when deadline /= 0 and then CuBit.Published_Clock.Milliseconds >= deadline;
+         Sleep_For_Activity (win, (if deadline = 0 then Wait_Forever else deadline), Woke);
+         if Woke = Unavailable then
+            Report_Stop (win, Activity_Unavailable);
+            exit;
+         end if;
+      end loop;
    end Wait_Input_Until;
 
+   procedure Wait_Input
+      (win : in out Window;
+       event : out Input_Event;
+       found : out Boolean)
+   is
+   begin
+      Wait_Input_Until (win, 0, event, found);
+   end Wait_Input;
+
    function Cached_Input_Count (win : Window) return Natural is
-     (Client_Input_Batch_Cache.Remaining (win.inputCache));
+     (win.ringCount - win.ringNext);
 
    function Input_May_Remain (win : Window) return Boolean is
-     (win.inputMayRemain or else Client_Input_Batch_Cache.Remaining (win.inputCache) > 0);
-
+     (win.inputMayRemain or else win.ringNext < win.ringCount);
 
    function Request_Pointer_Cursor
       (win : Window; cursor : CuBit.UI.Pointer_Cursor_Style)
@@ -788,8 +932,6 @@ package body CuBit.UI.App is
    procedure Present
       (win : in out Window; damage : CuBit.UI.Rect)
    is
-      request : Message;
-      tag : MessageTag;
       r : constant CuBit.UI.Rect := CuBit.UI.Clamp_Rect (Canvas (win), damage);
       accepted : Boolean;
       Watermark : Unsigned_64;
@@ -802,7 +944,8 @@ package body CuBit.UI.App is
       if win.protectedFrames then
          Watermark := (if win.provenanceHealthy and IP.Painting (win.provenance)
                        then IP.Frozen (win.provenance) else 0);
-         FP.Publish (win.frames, (r.x, r.y, r.x + r.w, r.y + r.h), accepted, Watermark);
+         FP.Publish (win.frames, win.ring, (r.x, r.y, r.x + r.w, r.y + r.h), accepted, Watermark);
+         Ring.Flush (win.ring);
          IP.End_Paint (win.provenance, accepted, Watermark);
          if accepted and then not win.firstManagedFrame then
             win.firstManagedFrame := True;
@@ -811,12 +954,13 @@ package body CuBit.UI.App is
          return;
       end if;
 
-      request := CuBit.Desktop_Messages.From_Wire
-        (DP.Encode_Present
-           ((DP.Live_Surface_Name (win.surfaceId),
-             (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
-              DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h)))));
-      tag := capCall (UI_Desktop_Service.Endpoint, request, CuBit.Messages.Wait_Forever);
+      --  The attached buffer: one Present in the ring (answered once Desktop
+      --  has drawn it). With every frame slot taken, the damage waits and
+      --  goes with the next free slot (Ring_Pump): never an unbounded queue.
+      win.presentBacklog := CuBit.UI.Union_Rect (win.presentBacklog, r);
+      Ring_Pump (win);
+      --  The frame is complete: one wake for all it queued, if Desktop sleeps.
+      Ring.Flush (win.ring);
    end Present;
 
    procedure Apply_Pointer_Event
@@ -1023,8 +1167,6 @@ package body CuBit.UI.App is
       consumed := False;
    end No_Completion;
 
-   --  Input wait tokens (Activity_Wait), process-wide and increasing.
-   Last_Input_Token : Unsigned_64 := 0;
 
    procedure Run (win : in out Window)
    is
@@ -1034,6 +1176,8 @@ package body CuBit.UI.App is
       pointer : Pointer_Interaction;
       pendingEvent : Input_Event;
       hasPendingEvent : Boolean := False;
+      --  Run stopped the window for a reason it reported (Report_Stop).
+      abnormal : Boolean := False;
       procedure Paint (Damage : CuBit.UI.Rect) is
          Repair : CuBit.UI.Rect;
          Ready : Boolean;
@@ -1060,17 +1204,30 @@ package body CuBit.UI.App is
          Kept_Count : Natural := 0;
          dirty : CuBit.UI.Rect := (others => 0);
          use type CuBit.Control_Events.Event_Kind, CuBit.Control_Events.Control_Kind;
+         Now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
       begin
+         if Now < Events_Polled_At or else Now - Events_Polled_At >= EVENT_POLL_MS then
+            CuBit.Process_Events.Poll;
+            Events_Polled_At := Now;
+         end if;
          loop
-            CuBit.Process_Events.Next (Item, Found);
+            CuBit.Process_Events.Next_Filed (Item, Found);
             exit when not Found;
             if Item.Kind = CuBit.Control_Events.Control then
                Stop_Seen := Stop_Seen or else Item.Control = CuBit.Control_Events.Stop;
-            elsif Item.Kind in CuBit.Control_Events.Grant_Revoked | CuBit.Control_Events.Grant_Returned
-              and then Kept_Count < Kept'Last
-            then
-               Kept_Count := Kept_Count + 1;
-               Kept (Kept_Count) := Item;
+            elsif Item.Kind in CuBit.Control_Events.Grant_Revoked | CuBit.Control_Events.Grant_Returned then
+               --  The window's ring ending (Desktop closed it, or Desktop
+               --  is gone) is the toolkit's; every other grant event is
+               --  filed back for the program.
+               declare
+                  Ring_Ends : Boolean;
+               begin
+                  Ring.Note_Event (win.ring, Item, Ring_Ends);
+                  if not Ring_Ends and then Kept_Count < Kept'Last then
+                     Kept_Count := Kept_Count + 1;
+                     Kept (Kept_Count) := Item;
+                  end if;
+               end;
             end if;
          end loop;
          for K in 1 .. Kept_Count loop
@@ -1107,6 +1264,11 @@ package body CuBit.UI.App is
       while running and then not win.inputStopped loop
          Take_Stop;
          exit when not running;
+         if not Ring.Is_Open (win.ring) then
+            Report_Stop (win, Ring_Ended);
+            abnormal := True;
+            exit;
+         end if;
          declare
             dirty : CuBit.UI.Rect := (others => 0);
             dirtyEvents : Natural := 0;
@@ -1122,7 +1284,7 @@ package body CuBit.UI.App is
                      found := True;
                      hasPendingEvent := False;
                   else
-                     Poll_Input (win, event, found);
+                     Poll_Ring_Input (win, event, found);
                   end if;
                   exit when not found;
 
@@ -1182,85 +1344,69 @@ package body CuBit.UI.App is
                Paint (dirty);
             end if;
 
-            if running and then not win.inputStopped and then not hasPendingEvent then
-               --  Park on a deferred one-use reply capability. Reducing the
-               --  old polling interval would still add avoidable latency and
-               --  burn CPU; this wakes directly when input is queued. It is
-               --  also safe immediately after a drained batch: already-queued
-               --  input replies at once, while a later arrival resolves the
-               --  installed one-use waiter.
+            --  Events already received are taken first: sleeping with some
+            --  still here would wait for an answer that is not coming.
+            if running and then not win.inputStopped and then not hasPendingEvent and then
+              Cached_Input_Count (win) = 0
+            then
+               --  Sleep until the ring answers (input, a frame's receipt or
+               --  retirement), a completion of the program's own, or its
+               --  deadline. Input already queued at Desktop answers the
+               --  request at once; a busy window never sleeps and so never
+               --  makes a call for its frames or input.
                declare
                   appDeadline : constant Unsigned_64 := Next_Deadline;
-                  now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
-                  deadline : constant Unsigned_64 := Client_Frame_Wakeup.Deadline
-                    (now, appDeadline, win.protectedFrames and then (FP.Pending (win.frames) or else not CuBit.UI.Is_Empty (win.deferredDamage)));
+                  now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
+                  --  Back pressure: a frame waits for Desktop to let go of
+                  --  a buffer (its answer is coming through the ring).
+                  --  Timed work that is due only adds damage meanwhile, so
+                  --  the loop sleeps for that answer instead of spinning.
+                  blocked : constant Boolean := Frame_Pending (win) and then FP.Awaiting (win.frames);
+                  --  A frame waiting on nothing the ring will answer (no
+                  --  slot was free to ask) is retried shortly.
+                  deadline : constant Unsigned_64 :=
+                    (if blocked then 0
+                     else Client_Frame_Wakeup.Deadline
+                       (now, appDeadline,
+                        Frame_Pending (win) and then Ring.Outstanding (win.ring, Wire.Present) = 0));
                   timerDirty : CuBit.UI.Rect := (others => 0);
+                  woke : Wake_Result;
+                  consumed : Boolean;
+                  receipt : CompletionEntry;
                begin
-                  if appDeadline /= 0 and then now >= appDeadline then
+                  if appDeadline /= 0 and then now >= appDeadline and then not blocked then
                      On_Deadline (win, timerDirty, running);
-                     if running and then not CuBit.UI.Is_Empty (timerDirty) then Paint (timerDirty); end if;
-                  elsif Activity_Wait and then (Input_Wait_Pending (win) or else not win.batchedInput) then
-                     --  One wait for input, other completions and the
-                     --  deadline; no blocking call.
-                     declare
-                        accepted, consumed, found, healthy : Boolean;
-                        activity : Activity_Result;
-                        receipt : CompletionEntry;
-                        event : Input_Event;
-                        pragma Unreferenced (activity);
-                     begin
-                        if not Input_Wait_Pending (win) and then Last_Input_Token < APPLICATION_TOKEN_FIRST - 1 then
-                           Last_Input_Token := Last_Input_Token + 1;
-                           Submit_Input_Wait (win, Last_Input_Token, accepted);
-                        end if;
-                        activity := Wait_For_Activity_Until (if deadline = 0 then Unsigned_64'Last else deadline);
-                        while Poll_Completion (receipt'Address) /= 0 loop
-                           Complete_Input_Wait (win, receipt, event, found, consumed, healthy);
-                           if consumed then
-                              if not healthy then
-                                 win.inputStopped := True;
-                              elsif found then
-                                 pendingEvent := event;
-                                 hasPendingEvent := True;
-                              end if;
-                           else
-                              On_Completion (win, receipt, consumed, timerDirty, running);
-                           end if;
-                        end loop;
-                        Take_Stop;
-                        if win.inputStopped then
-                           running := False;
-                        elsif not hasPendingEvent and then appDeadline /= 0 and then
-                          syscall (SYSCALL_GETTIME) >= appDeadline
-                        then
-                           On_Deadline (win, timerDirty, running);
-                        end if;
-                        if running and then not CuBit.UI.Is_Empty (timerDirty) then Paint (timerDirty); end if;
-                     end;
-                  elsif deadline = 0 then
-                     Wait_Input (win, pendingEvent, hasPendingEvent);
-                     if not hasPendingEvent then
-                        if not win.inputStopped then Report_Stop (win, Wait_Returned_Nothing); end if;
+                  else
+                     Request_Ring_Input (win);
+                     Sleep_For_Activity (win, (if deadline = 0 then Wait_Forever else deadline), woke);
+                     if woke = Unavailable then
+                        Report_Stop (win, Activity_Unavailable);
+                        abnormal := True;
+                        running := False;
+                     elsif not Ring.Is_Open (win.ring) then
+                        Report_Stop (win, Ring_Ended);
+                        abnormal := True;
                         running := False;
                      end if;
-                  else
-                     Wait_Input_Until (win, deadline, pendingEvent, hasPendingEvent);
-                     if win.inputStopped then
-                        running := False;
-                     elsif not hasPendingEvent and then appDeadline /= 0 and then
-                       syscall (SYSCALL_GETTIME) >= appDeadline
+                     if Activity_Wait then
+                        while running and then Poll_Completion (receipt'Address) /= 0 loop
+                           On_Completion (win, receipt, consumed, timerDirty, running);
+                        end loop;
+                     end if;
+                     if running and then appDeadline /= 0 and then
+                       CuBit.Published_Clock.Milliseconds >= appDeadline and then not blocked
                      then
                         On_Deadline (win, timerDirty, running);
-                        if running and then not CuBit.UI.Is_Empty (timerDirty) then Paint (timerDirty); end if;
                      end if;
                   end if;
+                  if running and then not CuBit.UI.Is_Empty (timerDirty) then Paint (timerDirty); end if;
                end;
             end if;
          end;
       end loop;
       --  A stop the user did not ask for was reported: let logstore take
       --  the record before the program exits.
-      if win.inputStopped then CuBit.Log.Flush; end if;
+      if abnormal or else win.inputStopped then CuBit.Log.Flush; end if;
    end Run;
 
    procedure Close (win : in out Window) is
@@ -1290,7 +1436,8 @@ package body CuBit.UI.App is
       win.bufferAddr := System.Null_Address;
       win.surfaceId := 0;
       win.sentBye := True;
-      win.batchedInput := False;
-      Client_Input_Batch_Cache.Clear (win.inputCache);
+      Ring.Close (win.ring);
+      win.ringCount := 0; win.ringNext := 0;
+      win.presentBacklog := (others => 0);
    end Close;
 end CuBit.UI.App;

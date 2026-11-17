@@ -253,7 +253,7 @@ package body Servo_Session is
         App.WINDOW_FLAG_MINIMIZABLE or App.WINDOW_FLAG_MAXIMIZABLE or
         App.WINDOW_FLAG_CLOSEABLE or CuBit.Desktop_Protocol.Feature_Bits
           ([CuBit.Desktop_Protocol.Graceful_Close => True, others => False]),
-        OK, title => "Penny", protected_frames => True, batched_input => True);
+        OK, title => "Penny", protected_frames => True);
       if not OK then return 0; end if;
       Editor.Initialize (Address_Edit, "", OK);
       Read_Preference; Rail_Dragging := False;
