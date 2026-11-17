@@ -9,6 +9,8 @@
 -- handling, async submit/completion, and shared memory grants.
 -- See process-ipc.ads for lock ordering documentation.
 -------------------------------------------------------------------------------
+with Readiness_Pages;
+with Readiness_Publication;
 with Boot_Diagnostics;
 with BuddyAllocator;
 with Call_Sequences;
@@ -136,6 +138,24 @@ package body Process.IPC is
     -- Caller must hold mailtab(owner).lock.
     -- @return True if enqueued, False if queue is full.
     ---------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
+    -- The readiness page (KERN-013): one increment per entry queued to an
+    -- open mailbox, one per wake. Caller holds mailtab(owner).lock.
+    ---------------------------------------------------------------------------
+    procedure noteQueued (owner : ProcessID; class : Readiness_Publication.Queue_Class) is
+    begin
+        if owner /= NO_PROCESS and then not mailtab(owner).closed then
+            Readiness_Pages.Note (proctab(owner).readinessFrame, class);
+        end if;
+    end noteQueued;
+
+    procedure noteWake (owner : ProcessID) is
+    begin
+        if owner /= NO_PROCESS and then not mailtab(owner).closed then
+            Readiness_Pages.Note_Wake (proctab(owner).readinessFrame);
+        end if;
+    end noteWake;
+
     procedure enqueueCompletion (owner   : in  ProcessID;
                                  item    : in  CompletionEntry;
                                  thread  : in  ThreadID;
@@ -154,6 +174,7 @@ package body Process.IPC is
         cq.tail  := (cq.tail + 1) mod COMPLETION_QUEUE_SIZE;
         cq.count := cq.count + 1;
         success  := True;
+        noteQueued (owner, Readiness_Publication.Completions);
     end enqueueCompletion;
 
     ---------------------------------------------------------------------------
@@ -553,6 +574,8 @@ package body Process.IPC is
         entryAt (owner, class, Kernel_Credits.Sender (account), position).all
           (entryIndex (Kernel_Credits.Sender (account), position)) := item;
         success := True;
+        noteQueued (owner, (if class = Request_Class then Readiness_Publication.Requests
+                            else Readiness_Publication.Events));
     end enqueueRing;
 
     -- The next entry of one class, round-robin across its senders.
@@ -759,6 +782,7 @@ package body Process.IPC is
             if threadtab (waiter).waitsForIPCActivity then
                 Queues.detach (mailtab(owner).recvQueue, waiter);
                 threadtab (waiter).receiveDeadlineActive := False;
+                noteWake (owner);
                 if handOver then
                     readySync (waiter);
                     handOver := False;
@@ -791,6 +815,7 @@ package body Process.IPC is
             if threadtab (waiter).state in WAITINGFOREVENT | WAITINGFORCOMPLETION
                and then not Process_Lifetime.Closing (threadtab (waiter).lifetime)
             then
+                noteWake (owner);
                 ready (waiter);
             end if;
         end loop;
@@ -824,6 +849,7 @@ package body Process.IPC is
             if threadtab (receiver).state = RECEIVING and then
                not Process_Lifetime.Closing (threadtab (receiver).lifetime)
             then
+                noteWake (owner);
                 if sync then
                     readySync (receiver);
                     handed := True;
@@ -1685,6 +1711,8 @@ package body Process.IPC is
                     else
                         threadtab (receiver).handoffItem := item;
                         threadtab (receiver).handoffValid := True;
+                        --  Not counted on the readiness page: the receiver
+                        --  takes it in its own receive, never by a poll.
                     end if;
                 end if;
             end enqueueP1;
@@ -1717,6 +1745,7 @@ package body Process.IPC is
             -- Path 2: no receiver yet. Enqueue ourselves as a sender.
             threadtab (me).queueKey := dest;
             Queues.enqueue (mailtab(dest).sendQueue, me, ignore);
+            noteQueued (dest, Readiness_Publication.Requests);
             threadtab (me).state := SENDING;
 
             Spinlocks.exitCriticalSection (mailtab(dest).lock);
@@ -1807,6 +1836,7 @@ package body Process.IPC is
             return;
         end if;
         proctab(dest).irqNotificationPending := True;
+        noteQueued (dest, Readiness_Publication.Events);
 
         wakeForUnsolicitedWork (dest);
 
@@ -1835,6 +1865,7 @@ package body Process.IPC is
         proctab(dest).irqPendingVectors (Word_Of (vector)) :=
           proctab(dest).irqPendingVectors (Word_Of (vector)) or Mask_Of (vector);
         proctab(dest).irqNotificationPending := True;
+        noteQueued (dest, Readiness_Publication.Events);
 
         wakeForUnsolicitedWork (dest);
 
@@ -2491,6 +2522,7 @@ package body Process.IPC is
         Spinlocks.enterCriticalSection (mailtab(dest).lock);
         if not mailtab(dest).closed then
             proctab(dest).kernelNoticePending := True;
+            noteQueued (dest, Readiness_Publication.Events);
             wakeForUnsolicitedWork (dest);
         end if;
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
@@ -3003,6 +3035,7 @@ package body Process.IPC is
             Spinlocks.enterCriticalSection (mailtab(grantee).lock);
             if not mailtab(grantee).closed then
                 proctab(grantee).bellPending := True;
+                noteQueued (grantee, Readiness_Publication.Events);
                 wakeForUnsolicitedWork (grantee, sync);
             end if;
             Spinlocks.exitCriticalSection (mailtab(grantee).lock);
@@ -4865,6 +4898,7 @@ package body Process.IPC is
                                 cq.tail := (cq.tail + 1) mod
                                     COMPLETION_QUEUE_SIZE;
                                 cq.count := cq.count + 1;
+                                noteQueued (p, Readiness_Publication.Completions);
                                 wakeActivityWaitersLocked (p);
                                 wakeNotifyWaitersLocked (p);
                             end if;

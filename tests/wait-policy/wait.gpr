@@ -1,0 +1,20 @@
+--  ABI-002 slice 2 / KERN-013: the SPARK proof (level 2) of WAIT's decision
+--  (Wait_Policy), its wire ABI (Wait_ABI) and the readiness counter
+--  (Readiness_Publication), and their hosted test (run.sh).
+project Wait is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../kernel/src", "../../shared/capabilities",
+                        "../../shared/publications", "../../shared/time");
+   for Source_Files use
+     ("wait_tests.adb", "wait_abi.ads", "wait_policy.ads", "wait_policy.adb",
+      "readiness_publication.ads", "clock_publication.ads", "clock_publication.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("wait_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--timeout=60");
+   end Prove;
+end Wait;

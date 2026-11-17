@@ -28,6 +28,8 @@ with Build;
 with Boot_Timeline;
 with Boot_Timeline_Layout;
 with Firmware_Snapshot_Export;
+with Wait_ABI;
+with Wait_Policy;
 
 
 package body Syscall is
@@ -106,20 +108,11 @@ package body Syscall is
             when 126  => number := SYSCALL_INSTALL_LAUNCH_ARGUMENTS;
             when 127  => number := SYSCALL_SEND_CONTROL;
             when 118  => number := SYSCALL_YIELD;
-            when 119  => number := SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND;
             when 12   => number := SYSCALL_WRITE;
-            when 17   => number := SYSCALL_RECEIVE;
             when 18   => number := SYSCALL_REPLY;
             when 19   => number := SYSCALL_SEND_EVENT;
-            when 21   =>
-                number := SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND;
-            when 22   => number := SYSCALL_POLL_ANY_IPC;
-            when 24   => number := SYSCALL_WAIT_COMPLETION;
-            when 25   => number := SYSCALL_POLL_COMPLETION;
-            when 26   => number := SYSCALL_RECEIVE_EVENT_NB;
             when 27   => number := SYSCALL_GETTIME;
             when 114  => number := SYSCALL_READ_MONOTONIC_MICROSECONDS;
-            when 28   => number := SYSCALL_SLEEP;
             when 29   => number := SYSCALL_MAPFB;
             when 30   => number := SYSCALL_INP8;
             when 31   => number := SYSCALL_OUTP8;
@@ -140,11 +133,11 @@ package body Syscall is
             when 138  => number := SYSCALL_INSTALL_CAPABILITY;
             when 139  => number := SYSCALL_REPLY_WITH_CAPABILITY;
             when 140  => number := SYSCALL_CALL_OFFERING_CAPABILITY;
-            when 141  => number := SYSCALL_ACCEPT_OFFERED_CAPABILITY;
             when 142  => number := SYSCALL_REPLY_SAVED_WITH_CAPABILITY;
             when 143  => number := SYSCALL_DERIVE_CAPABILITY;
             when Firmware_Snapshot_ABI.System_Call_Number =>
                 number := SYSCALL_FIRMWARE_SNAPSHOT;
+            when Wait_ABI.System_Call_Number => number := SYSCALL_WAIT;
             when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
             when 51   => number := SYSCALL_MOVE_REPLY_CAPABILITY;
@@ -158,14 +151,12 @@ package body Syscall is
             when 75   => number := SYSCALL_ENABLE_IRQ;
             when 76   => number := SYSCALL_MAP_INTO;
             when 78   => number := SYSCALL_SET_CPU;
-            when 80   => number := SYSCALL_POLL_SERVICE_REQUEST;
             when 81   => number := SYSCALL_SET_LATENCY_CONTRACT;
             when 82   => number := SYSCALL_TRACE_RESET;
             when 83   => number := SYSCALL_TRACE_SUMMARY;
             when 84   => number := SYSCALL_INSPECT_CAPABILITY;
             when 90   => number := SYSCALL_THREAD_CREATE;
             when 91   => number := SYSCALL_THREAD_EXIT;
-            when 92   => number := SYSCALL_FUTEX_WAIT;
             when 93   => number := SYSCALL_FUTEX_WAKE;
             when 102  =>
                 number :=
@@ -184,9 +175,6 @@ package body Syscall is
                 number := SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION;
             when 112  =>
                 number := SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY;
-            when 113 =>
-                number :=
-                  SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND;
             when 122 => number := SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY;
             when 2000 => number := SYSCALL_REGISTER_DRIVER;
             when others =>
@@ -273,19 +261,30 @@ package body Syscall is
             case syscallNum is
                 -- Entering a receive: the first one after registration is
                 -- the process's Ready (its request loop).
-                when SYSCALL_RECEIVE | SYSCALL_REPLY_WAIT |
-                     SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND |
-                     SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND =>
+                when SYSCALL_REPLY_WAIT =>
                     Boot_Timeline.Note_Event
                       (Natural (Process.processOf (percpu.currentThread)),
                        Boot_Timeline.Received);
                     waitKind := Boot_Timeline_Layout.Receive;
-                when SYSCALL_SLEEP | SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND =>
-                    waitKind := Boot_Timeline_Layout.Sleep;
-                when SYSCALL_WAIT_COMPLETION =>
-                    waitKind := Boot_Timeline_Layout.Completion;
-                when SYSCALL_FUTEX_WAIT =>
-                    waitKind := Boot_Timeline_Layout.Futex;
+                -- Entering a receive: the first one after registration is
+                -- the process's Ready (its request loop).
+                when SYSCALL_WAIT =>
+                    case Wait_Policy.Decide (arg0, arg1, arg3, arg4) is
+                        when Wait_Policy.Messages_Forever | Wait_Policy.Messages_Until
+                           | Wait_Policy.Ready =>
+                            Boot_Timeline.Note_Event
+                              (Natural (Process.processOf (percpu.currentThread)),
+                               Boot_Timeline.Received);
+                            waitKind := Boot_Timeline_Layout.Receive;
+                        when Wait_Policy.Timer =>
+                            waitKind := Boot_Timeline_Layout.Sleep;
+                        when Wait_Policy.Completions_Wait =>
+                            waitKind := Boot_Timeline_Layout.Completion;
+                        when Wait_Policy.Futex =>
+                            waitKind := Boot_Timeline_Layout.Futex;
+                        when others =>
+                            null;
+                    end case;
                 when others =>
                     null;
             end case;
@@ -336,11 +335,6 @@ package body Syscall is
 
             when SYSCALL_THREAD_EXIT =>
                 Process.exitThread;
-
-            -- arg0 word address, arg1 expected value, arg2 absolute
-            -- monotonic-ms deadline (Unsigned_64'Last: none).
-            when SYSCALL_FUTEX_WAIT =>
-                retval := Process.Futex.wait (arg0, arg1, arg2);
 
             -- arg0 word address, arg1 maximum waiters to wake.
             when SYSCALL_FUTEX_WAKE =>
@@ -414,39 +408,9 @@ package body Syscall is
                 Process.yield;
                 retval := 0;
 
-            when SYSCALL_SLEEP =>
-                if arg0 > 0 and arg0 <= 2147483647 then
-                    Process.sleep (
-                        Time.Duration(arg0) * Time.Milliseconds);
-                end if;
-                retval := 0;
-
-            -- Sleep until an absolute time on the READ_MONOTONIC_MICROSECONDS
-            -- clock. A time already passed returns at once.
-            when SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND =>
-                declare
-                    Now : Unsigned_64;
-                    Available : Boolean;
-                begin
-                    Time.Read_Monotonic (Now, Available);
-                    if Available and then arg0 > Now then
-                        Process.sleep (Time.Duration (arg0 - Now));
-                    end if;
-                end;
-                retval := 0;
-
             when SYSCALL_MAPFB =>
                 IPC.handleMapFB (
                     Process.processOf (percpu.currentThread), arg0, retval);
-
-            when SYSCALL_RECEIVE =>
-                IPC.handleReceive (arg0, retval);
-
-            when SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND =>
-                IPC.handleWaitForActivity (arg0, arg1, retval);
-
-            when SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND =>
-                IPC.handleReceiveUntil (arg0, arg1, retval);
 
             when SYSCALL_REPLY =>
                 IPC.handleReply (
@@ -456,26 +420,10 @@ package body Syscall is
                 IPC.handleReplyCap (
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
-            when SYSCALL_RECEIVE_EVENT_NB =>
-                IPC.handleReceiveEventNB (arg0, arg1, retval);
-
             when SYSCALL_SEND_EVENT =>
                 IPC.handleSendEvent (
                     Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
-
-            when SYSCALL_POLL_ANY_IPC =>
-                IPC.handlePollAnyIpc (arg0, retval);
-
-            when SYSCALL_POLL_SERVICE_REQUEST =>
-                IPC.handlePollServiceRequest (arg0, retval);
-
-            when SYSCALL_WAIT_COMPLETION =>
-                IPC.handleWaitCompletion (
-                    arg0, arg1, arg2, retval);
-
-            when SYSCALL_POLL_COMPLETION =>
-                IPC.handlePollCompletion (arg0, retval);
 
             when SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID =>
                 IPC.handleGrant (
@@ -546,6 +494,11 @@ package body Syscall is
 
             -- arg0 authority handle, arg1 operation, arg2 table, arg3
             -- offset, arg4 destination, arg5 capacity, arg6 reply record.
+            -- The one wait (Wait_ABI): arg0 the Sources word, arg1 the
+            -- deadline, arg2 .. arg4 the source's parameters.
+            when SYSCALL_WAIT =>
+                IPC.handleWait (arg0, arg1, arg2, arg3, arg4, retval);
+
             when SYSCALL_FIRMWARE_SNAPSHOT =>
                 Firmware_Snapshot_Export.Handle
                   (Process.processOf (percpu.currentThread),
@@ -563,10 +516,6 @@ package body Syscall is
             when SYSCALL_REPLY_SAVED_WITH_CAPABILITY =>
                 IPC.handleReplySavedWithCap (
                     Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
-
-            when SYSCALL_ACCEPT_OFFERED_CAPABILITY =>
-                retval := Process.IPC.acceptOffered
-                  (Process.processOfIdentity (Process_Identities.From_Word (arg0)));
 
             when SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSend (

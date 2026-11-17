@@ -930,6 +930,9 @@ package Process is
         -- bit is cleared only when the driver observes it and then drains its
         -- authoritative device/controller state.
         irqNotificationPending : Boolean := False;
+        -- The readiness page (KERN-013, Readiness_Pages): the kernel's
+        -- frame, mapped read-only at Readiness_Publication.Page_Address.
+        readinessFrame : Virtmem.PhysAddress := 0;
 
         -- Which of the process's message-signaled device vectors fired
         -- since it last took the doorbell (Device_Vector_ABI layout). Set

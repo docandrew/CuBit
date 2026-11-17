@@ -77,12 +77,6 @@ is
       (arg0, arg1 : Unsigned_64;
        retval : out Unsigned_64);
 
-    procedure handleReceive (arg0   : Unsigned_64;
-                             retval : out Unsigned_64);
-
-    procedure handleReceiveUntil (arg0, arg1 : Unsigned_64;
-                                  retval     : out Unsigned_64);
-
     procedure handleReply (arg0, arg1, arg2, arg3,
                            arg4, arg5 : Unsigned_64;
                            retval     : out Unsigned_64);
@@ -104,16 +98,6 @@ is
                                        arg0, arg1, arg2 : Unsigned_64;
                                        retval : out Unsigned_64);
 
-    -- WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND: arg0 is the
-    -- deadline; arg1, when nonzero, a message buffer that receives a pending
-    -- kernel notice (result Process.IPC.Activity_Event), so a thread woken
-    -- by a channel wake reads it in the same call.
-    procedure handleWaitForActivity (arg0, arg1 : Unsigned_64;
-                                     retval : out Unsigned_64);
-
-    procedure handleReceiveEventNB (arg0, arg1 : Unsigned_64;
-                                    retval : out Unsigned_64);
-
     -- SEND_EVENT: arg6 = the authority handle (a notification with
     -- RIGHT_READ covering a role the destination is registered for, or an
     -- endpoint with RIGHT_WRITE to it).
@@ -122,17 +106,10 @@ is
                                arg4, arg5, arg6 : Unsigned_64;
                                retval     : out Unsigned_64);
 
-    procedure handlePollServiceRequest (arg0   : Unsigned_64;
-                                        retval : out Unsigned_64);
-
-    procedure handlePollAnyIpc (arg0   : Unsigned_64;
-                                retval : out Unsigned_64);
-
-    procedure handleWaitCompletion (arg0, arg1, arg2 : Unsigned_64;
-                                    retval : out Unsigned_64);
-
-    procedure handlePollCompletion (arg0   : Unsigned_64;
-                                    retval : out Unsigned_64);
+    -- WAIT (ABI-002 slice 2, Wait_ABI): arg0 the Sources word, arg1 the
+    -- deadline, arg2 .. arg4 the source's parameters A, B, C.
+    procedure handleWait (sources, deadline, a, b, c : Unsigned_64;
+                          retval : out Unsigned_64);
 
     procedure handleGrant (callerPID : Process.ProcessID;
                            arg0, arg1, arg2, arg3 : Unsigned_64;

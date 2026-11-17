@@ -11,6 +11,7 @@ with System;
 with Boot_Timeline_Layout;
 with Descriptors;
 with Firmware_Snapshot_ABI;
+with Wait_ABI;
 
 package Syscall with
     SPARK_Mode => On
@@ -25,16 +26,9 @@ is
         SYSCALL_KILL,
         SYSCALL_SBRK,
         SYSCALL_WRITE,
-        SYSCALL_RECEIVE,
         SYSCALL_REPLY,
         SYSCALL_SEND_EVENT,
-        SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND,
-        SYSCALL_POLL_ANY_IPC,
-        SYSCALL_WAIT_COMPLETION,
-        SYSCALL_POLL_COMPLETION,
-        SYSCALL_RECEIVE_EVENT_NB,
         SYSCALL_GETTIME,
-        SYSCALL_SLEEP,
         SYSCALL_MAPFB,
         SYSCALL_INP8,
         SYSCALL_OUTP8,
@@ -54,14 +48,12 @@ is
         SYSCALL_ENABLE_IRQ,
         SYSCALL_MAP_INTO,
         SYSCALL_SET_CPU,
-        SYSCALL_POLL_SERVICE_REQUEST,
         SYSCALL_SET_LATENCY_CONTRACT,
         SYSCALL_TRACE_RESET,
         SYSCALL_TRACE_SUMMARY,
         SYSCALL_INSPECT_CAPABILITY,
         SYSCALL_THREAD_CREATE,
         SYSCALL_THREAD_EXIT,
-        SYSCALL_FUTEX_WAIT,
         SYSCALL_FUTEX_WAKE,
         SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT,
@@ -71,10 +63,8 @@ is
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE,
         SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION,
         SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-        SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND,
         SYSCALL_READ_MONOTONIC_MICROSECONDS,
         SYSCALL_YIELD,
-        SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND,
         SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
         SYSCALL_INSTALL_LAUNCH_ARGUMENTS,
         SYSCALL_SEND_CONTROL,
@@ -90,13 +80,13 @@ is
         SYSCALL_INSTALL_CAPABILITY,
         SYSCALL_REPLY_WITH_CAPABILITY,
         SYSCALL_CALL_OFFERING_CAPABILITY,
-        SYSCALL_ACCEPT_OFFERED_CAPABILITY,
         SYSCALL_REPLY_SAVED_WITH_CAPABILITY,
         SYSCALL_DERIVE_CAPABILITY,
         SYSCALL_FIRMWARE_SNAPSHOT,
         SYSCALL_RESERVE_OWNED_REGION,
         SYSCALL_CHANGE_OWNED_RANGE,
         SYSCALL_RELEASE_OWNED_REGION,
+        SYSCALL_WAIT,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -110,19 +100,11 @@ is
         -- docs/data-plane.md, "Control messages"
         SYSCALL_SEND_CONTROL         => 127,
         SYSCALL_YIELD                => 118,
-        SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND => 119,
         SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY => 122,
         SYSCALL_WRITE                => 12,
-        SYSCALL_RECEIVE              => 17,
         SYSCALL_REPLY                => 18,
         SYSCALL_SEND_EVENT           => 19,
-        SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND => 21,
-        SYSCALL_POLL_ANY_IPC         => 22,
-        SYSCALL_WAIT_COMPLETION      => 24,
-        SYSCALL_POLL_COMPLETION      => 25,
-        SYSCALL_RECEIVE_EVENT_NB     => 26,
         SYSCALL_GETTIME              => 27,
-        SYSCALL_SLEEP                => 28,
         SYSCALL_MAPFB                => 29,
         SYSCALL_INP8                 => 30,
         SYSCALL_OUTP8                => 31,
@@ -157,7 +139,6 @@ is
         SYSCALL_REPLY_WITH_CAPABILITY => 139,
         -- A call that offers one capability, and the server taking it.
         SYSCALL_CALL_OFFERING_CAPABILITY  => 140,
-        SYSCALL_ACCEPT_OFFERED_CAPABILITY => 141,
         -- REPLY_WITH_CAPABILITY for a saved reply.
         SYSCALL_REPLY_SAVED_WITH_CAPABILITY => 142,
         -- A derivation of one of the caller's capabilities in its own table.
@@ -165,6 +146,14 @@ is
         -- The sealed boot firmware-table snapshot, read only
         -- (Firmware_Snapshot_ABI): one call, a typed operation selector.
         SYSCALL_FIRMWARE_SNAPSHOT => Firmware_Snapshot_ABI.System_Call_Number,
+        -- The one wait (ABI-002 slice 2, Wait_ABI): RECEIVE (17),
+        -- RECEIVE_UNTIL_MONOTONIC_MILLISECOND (21), POLL_ANY_IPC (22),
+        -- WAIT_COMPLETION (24), POLL_COMPLETION (25), RECEIVE_EVENT_NB (26),
+        -- SLEEP (28), POLL_SERVICE_REQUEST (80), FUTEX_WAIT (92),
+        -- WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND (113),
+        -- SLEEP_UNTIL_MONOTONIC_MICROSECOND (119) and
+        -- ACCEPT_OFFERED_CAPABILITY (141) are retired.
+        SYSCALL_WAIT => Wait_ABI.System_Call_Number,
         -- Owned memory, one region API (ABI-002, Process.Owned_Memory):
         -- reserve a region, one operation on a range of it, release it.
         -- Retired, never reused: 115 (ALLOCATE), 116 (RELEASE), 117
@@ -185,7 +174,6 @@ is
         SYSCALL_ENABLE_IRQ           => 75,
         SYSCALL_MAP_INTO             => 76,
         SYSCALL_SET_CPU              => 78,
-        SYSCALL_POLL_SERVICE_REQUEST => 80,
         SYSCALL_SET_LATENCY_CONTRACT => 81,
         SYSCALL_TRACE_RESET          => 82,
         SYSCALL_TRACE_SUMMARY        => 83,
@@ -193,7 +181,6 @@ is
         -- Threads and futexes (docs/threads.md)
         SYSCALL_THREAD_CREATE        => 90,
         SYSCALL_THREAD_EXIT          => 91,
-        SYSCALL_FUTEX_WAIT           => 92,
         SYSCALL_FUTEX_WAKE           => 93,
         SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID => 102,
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT                  => 103,
@@ -203,7 +190,6 @@ is
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE => 110,
         SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION => 111,
         SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY => 112,
-        SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND => 113,
         SYSCALL_READ_MONOTONIC_MICROSECONDS => 114,
         SYSCALL_REGISTER_DRIVER      => 2000);
 

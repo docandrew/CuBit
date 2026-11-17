@@ -107,6 +107,7 @@ program-descriptions    | process  | . | bash tests/program-descriptions/run.sh 
 reply-slots             | ipc      | . | bash tests/reply-slots/run.sh --prove
 sameboy-port            | ports    | . | bash tests/sameboy-port/run.sh --prove
 volume-names            | fs       | . | bash tests/volume-names/run.sh --prove
+wait-policy             | ipc      | . | bash tests/wait-policy/run.sh
 
 # --- Scripts that always prove ----------------------------------------------
 log-fanout              | logging  | . | bash tests/log-fanout/run.sh

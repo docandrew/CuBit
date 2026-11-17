@@ -44,6 +44,10 @@ with Process;
 with Process_Identities;
 with Process.DMA;
 with Process.IPC;
+with Process.Futex;
+with Time;
+with Wait_ABI;
+with Wait_Policy;
 with Process.Owned_Memory;
 with Process.Loader;
 with Process.User_Memory;
@@ -1340,55 +1344,6 @@ package body Syscall.IPC is
     end handleMapFB;
 
     ---------------------------------------------------------------------------
-    -- handleReceive
-    ---------------------------------------------------------------------------
-    procedure handleReceive (arg0   : Unsigned_64;
-                             retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        caller  : constant Process.ProcessID := PerCPUData.getCurrentPID;
-        from    : Process.ProcessID;
-        recvMsg : Process.Message;
-        ok      : Boolean;
-    begin
-        -- arg0 is a user pointer: checked, never dereferenced (a message
-        -- is taken only when it can be delivered).
-        if not Process.User_Memory.Message_Writable (caller, arg0) then
-            retval := reterr;
-            return;
-        end if;
-        Process.IPC.receive (from, recvMsg);
-        Process.User_Memory.Write_Message (caller, arg0, recvMsg, ok);
-        retval := (if ok then Process_Identities.To_Word (Process.identityOf (from)) else reterr);
-    end handleReceive;
-
-    ---------------------------------------------------------------------------
-    -- handleReceiveUntil
-    -- arg0 points to the userspace Message, arg1 is an absolute monotonic-ms
-    -- deadline. Unsigned_64'Last is returned on timeout; otherwise the
-    -- sender's identity, zero for an unsolicited event.
-    ---------------------------------------------------------------------------
-    procedure handleReceiveUntil (arg0, arg1 : Unsigned_64;
-                                  retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        caller   : constant Process.ProcessID := PerCPUData.getCurrentPID;
-        from     : Process.ProcessID;
-        recvMsg  : Process.Message;
-        received : Boolean;
-        ok       : Boolean;
-    begin
-        if not Process.User_Memory.Message_Writable (caller, arg0) then
-            retval := reterr;
-            return;
-        end if;
-        Process.IPC.receiveUntil (arg1, from, recvMsg, received);
-        Process.User_Memory.Write_Message (caller, arg0, recvMsg, ok);
-        retval := (if not received or else not ok then Unsigned_64'Last
-                   else Process_Identities.To_Word (Process.identityOf (from)));
-    end handleReceiveUntil;
-
-    ---------------------------------------------------------------------------
     -- handleReply
     ---------------------------------------------------------------------------
     procedure handleReply (arg0, arg1, arg2, arg3,
@@ -1528,66 +1483,10 @@ package body Syscall.IPC is
     ---------------------------------------------------------------------------
     -- handleWaitForActivity
     ---------------------------------------------------------------------------
-    procedure handleWaitForActivity (arg0, arg1 : Unsigned_64;
-                                     retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        caller : constant Process.ProcessID := PerCPUData.getCurrentPID;
-        event  : Process.Message;
-        ok     : Boolean;
-    begin
-        if arg1 /= 0 and then not Process.User_Memory.Message_Writable (caller, arg1) then
-            retval := Process.IPC.Activity_Closed;
-            return;
-        end if;
-        Process.IPC.waitForActivityUntil (arg0, arg1 /= 0, event, retval);
-        if retval = Process.IPC.Activity_Event then
-            -- Checked writable above; the buffer is the caller's own.
-            Process.User_Memory.Write_Message (caller, arg1, event, ok);
-            if not ok then
-                retval := Process.IPC.Activity_Closed;
-            end if;
-        end if;
-    end handleWaitForActivity;
 
     ---------------------------------------------------------------------------
     -- handleReceiveEventNB
     ---------------------------------------------------------------------------
-    procedure handleReceiveEventNB (arg0, arg1 : Unsigned_64;
-                                    retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        caller   : constant Process.ProcessID := PerCPUData.getCurrentPID;
-        eventMsg : Process.Message;
-        found    : Boolean;
-        ok       : Boolean;
-        publisher : Process.ProcessID;
-        -- arg1, when nonzero: where to write the publisher's identity (0 for
-        -- the kernel's own notices), the sender a receiver authenticates.
-        identity : aliased Unsigned_64 := 0;
-    begin
-        if not Process.User_Memory.Message_Writable (caller, arg0) or else
-           (arg1 /= 0 and then not Process.User_Memory.Writable_Range
-                                     (caller, arg1, Unsigned_64'Size / 8))
-        then
-            retval := 0;
-            return;
-        end if;
-        Process.IPC.receiveEventNB (eventMsg, found, publisher);
-        if found then
-            Process.User_Memory.Write_Message (caller, arg0, eventMsg, ok);
-            if ok and then arg1 /= 0 then
-                if publisher /= Process.NO_PROCESS then
-                    identity := Process_Identities.To_Word (Process.identityOf (publisher));
-                end if;
-                Process.User_Memory.Copy_To_User
-                  (caller, arg1, identity'Address, Unsigned_64'Size / 8, ok);
-            end if;
-            retval := (if ok then 1 else 0);
-        else
-            retval := 0;
-        end if;
-    end handleReceiveEventNB;
 
     ---------------------------------------------------------------------------
     -- handleSendEvent
@@ -1731,107 +1630,6 @@ package body Syscall.IPC is
     -- events, IRQ-style notifications, or lifecycle events queued in the same
     -- mailbox ring.
     ---------------------------------------------------------------------------
-    procedure handlePollServiceRequest (arg0   : Unsigned_64;
-                                retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        caller  : constant Process.ProcessID := PerCPUData.getCurrentPID;
-        from    : Process.ProcessID;
-        recvMsg : Process.Message;
-        found   : Boolean;
-        ok      : Boolean;
-    begin
-        if not Process.User_Memory.Message_Writable (caller, arg0) then
-            retval := 0;
-            return;
-        end if;
-        Process.IPC.receiveServiceRequestNB (from, recvMsg, found);
-        if found then
-            Process.User_Memory.Write_Message (caller, arg0, recvMsg, ok);
-            retval := (if ok then Process_Identities.To_Word (Process.identityOf (from)) else 0);
-        else
-            retval := 0;
-        end if;
-    end handlePollServiceRequest;
-
-    ---------------------------------------------------------------------------
-    -- handlePollAnyIpc
-    --
-    -- Non-blocking mixed receive. This is the explicit escape hatch for
-    -- runtimes that want one central dispatcher for every IPC class.
-    ---------------------------------------------------------------------------
-    procedure handlePollAnyIpc (arg0   : Unsigned_64;
-                                retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        caller  : constant Process.ProcessID := PerCPUData.getCurrentPID;
-        from    : Process.ProcessID;
-        recvMsg : Process.Message;
-        found   : Boolean;
-        ok      : Boolean;
-    begin
-        if not Process.User_Memory.Message_Writable (caller, arg0) then
-            retval := 0;
-            return;
-        end if;
-        Process.IPC.receiveAnyIpcNB (from, recvMsg, found);
-        if found then
-            Process.User_Memory.Write_Message (caller, arg0, recvMsg, ok);
-            retval := (if ok then Process_Identities.To_Word (Process.identityOf (from)) else 0);
-        else
-            retval := 0;
-        end if;
-    end handlePollAnyIpc;
-
-    ---------------------------------------------------------------------------
-    -- handleWaitCompletion
-    ---------------------------------------------------------------------------
-    procedure handleWaitCompletion (arg0, arg1, arg2 : Unsigned_64;
-                                    retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        numReturned : Natural;
-        effectiveMax : Natural;
-        effectiveMin : Natural;
-        ok : Boolean;
-    begin
-        effectiveMax := (if arg1 > Unsigned_64 (Process.COMPLETION_QUEUE_SIZE)
-                         then Process.COMPLETION_QUEUE_SIZE else Natural (arg1));
-        effectiveMin := (if arg2 > Unsigned_64 (effectiveMax) then effectiveMax
-                         else Natural (arg2));
-        -- arg0 is a user pointer: written through Process.User_Memory.
-        Process.IPC.waitCompletion
-          (destination => arg0, maxEntries => effectiveMax, minWait => effectiveMin,
-           numReturned => numReturned, ok => ok);
-        retval := (if ok then Unsigned_64 (numReturned) else reterr);
-    end handleWaitCompletion;
-
-    ---------------------------------------------------------------------------
-    -- handlePollCompletion
-    ---------------------------------------------------------------------------
-    procedure handlePollCompletion (arg0   : Unsigned_64;
-                                    retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        caller     : constant Process.ProcessID := PerCPUData.getCurrentPID;
-        found      : Boolean;
-        localEntry : Process.CompletionEntry;
-        ok         : Boolean;
-    begin
-        if not Process.User_Memory.Writable_Range
-          (caller, arg0, Process.CompletionEntry'Max_Size_In_Storage_Elements)
-        then
-            retval := 0;
-            return;
-        end if;
-        Process.IPC.pollCompletion (localEntry, found);
-        if found then
-            Process.User_Memory.Write_Completion (caller, arg0, localEntry, ok);
-            retval := (if ok then 1 else 0);
-        else
-            retval := 0;
-        end if;
-    end handlePollCompletion;
 
     ---------------------------------------------------------------------------
     -- handleGrant
@@ -2292,5 +2090,148 @@ package body Syscall.IPC is
               Unsigned_64 (derived.slot);
         end if;
     end handleDeriveGrantViaCap;
+
+
+    ---------------------------------------------------------------------------
+    -- WAIT (ABI-002 slice 2, Wait_ABI): one entry point for every wait.
+    -- Wait_Policy decides the form; each form is the primitive the entry
+    -- point it replaces used, so the queues, reply authority and wakeups
+    -- behave as before.
+    ---------------------------------------------------------------------------
+    procedure handleWait (sources, deadline, a, b, c : Unsigned_64;
+                          retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        package WA renames Wait_ABI;
+        use type Wait_Policy.Form;
+        caller : constant Process.ProcessID := PerCPUData.getCurrentPID;
+        form   : constant Wait_Policy.Form := Wait_Policy.Decide (sources, deadline, b, c);
+        from   : Process.ProcessID;
+        msg    : Process.Message;
+        found  : Boolean;
+        ok     : Boolean;
+
+        function identityWord (pid : Process.ProcessID) return Unsigned_64 is
+          (if pid = Process.NO_PROCESS then 0
+           else Process_Identities.To_Word (Process.identityOf (pid)));
+
+        -- A taken message to a: its sender's identity word (0: the kernel).
+        procedure deliver is
+        begin
+            Process.User_Memory.Write_Message (caller, a, msg, ok);
+            retval := (if ok then identityWord (from) else WA.Nothing);
+        end deliver;
+    begin
+        retval := WA.Unsupported_Form;
+        case form is
+            when Wait_Policy.Unsupported =>
+                return;
+
+            when Wait_Policy.Messages_Forever | Wait_Policy.Messages_Until
+               | Wait_Policy.Messages_Now | Wait_Policy.Requests_Now =>
+                -- a is checked, never dereferenced: a message is taken only
+                -- when it can be delivered.
+                if not Process.User_Memory.Message_Writable (caller, a) then
+                    return;
+                end if;
+                case form is
+                    when Wait_Policy.Messages_Forever =>
+                        Process.IPC.receive (from, msg);
+                        found := True;
+                    when Wait_Policy.Messages_Until =>
+                        Process.IPC.receiveUntil (deadline, from, msg, found);
+                    when Wait_Policy.Messages_Now =>
+                        Process.IPC.receiveAnyIpcNB (from, msg, found);
+                    when others =>
+                        Process.IPC.receiveServiceRequestNB (from, msg, found);
+                end case;
+                if found then
+                    deliver;
+                else
+                    retval := WA.Nothing;
+                end if;
+
+            when Wait_Policy.Events_Now =>
+                if not Process.User_Memory.Message_Writable (caller, a) or else
+                   (b /= 0 and then not Process.User_Memory.Writable_Range
+                                          (caller, b, Unsigned_64'Size / 8))
+                then
+                    return;
+                end if;
+                Process.IPC.receiveEventNB (msg, found, from);
+                retval := WA.No_Event;
+                if found then
+                    Process.User_Memory.Write_Message (caller, a, msg, ok);
+                    if ok and then b /= 0 then
+                        declare
+                            -- The publisher's identity, 0 for the kernel's
+                            -- own notices: the sender a receiver
+                            -- authenticates.
+                            identity : aliased Unsigned_64 := identityWord (from);
+                        begin
+                            Process.User_Memory.Copy_To_User
+                              (caller, b, identity'Address, Unsigned_64'Size / 8, ok);
+                        end;
+                    end if;
+                    retval := (if ok then WA.Taken else WA.No_Event);
+                end if;
+
+            when Wait_Policy.Completions_Wait | Wait_Policy.Completions_Now =>
+                declare
+                    taken : Natural;
+                    maxEntries : constant Natural :=
+                      (if b > Unsigned_64 (Process.COMPLETION_QUEUE_SIZE)
+                       then Process.COMPLETION_QUEUE_SIZE else Natural (b));
+                    minEntries : constant Natural :=
+                      (if c > Unsigned_64 (maxEntries) then maxEntries else Natural (c));
+                begin
+                    -- a is written through Process.User_Memory; the whole
+                    -- range is checked before anything is taken.
+                    Process.IPC.waitCompletion
+                      (destination => a, maxEntries => maxEntries,
+                       minWait => minEntries, numReturned => taken, ok => ok);
+                    if ok then
+                        retval := Unsigned_64 (taken);
+                    end if;
+                end;
+
+            when Wait_Policy.Ready =>
+                -- a, when nonzero, receives a pending kernel notice (a
+                -- channel wake, grant lifecycle, child exit) in this call.
+                if a /= 0 and then not Process.User_Memory.Message_Writable (caller, a) then
+                    retval := WA.Ready_Closed;
+                    return;
+                end if;
+                Process.IPC.waitForActivityUntil (deadline, a /= 0, msg, retval);
+                if retval = Process.IPC.Activity_Event then
+                    Process.User_Memory.Write_Message (caller, a, msg, ok);
+                    if not ok then
+                        retval := WA.Ready_Closed;
+                    end if;
+                end if;
+
+            when Wait_Policy.Futex =>
+                -- a word address, b expected value; the deadline as given.
+                retval := Process.Futex.wait (a, b, deadline);
+
+            when Wait_Policy.Offered =>
+                retval := Process.IPC.acceptOffered
+                  (Process.processOfIdentity (Process_Identities.From_Word (a)));
+
+            when Wait_Policy.Timer =>
+                -- a: an absolute time on READ_MONOTONIC_MICROSECONDS's
+                -- clock. A time already passed returns at once.
+                declare
+                    nowUs : Unsigned_64;
+                    available : Boolean;
+                begin
+                    Time.Read_Monotonic (nowUs, available);
+                    if available and then a > nowUs then
+                        Process.sleep (Time.Duration (a - nowUs));
+                    end if;
+                    retval := 0;
+                end;
+        end case;
+    end handleWait;
 
 end Syscall.IPC;

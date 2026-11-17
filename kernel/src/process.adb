@@ -13,6 +13,7 @@
 -- @TODO Model lock ordering in SPARK to get formal guarantees of correctness.
 -------------------------------------------------------------------------------
 pragma Ada_2022;
+with Readiness_Pages;
 with Ada.Unchecked_Conversion;
 
 with BuddyAllocator;
@@ -446,6 +447,7 @@ package body Process is
             Modules.Forget_Process (pid);
             Mem_mgr.unmapKernelMemFromProcess (addrtab(pid));
             deleteP4 (addrtab(pid));
+            Readiness_Pages.Release (proctab(pid).readinessFrame);
             zeroize (addrtab(pid));
             proctab(pid).pgTable := NO_PROCESS;
         end if;
@@ -1068,6 +1070,11 @@ package body Process is
             -- And the system publications beside it (docs/syscall-retirement.md).
             if mapped then
                 Publication_Pages.Map (addrtab(pid), mapped);
+            end if;
+            -- And its own readiness counters (KERN-013).
+            if mapped then
+                Readiness_Pages.Create (addrtab(pid), proctab(pid).readinessFrame);
+                mapped := proctab(pid).readinessFrame /= Readiness_Pages.No_Frame;
             end if;
             if not mapped then
                 discardUnpublished (pid);
@@ -2150,6 +2157,7 @@ package body Process is
             -- only delete the process' page tables.
             Mem_mgr.unmapKernelMemFromProcess (addrtab(pid));
             deleteP4 (addrtab(pid));
+            Readiness_Pages.Release (proctab(pid).readinessFrame);
             proctab(pid).pgTable := NO_PROCESS;
         end if;
 
