@@ -17,6 +17,8 @@ with CuBit.Child_Exits;
 with Interfaces; use Interfaces;
 with CuBit.Log_Protocol;
 with CuBit.Handles;
+with CuBit.Input;
+with CuBit.Input_Rings;
 with CuBit.Handles.Boot_Roots;
 with CuBit.Handles.Control;
 with CuBit.Handles.IPC;
@@ -8268,6 +8270,57 @@ begin
             --  After the reply: procmgr is not kept waiting while they spawn.
             if Role = DRIVER_LOGSTORE and then H.Valid (Logstore_Endpoint) then
                Launch_Pending_Generic;
+            end if;
+         end;
+      elsif msg.tag.label = CuBit.Input_Rings.Binding_Label then
+         --  An input driver asks for its endpoint to Desktop to open its
+         --  source rings over (IPC-009): only the input drivers devmgr
+         --  launched get one, badged for input sources, which is the one
+         --  badge Desktop admits a source ring through.
+         declare
+            package IR renames CuBit.Input_Rings;
+            --  A HID-over-I2C driver devmgr had procmgr start (its touchpad).
+            function HID_Driver return Boolean is
+            begin
+               for K in 1 .. HID_Offer_Store.Length (HID_Offers) loop
+                  declare
+                     Item : constant HID_Offer := HID_Offer_Store.Element_At (HID_Offers, K);
+                  begin
+                     if Item.Driver = from and then Item.State in Offer_Releasing | Offer_Started then
+                        return True;
+                     end if;
+                  end;
+               end loop;
+               return False;
+            end HID_Driver;
+            Input_Driver : constant Boolean :=
+              from /= No_Process and then
+              (from = ps2PID or else from = virtioInputPID or else Instance_Of (from, "xhci.drv") /= 0
+               or else HID_Driver);
+            Code : Unsigned_64 := IR.Not_Input;
+            Replied : Boolean := False;
+         begin
+            if Input_Driver and then
+              msg.tag = (label => IR.Binding_Label, length => 0, protocol => 0, ipc => Accepting, reserved => 0)
+            then
+               if not H.Valid (Desktop_Endpoint) then
+                  Code := IR.No_Desktop;
+               else
+                  declare
+                     Result : constant IPC.Reply_Result := IPC.Reply_With
+                       (from, (tag => (label => IR.Binding_Label, length => 1,
+                                       protocol => 0, ipc => <>, reserved => 0),
+                               authorityTag => 0, words => [IR.Bound, 0, 0, 0]),
+                        H.Badged (Desktop_Endpoint, Read_Write_Grant, CuBit.Input.Source_Ring_Tag));
+                  begin
+                     Replied := Result.Outcome /= IPC.Refused;
+                  end;
+               end if;
+            end if;
+            if not Replied then
+               ret := reply (from, (tag => (label => IR.Binding_Label, length => 1,
+                                            protocol => 0, ipc => <>, reserved => 0),
+                 authorityTag => 0, words => [Code, 0, 0, 0]));
             end if;
          end;
       elsif msg.tag.label = GP.Desktop_Binding_Label then
