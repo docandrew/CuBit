@@ -8,7 +8,10 @@ package body Compositor_Stream_Copy with SPARK_Mode => Off is
    --  Ordinary stores for the unaligned edges of a row.
    procedure Copy_Words (Target, Source : System.Address; Words : Natural) is
       type Words_Array is array (1 .. Words) of Unsigned_32;
+      --  SEC-025: own T is only written (the lent scanout buffer, never read
+      --  back here); S is Desktop's private compose buffer, no peer maps it.
       T : Words_Array with Import, Address => Target;
+      --  SEC-025: own (Desktop's private compose buffer).
       S : constant Words_Array with Import, Address => Source;
    begin
       T := S;
