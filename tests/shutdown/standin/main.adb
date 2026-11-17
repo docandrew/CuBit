@@ -8,7 +8,10 @@
 --  on QEMU q35, until the ACPI agent implements them in acpi.svc. Not
 --  acpi.svc: no AML (\_TTS, \_PTS, \_S5 are not evaluated; the S5 sleep
 --  type is a startup parameter), no SCI (PM1_STS is polled), only the
---  fixed power button, only S5.
+--  fixed power button, only S5. It enters S5 the way acpi.svc is to: through
+--  the kernel's platform power object (KERN-004, CuBit.Handles.Power), which
+--  drains the console and parks the other CPUs before it writes PM1; the
+--  stand-in writes no PM1 control register itself.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -16,6 +19,8 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
 with CuBit.Handles.Devices;
+with CuBit.Handles.Power;
+with Platform_Power_ABI;
 with CuBit.ACPI_Windows;
 with CuBit.ACPI_Fixed_Windows;
 with CuBit.Firmware_Snapshot;
@@ -37,9 +42,6 @@ procedure Main is
 
    --  PM1 status/enable bits (ACPI 6.5, 4.8.3.1): the power button.
    PWRBTN : constant Unsigned_16 := 16#0100#;
-   --  Test only: before the S5 write, time for the kernel's serial output
-   --  to drain, so the run's log keeps the stop's last lines.
-   Serial_Drain_Ms : constant := 500;
    Poll_Ms : constant := 20;
    Table_Bytes : constant := 256;
 
@@ -99,7 +101,7 @@ procedure Main is
 
    Event_Port, Control_Port : Unsigned_32 := 0;
    Enable_Port : Unsigned_32 := 0;
-   Events, Enables, Control : CuBit.Handles.IO_Ports := CuBit.Handles.No_IO_Ports;
+   Events, Enables : CuBit.Handles.IO_Ports := CuBit.Handles.No_IO_Ports;
 
    Count : Unsigned_64 := 0;
    Kept : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
@@ -188,7 +190,9 @@ procedure Main is
    procedure Serve_Enter (From : Process_ID; Request : Message) is
       Answer : Message := NULL_MESSAGE;
       Status : PE.Enter_Status;
-      Current : Unsigned_64;
+      Power : constant CuBit.Handles.Platform_Power := Startup.Power;
+      Entered : CuBit.Handles.Power.Outcome;
+      use type Platform_Power_ABI.Refusal;
    begin
       Answer.tag := (label => PE.Enter_Sleep_State, length => PE.Enter_Reply_Words,
                      protocol => 0, ipc => <>, reserved => 0);
@@ -199,25 +203,25 @@ procedure Main is
          Status := PE.Enter_Malformed;
       elsif not Prepared then
          Status := PE.Not_Prepared;
-      elsif not CuBit.Handles.Valid (Control) then
+      elsif not CuBit.Handles.Valid (Power) then
          Status := PE.No_Sleep_Registers;
       else
-         Current := CuBit.Handles.Devices.In_16 (Control, Unsigned_16 (Control_Port));
          debugPrint ("shutdown-standin: entering S5 (SLP_TYP " & Image (Unsigned_64 (P.s5_sleep_type)) &
-                     ", PM1a_CNT " & Image (Unsigned_64 (Control_Port)) & "); STAND-IN, no \_PTS" & LF);
-         Ignore64 := syscall (SYSCALL_SLEEP, Serial_Drain_Ms);
-         if Current = Unsigned_64'Last
-           or else not CuBit.Handles.Devices.Out_16
-             (Control, Unsigned_16 (Control_Port),
-              PE.PM1_Sleep_Value (Unsigned_16 (Current and 16#FFFF#), PE.Sleep_Type (P.s5_sleep_type), False))
-           or else not CuBit.Handles.Devices.Out_16
-             (Control, Unsigned_16 (Control_Port),
-              PE.PM1_Sleep_Value (Unsigned_16 (Current and 16#FFFF#), PE.Sleep_Type (P.s5_sleep_type), True))
-         then
+                     ") through the platform power object; STAND-IN, no \_PTS" & LF);
+         --  No pause for the console: the kernel drains it first (LOG-009).
+         Entered := CuBit.Handles.Power.Enter_State
+           (Power, Platform_Power_ABI.S5, Type_A => Unsigned_64 (P.s5_sleep_type));
+         --  Only a refusal returns.
+         if not Entered.Answered then
             Status := PE.Write_Refused;
          else
-            Ignore64 := syscall (SYSCALL_SLEEP, PE.Settle_Milliseconds);
-            Status := PE.Still_Running;
+            debugPrint ("shutdown-standin: platform power refused: " &
+                        Platform_Power_ABI.Refusal'Image (Entered.Why) & LF);
+            Status := (case Entered.Why is
+                         when Platform_Power_ABI.Did_Not_Take_Effect => PE.Still_Running,
+                         when Platform_Power_ABI.No_Sleep_Registers
+                            | Platform_Power_ABI.Unsupported_Register => PE.No_Sleep_Registers,
+                         when others => PE.Write_Refused);
          end if;
       end if;
       debugPrint ("shutdown-standin: Enter_Sleep_State answered " & PE.Name (Status) & LF);
@@ -240,7 +244,6 @@ begin
    Enable_Port := Event_Port + Event_Length / 2;
    Events := Window_Of (Event_Port);
    Enables := Window_Of (Enable_Port);
-   Control := Window_Of (Control_Port);
    if CuBit.Handles.Valid (Enables) then
       Status_Now := CuBit.Handles.Devices.In_16 (Enables, Unsigned_16 (Enable_Port));
       Ignore := CuBit.Handles.Devices.Out_16

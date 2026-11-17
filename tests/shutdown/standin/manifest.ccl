@@ -3,9 +3,9 @@
 # implements it. It registers the ACPI role as acpi.svc does (procmgr lets
 # com.cubit.acpi register only from the startup plan), holds the FADT's
 # fixed-hardware windows, watches the fixed power button by polling
-# PM1_STS (no AML, no SCI), and enters S5 by writing PM1a_CNT with the
-# sleep type its startup plan gives (QEMU q35's \_S5 is 0; it evaluates no
-# \_PTS). Never part of a production image.
+# PM1_STS (no AML, no SCI), and enters S5 through the kernel's platform
+# power object (KERN-004) with the sleep type its startup plan gives (QEMU
+# q35's \_S5 is 0; it evaluates no \_PTS). Never part of a production image.
 (type Sleep_Type (range 0 7))
 (type Standin_Parameters (record (s5_sleep_type Sleep_Type)))
 (Executable_Manifest
@@ -14,5 +14,6 @@
   requests => [
     (Request.Firmware_Snapshot "tables")
     (Request.ACPI_Hardware "hardware")
+    (Request.Platform_Power "power")
     (notification "acpi" Notify_Access.Manage "registration")]
   parameters => (Parameter_Signature.Declared "Standin_Parameters"))

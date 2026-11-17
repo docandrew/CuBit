@@ -10,6 +10,9 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Power;
+with Platform_Power_ABI;
 with Startup;
 
 procedure main is
@@ -28,6 +31,7 @@ procedure main is
    WARMUP_COUNT : constant Natural := 64;
    SYNC_COUNT   : constant Natural := 20_000;
    ASYNC_COUNT  : constant Natural := 8_192;
+   KERNEL_COUNT : constant Natural := 20_000;
    TOKEN_BASE   : constant Unsigned_64 := 16#B100_0000#;
 
    ok : Boolean := True;
@@ -132,6 +136,61 @@ procedure main is
       debugPrint (LF & "");
       Clock.Report ("ipc-sync-round-trip", Samples);
    end runSync;
+
+   --  ABI-002 / KERN-004: a Call on a kernel-object handle against a
+   --  dedicated system call on the same handle and the null-call floor.
+   --  The kernel-object Call is Enter_State (S3) on the platform power
+   --  object: the whole path (the endpoint path refuses the handle, the
+   --  kernel resolves it, decodes the message, admits and answers Not_Yet)
+   --  with no register touched. INSPECT_CAPABILITY resolves the same
+   --  handle and copies a record out; GETPID does nothing.
+   procedure runKernelObject is
+      package PA renames Platform_Power_ABI;
+      use type PA.Refusal;
+      Power : constant CuBit.Handles.Platform_Power := Startup.Power;
+      Entered : CuBit.Handles.Power.Outcome;
+      Described : CuBit.Handles.IPC.Description;
+      Ignored : Unsigned_64;
+      Started, Finished : Unsigned_64;
+      Calls, Inspections, Nulls : Timing.Histogram;
+   begin
+      Entered := CuBit.Handles.Power.Enter_State (Power, PA.S3);
+      if not Entered.Answered or else Entered.Why /= PA.Not_Yet then
+         fail ("kernel-object S3 not refused Not_Yet");
+         return;
+      end if;
+      for i in 1 .. WARMUP_COUNT loop
+         Entered := CuBit.Handles.Power.Enter_State (Power, PA.S3);
+         Described := CuBit.Handles.IPC.Describe (Power);
+         Ignored := syscall (SYSCALL_GETPID);
+      end loop;
+      for i in 1 .. KERNEL_COUNT loop
+         Started := Clock.Read_Counter;
+         Entered := CuBit.Handles.Power.Enter_State (Power, PA.S3);
+         Finished := Clock.Read_Counter;
+         if Finished >= Started then Timing.Add (Calls, Finished - Started); end if;
+      end loop;
+      for i in 1 .. KERNEL_COUNT loop
+         Started := Clock.Read_Counter;
+         Described := CuBit.Handles.IPC.Describe (Power);
+         Finished := Clock.Read_Counter;
+         if Finished >= Started then Timing.Add (Inspections, Finished - Started); end if;
+      end loop;
+      for i in 1 .. KERNEL_COUNT loop
+         Started := Clock.Read_Counter;
+         Ignored := syscall (SYSCALL_GETPID);
+         Finished := Clock.Read_Counter;
+         if Finished >= Started then Timing.Add (Nulls, Finished - Started); end if;
+      end loop;
+      if not Described.Current then
+         fail ("kernel-object handle not current");
+         return;
+      end if;
+      Clock.Report ("kernel-object-call", Calls);
+      Clock.Report ("handle-syscall-inspect", Inspections);
+      Clock.Report ("null-syscall-getpid", Nulls);
+      debugPrint ("BENCH: PASS kernel-object call" & LF);
+   end runKernelObject;
 
    procedure runAsync is
       completions : CompletionRing;
@@ -338,6 +397,7 @@ begin
    debugPrint ("BENCH: phase=untraced async_depth=16" & LF);
    runSync;
    if ok then runAsync; end if;
+   if ok then runKernelObject; end if;
    debugPrint ("BENCH: phase=traced async_depth=16" & LF);
    declare
       ignored : Unsigned_64;

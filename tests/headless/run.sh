@@ -6853,6 +6853,8 @@ procmgr: shutdown: stopped in
 power: procmgr stopped the system:
 power: asking acpi.svc to enter S5
 shutdown-standin: entering S5 (SLP_TYP 0
+platform power: entering S5 (SLP_TYPa 0, SLP_TYPb 0)
+ other CPUs parked
 "
         if [ "$TEST_NAME" != "shutdown-text" ]; then
             required_markers="$required_markers
@@ -6875,7 +6877,10 @@ procmgr: shutdown: com.cubit.test.shutdown-stubborn pid
         fi
         # Reverse startup order: each entry's Stop after the one started
         # after it was decided; storage after every service; drivers after
-        # storage; S5 last.
+        # storage; S5 last. LOG-009 (KERN-004): the kernel's own S5 line
+        # comes after every line queued before the call (power.svc's stop
+        # report and request, the stand-in's line), then the parking: the
+        # kernel drained its console ring before it wrote PM1.
         if ! awk -v order="$SHUTDOWN_ORDER" '
               BEGIN { n = split(order, names, " ") }
               { for (i = 1; i <= n; i++)
@@ -6884,11 +6889,17 @@ procmgr: shutdown: com.cubit.test.shutdown-stubborn pid
               /shutdown-standin: Prepare_To_Sleep S5 answered/ && !prep { prep = NR }
               /devmgr: shutdown: procmgr asks to stop the drivers/ && !dev { dev = NR }
               /shutdown-standin: entering S5/ && !s5 { s5 = NR }
+              /power: procmgr stopped the system:/ && !report { report = NR }
+              /power: asking acpi.svc to enter S5/ && !ask { ask = NR }
+              /platform power: entering S5/ && !kernel { kernel = NR }
+              / other CPUs parked/ && !parked { parked = NR }
               END {
                 for (i = 1; i <= n; i++) if (!at[i] || (i > 1 && at[i] < at[i - 1])) exit 1
-                exit !(prep && prep < at[1] && fs > at[n] && dev > fs && s5 > dev)
+                exit !(prep && prep < at[1] && fs > at[n] && dev > fs && s5 > dev &&
+                       report > dev && ask > report && kernel > ask && kernel > s5 &&
+                       parked > kernel)
               }' "$SERIAL_LOG"; then
-            echo "headless: $TEST_NAME: not prepare-to-sleep, then reverse startup order, storage, drivers, S5" >&2
+            echo "headless: $TEST_NAME: not prepare-to-sleep, then reverse startup order, storage, drivers, S5 (with the whole console tail before the kernel's S5 line)" >&2
             exit 1
         fi
         # The filesystem detached the journaled volume: no recovery needed,
@@ -7959,6 +7970,8 @@ bench-ipc-client: starting
 BENCH: ipc sync
 BENCH: ipc async
 BENCH: PASS ipc
+BENCH: PASS kernel-object call
+TIMING: kernel-object-call
 IPC-RETIREMENT-CHECK: PASS
 TRACE: summary begin
 TRACE: event=syscall_enter
