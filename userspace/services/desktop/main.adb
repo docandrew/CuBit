@@ -1570,6 +1570,39 @@ procedure main is
    statsSourceAgeMaxMs : Unsigned_64 := 0;
    statsSourceAgeSumMs : Unsigned_64 := 0;
    statsSourceAgeCount : Unsigned_64 := 0;
+   lastThreadCalls : Unsigned_64 := 0;
+   --  Timing builds: calls by loop phase this period. Each mark reads the
+   --  thread's count (one call, not charged to any phase).
+   type Call_Phase is (Phase_Wait, Phase_Collect, Phase_Events, Phase_Requests, Phase_Rings,
+                       Phase_Status, Phase_Frame, Phase_Retire, Phase_Report);
+   type Phase_Counts is array (Call_Phase) of Unsigned_64;
+   phaseCalls : Phase_Counts := [others => 0];
+   phaseMarkAt : Unsigned_64 := 0;
+   function phaseName (P : Call_Phase) return String is
+     (case P is
+        when Phase_Wait => "wait", when Phase_Collect => "collect", when Phase_Events => "events",
+        when Phase_Requests => "requests", when Phase_Rings => "rings", when Phase_Status => "status",
+        when Phase_Frame => "frame", when Phase_Retire => "retire", when Phase_Report => "report");
+   --  Calls the timing report made this period (subtracted from DESKTOP-CALLS).
+   reportCalls : Unsigned_64 := 0;
+   function threadCalls return Unsigned_64 is
+      Statistics : CuBit.System_Facts.SP.Statistics;
+      Read : Boolean;
+   begin
+      CuBit.System_Facts.Read_Statistics (Statistics, Read);
+      return (if Read then Statistics.Thread_System_Calls else 0);
+   end threadCalls;
+   --  The phase that just ended was Ended.
+   procedure phaseMark (Ended : Call_Phase) is
+      Now : Unsigned_64;
+   begin
+      if not Desktop_Timing_Policy.Enabled then return; end if;
+      Now := threadCalls;
+      if phaseMarkAt /= 0 and then Now > phaseMarkAt then
+         phaseCalls (Ended) := phaseCalls (Ended) + (Now - phaseMarkAt - 1);
+      end if;
+      phaseMarkAt := Now;
+   end phaseMark;
    pendingMotionUs   : Unsigned_64 := Compositor_Elapsed.Unavailable;
    --  Intake of the oldest input not yet shown by a submitted frame
    --  (Input_To_Present metric); Unavailable when none is waiting.
@@ -2285,6 +2318,39 @@ procedure main is
       lastInputQueueOverflows := inputQueueOverflows;
 
       capturePeriod (eventDropsThisPeriod, inputOverflowsThisPeriod);
+      if Desktop_Timing_Policy.Enabled then
+         declare
+            Statistics : CuBit.System_Facts.SP.Statistics;
+            Read : Boolean;
+         begin
+            CuBit.System_Facts.Read_Statistics (Statistics, Read);
+            if Read then
+               debugPrint ("DESKTOP-CALLS: calls=" &
+                 Decimal (Statistics.Thread_System_Calls - lastThreadCalls - reportCalls) &
+                 " report_calls=" & Decimal (reportCalls) &
+                 " frames=" & Decimal (statsPresentOps) & " requests=" & Decimal (statsRequests) &
+                 " present_requests=" & Decimal (statsPresentReq) & " input_requests=" &
+                 Decimal (statsInputReq) & " events=" & Decimal (statsEvents) & LF);
+               lastThreadCalls := Statistics.Thread_System_Calls;
+               reportCalls := 0;
+               declare
+                  Line : String (1 .. 400) := [others => ' '];
+                  Used : Natural := 0;
+               begin
+                  for P in Call_Phase loop
+                     declare Item : constant String := " " & phaseName (P) & "=" & Decimal (phaseCalls (P));
+                     begin
+                        Line (Used + 1 .. Used + Item'Length) := Item;
+                        Used := Used + Item'Length;
+                     end;
+                  end loop;
+                  debugPrint ("DESKTOP-CALL-PHASES:" & Line (1 .. Used) & LF);
+                  phaseCalls := [others => 0];
+               end;
+            end if;
+         end;
+      end if;
+
 
       -- Reuse the existing reporting clock. The store sums Counter deltas;
       -- submit each interval once, before resetting the local work counters.
@@ -14669,11 +14735,13 @@ begin
          if Diagnostic_Loops < Unsigned_64'Last then Diagnostic_Loops := Diagnostic_Loops + 1; end if;
          turnStartedUs := dispatchNow;
          turnWork := (statsEvents, statsRequests, statsPresentOps);
+         phaseMark (Phase_Wait);
          collectPresentations;
          Desktop_Latency_Report.Tick (latencyLedger, latencyStats, CuBit.Monotonic.Microseconds);
          --  LAT-002's samples to the series store (MET-002): copies into
          --  the outlet ring, no system call.
          DM.Publish_Latency (latencyLedger);
+         phaseMark (Phase_Collect);
          if outputChangeNoticed and then not outputDrainRequested and then
            not outputReopenPending and then not shutdownRequested
          then
@@ -14704,12 +14772,14 @@ begin
             end;
          end if;
          Drain_Events;
+         phaseMark (Phase_Events);
          Desktop_Launch_Refresh.Pump (requestSequence);
 
          -- Count and elapsed-time admission both yield a paint opportunity
          -- under a busy request stream. A handler already running can overrun
          -- its allowance; that execution cost is outside the admission proof.
          Drain_Requests;
+         phaseMark (Phase_Requests);
 
          --  A reply can hand execution to an app that publishes input before
          --  we resume. Dispatch those arrivals before painting, not one full
@@ -14741,6 +14811,7 @@ begin
             end;
          end if;
          refreshStatus;
+         phaseMark (Phase_Status);
          pumpModeTrial;
          if framePending then refreshPublicationConfigurations; end if;
          if not outputDrainRequested and then directOutput and then RP.Preparation_Required
@@ -14758,7 +14829,9 @@ begin
          flushFrame;
          flushCursorPresent;
          pumpPresentation;
+         phaseMark (Phase_Frame);
          pumpSourceRetirements;
+         phaseMark (Phase_Retire);
          recordTransferWork;
          expireInputWaiters;
          tickTip (nowMs);
@@ -14778,8 +14851,20 @@ begin
             --  carried into a later, unrelated frame's latency.
             pendingInputUs := Compositor_Elapsed.Unavailable;
          end if;
-         maybePrintStats;
-         runHousekeeping;
+         if Desktop_Timing_Policy.Enabled then
+            declare
+               Before : constant Unsigned_64 := threadCalls;
+            begin
+               maybePrintStats;
+               runHousekeeping;
+               phaseMark (Phase_Report);
+               --  This bracket's two reads count as report calls too.
+               reportCalls := reportCalls + (threadCalls - Before) + 1;
+            end;
+         else
+            maybePrintStats;
+            runHousekeeping;
+         end if;
          checkFullRepaint;
          if DM.Enabled and then not DM.Disabled and then
            turnWork /= (statsEvents, statsRequests, statsPresentOps)

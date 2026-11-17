@@ -1993,6 +1993,13 @@ frame-ticker: ccl-build user_runtime ccl-manifest ui-fonts-native
 	cp ../userspace/apps/frame-ticker/build/frame-ticker.app isodir/boot/frame-ticker.app
 
 # The calculator (docs/calculator.md): the calculator core in userspace/lib/calc.
+# The UI latency probe (tests/headless --test ui-latency).
+.PHONY : ui-latency-probe
+ui-latency-probe: ccl-build user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/ui-latency-probe/build
+	$(CCL_BUILD) ../userspace/apps/ui-latency-probe/component.ccl
+	cp ../userspace/apps/ui-latency-probe/build/ui-latency-probe.app isodir/boot/ui-latency-probe.app
+
 .PHONY : calculator
 # On gprbuild until CCL capacity M1: its declaration exceeds the program
 # size cap (docs/ccl-build.md), like text's.

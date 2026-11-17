@@ -1,0 +1,7 @@
+# UI latency probe (tests/headless --test ui-latency): one toolkit window
+# that counts its own system calls per frame and per key. Desktop is its
+# only service.
+(executable-manifest v1
+  (identity "com.cubit.ui-latency-probe")
+  (version "0.1.0")
+  (request-service desktop read-write desktop))
