@@ -1,0 +1,27 @@
+--  Hosted tests for Desktop's frame ring to Display (IPC-009).
+project Frame_Rings is
+   --  The runtime units this test needs, copied by run.sh: the runtime's
+   --  directory also holds its own System units, which must not shadow
+   --  the host's.
+   for Source_Dirs use (".", "../../userspace/lib/display", "../../userspace/lib/compositor", "build/runtime");
+   for Source_Files use
+     ("main.adb",
+      "cubit.ads", "cubit-request_channels.ads", "cubit-request_channels.adb",
+      "cubit-submission_queues.ads", "cubit-submission_queues.adb",
+      "cubit-slot_rings.ads", "cubit-slot_rings.adb", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+      "cubit-display_protocol.ads", "cubit-display_protocol.adb",
+      "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb",
+      "cubit-present_timing.ads", "cubit-present_timing.adb", "cubit-grant_references.ads",
+      "cubit-protocols.ads", "cubit-channel_contracts.ads", "cubit-channel_contracts.adb",
+      "cubit-display_frame_damage.ads", "cubit-display_frame_damage.adb",
+      "cubit-display_pool_protocol.ads", "cubit-display_pool_protocol.adb",
+      "compositor_presentation.ads", "compositor_presentation.adb",
+      "display_frame_ring.ads", "display_frame_ring.adb",
+      "display_frame_client.ads", "display_frame_client.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end Frame_Rings;

@@ -9095,6 +9095,18 @@ if [ "$TEST_NAME" = "desktop-restart" ]; then
         exit 1
     fi
     echo "headless: the input source rings opened again to the restarted desktop"
+    # IPC-009: the failed Desktop's frame ring ends at Display, and the
+    # restarted Desktop's frames reach Display through a new one.
+    if ! awk '/display: frame ring [0-9]+ opened/ { opened++ }
+              /display: frame ring [0-9]+ ended/ && opened == 1 { ended = 1 }
+              /DESKTOP-TEST-FAULT: restarted; taking the display over/ { restarted = NR }
+              /display: frame ring [0-9]+ opened/ && restarted { reopened = 1 }
+              END { exit !(ended && reopened && opened >= 2) }' "$SERIAL_LOG"; then
+        echo "headless: desktop restart: the frame ring to Display did not end and open again" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    echo "headless: the frame ring to Display ended and opened again with the restarted desktop"
 fi
 
 if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = large ]; then

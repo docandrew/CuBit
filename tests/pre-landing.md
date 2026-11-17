@@ -1059,3 +1059,21 @@ CUBIT_DESKTOP_IMAGE=/home/doc/cubit-build-tmp/desktop-fault.svc \
 bash tests/headless/run.sh --test key-repeat --accel kvm --timeout 90
 bash tests/headless/run.sh --test desktop-display --accel kvm --timeout 90
 ```
+
+## frame-rings (IPC-009: Desktop's frames to Display on a ring)
+
+Desktop presents through one Request_Channels channel to Display, and
+Display answers each frame through it; the kernel only sets it up and
+rings a side that sleeps.
+- Hosted (`tests/frame-rings`): every present is answered, or fails typed
+  once when the channel ends; a superseded frame is answered and taken as
+  a drop (redraw), not a fault; a forged answer (unknown tag, another
+  frame's result, a malformed entry) is refused and counted while the
+  present stays outstanding; a full ring refuses the next present without
+  dropping one.
+- desktop-restart: the failed Desktop's frame ring ends at Display and the
+  restarted Desktop opens a new one (with the input rings, above).
+
+```sh
+bash tests/frame-rings/run.sh
+```
