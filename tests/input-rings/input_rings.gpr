@@ -1,0 +1,24 @@
+--  Hosted tests for the input source rings (IPC-009).
+project Input_Rings is
+   --  The runtime units this test needs, copied by run.sh: the runtime's
+   --  directory also holds its own System units, which must not shadow
+   --  the host's.
+   for Source_Dirs use ("fixture", ".", "../../userspace/lib/input", "build/runtime");
+   for Source_Files use
+     ("main.adb", "cubit-messages.ads",
+      "cubit.ads", "cubit-process_ids.ads", "cubit-process_ids.adb",
+      "cubit-input.ads", "cubit-input.adb",
+      "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+      "cubit-slot_rings.ads", "cubit-slot_rings.adb",
+      "cubit-event_channels.ads", "cubit-event_channels.adb",
+      "cubit-protocols.ads", "cubit-channel_contracts.ads", "cubit-channel_contracts.adb",
+      "cubit-input_rings.ads",
+      "input_source_set.ads", "input_source_set.adb",
+      "input_ring_admission.ads");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end Input_Rings;
