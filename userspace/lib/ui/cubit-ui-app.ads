@@ -75,13 +75,13 @@ package CuBit.UI.App is
    -- A zero minimum preserves the initial-size minimum of existing callers.
    -- Explicit minima must not exceed initial dimensions; fixed-size windows
    -- retain initial dimensions regardless of smaller requested minima.
+   -- There is no maximum: a resizable window grows to whatever Desktop
+   -- offers (frame buffers grow with it); a fixed-size one keeps its size.
    procedure Open
       (win : in out Window;
        width, height : Natural;
        flags : Unsigned_64;
        ok : out Boolean;
-       maximum_width : Natural := 0;
-       maximum_height : Natural := 0;
        title : String := "Application";
        protected_frames : Boolean := False;
        batched_input : Boolean := False;

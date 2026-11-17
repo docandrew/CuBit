@@ -296,8 +296,6 @@ package body CuBit.UI.App is
        width, height : Natural;
        flags : Unsigned_64;
        ok : out Boolean;
-       maximum_width : Natural := 0;
-       maximum_height : Natural := 0;
        title : String := "Application";
        protected_frames : Boolean := False;
        batched_input : Boolean := False;
@@ -342,8 +340,6 @@ package body CuBit.UI.App is
       if width not in 1 .. Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_W or else
         height not in 1 .. Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_H or else
         minimum_width > width or else minimum_height > height or else
-        maximum_width > Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_W or else
-        maximum_height > Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_H or else
         flags > DP.Feature_Bits ([others => True])
       then
          return;
@@ -359,11 +355,6 @@ package body CuBit.UI.App is
          minW := initialW; minH := initialH;
          maxW := initialW;
          maxH := initialH;
-      elsif maximum_width > 0 and then maximum_height > 0 then
-         maxW := Unsigned_64 (Natural'Max (width, maximum_width) +
-                              WINDOW_CHROME_W);
-         maxH := Unsigned_64 (Natural'Max (height, maximum_height) +
-                              WINDOW_CHROME_H);
       end if;
 
       hello := CuBit.Desktop_Messages.From_Wire

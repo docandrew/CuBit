@@ -53,8 +53,6 @@ package body CCL_Desktop_Platform is
 
    MINIMUM_WIDTH  : constant Natural := 900;
    MINIMUM_HEIGHT : constant Natural := 400;
-   MAXIMUM_WIDTH  : constant Natural := 1_280;
-   MAXIMUM_HEIGHT : constant Natural := 720;
    REPLY_OK : constant Unsigned_32 := 16#F000#;
 
    KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
@@ -214,8 +212,6 @@ package body CCL_Desktop_Platform is
       Requested_Height := Natural'Max (MINIMUM_HEIGHT, Natural (Height));
       CuBit.UI.App.Open
         (Native_Window, Requested_Width, Requested_Height, Flags, OK,
-         maximum_width => MAXIMUM_WIDTH,
-         maximum_height => MAXIMUM_HEIGHT,
          title => Title, protected_frames => True);
       Native_Open := OK;
       if OK then
@@ -333,6 +329,13 @@ package body CCL_Desktop_Platform is
             --  Returning an otherwise ignored event invalidates the shared
             --  layout; Prepare_Frame observes the newly attached canvas.
             Kind := Code_Of (No_Event);
+            declare
+               W : constant String := Unsigned_64'Image (Event.payload0);
+               H : constant String := Unsigned_64'Image (Event.payload1);
+            begin
+               debugPrint (Name & ": window size " & W (W'First + 1 .. W'Last) & "x" &
+                           H (H'First + 1 .. H'Last) & ASCII.LF);
+            end;
          when CuBit.UI.App.INPUT_KEY_UP =>
             Current_Modifiers := Event.payload1;
             if Event.payload0 /= KEY_ALT then

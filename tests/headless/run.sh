@@ -3444,6 +3444,13 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
     VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
 fi
+# UI-039 (CCL_CONSOLE_DEMO=large): a 1080p output, where a new window opens
+# taller than the 1280x720 the CCL apps used to be capped at.
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = large ]; then
+    VIDEO_ARGS=(-vga none -device virtio-vga,xres=1920,yres=1080)
+    #  Desktop's 1080p output buffers do not fit the 512M desktop default.
+    QEMU_MEMORY=2G
+fi
 if [ "$TEST_NAME" = "desktop-vm" ]; then
     # run-desktop's devices: virtio-vga plus a virtio tablet (absolute
     # pointer). VNC carries host resizes (SetDesktopSize, as a resized GTK
@@ -4584,6 +4591,12 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'sendkey esc\n'
                 sleep 0.5
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ "${CCL_CONSOLE_DEMO:-}" = large ]; then
+            # UI-039 (CCL_CONSOLE_DEMO=large): the window's size is checked
+            # after the run; show it.
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-large.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
             elif [ "${CCL_CONSOLE_DEMO:-}" = keys ]; then
             # UI-039 (CCL_CONSOLE_DEMO=keys): real keys, i8042 -> ps2.drv ->
             # Desktop -> the console, as on the laptop where the console
@@ -8959,6 +8972,17 @@ if [ "$TEST_NAME" = "desktop-restart" ]; then
         exit 1
     fi
     echo "headless: desktop restarted after its failure and presents again"
+fi
+
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = large ]; then
+    # UI-039: on 1080p the console's window is configured past 1280x720 (the
+    # cap the CCL apps had); Desktop opens it at 3/4 of the work area's height.
+    if ! grep -aoE "ccl-console: window size [0-9]+x[0-9]+" "$SERIAL_LOG" |
+         awk -F'[ x]' '{ if ($4 > 1280 || $5 > 720) found = 1 } END { exit !found }'; then
+        echo "headless: the console was never configured past 1280x720:" >&2
+        grep -aE "ccl-console: window size" "$SERIAL_LOG" >&2
+        exit 1
+    fi
 fi
 
 if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = keys ]; then

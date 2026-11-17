@@ -285,8 +285,9 @@ begin
          if Grant /= CCL.Catalog.Grant_Added then return; end if;
       end loop;
    end;
+   --  Its table follows the window's width; it opens at its designed size.
    A.Open (Win, 760, 560, A.WINDOW_FLAG_DECORATED or A.WINDOW_FLAG_CLOSEABLE or
-     A.WINDOW_FLAG_MINIMIZABLE or A.WINDOW_FLAG_FIXED_SIZE, OK,
+     A.WINDOW_FLAG_MINIMIZABLE or A.WINDOW_FLAG_RESIZABLE or A.WINDOW_FLAG_MAXIMIZABLE, OK,
      title => "Observatory", protected_frames => True);
    if not OK then return; end if;
    debugPrint ("observatory: native window ready" & ASCII.LF);
