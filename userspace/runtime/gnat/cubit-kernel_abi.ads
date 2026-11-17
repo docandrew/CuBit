@@ -13,6 +13,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with Wait_ABI;
 
 package CuBit.Kernel_ABI with Pure, SPARK_Mode is
 
@@ -22,13 +23,9 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Get_Process_Id               : constant System_Call := 6;
    Grow_Heap                    : constant System_Call := 8;
    Write                        : constant System_Call := 12;
-   Receive                      : constant System_Call := 17;
    Reply                        : constant System_Call := 18;
    --  SEND_EVENT: also the channel wake (Channel_Wake_ABI).
    Send_Event                   : constant System_Call := 19;
-   Poll_Any_IPC                 : constant System_Call := 22;
-   Wait_Completion              : constant System_Call := 24;
-   Receive_Event_Nonblocking    : constant System_Call := 26;
    Get_Time                     : constant System_Call := 27;
    --  With a deadline (arg 2; Forever, spelled out, for none).
    Call_Via_Endpoint_Capability : constant System_Call := 128;
@@ -42,16 +39,25 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  The same, the owner named by an endpoint capability (slot, grant
    --  slot, generation, offset, length, access).
    Acquire_Shared_Memory_Grant_Via_Capability : constant System_Call := 112;
-   Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond :
-     constant System_Call := 113;
    --  Entry, stack pointer, argument (RDI), FS base, exit word.
    Thread_Create                : constant System_Call := 90;
    Thread_Exit                  : constant System_Call := 91;
-   Futex_Wait                   : constant System_Call := 92;
    Futex_Wake                   : constant System_Call := 93;
    Read_Monotonic_Microseconds  : constant System_Call := 114;
+   --  The one wait (ABI-002 slice 2): its sources, deadline and results
+   --  are Wait_ABI's. It replaced RECEIVE, the polls, WAIT_COMPLETION,
+   --  the activity wait, SLEEP, SLEEP_UNTIL, FUTEX_WAIT and
+   --  ACCEPT_OFFERED_CAPABILITY.
+   Wait                         : constant System_Call := Wait_ABI.System_Call_Number;
+
+   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET
+   --  (/home/doc/cubit-build-tmp/abi002/wait-acpi-sites.md). The ACPI
+   --  service's delay and EC clock still spell
+   --  Kernel_Calls.Call (Sleep_Until_Monotonic_Microsecond, Instant); this
+   --  type selects the Kernel_Calls overload that sends it through WAIT.
+   type ACPI_Shim_Call is (Sleep_Until_Shim);
+   Sleep_Until_Monotonic_Microsecond : constant ACPI_Shim_Call := Sleep_Until_Shim;
    Yield                        : constant System_Call := 118;
-   Sleep_Until_Monotonic_Microsecond : constant System_Call := 119;
    --  Owned memory, one region API (kernel Process.Owned_Memory, ABI-002;
    --  CuBit.Owned_Reservations wraps it). Reserve_Owned_Region (bytes,
    --  alignment): page-aligned capacity, no RAM; the base is a multiple of
@@ -85,15 +91,15 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  Not accepted now, but may be later; the caller keeps its request
    --  (SEND_CONTROL when the target's sender slots are full).
    Busy : constant Unsigned_64 := Unsigned_64'Last - 1;
-   --  SYSCALL_RECEIVE_EVENT_NB: an event was copied out.
-   Event_Received : constant Unsigned_64 := 1;
+   --  WAIT for an event: one was copied out (Wait_ABI.Taken).
+   Event_Received : constant Unsigned_64 := Wait_ABI.Taken;
    --  The deadline that never comes.
    Forever : constant Unsigned_64 := Unsigned_64'Last;
 
-   --  FUTEX_WAIT results (kernel/src/process-futex.ads).
-   Futex_Woken     : constant Unsigned_64 := 0;
-   Futex_Retry     : constant Unsigned_64 := 1;
-   Futex_Timed_Out : constant Unsigned_64 := 2;
+   --  WAIT on a futex word: its results (Wait_ABI, kernel Process.Futex).
+   Futex_Woken     : constant Unsigned_64 := Wait_ABI.Futex_Woken;
+   Futex_Retry     : constant Unsigned_64 := Wait_ABI.Futex_Retry;
+   Futex_Timed_Out : constant Unsigned_64 := Wait_ABI.Futex_Timed_Out;
 
    --  The largest owned-memory region (kernel Owned_Reservation_Policy).
    Maximum_Owned_Region_Bytes : constant := 2 * 1024 * 1024 * 1024;

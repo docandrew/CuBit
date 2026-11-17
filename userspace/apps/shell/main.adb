@@ -13,6 +13,7 @@
 --    12 = CAP_ENDPOINT to procmgr
 --    22 = CAP_ENDPOINT to display.svc
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -3099,7 +3100,7 @@ procedure main is
 
             --  Wait ~1 second between pings (except after last)
             if seq < 4 then
-               ignore := syscall (SYSCALL_SLEEP, 1000);
+               ignore := CuBit.Waits.Sleep_For (1000);
             end if;
          end;
       end loop;
@@ -3228,7 +3229,7 @@ procedure main is
          declare
             ignore : Unsigned_64;
          begin
-            ignore := syscall (SYSCALL_SLEEP, 10);
+            ignore := CuBit.Waits.Sleep_For (10);
          end;
       end loop;
 
@@ -3563,7 +3564,7 @@ begin
          declare
             ignore : Unsigned_64;
          begin
-            ignore := syscall (SYSCALL_SLEEP, 10);
+            ignore := CuBit.Waits.Sleep_For (10);
          end;
       end loop;
    end;
@@ -3821,7 +3822,7 @@ begin
                declare
                   ignore : Unsigned_64;
                begin
-                  ignore := syscall (SYSCALL_SLEEP, 5);
+                  ignore := CuBit.Waits.Sleep_For (5);
                end;
             end if;
          end;
@@ -3852,7 +3853,7 @@ begin
                declare
                   ignore : Unsigned_64;
                begin
-                  ignore := syscall (SYSCALL_SLEEP, 1);
+                  ignore := CuBit.Waits.Sleep_For (1);
                end;
             end if;
          end;

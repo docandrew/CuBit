@@ -9,6 +9,7 @@
 --  and startup ordering. Replaces the kernel-side policy in modules.adb.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Devmgr_Children;
 with Devmgr_PCI_Broker;
 with ACPI_PCI_Window_Exchange; use type ACPI_PCI_Window_Exchange.Disposition;
@@ -8049,7 +8050,7 @@ begin
                    else GPU_Launch.Next_Deadline (GPU_Launches))));
             if Launch_Activity = Unavailable then
                -- Exceptional kernel failure, not periodic broker polling.
-               ret := syscall (SYSCALL_SLEEP, 1);
+               ret := CuBit.Waits.Sleep_For (1);
             end if;
          end if;
       elsif Generic_Report (from, msg) then

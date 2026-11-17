@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Desktop_Input_Batch;
 with Desktop_Frame_Pair;
 with Desktop_Density_Text;
@@ -231,7 +232,7 @@ procedure Main is
       debugPrint ("DESKTOP-PUBLICATION-VISIBLE: ready width=" &
         Natural'Image (Natural (Config.Value.Width)) & " height=" &
         Natural'Image (Natural (Config.Value.Height)) & ASCII.LF);
-      Ignore := syscall (SYSCALL_SLEEP, 4000);
+      Ignore := CuBit.Waits.Sleep_For (4000);
       Other := (if Current = 1 then 2 else 1);
       Resized := Decode_Resize_Result (Send (Encode_Resize ((Fixture.Surface, 352, 224))));
       Check (Resized.Status = Success, "visible publication resize");

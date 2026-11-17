@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI;
@@ -410,7 +411,7 @@ package body CuBit.Libc_Net is
          exit when Submit (Slot, Layout.OP_NET_KICK, 2, 0, Layout.End_Wait, 0, 0,
                            CuBit.Kernel_Calls.No_Completion_Token);
          Ignore := CuBit.Kernel_Calls.Call
-           (K.Sleep_Until_Monotonic_Microsecond,
+           (K.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
             CuBit.Kernel_Calls.Call (K.Read_Monotonic_Microseconds) + Retry_Microseconds);
       end loop;
    end End_Wait;
@@ -852,7 +853,8 @@ package body CuBit.Libc_Net is
       Answers : Natural;
    begin
       if Block then
-         N := Kernel (K.Wait_Completion, Value_Of (C'Address), Batch, 1);
+         N := Kernel (K.Wait, Wait_ABI.Completions_Sources, Wait_ABI.Forever,
+                      Value_Of (C'Address), Batch, 1);
          if N > Batch then
             N := 0;
          end if;

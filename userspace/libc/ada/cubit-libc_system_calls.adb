@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with Ada.Unchecked_Conversion;
 with System.Machine_Code; use System.Machine_Code;
@@ -511,8 +512,8 @@ package body CuBit.Libc_System_Calls is
          if not Valid_Time then
             return Error (EINVAL);
          end if;
-         Result := Kernel (K.Futex_Wait, Unsigned_64 (To_Integer (Word)),
-                           Unsigned_64 (Unsigned_32'Mod (Value)), Deadline);
+         Result := Kernel (K.Wait, Wait_ABI.Futex_Sources, Deadline,
+                           Unsigned_64 (To_Integer (Word)), Unsigned_64 (Unsigned_32'Mod (Value)));
          return (case Result is
                    when K.Futex_Woken     => 0,
                    when K.Futex_Retry     => Error (EAGAIN),
@@ -571,7 +572,7 @@ package body CuBit.Libc_System_Calls is
       Ignore : Unsigned_64;
    begin
       while Now_Microseconds < Deadline loop
-         Ignore := Kernel (K.Sleep_Until_Monotonic_Microsecond, Deadline);
+         Ignore := Kernel (K.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever, Deadline);
       end loop;
       return 0;
    end Sleep_Until;

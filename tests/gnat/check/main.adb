@@ -9,6 +9,7 @@
 --  delegated to them here: the work place and the toolchain (decision D2).
 --  Results go to the kernel console.
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
 with CuBit.Launch_Arguments;
@@ -145,7 +146,7 @@ procedure Main is
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Sleep_Until_Monotonic_Microsecond,
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
          CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
            + Unsigned_64 (Milliseconds) * Microseconds_Per_Millisecond);
    end Sleep_Milliseconds;

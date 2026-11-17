@@ -18,6 +18,12 @@ package CuBit.Kernel_Calls with Preelaborate is
       A0, A1, A2, A3, A4, A5 : Unsigned_64 := 0) return Unsigned_64
    with Inline;
 
+   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET. Sleep until
+   --  the absolute monotonic microsecond A0, through WAIT's Timer form.
+   function Call
+     (Number : CuBit.Kernel_ABI.ACPI_Shim_Call;
+      A0, A1, A2, A3, A4, A5 : Unsigned_64 := 0) return Unsigned_64;
+
    --  SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY: send the message (Label, and
    --  Length in the tag's high half; words W0 .. W3) through the endpoint
    --  in Slot. Its reply becomes a completion carrying Token, or with

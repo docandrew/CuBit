@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input;
@@ -62,7 +63,7 @@ procedure Main is
    begin
       for I in 1 .. Sample_Count loop
          if Mode = Paced then
-            Ignored := syscall (SYSCALL_SLEEP, 1);
+            Ignored := CuBit.Waits.Sleep_For (1);
          elsif Mode = Repainting then
             -- Force ordinary surface damage while the compositor is receiving
             -- input. Completion of this request is not a scanout fence.
@@ -145,7 +146,7 @@ procedure Main is
          Consumer := Registered_Driver (DRIVER_KEYBOARD);
          exit when Consumer /= No_Process and then Consumer =
            Registered_Driver (DRIVER_DESKTOP);
-         Ignored := syscall (SYSCALL_SLEEP, 10);
+         Ignored := CuBit.Waits.Sleep_For (10);
       end loop;
       if Consumer = No_Process or else Consumer /=
         Registered_Driver (DRIVER_DESKTOP)

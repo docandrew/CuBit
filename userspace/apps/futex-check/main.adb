@@ -16,6 +16,8 @@
 --  Thread bodies avoid the secondary stack and printing: only the main
 --  thread prints.
 ------------------------------------------------------------------------------
+with Wait_ABI;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -52,11 +54,11 @@ begin
    --  Futex argument and value checks.
    Check (Futex_Wait (Mutex'Access, 5) = FUTEX_RETRY,
           "wait on a changed value returns at once");
-   Check (syscall (SYSCALL_FUTEX_WAIT, Addr (Mutex'Access) + 1, 0, FOREVER) = FUTEX_FAULT,
+   Check (CuBit.Waits.Wait (Wait_ABI.Futex_Sources, FOREVER, Addr (Mutex'Access) + 1, 0) = FUTEX_FAULT,
           "unaligned futex word refused");
-   Check (syscall (SYSCALL_FUTEX_WAIT, 16#FFFF_8000_0000_0000#, 0, FOREVER) = FUTEX_FAULT,
+   Check (CuBit.Waits.Wait (Wait_ABI.Futex_Sources, FOREVER, 16#FFFF_8000_0000_0000#, 0) = FUTEX_FAULT,
           "kernel-half futex word refused");
-   Check (syscall (SYSCALL_FUTEX_WAIT, 16#0000_7000_0000_0000#, 0, FOREVER) = FUTEX_FAULT,
+   Check (CuBit.Waits.Wait (Wait_ABI.Futex_Sources, FOREVER, 16#0000_7000_0000_0000#, 0) = FUTEX_FAULT,
           "unmapped futex word refused");
    Check (Futex_Wake (Mutex'Access, 1) = 0, "wake with no waiters wakes none");
    Start := Now_Ms;
@@ -132,7 +134,7 @@ begin
    Check (Created = 127, "thread quota is 128 including the main thread");
    Start := Now_Ms;
    while Natural (Parked) < Created and then Now_Ms - Start < 5_000 loop
-      Ignore := syscall (SYSCALL_SLEEP, 1);
+      Ignore := CuBit.Waits.Sleep_For (1);
    end loop;
    Check (Natural (Parked) = Created, "every parked thread ran");
 
@@ -149,7 +151,7 @@ begin
       loop
          Result := Spawn (Spinner'Access, Stacks (S), 0, 0, null);
          exit when Result /= CREATE_FAILED or else Now_Ms - Start > 5_000;
-         Ignore := syscall (SYSCALL_SLEEP, 5);
+         Ignore := CuBit.Waits.Sleep_For (5);
       end loop;
       Check (Result /= CREATE_FAILED, "exited threads reaped and quota returned");
    end loop;

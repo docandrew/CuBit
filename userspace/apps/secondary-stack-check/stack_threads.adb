@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -75,8 +76,8 @@ package body Stack_Threads is
             Seen := Exit_Words (Index);
             exit when Seen = 0;
             Ignore := CuBit.Kernel_Calls.Call
-              (ABI.Futex_Wait, Unsigned_64 (To_Integer (Exit_Words (Index)'Address)),
-               Unsigned_64 (Seen), ABI.Forever);
+              (ABI.Wait, Wait_ABI.Futex_Sources, ABI.Forever,
+               Unsigned_64 (To_Integer (Exit_Words (Index)'Address)), Unsigned_64 (Seen));
          end loop;
       end if;
       if Thread.Stack /= 0 then

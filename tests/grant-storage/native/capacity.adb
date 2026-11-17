@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use type System.Address;
 with CuBit.Messages; use CuBit.Messages;
@@ -72,5 +73,5 @@ begin
       Check (G.Retirement_Confirmed (References (I)), "retirement confirmed");
    end loop;
    debugPrint ("TEST: PASS grant capacity 4096 readers exhausted boundary reused all retired (NO GPU)" & ASCII.LF);
-   loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
 end Capacity;

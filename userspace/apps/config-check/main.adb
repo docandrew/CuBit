@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with CCL.Evaluation;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -62,7 +63,7 @@ procedure Main is
       if not Condition then
          debugPrint ("TEST: FAIL config-inspection " & Name & ASCII.LF);
          Ignore := syscall (SYSCALL_EXIT, 1);
-         loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+         loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
       end if;
    end Check;
    procedure Check_Data_Protocol is

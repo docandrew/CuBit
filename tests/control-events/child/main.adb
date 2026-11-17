@@ -17,6 +17,7 @@
 --  succeeded.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
 with CuBit.Handles.Devices;
@@ -60,7 +61,7 @@ procedure Main is
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Sleep_Until_Monotonic_Microsecond,
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
          CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
            + Poll_Milliseconds * Microseconds_Per_Millisecond);
       Waited := Waited + Poll_Milliseconds;

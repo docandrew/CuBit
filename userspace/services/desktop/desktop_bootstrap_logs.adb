@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Protocol;
@@ -84,7 +85,7 @@ package body Desktop_Bootstrap_Logs is
          exit when Now - Started >= Minimum_Wait_Ms and then
            Unsigned_64 (Kept.Highest_Denial) >= Kernel_Denials and then
            Unsigned_64 (Kept.Highest_Kill) >= Kernel_Kills;
-         Ignore := syscall (SYSCALL_SLEEP, Wait_Step_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Wait_Step_Ms);
       end loop;
       Gathered_Ms := Desktop_Startup_Clock.Elapsed_Ms;
       debugPrint ("DESKTOP-BOOTSTRAP: logs as of t=" & Unsigned_64'Image (Gathered_Ms) &

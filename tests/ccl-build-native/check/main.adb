@@ -20,6 +20,7 @@
 --  writes to its outlets is shown on the kernel console. Results go to the
 --  kernel console, ending with CCL-BUILD-NATIVE: PASS or FAIL.
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
 with CuBit.Control_Events;
@@ -241,7 +242,7 @@ procedure Main is
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Sleep_Until_Monotonic_Microsecond,
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
          CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
            + Unsigned_64 (Milliseconds) * Microseconds_Per_Millisecond);
    end Sleep_Milliseconds;

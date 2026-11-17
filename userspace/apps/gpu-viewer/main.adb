@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
 with System;
@@ -88,14 +89,14 @@ procedure Main is
       while Borrowed loop
          G.Return_Acquisition (R.Decode (Root), OK);
          if OK then Borrowed := False; end if;
-         if Borrowed then Ignored := syscall (SYSCALL_SLEEP, 100); end if;
+         if Borrowed then Ignored := CuBit.Waits.Sleep_For (100); end if;
       end loop;
       if Child /= 0 then
          loop
             Status := P.Retire (Child);
             exit when Status = 0;
             -- Keep this process and its capabilities alive on uncertainty.
-            Ignored := syscall (SYSCALL_SLEEP, 100);
+            Ignored := CuBit.Waits.Sleep_For (100);
          end loop;
       end if;
       if Root /= 0 then
@@ -104,7 +105,7 @@ procedure Main is
             exit when Result (0) = 0;
             -- Only an exact successful retirement reply is a release fence.
             -- Denial, malformed transport and pending retain our endpoint.
-            Ignored := syscall (SYSCALL_SLEEP, 100);
+            Ignored := CuBit.Waits.Sleep_For (100);
          end loop;
       end if;
    end Cleanup;
@@ -155,7 +156,7 @@ procedure Main is
                Outcome := Q.Binding_Refused;
                exit;
             end if;
-            Ignored := syscall (SYSCALL_SLEEP, Binding_Retry_Ms);
+            Ignored := CuBit.Waits.Sleep_For (Binding_Retry_Ms);
          end loop;
          if not Bound then
             return;
@@ -199,7 +200,7 @@ procedure Main is
             After_Serial := Input.Value.Serial;
             exit when Input.Value.Kind = D.Key_Pressed;
          end;
-         Ignored := syscall (SYSCALL_SLEEP, 10);
+         Ignored := CuBit.Waits.Sleep_For (10);
       end loop;
    end Run;
 begin

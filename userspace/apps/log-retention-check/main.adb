@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
@@ -59,7 +60,7 @@ procedure Main is
       debugPrint ("TEST: FAIL log-retention: " & Name & ASCII.LF);
       Ignore := syscall (SYSCALL_EXIT, 1);
       loop
-         Ignore := syscall (SYSCALL_SLEEP, 1000);
+         Ignore := CuBit.Waits.Sleep_For (1000);
       end loop;
    end Fail;
 
@@ -106,7 +107,7 @@ begin
          Flood_Source := Value.Source;
       elsif Result = P.Empty then
          Check (syscall (SYSCALL_GETTIME) - Started <= Wait_Limit_Ms, "the flood never ended");
-         Ignore := syscall (SYSCALL_SLEEP, Poll_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
       else
          Check (Result in P.OK | P.Gap, "read while waiting");
       end if;
@@ -159,7 +160,7 @@ begin
          CuBit.Logging.Read_Next (Reader, Value, Missing, Tally, Result);
          if Result = P.Empty then
             Empties := Empties + 1;
-            Ignore := syscall (SYSCALL_SLEEP, Poll_Ms);
+            Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
          elsif Result = P.Summary then
             Empties := 0;
             Tallied := True;

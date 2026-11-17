@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Pages;
@@ -18,11 +19,11 @@ procedure Main is
    begin
       debugPrint ("TEST: FAIL desktop-metrics " & Reason & ASCII.LF);
       Ignore := syscall (SYSCALL_EXIT, 1);
-      loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+      loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
    end Fail;
 begin
    CuBit.Metric_Pages.Bind (Watcher, Startup.Metrics_Observer);
-   Ignore := syscall (SYSCALL_SLEEP, 30_000);
+   Ignore := CuBit.Waits.Sleep_For (30_000);
    for Attempt in 1 .. 400 loop
       CuBit.Metric_Pages.Query (Watcher, 0, Rows, Written, Next, Result);
       if Result /= P.OK then Fail ("observer query"); end if;
@@ -56,7 +57,7 @@ begin
             end if;
          end if;
       end loop;
-      Ignore := syscall (SYSCALL_SLEEP, 50);
+      Ignore := CuBit.Waits.Sleep_For (50);
    end loop;
    Fail ("no growing Desktop release series");
 end Main;

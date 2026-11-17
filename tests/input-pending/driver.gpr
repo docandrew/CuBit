@@ -5,7 +5,7 @@ project Driver is
      "cubit-messages.ads", "cubit-messages.adb", "cubit-input.ads", "cubit-input.adb",
      "input_pending.ads", "input_pending.adb", "keyboard_pending.ads", "keyboard_pending.adb",
      "pointer_pending.ads", "pointer_pending.adb", "input_stamps.ads",
-     "cubit-monotonic.ads", "cubit-monotonic.adb",
+     "cubit-monotonic.ads", "cubit-monotonic.adb", "cubit-waits.ads",
      "ps2_boot_probe.ads", "ps2_boot_probe.adb",
      "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
      "cubit-handles-fixture.ads", "cubit-handles-fixture.adb",

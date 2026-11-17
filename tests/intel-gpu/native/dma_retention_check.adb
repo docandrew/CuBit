@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -32,7 +33,7 @@ procedure DMA_Retention_Check is
             end loop;
          end if;
          if not Found then Done := True; return; end if;
-         Status := syscall (SYSCALL_SLEEP, 1);
+         Status := CuBit.Waits.Sleep_For (1);
       end loop;
    end Reap;
 begin

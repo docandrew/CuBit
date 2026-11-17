@@ -12,6 +12,7 @@
 --  (CuBit.Net_Management) and hears of their changes through a Watch it
 --  parks here.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with CuBit.Shared_Copies;
 with Interfaces; use Interfaces;
 with System; use System;
@@ -6168,7 +6169,7 @@ package body Netstack_Service is
                declare
                   ignore : Unsigned_64;
                begin
-                  ignore := syscall (SYSCALL_SLEEP, 1);
+                  ignore := CuBit.Waits.Sleep_For (1);
                end;
             end if;
          end if;

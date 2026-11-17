@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with CuBit.Desktop_Messages;
 with CuBit.Desktop_Protocol;
 with CuBit.Doom_Keys;
@@ -290,7 +291,7 @@ package body CuBit.Doom_Platform is
    procedure Sleep_Ms (Milliseconds : Unsigned_32) is
       Ignored : Unsigned_64;
    begin
-      Ignored := syscall (SYSCALL_SLEEP, Unsigned_64 (Milliseconds));
+      Ignored := CuBit.Waits.Sleep_For (Unsigned_64 (Milliseconds));
    end Sleep_Ms;
 
    --  doomgeneric's tick counter is 32 bits and wraps.

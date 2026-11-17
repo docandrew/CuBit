@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Channel_Protocol;
 
@@ -216,7 +217,7 @@ package body CuBit.GPU_Sessions is
             Result := Deadline_Reached;
             return;
          end if;
-         Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Poll_Pause_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Poll_Pause_Ms);
       end loop;
    end Poll_Reached;
 

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with System;
 with System.Storage_Elements;
 with CuBit.Channels;
@@ -342,7 +343,7 @@ package body CuBit.Metrics is
             Drained := True;
             return;
          end if;
-         Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
          Waited := Waited + 1;
       end loop;
    end Flush;

@@ -13,6 +13,7 @@
 --  system calls it replaces. Finally a write to the page must fault: the
 --  kernel maps it read-only.
 ------------------------------------------------------------------------------
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
 with Clock_Publication;
@@ -48,8 +49,8 @@ procedure Main is
       end if;
    end Check;
 
-   function Kernel (Number : K.System_Call; A0, A1, A2 : Unsigned_64 := 0)
-     return Unsigned_64 is (CuBit.Kernel_Calls.Call (Number, A0, A1, A2));
+   function Kernel (Number : K.System_Call; A0, A1, A2, A3 : Unsigned_64 := 0)
+     return Unsigned_64 is (CuBit.Kernel_Calls.Call (Number, A0, A1, A2, A3));
 
    function Image (Value : Unsigned_64) return String is
       Text : constant String := Unsigned_64'Image (Value);
@@ -168,9 +169,9 @@ begin
       Word : aliased Unsigned_32 := 0;
       Deadline : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds + Deadline_Ms;
       Result : constant Unsigned_64 := Kernel
-        (K.Futex_Wait,
+        (K.Wait, Wait_ABI.Futex_Sources, Deadline,
          Unsigned_64 (System.Storage_Elements.To_Integer (Word'Address)),
-         Unsigned_64 (Word), Deadline);
+         Unsigned_64 (Word));
       Woke : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
    begin
       Check (Result = K.Futex_Timed_Out and then Woke >= Deadline,
@@ -183,7 +184,7 @@ begin
       Ignore : Unsigned_64;
    begin
       CuBit.Published_Clock.Microseconds (Start, Ok);
-      Ignore := Kernel (K.Sleep_Until_Monotonic_Microsecond,
+      Ignore := Kernel (K.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
                         Start + Sleep_Microseconds);
       CuBit.Published_Clock.Microseconds (Woke, Ok);
       Check (Woke >= Start + Sleep_Microseconds,

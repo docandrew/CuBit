@@ -8,6 +8,7 @@
 --  Long-lived process that reports on its status connector and sleeps in a loop.
 --  Useful for testing `streams` shell command and process lifecycle.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -36,6 +37,6 @@ begin
          debugPrint ("sleep: tick" & LF);
       end if;
 
-      ignore := syscall (SYSCALL_SLEEP, 1000);
+      ignore := CuBit.Waits.Sleep_For (1000);
    end loop;
 end main;

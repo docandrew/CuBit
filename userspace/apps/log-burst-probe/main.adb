@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Records;
@@ -78,12 +79,12 @@ begin
    Flush;
    debugPrint ("log-burst-probe: phase 1 done, " & Image (Phase_One_Lines) & " lines, " &
                Image (CuBit.Logging.Dropped (Writer)) & " shed by its ring" & ASCII.LF);
-   Ignore := syscall (SYSCALL_SLEEP, Between_Phases_Ms);
+   Ignore := CuBit.Waits.Sleep_For (Between_Phases_Ms);
    for Number in Phase_One_Lines + 1 .. Phase_One_Lines + Phase_Two_Lines loop
       Line (Number);
       if Number mod Batch = 0 then
          Flush;
-         Ignore := syscall (SYSCALL_SLEEP, Batch_Pause_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Batch_Pause_Ms);
       end if;
    end loop;
    Flush;
@@ -91,6 +92,6 @@ begin
                Image (CuBit.Logging.Dropped (Writer)) & " shed by its ring" & ASCII.LF);
    --  Its records outlive it (LOG-003); staying keeps the check simple.
    loop
-      Ignore := syscall (SYSCALL_SLEEP, Between_Phases_Ms);
+      Ignore := CuBit.Waits.Sleep_For (Between_Phases_Ms);
    end loop;
 end Main;

@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
@@ -19,5 +20,5 @@ begin
  Ignore:=Send(Encode_Title((A.Surface,Make_Title("Focus One"))));
  Ignore:=Send(Encode_Title((B.Surface,Make_Title("Focus Two"))));
  debugPrint("TEST: focus windows ready" & ASCII.LF);
- loop Slept:=syscall(SYSCALL_SLEEP,1000);end loop;
+ loop Slept:=CuBit.Waits.Sleep_For (1000);end loop;
 end Main;

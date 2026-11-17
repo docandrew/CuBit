@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.System_Facts;
@@ -16,7 +17,7 @@ procedure Input_Native_Check is
    begin
       if not OK then
          debugPrint ("TEST: FAIL native input retention: " & Detail & ASCII.LF);
-         loop Ignore := syscall (SYSCALL_SLEEP, 1_000); end loop;
+         loop Ignore := CuBit.Waits.Sleep_For (1_000); end loop;
       end if;
    end Check;
    function Packet (Number : Positive; Overflow : Boolean) return Unsigned_64 is
@@ -116,5 +117,5 @@ begin
    Run (False);
    Run (True);
    debugPrint ("TEST: PASS native input retention mailbox/refusal/deadline/authority" & ASCII.LF);
-   loop Ignore := syscall (SYSCALL_SLEEP, 1_000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1_000); end loop;
 end Input_Native_Check;

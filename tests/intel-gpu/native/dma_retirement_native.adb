@@ -1,3 +1,5 @@
+with Wait_ABI;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -79,7 +81,7 @@ procedure DMA_Retirement_Native is
       -- would fill Process_Events' 32-entry exit cache and hold later PIDs.
       for Work in 1 .. 64 loop
          exit when CuBit.Kernel_Calls.Call
-           (CuBit.Kernel_ABI.Receive_Event_Nonblocking,
+           (CuBit.Kernel_ABI.Wait, Wait_ABI.Events_Sources, Wait_ABI.Now,
             Unsigned_64 (To_Integer (Msg'Address))) /= CuBit.Kernel_ABI.Event_Received;
       end loop;
    end Drain_Events;
@@ -106,7 +108,7 @@ begin
       Msg.words (0) := CuBit.Grant_References.Encode (Loan);
       Msg.tag := (label => 16#F000#, length => 1, protocol => 0, ipc => <>, reserved => 0);
       Ignored := reply (From, Msg);
-      loop Ignored := syscall (SYSCALL_SLEEP, 100); end loop;
+      loop Ignored := CuBit.Waits.Sleep_For (100); end loop;
    end if;
    debugPrint ("native DMA retirement: disposable real owner cleanup (NO GPU)" & ASCII.LF);
    Cpio.init (Archive, To_Address (16#0000_5000_0000_0000#),
@@ -150,14 +152,14 @@ begin
    Check (Kill, "kill");
    for Attempt in 1 .. 2000 loop
       if CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Receive_Event_Nonblocking,
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Events_Sources, Wait_ABI.Now,
          Unsigned_64 (To_Integer (Msg'Address))) = CuBit.Kernel_ABI.Event_Received
       then
          Exit_Seen := Msg.tag.label = 16#0103# and then Msg.tag.length = 4
            and then Msg.words (0) = CuBit.Process_IDs.To_Word (Child.Child);
          exit when Exit_Seen;
       end if;
-      Ignored := syscall (SYSCALL_SLEEP, 1);
+      Ignored := CuBit.Waits.Sleep_For (1);
    end loop;
    Check (Exit_Seen, "owner retirement report");
    declare
@@ -175,7 +177,7 @@ begin
       Drain_Events;
       OK := Spawn;
       exit when OK;
-      Ignored := syscall (SYSCALL_SLEEP, 1);
+      Ignored := CuBit.Waits.Sleep_For (1);
    end loop;
    Check (OK, "bounded cleanup finishes and a replacement spawns");
    for I in 1 .. 8 loop
@@ -191,7 +193,7 @@ begin
       Drain_Events;
       OK := Spawn;
       exit when OK;
-      Ignored := syscall (SYSCALL_SLEEP, 1);
+      Ignored := CuBit.Waits.Sleep_For (1);
    end loop;
    Check (OK, "ordinary cleanup completes");
    -- Each fresh incarnation needs its own arena and record page. Leaking
@@ -211,11 +213,11 @@ begin
          Drain_Events;
          OK := Spawn;
          exit when OK;
-         Ignored := syscall (SYSCALL_SLEEP, 1);
+         Ignored := CuBit.Waits.Sleep_For (1);
       end loop;
       Check (OK, "metadata churn respawn" & Round'Image);
    end loop;
    debugPrint ("native DMA metadata: 160 owner lifecycles reclaim slabs and preserve orphan backing PASS" & ASCII.LF);
    debugPrint ("TEST: PASS native DMA retirement 40 retained records orphan backing survives owner replacement ordinary cleanup (NO GPU)" & ASCII.LF);
-   loop Ignored := syscall (SYSCALL_SLEEP, 100); end loop;
+   loop Ignored := CuBit.Waits.Sleep_For (100); end loop;
 end DMA_Retirement_Native;

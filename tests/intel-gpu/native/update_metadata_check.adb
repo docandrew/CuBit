@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -84,5 +85,5 @@ begin
    Check (not OK and Committed = Before and U.Charged_Bytes (Object) = Before,
      "no replay after callback owner loss");
    debugPrint ("TEST: PASS native update metadata independent demand stable ranges retained failure (NO GPU/ISOLATION)" & ASCII.LF);
-   loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
 end Update_Metadata_Check;

@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use type System.Address;
 with CuBit.Messages; use CuBit.Messages;
@@ -145,5 +146,5 @@ begin
    Check (not S.Writable_Buffer_Held (Table, Identity, Key.Allocation), "final drain");
    Check (Self_Requests.Close (Client, Self_Label, 10_000), "self request answered");
    debugPrint ("TEST: PASS native image provider writer drain lease exclusion and retirement (NO GPU/ISOLATION)" & ASCII.LF);
-   loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
 end Image_Provider_Check;

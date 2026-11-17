@@ -1,5 +1,6 @@
 pragma Ada_2022;
 
+with Wait_ABI;
 with System.Storage_Elements;
 
 with CuBit.Grant_References;
@@ -170,10 +171,9 @@ package body CuBit.Launching is
          exit when Has_Ended;
          --  Woken by any traffic, not only events: pause briefly rather
          --  than spin on someone else's.
+         Ignore := KC.Call (KA.Wait, Wait_ABI.Ready_Sources, Wait_ABI.Forever);
          Ignore := KC.Call
-           (KA.Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond, KA.Forever);
-         Ignore := KC.Call
-           (KA.Sleep_Until_Monotonic_Microsecond,
+           (KA.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
             KC.Call (KA.Read_Monotonic_Microseconds) + Idle_Pause_Microseconds);
       end loop;
    end Wait;

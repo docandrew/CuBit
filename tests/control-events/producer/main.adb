@@ -8,6 +8,7 @@
 --  (CuBit.Streams, CuBit.Outlet_Channels) until the test ends.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -43,7 +44,7 @@ begin
       Ignore_Written := CuBit.Streams.streamWrite
         (Outlet, Text'Address, Text'Length, CuBit.Streams.TYPE_TEXT_LINE);
       Ignore := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Sleep_Until_Monotonic_Microsecond,
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
          CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
            + Poll_Microseconds);
    end loop;

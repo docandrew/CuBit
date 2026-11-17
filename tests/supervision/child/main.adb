@@ -1,6 +1,7 @@
 --  supervision-child (tests/supervision, headless test supervision): logs
 --  exactly the typed parameters it decoded, then exits with the code its
 --  mode names, or lingers (sleeping) until procmgr reaps it.
+with CuBit.Waits;
 with Ada.Command_Line;
 with Interfaces;
 with CuBit.Messages;
@@ -32,7 +33,7 @@ begin
       when Linger =>
          CuBit.Messages.debugPrint ("supervision-child: lingering until its supervisor ends" & ASCII.LF);
          loop
-            Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Linger_Step_Ms);
+            Ignore := CuBit.Waits.Sleep_For (Linger_Step_Ms);
          end loop;
    end case;
 end Main;

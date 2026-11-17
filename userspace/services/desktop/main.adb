@@ -1,3 +1,5 @@
+with CuBit.Readiness;
+with CuBit.Waits;
 with Desktop_Log_IO;
 with GNAT.Source_Info;
 with CuBit.Boot_Milestone_Codes;
@@ -1567,6 +1569,9 @@ procedure main is
 
    statsStartMs      : Unsigned_64 := 0;
    statsEvents       : Unsigned_64 := 0;
+   --  KERN-013: what this loop consumed of each queue class, against the
+   --  kernel's readiness page; a class is polled only when it moved on.
+   deskReady : CuBit.Readiness.Tracker;
    statsKeyboardEvents : Unsigned_64 := 0;
    --  Auto-repeats delivered, and skipped because the client had not taken
    --  the previous one; device repeats (PS/2 typematic) dropped.
@@ -3645,12 +3650,20 @@ procedure main is
       Started : constant Unsigned_64 := dispatchNow;
       Batch : DB.Completion_Batch := DB.New_Completions (Started);
       Non_Metric_Work : Boolean := False;
+      Seen : CuBit.Readiness.Count;
       use type DSP.Frame_Outcome, DSP.Buffer_Disposition;
    begin
-      while DB.Can_Complete (Batch, dispatchNow) loop
+      while CuBit.Readiness.Pending (deskReady, CuBit.Readiness.Completions) and then
+        DB.Can_Complete (Batch, dispatchNow)
+      loop
          completion := NULL_COMPLETION;
+         Seen := CuBit.Readiness.Produced (CuBit.Readiness.Completions);
          count := Poll_Completion (completion'Address);
-         exit when count = 0;
+         if count = 0 then
+            CuBit.Readiness.Caught_Up (deskReady, CuBit.Readiness.Completions, Seen);
+            exit;
+         end if;
+         CuBit.Readiness.Took (deskReady, CuBit.Readiness.Completions);
          if count /= 1 then
             CR.Quarantine (launchRequest);
             Desktop_Launch_Refresh.Quarantine;
@@ -13745,7 +13758,7 @@ procedure main is
          exit when Response.tag.label = OP_DISPLAY_ACQUIRE and then
            Response.tag.length = 1 and then Response.words (0) = 0;
          if Output = 0 and then Wait_For_Owner and then Attempt < 100 then
-            Ignored := syscall (SYSCALL_SLEEP, 2);
+            Ignored := CuBit.Waits.Sleep_For (2);
          end if;
       end loop;
       if Response.tag.label /= OP_DISPLAY_ACQUIRE or else
@@ -14816,7 +14829,7 @@ procedure main is
          declare Now : constant Unsigned_64 := nowMs; begin
             if Now = Unsigned_64'Last or else Now < Started or else Now - Started >= Limit_Ms then return; end if;
          end;
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
    end Await_Bootstrap;
 
@@ -14875,7 +14888,7 @@ procedure main is
                In_Flight := Submitted;
             end if;
          end if;
-         Ignore := syscall (SYSCALL_SLEEP, Poll_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
       end loop;
       Desktop_Breadcrumbs.Mark (Desktop_Startup_Progress.Current);
       if In_Flight then
@@ -15085,11 +15098,18 @@ begin
          activity : Activity_Result;
          inputBatch : DB.Input_Batch := DB.New_Input;
          procedure Drain_Events is
+            Seen : CuBit.Readiness.Count;
          begin
             DB.Begin_Input_Phase (inputBatch, dispatchNow);
-            while running and then DB.Can_Input (inputBatch, dispatchNow) loop
+            while CuBit.Readiness.Pending (deskReady, CuBit.Readiness.Events) and then
+              running and then DB.Can_Input (inputBatch, dispatchNow)
+            loop
+               Seen := CuBit.Readiness.Produced (CuBit.Readiness.Events);
                eventFound := Poll_Event (eventMsg, eventPublisher);
-               exit when not eventFound;
+               if not eventFound then
+                  CuBit.Readiness.Caught_Up (deskReady, CuBit.Readiness.Events, Seen);
+                  exit;
+               end if;
                DB.Charge_Input (inputBatch);
                if Desktop_Timing_Policy.Enabled and then CR.Busy (launchRequest) and then
                  not launchInputAnnounced
@@ -15121,10 +15141,19 @@ begin
          requestsTaken : Boolean := False;
          procedure Drain_Requests is
             Batch : DB.Request_Batch := DB.New_Requests (dispatchNow);
+            Seen : CuBit.Readiness.Count;
          begin
-            while running and then DB.Can_Request (Batch, dispatchNow, framePending) loop
+            found := False;
+            while CuBit.Readiness.Pending (deskReady, CuBit.Readiness.Requests) and then
+              running and then DB.Can_Request (Batch, dispatchNow, framePending)
+            loop
+               Seen := CuBit.Readiness.Produced (CuBit.Readiness.Requests);
                Poll_Service_Request (from, msg, found);
-               exit when not found;
+               if not found then
+                  CuBit.Readiness.Caught_Up (deskReady, CuBit.Readiness.Requests, Seen);
+                  exit;
+               end if;
+               CuBit.Readiness.Took (deskReady, CuBit.Readiness.Requests);
                declare Started : constant Unsigned_64 := timingNow;
                begin
                   if Diagnostic_Requests < Unsigned_64'Last then Diagnostic_Requests := Diagnostic_Requests + 1; end if;
@@ -15319,7 +15348,8 @@ begin
                --  non-consuming wait; typed dispatch remains above.
                --  Every ring armed first: a request that arrived meanwhile
                --  is served before sleeping.
-               if Rings.Quiet then
+               --  The readiness page shows unconsumed work: no wait.
+               if Rings.Quiet and then not CuBit.Readiness.Any_Pending (deskReady) then
                   activity := Wait_For_Activity_Until (Unsigned_64'Last);
                   if activity = Unavailable then running := False; end if;
                end if;
@@ -15400,7 +15430,9 @@ begin
                      mayWait := False;
                   end if;
 
-                  if mayWait and then nextDueMs /= 0 and then Rings.Quiet then
+                  if mayWait and then nextDueMs /= 0 and then Rings.Quiet and then
+                    not CuBit.Readiness.Any_Pending (deskReady)
+                  then
                      activity := Wait_For_Activity_Until (nextDueMs);
                      if activity = Unavailable then running := False; end if;
                      if renderingPending and then Desktop_Compositor.Full_Output then

@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -122,5 +123,5 @@ begin
    Check (not OK and not Pending and Calls = 9, "owner loss");
    debugPrint ("TEST: PASS native demand backing 18MiB 17 objects (NO GPU/IPC)" & ASCII.LF);
    -- Retained mappings intentionally survive until the disposable VM ends.
-   loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
 end Demand_Backing_Check;

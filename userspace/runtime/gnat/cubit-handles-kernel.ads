@@ -7,6 +7,7 @@
 --  CuBit.Handles hierarchy sees handle words or these call numbers.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Firmware_Snapshot_ABI;
 
 private package CuBit.Handles.Kernel is
@@ -51,7 +52,8 @@ private package CuBit.Handles.Kernel is
    Install_Capability          : constant Unsigned_64 := 138;
    Reply_With_Capability       : constant Unsigned_64 := 139;
    Call_Offering_Capability    : constant Unsigned_64 := 140;
-   Accept_Offered_Capability   : constant Unsigned_64 := 141;
+   --  The one wait (Wait_ABI): ACCEPT_OFFERED_CAPABILITY is its Offered form.
+   Wait                        : constant Unsigned_64 := Wait_ABI.System_Call_Number;
    Reply_Saved_With_Capability : constant Unsigned_64 := 142;
    Derive_Capability           : constant Unsigned_64 := 143;
    Firmware_Snapshot_Call      : constant Unsigned_64 := Firmware_Snapshot_ABI.System_Call_Number;

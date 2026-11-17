@@ -12,6 +12,7 @@
 --  and flushes the resources. The Desktop, not this driver, chooses a primary.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -568,7 +569,7 @@ procedure main is
 
       while used.idx = lastUsedIdx and then polls < SUBMIT_POLL_LIMIT loop
          if polls /= 0 and then (polls mod 50_000) = 0 then
-            ignoreSleep := syscall (SYSCALL_SLEEP, 1);
+            ignoreSleep := CuBit.Waits.Sleep_For (1);
          end if;
          polls := polls + 1;
       end loop;

@@ -15,6 +15,7 @@
 --  found through it, CuBit.Thread_Areas): it is restored before anything
 --  uses that again.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
@@ -79,7 +80,7 @@ begin
    for Round in 1 .. Rounds loop
       Write_GS (GS_Value);
       --  Sleeping blocks this process; the other instance runs meanwhile.
-      Ignore := syscall (SYSCALL_SLEEP, 1);
+      Ignore := CuBit.Waits.Sleep_For (1);
       if Read_FS /= FS_Value then
          FS_Kept := False;
       end if;

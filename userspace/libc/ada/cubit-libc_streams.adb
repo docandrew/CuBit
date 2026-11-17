@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Channel_Rings;
 with CuBit.Child_Exits;
@@ -254,7 +255,7 @@ package body CuBit.Libc_Streams is
    procedure Poll_Subscription is
       M : aliased K.Message := (others => <>);
       From : constant Unsigned_64 := CuBit.Kernel_Calls.Call
-        (K.Poll_Any_IPC, Unsigned_64 (To_Integer (M'Address)));
+        (K.Wait, Wait_ABI.Messages_Sources, Wait_ABI.Now, Unsigned_64 (To_Integer (M'Address)));
       Ignore : Interfaces.C.int;
    begin
       if From = K.Failed or else (From = 0 and then M.Label = 0) then

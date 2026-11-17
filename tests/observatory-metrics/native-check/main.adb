@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Protocol;
@@ -47,7 +48,7 @@ procedure Main is
       debugPrint ("TEST: FAIL observatory-async " & Reason & ASCII.LF);
       O.Close;
       Ignore := syscall (SYSCALL_EXIT, 1);
-      loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+      loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
    end Fail;
    function Decimal (N : Unsigned_64) return String is
       S : constant String := N'Image;
@@ -99,7 +100,7 @@ begin
             Found := True;
             exit;
          end if;
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       if not Found then Fail ("bounded event loop exhausted"); end if;
       -- The adapter has confirmed retirement before this private cache copy.
@@ -191,7 +192,7 @@ begin
             end if;
          end if;
       end loop;
-      Ignore := syscall (SYSCALL_SLEEP, 50);
+      Ignore := CuBit.Waits.Sleep_For (50);
    end loop;
    Fail ("no growing Desktop release series");
 end Main;

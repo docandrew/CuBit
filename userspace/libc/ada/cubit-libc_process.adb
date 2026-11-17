@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI; use CuBit.Kernel_ABI;
@@ -660,7 +661,8 @@ package body CuBit.Libc_Process is
       Pending_Count := 0;
       Unlock (Exit_Lock'Access);
       while CuBit.Kernel_Calls.Call
-        (Receive_Event_Nonblocking, Unsigned_64 (To_Integer (M'Address)))
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Events_Sources, Wait_ABI.Now,
+         Unsigned_64 (To_Integer (M'Address)))
         = Event_Received
       loop
          Take_Control (M);
@@ -733,7 +735,7 @@ package body CuBit.Libc_Process is
          --  while the stream dispatcher runs, an exit it receives wakes no
          --  one (Note_Event), so look again soon.
          Ignore := CuBit.Kernel_Calls.Call
-           (Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond,
+           (CuBit.Kernel_ABI.Wait, Wait_ABI.Ready_Sources,
             (if Forwarding or else Dispatcher_Running /= 0
              then CuBit.Kernel_Calls.Call (Get_Time) + Forward_Pause_Milliseconds
              else Forever));
@@ -743,7 +745,7 @@ package body CuBit.Libc_Process is
          Unlock (Child_Lock'Access);
          if not Ready then
             Ignore := CuBit.Kernel_Calls.Call
-              (Sleep_Until_Monotonic_Microsecond,
+              (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
                CuBit.Kernel_Calls.Call (Read_Monotonic_Microseconds)
                + Idle_Pause_Microseconds);
          end if;

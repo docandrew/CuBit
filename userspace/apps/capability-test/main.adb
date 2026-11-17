@@ -13,6 +13,9 @@
 --  the launcher's "self" and "self-process" entries.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Monotonic;
+with Wait_ABI;
+with CuBit.Waits;
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System;
@@ -95,6 +98,11 @@ procedure Main is
      (Number, Argument : Unsigned_64) return Unsigned_64
      with Import, Convention => C,
           External_Name => "syscall_registers_preserved";
+   Blocking_Wait_Us : constant := 10_000;
+   function Syscall_Wait_Registers_Preserved
+     (Number, Sources, Deadline, A : Unsigned_64) return Unsigned_64
+     with Import, Convention => C,
+          External_Name => "syscall_wait_registers_preserved";
 
    --  The launcher's self entries, and their raw words for forging.
    Self         : Endpoint;
@@ -187,7 +195,10 @@ begin
           "syscall registers unknown call");
    Check (Syscall_Registers_Preserved (Raw_Spawn, 0) = 1,
           "syscall registers denied call");
-   Check (Syscall_Registers_Preserved (SYSCALL_SLEEP, 10) = 1,
+   --  A blocking call: WAIT's Timer form, Blocking_Wait_Us from now.
+   Check (Syscall_Wait_Registers_Preserved
+            (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
+             CuBit.Monotonic.Microseconds + Blocking_Wait_Us) = 1,
           "syscall registers blocking return");
 
    PID := syscall (SYSCALL_GETPID);
@@ -375,8 +386,10 @@ begin
             Sent.tag.protocol := Value;
             Delivered := Delivered
               and then capSubmit (Self, Sent, NO_COMPLETION_TOKEN)
-              and then syscall (SYSCALL_POLL_ANY_IPC,
-                                Unsigned_64 (System.Storage_Elements.To_Integer (Kept'Address))) /= 0
+              and then CuBit.Waits.Wait
+                         (Wait_ABI.Messages_Sources, Wait_ABI.Now,
+                          Unsigned_64 (System.Storage_Elements.To_Integer (Kept'Address)))
+                       not in 0 | Wait_ABI.Nothing
               and then Kept.tag.label = Probe_Label
               and then Kept.tag.protocol = Value
               and then Kept.tag.ipc = No_IPC_Flags;
@@ -421,13 +434,16 @@ begin
             Queued := capSubmit (Self, Pending, NO_COMPLETION_TOKEN);
             Check (Queued, "probe queued to itself (" & Name (P) & ")");
          end;
-         Check (syscall (SYSCALL_POLL_ANY_IPC, Pointers (P)) = 0,
+         Check (CuBit.Waits.Wait (Wait_ABI.Messages_Sources, Wait_ABI.Now, Pointers (P))
+                  = Wait_ABI.Unsupported_Form,
                 "receive into a " & Name (P) & " address refused");
          declare
             Kept : aliased Message := NULL_MESSAGE;
          begin
-            Check (syscall (SYSCALL_POLL_ANY_IPC,
-                            Unsigned_64 (System.Storage_Elements.To_Integer (Kept'Address))) /= 0
+            Check (CuBit.Waits.Wait
+                     (Wait_ABI.Messages_Sources, Wait_ABI.Now,
+                      Unsigned_64 (System.Storage_Elements.To_Integer (Kept'Address)))
+                     not in 0 | Wait_ABI.Nothing
                    and then Kept.tag.label = Probe_Label,
                    "the refused message was kept (" & Name (P) & ")");
          end;
@@ -435,7 +451,8 @@ begin
          Check (syscall (CuBit.Kernel_ABI.Call_Via_Endpoint_Capability,
                          Self_Word, Pointers (P), Wait_Forever) = Error,
                 "call from a " & Name (P) & " address refused");
-         Check (syscall (SYSCALL_WAIT_COMPLETION, Pointers (P), 1, 0) = Error,
+         Check (CuBit.Waits.Wait (Wait_ABI.Completions_Sources, Wait_ABI.Forever, Pointers (P), 1, 0)
+                  = Wait_ABI.Unsupported_Form,
                 "completions into a " & Name (P) & " address refused");
       end loop;
       Check (syscall (SYSCALL_WRITE, 1, Kernel_Address, 64) = 0,
@@ -614,6 +631,6 @@ begin
    end if;
 
    loop
-      Result := syscall (SYSCALL_SLEEP, 1_000);
+      Result := CuBit.Waits.Sleep_For (1_000);
    end loop;
 end Main;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
@@ -44,7 +45,7 @@ procedure Main is
       debugPrint ("TEST: FAIL log-retention: log-flood: " & Name & ASCII.LF);
       Ignore := syscall (SYSCALL_EXIT, 1);
       loop
-         Ignore := syscall (SYSCALL_SLEEP, 1000);
+         Ignore := CuBit.Waits.Sleep_For (1000);
       end loop;
    end Fail;
 
@@ -76,7 +77,7 @@ begin
          if syscall (SYSCALL_GETTIME) - Started > Wait_Limit_Ms then
             Fail ("the quiet source never finished its boot records");
          end if;
-         Ignore := syscall (SYSCALL_SLEEP, Poll_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
       elsif Result not in P.OK | P.Gap then
          Fail ("read");
       end if;
@@ -86,7 +87,7 @@ begin
       Publish ("log-flood: record " & Image (I), L.Information);
       if I mod Burst_Records = 0 then
          CuBit.Logging.Flush (Writer, Drained, Wait_Ms => Flush_Wait_Ms);
-         Ignore := syscall (SYSCALL_SLEEP, Burst_Pause_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Burst_Pause_Ms);
       end if;
    end loop;
    CuBit.Logging.Flush (Writer, Drained, Wait_Ms => Flush_Wait_Ms);

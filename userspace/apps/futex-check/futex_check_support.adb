@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with System; use System;
 with System.Machine_Code; use System.Machine_Code;
 
@@ -157,7 +158,7 @@ package body Futex_Check_Support is
 
    procedure Waker (Argument : Unsigned_64) is
    begin
-      Ignore := syscall (SYSCALL_SLEEP, Argument);
+      Ignore := CuBit.Waits.Sleep_For (Argument);
       Flag := 1;
       Ignore := Futex_Wake (Flag'Access, 1);
       Thread_Exit;

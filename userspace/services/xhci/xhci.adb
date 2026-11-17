@@ -7,6 +7,7 @@
 --  Reference: eXtensible Host Controller Interface for USB, revision 1.2
 --  (sections cited where used), and USB 2.0 chapters 7 and 9.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with System; use System;
 with System.Address_To_Access_Conversions;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -681,7 +682,7 @@ package body XHCI is
             return;
          end if;
          if not Progressed then
-            Ignore := syscall (SYSCALL_SLEEP, 1);
+            Ignore := CuBit.Waits.Sleep_For (1);
          end if;
       end loop;
    end Submit_Command;
@@ -819,7 +820,7 @@ package body XHCI is
          Progressed := Collect_Event;
          Poll_Control (C);
          if C.Active and then not Progressed then
-            Ignore := syscall (SYSCALL_SLEEP, 1);
+            Ignore := CuBit.Waits.Sleep_For (1);
          end if;
       end loop;
       lastControlCode := C.Code;
@@ -1568,7 +1569,7 @@ package body XHCI is
             if not OK then Result := INIT_CONFIGURE_FAILED; return; end if;
          end loop;
       end if;
-      Ignore := syscall (SYSCALL_SLEEP, Unsigned_64 (Natural'Max (Hub.Power_Delay_MS, Hub_Power_Good_Ms)));
+      Ignore := CuBit.Waits.Sleep_For (Unsigned_64 (Natural'Max (Hub.Power_Delay_MS, Hub_Power_Good_Ms)));
       for Port in 1 .. Hub.Ports loop
          if not Read_Hub_Port (Port) then Result := INIT_DESCRIPTOR_FAILED; return; end if;
          if USB_Hubs.Action (Status) = USB_Hubs.Reset_Required then
@@ -1576,7 +1577,7 @@ package body XHCI is
                              Unsigned_16 (Port), 0, 0, Actual, OK);
             if not OK then Result := INIT_CONFIGURE_FAILED; return; end if;
             for Attempt in 1 .. Hub_Reset_Polls loop
-               Ignore := syscall (SYSCALL_SLEEP, Hub_Reset_Poll_Ms);
+               Ignore := CuBit.Waits.Sleep_For (Hub_Reset_Poll_Ms);
                if not Read_Hub_Port (Port) then Result := INIT_DESCRIPTOR_FAILED; return; end if;
                exit when USB_Hubs.Action (Status) not in USB_Hubs.Resetting | USB_Hubs.Reset_Required;
             end loop;
@@ -1589,7 +1590,7 @@ package body XHCI is
             Control_Request (Slot, TYPE_CLASS_OTHER_OUT, REQUEST_CLEAR_FEATURE, HUB_C_PORT_RESET,
                              Unsigned_16 (Port), 0, 0, Actual, OK);
             if not OK then Result := INIT_CONFIGURE_FAILED; return; end if;
-            Ignore := syscall (SYSCALL_SLEEP, PM.Reset_Recovery_Ms);
+            Ignore := CuBit.Waits.Sleep_For (PM.Reset_Recovery_Ms);
             XHCI_Topology.Child (Path, Slot, Port, USB_Hubs.Rate (Status), Child_Path, Attached);
             if Attached /= XHCI_Topology.Attached then
                Result := INIT_ADDRESS_FAILED; return;
@@ -1747,7 +1748,7 @@ package body XHCI is
          Disable_Slot_Now (Slot);
          return;
       end if;
-      Ignore := syscall (SYSCALL_SLEEP, SetAddress_Recovery_Ms);
+      Ignore := CuBit.Waits.Sleep_For (SetAddress_Recovery_Ms);
       --  Learn EP0's packet size before a multi-packet descriptor read.
       Control_Request (Slot, TYPE_DEVICE_IN, REQUEST_GET_DESCRIPTOR, DESCRIPTOR_DEVICE, 0,
                        EP0_PROBE_BYTES, Descriptor_Buffer (Slot), Actual, OK);
@@ -1879,7 +1880,7 @@ package body XHCI is
          loop
             Poll_Optical_Read (Done, Result, Progressed);
             exit when Done;
-            if not Progressed then Ignore := syscall (SYSCALL_SLEEP, 1); end if;
+            if not Progressed then Ignore := CuBit.Waits.Sleep_For (1); end if;
          end loop;
          return Result = USB_Optical.Command_Passed;
       end Run;
@@ -1895,7 +1896,7 @@ package body XHCI is
          loop
             Poll_Optical_Read (Done, Result, Progressed);
             exit when Done;
-            if not Progressed then Ignore := syscall (SYSCALL_SLEEP, 1); end if;
+            if not Progressed then Ignore := CuBit.Waits.Sleep_For (1); end if;
          end loop;
          --  Admission signature only ("CD001", version 1); the filesystem
          --  validates the descriptor with its hostile-input decoder.
@@ -2004,7 +2005,7 @@ package body XHCI is
             return True;
          end if;
          exit when PM.Since (Now_Ms, Started) >= Unsigned_64 (Limit_Ms);
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       Elapsed := PM.Since (Now_Ms, Started);
       --  A terminal observation at the timeout boundary.
@@ -2084,7 +2085,7 @@ package body XHCI is
          return;
       end if;
       --  USB 2.0 7.1.7.5: reset recovery before the first request.
-      Ignore := syscall (SYSCALL_SLEEP, PM.Reset_Recovery_Ms);
+      Ignore := CuBit.Waits.Sleep_For (PM.Reset_Recovery_Ms);
       Status := Read_Port (Port);
       Log ("port " & D (Natural (Port)) & " reset ok ms=" & D (Waited) & " " & Port_Text (Status));
       case Speed (Status) is
@@ -2296,7 +2297,7 @@ package body XHCI is
          while Collect_Event loop
             Settle_Events := Settle_Events + 1;
          end loop;
-         Ignore := syscall (SYSCALL_SLEEP, Boot_Settle_Step_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Boot_Settle_Step_Ms);
       end loop;
       connectedPorts := 0;
       declare

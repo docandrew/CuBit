@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages;
 with CuBit.Monotonic;
@@ -222,7 +223,7 @@ package body RTW89_MMIO is
    begin
       --  The kernel's tick may end a sleep up to one tick early: ask for one
       --  more than the minimum.
-      Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Duration + 1);
+      Ignore := CuBit.Waits.Sleep_For (Duration + 1);
    end Sleep;
 
    ---------------------------------------------------------------------------

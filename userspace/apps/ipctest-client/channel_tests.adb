@@ -5,6 +5,7 @@
 --  later, and a close the server sees end.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Channel_Protocol;
 with CuBit.Deadlines;
@@ -226,7 +227,7 @@ begin
    begin
       M0 := syscall (SYSCALL_GETTIME);
       T0 := TSC;
-      Ignore := syscall (SYSCALL_SLEEP, Calibration_Ms);
+      Ignore := CuBit.Waits.Sleep_For (Calibration_Ms);
       Ticks_Per_Ms := (TSC - T0) / Unsigned_64'Max (1, syscall (SYSCALL_GETTIME) - M0);
 
       --  Doorbell waiter (the client's thread): its wait is the one call.
@@ -268,7 +269,7 @@ begin
       --  Event loop (the server): the client stamps as it submits.
       Server_Before := Server_Count;
       for K in 1 .. IC.Samples loop
-         Ignore := syscall (SYSCALL_SLEEP, IC.Hold_Ms);
+         Ignore := CuBit.Waits.Sleep_For (IC.Hold_Ms);
          Clients.Submit (A, (Value => TSC, Kind => IC.Wake_Stamp), Number, Submitted);
          if Submitted /= Clients.Queued then Fail ("loop-submit"); return; end if;
          Clients.Wait (A, Number, Phase, Answer, Waited);

@@ -14,6 +14,7 @@
 --    Keyboard: label=1, words(0) = scancode
 --    Mouse:    label=2, words(0) = packed(buttons|dx|dy|dz|flags)
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
 
@@ -431,7 +432,7 @@ begin
          end loop;
          if Woke = Work_Available and then not Drained then
             --  A request, not this loop's to take: pace the look instead.
-            ignore := syscall (SYSCALL_SLEEP, CONSUMER_POLL_MS);
+            ignore := CuBit.Waits.Sleep_For (CONSUMER_POLL_MS);
          end if;
       end;
    end loop;
@@ -456,7 +457,7 @@ begin
             else Keyboard_Pending.Wake_Deadline (keyboardPending, now,
                    Pointer_Pending.Wake_Deadline (pointerPending, now, Unsigned_64'Last)));
          if activity = Unavailable then
-            ignore := syscall (SYSCALL_SLEEP, 1);
+            ignore := CuBit.Waits.Sleep_For (1);
          end if;
          for I in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
             exit when not Poll_Event (event);

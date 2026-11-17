@@ -3,6 +3,7 @@
 --  step 1; backlog LOG-001). Started trusted, it is an observer as well as a
 --  publisher; it then launches itself as an ordinary child, which is only a
 --  publisher.
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
@@ -59,7 +60,7 @@ procedure Main is
          debugPrint ("TEST: FAIL log-authority: " & Name & ASCII.LF);
          Ignore := syscall (SYSCALL_EXIT, 1);
          loop
-            Ignore := syscall (SYSCALL_SLEEP, 1000);
+            Ignore := CuBit.Waits.Sleep_For (1000);
          end loop;
       end if;
    end Check;
@@ -140,7 +141,7 @@ procedure Main is
          CuBit.Logging.Disconnect (Logger, Done);
          exit when Done;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "disconnect timeout");
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       CuBit.Logging.Emit (Logger, Record_Value.Value, Submitted);
       Check (not Submitted, "disconnect stops new publication");
@@ -169,7 +170,7 @@ procedure Main is
          CuBit.Logging.Disconnect (Logger, Done);
          exit when Done;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "retirement timeout");
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       CuBit.Logging.Emit (Stale, Record_Value.Value, Submitted);
       Check (not Submitted, "dead endpoint cannot take a new ring");

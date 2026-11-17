@@ -3,6 +3,7 @@
 --  pointer source age
 --  (cumulative histograms: count, p50/p99 bucket upper bounds, maximum).
 --  A periodic stall shows as p99/maximum growth (docs/compositor-backends.md).
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Pages;
@@ -48,6 +49,6 @@ begin
          end loop;
          exit when Next = 0 or else Written = 0;
       end loop;
-      Ignore := syscall (SYSCALL_SLEEP, Report_Interval_Ms);
+      Ignore := CuBit.Waits.Sleep_For (Report_Interval_Ms);
    end loop;
 end Main;

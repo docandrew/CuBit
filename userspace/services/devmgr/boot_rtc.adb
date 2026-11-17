@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with CuBit.Messages; use CuBit.Messages;
 with Interfaces; use Interfaces;
 with RTC_Decode;
@@ -36,7 +37,7 @@ package body Boot_RTC is
          if OK then Value := Unsigned_8 (Result); end if;
       end Read_Register;
       procedure Pause is
-         Ignore : constant Unsigned_64 := syscall (SYSCALL_SLEEP, Update_Pause_Ms);
+         Ignore : constant Unsigned_64 := CuBit.Waits.Sleep_For (Update_Pause_Ms);
       begin null; end Pause;
       function Monotonic return Unsigned_64 is (syscall (SYSCALL_GETTIME));
       package Sampling is new RTC_Sampling

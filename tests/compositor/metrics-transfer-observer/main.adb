@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Pages;
@@ -28,7 +29,7 @@ procedure Main is
    begin
       debugPrint ("TEST: FAIL desktop-metrics " & Reason & ASCII.LF);
       Ignore := syscall (SYSCALL_EXIT, 1);
-      loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+      loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
    end Fail;
 begin
    CuBit.Metric_Pages.Bind (Watcher, Startup.Metrics_Observer);
@@ -74,7 +75,7 @@ begin
          Ignore := syscall (SYSCALL_EXIT, 0);
          return;
       end if;
-      Ignore := syscall (SYSCALL_SLEEP, 50);
+      Ignore := CuBit.Waits.Sleep_For (50);
    end loop;
    Fail ("missing release growth or input/draw/submit samples");
 end Main;

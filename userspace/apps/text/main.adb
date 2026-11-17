@@ -8,6 +8,7 @@
 --  the shell's next deadline. Nothing here blocks on the filesystem: files
 --  load and save through Text_Host_Native, a request at a time.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol;
@@ -270,7 +271,7 @@ procedure Main is
                if Status not in Text_Hosts.Pending | Text_Hosts.Done or else Late then
                   return;
                end if;
-               Ignore := syscall (SYSCALL_SLEEP, RECOVERY_POLL_MS);
+               Ignore := CuBit.Waits.Sleep_For (RECOVERY_POLL_MS);
             end loop;
             if Status not in Text_Hosts.Done | Text_Hosts.Pending then
                return;
@@ -282,7 +283,7 @@ procedure Main is
       loop
          Text_Host_Native.Poll_Save (Host, Status);
          exit when Status /= Text_Hosts.Pending or else Late;
-         Ignore := syscall (SYSCALL_SLEEP, RECOVERY_POLL_MS);
+         Ignore := CuBit.Waits.Sleep_For (RECOVERY_POLL_MS);
       end loop;
       Ok := Status = Text_Hosts.Done;
    end Write_Copy;

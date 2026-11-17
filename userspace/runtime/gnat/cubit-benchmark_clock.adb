@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Published_Clock;
@@ -28,7 +29,7 @@ package body CuBit.Benchmark_Clock is
       for Attempt in 1 .. 3 loop
          Start_Ms := CuBit.Published_Clock.Milliseconds;
          Start_Ticks := Read_Counter;
-         Ignored := syscall (SYSCALL_SLEEP, 200);
+         Ignored := CuBit.Waits.Sleep_For (200);
          End_Ticks := Read_Counter;
          End_Ms := CuBit.Published_Clock.Milliseconds;
          if End_Ms <= Start_Ms or else End_Ticks <= Start_Ticks then

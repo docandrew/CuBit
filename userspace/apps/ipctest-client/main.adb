@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with CuBit.Handles;
 with Startup;
 with Channel_Tests;
@@ -159,7 +160,7 @@ begin
    end if;
 
    if ok then
-      ret := syscall (SYSCALL_SLEEP, 50);
+      ret := CuBit.Waits.Sleep_For (50);
       completion := NULL_COMPLETION;
       ret := Poll_Completion (completion'Address);
       if ret /= 0 then
@@ -201,7 +202,7 @@ begin
          end if;
          exit;
       else
-         ret := syscall (SYSCALL_SLEEP, 10);
+         ret := CuBit.Waits.Sleep_For (10);
       end if;
 
       if attempt = 300 then
@@ -262,7 +263,7 @@ begin
             fail ("occupied-token");
          end if;
       else
-         ret := syscall (SYSCALL_SLEEP, 10);
+         ret := CuBit.Waits.Sleep_For (10);
       end if;
 
       if attempt = 300 then
@@ -331,7 +332,7 @@ begin
                msg,
                NO_COMPLETION_TOKEN);
             exit when submitOk;
-            ret := syscall (SYSCALL_SLEEP, 1);
+            ret := CuBit.Waits.Sleep_For (1);
          end loop;
          if not submitOk then
             fail ("pressure-release-submit");
@@ -377,7 +378,7 @@ begin
             end;
          end if;
       else
-         ret := syscall (SYSCALL_SLEEP, 10);
+         ret := CuBit.Waits.Sleep_For (10);
       end if;
    end loop;
 
@@ -419,7 +420,7 @@ begin
          end if;
          exit;
       else
-         ret := syscall (SYSCALL_SLEEP, 10);
+         ret := CuBit.Waits.Sleep_For (10);
       end if;
 
       if attempt = 300 then
@@ -493,7 +494,7 @@ begin
             end;
          end if;
       else
-         ret := syscall (SYSCALL_SLEEP, 10);
+         ret := CuBit.Waits.Sleep_For (10);
       end if;
    end loop;
 
@@ -556,7 +557,7 @@ begin
                   end if;
                   exit;
                end if;
-               ret := syscall (SYSCALL_SLEEP, 10);
+               ret := CuBit.Waits.Sleep_For (10);
             end loop;
             if not seenRetirement then fail ("retire-timeout"); end if;
          end if;
@@ -606,7 +607,7 @@ begin
             fail ("deadline-busy-submit");
          end if;
          -- Let the server take the busy request first.
-         ret := syscall (SYSCALL_SLEEP, 10);
+         ret := CuBit.Waits.Sleep_For (10);
          msg := NULL_MESSAGE;
          msg.tag := (label => OP_DEADLINE_QUEUED, length => 0,
                      protocol => 0, ipc => <>, reserved => 0);
@@ -672,7 +673,7 @@ begin
          if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
             fail ("displace-busy-submit");
          end if;
-         ret := syscall (SYSCALL_SLEEP, 10);
+         ret := CuBit.Waits.Sleep_For (10);
          msg := NULL_MESSAGE;
          msg.tag := (label => OP_DISPLACE_SECOND, length => 0,
                      protocol => 0, ipc => <>, reserved => 0);
@@ -770,7 +771,7 @@ begin
                if mode = 4 then
                   -- Server has entered an infinite activity wait before the
                   -- one-way submission, then again before the synchronous call.
-                  ret := syscall (SYSCALL_SLEEP, 50);
+                  ret := CuBit.Waits.Sleep_For (50);
                end if;
                msg := NULL_MESSAGE;
                msg.tag := (label => OP_FAIR_QUEUED, length => 0,
@@ -778,7 +779,7 @@ begin
                if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
                   fail ("fairness-submit");
                end if;
-               if mode = 4 then ret := syscall (SYSCALL_SLEEP, 50); end if;
+               if mode = 4 then ret := CuBit.Waits.Sleep_For (50); end if;
                for poll in 1 .. 2 loop
                   msg := NULL_MESSAGE;
                   msg.tag := (label => OP_FAIR_POLL, length => 0,
@@ -887,6 +888,6 @@ begin
    end if;
 
    loop
-      ret := syscall (SYSCALL_SLEEP, 1000);
+      ret := CuBit.Waits.Sleep_For (1000);
    end loop;
 end main;

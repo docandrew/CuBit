@@ -1,3 +1,5 @@
+with Wait_ABI;
+with CuBit.Waits;
 with Intel_GPU_ADLN_L3;
 with Intel_GPU_Map_Report;
 with Intel_GPU_Record_Store;
@@ -7701,7 +7703,7 @@ procedure Main is
          Ignored : Unsigned_64;
          pragma Unreferenced (Ignored);
       begin
-         Ignored := syscall (SYSCALL_SLEEP, 1);
+         Ignored := CuBit.Waits.Sleep_For (1);
       end Pause;
       package FW is new Intel_GPU_Forcewake (Read_Ack, Write_Request, Pause, Clock,
          Intel_GPU_ADLN_Inventory.Request_Register (Intel_GPU_ADLN_Inventory.GT),
@@ -8144,9 +8146,9 @@ procedure Main is
       pragma Unreferenced (Ignored);
    begin
       if Now = Unsigned_64'Last or else Now > Unsigned_64'Last - Submission_Poll_Us then
-         Ignored := syscall (SYSCALL_SLEEP, Submission_Poll_Ms);
+         Ignored := CuBit.Waits.Sleep_For (Submission_Poll_Ms);
       else
-         Ignored := syscall (SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND,
+         Ignored := CuBit.Waits.Wait (Wait_ABI.Timer_Sources, Wait_ABI.Forever,
                              Now + Submission_Poll_Us);
       end if;
    end Sleep_While_GPU_Busy;

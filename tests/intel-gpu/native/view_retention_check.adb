@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -338,5 +339,5 @@ begin
    debugPrint ("native forwarding blocks: 32 rounds eight retained roots and children PASS" & ASCII.LF);
    Check (Self_Requests.Close (Client, Self_Label, 10_000), "self request answered");
    debugPrint ("TEST: PASS native view retention 3 cycles two pins terminal child queued retirement (NO GPU/ISOLATION)" & ASCII.LF);
-   loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
 end View_Retention_Check;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with CuBit.Messages;
 with CuBit.Channel_Protocol;
 with CuBit.Published_Clock;
@@ -281,7 +282,7 @@ package body CuBit.Logging is
             Drained := True;
             return;
          end if;
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
          Waited := Waited + 1;
       end loop;
    end Flush;

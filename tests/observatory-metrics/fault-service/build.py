@@ -20,7 +20,7 @@ needle='                           declare\n                              Shared
 assert s.count(needle)==1
 injection='                           if Written > 0 then\n                              Nonempty_Queries := Nonempty_Queries + 1;\n                              if Nonempty_Queries > 12 then\n                                 debugPrint ("TEST: FAIL observer queried after fault" & ASCII.LF);\n                              end if;\n                           end if;\n                           if Nonempty_Queries = 12 then\n                              debugPrint ("TEST: viewer fault injected MODE" & ASCII.LF);\n                              ACTION\n                           end if;\n'
 action={'full':'null;', 'row':'Rows (0) (Row_Flags) := 4;', 'envelope':'null;',
-        'stall':'Ignore := syscall (SYSCALL_SLEEP, 3000);'}[mode]
+        'stall':'Ignore := CuBit.Waits.Sleep_For (3000);'}[mode]
 if mode=='full':
     injection="""                           if Written > 0 then
                               for I in Row_Index loop
@@ -36,7 +36,9 @@ s=s.replace(needle,injection.replace('MODE',mode).replace('ACTION',action)+needl
 needle='         Ignore := reply (From, Response);';assert s.count(needle)==1
 extra='         if Known and then Op = Query_Summaries and then Nonempty_Queries = 12 then\n            ACTION\n            debugPrint ("TEST: viewer fault reply MODE" & ASCII.LF);\n         end if;\n'
 action='Response.words (3) := 1;' if mode=='envelope' else 'null;'
-s=s.replace(needle,extra.replace('MODE',mode).replace('ACTION',action)+needle);p.write_text(s)
+s=s.replace(needle,extra.replace('MODE',mode).replace('ACTION',action)+needle)
+if mode=='stall': s='with CuBit.Waits;\n'+s
+p.write_text(s)
 base=(root/'tests/compositor/metrics-fault/fault.gpr').read_text()
 base=base.replace('Desktop_Metrics_Fault','Observatory_Fault').replace('"build"','"obj"').replace('(".", "build/generated")','("source")').replace('desktop-metrics-fault.svc','metrics.svc')
 base=base.replace('   for Main use', '   for Exec_Dir use ".";\n   for Main use')

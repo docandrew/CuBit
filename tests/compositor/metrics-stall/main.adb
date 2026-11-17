@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages; use CuBit.Messages;
@@ -48,7 +49,7 @@ begin
          if Batches = 1 then
             debugPrint ("TEST: metrics-stall grant held" & ASCII.LF);
             for Tick in 1 .. 600 loop
-               Ignore := syscall (SYSCALL_SLEEP, 50);
+               Ignore := CuBit.Waits.Sleep_For (50);
                for I in 0 .. Used loop
                   if Shared (I) /= Snapshot (I) then
                      Fail ("held page mutated"); return;

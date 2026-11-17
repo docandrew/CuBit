@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -231,7 +232,7 @@ begin
         "step completion cannot dismiss held readers");
       Check (not B.Can_Retire (Object, Identity, Buffer_Ticket),
         "real grant pins survive metadata sweep");
-      Ignore := syscall (SYSCALL_SLEEP, 1);
+      Ignore := CuBit.Waits.Sleep_For (1);
    end loop;
    S.Retire_Session_Step (Object, Table, Map_Retirement, Complete);
    Check (Complete, "completed map step idempotent");
@@ -260,5 +261,5 @@ begin
    Check (Current = 0 and Wire = 0, "closed admission denied");
    Check (Self_Requests.Close (Client, Self_Label, 10_000), "self request answered");
    debugPrint ("TEST: PASS native mapping growth 64-128-256 record65 retained readers drained (NO GPU/ISOLATION)" & ASCII.LF);
-   loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
 end Mapping_Growth_Check;

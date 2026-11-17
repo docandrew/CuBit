@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -207,5 +208,5 @@ begin
       end if;
    end loop;
    -- Retain supervisor-owned backing until the runner observes child success.
-   loop Ignore := syscall (SYSCALL_SLEEP, 100); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (100); end loop;
 end Accounting_Check;

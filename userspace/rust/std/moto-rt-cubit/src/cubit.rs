@@ -88,7 +88,11 @@ const SYS_WRITE: u64 = 12;
 const SYS_GETTIME: u64 = 27;
 const SYS_THREAD_CREATE: u64 = 90;
 const SYS_THREAD_EXIT: u64 = 91;
-const SYS_FUTEX_WAIT: u64 = 92;
+// The one wait (ABI-002 slice 2, shared/capabilities/wait_abi.ads): its
+// futex form is Sources = WAIT_FUTEX_WORD, then the deadline, the word's
+// address and the expected value.
+const SYS_WAIT: u64 = 149;
+const WAIT_FUTEX_WORD: u64 = 1 << 3;
 const SYS_FUTEX_WAKE: u64 = 93;
 
 const FUTEX_TIMED_OUT: u64 = 2;
@@ -116,7 +120,7 @@ fn now_ms() -> u64 {
 }
 
 fn futex_wait_raw(word: *const AtomicU32, expected: u32, deadline_ms: u64) -> u64 {
-    unsafe { syscall(SYS_FUTEX_WAIT, word as u64, expected as u64, deadline_ms, 0, 0) }
+    unsafe { syscall(SYS_WAIT, WAIT_FUTEX_WORD, deadline_ms, word as u64, expected as u64, 0) }
 }
 
 fn futex_wake_raw(word: *const AtomicU32, count: u64) -> u64 {

@@ -4,6 +4,7 @@
 --  Prints compact final summaries only. Serial output is intentionally kept
 --  out of measured loops so it does not dominate the numbers.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -317,9 +318,9 @@ procedure main is
          deadline := nowMs + 2_000;
          while not capSubmit (Bench, msg, Unsigned_64(i)) loop
             if nowMs >= deadline then fail ("saturation-submit"); return; end if;
-            ignored := syscall (SYSCALL_SLEEP, 1);
+            ignored := CuBit.Waits.Sleep_For (1);
          end loop;
-         ignored := syscall (SYSCALL_SLEEP, 1);
+         ignored := CuBit.Waits.Sleep_For (1);
       end loop;
       msg := NULL_MESSAGE;
       msg.tag.label := OP_BENCH_HOLD;
@@ -343,7 +344,7 @@ procedure main is
          loop
             exit when Poll_Completion (entryResult'Address) = 1;
             if nowMs >= deadline then fail ("lost-exit-completion"); return; end if;
-            ignored := syscall (SYSCALL_SLEEP, 1);
+            ignored := CuBit.Waits.Sleep_For (1);
          end loop;
          if entryResult.token not in 1 .. 64 then
             fail ("completion-token-range"); return;
@@ -427,7 +428,7 @@ begin
    begin
       ret := syscall (SYSCALL_EXIT);
       loop
-         ret := syscall (SYSCALL_SLEEP, 1000);
+         ret := CuBit.Waits.Sleep_For (1000);
       end loop;
    end;
 end main;

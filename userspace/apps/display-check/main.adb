@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Memory_Grants;
@@ -478,7 +479,7 @@ procedure Main is
       Concurrent_Frames;
       if not Passed then return; end if;
       debugPrint ("DISPLAY-DUAL: phase-a" & ASCII.LF);
-      Ignored := syscall (SYSCALL_SLEEP, 2000);
+      Ignored := CuBit.Waits.Sleep_For (2000);
       Paint (1, 16#0030_D050#);
       Frame (Sessions (1), 2, Published, Released, (0, 0, 32, 32), 1);
       Expect (Encode_Lease_Request (Release_Display), DP.Success,
@@ -487,14 +488,14 @@ procedure Main is
       Check (Ok and then Generation (Grants (0)) = 0, "first output unpinned");
       if not Passed then return; end if;
       debugPrint ("DISPLAY-DUAL: phase-b" & ASCII.LF);
-      Ignored := syscall (SYSCALL_SLEEP, 2000);
+      Ignored := CuBit.Waits.Sleep_For (2000);
       Frame (Sessions (0), 2, Rejected, Not_Acquired, (0, 0, 32, 32), 0);
       Frame (Sessions (1), 1, Rejected, Not_Acquired, (0, 0, 32, 32), 1);
       Paint (1, 16#00E0_C030#);
       Frame (Sessions (1), 3, Published, Released, (0, 0, 32, 32), 1);
       if not Passed then return; end if;
       debugPrint ("DISPLAY-DUAL: phase-c" & ASCII.LF);
-      Ignored := syscall (SYSCALL_SLEEP, 2000);
+      Ignored := CuBit.Waits.Sleep_For (2000);
       Expect (With_Output (Encode_Lease_Request (Release_Display), 1),
               DP.Success, "release second output");
       MG.Revoke (Grants (1), Ok);
@@ -896,7 +897,7 @@ procedure Main is
       Plane (PP.Encode_Destroy (3), PP.Destroy_Request, DP.Success, "destroy relative pointer");
       if not Passed then return; end if;
       debugPrint ("DISPLAY-PLANES: shown primary=300,200 agent=600,400" & ASCII.LF);
-      Ignored := syscall (SYSCALL_SLEEP, Pause_Ms);
+      Ignored := CuBit.Waits.Sleep_For (Pause_Ms);
       Start := syscall (SYSCALL_GETTIME);
       for Step in 1 .. Move_Count loop
          Plane (PP.Encode (PP.Move'(1, DPL.Space_Coordinate (300 + Step * 400 / Move_Count),
@@ -906,7 +907,7 @@ procedure Main is
       Finish := syscall (SYSCALL_GETTIME);
       debugPrint ("DISPLAY-PLANES: moved primary=700,500 moves=" & Move_Count'Image &
                   " ms=" & Unsigned_64'Image (Finish - Start) & ASCII.LF);
-      Ignored := syscall (SYSCALL_SLEEP, Pause_Ms);
+      Ignored := CuBit.Waits.Sleep_For (Pause_Ms);
       --  Negative positions relative to the hotspot: partly off the top-left.
       Plane (PP.Encode (PP.Move'(1, 1, 1)), PP.Move_Request, DP.Success, "edge motion");
       Check (Last.Committed_Hardware = (if Hardware_Expected then Only (1) else PP.No_Requests),
@@ -968,7 +969,7 @@ procedure Main is
          end;
          if not Passed then return; end if;
          debugPrint ("DISPLAY-PLANES: swapped agent=600,400 on the plane" & ASCII.LF);
-         Ignored := syscall (SYSCALL_SLEEP, Pause_Ms);
+         Ignored := CuBit.Waits.Sleep_For (Pause_Ms);
       end if;
       Plane (PP.Encode (PP.Visibility'(2, False)), PP.Set_Visibility, DP.Success, "hide agent");
       Plane (PP.Encode_Destroy (1), PP.Destroy_Request, DP.Success, "destroy primary");

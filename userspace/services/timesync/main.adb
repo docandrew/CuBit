@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with CuBit.Log;
 with Interfaces; use Interfaces;
 with System;
@@ -283,7 +284,7 @@ procedure Main is
          if Wait_For_Activity_Until (Until_Ms) = Unavailable then
             --  No activity wait: the plain sleep it replaced.
             declare
-               Ignore : constant Unsigned_64 := syscall (SYSCALL_SLEEP, Wait_Seconds * 1_000);
+               Ignore : constant Unsigned_64 := CuBit.Waits.Sleep_For (Wait_Seconds * 1_000);
             begin
                exit;
             end;
@@ -318,7 +319,7 @@ begin
    end if;
    CuBit.Log.Info ("timesync: network ready; first poll in 3 s");
    --  Give netmgr a moment to configure the interface before the first poll.
-   Ignore := syscall (SYSCALL_SLEEP, 3_000);
+   Ignore := CuBit.Waits.Sleep_For (3_000);
    loop
       if Poll then
          Failures := 0;

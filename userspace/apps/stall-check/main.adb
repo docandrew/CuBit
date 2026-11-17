@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles.IPC;
@@ -37,7 +38,7 @@ begin
    debugPrint ("stall-check: holding a call for" & Unsigned_64'Image (Unsigned_64'(Stall_Ms)) & " ms" & LF);
    Tag := HIPC.Call (Self, Msg, Now + Stall_Ms);
    debugPrint ("stall-check: call ended label=" & Unsigned_32'Image (Tag.label) & LF);
-   Ignore := syscall (SYSCALL_SLEEP, Settle_Ms);
+   Ignore := CuBit.Waits.Sleep_For (Settle_Ms);
    debugPrint ("stall-check: done" & LF);
    Ignore := syscall (SYSCALL_EXIT, 0);
 end Main;

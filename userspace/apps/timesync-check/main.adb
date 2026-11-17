@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
 with Startup;
@@ -53,7 +54,7 @@ begin
       exit when Read_OK and then
         Stamp.Quality = CuBit.Clocks.Network_Unauthenticated;
       exit when syscall (SYSCALL_GETTIME) - Started > 60_000;
-      Ignore := syscall (SYSCALL_SLEEP, 250);
+      Ignore := CuBit.Waits.Sleep_For (250);
    end loop;
    Check (Read_OK and then Stamp.Quality = CuBit.Clocks.Network_Unauthenticated,
           "clock reports network-synchronized time");

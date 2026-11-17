@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with System;
 with CuBit.GPU_Queue_Clients;
 with CuBit.GPU_Queues.Kinds;
@@ -236,7 +237,7 @@ package body Native_GPU_Queue is
             exit when State.Failed;
             Sessions.Submit (State.Session, Decoded, Tag, Value, Submitted);
             exit when Submitted;
-            Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Room_Pause_Ms);
+            Ignore := CuBit.Waits.Sleep_For (Room_Pause_Ms);
          end loop;
          if Boolean (State.Failed) or else not Submitted then
             State.Failed := True;

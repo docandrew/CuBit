@@ -10,6 +10,10 @@ use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicU32, Ordering};
 
+/// WAIT's futex-word source bit (Wait_ABI.Futex_Word_Bit).
+#[cfg(not(test))]
+const WAIT_FUTEX_WORD: u64 = 1 << 3;
+
 /// Result of [`futex_wait`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WaitResult {
@@ -34,8 +38,9 @@ pub fn futex_wait(word: &AtomicU32, expected: u32, deadline_ms: u64) -> WaitResu
         let result = unsafe {
             // SAFETY: the kernel reads the aligned word through the process's
             // page tables; no pointer outlives the call.
-            crate::syscall3(crate::Syscall::FutexWait, word.as_ptr() as u64,
-                            expected as u64, deadline_ms)
+            // WAIT's futex form: Sources, deadline, the word, the value.
+            crate::syscall5(crate::Syscall::Wait, WAIT_FUTEX_WORD, deadline_ms,
+                            word.as_ptr() as u64, expected as u64, 0)
         };
         match result {
             0 => WaitResult::Woken,

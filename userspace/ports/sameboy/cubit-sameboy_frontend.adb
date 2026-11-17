@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements;
@@ -263,7 +264,7 @@ package body CuBit.SameBoy_Frontend is
    procedure Sleep_Ms (Milliseconds : Unsigned_64) is
       Ignored : Unsigned_64;
    begin
-      Ignored := syscall (SYSCALL_SLEEP, Milliseconds);
+      Ignored := CuBit.Waits.Sleep_For (Milliseconds);
    end Sleep_Ms;
 
    function Send (Request : D.Wire_Message) return D.Wire_Message is

@@ -5,6 +5,7 @@
 --  @summary
 --  Minimal desktop-surface harness for native CuBit UI applications
 ------------------------------------------------------------------------------
+with CuBit.Readiness;
 with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
 
@@ -833,6 +834,9 @@ package body CuBit.UI.App is
    --  (Sleep_For_Activity); a loop that does not sleep looks every
    --  EVENT_POLL_MS, not every turn (each look is a system call).
    EVENT_POLL_MS : constant := 50;
+   --  KERN-013: the completions this loop consumed, against the kernel's
+   --  readiness page (CuBit.Readiness); events have their one reader.
+   Completions_Read : CuBit.Readiness.Tracker;
    Events_Polled_At : Unsigned_64 := 0;
 
    --  Sleep until this process has activity (a ring answer Desktop rang
@@ -1388,10 +1392,25 @@ package body CuBit.UI.App is
                         abnormal := True;
                         running := False;
                      end if;
-                     if Activity_Wait then
-                        while running and then Poll_Completion (receipt'Address) /= 0 loop
-                           On_Completion (win, receipt, consumed, timerDirty, running);
-                        end loop;
+                     if Activity_Wait and then
+                       CuBit.Readiness.Pending (Completions_Read, CuBit.Readiness.Completions)
+                     then
+                        declare
+                           Seen : CuBit.Readiness.Count;
+                        begin
+                           while running and then
+                             CuBit.Readiness.Pending (Completions_Read, CuBit.Readiness.Completions)
+                           loop
+                              Seen := CuBit.Readiness.Produced (CuBit.Readiness.Completions);
+                              if Poll_Completion (receipt'Address) = 0 then
+                                 CuBit.Readiness.Caught_Up
+                                   (Completions_Read, CuBit.Readiness.Completions, Seen);
+                                 exit;
+                              end if;
+                              CuBit.Readiness.Took (Completions_Read, CuBit.Readiness.Completions);
+                              On_Completion (win, receipt, consumed, timerDirty, running);
+                           end loop;
+                        end;
                      end if;
                      if running and then appDeadline /= 0 and then
                        CuBit.Published_Clock.Milliseconds >= appDeadline and then not blocked

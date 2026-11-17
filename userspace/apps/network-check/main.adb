@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
@@ -188,7 +189,7 @@ begin
                Check (False, "async completion deadline");
                return NULL_TAG;
             end if;
-            Ignored := syscall (SYSCALL_SLEEP, 1);
+            Ignored := CuBit.Waits.Sleep_For (1);
          end loop;
          Check (Completion.token = Token and then
                 Completion.status = COMPLETION_OK,
@@ -451,7 +452,7 @@ begin
       Check (Reply_Tag.label = OK_Label, "listener reopens");
       Listener := Listener_Stream.Handle;
       debugPrint ("network-check: backlog-expiry ready" & ASCII.LF);
-      Result := syscall (SYSCALL_SLEEP, 7000);
+      Result := CuBit.Waits.Sleep_For (7000);
       --  Host verifies two connections nobody offered a buffer for are reset
       --  by the service's five-second timer, before this close could.
       Close_Listener (Listen_Slot, Listener);

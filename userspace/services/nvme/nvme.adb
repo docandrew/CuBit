@@ -19,6 +19,7 @@
 --  controller reset that re-creates the queues, then a bounded re-issue;
 --  only then does the request fail, with a typed outcome.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 
@@ -278,7 +279,7 @@ package body NVMe is
          end loop;
          exit when not CuBit.Busy_Poll.Within
            (started, Unsigned_64 (Admin_Command_Deadline));
-         ignore := syscall (SYSCALL_SLEEP, POLL_SLEEP_MILLISECONDS);
+         ignore := CuBit.Waits.Sleep_For (POLL_SLEEP_MILLISECONDS);
       end loop;
       outcome := Admin_Timed_Out;
       debugPrint ("NVMe: admin command timed out: opcode=" &
@@ -310,7 +311,7 @@ package body NVMe is
             return True;
          end if;
          exit when not CuBit.Busy_Poll.Within (started, readyTimeout);
-         ignore := syscall (SYSCALL_SLEEP, POLL_SLEEP_MILLISECONDS);
+         ignore := CuBit.Waits.Sleep_For (POLL_SLEEP_MILLISECONDS);
       end loop;
       return ((readReg32 (REG_CSTS) and CSTS_RDY) /= 0) = ready;
    end waitReady;
@@ -641,12 +642,12 @@ package body NVMe is
                      sliceTimeouts := sliceTimeouts + 1;
                   end if;
                   if activity = Unavailable then
-                     ignore := syscall (SYSCALL_SLEEP, POLL_SLEEP_MILLISECONDS);
+                     ignore := CuBit.Waits.Sleep_For (POLL_SLEEP_MILLISECONDS);
                   elsif activity = Work_Available and then not ioPosted then
                      --  Pending IPC (not ours to take here) or an event:
                      --  drain events next time; never spin on requests.
                      if not Poll_Event (event) then
-                        ignore := syscall (SYSCALL_SLEEP, POLL_SLEEP_MILLISECONDS);
+                        ignore := CuBit.Waits.Sleep_For (POLL_SLEEP_MILLISECONDS);
                      end if;
                   end if;
                end if;
@@ -662,7 +663,7 @@ package body NVMe is
                exit;
             end if;
             exit when not live;
-            ignore := syscall (SYSCALL_SLEEP, POLL_SLEEP_MILLISECONDS);
+            ignore := CuBit.Waits.Sleep_For (POLL_SLEEP_MILLISECONDS);
 #if nvme_io_profile = "on" then
             Sleep_Count := Sleep_Count + 1;
 #end if;

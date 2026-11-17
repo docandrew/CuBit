@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Config_Protocol;
 with CuBit.Memory_Grants;
@@ -120,7 +121,7 @@ package body CuBit.Settings.Inspection is
          --  Config releases before replying, so this normally needs one query.
          --  Never unwind this frame while another process can still access it.
          while not CuBit.Memory_Grants.Retirement_Confirmed (Reference) loop
-            Ignore := syscall (SYSCALL_SLEEP, 1);
+            Ignore := CuBit.Waits.Sleep_For (1);
             CuBit.Memory_Grants.Revoke (Reference, Retired);
          end loop;
          if not Retired then

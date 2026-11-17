@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
 with Ada.Unchecked_Conversion;
@@ -81,7 +82,7 @@ package body Fixture is
             exit when not OK;
             MG.Return_Acquisition (Child, OK);
             Check (OK, "return temporary probe acquisition");
-            Ignore := syscall (SYSCALL_SLEEP, 10);
+            Ignore := CuBit.Waits.Sleep_For (10);
          end loop;
          Check (not OK, "exit closes child admission");
       end Wait_For_Closure;
@@ -269,7 +270,7 @@ package body Fixture is
                   for Attempt in 1 .. 200 loop
                      Raw := Call (Owner_Cap, Root_Status);
                      exit when Raw = 0;
-                     Ignore := syscall (SYSCALL_SLEEP, 10);
+                     Ignore := CuBit.Waits.Sleep_For (10);
                   end loop;
                   Check (Raw = 0, "root retired after intermediary exit");
                   debugPrint ("GRANT-FORWARD-INTERMEDIARY-EXIT: PASS" & ASCII.LF);
@@ -370,7 +371,7 @@ package body Fixture is
                 "reader completion");
          for Attempt in 1 .. 200 loop
             exit when syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, Child.slot) = 0;
-            Ignore := syscall (SYSCALL_SLEEP, 10);
+            Ignore := CuBit.Waits.Sleep_For (10);
          end loop;
          Check (syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, Child.slot) = 0,
                 "child mapping retired");

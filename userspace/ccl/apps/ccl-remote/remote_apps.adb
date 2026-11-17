@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces;
 with CuBit.Child_Exits;
 with CuBit.Control_Events;
@@ -56,7 +57,7 @@ package body Remote_Apps is
    procedure Pause is
       Ignore : Unsigned_64;
    begin
-      Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Poll_Ms);
+      Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
    end Pause;
 
    procedure Initialize (Work : String) is

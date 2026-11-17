@@ -5,6 +5,7 @@
 --  @summary
 --  Intel High Definition Audio controller driver implementation
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -132,7 +133,7 @@ package body HDA is
    procedure spinWait (ms : Unsigned_64) is
       ignore : Unsigned_64;
    begin
-      ignore := syscall (SYSCALL_SLEEP, ms);
+      ignore := CuBit.Waits.Sleep_For (ms);
    end spinWait;
 
    ---------------------------------------------------------------------------

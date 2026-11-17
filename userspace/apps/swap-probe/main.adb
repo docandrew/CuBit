@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Control_Events;
 with CuBit.Log_Records;
@@ -43,7 +44,7 @@ begin
       exit when Found and then Event.Kind = CuBit.Control_Events.Control
         and then Event.Control = CuBit.Control_Events.Stop;
       if not Found then
-         Ignore := syscall (SYSCALL_SLEEP, Poll_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
       end if;
    end loop;
    Say ("swap-probe: build " & Build & " stopping");

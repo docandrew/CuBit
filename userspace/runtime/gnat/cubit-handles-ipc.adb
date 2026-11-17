@@ -5,6 +5,7 @@
 --  CuBit.Handles.IPC - implementation
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Ada.Unchecked_Conversion;
 with System;
 with System.Storage_Elements;
@@ -278,7 +279,8 @@ package body CuBit.Handles.IPC is
 
    function Accept_Offered (Requester : CuBit.Messages.Process_ID) return Carried is
       Result : constant Unsigned_64 :=
-        K.Call (K.Accept_Offered_Capability, CuBit.Messages.To_Word (Requester));
+        K.Call (K.Wait, Wait_ABI.Offered_Sources, Wait_ABI.Now,
+                CuBit.Messages.To_Word (Requester));
    begin
       if ABI.Is_Handle_Word (Result) then
          return (Kind => Present, Word => Result);

@@ -3,6 +3,8 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Readiness;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
 with CuBit.Kernel_ABI;
@@ -98,15 +100,25 @@ package body CuBit.Process_Events is
       end if;
    end File;
 
+   --  KERN-013: this one reader's consumed events, against the kernel's
+   --  readiness page. A look is a system call only when events were queued
+   --  since the last drain that emptied the lane.
+   Events_Read : CuBit.Readiness.Tracker;
+
    procedure Poll is
       M : aliased Message;
+      Seen : CuBit.Readiness.Count;
    begin
-      while Has_Room
-        and then CuBit.Kernel_Calls.Call
-              (KA.Receive_Event_Nonblocking,
+      while Has_Room and then CuBit.Readiness.Pending (Events_Read, CuBit.Readiness.Events) loop
+         Seen := CuBit.Readiness.Produced (CuBit.Readiness.Events);
+         if CuBit.Kernel_Calls.Call
+              (KA.Wait, Wait_ABI.Events_Sources, Wait_ABI.Now,
                Unsigned_64 (System.Storage_Elements.To_Integer (M'Address)))
-            = KA.Event_Received
-      loop
+            /= KA.Event_Received
+         then
+            CuBit.Readiness.Caught_Up (Events_Read, CuBit.Readiness.Events, Seen);
+            exit;
+         end if;
          File (M);
       end loop;
    end Poll;

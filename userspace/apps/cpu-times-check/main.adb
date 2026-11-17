@@ -16,6 +16,7 @@
 --  the page must fault: the kernel maps it read-only.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
 with CPU_Times_Publication;
@@ -78,7 +79,7 @@ procedure Main is
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call
-        (K.Sleep_Until_Monotonic_Microsecond, Now_Us + Microseconds);
+        (K.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever, Now_Us + Microseconds);
    end Sleep;
 
    --  Every CPU accounted in both snapshots, and its counters advanced.

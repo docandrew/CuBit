@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Ada.Exceptions; use Ada.Exceptions;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -99,8 +100,8 @@ package body Exception_Threads is
                Seen := Exit_Words (W);
                exit when Seen = 0;
                Ignore := CuBit.Kernel_Calls.Call
-                 (ABI.Futex_Wait, Unsigned_64 (To_Integer (Exit_Words (W)'Address)),
-                  Unsigned_64 (Seen), ABI.Forever);
+                 (ABI.Wait, Wait_ABI.Futex_Sources, ABI.Forever,
+                  Unsigned_64 (To_Integer (Exit_Words (W)'Address)), Unsigned_64 (Seen));
             end loop;
          end if;
          if Stacks (W) /= 0 then

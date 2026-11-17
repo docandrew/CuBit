@@ -44,7 +44,7 @@ ADA_FORBIDDEN = re.compile(
     r'\b(capCall|Native_GPU_Calls|Wait_Reached|Poll_Reached|Wait_For_Activity\w*|'
     r'Wait_Event|Receive\w*|SYSCALL_WAIT\w*|SLEEP_UNTIL\w*)\b')
 # The one sleep allowed: Native_GPU_Queue.Submit's bounded backpressure look.
-ADA_SLEEP = re.compile(r'SYSCALL_SLEEP\b')
+ADA_SLEEP = re.compile(r'\bSleep_For\b')
 BOUNDED_LOOK = 'for Look in 0 .. Room_Budget_Ms / Room_Pause_Ms loop'
 
 
@@ -168,7 +168,7 @@ MUTATIONS = [
      BOUNDED_LOOK, 'loop'),
     ('Ada: a second sleep in Submit', 'userspace/mesa/anv/native_gpu_queue.adb',
      '         State.Last (Decoded.Context) := Value;',
-     '         Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, 1);\n'
+     '         Ignore := CuBit.Waits.Sleep_For (1);\n'
      '         State.Last (Decoded.Context) := Value;'),
     ('Ada: blocking kick', 'userspace/runtime/gnat/cubit-channels.adb',
      'Ignore := CuBit.Messages.capSubmit (C.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);',

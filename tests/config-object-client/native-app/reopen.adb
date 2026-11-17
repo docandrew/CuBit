@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Startup;
 with CuBit.Handles;
 with CuBit.Handles.Services;
@@ -46,7 +47,7 @@ procedure Reopen is
       if not OK then
          debugPrint ("TEST: FAIL config-objects-reopen " & Step & ASCII.LF);
          Ignore := syscall (SYSCALL_EXIT, 1);
-         loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+         loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
       end if;
    end Check;
    function Next_Token return Unsigned_64 is

@@ -17,11 +17,11 @@ known = {n: int(v) for n, v in re.findall(r"(SYSCALL_\w+)\s*=>\s*(\d+)\s*,", ker
 pairs = {
     "Exit_Process": "SYSCALL_EXIT", "Get_Process_Id": "SYSCALL_GETPID",
     "Grow_Heap": "SYSCALL_SBRK", "Write": "SYSCALL_WRITE",
-    "Receive": "SYSCALL_RECEIVE", "Reply": "SYSCALL_REPLY",
-    "Poll_Any_IPC": "SYSCALL_POLL_ANY_IPC",
+    "Reply": "SYSCALL_REPLY",
+    
     "Create_Shared_Memory_Grant_For_Process_Id": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID",
-    "Wait_Completion": "SYSCALL_WAIT_COMPLETION",
-    "Receive_Event_Nonblocking": "SYSCALL_RECEIVE_EVENT_NB",
+    
+    
     "Get_Time": "SYSCALL_GETTIME",
     "Call_Via_Endpoint_Capability": "SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY",
     "Submit_Via_Endpoint_Capability": "SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY",
@@ -32,22 +32,26 @@ pairs = {
     "Release_Owned_Region": "SYSCALL_RELEASE_OWNED_REGION",
     "Send_Control": "SYSCALL_SEND_CONTROL",
     "Read_Statistics": "SYSCALL_READ_STATISTICS", "Publish": "SYSCALL_PUBLISH",
-    "Thread_Create": "SYSCALL_THREAD_CREATE", "Thread_Exit": "SYSCALL_THREAD_EXIT", "Futex_Wait": "SYSCALL_FUTEX_WAIT",
+    "Thread_Create": "SYSCALL_THREAD_CREATE", "Thread_Exit": "SYSCALL_THREAD_EXIT", 
     "Futex_Wake": "SYSCALL_FUTEX_WAKE",
     "Create_Shared_Memory_Grant_Via_Capability": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY",
     "Get_Owned_Shared_Memory_Grant_Generation": "SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION",
     "Acquire_Shared_Memory_Grant": "SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT",
     "Acquire_Shared_Memory_Grant_Via_Capability": "SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY",
-    "Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond": "SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND",
+    
     "Read_Monotonic_Microseconds": "SYSCALL_READ_MONOTONIC_MICROSECONDS",
     "Yield": "SYSCALL_YIELD",
-    "Sleep_Until_Monotonic_Microsecond": "SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND",
+    
 }
 ours = {n: value(v) for n, v in re.findall(
     r"(\w+)\s*:\s*constant\s+System_Call\s*:=\s*([\w#]+)\s*;", abi, re.S)}
 bad = [f"{n}: Kernel_ABI {ours.get(n)}, kernel {known.get(m)}"
        for n, m in pairs.items() if ours.get(n) is None or ours.get(n) != known.get(m)]
 bad += [f"{n}: not checked" for n in ours if n not in pairs]
+# WAIT (ABI-002 slice 2): both sides name the one source, Wait_ABI.
+if not re.search(r"\bWait\s*:\s*constant\s+System_Call\s*:=\s*Wait_ABI\.System_Call_Number\s*;", abi) \
+   or not re.search(r"SYSCALL_WAIT\s*=>\s*Wait_ABI\.System_Call_Number", kernel):
+    bad.append("Kernel_ABI.Wait and the kernel's SYSCALL_WAIT must both be Wait_ABI.System_Call_Number")
 # The grant and control events (CuBit.Control_Events) and control kinds,
 # against kernel/src/ipc_labels.ads.
 events = (repo / "userspace/runtime/gnat/cubit-control_events.ads").read_text()
@@ -73,9 +77,13 @@ if not a or not b or value(a.group(1)) != value(b.group(1)):
     bad.append("Channel_Contracts.Maximum_Region_Pages differs from Memory_Grants.Maximum_Page_Count")
 # The futex results and owned-memory limit, against the kernel's.
 futex = (repo / "kernel/src/process-futex.ads").read_text()
+# Kernel_ABI's futex results are WAIT's (shared/capabilities/wait_abi.ads).
+wait_abi = (repo / "shared/capabilities/wait_abi.ads").read_text()
 for ours_name, theirs in (("Futex_Woken", "FUTEX_WOKEN"), ("Futex_Retry", "FUTEX_RETRY"),
                           ("Futex_Timed_Out", "FUTEX_TIMED_OUT")):
-    a = re.search(ours_name + r"\s*:\s*constant[^:]*:=\s*(\d+)", abi)
+    if not re.search(ours_name + r"\s*:\s*constant[^:]*:=\s*Wait_ABI\." + ours_name + r"\s*;", abi):
+        bad.append(f"Kernel_ABI.{ours_name} is not Wait_ABI's")
+    a = re.search(ours_name + r"\s*:\s*constant[^:]*:=\s*(\d+)", wait_abi)
     b = re.search(theirs + r"\s*:\s*constant[^:]*:=\s*(\d+)", futex)
     if not a or not b or a.group(1) != b.group(1):
         bad.append(f"{ours_name} differs from the kernel's {theirs}")

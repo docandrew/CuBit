@@ -44,6 +44,7 @@
 --      which must fault (the harness checks the kill).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with System;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -187,7 +188,7 @@ procedure Main is
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Sleep_Until_Monotonic_Microsecond, Now_Us + Poll_Us);
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever, Now_Us + Poll_Us);
    end Pause;
 
    --  devmgr's named PCI broker (the manifest's optional "pci-windows").

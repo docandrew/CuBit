@@ -57,25 +57,26 @@ typedef long                ssize_t;
 #define SYSCALL_WRITE           12
 
 /* IPC - Synchronous */
-#define SYSCALL_RECEIVE         17
 #define SYSCALL_REPLY           18
 #define SYSCALL_SEND_EVENT      19
-#define SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND 21
-#define SYSCALL_POLL_ANY_IPC    22
 
-/* IPC - Async */
-#define SYSCALL_WAIT_COMPLETION 24
-#define SYSCALL_POLL_COMPLETION 25
-#define SYSCALL_RECEIVE_EVENT_NB 26
-#define SYSCALL_POLL_EVENT      26
-#define SYSCALL_POLL_SERVICE_REQUEST 80
+/* Waiting: the one WAIT call (ABI-002 slice 2, shared/capabilities/
+ * wait_abi.ads): receive, the polls, completions, sleep, futex wait and the
+ * readiness wait. Its Sources bits, forms and results are Wait_ABI's. */
+#define SYSCALL_WAIT            149
+#define CUBIT_WAIT_REQUESTS     (1u << 0)
+#define CUBIT_WAIT_EVENTS       (1u << 1)
+#define CUBIT_WAIT_COMPLETIONS  (1u << 2)
+#define CUBIT_WAIT_FUTEX_WORD   (1u << 3)
+#define CUBIT_WAIT_OFFERED      (1u << 4)
+#define CUBIT_WAIT_TIMER        (1u << 5)
+#define CUBIT_WAIT_READINESS_ONLY (1u << 8)
+#define CUBIT_WAIT_NOW          0u
+#define CUBIT_WAIT_NOTHING      UINT64_MAX
 
 /* Time */
 #define SYSCALL_GETTIME         27
-#define SYSCALL_SLEEP           28
 #define SYSCALL_YIELD           118
-/* Sleep until an absolute time on the monotonic microsecond clock (114). */
-#define SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND 119
 
 /* Framebuffer */
 #define SYSCALL_MAPFB           29
@@ -105,8 +106,6 @@ typedef long                ssize_t;
 
 #define SYSCALL_REPLY_WAIT      48
 
-/* Non-consuming readiness: 1 = work, 0 = deadline, UINT64_MAX = unavailable. */
-#define SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND 113
 
 /* Shared-memory grants */
 #define SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID      102

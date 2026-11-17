@@ -4,6 +4,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with System.Machine_Code; use System.Machine_Code;
+with Wait_ABI;
 
 package body CuBit.Kernel_Calls is
 
@@ -31,6 +32,16 @@ package body CuBit.Kernel_Calls is
            Clobber => "r10, rcx, r8, r9, r11, memory",
            Volatile => True);
       return Result;
+   end Call;
+
+   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET.
+   function Call
+     (Number : CuBit.Kernel_ABI.ACPI_Shim_Call;
+      A0, A1, A2, A3, A4, A5 : Unsigned_64 := 0) return Unsigned_64
+   is
+      pragma Unreferenced (Number, A1, A2, A3, A4, A5);
+   begin
+      return Call (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever, A0);
    end Call;
 
    function Submit

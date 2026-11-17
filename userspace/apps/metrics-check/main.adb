@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Records;
@@ -47,7 +48,7 @@ procedure Main is
          debugPrint ("TEST: FAIL metrics: " & Name & ASCII.LF);
          Ignore := syscall (SYSCALL_EXIT, 1);
          loop
-            Ignore := syscall (SYSCALL_SLEEP, 1000);
+            Ignore := CuBit.Waits.Sleep_For (1000);
          end loop;
       end if;
    end Check;
@@ -243,7 +244,7 @@ begin
          CuBit.Metric_Raw_Observer.Disconnect (Raw, Done);
          exit when Done;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "raw grant retired");
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       Msg := NULL_MESSAGE;
       Msg.tag := (label => P.Operation'Enum_Rep (P.Query_Raw), length => P.Message_Words,
@@ -380,14 +381,14 @@ begin
          CuBit.Metric_Raw_Observer.Disconnect (Raw, Done);
          exit when Done;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "trace reader grant retirement");
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       Deadline := syscall (SYSCALL_GETTIME) + Wait_Ms;
       loop
          CuBit.Metric_Pages.Disconnect (Writer, Done);
          exit when Done;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "trace publisher grant retirement");
-         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       debugPrint ("TEST: PASS trace-stream 63 exact events gap269 orphans3 drops400 retirement" & ASCII.LF);
    end;

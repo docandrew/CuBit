@@ -15,6 +15,7 @@
 --     flushes, and reads both back. The host then checks the image file.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -119,7 +120,7 @@ begin
          Disk := DIC.Open (Startup.Disk_Install, (Disk => 0, Mode => Read_Only), Request_Deadline_Ms);
          exit when Disk.Opened
            or else syscall (SYSCALL_GETTIME) - Started > Disk_Wait_Milliseconds;
-         Ignore := syscall (SYSCALL_SLEEP, Disk_Poll_Milliseconds);
+         Ignore := CuBit.Waits.Sleep_For (Disk_Poll_Milliseconds);
       end loop;
    end;
    Check (Disk.Opened, "disk 0 opened read-only");

@@ -21,15 +21,7 @@ package CuBit.Messages is
    SYSCALL_GETPID          : constant Unsigned_64 := 6;
    SYSCALL_SBRK            : constant Unsigned_64 := 8;
    SYSCALL_WRITE           : constant Unsigned_64 := 12;
-   SYSCALL_RECEIVE         : constant Unsigned_64 := 17;
    SYSCALL_REPLY           : constant Unsigned_64 := 18;
-   SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND :
-      constant Unsigned_64 := 21;
-   SYSCALL_POLL_ANY_IPC    : constant Unsigned_64 := 22;
-   SYSCALL_WAIT_COMPLETION : constant Unsigned_64 := 24;
-   SYSCALL_POLL_COMPLETION : constant Unsigned_64 := 25;
-   SYSCALL_RECEIVE_EVENT_NB : constant Unsigned_64 := 26;
-   SYSCALL_POLL_EVENT      : constant Unsigned_64 := 26;
    SYSCALL_GETTIME         : constant Unsigned_64 := 27;
    --  GETTIME's epoch when the kernel publishes the clock page (then read
    --  CuBit.Monotonic instead, docs/fast-clock.md), else the HPET's own;
@@ -46,14 +38,10 @@ package CuBit.Messages is
    SYSCALL_RESERVE_OWNED_REGION : constant Unsigned_64 := 146;
    SYSCALL_CHANGE_OWNED_RANGE   : constant Unsigned_64 := 147;
    SYSCALL_RELEASE_OWNED_REGION : constant Unsigned_64 := 148;
-   SYSCALL_SLEEP           : constant Unsigned_64 := 28;
    --  Give the CPU to any other ready thread and run again when next picked.
    SYSCALL_YIELD           : constant Unsigned_64 := 118;
-   --  Sleep until an absolute time on the READ_MONOTONIC_MICROSECONDS clock
-   --  (word 0); a time already passed returns at once.
-   SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND :
-     constant Unsigned_64 := 119;
-   SYSCALL_POLL_SERVICE_REQUEST : constant Unsigned_64 := 80;
+   --  Waiting (receive, poll, sleep, futex, completions) is the one WAIT
+   --  call (ABI-002 slice 2): CuBit.Waits, and the wrappers below.
    SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID :
       constant Unsigned_64 := 102;
    SYSCALL_REVOKE_SHARED_MEMORY_GRANT : constant Unsigned_64 := 103;
@@ -78,8 +66,19 @@ package CuBit.Messages is
       constant Unsigned_64 := 110;
    SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION :
       constant Unsigned_64 := 111;
-   SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND :
-      constant Unsigned_64 := 113;
+
+   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET
+   --  (/home/doc/cubit-build-tmp/abi002/wait-acpi-sites.md). SLEEP is
+   --  retired; the ACPI-owned services (gpio, hid-i2c, i2c-dw) still spell
+   --  syscall (SYSCALL_SLEEP, Milliseconds) until they call
+   --  CuBit.Waits.Sleep_For. This overload sends exactly that through WAIT;
+   --  the type keeps every other caller from reaching it by a number.
+   type ACPI_Shim_Call is (Sleep_Shim);
+   SYSCALL_SLEEP : constant ACPI_Shim_Call := Sleep_Shim;
+   function syscall
+     (call : ACPI_Shim_Call; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
+      arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0;
+      arg4 : Unsigned_64 := 0; arg5 : Unsigned_64 := 0) return Unsigned_64;
 
    type Activity_Result is (Work_Available, Deadline_Reached, Unavailable);
    --  TRACE_SUMMARY controls beyond Summary require a LATENCY_TRACE kernel.

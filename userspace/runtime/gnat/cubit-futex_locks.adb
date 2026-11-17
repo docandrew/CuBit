@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with System.Machine_Code; use System.Machine_Code;
 with System;
 with System.Storage_Elements;
@@ -55,7 +56,8 @@ package body CuBit.Futex_Locks is
    procedure Futex_Wait
      (Where : System.Address; Expected : Unsigned_32; Deadline : Unsigned_64; Timed_Out : out Boolean) is
    begin
-      Timed_Out := KC.Call (KA.Futex_Wait, Address_Word (Where), Unsigned_64 (Expected), Deadline)
+      Timed_Out := KC.Call (KA.Wait, Wait_ABI.Futex_Sources, Deadline,
+                            Address_Word (Where), Unsigned_64 (Expected))
                    = KA.Futex_Timed_Out;
    end Futex_Wait;
 

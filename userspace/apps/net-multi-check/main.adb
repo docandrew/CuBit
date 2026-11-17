@@ -15,6 +15,7 @@
 --  usable). Ends when the fixture closes the stream.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -131,7 +132,7 @@ begin
       Opened := Open (Stream, Startup.Stream, Stream_Target);
       exit when Opened or else Now - Started >= Test_MS;
       declare
-         Ignore : constant Unsigned_64 := syscall (SYSCALL_SLEEP, Poll_MS);
+         Ignore : constant Unsigned_64 := CuBit.Waits.Sleep_For (Poll_MS);
       begin
          null;
       end;

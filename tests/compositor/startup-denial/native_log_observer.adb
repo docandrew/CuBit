@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
@@ -21,7 +22,7 @@ procedure Main is
       if not OK then
          debugPrint ("TEST: FAIL desktop log channel: " & Why & ASCII.LF);
          Ignore := syscall (SYSCALL_EXIT, 1);
-         loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+         loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
       end if;
    end Check;
    function Starts (Text, Prefix : String) return Boolean is
@@ -33,7 +34,7 @@ begin
       Source := To_Word (Registered_Driver (DRIVER_DESKTOP));
       exit when Source /= 0;
       Check (syscall (SYSCALL_GETTIME) < Deadline, "desktop registration timeout");
-      Ignore := syscall (SYSCALL_SLEEP, 10);
+      Ignore := CuBit.Waits.Sleep_For (10);
    end loop;
    CuBit.Logging.Subscribe (Reader, Result, Source => Source);
    Check (Result = P.OK, "observer subscription");
@@ -68,7 +69,7 @@ begin
          end;
       end loop;
       exit when Step = 4 and then Backend_Seen;
-      Ignore := syscall (SYSCALL_SLEEP, 1);
+      Ignore := CuBit.Waits.Sleep_For (1);
    end loop;
    CuBit.Logging.Close (Reader, Result);
    Check (Result = P.OK, "observer close");

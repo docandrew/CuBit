@@ -16,6 +16,7 @@
 --  (the ipc-test endpoint, which this launcher holds and passes on).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with Startup;
 with CuBit.Child_Exits;
@@ -80,7 +81,7 @@ procedure Main is
    begin
       Top_Up_Flood;
       Ignore := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Sleep_Until_Monotonic_Microsecond,
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
          CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
            + Poll_Milliseconds * Microseconds_Per_Millisecond);
    end Pause;

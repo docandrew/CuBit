@@ -1,6 +1,7 @@
 ------------------------------------------------------------------------------
 --  Deterministic typed-input publication and recovery regression.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 
 with CuBit.Input; use CuBit.Input;
@@ -38,7 +39,7 @@ procedure Main is
             return;
          end if;
          pending.flags (RESYNCHRONIZE) := True;
-         ignored := syscall (SYSCALL_SLEEP, 1);
+         ignored := CuBit.Waits.Sleep_For (1);
       end loop;
       passed := False;
    end Publish;
@@ -93,7 +94,7 @@ begin
       exit when desktopConsumer /= No_Process and then
         pointerConsumer = desktopConsumer and then
         keyboardConsumer = desktopConsumer;
-      ignored := syscall (SYSCALL_SLEEP, 10);
+      ignored := CuBit.Waits.Sleep_For (10);
    end loop;
 
    if desktopConsumer = No_Process or else
@@ -107,17 +108,17 @@ begin
       --  stream assertions do not depend on it, but the headless profile also
       --  verifies that ordinary motion over a rich editor does not trigger a
       --  client repaint for every report.
-      ignored := syscall (SYSCALL_SLEEP, 500);
+      ignored := CuBit.Waits.Sleep_For (500);
 
       --  Move from desktop's deterministic boot position into the center of
       --  the Workbench source editor before exercising the paced stream.
       Publish_Pointer (320, -220, 0);
-      ignored := syscall (SYSCALL_SLEEP, 10);
+      ignored := CuBit.Waits.Sleep_For (10);
 
       --  A paced motion stream should remain continuous under admitted load.
       for sample in 1 .. 128 loop
          Publish_Pointer (1, (if sample mod 2 = 0 then 1 else -1), 0);
-         ignored := syscall (SYSCALL_SLEEP, 1);
+         ignored := CuBit.Waits.Sleep_For (1);
       end loop;
 
       Publish_Pointer (0, 0, 1);
@@ -133,7 +134,7 @@ begin
 
       --  Wake desktop after its one-second telemetry window so the headless
       --  gate can observe the accumulated continuity/rejection counters.
-      ignored := syscall (SYSCALL_SLEEP, 1_200);
+      ignored := CuBit.Waits.Sleep_For (1_200);
       Publish_Pointer (0, 0, 0);
    end if;
 
@@ -145,6 +146,6 @@ begin
    end if;
 
    loop
-      ignored := syscall (SYSCALL_SLEEP, 1_000);
+      ignored := CuBit.Waits.Sleep_For (1_000);
    end loop;
 end Main;

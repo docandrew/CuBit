@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Failures;
 with CuBit.Messages;
@@ -252,7 +253,7 @@ package body CCL_Log_IO is
                      Result := P.Unavailable;
                      exit;
                   end if;
-                  Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Replay_Poll_Ms);
+                  Ignore := CuBit.Waits.Sleep_For (Replay_Poll_Ms);
                when others =>
                   Ok := False;
                   exit;

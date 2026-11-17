@@ -5,6 +5,7 @@
 --  start-children scope, a device-class start, badge bindings and an
 --  unknown dependency, each with its typed reason; then starts a child
 --  that lingers and ends itself, so procmgr must reap the child.
+with CuBit.Waits;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
@@ -85,7 +86,7 @@ begin
       for Step in 1 .. Exit_Deadline_Ms / Poll_Step_Ms loop
          CuBit.Process_Events.Take_Exit (First.Child, Found, Ended);
          exit when Found;
-         Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Poll_Step_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Poll_Step_Ms);
       end loop;
       Check (Found and then Ended.Kind = CuBit.Child_Exits.Exited and then Ended.Code = 3,
              "the child's exit reached its supervisor: pid " & CuBit.Process_IDs.Text.Image (First.Child) &
@@ -136,7 +137,7 @@ begin
         ("(Child_Parameters label => Child_Label.Lingering count => 1 mode => Child_Mode.Linger)"));
    begin
       Check (R.Kind = CST.Started, "a lingering child started", CST.Image (R));
-      Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_SLEEP, Linger_Start_Ms);
+      Ignore := CuBit.Waits.Sleep_For (Linger_Start_Ms);
       CuBit.Process_Events.Take_Exit (R.Child, Found, Ended);
       Check (not Found, "the lingering child still runs", "it ended early");
       --  6c. Releasing a child that was never held, and one this program

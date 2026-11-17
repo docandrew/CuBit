@@ -15,6 +15,7 @@
 --  its startup table, built from its manifest (CuBit.Startup_Builder), in
 --  its launch block before it first runs.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Deferred_Warnings;
 with Source_Notices;
 with CuBit.Log_Sources;
@@ -6018,7 +6019,7 @@ procedure main is
          declare
             Ignore : Unsigned_64;
          begin
-            Ignore := syscall (SYSCALL_SLEEP, Profile_Retry_Ms);
+            Ignore := CuBit.Waits.Sleep_For (Profile_Retry_Ms);
          end;
          Now := syscall (SYSCALL_GETTIME);
       end loop;

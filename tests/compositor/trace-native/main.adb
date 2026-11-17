@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Raw_Observer;
@@ -27,7 +28,7 @@ procedure Main is
    begin
       debugPrint ("TEST: FAIL desktop-trace " & Why & ASCII.LF);
       Ignore := syscall (SYSCALL_EXIT, 1);
-      loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+      loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
    end Fail;
 begin
    O.Bind (Raw, Startup.Metrics_Observer);
@@ -70,13 +71,13 @@ begin
          Cursor := Resume;
          exit when N = 0;
       end loop;
-      Ignore := syscall (SYSCALL_SLEEP, 20);
+      Ignore := CuBit.Waits.Sleep_For (20);
    end loop;
    S.Discard_Partial (Collector);
    for Retry in 1 .. 100 loop
       O.Disconnect (Raw, Done);
       exit when Done;
-      Ignore := syscall (SYSCALL_SLEEP, 10);
+      Ignore := CuBit.Waits.Sleep_For (10);
    end loop;
    if not Done then Fail ("grant retirement"); end if;
    if Counts (W.Input_Event) < 3 or else Counts (W.Source_Event) = 0 or else

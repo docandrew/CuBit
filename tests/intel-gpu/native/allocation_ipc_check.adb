@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -249,5 +250,5 @@ begin
    debugPrint ("native allocation IPC: 64-probe gap search with interleaved completion PASS" & ASCII.LF);
    debugPrint ("native allocation IPC: bounded local work and interleaved completion PASS" & ASCII.LF);
    debugPrint ("TEST: PASS native allocation IPC 201 saved replies 19 extents both directories grew 2 interleaved requests (NO GPU/ISOLATION)" & ASCII.LF);
-   loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
 end Allocation_IPC_Check;

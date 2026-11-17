@@ -4,6 +4,7 @@
 --  Receives async requests, saves each request's reply (a Reply handle,
 --  CAP-002), and completes the request later with replyCap.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
 
@@ -181,7 +182,7 @@ begin
    if ret = Unsigned_64'Last then
       debugPrint ("TEST: FAIL async-ipc server-register" & LF);
       loop
-         ret := syscall (SYSCALL_SLEEP, 1000);
+         ret := CuBit.Waits.Sleep_For (1000);
       end loop;
    end if;
 
@@ -229,7 +230,7 @@ begin
          -- Let the caller enqueue a one-way request AND block in a synchronous
          -- poll before the next receive. On CPU 0, direct reply handoff then
          -- keeps that poller hot, reproducing the closed-window starvation.
-         ret := syscall (SYSCALL_SLEEP, 25);
+         ret := CuBit.Waits.Sleep_For (25);
       elsif msg.tag.label = OP_FAIR_QUEUED then
          fairSeen := True;
          if CuBit.Handles.IPC.Save_Reply.Saved then
@@ -254,7 +255,7 @@ begin
          if ret /= 1 then
             debugPrint ("TEST: FAIL async-ipc save-reply-cap" & LF);
          else
-            ret := syscall (SYSCALL_SLEEP, 25);
+            ret := CuBit.Waits.Sleep_For (25);
 
             declare
                replyMsg : Message := makeEchoReply (msg.words (0), from);
@@ -409,7 +410,7 @@ begin
             -- Test-only scheduling allowance after the barrier acknowledgement.
             -- Sleep is not the oracle: delivery MUST fail, then the same slot
             -- MUST accept a fresh reply and complete the survivor's token.
-            ret := syscall (SYSCALL_SLEEP, 50);
+            ret := CuBit.Waits.Sleep_For (50);
             ret := replyCap (DEPARTING_SLOT, makeEchoReply (0, departingCaller));
             if ret /= 0 then
                debugPrint ("TEST: FAIL async-ipc dead caller reply delivered" & LF);
@@ -472,7 +473,7 @@ begin
                     boolWord (forgedRefused));
       elsif msg.tag.label = OP_DEADLINE_BUSY then
          -- One way: keep the server from receiving while a call waits.
-         ret := syscall (SYSCALL_SLEEP, BUSY_MS);
+         ret := CuBit.Waits.Sleep_For (BUSY_MS);
       elsif msg.tag.label = OP_DEADLINE_QUEUED then
          -- Its caller timed out while queued: this must never be seen.
          queuedSeen := True;
@@ -515,10 +516,10 @@ begin
          Channel_Session;
       elsif msg.tag.label = OP_DIE then
          -- Give the submitter time to enter its combined readiness wait.
-         ret := syscall (SYSCALL_SLEEP, 25);
+         ret := CuBit.Waits.Sleep_For (25);
          ret := syscall (SYSCALL_EXIT);
          loop
-            ret := syscall (SYSCALL_SLEEP, 1000);
+            ret := CuBit.Waits.Sleep_For (1000);
          end loop;
       else
          sendReply (from, REPLY_ERR, Unsigned_64 (msg.tag.label));

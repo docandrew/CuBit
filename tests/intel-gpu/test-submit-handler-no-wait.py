@@ -148,7 +148,7 @@ checks += 1
 # never Wait_For_Activity_Until (which returns at once while a deferred
 # request stays queued).
 pace = body(main, 'procedure', 'Sleep_While_GPU_Busy')
-if 'SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND' not in pace or 'Wait_For_Activity' in pace:
+if 'Wait_ABI.Timer_Sources' not in pace or 'Wait_For_Activity' in pace:
     raise SystemExit('FAIL: GPU work in flight must sleep on the monotonic clock')
 poll_us = re.search(r'Submission_Poll_Us : constant Unsigned_64 := ([\d_]+);', main)
 poll_ms = re.search(r'Submission_Poll_Ms : constant Unsigned_64 := ([\d_]+);', main)

@@ -11,6 +11,7 @@
 --  next boot finds it in the file.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -88,7 +89,7 @@ begin
       Request := Open_Request (Loan, Log_Path'Length);
       Opened := Call (Request);
       exit when Opened or else syscall (SYSCALL_GETTIME) - Started > Wait_Milliseconds;
-      Ignore := syscall (SYSCALL_SLEEP, Poll_Milliseconds);
+      Ignore := CuBit.Waits.Sleep_For (Poll_Milliseconds);
    end loop;
    if not Opened then
       Emit ("install-boot-check: the persistent log is not readable FAIL");

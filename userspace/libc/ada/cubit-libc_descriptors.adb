@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -423,8 +424,8 @@ package body CuBit.Libc_Descriptors is
    begin
       Ignore := Atomic_Add (Waiters'Address, 1, Sequentially_Consistent);
       Ignore_Result := CuBit.Kernel_Calls.Call
-        (K.Futex_Wait, Value_Of (Events'Address),
-         Unsigned_64 (Unsigned_32'Mod (Sequence)), Unsigned_64 (Deadline));
+        (K.Wait, Wait_ABI.Futex_Sources, Unsigned_64 (Deadline), Value_Of (Events'Address),
+         Unsigned_64 (Unsigned_32'Mod (Sequence)));
       Ignore := Atomic_Add (Waiters'Address, Minus_One, Sequentially_Consistent);
    end Readiness_Wait;
 
@@ -445,7 +446,8 @@ package body CuBit.Libc_Descriptors is
    begin
       loop
          M := (others => <>);
-         From := CuBit.Kernel_Calls.Call (K.Receive, Value_Of (M'Address));
+         From := CuBit.Kernel_Calls.Call
+           (K.Wait, Wait_ABI.Messages_Sources, Wait_ABI.Forever, Value_Of (M'Address));
          --  Receive takes events too: a child's exit goes to waitpid's
          --  bookkeeping (it would otherwise be lost to the stream handler),
          --  and a control message is taken there (CuBit.Libc_Process).

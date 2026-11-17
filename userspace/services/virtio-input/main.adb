@@ -22,6 +22,7 @@
 --  button transitions are never merged or lost.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -504,7 +505,7 @@ begin
          end if;
          if not Progress then
             if Wait_For_Activity_Until (Deadline) = Unavailable then
-               Ignore := syscall (SYSCALL_SLEEP, 1);
+               Ignore := CuBit.Waits.Sleep_For (1);
             end if;
          end if;
       end;

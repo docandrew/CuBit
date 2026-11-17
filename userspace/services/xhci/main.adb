@@ -7,6 +7,7 @@
 --  their input under its own process identity (Desktop tells sources apart
 --  by publisher, CuBit.Input.Decode).
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -356,7 +357,7 @@ begin
       --  Give the log grant a chance to carry the failure out.
       for Attempt in 1 .. 50 loop
          Boot_Log.Poll;
-         ignore := syscall (SYSCALL_SLEEP, 20);
+         ignore := CuBit.Waits.Sleep_For (20);
       end loop;
       ignore := syscall (SYSCALL_EXIT);
       return;
@@ -477,12 +478,12 @@ begin
                if D > Now then
                   activity := Wait_For_Activity_Until (D);
                   if activity = Unavailable then
-                     ignore := syscall (SYSCALL_SLEEP, 1);
+                     ignore := CuBit.Waits.Sleep_For (1);
                   end if;
                end if;
             else
                --  Polled controller: the event ring every millisecond.
-               ignore := syscall (SYSCALL_SLEEP, 1);
+               ignore := CuBit.Waits.Sleep_For (1);
             end if;
          end;
       end if;

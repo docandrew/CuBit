@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -70,5 +71,5 @@ begin
    Check (Allocate_DMA (0, Base - 4096, 0, 0) /= Failed,
           "rollback prefix");
    debugPrint ("TEST: PASS native DMA growth 96 records 192MiB 49152 sentinels rollback (NO GPU)" & ASCII.LF);
-   loop Ignored := syscall (SYSCALL_SLEEP, 100); end loop;
+   loop Ignored := CuBit.Waits.Sleep_For (100); end loop;
 end DMA_Growth_Check;

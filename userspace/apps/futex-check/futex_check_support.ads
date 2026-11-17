@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -8,7 +9,6 @@ package Futex_Check_Support is
 
    SYSCALL_THREAD_CREATE : constant Unsigned_64 := 90;
    SYSCALL_THREAD_EXIT   : constant Unsigned_64 := 91;
-   SYSCALL_FUTEX_WAIT    : constant Unsigned_64 := 92;
    SYSCALL_FUTEX_WAKE    : constant Unsigned_64 := 93;
 
    FUTEX_WOKEN     : constant Unsigned_64 := 0;
@@ -33,7 +33,7 @@ package Futex_Check_Support is
 
    function Futex_Wait (W : access Word; Expected : Unsigned_32;
                         Deadline : Unsigned_64 := FOREVER) return Unsigned_64 is
-     (syscall (SYSCALL_FUTEX_WAIT, Addr (W), Unsigned_64 (Expected), Deadline));
+     (CuBit.Waits.Futex_Wait (W.all'Address, Unsigned_64 (Expected), Deadline));
 
    function Futex_Wake (W : access Word; Count : Unsigned_64) return Unsigned_64 is
      (syscall (SYSCALL_FUTEX_WAKE, Addr (W), Count));

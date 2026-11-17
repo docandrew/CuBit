@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -155,5 +156,5 @@ begin
    Ignore := Call (Second_Child.Mailbox, 2);
    Wait_Retirement (Second_Child.Child);
    debugPrint ("TEST: PASS grant lifetime retired owner drained stale identities denied (NO GPU)" & ASCII.LF);
-   loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
+   loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
 end Lifetime;

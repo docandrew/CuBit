@@ -4,6 +4,7 @@
 --  reports what it served, refused and saw end.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Channel_Limits;
 with CuBit.Channel_Servers;
@@ -82,14 +83,14 @@ procedure Channel_Session is
             end if;
             Answer (I, Item.Tag, Item.Item.Value);
          elsif Item.Item.Kind = IC.Ring_Stamp then
-            Ignore := syscall (SYSCALL_SLEEP, IC.Hold_Ms);
+            Ignore := CuBit.Waits.Sleep_For (IC.Hold_Ms);
             --  The answer carries the stamp taken just before the ring; the
             --  client reads it only after the ring wakes it.
             Servers.Complete (S, I, Item.Tag, (Value => TSC, Echoed => Item.Item.Value));
             Servers.Ring_Now (S, I);
             Served_Count := Served_Count + 1;
          elsif Item.Item.Kind = IC.Delayed_Stamp then
-            Ignore := syscall (SYSCALL_SLEEP, IC.Hold_Ms);
+            Ignore := CuBit.Waits.Sleep_For (IC.Hold_Ms);
             Servers.Complete (S, I, Item.Tag, (Value => TSC, Echoed => Item.Item.Value));
             Served_Count := Served_Count + 1;
          elsif Item.Item.Kind = IC.Silent and then not Held_Valid then
@@ -204,7 +205,7 @@ begin
                   Late : Message := NULL_MESSAGE;
                begin
                   if Saved.Saved then
-                     Ignore := syscall (SYSCALL_SLEEP, IC.Hold_Ms);
+                     Ignore := CuBit.Waits.Sleep_For (IC.Hold_Ms);
                      Late.tag := (label => 16#F000#, length => 1, protocol => 0, ipc => <>, reserved => 0);
                      Late.words (0) := TSC;
                      Ignore := replyCap (Saved.Handle, Late);

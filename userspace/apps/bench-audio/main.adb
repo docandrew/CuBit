@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -128,7 +129,7 @@ begin
       Refill;
       exit when syscall (SYSCALL_GETTIME) - Started >= 8_000;
       -- Explicit producer model: 1 ms timer refill, NOT the mixer design.
-      Ignored := syscall (SYSCALL_SLEEP, 1);
+      Ignored := CuBit.Waits.Sleep_For (1);
    end loop;
    Audio.pause (Stream);
    -- close is synchronous and ensures the service processes the pause first.

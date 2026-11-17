@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Benchmark_Clock;
@@ -7,7 +8,7 @@ procedure Load_Work (Duration_Ms : Unsigned_64; CPU_Control : Boolean := False) 
    State : Unsigned_64 := 1 with Volatile;
    PID, Rate : Unsigned_64 := 0;
 begin
-   Ignored := syscall (SYSCALL_SLEEP, 250);
+   Ignored := CuBit.Waits.Sleep_For (250);
    PID := syscall (SYSCALL_GETPID);
    if CPU_Control then
       CuBit.Benchmark_Clock.Calibrate (Rate);

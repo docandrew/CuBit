@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
@@ -39,7 +40,7 @@ procedure Main is
          debugPrint ("TEST: FAIL log-fields: " & Name & ASCII.LF);
          Ignore := syscall (SYSCALL_EXIT, 1);
          loop
-            Ignore := syscall (SYSCALL_SLEEP, 1000);
+            Ignore := CuBit.Waits.Sleep_For (1000);
          end loop;
       end if;
    end Check;

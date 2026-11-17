@@ -9,6 +9,7 @@
 --  stealing, idle CPUs take instances and elapsed time stays near one
 --  instance's; without it, instances share one CPU.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 
@@ -20,7 +21,7 @@ procedure Main is
    X : Unsigned_64;
 begin
    --  Let every instance be spawned before any starts measuring.
-   Ignore := syscall (SYSCALL_SLEEP, 500);
+   Ignore := CuBit.Waits.Sleep_For (500);
    Start := syscall (SYSCALL_GETTIME);
    X := State;
    for I in 1 .. Iterations loop

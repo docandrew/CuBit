@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 procedure Main is
@@ -6,7 +7,7 @@ procedure Main is
    State : Unsigned_64 := PID with Volatile;
    X : Unsigned_64;
 begin
-   Ignore := syscall (SYSCALL_SLEEP, 5_000);
+   Ignore := CuBit.Waits.Sleep_For (5_000);
    Start := syscall (SYSCALL_GETTIME);
    debugPrint ("TEST: viewer-load begin pid=" & PID'Image & ASCII.LF);
    loop

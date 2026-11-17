@@ -5,6 +5,7 @@
 --  Keep this intentionally boring: benchmark clients should measure kernel IPC
 --  and scheduler behavior, not app-side business logic.
 ------------------------------------------------------------------------------
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -41,7 +42,7 @@ begin
    if ret = Unsigned_64'Last then
       debugPrint ("BENCH: FAIL ipc server-register" & LF);
       loop
-         ret := syscall (SYSCALL_SLEEP, 1000);
+         ret := CuBit.Waits.Sleep_For (1000);
       end loop;
    end if;
 

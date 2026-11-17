@@ -40,6 +40,7 @@
 --  with no line handle, or for another line, it is refused.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with System;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -302,7 +303,7 @@ begin
       Check (Timer /= 0 and then Found /= 0, "PM timer inside a window");
       if Found /= 0 then
          First_Read := CuBit.Handles.Devices.In_32 (G.IO (Found).Ports, Unsigned_16 (Timer));
-         Ignore := syscall (SYSCALL_SLEEP, Timer_Gap_Ms);
+         Ignore := CuBit.Waits.Sleep_For (Timer_Gap_Ms);
          Second_Read := CuBit.Handles.Devices.In_32 (G.IO (Found).Ports, Unsigned_16 (Timer));
          debugPrint ("acpi-hardware-check: PM timer " & Image (First_Read and PM_Timer_Mask) &
                      " then " & Image (Second_Read and PM_Timer_Mask) & LF);

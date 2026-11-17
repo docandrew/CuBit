@@ -14,6 +14,7 @@
 --  filtered; the verdict is "BOOT-TIMELINE: COMPLETE" or "...: INCOMPLETE".
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements;
@@ -373,14 +374,14 @@ begin
       Result := Read_Pages (0);
       exit when Result = Not_Granted or else (Result = Read_OK and then Goal_Reached);
       exit when Waited >= Goal_Wait_Ms;
-      Ignore := syscall (SYSCALL_SLEEP, Poll_Ms);
+      Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
       Waited := Waited + Poll_Ms;
    end loop;
    if Result = Not_Granted then
       Put ("BOOT-TIMELINE: FAIL process-observer role not granted" & LF);
       return;
    end if;
-   Ignore := syscall (SYSCALL_SLEEP, Settle_Ms);
+   Ignore := CuBit.Waits.Sleep_For (Settle_Ms);
    Result := Read_Pages (Page_Count - 1);
    if Result /= Read_OK then
       Put ("BOOT-TIMELINE: FAIL timeline unreadable: " & Result'Image & LF);

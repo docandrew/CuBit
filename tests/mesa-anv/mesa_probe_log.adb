@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with System.Address_To_Access_Conversions;
 with Startup;
 with CuBit.Messages; use CuBit.Messages;
@@ -64,7 +65,7 @@ package body Mesa_Probe_Log is
       end if;
       while not Done loop
          CuBit.Logging.Disconnect (Writer, Done);
-         if not Done then Ignore := syscall (SYSCALL_SLEEP, 100); end if;
+         if not Done then Ignore := CuBit.Waits.Sleep_For (100); end if;
       end loop;
       return Result;
    end Run;

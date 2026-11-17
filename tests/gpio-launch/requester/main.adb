@@ -29,6 +29,7 @@
 --  driver's lines.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles.IPC;
@@ -158,7 +159,7 @@ procedure Main is
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Sleep_Until_Monotonic_Microsecond, Now_Us + Initialization_Pause_Us);
+        (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever, Now_Us + Initialization_Pause_Us);
    end Pause;
    ---------------------------------------------------------------------------
    --  HID offers (CuBit.HID_Offer_Exchange, 16#0252#): acpi.svc's offer of

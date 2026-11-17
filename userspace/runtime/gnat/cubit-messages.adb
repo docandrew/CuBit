@@ -13,6 +13,8 @@ with System;
 with System.Storage_Elements;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Published_Clock;
+with CuBit.Waits;
+with Wait_ABI;
 with CuBit.System_Facts;
 with CuBit.Handles.Control;
 with CuBit.Handles.Devices;
@@ -65,10 +67,21 @@ package body CuBit.Messages is
       return ret;
    end syscall;
 
+   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET.
+   function syscall
+     (call : ACPI_Shim_Call; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
+      arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0;
+      arg4 : Unsigned_64 := 0; arg5 : Unsigned_64 := 0) return Unsigned_64
+   is
+      pragma Unreferenced (call, arg1, arg2, arg3, arg4, arg5);
+   begin
+      return CuBit.Waits.Sleep_For (arg0);
+   end syscall;
+
    --  The kernel's results (Process.IPC.Activity_*).
-   Activity_Deadline : constant Unsigned_64 := 0;
-   Activity_Work     : constant Unsigned_64 := 1;
-   Activity_Event    : constant Unsigned_64 := 2;
+   Activity_Deadline : constant Unsigned_64 := Wait_ABI.Ready_Deadline;
+   Activity_Work     : constant Unsigned_64 := Wait_ABI.Ready_Work;
+   Activity_Event    : constant Unsigned_64 := Wait_ABI.Ready_Event;
 
    --  Stop (see the spec). Set once at startup, before the first receive.
    Disposition : Stop_Disposition := Program_Reads_Stop;
@@ -109,9 +122,8 @@ package body CuBit.Messages is
    function Wait_For_Activity_Until (Deadline : Unsigned_64)
       return Activity_Result
    is
-      Result : constant Unsigned_64 := syscall
-        (SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND,
-         Deadline);
+      Result : constant Unsigned_64 :=
+        CuBit.Waits.Wait (Wait_ABI.Ready_Sources, Deadline);
    begin
       case Result is
          when Activity_Work => return Work_Available;
@@ -126,9 +138,9 @@ package body CuBit.Messages is
       Word : Unsigned_64;
    begin
       Event := NULL_MESSAGE;
-      Word := syscall
-        (SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND,
-         Deadline, Unsigned_64 (System.Storage_Elements.To_Integer (Event'Address)));
+      Word := CuBit.Waits.Wait
+        (Wait_ABI.Ready_Sources, Deadline,
+         Unsigned_64 (System.Storage_Elements.To_Integer (Event'Address)));
       Result := (case Word is
                    when Activity_Event    => Event_Taken,
                    when Activity_Work     => Work_Available,
@@ -152,7 +164,8 @@ package body CuBit.Messages is
 
    procedure receive (from : out Process_ID; msg : out Message) is
    begin
-      from := From_Word (syscall (SYSCALL_RECEIVE, toNum (msg'Address)));
+      from := From_Word (CuBit.Waits.Wait
+        (Wait_ABI.Messages_Sources, Wait_ABI.Forever, toNum (msg'Address)));
       Answer_Stop (msg, from);
    end receive;
 
@@ -163,11 +176,9 @@ package body CuBit.Messages is
       received   : out Boolean)
    is
       result : constant Unsigned_64 :=
-        syscall
-          (SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND,
-           toNum (msg'Address), deadlineMs);
+        CuBit.Waits.Wait (Wait_ABI.Messages_Sources, deadlineMs, toNum (msg'Address));
    begin
-      if result = Unsigned_64'Last then
+      if result = Wait_ABI.Nothing then
          from := No_Process;
          received := False;
       else
@@ -231,9 +242,10 @@ package body CuBit.Messages is
       ret : Unsigned_64;
    begin
       msg := NULL_MESSAGE;
-      ret := syscall (SYSCALL_POLL_SERVICE_REQUEST, toNum (msg'Address));
-      from := From_Word (ret);
-      found := (ret /= 0);
+      ret := CuBit.Waits.Wait (Wait_ABI.Requests_Sources, Wait_ABI.Now, toNum (msg'Address));
+      --  A request always has a sender (identity word nonzero).
+      found := ret /= Wait_ABI.Nothing and then ret /= 0;
+      from := (if found then From_Word (ret) else No_Process);
    end Poll_Service_Request;
 
    --  Poll_Any_Ipc
@@ -250,14 +262,14 @@ package body CuBit.Messages is
       ret : Unsigned_64;
    begin
       msg := NULL_MESSAGE;
-      ret := syscall (SYSCALL_POLL_ANY_IPC, toNum (msg'Address));
-      from := From_Word (ret);
-      found := (ret /= 0);
+      ret := CuBit.Waits.Wait (Wait_ABI.Messages_Sources, Wait_ABI.Now, toNum (msg'Address));
+      --  found: a message with a sender. A kernel notice (sender word 0)
+      --  is reported as before: not found, the message filled in.
+      found := ret /= Wait_ABI.Nothing and then ret /= 0;
+      from := (if found then From_Word (ret) else No_Process);
       if found then
          Answer_Stop (msg, from);
-      elsif msg.tag.label /= NULL_TAG.label then
-         --  A kernel notice: the kernel reports its sender (none) as 0,
-         --  the same word as "nothing", so the message is the only sign.
+      elsif ret = 0 then
          Answer_Stop (msg, No_Process);
       end if;
    end Poll_Any_Ipc;
@@ -271,8 +283,11 @@ package body CuBit.Messages is
       max     : Unsigned_64;
       min     : Unsigned_64) return Unsigned_64
    is
+      Result : constant Unsigned_64 := CuBit.Waits.Wait
+        (Wait_ABI.Completions_Sources, Wait_ABI.Forever, toNum (entries), max, min);
    begin
-      return syscall (SYSCALL_WAIT_COMPLETION, toNum (entries), max, min);
+      --  A malformed request (max 0, an unwritable range) is Last, as before.
+      return (if Result = Wait_ABI.Unsupported_Form then Unsigned_64'Last else Result);
    end waitCompletion;
 
    --  Poll_Completion
@@ -282,8 +297,10 @@ package body CuBit.Messages is
    function Poll_Completion
      (result : System.Address) return Unsigned_64
    is
+      Taken : constant Unsigned_64 := CuBit.Waits.Wait
+        (Wait_ABI.Completions_Sources, Wait_ABI.Now, toNum (result), 1, 0);
    begin
-      return syscall (SYSCALL_POLL_COMPLETION, toNum (result));
+      return (if Taken = 1 then 1 else 0);
    end Poll_Completion;
 
    --  capSend
@@ -356,13 +373,13 @@ package body CuBit.Messages is
       ret : Unsigned_64;
    begin
       msg := NULL_MESSAGE;
-      ret := syscall (SYSCALL_POLL_EVENT, toNum (msg'Address));
-      if ret = 1 then
+      ret := CuBit.Waits.Wait (Wait_ABI.Events_Sources, Wait_ABI.Now, toNum (msg'Address));
+      if ret = Wait_ABI.Taken then
          --  An event lane entry: the kernel's, or one a process published
          --  (never with the control label, which the kernel refuses).
          Answer_Stop (msg, No_Process);
       end if;
-      return (ret = 1);
+      return ret = Wait_ABI.Taken;
    end Poll_Event;
 
    function Poll_Event (msg : out Message; publisher : out Process_ID) return Boolean is
@@ -370,12 +387,13 @@ package body CuBit.Messages is
       identity : aliased Unsigned_64 := 0;
    begin
       msg := NULL_MESSAGE;
-      ret := syscall (SYSCALL_POLL_EVENT, toNum (msg'Address), toNum (identity'Address));
-      publisher := (if ret = 1 then From_Word (identity) else No_Process);
-      if ret = 1 then
+      ret := CuBit.Waits.Wait
+        (Wait_ABI.Events_Sources, Wait_ABI.Now, toNum (msg'Address), toNum (identity'Address));
+      publisher := (if ret = Wait_ABI.Taken then From_Word (identity) else No_Process);
+      if ret = Wait_ABI.Taken then
          Answer_Stop (msg, publisher);
       end if;
-      return (ret = 1);
+      return ret = Wait_ABI.Taken;
    end Poll_Event;
 
    --  revokeGrant

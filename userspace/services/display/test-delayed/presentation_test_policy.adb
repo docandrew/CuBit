@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with CuBit.Messages; use CuBit.Messages;
 package body Presentation_Test_Policy is
    use Interfaces;
@@ -19,7 +20,7 @@ package body Presentation_Test_Policy is
       Ignored : Unsigned_64;
    begin
       debugPrint ("display-test: hold" & Frame'Image & ASCII.LF);
-      Ignored := syscall (SYSCALL_SLEEP, 75);
+      Ignored := CuBit.Waits.Sleep_For (75);
       if Fingerprint /= Before then
          debugPrint ("TEST: FAIL display transfer mutated while held" & ASCII.LF);
          return False;

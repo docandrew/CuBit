@@ -1,3 +1,4 @@
+with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
 with Startup;
@@ -48,7 +49,7 @@ procedure Main is
       end if;
       while not Done loop
          CuBit.Logging.Disconnect (Writer, Done);
-         if not Done then Ignore := syscall (SYSCALL_SLEEP, 100); end if;
+         if not Done then Ignore := CuBit.Waits.Sleep_For (100); end if;
       end loop;
    end Drain_Logger;
 
