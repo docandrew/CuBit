@@ -102,6 +102,16 @@ package CuBit.Channel_Servers is
    --  Arm the channels that need it before sleeping. False: work arrived.
    function Arm (S : in out Server) return Boolean;
 
+   --  For a server with its own event loop (it does not Sleep here):
+   --  Look_All marks every channel with a request waiting ready, whether or
+   --  not its client rang (a busy server is not rung: clients ring only a
+   --  server that armed), reading only the rings, and has every channel
+   --  armed again at the next Arm; Wake_Owed wakes every
+   --  client owed a wake now (each declared itself asleep), as Sleep does
+   --  before it blocks.
+   procedure Look_All (S : in out Server);
+   procedure Wake_Owed (S : in out Server);
+
    --  The end of a turn: arm the channels that need it; wake every client
    --  owed a wake (answers and room are signalled once per turn, not per
    --  entry, and only to clients asleep); then, if nothing arrived
@@ -122,6 +132,11 @@ package CuBit.Channel_Servers is
 
    procedure Handle_Event (S : in out Server; Event : CuBit.Control_Events.Event;
                            Ended : out Boolean; At_Index : out Index);
+
+   --  The server ends channel I itself (its client broke the protocol):
+   --  the same as its grant ending, without waiting for a notice. What I
+   --  was owed is dropped; its client sees the channel end.
+   procedure End_Channel (S : in out Server; I : Index);
 
    --  Inspect an already authenticated kernel event without closing a mapping,
    --  releasing admission, changing readiness or dropping outstanding work.

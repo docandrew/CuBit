@@ -407,6 +407,41 @@ package body CuBit.Channel_Servers is
       return Quiet;
    end Arm;
 
+   procedure Look_All (S : in out Server) is
+      --  SEC-025: own the schedule state lives in this server's heap.
+      Order : Schedule.State (S.Size) with Import, Address => S.Order_At;
+   begin
+      CuBit.Channel_Bells.Clear_Noted;
+      for I in 1 .. S.Size loop
+         declare
+            L : constant Link := Link_Of (S, I);
+         begin
+            if L.Active then
+               --  Consume any wake noted for it: this look covers it. Arm
+               --  it again before the next sleep either way: a wake this
+               --  process's own loop took without noting it still used
+               --  the client's arming.
+               declare
+                  Rang : constant Boolean := CuBit.Channel_Bells.Take (L.Channel.Peer_Grant, L.Routed);
+                  pragma Unreferenced (Rang);
+               begin
+                  L.Needs_Arm := True;
+                  if RC.Can_Take (L.Ring) then
+                     Schedule.Mark_Ready (Order, I);
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+   end Look_All;
+
+   procedure Wake_Owed (S : in out Server) is
+   begin
+      for I in 1 .. S.Size loop
+         Ring_Now (S, I);
+      end loop;
+   end Wake_Owed;
+
    procedure Sleep (S : in out Server; Deadline : CuBit.Deadlines.Deadline; Woke : out Wake) is
       Quiet : constant Boolean := Arm (S);
       Last : Natural := 0;
@@ -475,6 +510,30 @@ package body CuBit.Channel_Servers is
       end loop;
    end Find_Ending_Channel;
 
+   procedure Close_Link (S : Server; I : Index);
+   procedure Close_Link (S : Server; I : Index) is
+      L : constant Link := Link_Of (S, I);
+      --  SEC-025: own admission and schedule state live in this server's heap.
+      Limits : Admission.State (S.Size) with Import, Address => S.Limits_At;
+      Order : Schedule.State (S.Size) with Import, Address => S.Order_At;
+   begin
+      CuBit.Channel_Bells.Unwatch (L.Channel.Peer_Grant);
+      RC.Detach_Server (L.Ring);
+      CuBit.Channels.Close (L.Channel);
+      Admission.Release (Limits, L.Offer, Client_Word (L.Client));
+      Schedule.Close (Order, I);
+      L.Active := False;
+      L.Client := CuBit.Messages.No_Process;
+      L.Badge := 0;
+   end Close_Link;
+
+   procedure End_Channel (S : in out Server; I : Index) is
+   begin
+      if I <= S.Size and then Link_Of (S, I).Active then
+         Close_Link (S, I);
+      end if;
+   end End_Channel;
+
    procedure Handle_Event (S : in out Server; Event : CuBit.Control_Events.Event;
                            Ended : out Boolean; At_Index : out Index) is
    begin
@@ -485,19 +544,7 @@ package body CuBit.Channel_Servers is
             L : constant Link := Link_Of (S, I);
          begin
             if L.Active and then CuBit.Channels.Ended (L.Channel, Event) then
-               declare
-                  Limits : Admission.State (S.Size) with Import, Address => S.Limits_At;
-                  Order : Schedule.State (S.Size) with Import, Address => S.Order_At;
-               begin
-                  CuBit.Channel_Bells.Unwatch (L.Channel.Peer_Grant);
-                  RC.Detach_Server (L.Ring);
-                  CuBit.Channels.Close (L.Channel);
-                  Admission.Release (Limits, L.Offer, Client_Word (L.Client));
-                  Schedule.Close (Order, I);
-                  L.Active := False;
-                  L.Client := CuBit.Messages.No_Process;
-                  L.Badge := 0;
-               end;
+               Close_Link (S, I);
                Ended := True;
                At_Index := I;
                return;
