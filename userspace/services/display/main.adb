@@ -19,6 +19,7 @@ with Display_Logs;
 with CuBit.Display_Protocol;
 with CuBit.Present_Timing;
 with CuBit.Monotonic;
+with CuBit.Published_Clock;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.Process_IDs.Text;
@@ -226,7 +227,7 @@ procedure main is
       --  Captured continuation; never resolve a completion through whatever
       --  output the most recently received request happened to select.
       backendToken : Unsigned_64 := 0;
-      --  When backendToken was submitted (SYSCALL_GETTIME milliseconds).
+      --  When backendToken was submitted (CuBit.Published_Clock milliseconds).
       backendStarted : Unsigned_64 := 0;
       backendFrame : DSP.Frame_Result;
       backendID : PS.Submission_ID := PS.No_Submission;
@@ -749,7 +750,7 @@ procedure main is
 
    statsCensusAt : CuBit.Call_Census.Counts := [others => 0];
    procedure maybePrintStats is
-      now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
    begin
       if now = Unsigned_64'Last then
          return;
@@ -1415,13 +1416,13 @@ procedure main is
    Present_Check_Ms : constant := 100;
    procedure awaitLegacyPresent is
       State : Output_State renames outputStates (selectedOutput);
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
       Now : Unsigned_64;
       Activity : Activity_Result;
       pragma Unreferenced (Activity);
    begin
       while State.legacyToken /= 0 loop
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Published_Clock.Milliseconds;
          if Started = Unsigned_64'Last or else Now = Unsigned_64'Last or else
            Now - Started >= Legacy_Present_Deadline_Ms
          then
@@ -1483,7 +1484,7 @@ procedure main is
       --  Legacy queued presentation. The selected backend is fixed for this
       --  output lifetime; an unsuccessful GPU operation cannot authorize
       --  writes to a different target. Neither backend promises vblank here.
-      waitStart := syscall (SYSCALL_GETTIME);
+      waitStart := CuBit.Published_Clock.Milliseconds;
       if outputStates (selectedOutput).presentationFault then return; end if;
       if outputStates (selectedOutput).backend.Kind = Native_GPU then
          if BT.Current (outputStates (selectedOutput).Targets) /= BT.Idle then
@@ -1492,18 +1493,18 @@ procedure main is
             outputStates (selectedOutput).pendingRect := r;
             return;
          end if;
-         copyStart := syscall (SYSCALL_GETTIME);
+         copyStart := CuBit.Published_Clock.Milliseconds;
          if not startGpuPresent (r) then
             return;
          end if;
       elsif outputStates (selectedOutput).backend.Kind = Firmware_Framebuffer then
-         copyStart := syscall (SYSCALL_GETTIME);
+         copyStart := CuBit.Published_Clock.Milliseconds;
          presentFirmwareRect (outputStates (selectedOutput).backend.Address,
                               r.x, r.y, r.w, r.h);
       else
          return;
       end if;
-      copyEnd := syscall (SYSCALL_GETTIME);
+      copyEnd := CuBit.Published_Clock.Milliseconds;
 
       statsPresents := statsPresents + 1;
       statsPixels := statsPixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
@@ -1537,8 +1538,8 @@ procedure main is
       --  constituent rectangles before replying to the compositor. This
       --  avoids multiplying IPC/vblank latency and prevents a moving window
       --  from exposing each strip as a separately timed frame.
-      waitStart := syscall (SYSCALL_GETTIME);
-      copyStart := syscall (SYSCALL_GETTIME);
+      waitStart := CuBit.Published_Clock.Milliseconds;
+      copyStart := CuBit.Published_Clock.Milliseconds;
 
       if outputStates (selectedOutput).backend.Kind = Native_GPU then
          --  A packed region is one visual frame. The current wire format can
@@ -1568,7 +1569,7 @@ procedure main is
                return;
             end if;
          end if;
-         copyEnd := syscall (SYSCALL_GETTIME);
+         copyEnd := CuBit.Published_Clock.Milliseconds;
          statsPresents := statsPresents + 1;
          statsPixels := statsPixels + pixels;
          if waitStart /= Unsigned_64'Last and then
@@ -1597,7 +1598,7 @@ procedure main is
             pixels := pixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
          end if;
       end loop;
-      copyEnd := syscall (SYSCALL_GETTIME);
+      copyEnd := CuBit.Published_Clock.Milliseconds;
 
       statsPresents := statsPresents + 1;
       statsPixels := statsPixels + pixels;
@@ -2449,7 +2450,7 @@ procedure main is
    --  Present_Deadline_Ms fails, with a logged reason, and the output is
    --  quarantined (its buffers' state is uncertain). Never an endless wait.
    procedure checkPresentDeadlines is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
       Response : Message;
       Ignored : Unsigned_64;
       pragma Unreferenced (Ignored);
@@ -2592,7 +2593,7 @@ procedure main is
          return;
       end if;
       State.srcAddr := mapped;
-      started := syscall (SYSCALL_GETTIME);
+      started := CuBit.Published_Clock.Milliseconds;
       if Presentation_Test_Policy.Enabled and then
         not Presentation_Test_Policy.Verify_Buffer
           ((if Slot /= 0 and then State.lentPool then State.gpuScanoutAddr (Gpu_Buffer_Index (Slot - 1))
@@ -2618,7 +2619,7 @@ procedure main is
               capSubmit (GPU_Service, backendRequest, token)
             then
                State.backendToken := token;
-               State.backendStarted := syscall (SYSCALL_GETTIME);
+               State.backendStarted := CuBit.Published_Clock.Milliseconds;
                declare
                   Forwarded_Us : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
                begin
@@ -2637,7 +2638,7 @@ procedure main is
                      statsPixels := statsPixels + CuBit.Display_Box_Copy.Bytes (frameBoxes.Boxes (I)) / 4;
                   end loop;
                end if;
-               statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
+               statsCopyMs := statsCopyMs + CuBit.Published_Clock.Milliseconds - started;
                return;
             end if;
             --  No command accepted: safe to return the source acquisition.
@@ -2676,7 +2677,7 @@ procedure main is
       for I in 1 .. frameBoxes.Count loop
          statsPixels := statsPixels + CuBit.Display_Box_Copy.Bytes (frameBoxes.Boxes (I)) / 4;
       end loop;
-      statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
+      statsCopyMs := statsCopyMs + CuBit.Published_Clock.Milliseconds - started;
       finishFrame (selectedOutput, id, result, published, True, replyMsg);
    end submitFrame;
 
@@ -3622,7 +3623,7 @@ procedure main is
 
    procedure stopOutputs is
       Saved : constant Output_Index := selectedOutput;
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
       Activity : Activity_Result;
       Returned : Boolean;
       Loans, Lent, Mapped, Lent_Held, Mapped_Held : Natural;
@@ -3634,7 +3635,7 @@ procedure main is
          exit when (for all O in Output_Index =>
                       not readyOutputs (O) or else
                       (outputStates (O).backendToken = 0 and then outputStates (O).legacyToken = 0));
-         exit when syscall (SYSCALL_GETTIME) - Started >= Stop_Present_Wait_Ms;
+         exit when CuBit.Published_Clock.Milliseconds - Started >= Stop_Present_Wait_Ms;
          Activity := Wait_For_Activity_Until (Started + Stop_Present_Wait_Ms);
       end loop;
       for O in Output_Index loop
@@ -3824,7 +3825,7 @@ begin
             --  A present arrived while the rings were armed: serve it.
             null;
          elsif Wait_For_Activity_Until
-              (if presentPending then syscall (SYSCALL_GETTIME) + Present_Check_Ms
+              (if presentPending then CuBit.Published_Clock.Milliseconds + Present_Check_Ms
                else Unsigned_64'Last) = Unavailable
          then
             debugPrint ("display: activity wait unavailable" & LF);
