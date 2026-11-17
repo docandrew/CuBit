@@ -194,6 +194,8 @@ package body Dash_Files is
                 Length => V2.Page_Bytes, Arena_Offset => Data_At, others => <>), Deadline_Ms, Status, Pages, Result);
          exit when Result /= Done or else Pages = 0;
          declare
+            --  SEC-025: snapshot the volume's page is copied whole before
+            --  V2.Check and the decode read only the private copy.
             Shared : constant V2.Page with Import, Address => FS.Arena (Session) + Storage_Offset (Data_At);
          begin
             --  Copied out of shared memory, then checked.
