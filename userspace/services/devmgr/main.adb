@@ -3698,6 +3698,55 @@ procedure main is
       return size;
    end probeMemoryBARSize;
 
+   --  The function's PCI power state, read from its configuration space
+   --  without writing it (Intel_GPU_PCI_Power decodes any type-0 header's
+   --  PM capability; none present is "unavailable"). For diagnostics.
+   function Power_Name (dev : PCIDeviceInfo) return String is
+      Config : Intel_GPU_PCI_Power.Configuration;
+   begin
+      for Byte in Config'Range loop
+         Config (Byte) := pciReadConfig8 (dev.bus, dev.slot, dev.func, Unsigned_8 (Byte));
+      end loop;
+      return Intel_GPU_PCI_Power.Name (Intel_GPU_PCI_Power.Decode (Config));
+   end Power_Name;
+
+   --  PCI functions whose driver was refused for an unassigned memory BAR,
+   --  read again after ACPI's startup AML (touchpad bring-up: firmware's
+   --  _PS3 on the LPSS I2C controllers enters D3 and clears BAR 0). A
+   --  bounded diagnostic list; functions past its end are only logged once.
+   MAXIMUM_REFUSED_BARS : constant := 8;
+   subtype Refused_BAR_Count is Natural range 0 .. MAXIMUM_REFUSED_BARS;
+   type Refused_BAR is record
+      Location : PCIDeviceInfo;
+      Register : Unsigned_8 := 0;
+   end record;
+   Refused_BARs : array (1 .. MAXIMUM_REFUSED_BARS) of Refused_BAR;
+   Refused_BAR_Total : Refused_BAR_Count := 0;
+
+   procedure Remember_Refused_BAR (dev : PCIDeviceInfo; Register : Unsigned_8) is
+   begin
+      if Refused_BAR_Total < MAXIMUM_REFUSED_BARS then
+         Refused_BAR_Total := Refused_BAR_Total + 1;
+         Refused_BARs (Refused_BAR_Total) := (Location => dev, Register => Register);
+      end if;
+   end Remember_Refused_BAR;
+
+   procedure Report_Refused_BARs (Moment : String) is
+   begin
+      for I in 1 .. Refused_BAR_Total loop
+         declare
+            D : constant PCIDeviceInfo := Refused_BARs (I).Location;
+            Register : constant Unsigned_8 := Refused_BARs (I).Register;
+         begin
+            Warnings.Inform ("devmgr: refused BAR at " & Location_Text (D) & " " & Moment & ": low="
+                             & Hex (Unsigned_64 (pciReadConfig32 (D.bus, D.slot, D.func, Register)))
+                             & " high=" & Hex (Unsigned_64 (pciReadConfig32 (D.bus, D.slot, D.func, Register + 4)))
+                             & " command=" & Hex (Unsigned_64 (pciReadConfig16 (D.bus, D.slot, D.func, PCI_COMMAND)))
+                             & " power=" & Power_Name (D));
+         end;
+      end loop;
+   end Report_Refused_BARs;
+
    --  The bytes of the one DMA request Item's manifest declares: its named
    --  ceiling. 0 when it declares none.
    function Declared_DMA_Bytes (Item : DL.Child) return Unsigned_64 is
@@ -4043,7 +4092,16 @@ procedure main is
                         Bytes : constant Unsigned_64 := Grant.Bytes;
                      begin
                         if (Low and PCI_BAR_IO) /= 0 or else Base = 0 or else Size = 0 then
-                           Refuse ("BAR" & Unsigned_32'Image (R.Index) & " is not an assigned memory BAR");
+                           --  The raw evidence (touchpad bring-up, image 27): the
+                           --  BAR words as found, the decoded size, the command
+                           --  register and the PCI power state, so an unassigned
+                           --  BAR can be told from one a D3 entry cleared.
+                           Refuse ("BAR" & Unsigned_32'Image (R.Index) & " is not an assigned memory BAR (low="
+                                   & Hex (Unsigned_64 (Low)) & " high=" & Hex (Unsigned_64 (High))
+                                   & " size=" & Hex (Size) & " command="
+                                   & Hex (Unsigned_64 (pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND)))
+                                   & " power=" & Power_Name (dev) & ")");
+                           Remember_Refused_BAR (dev, Offset);
                         elsif not Devmgr_Authority.Covered (Base, Bytes) then
                            Refuse ("BAR" & Unsigned_32'Image (R.Index) & " outside device memory");
                         else
@@ -5174,6 +5232,7 @@ procedure main is
                           " with" & Natural'Image (R.Spans) & " spans (epoch" & Unsigned_64'Image (R.Epoch) &
                           "); its driver launch waits for consumer initialization to complete");
       end if;
+      Report_Refused_BARs ("after ACPI device admission");
    end Record_ACPI_Device;
 
    procedure Serve_GPIO_Bootstrap (From : Process_ID; Msg : Message) is
@@ -5577,6 +5636,7 @@ procedure main is
       begin
          if A.Answer = CX.Received then
             Warnings.Inform (Line);
+            Report_Refused_BARs ("after consumer initialization");
          else
             Warnings.Warn (Line);
          end if;
