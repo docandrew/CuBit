@@ -7151,6 +7151,9 @@ cpu-times-check: write to the CPU times page armed
         # tables, including the SSDT's pool-backed read, which the former
         # pair refused (STARTUP_REFUSED; laptop image 11's MBAR).
         # No acpi-backend.svc and no role-35 endpoint exist.
+        # Events: q35 declares two general-purpose event methods, so the
+        # event stage serves CONSUMERS; the EC scan must find no EC with no
+        # node errors (image 27: unrelated _STA failures were fatal).
         required_markers="
 acpi: stage service-start ok one-service
 acpi: stage hardware-config ok memory=
@@ -7163,7 +7166,8 @@ completed= 2
 acpi: stage sleep-registers ok 
 acpi: stage finish-startup ok setup=CLOSED
 acpi: stage runtime ok LOCAL_IDLE
-acpi: stage events ok FIXED_ONLY ec=ABSENT
+acpi: stage ec-scan status=NO_EC absent= 0 pruned= 0 node-errors= 0 ecdt=FALSE
+acpi: stage events ok CONSUMERS ec=NO_EC general= 2
 acpi: stage registration ok STARTING
 acpi: bring-up reached registration (4/4) hardware=LOCAL
 acpi-metrics-check: metrics reply well formed PASS
