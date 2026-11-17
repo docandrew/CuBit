@@ -95,8 +95,10 @@ package CuBit.Display_Protocol with SPARK_Mode, Pure is
    --  sessions and replayed frames against its authenticated owner state.
    function Decode_Frame (Wire : Wire_Message) return Frame_Decoding;
    function Encode_Frame (Item : Frame_Request) return Wire_Message;
-   type Frame_Outcome is (Published, Rejected, Failed);
-   for Frame_Outcome use (Published => 0, Rejected => 1, Failed => 2);
+   --  Superseded: not shown, a newer frame took its place before the flip
+   --  latched (the GPU's mailbox); its buffer comes back as with Failed.
+   type Frame_Outcome is (Published, Rejected, Failed, Superseded);
+   for Frame_Outcome use (Published => 0, Rejected => 1, Failed => 2, Superseded => 3);
    type Buffer_Disposition is (Not_Acquired, Released, Still_Held);
    for Buffer_Disposition use
      (Not_Acquired => 0, Released => 1, Still_Held => 2);

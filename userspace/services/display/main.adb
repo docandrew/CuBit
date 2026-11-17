@@ -50,6 +50,8 @@ with CuBit.GPU_Plane_Protocol;
 with CuBit.Display_Frame_Damage;
 with CuBit.Display_Frame_Damage.Shared;
 with CuBit.Display_Box_Copy;
+with Display_Frame_Ring;
+with Display_Frame_Rings;
 
 procedure main is
    --  Every line also reaches logstore (Display_Logs), not only the console.
@@ -237,9 +239,26 @@ procedure main is
    sessionSequence : Unsigned_64 := 0;
    backendSequence : Unsigned_64 := 0;
    deferredReply : Boolean := False;
-   --  Each output's frame request, answered when its present completes.
-   frameReplies : array (Output_Index) of CuBit.Handles.Reply :=
-     [others => CuBit.Handles.No_Reply];
+   --  Each output's frame, answered when its present completes: through
+   --  the frame ring it came from (Desktop's), or the kernel's reply to a
+   --  frame request message (display-check's, an unpooled source).
+   package Frame_Rings renames Display_Frame_Rings;
+   use type Frame_Rings.Ring_Number;
+   type Answer_Route is (No_Answer, Kernel_Reply, Ring_Answer);
+   type Frame_Debt is record
+      Route    : Answer_Route := No_Answer;
+      Saved    : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+      Ring     : Frame_Rings.Ring_Number := Frame_Rings.No_Ring;
+      Tag      : Display_Frame_Ring.RC.Token := 0;
+      Taken_Us : Unsigned_64 := 0;
+   end record;
+   frameDebts : array (Output_Index) of Frame_Debt;
+   --  The ring present being served (No_Ring: a request message), and its
+   --  damage boxes as the ring entry carried them.
+   servingRing    : Frame_Rings.Ring_Number := Frame_Rings.No_Ring;
+   servingTag     : Display_Frame_Ring.RC.Token := 0;
+   servingTakenUs : Unsigned_64 := 0;
+   servingDamage  : CuBit.Display_Frame_Damage.Word_Array := [others => 0];
 
    --  Set the request being served aside; False when the kernel refused.
    function saveInto (Saved : out CuBit.Handles.Reply) return Boolean is
@@ -256,6 +275,51 @@ procedure main is
       Saved := CuBit.Handles.No_Reply;
       return Result;
    end answerSaved;
+
+   --  The frame being served will be answered later (its present is in
+   --  flight): remember where. False: the kernel would not keep the reply.
+   function holdFrameAnswer (Output : Output_Index) return Boolean is
+   begin
+      if servingRing /= Frame_Rings.No_Ring then
+         frameDebts (Output) := (Ring_Answer, CuBit.Handles.No_Reply, servingRing, servingTag,
+                                 servingTakenUs);
+         return True;
+      end if;
+      frameDebts (Output) := (Route => Kernel_Reply, others => <>);
+      if saveInto (frameDebts (Output).Saved) then
+         return True;
+      end if;
+      frameDebts (Output) := (others => <>);
+      return False;
+   end holdFrameAnswer;
+
+   --  Answer Output's held frame (once; nothing when its ring ended since).
+   function answerFrame (Output : Output_Index; Msg : Message) return Unsigned_64 is
+      Debt : Frame_Debt := frameDebts (Output);
+      Result : Unsigned_64 := 0;
+   begin
+      frameDebts (Output) := (others => <>);
+      case Debt.Route is
+         when Kernel_Reply =>
+            Result := answerSaved (Debt.Saved, Msg);
+         when Ring_Answer =>
+            Frame_Rings.Answer (Debt.Ring, Debt.Tag, CuBit.Desktop_Messages.To_Wire (Msg), Debt.Taken_Us);
+         when No_Answer =>
+            null;
+      end case;
+      return Result;
+   end answerFrame;
+
+   --  Ring Ended is gone: what any output still owed it is dropped (the
+   --  frame itself still completes and returns its buffer).
+   procedure forgetRing (Ended : Frame_Rings.Ring_Number) is
+   begin
+      for Debt of frameDebts loop
+         if Debt.Route = Ring_Answer and then Debt.Ring = Ended then
+            Debt := (others => <>);
+         end if;
+      end loop;
+   end forgetRing;
    gpuDetected : Boolean := False;
    --  DISP-000a: the GPU (intel-gpu) flips the firmware mode's own scanout:
    --  same geometry, driver buffers, no firmware framebuffer mapping.
@@ -2292,6 +2356,11 @@ procedure main is
                     Completion.msg.words (0) in GPU_Present_Refused | GPU_Present_Superseded
                   then
                      BT.Abandon (State.Targets, Completion.token);
+                     --  The mailbox: a newer frame took this one's place
+                     --  before the flip latched. Said so, not "failed".
+                     if Completion.msg.words (0) = GPU_Present_Superseded then
+                        State.backendFrame.Outcome := DSP.Superseded;
+                     end if;
                      if BT.Current (State.Targets) = BT.Idle then
                         if droppedFrames < Unsigned_64'Last then droppedFrames := droppedFrames + 1; end if;
                         if droppedFrames = 1 or else droppedFrames mod 64 = 0 then
@@ -2303,7 +2372,7 @@ procedure main is
                         finishFrame (Output, State.backendID, State.backendFrame,
                                      False, True, Response, Dropped => True);
                         State.backendToken := 0;
-                        Ignored := answerSaved (frameReplies (Output), Response);
+                        Ignored := answerFrame (Output, Response);
                         goto Next_Output;
                      end if;
                   end if;
@@ -2342,7 +2411,7 @@ procedure main is
                   finishFrame (Output, State.backendID, State.backendFrame,
                                Published, Published, Response);
                   State.backendToken := 0;
-                  Ignored := answerSaved (frameReplies (Output), Response);
+                  Ignored := answerFrame (Output, Response);
                end if;
             end;
             <<Next_Output>>
@@ -2385,7 +2454,7 @@ procedure main is
                finishFrame (Output, State.backendID, State.backendFrame,
                             False, False, Response);
                State.backendToken := 0;
-               Ignored := answerSaved (frameReplies (Output), Response);
+               Ignored := answerFrame (Output, Response);
             end if;
          end;
       end loop;
@@ -2461,21 +2530,28 @@ procedure main is
          return;
       end if;
       frameBoxes := Single_Box (r.x, r.y, r.w, r.h);
+      --  A pooled frame's damage boxes: from its ring entry (Desktop's,
+      --  already this process's copy), or, for a frame request message
+      --  (display-check's), from the record after its rows, decoded from a
+      --  snapshot read once (FD.Shared: the client can still write that
+      --  page). Refused, the announced area stands (always correct). A lent
+      --  frame is not copied: its area is what counts.
       if Slot /= 0 and then not State.lentPool then
          declare
-            --  The client can still write this page: decode a snapshot read
-            --  once (FD.Shared), never the page itself.
-            Record_Item : constant FD.Decoding := CuBit.Display_Frame_Damage.Shared.Decode_At
-              (mapped + Storage_Offset (State.srcPitch * State.srcHeight), decoded.Value.Frame,
-               (FD.DP.Pixel_Coordinate (r.x), FD.DP.Pixel_Coordinate (r.y),
-                FD.DP.Pixel_Extent (r.w), FD.DP.Pixel_Extent (r.h)));
+            Area : constant FD.DP.Rectangle :=
+              (FD.DP.Pixel_Coordinate (r.x), FD.DP.Pixel_Coordinate (r.y),
+               FD.DP.Pixel_Extent (r.w), FD.DP.Pixel_Extent (r.h));
+            Record_Item : constant FD.Decoding :=
+              (if servingRing /= Frame_Rings.No_Ring
+               then FD.Decode (servingDamage, decoded.Value.Frame, Area)
+               else CuBit.Display_Frame_Damage.Shared.Decode_At
+                 (mapped + Storage_Offset (State.srcPitch * State.srcHeight), decoded.Value.Frame, Area));
          begin
-            --  A refused record leaves the announced area (always correct).
             if Record_Item.Valid then
                frameBoxes := Record_Item.Value;
             elsif not frameRecordWarned then
                frameRecordWarned := True;
-               debugPrint ("display: a frame's damage record was refused; copying its area" & LF);
+               debugPrint ("display: a frame's damage boxes were refused; copying its area" & LF);
             end if;
          end;
       end if;
@@ -2512,7 +2588,7 @@ procedure main is
            (if Slot /= 0 and then State.lentPool
             then prepareLentRect (r, Pool_Wire.Buffer_Slot (Slot)) else prepareGpuRect (r));
          if backendRequest.tag.length /= 0 and then
-           saveInto (frameReplies (selectedOutput))
+           holdFrameAnswer (selectedOutput)
          then
             deferredReply := True;
             Compositor_Requests.Allocate (backendSequence, token);
@@ -2551,7 +2627,7 @@ procedure main is
             finishFrame (selectedOutput, id, result, False, True, replyMsg);
             declare
                Ignored : constant Unsigned_64 :=
-                 answerSaved (frameReplies (selectedOutput), replyMsg);
+                 answerFrame (selectedOutput, replyMsg);
             begin
                null;
             end;
@@ -2868,9 +2944,16 @@ procedure main is
        replyMsg : out Message)
    is
       request : Message := incoming;
+      Is_Ring_Open : Boolean;
    begin
       replyMsg := NULL_MESSAGE;
       statsRequests := statsRequests + 1;
+
+      --  A frame ring's open (Desktop's presents and their answers).
+      Frame_Rings.Handle_Open (from, request, Is_Ring_Open, replyMsg);
+      if Is_Ring_Open then
+         return;
+      end if;
 
       if request.tag.label = OD.Code (OD.Display_Broker, OD.Get_Catalog) or else
          request.tag.label = OD.Code (OD.Display_Broker, OD.Get_Description)
@@ -3484,6 +3567,42 @@ procedure main is
    --       that is gone is not an error here.
    --    3. The GPU driver's forwardable grants behind the loans are
    --       returned, then display's mappings of its scanout buffers.
+   --  Serve one present from a frame ring as the frame request it carries,
+   --  and answer it through the ring: now, or when its present completes.
+   procedure serveFramePresent
+     (Ring : Frame_Rings.Ring_Number; From : Process_ID; Tag : Display_Frame_Ring.RC.Token;
+      Item : Display_Frame_Ring.Present; Valid : Boolean)
+   is
+      Taken_Us : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+      Answer : Message := NULL_MESSAGE;
+   begin
+      --  Only frames travel here; anything else is answered as malformed.
+      if not Valid or else
+        (Item.Frame.Label /= Pool_Wire.Submit_Frame and then Item.Frame.Label /= PP.Submit_Plan_Frame)
+      then
+         Answer.tag := (label => (if Valid then Item.Frame.Label else 0), length => 1,
+                        protocol => 0, ipc => <>, reserved => 0);
+         Answer.words (0) := DISPLAY_ERR_BAD_OBJECT;
+         Frame_Rings.Answer (Ring, Tag, CuBit.Desktop_Messages.To_Wire (Answer), Taken_Us);
+         return;
+      end if;
+      servingRing := Ring;
+      servingTag := Tag;
+      servingTakenUs := Taken_Us;
+      servingDamage := Item.Damage;
+      deferredReply := False;
+      handleRequest (From, CuBit.Desktop_Messages.From_Wire (Item.Frame), Answer);
+      if outputStates (selectedOutput).pendingPresent then
+         flushPendingPresent;
+      end if;
+      if not deferredReply then
+         Frame_Rings.Answer (Ring, Tag, CuBit.Desktop_Messages.To_Wire (Answer), Taken_Us);
+      end if;
+      deferredReply := False;
+      servingRing := Frame_Rings.No_Ring;
+      servingDamage := [others => 0];
+   end serveFramePresent;
+
    procedure stopOutputs is
       Saved : constant Output_Index := selectedOutput;
       Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
@@ -3557,6 +3676,7 @@ procedure main is
    replyMsg : Message := NULL_MESSAGE;
    found : Boolean;
    eventMsg : Message;
+   ringsReady, served : Boolean;
 begin
    debugPrint ("display: starting" & LF);
 
@@ -3626,6 +3746,10 @@ begin
    end loop;
    replan;
    armGpuWatch;
+   Frame_Rings.Configure (ringsReady);
+   if not ringsReady then
+      debugPrint ("display: frame rings unavailable (no memory for their table)" & LF);
+   end if;
    debugPrint ("display: ready" & LF);
 
    loop
@@ -3633,6 +3757,7 @@ begin
       checkPresentDeadlines;
       retryMoves;
       Poll_Service_Request (from, msg, found);
+      served := False;
       if found then
          deferredReply := False;
          handleRequest (from, msg, replyMsg);
@@ -3640,9 +3765,26 @@ begin
             flushPendingPresent;
          end if;
          if not deferredReply then ret := reply (from, replyMsg); end if;
+      else
+         --  The frame rings once the request messages are served, so a
+         --  frame follows what its sender asked before it (a plane plan).
+         declare
+            Got, Valid : Boolean;
+            Ring : Frame_Rings.Ring_Number;
+            Sender : Process_ID;
+            Tag : Display_Frame_Ring.RC.Token;
+            Item : Display_Frame_Ring.Present;
+         begin
+            loop
+               Frame_Rings.Next_Present (Got, Ring, Sender, Tag, Item, Valid);
+               exit when not Got;
+               served := True;
+               serveFramePresent (Ring, Sender, Tag, Item, Valid);
+            end loop;
+         end;
       end if;
       maybePrintStats;
-      if not found then
+      if not found and then not served then
          if Poll_Event (eventMsg) then
             --  The kernel's Stop (only the kernel posts its label): let go
             --  of the buffers in order, then end (exit code 0).
@@ -3650,6 +3792,18 @@ begin
                stopOutputs;
                return;
             end if;
+            declare
+               Handled : Boolean;
+               Ended : Frame_Rings.Ring_Number;
+            begin
+               Frame_Rings.Take_Notice (eventMsg, Handled, Ended);
+               if Ended /= Frame_Rings.No_Ring then
+                  forgetRing (Ended);
+               end if;
+            end;
+         elsif not Frame_Rings.Quiet then
+            --  A present arrived while the rings were armed: serve it.
+            null;
          elsif Wait_For_Activity_Until
               (if presentPending then syscall (SYSCALL_GETTIME) + Present_Check_Ms
                else Unsigned_64'Last) = Unavailable

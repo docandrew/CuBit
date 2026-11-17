@@ -85,7 +85,7 @@ package body CuBit.Display_Protocol with SPARK_Mode is
       if Wire.Label /= Code (Submit_Frame) or else Wire.Length /= 4 or else
         Wire.Flags /= 0 or else Wire.Reserved /= 0 or else
         Wire.Words (0) = 0 or else Wire.Words (1) = 0 or else
-        Outcome_Rep > 2 or else Buffer_Rep > 2 or else
+        Outcome_Rep > Frame_Outcome'Enum_Rep (Frame_Outcome'Last) or else Buffer_Rep > 2 or else
         CuBit.Present_Timing.Pack (Timing) /= High
       then
          return (Valid => False);
