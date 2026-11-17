@@ -112,6 +112,8 @@ package body CuBit.Handles.IPC is
    function Describe (Item : Device_Memory) return Description is
      (Describing (K.Word (Item)));
    function Describe (Item : IO_Ports) return Description is (Describing (K.Word (Item)));
+   function Describe (Item : Platform_Power) return Description is
+     (Describing (K.Word (Item)));
    function Describe (Item : Interrupt) return Description is (Describing (K.Word (Item)));
    function Describe (Item : Notification) return Description is
      (Describing (K.Word (Item)));

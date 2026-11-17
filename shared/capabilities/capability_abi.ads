@@ -95,7 +95,7 @@ package Capability_ABI with Pure, SPARK_Mode is
    type Kind is
      (No_Capability, Endpoint, Notification, Memory, IO_Ports, Interrupt,
       Process, Device_Memory, Reply, Resource, Cspace, Scheduling,
-      Hardware_Group, Hardware_Register, Firmware_Snapshot);
+      Hardware_Group, Hardware_Register, Firmware_Snapshot, Platform_Power);
    for Kind use
      (No_Capability     => 0,
       Endpoint          => 1,
@@ -111,7 +111,8 @@ package Capability_ABI with Pure, SPARK_Mode is
       Scheduling        => 11,
       Hardware_Group    => 12,
       Hardware_Register => 13,
-      Firmware_Snapshot => 14);
+      Firmware_Snapshot => 14,
+      Platform_Power    => 15);
 
    ---------------------------------------------------------------------------
    --  Rights, as a mask of these bits.

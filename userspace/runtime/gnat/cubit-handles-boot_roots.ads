@@ -37,6 +37,7 @@ package CuBit.Handles.Boot_Roots is
       Notifications     : Notification;   --  every service role
       Scheduling_Root   : Scheduling;
       Firmware_Snapshot_Root : Firmware_Snapshot;  --  READ and GRANT
+      Platform_Power_Root    : Platform_Power;     --  WRITE and GRANT
       Count             : Root_Count := 0;
       Firmware_Count    : Root_Count := 0;
    end record;
@@ -70,6 +71,7 @@ package CuBit.Handles.Boot_Roots is
       Framebuffer    : Device_Memory;  --  the boot framebuffer; may be null
       Device_Inspection : Endpoint;    --  devmgr, untagged, Grant (inventory)
       Firmware_Snapshot_Reader : Firmware_Snapshot;  --  READ and GRANT
+      Platform_Power_Object    : Platform_Power;     --  WRITE and GRANT
    end record;
 
    function Process_Manager return Launcher_Handles;

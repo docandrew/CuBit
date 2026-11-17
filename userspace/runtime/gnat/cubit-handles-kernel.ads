@@ -74,6 +74,7 @@ private package CuBit.Handles.Kernel is
    function Word (Item : Notification) return Unsigned_64 is (Item.Word);
    function Word (Item : Scheduling) return Unsigned_64 is (Item.Word);
    function Word (Item : Firmware_Snapshot) return Unsigned_64 is (Item.Word);
+   function Word (Item : Platform_Power) return Unsigned_64 is (Item.Word);
    function Word (Item : Foreign_Handle) return Unsigned_64 is (Item.Word);
 
    --  Handles from words the kernel gave this process (never from a
@@ -88,6 +89,7 @@ private package CuBit.Handles.Kernel is
    function To_Notification (W : Unsigned_64) return Notification is ((Word => W));
    function To_Scheduling (W : Unsigned_64) return Scheduling is ((Word => W));
    function To_Firmware_Snapshot (W : Unsigned_64) return Firmware_Snapshot is ((Word => W));
+   function To_Platform_Power (W : Unsigned_64) return Platform_Power is ((Word => W));
    function To_Foreign (W : Unsigned_64) return Foreign_Handle is ((Word => W));
 
    function Derivation_Words (Item : Derivation) return ABI.Derivation is

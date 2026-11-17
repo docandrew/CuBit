@@ -55,7 +55,7 @@ package Capability_Install with SPARK_Mode is
     function Transferable (Kind : CapabilityType) return Boolean is
         (Kind in CAP_ENDPOINT | CAP_NOTIFICATION | CAP_IOPORT | CAP_IRQ |
                  CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING |
-                 CAP_FIRMWARE_SNAPSHOT);
+                 CAP_FIRMWARE_SNAPSHOT | CAP_PLATFORM_POWER);
 
     -- Kinds whose object is a range (first, count or bytes): device memory
     -- (base, bytes), I/O ports (first port, count), interrupt vectors

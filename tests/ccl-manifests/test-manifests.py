@@ -1330,7 +1330,8 @@ class Manifests(unittest.TestCase):
         client's spec already withs CuBit.Handles.Services."""
         for name, requests in [('logged', '(service "logstore" "logstore")'),
                                ('firmware', '(Request.Firmware_Snapshot "tables")'),
-                               ('acpi', '(Request.Firmware_Snapshot "tables") (Request.ACPI_Hardware "hardware")')]:
+                               ('acpi', '(Request.Firmware_Snapshot "tables") (Request.ACPI_Hardware "hardware")'),
+                               ('power', '(Request.Platform_Power "power")')]:
             with self.subTest(name=name):
                 source = ('(Executable_Manifest identity => "com.cubit.test.' + name +
                           '" version => "1" requests => [' + requests + '])')
@@ -1362,6 +1363,30 @@ class Manifests(unittest.TestCase):
                     'never optional')
         self.reject(typed.replace('"tables")]', '"tables") (Request.Firmware_Snapshot "more")]'),
                     self.NATIVE, 'a second firmware snapshot request')
+
+    def test_platform_power_request(self):
+        """KERN-004: (Request.Platform_Power "power") is a required,
+        write-only .cubit.caps request (kind 21) and startup entry (kind 16)
+        whose Startup function returns the typed CuBit.Handles.Platform_Power;
+        never optional, never twice."""
+        typed = ('(Executable_Manifest identity => "com.cubit.acpi" version => "1" '
+                 'requests => [(Request.Platform_Power "power")])')
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        caps = sections['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<IHH', caps, 0), (0x43424954, 1, 1))
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 8), (21, 2, 0, 0, 0))
+        self.assertEqual(self.startup(sections['.cubit.startup'])[1], [('power', 16, 1, 1, 0)])
+        generated = (self.directory / 'startup.ads').read_text()
+        self.assertIn('with CuBit.Handles.Startup;', generated)
+        self.assertIn('   function Power return Standard.CuBit.Handles.Platform_Power is\n'
+                      '     (Standard.CuBit.Handles.Startup.Platform_Power_Named ("power", '
+                      'Standard.CuBit.Startup_Tables.Platform_Power));', generated)
+        self.reject(typed.replace('])', '] optional => ["power"])'), self.NATIVE,
+                    'never optional')
+        self.reject(typed.replace('"power")]', '"power") (Request.Platform_Power "again")]'),
+                    self.NATIVE, 'a second platform power request')
 
     def test_acpi_hardware_request(self):
         """ACPI hardware windows (coordination/acpi-region-boundary.md):

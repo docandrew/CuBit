@@ -38,6 +38,7 @@ package body CuBit.Handles.Boot_Roots is
             Notifications     => K.To_Notification (H.Notifications),
             Scheduling_Root   => K.To_Scheduling (H.Scheduling),
             Firmware_Snapshot_Root => K.To_Firmware_Snapshot (H.Firmware_Snapshot),
+            Platform_Power_Root    => K.To_Platform_Power (H.Platform_Power),
             Count             => Root_Count (Configuration.Device_Roots),
             Firmware_Count    => Root_Count (Configuration.Firmware_Roots));
       end;
@@ -82,7 +83,8 @@ package body CuBit.Handles.Boot_Roots is
             Ready          => K.To_Endpoint (H.Ready),
             Framebuffer    => K.To_Device_Memory (H.Framebuffer),
             Device_Inspection => K.To_Endpoint (H.Device_Inspection),
-            Firmware_Snapshot_Reader => K.To_Firmware_Snapshot (H.Firmware_Snapshot));
+            Firmware_Snapshot_Reader => K.To_Firmware_Snapshot (H.Firmware_Snapshot),
+            Platform_Power_Object    => K.To_Platform_Power (H.Platform_Power));
       end;
    end Process_Manager;
 

@@ -7960,7 +7960,14 @@ begin
             --  declared request (Firmware_Snapshot_ABI).
             Firmware_Snapshot =>
               DL.Place (C, H.Copy (Root.Firmware_Snapshot_Root,
-                                   (Read | Grant => True, others => False))));
+                                   (Read | Grant => True, others => False))),
+            --  The platform power object, with Grant: procmgr installs a
+            --  Write-only copy only where the startup plan approves a
+            --  declared request (Platform_Power_ABI, KERN-004). devmgr
+            --  never calls it.
+            Platform_Power =>
+              DL.Place (C, H.Copy (Root.Platform_Power_Root,
+                                   (Write | Grant => True, others => False))));
       begin
          if not LC.Process_Handles_Well_Formed (Handles) then
             debugPrint ("devmgr: procmgr handles incomplete; boot denied" & LF);

@@ -92,6 +92,7 @@ with CuBit.Render_Authority;
 with CuBit.Firmware_Snapshot_Authority;
 with CuBit.Publication_Grants;
 with CuBit.Self_Offers;
+with CuBit.Platform_Power_Authority;
 with System_Publications;
 with CuBit.Firmware_Snapshot;
 with CuBit.ACPI_Hardware_Authority;
@@ -151,6 +152,7 @@ procedure main is
    package GPU_Grants renames CuBit.Capability_Grants;
    package H renames CuBit.Handles;
    use all type H.Endpoint, H.Process, H.Cspace, H.Device_Memory, H.Notification, H.Firmware_Snapshot,
+                H.Platform_Power,
                 H.Rights, H.Derivation;
    package HIPC renames CuBit.Handles.IPC;
    package HC renames CuBit.Handles.Control;
@@ -1035,6 +1037,8 @@ procedure main is
    CAP_TYPE_DEVICE_MEM    : constant Unsigned_64 := 7;
    CAP_TYPE_FIRMWARE_SNAPSHOT : constant Unsigned_64 :=
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Firmware_Snapshot);
+   CAP_TYPE_PLATFORM_POWER : constant Unsigned_64 :=
+     CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Platform_Power);
    CAP_TYPE_IO_PORTS : constant Unsigned_64 :=
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.IO_Ports);
    --  A publication page is no capability: recorded as none, its
@@ -1519,7 +1523,8 @@ procedure main is
    --  The startup kinds whose requests are in .cubit.caps.
    function In_Caps (Kind : ST.Capability_Kind) return Boolean is
      (Kind in ST.Endpoint | ST.Notification | ST.Framebuffer | ST.Render | ST.Network
-              | ST.Firmware_Snapshot | ST.ACPI_Hardware | ST.Publication);
+              | ST.Firmware_Snapshot | ST.ACPI_Hardware | ST.Publication
+              | ST.Platform_Power);
 
    procedure readManifest
      (elfSize : Unsigned_64;
@@ -1654,6 +1659,8 @@ procedure main is
                           Kind /= CuBit.ACPI_Hardware_Authority.Manifest_Request,
                         when ST.Publication =>
                           Kind /= CuBit.Publication_Grants.Manifest_Request,
+                        when ST.Platform_Power =>
+                          Kind /= CuBit.Platform_Power_Authority.Manifest_Request,
                         when others          => True)
                   then
                      reading := Requests_Disagree;
@@ -3094,6 +3101,7 @@ procedure main is
       approvePCIConfig : Boolean := False;
       approveFirmwareData : Boolean := False;
       approveDisplayCapture : Boolean := False;
+      approvePlatformPower : Boolean := False;
       --  The time it has to register a role it provides (Registrant_Ready_By).
       readyDeadlineMs : CCL.Configurations.Ready_Deadline;
       --  Whether it may wait for a starting provider; if it must, Waits
@@ -3662,6 +3670,39 @@ procedure main is
             CAP_TYPE_FIRMWARE_SNAPSHOT, True, Outcome = SB.Granted, Mask (H.Read_Only), 0, 0);
       end Mint_Firmware_Snapshot;
 
+      --  The platform power object (Request.Platform_Power, KERN-004): a
+      --  Write-only copy of devmgr's root, only for a program the trusted
+      --  startup plan started and approved, (platform-power
+      --  approve-declared). The request itself is never approval.
+      procedure Mint_Platform_Power
+        (R : Caps_Request; Index : ST.Entry_Index;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if Manifest_Rights (Unsigned_64 (R.Rights)) /= H.Write_Only
+           or else R.Param0 /= 0 or else R.Param1 /= 0
+         then
+            Warnings.Warn ("procmgr: platform power request malformed for pid" & Image (newPID));
+         elsif not (systemStartup and then approvePlatformPower) then
+            Warnings.Warn ("procmgr: platform power refused: " & name &
+                           " is not approved by the startup plan");
+         elsif not Valid (PH.Platform_Power_Object) then
+            Outcome := SB.Not_Available;
+            Warnings.Warn ("procmgr: platform power refused: no object configured");
+         else
+            Install (Copy (PH.Platform_Power_Object, H.Write_Only), Handle, Outcome);
+            if Outcome = SB.Granted then
+               debugPrint ("procmgr: " & name & " pid" & Image (newPID) &
+                           ": platform power object installed (write)" & LF);
+            end if;
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_PLATFORM_POWER, True, Outcome = SB.Granted, Mask (H.Write_Only), 0, 0);
+      end Mint_Platform_Power;
+
       --  The ACPI hardware windows (Request.ACPI_Hardware): only for a program
       --  the trusted startup plan started and approved, (acpi-hardware
       --  approve-declared). Each window devmgr grants is installed as its own
@@ -4033,6 +4074,7 @@ procedure main is
             when ST.Framebuffer  => Mint_Framebuffer (R, Index, Handle, Outcome);
             when ST.Network      => Mint_Network (R, Index, Handle, Outcome);
             when ST.Firmware_Snapshot => Mint_Firmware_Snapshot (R, Index, Handle, Outcome);
+            when ST.Platform_Power => Mint_Platform_Power (R, Index, Handle, Outcome);
             when ST.ACPI_Hardware => Mint_ACPI_Hardware (R, Index, Item, Handle, Outcome);
             when ST.Publication => Mint_Publication (R, Index, Handle, Outcome);
             when ST.Render =>
@@ -5020,6 +5062,7 @@ procedure main is
       approvePCIConfig : Boolean := False;
       approveFirmwareData : Boolean := False;
       approveDisplayCapture : Boolean := False;
+      approvePlatformPower : Boolean := False;
       readyDeadlineMs : CCL.Configurations.Ready_Deadline;
       mayWait : Boolean;
       Waits : out Awaited_Access;
@@ -5041,7 +5084,7 @@ procedure main is
         (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
          cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
          approveACPIHardware, approvePCIConfig, approveFirmwareData,
-         approveDisplayCapture, readyDeadlineMs, mayWait, Waits);
+         approveDisplayCapture, approvePlatformPower, readyDeadlineMs, mayWait, Waits);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
          -- attempt's launcher resources stay retained independently. The
@@ -5051,7 +5094,8 @@ procedure main is
            (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
             sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole,
             approveFirmwareSnapshot, approveACPIHardware, approvePCIConfig,
-            approveFirmwareData, approveDisplayCapture, readyDeadlineMs, False, Waits);
+            approveFirmwareData, approveDisplayCapture, approvePlatformPower, readyDeadlineMs,
+            False, Waits);
       end if;
       return Result;
    end spawnByName;
@@ -5872,6 +5916,7 @@ procedure main is
          approvePCIConfig => Item.Approve_ACPI_PCI_Config,
          approveFirmwareData => Item.Approve_ACPI_Firmware_Data,
          approveDisplayCapture => Item.Approve_Display_Capture,
+         approvePlatformPower => Item.Approve_Platform_Power,
          approveNetwork =>
            (if Item.Approval = Approve_Declared then Declared_Network
             else No_Network),

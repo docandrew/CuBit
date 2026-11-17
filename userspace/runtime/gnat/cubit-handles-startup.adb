@@ -119,4 +119,9 @@ package body CuBit.Handles.Startup with SPARK_Mode => Off is
      return Firmware_Snapshot is
      (K.To_Firmware_Snapshot (CuBit.Startup_State.Granted (Label, Kind)));
 
+   function Platform_Power_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.Platform_Power)
+     return Platform_Power is
+     (K.To_Platform_Power (CuBit.Startup_State.Granted (Label, Kind)));
+
 end CuBit.Handles.Startup;

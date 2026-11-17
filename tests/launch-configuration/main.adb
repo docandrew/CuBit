@@ -47,7 +47,8 @@ begin
         (Self => H (0), Self_Process => H (1), Self_Grantable => H (2),
          Process_Root => H (3), PCI_Ports => H (4), Registration => H (5),
          Vector_Authority => H (6), IO_Ports => H (7), Legacy_Interrupts => H (8),
-         Notifications => H (9), Scheduling => H (10), Firmware_Snapshot => H (14));
+         Notifications => H (9), Scheduling => H (10), Firmware_Snapshot => H (14),
+         Platform_Power => H (15));
       Old_Fixed_Roots : constant := 8;
       Many_Device : constant := 5 * Old_Fixed_Roots;
       Many_Firmware : constant := 7 * Old_Fixed_Roots;
@@ -154,7 +155,8 @@ begin
                      Notifications => H (5), Filesystem => H (6), Config => H (7),
                      Netstack => H (8), Network_Policy => H (9), Mixer => 0,
                      Device_Manager => H (10), Ready => H (11), Framebuffer => H (12),
-                     Device_Inspection => H (13), Firmware_Snapshot => H (14)));
+                     Device_Inspection => H (13), Firmware_Snapshot => H (14),
+                     Platform_Power => H (15)));
       D : Process_Manager_Configuration; OK : Boolean;
       E : Encoded;
    begin

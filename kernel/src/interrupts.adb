@@ -4,6 +4,7 @@
 --
 -- @description x86-64 interrupt handler routines and interrupt vector setup.
 -------------------------------------------------------------------------------
+with CPU_Parking;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
@@ -325,6 +326,11 @@ is
                 begin
                     cpuData2.needReschedule := True;
                     TLB_Shootdown.Service (myCPU);
+                    -- A platform power transition (KERN-004): stop here,
+                    -- interrupts off and no spinlock held, until released.
+                    if CPU_Parking.Requested and then myCPU <= CPU_Parking.CPU_Index'Last then
+                        CPU_Parking.Hold (myCPU);
+                    end if;
                 end reschedIPI;
 
             when IOMMU_FAULT =>

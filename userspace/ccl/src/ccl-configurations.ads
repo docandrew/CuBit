@@ -120,6 +120,10 @@ package CCL.Configurations with SPARK_Mode => On is
       --  the kernel's Firmware_Data_Tag roots, one envelope per request).
       --  Off unless written. Without acpi-hardware it is refused.
       Approve_ACPI_Firmware_Data : Boolean := False;
+      --  (platform-power approve-declared): the plan approves the manifest's
+      --  declared platform power object (Request.Platform_Power, KERN-004):
+      --  entering S5 or reset through the kernel. Off unless written.
+      Approve_Platform_Power : Boolean := False;
       Scheduling_Budget, Scheduling_Period : CCL.Scheduling_Limits.Microseconds :=
         CCL.Scheduling_Limits.Microseconds'First;
       Has_Ready_Deadline : Boolean := False;

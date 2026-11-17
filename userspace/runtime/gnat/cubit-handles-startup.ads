@@ -135,4 +135,11 @@ package CuBit.Handles.Startup with SPARK_Mode is
    with Global => CuBit.Startup_State.Loaded_Table,
         Pre    => Kind in ST.Firmware_Snapshot;
 
+   --  Required only, likewise (CuBit.Platform_Power_Authority).
+   function Platform_Power_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.Platform_Power)
+     return Platform_Power
+   with Global => CuBit.Startup_State.Loaded_Table,
+        Pre    => Kind in ST.Platform_Power;
+
 end CuBit.Handles.Startup;

@@ -183,7 +183,7 @@ package body CCL.Configurations with SPARK_Mode => On is
            Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments,
            Have_Stop_Grace, Have_Stop_Stage : Boolean := False;
          Have_ACPI_Hardware, Have_ACPI_PCI_Config,
-           Have_ACPI_Firmware_Data, Have_Display_Capture : Boolean := False;
+           Have_ACPI_Firmware_Data, Have_Display_Capture, Have_Platform_Power : Boolean := False;
 
          --  (<name> deny) or (<name> approve-declared), once.
          procedure Declared_Approval (Seen : in out Boolean; Approved : out Boolean) is
@@ -286,6 +286,8 @@ package body CCL.Configurations with SPARK_Mode => On is
                Declared_Approval (Have_ACPI_PCI_Config, Item.Approve_ACPI_PCI_Config);
             elsif Matches (Name, "acpi-firmware-data") then
                Declared_Approval (Have_ACPI_Firmware_Data, Item.Approve_ACPI_Firmware_Data);
+            elsif Matches (Name, "platform-power") then
+               Declared_Approval (Have_Platform_Power, Item.Approve_Platform_Power);
             elsif Matches (Name, "role") then
                if Have_Role then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);

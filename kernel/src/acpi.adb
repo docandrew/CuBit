@@ -877,8 +877,15 @@ package body acpi is
                         end if;
                         print (" DSDT selected address: "); println (dsdtPhysical);
 
-                        -- @TODO this will be how we can shutdown/sleep the machine
-                        print (" PM1A Control Block:    "); println (fadt.PM1AEventBlock);
+                        declare
+                            Data : Firmware_Tables.Bytes (1 .. Natural (tableLength))
+                              with Import, Address => descHdr'Address;
+                        begin
+                            powerRegisters := Firmware_Tables.Power_Registers.Decode (Data);
+                        end;
+                        print (" Sleep registers:       ");
+                        println (Integer (Firmware_Tables.Power_Registers.Sleep_Model'Pos
+                                   (powerRegisters.Model)));
 
                         if dsdtPhysical = 0 or else
                           dsdtPhysical > Unsigned_64 (virtmem.PhysAddress'Last) -

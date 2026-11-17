@@ -438,6 +438,19 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                Item.Kind := Offerable_Self_Request;
                Item.Rights := Read_Only;
                Binding (Body_Cursor, Item);
+         elsif Kind = "Platform_Power" then
+               --  The platform power object, Write only (KERN-004,
+               --  CuBit.Platform_Power_Authority).
+               for Existing of Decl.Requests (1 .. Decl.Count) loop
+                  if Existing.Kind = Platform_Power_Request then
+                     Fail (Duplicate_Field, "a second platform power request",
+                           "declare (Request.Platform_Power ...) once");
+                     return;
+                  end if;
+               end loop;
+               Item.Kind := Platform_Power_Request;
+               Item.Rights := Write_Only;
+               Binding (Body_Cursor, Item);
          elsif Kind = "Network" then
                Item.Kind := Network_Request;
                Item.Rights := Read_Write;
@@ -596,6 +609,11 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                end if;
                if Decl.Requests (Found).Kind = Firmware_Snapshot_Request then
                   Fail (Not_Yet_Supported, """" & Name & """ is a firmware snapshot reader, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = Platform_Power_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is the platform power object, never optional",
                         "remove it from optional; the startup entry approves the launch or refuses it");
                   return;
                end if;

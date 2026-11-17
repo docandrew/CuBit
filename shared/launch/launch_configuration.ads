@@ -124,7 +124,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
    --  ports, its own registration, the device-vector authority, the I/O
    --  port space, the legacy interrupt lines, every service role's
    --  notification, real-time scheduling, reading the sealed firmware-table
-   --  snapshot (FIRMWARE_SNAPSHOT). After these named handles, the block
+   --  snapshot (FIRMWARE_SNAPSHOT), the platform power object (KERN-004).
+   --  After these named handles, the block
    --  carries one device-memory root per maximal run of device-mappable
    --  pages, ascending, then the firmware-memory roots (kernel
    --  Physical_Ranges.Next_Firmware_Run): ACPI NVS runs, the FACS page,
@@ -145,8 +146,10 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Notifications     : Unsigned_64 := 0;
       Scheduling        : Unsigned_64 := 0;
       Firmware_Snapshot : Unsigned_64 := 0;
+      --  Entering a system power state (KERN-004, Platform_Power_ABI).
+      Platform_Power    : Unsigned_64 := 0;
    end record;
-   Device_Manager_Handle_Fields : constant := 12;
+   Device_Manager_Handle_Fields : constant := 13;
 
    --  A handle word: its generation (high half) is never zero.
    function Is_Handle (Word : Unsigned_64) return Boolean is
@@ -159,7 +162,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then Is_Handle (H.PCI_Ports) and then Is_Handle (H.Registration)
       and then Is_Handle (H.Vector_Authority) and then Is_Handle (H.IO_Ports)
       and then Is_Handle (H.Legacy_Interrupts) and then Is_Handle (H.Notifications)
-      and then Is_Handle (H.Scheduling) and then Is_Handle (H.Firmware_Snapshot));
+      and then Is_Handle (H.Scheduling) and then Is_Handle (H.Firmware_Snapshot)
+      and then Is_Handle (H.Platform_Power));
 
    --  devmgr's words: the header, the two root counts, the boot image,
    --  the framebuffer (first, bytes), the named handles, then one word per
@@ -244,8 +248,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
       --  read-only copy in a program whose manifest declares it and whose
       --  startup entry approves it (Firmware_Snapshot_ABI).
       Firmware_Snapshot : Unsigned_64 := 0;
+      --  The platform power object, with Grant: procmgr installs a copy
+      --  (Write only) in a program whose manifest declares it and whose
+      --  startup entry approves it (Platform_Power_ABI, KERN-004).
+      Platform_Power    : Unsigned_64 := 0;
    end record;
-   Process_Manager_Handle_Fields : constant := 16;
+   Process_Manager_Handle_Fields : constant := 17;
 
    --  The handles every procmgr needs are handles; the others (mixer, the
    --  framebuffer) are a handle or zero.
@@ -259,7 +267,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then Is_Handle (H.Device_Manager) and then Is_Handle (H.Ready)
       and then (H.Framebuffer = 0 or else Is_Handle (H.Framebuffer))
       and then Is_Handle (H.Device_Inspection)
-      and then Is_Handle (H.Firmware_Snapshot));
+      and then Is_Handle (H.Firmware_Snapshot)
+      and then Is_Handle (H.Platform_Power));
 
    --  devmgr to procmgr.
    type Process_Manager_Configuration is record
@@ -498,7 +507,7 @@ package Launch_Configuration with Pure, SPARK_Mode is
    function Handle_Words (H : Device_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.PCI_Ports,
       H.Registration, H.Vector_Authority, H.IO_Ports, H.Legacy_Interrupts,
-      H.Notifications, H.Scheduling, H.Firmware_Snapshot]
+      H.Notifications, H.Scheduling, H.Firmware_Snapshot, H.Platform_Power]
    with Post => Handle_Words'Result'First = 1
                 and then Handle_Words'Result'Length = Device_Manager_Handle_Fields;
 
@@ -543,12 +552,12 @@ package Launch_Configuration with Pure, SPARK_Mode is
                             Encode_Prefix'Result.Words (First_Handle_Word - 1 + I) =
                               Handle_Words (Value.Handles) (I));
 
-   --  The handles' words, in field order (Words (6 .. 21)).
+   --  The handles' words, in field order (Words (6 .. 22)).
    function Process_Handle_Words (H : Process_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.Registration,
       H.Notifications, H.Filesystem, H.Config, H.Netstack, H.Network_Policy,
       H.Mixer, H.Device_Manager, H.Ready, H.Framebuffer, H.Device_Inspection,
-      H.Firmware_Snapshot]
+      H.Firmware_Snapshot, H.Platform_Power]
    with Post => Process_Handle_Words'Result'First = 1
                 and then Process_Handle_Words'Result'Length = Process_Manager_Handle_Fields;
 
@@ -642,7 +651,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
                              Mixer => Words (16), Device_Manager => Words (17),
                              Ready => Words (18), Framebuffer => Words (19),
                              Device_Inspection => Words (20),
-                             Firmware_Snapshot => Words (21))))
+                             Firmware_Snapshot => Words (21),
+                             Platform_Power => Words (22))))
                 and then (if Valid then
                             Value.Framebuffer.First = Words (4)
                             and then Value.Framebuffer.Bytes = Words (5)

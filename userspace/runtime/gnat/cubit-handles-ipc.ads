@@ -93,6 +93,7 @@ package CuBit.Handles.IPC is
    function Describe (Item : Process) return Description;
    function Describe (Item : Device_Memory) return Description;
    function Describe (Item : IO_Ports) return Description;
+   function Describe (Item : Platform_Power) return Description;
    function Describe (Item : Interrupt) return Description;
    function Describe (Item : Notification) return Description;
    function Describe (Item : Scheduling) return Description;

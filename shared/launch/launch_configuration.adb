@@ -76,7 +76,7 @@ package body Launch_Configuration with SPARK_Mode is
    begin
       Result.Words (4) := Value.Framebuffer.First;
       Result.Words (5) := Value.Framebuffer.Bytes;
-      Result.Words (6 .. 21) := Process_Handle_Words (Value.Handles);
+      Result.Words (6 .. 22) := Process_Handle_Words (Value.Handles);
       return Result;
    end Encode;
 
@@ -164,7 +164,8 @@ package body Launch_Configuration with SPARK_Mode is
                       Legacy_Interrupts => Words (First_Handle_Word + 8),
                       Notifications     => Words (First_Handle_Word + 9),
                       Scheduling        => Words (First_Handle_Word + 10),
-                      Firmware_Snapshot => Words (First_Handle_Word + 11)));
+                      Firmware_Snapshot => Words (First_Handle_Word + 11),
+                      Platform_Power    => Words (First_Handle_Word + 12)));
       end if;
    end Decode;
 
@@ -186,7 +187,8 @@ package body Launch_Configuration with SPARK_Mode is
          Netstack => Words (14), Network_Policy => Words (15),
          Mixer => Words (16), Device_Manager => Words (17),
          Ready => Words (18), Framebuffer => Words (19),
-         Device_Inspection => Words (20), Firmware_Snapshot => Words (21));
+         Device_Inspection => Words (20), Firmware_Snapshot => Words (21),
+         Platform_Power => Words (22));
       Valid := Process_Handles_Well_Formed (Value.Handles);
       if Valid then
          Value.Framebuffer := (First => Words (4), Bytes => Words (5));

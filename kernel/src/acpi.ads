@@ -16,6 +16,7 @@ with Firmware_Tables.Snapshots;
 with Firmware_Tables.Snapshots.Transfers;
 with Firmware_Tables.Exposure;
 with Firmware_Tables.Remapping;
+with Firmware_Tables.Power_Registers;
 
 -- Firmware-table overlays are Ada; no blanket SPARK claim for this package.
 package acpi is
@@ -35,6 +36,12 @@ package acpi is
     -- FADT is long enough and it is nonzero, else FIRMWARE_CTRL; zero when
     -- there is none. Physical_Ranges' control page (firmware memory).
     facsAddr    : Unsigned_64 := 0;
+    -- The FADT's power registers (PM1a/PM1b control, the hardware-reduced
+    -- sleep control register, the reset register and value), decoded from
+    -- the admitted table (Firmware_Tables.Power_Registers). The platform
+    -- power object writes only these (KERN-004, Platform_Power).
+    powerRegisters : Firmware_Tables.Power_Registers.Description :=
+      Firmware_Tables.Power_Registers.No_Description;
 
     -- The DMA remapping table (DMAR, IOMMU-001): absent (no table in the
     -- XSDT), rejected (dmarRejection says why and dmarOffset where) or

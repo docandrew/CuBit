@@ -6,6 +6,7 @@
 -- port I/O, process management, system configuration.
 -------------------------------------------------------------------------------
 pragma Ada_2022;
+with Kernel_Object_Calls;
 with Ada.Unchecked_Conversion;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -489,6 +490,23 @@ package body Syscall.Admin is
         begin
             replyTag := Process.IPC.capCall
               (handle => arg0, msg => localMsg, deadlineMs => arg2);
+            -- The endpoint path refuses every handle that is not a live
+            -- endpoint, with no effect. Only then is it resolved as a
+            -- kernel object (ABI-002): the endpoint fast path is unchanged.
+            if replyTag = Process.NULL_TAG then
+                declare
+                    Reply   : Process.Message;
+                    Outcome : Kernel_Object_Calls.Outcome;
+                    use type Kernel_Object_Calls.Outcome;
+                begin
+                    Kernel_Object_Calls.Call (callerPID, arg0, localMsg, Reply, Outcome);
+                    if Outcome = Kernel_Object_Calls.Answered then
+                        Process.User_Memory.Write_Message (callerPID, arg1, Reply, ok);
+                        retval := (if ok then tagToU64 (Reply.tag) else reterr);
+                        return;
+                    end if;
+                end;
+            end if;
             if Recording then
                 Boot_Timeline.Note_Wait
                   (Slot    => Natural (callerPID),

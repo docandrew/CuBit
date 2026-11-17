@@ -57,9 +57,11 @@ pub enum Kind {
     /// A kernel publication page mapped read-only (KERN-002); the handle
     /// word is the page's address.
     Publication = 15,
+    /// The platform power object (KERN-004).
+    PlatformPower = 16,
 }
 
-const LAST_KIND: u8 = Kind::Publication as u8;
+const LAST_KIND: u8 = Kind::PlatformPower as u8;
 
 /// Whether a program's launch needs a startup capability
 /// (CuBit.Startup_Tables.Need).

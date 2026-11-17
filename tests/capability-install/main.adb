@@ -97,7 +97,7 @@ procedure Main is
       for K in CapabilityType loop
          if K not in CAP_ENDPOINT | CAP_NOTIFICATION | CAP_IOPORT | CAP_IRQ |
                      CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING |
-                     CAP_FIRMWARE_SNAPSHOT
+                     CAP_FIRMWARE_SNAPSHOT | CAP_PLATFORM_POWER
          then
             Expect_Refusal (Cap (K, ALL_RIGHTS, 5, 1), Req (READ_ONLY),
                             ABI.Not_Transferable, "kind " & K'Image);
@@ -115,6 +115,19 @@ procedure Main is
          Expect_Refusal (Snapshot, Req (READ_WRITE), ABI.Would_Amplify, "firmware snapshot write");
          Expect_Refusal (Cap (CAP_FIRMWARE_SNAPSHOT, READ_ONLY, 0, 0), Req (READ_ONLY),
                          ABI.Insufficient_Rights, "firmware snapshot copy without grant");
+      end;
+      -- The platform power object (KERN-004): devmgr to procmgr (Write and
+      -- Grant), then a Write-only copy to the one program; never more.
+      declare
+         Power : constant Capability :=
+           Cap (CAP_PLATFORM_POWER, (RIGHT_WRITE | RIGHT_GRANT => True, others => False), 0, 0);
+         Write_Only : constant CapabilityRights := (RIGHT_WRITE => True, others => False);
+      begin
+         Expect_Copy (Power, Req (Write_Only), Cap (CAP_PLATFORM_POWER, Write_Only, 0, 0, 0),
+                      "platform power write-only copy");
+         Expect_Refusal (Power, Req (READ_WRITE), ABI.Would_Amplify, "platform power read");
+         Expect_Refusal (Cap (CAP_PLATFORM_POWER, Write_Only, 0, 0), Req (Write_Only),
+                         ABI.Insufficient_Rights, "platform power copy without grant");
       end;
       -- Device vectors: never; legacy lines: yes, and narrowed.
       Expect_Refusal (Vectors, Req (READ_ONLY), ABI.Not_Transferable, "vector authority");

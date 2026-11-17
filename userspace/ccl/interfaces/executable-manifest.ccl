@@ -37,7 +37,12 @@
   # kernel's own "self" endpoint cannot). A holder can only deliver grants
   # to it (Derive_Via_Capability). The launcher installs it at spawn only
   # for a manifest that declares it.
-  (Offerable_Self String)))
+  (Offerable_Self String)
+  # The platform power object (KERN-004): enter S5 or reset through the
+  # kernel, which writes only the FADT registers it decoded itself. Write
+  # only; installed only where the startup entry approves it,
+  # (platform-power approve-declared). Never optional.
+  (Platform_Power String)))
 (type File_Right (enum Read Write Execute Create))
 (type Scope_Place (variant (Everything) (Under String)))
 (type Access_Scope (record (rights (List File_Right)) (place Scope_Place)))

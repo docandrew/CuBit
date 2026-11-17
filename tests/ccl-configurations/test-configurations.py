@@ -91,6 +91,23 @@ class Configurations(unittest.TestCase):
         for clause in ('(acpi-registers approve-declared)', '(acpi-registers deny)'):
             self.reject(base % clause)
 
+    def test_platform_power_approval_is_explicit(self):
+        """(platform-power approve-declared) (KERN-004): off unless written,
+        once, beside the entry's other approvals; the manifest's
+        Request.Platform_Power alone never installs the object."""
+        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
+        for clause in ('', '(platform-power deny)'):
+            result = self.compile(base % clause)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'acpi.svc pri=5\n')
+        result = self.compile(base % '(acpi-hardware approve-declared) (platform-power approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'acpi.svc pri=5 acpi-hardware=approved platform-power=approved\n')
+        for clause in ('(platform-power)', '(platform-power all)',
+                       '(platform-power approve-declared extra)', '(platform-power "power")'):
+            self.reject(base % clause)
+        self.reject(base % '(platform-power deny) (platform-power approve-declared)', 'DUPLICATE_FIELD')
+
     def test_display_capture_approval_is_explicit(self):
         """(display-capture approve-declared) (REMOTE-001 screenshots): off
         unless written, once, beside the entry's other approvals; the

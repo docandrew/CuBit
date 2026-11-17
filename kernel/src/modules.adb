@@ -874,6 +874,8 @@ package body Modules with SPARK_Mode => Off is
               (Capabilities.RIGHT_GRANT => True, others => False);
             READ_GRANT : constant Capabilities.CapabilityRights :=
               (Capabilities.RIGHT_READ | Capabilities.RIGHT_GRANT => True, others => False);
+            WRITE_GRANT : constant Capabilities.CapabilityRights :=
+              (Capabilities.RIGHT_WRITE | Capabilities.RIGHT_GRANT => True, others => False);
             RW_GRANT : constant Capabilities.CapabilityRights :=
               (Capabilities.RIGHT_READ | Capabilities.RIGHT_WRITE |
                Capabilities.RIGHT_GRANT => True, others => False);
@@ -960,6 +962,13 @@ package body Modules with SPARK_Mode => Off is
             -- then answers Not_Ready.
             place (root (Capabilities.CAP_FIRMWARE_SNAPSHOT, READ_GRANT, 0, 0),
                    handles.Firmware_Snapshot);
+            -- The only platform power object (KERN-004, Platform_Power_ABI):
+            -- enter S5 or reset through the kernel, which writes only the
+            -- FADT registers it decoded itself. devmgr passes it to procmgr,
+            -- which installs a Write-only copy only where a manifest
+            -- declares it and the startup plan approves it.
+            place (root (Capabilities.CAP_PLATFORM_POWER, WRITE_GRANT, 0, 0),
+                   handles.Platform_Power);
 
             -- Device-memory roots (CAP-001): one CAP_DEVICE_MEM per maximal
             -- run of device-mappable pages in the boot classification (PCI
