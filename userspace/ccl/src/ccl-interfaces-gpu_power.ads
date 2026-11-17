@@ -25,8 +25,13 @@ package CCL.Interfaces.GPU_Power with SPARK_Mode, Pure is
    --  the admitted render session desktop.render.gpu grants). It is an
    --  operator's A/B switch, read when Desktop starts; it never admits or
    --  refuses the GPU session itself, which stays for 3D work either way.
+   --  LAT-003 adds the CPU arm's scanout A/B: CPU composes straight into
+   --  the buffer Display lends (the default); CPU_Staged composes into a
+   --  private buffer and streams each frame's boxes into the lent one with
+   --  non-temporal stores; CPU_Copy lends nothing and Display copies each
+   --  frame (image 25's path).
    COMPOSITION_TYPE_SOURCE : constant String :=
-     "(type Composition_Path (enum CPU GPU)) " &
+     "(type Composition_Path (enum CPU GPU CPU_Staged CPU_Copy)) " &
      "(type Desktop_Composition (record (path Composition_Path Composition_Path.CPU)))";
    COMPOSITION_ROOT_TYPE_NAME : constant String := "Desktop_Composition";
 end CCL.Interfaces.GPU_Power;

@@ -1,0 +1,10 @@
+project Stream_Copy is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("stream_copy_tests.adb", "compositor_stream_copy.ads", "compositor_stream_copy.adb");
+   for Object_Dir use external ("LAT003_OBJECT_DIR", "build");
+   for Exec_Dir use external ("LAT003_OBJECT_DIR", "build");
+   for Main use ("stream_copy_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Stream_Copy;

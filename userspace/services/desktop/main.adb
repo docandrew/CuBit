@@ -38,6 +38,7 @@ with Compositor_Workspace;
 ------------------------------------------------------------------------------
 with Desktop_Timing_Policy;
 with Desktop_Metrics;
+with Compositor_Stream_Copy;
 with Desktop_Logs;
 with Desktop_Storage_Policy;
 with Compositor_Text;
@@ -197,6 +198,7 @@ with Desktop_Compositor;
 procedure main is
    procedure debugPrint (Text : String) renames Desktop_Logs.Write;
    package DM renames Desktop_Metrics;
+   use type Desktop_Composition_Settings.Scanout_Use;
    package Close_Policy renames Compositor_Close_Request;
    package DSP renames CuBit.Display_Protocol;
    package DL renames CuBit.Display_Layouts;
@@ -503,6 +505,15 @@ procedure main is
       --  and when the newest frame's composition began (its cost to arm).
       Pacing : Compositor_Pacing.State;
       Compose_Start_Us : Unsigned_64 := 0;
+      --  LAT-003: damage as drawing reported it since the last capture,
+      --  and the frame being composed's cost breakdown (Desktop_Metrics).
+      Raw_Boxes, Raw_Pixels : Unsigned_64 := 0;
+      Breakdown : Desktop_Metrics.Frame_Breakdown;
+      --  LAT-003 staged lending: compose into Composed (slot 1's own rows,
+      --  the same cache-hot lines every frame), then stream each frame's
+      --  boxes to the lent scanout buffer (Compositor_Stream_Copy).
+      Staged : Boolean := False;
+      Composed : System.Address := System.Null_Address;
    end record;
    presentations : array (Output_Index) of Output_Presentation;
    --  The target slot of each output's newest presented frame (0: none
@@ -1672,7 +1683,9 @@ procedure main is
       Stored : constant Setting.Reading := Setting.Read;
    begin
       uiComposition :=
-        (if Stored.Kind = Present then Stored.Item else Desktop_Composition_Settings.Default_Composition);
+        (if Stored.Kind = Present then Stored.Item.Path else Desktop_Composition_Settings.Default_Composition);
+      Desktop_Composition_Settings.Scanout :=
+        (if Stored.Kind = Present then Stored.Item.Scanout else Desktop_Composition_Settings.Direct);
       if Stored.Kind not in Present | Absent then
          debugPrint ("desktop: " & Setting.Setting_Key & " " & CuBit.Settings.Outcome'Image (Stored.Kind) &
                      "; using the default" & LF);
@@ -1681,6 +1694,10 @@ procedure main is
                   (case uiComposition is
                      when Compositor_Backend_Selection.CPU_Composition => "cpu",
                      when Compositor_Backend_Selection.GPU_Composition => "gpu") &
+                  (case Desktop_Composition_Settings.Scanout is
+                     when Desktop_Composition_Settings.Staged => ", scanout staged",
+                     when Desktop_Composition_Settings.Direct => ", scanout direct",
+                     when Desktop_Composition_Settings.Copied => ", scanout copied by Display") &
                   (if Stored.Kind = Present then " (configured)" else " (default)") & LF);
    end Load_Composition;
    procedure Load_GPU_Power is
@@ -3547,6 +3564,8 @@ procedure main is
                begin
                   addOutputDamage (P.Damage, Area);
                   if not isEmpty (Area) then
+                     P.Raw_Boxes := P.Raw_Boxes + 1;
+                     P.Raw_Pixels := P.Raw_Pixels + Unsigned_64 (Area.w) * Unsigned_64 (Area.h);
                      RP.Invalidate (P.Repaint, (Area.x, Area.y, Area.x + Area.w, Area.y + Area.h));
                      if directOutput then
                         -- The current writer has already painted these pixels.
@@ -4111,6 +4130,19 @@ procedure main is
          end if;
          Compositor_Damage.Capture (P.Damage, P.Frame_Damage, Captured);
          if not Captured then exitCompositor (1); end if;
+         declare
+            Merged : Unsigned_64 := 0;
+         begin
+            for I in 1 .. Compositor_Damage.Count (P.Frame_Damage) loop
+               declare B : constant Rect := damageRectangle (Compositor_Damage.Item (P.Frame_Damage, I));
+               begin Merged := Merged + Unsigned_64 (B.w) * Unsigned_64 (B.h); end;
+            end loop;
+            P.Breakdown := (Raw_Boxes => P.Raw_Boxes, Raw_Pixels => P.Raw_Pixels,
+                            Rects => Unsigned_64 (Compositor_Damage.Count (P.Frame_Damage)),
+                            Pixels => Merged, others => 0);
+            P.Raw_Boxes := 0;
+            P.Raw_Pixels := 0;
+         end;
          latencyCompose (Output, P.Frame_Damage);
          if Bootstrap_CPU then
             renderOutput (Output, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
@@ -4124,7 +4156,29 @@ procedure main is
                   Compositor_Damage.Add (Repair, Compositor_Damage.Item (Capture_Repair, I));
                end loop;
             end if;
-            for I in 1 .. Compositor_Damage.Count (Repair) loop
+            P.Breakdown.Draw_Us := CuBit.Monotonic.Microseconds;
+            if P.Staged then
+               --  Staged: the private buffer has every earlier frame, so
+               --  only this frame's damage is drawn; the scanout buffer's
+               --  older repair is only copied out (with the damage).
+               declare
+                  Drawn : constant Compositor_Damage.State := P.Frame_Damage;
+               begin
+                  for I in 1 .. Compositor_Damage.Count (Drawn) loop
+                     declare B : constant Rect := damageRectangle (Compositor_Damage.Item (Drawn, I));
+                     begin
+                        P.Breakdown.Repair_Pixels := P.Breakdown.Repair_Pixels + Unsigned_64 (B.w) * Unsigned_64 (B.h);
+                        if nativeScene then renderOutput (Output, B); else copyRegion (B); end if;
+                     end;
+                  end loop;
+                  for I in 1 .. Compositor_Damage.Count (Repair) loop
+                     Compositor_Damage.Add (P.Frame_Damage, Compositor_Damage.Item (Repair, I));
+                  end loop;
+               end;
+            end if;
+            for I in 1 .. (if P.Staged then 0 else Compositor_Damage.Count (Repair)) loop
+               declare B : constant Rect := damageRectangle (Compositor_Damage.Item (Repair, I));
+               begin P.Breakdown.Repair_Pixels := P.Breakdown.Repair_Pixels + Unsigned_64 (B.w) * Unsigned_64 (B.h); end;
                if nativeScene then
                   renderOutput (Output, damageRectangle (Compositor_Damage.Item (Repair, I)));
                else
@@ -4138,6 +4192,13 @@ procedure main is
                end if;
             end loop;
          end if;
+         declare Done : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+         begin
+            P.Breakdown.Draw_Us :=
+              (if P.Breakdown.Draw_Us /= 0 and then Done /= CuBit.Monotonic.Unavailable_Us and then
+                  Done >= P.Breakdown.Draw_Us
+               then Done - P.Breakdown.Draw_Us else 0);
+         end;
          if Bootstrap_CPU and then P.Lent then
             Compositor_Damage.Add (P.Frame_Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
          end if;
@@ -4186,7 +4247,7 @@ procedure main is
             Compositor_Damage.Restore (P.Damage, P.Frame_Damage);
             BP.Acquire (P.Pool, Next_Writer);
             if Next_Writer = BP.None then exitCompositor (1); end if;
-            P.Buffer := P.Targets (Next_Writer.Buffer).Address;
+            P.Buffer := (if P.Staged then P.Composed else P.Targets (Next_Writer.Buffer).Address);
             if Renderer_Recovery then
                RP.Invalidate (P.Repaint, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
                Compositor_Damage.Add (P.Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
@@ -4221,7 +4282,32 @@ procedure main is
            Natural'Image (Natural (P.Geometry.Height)) & LF);
       end if;
       envelopeBytes := Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4;
+      --  Staged lending: the frame's boxes (its damage and the buffer-age
+      --  repair) from the private buffer to the lent scanout buffer.
+      if P.Staged then
+         declare
+            Started_Us : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+            Done_Us : Unsigned_64;
+         begin
+            for I in 1 .. Compositor_Damage.Count (P.Frame_Damage) loop
+               declare B : constant Rect := damageRectangle (Compositor_Damage.Item (P.Frame_Damage, I));
+               begin
+                  Compositor_Stream_Copy.Copy_Box
+                    (P.Targets (BP.Writer (P.Pool).Buffer).Address, P.Pitch, P.Composed, P.Pitch,
+                     B.x, B.y, B.w, B.h);
+               end;
+            end loop;
+            Compositor_Stream_Copy.Fence;
+            Done_Us := CuBit.Monotonic.Microseconds;
+            if Started_Us /= CuBit.Monotonic.Unavailable_Us and then Done_Us /= CuBit.Monotonic.Unavailable_Us
+              and then Done_Us >= Started_Us
+            then
+               P.Breakdown.Write_Out_Us := Done_Us - Started_Us;
+            end if;
+         end;
+      end if;
       BP.Finish_Render (P.Pool, BP.Writer (P.Pool), BP.Completed);
+      DM.Record_Breakdown (P.Breakdown, CuBit.Monotonic.Microseconds);
       BP.Present (P.Pool, Held);
       if Held = BP.None then exitCompositor (1); end if;
       lastPresented (Output) := Held.Buffer;
@@ -4252,7 +4338,7 @@ procedure main is
       end;
       BP.Acquire (P.Pool, Next_Writer);
       if Next_Writer = BP.None then exitCompositor (1); end if;
-      P.Buffer := P.Targets (Next_Writer.Buffer).Address;
+      P.Buffer := (if P.Staged then P.Composed else P.Targets (Next_Writer.Buffer).Address);
       if directOutput then
          -- Switch write authority now, but leave missing pixels queued until
          -- visible work exists. In particular, input-time cursor restoration
@@ -13687,6 +13773,11 @@ procedure main is
          debugPrint ("desktop: holds a GPU endpoint; not composing into lent scanout" & LF);
          P.Lent := False;
       end if;
+      --  desktop.composition CPU_Copy: the copy path (LAT-003's A/B).
+      if P.Lent and then Desktop_Composition_Settings.Scanout = Desktop_Composition_Settings.Copied then
+         debugPrint ("desktop: desktop.composition asks for copies; not composing into lent scanout" & LF);
+         P.Lent := False;
+      end if;
       --  The endpoint Display derives loans through (Request.Offerable_Self).
       if P.Lent and then not CuBit.Handles.Valid (Self_Offer) then
          debugPrint ("desktop: no offerable self endpoint; copying frames" & LF);
@@ -13755,6 +13846,11 @@ procedure main is
                end if;
                P.Targets (B).Lent := True;
                P.Targets (B).Loan := Loan.Value.Source.Grant;
+               --  Slot 1's own rows become the private composition buffer.
+               if B = BP.Live_Slot'First and then Desktop_Composition_Settings.Scanout = Desktop_Composition_Settings.Staged then
+                  P.Composed := P.Targets (B).Address;
+                  P.Staged := True;
+               end if;
                P.Targets (B).Address := Mapped;
                if Loan.Value.On_Screen then On_Screen := B; end if;
             end;
@@ -13776,13 +13872,14 @@ procedure main is
       if P.Lent and then On_Screen /= 0 then BP.Seed_Front (P.Pool, On_Screen); end if;
       debugPrint ("desktop: output" & Output'Image &
         (if P.Lent then " composes into the lent scanout buffers (no GPU endpoint held)"
-         else " copies frames to Display") & LF);
+         else " copies frames to Display") &
+        (if P.Staged then "; staged: private buffer, streamed out" else "") & LF);
       P.Repaint := RP.Open ((0, 0, Natural (Layout.Width), Natural (Layout.Height)));
       declare Writer : BP.Ticket;
       begin
          BP.Acquire (P.Pool, Writer);
          if Writer = BP.None then closeOutput (Output); return; end if;
-         P.Buffer := P.Targets (Writer.Buffer).Address;
+         P.Buffer := (if P.Staged then P.Composed else P.Targets (Writer.Buffer).Address);
       end;
       P.Enabled := True;
       Ok := True;

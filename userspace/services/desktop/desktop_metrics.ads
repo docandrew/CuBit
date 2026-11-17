@@ -33,4 +33,15 @@ package Desktop_Metrics with SPARK_Mode => Off is
    --  Every observation the ledger queued since the last call (and what it
    --  could not queue, as a loss of its series).
    procedure Publish_Latency (L : in out Compositor_Latency.Ledger);
+
+   --  LAT-003: where a CPU frame's cost comes from, one sample per frame
+   --  (desktop.frames.cpu.*): the damage as drawn code reported it (boxes
+   --  and pixels before merging), the frame's merged rects and pixels, the
+   --  pixels repaired for buffer age, and the time drawing the scene and
+   --  writing it out to the scanout buffer (staged lending; 0 otherwise).
+   type Frame_Breakdown is record
+      Raw_Boxes, Raw_Pixels, Rects, Pixels, Repair_Pixels : Interfaces.Unsigned_64 := 0;
+      Draw_Us, Write_Out_Us : Interfaces.Unsigned_64 := 0;
+   end record;
+   procedure Record_Breakdown (Item : Frame_Breakdown; Now_Us : Interfaces.Unsigned_64);
 end Desktop_Metrics;

@@ -9,7 +9,7 @@ with CuBit.Canonical_Readers;
 --  (CCL.Typed_Settings renders it; CuBit.Canonical_Readers).
 package CCL.Setting_Codecs.Desktop_Composition with SPARK_Mode, Pure is
    subtype Text is CuBit.Canonical_Readers.Text;
-   type Composition_Path_Value is (CPU, GPU);
+   type Composition_Path_Value is (CPU, GPU, CPU_Staged, CPU_Copy);
    type Desktop_Composition_Value is record
       path : Composition_Path_Value := Composition_Path_Value'First;
    end record;

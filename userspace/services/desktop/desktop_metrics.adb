@@ -170,4 +170,34 @@ package body Desktop_Metrics with SPARK_Mode => Off is
       Drain (L);
       Metrics.Report_Losses;
    end Publish_Latency;
+   type Breakdown_Field is (Raw_Boxes, Raw_Pixels, Rects, Pixels, Repair_Pixels, Draw_Us, Write_Out_Us);
+   Breakdown_Series : array (Breakdown_Field) of Metrics.Series := [others => Metrics.No_Series];
+   Breakdown_Declared : Boolean := False;
+   procedure Record_Breakdown (Item : Frame_Breakdown; Now_Us : Interfaces.Unsigned_64) is
+      function Name (F : Breakdown_Field) return String is
+        (Frames_Prefix & "cpu." &
+         (case F is
+            when Raw_Boxes => "raw_damage_boxes", when Raw_Pixels => "raw_damage_px",
+            when Rects => "merged_rects", when Pixels => "merged_px",
+            when Repair_Pixels => "repair_px", when Draw_Us => "draw_us",
+            when Write_Out_Us => "write_out_us"));
+      function Unit (F : Breakdown_Field) return Metrics.Unit is
+        (case F is
+            when Raw_Boxes | Rects => Metrics.Count,
+            when Raw_Pixels | Pixels | Repair_Pixels => Metrics.Pixels,
+            when Draw_Us | Write_Out_Us => Metrics.Microseconds);
+      Values : constant array (Breakdown_Field) of Interfaces.Unsigned_64 :=
+        [Item.Raw_Boxes, Item.Raw_Pixels, Item.Rects, Item.Pixels, Item.Repair_Pixels,
+         Item.Draw_Us, Item.Write_Out_Us];
+   begin
+      if not Breakdown_Declared then
+         for F in Breakdown_Field loop
+            Breakdown_Series (F) := Metrics.Series_Named (Name (F), Metrics.Distribution, Unit (F));
+         end loop;
+         Breakdown_Declared := True;
+      end if;
+      for F in Breakdown_Field loop
+         Metrics.Observe_At (Breakdown_Series (F), Values (F), Now_Us);
+      end loop;
+   end Record_Breakdown;
 end Desktop_Metrics;

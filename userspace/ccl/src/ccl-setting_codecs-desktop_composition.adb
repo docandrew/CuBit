@@ -22,6 +22,12 @@ package body CCL.Setting_Codecs.Desktop_Composition with SPARK_Mode is
       elsif R.Next_Is_Word (Source, Position, "Composition_Path.GPU") then
          R.Expect_Word (Source, Position, OK, "Composition_Path.GPU");
          Item := GPU;
+      elsif R.Next_Is_Word (Source, Position, "Composition_Path.CPU_Staged") then
+         R.Expect_Word (Source, Position, OK, "Composition_Path.CPU_Staged");
+         Item := CPU_Staged;
+      elsif R.Next_Is_Word (Source, Position, "Composition_Path.CPU_Copy") then
+         R.Expect_Word (Source, Position, OK, "Composition_Path.CPU_Copy");
+         Item := CPU_Copy;
       else
          OK := False;
       end if;

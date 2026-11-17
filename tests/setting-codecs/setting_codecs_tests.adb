@@ -311,6 +311,9 @@ begin
    Differential (Desktop_Composition_Setting, "(Desktop_Composition)");
    Differential (Desktop_Composition_Setting, "(Desktop_Composition path => Composition_Path.CPU)");
    Differential (Desktop_Composition_Setting, "(Desktop_Composition path => Composition_Path.GPU)");
+   --  LAT-003: the CPU arm's scanout A/B.
+   Differential (Desktop_Composition_Setting, "(Desktop_Composition path => Composition_Path.CPU_Staged)");
+   Differential (Desktop_Composition_Setting, "(Desktop_Composition path => Composition_Path.CPU_Copy)");
    declare
       use CCL.Setting_Codecs.Desktop_Composition;
       Item : Desktop_Composition_Value;
@@ -320,6 +323,12 @@ begin
       Check (OK and then Item.path = GPU, "a GPU composition setting reads back as GPU");
       Decode ("(Desktop_Composition path => Composition_Path.CPU)", Item, OK);
       Check (OK and then Item.path = CPU, "the default composition is the CPU");
+      Decode ("(Desktop_Composition path => Composition_Path.CPU_Copy)", Item, OK);
+      Check (OK and then Item.path = CPU_Copy, "the copy path reads back as CPU_Copy");
+      Decode ("(Desktop_Composition path => Composition_Path.CPU_Staged)", Item, OK);
+      Check (OK and then Item.path = CPU_Staged, "the staged lent path reads back as CPU_Staged");
+      Decode ("(Desktop_Composition path => Composition_Path.CPU_Dir)", Item, OK);
+      Check (not OK, "a misspelt path is refused");
    end;
    Differential (Net_Interface_Setting, "Net_Interface.Automatic");
    Differential (Net_Interface_Setting, "Net_Interface.Disabled");
