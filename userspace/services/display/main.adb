@@ -3693,8 +3693,29 @@ procedure main is
    msg     : Message;
    replyMsg : Message := NULL_MESSAGE;
    found : Boolean;
-   eventMsg : Message;
+   eventMsg : aliased Message;
    ringsReady, served : Boolean;
+   woke : Wake_Result;
+   stopping : Boolean;
+
+   --  A kernel notice: the Stop (let go of the buffers in order, then end
+   --  with exit code 0: Stopping), a frame ring's wake or end.
+   procedure takeEvent (Notice : Message; Stopping : out Boolean) is
+      Handled : Boolean;
+      Ended : Frame_Rings.Ring_Number;
+   begin
+      Stopping := False;
+      --  Only the kernel posts the Stop's label.
+      if Is_Kernel_Stop (Notice.tag.label, Notice.tag.length, No_Process, Notice.words (0)) then
+         stopOutputs;
+         Stopping := True;
+         return;
+      end if;
+      Frame_Rings.Take_Notice (Notice, Handled, Ended);
+      if Ended /= Frame_Rings.No_Ring then
+         forgetRing (Ended);
+      end if;
+   end takeEvent;
 begin
    debugPrint ("display: starting" & LF);
    --  Its statistics say which calls it makes (display: stats ... calls).
@@ -3806,30 +3827,28 @@ begin
       maybePrintStats;
       if not found and then not served then
          if Poll_Event (eventMsg) then
-            --  The kernel's Stop (only the kernel posts its label): let go
-            --  of the buffers in order, then end (exit code 0).
-            if Is_Kernel_Stop (eventMsg.tag.label, eventMsg.tag.length, No_Process, eventMsg.words (0)) then
-               stopOutputs;
+            takeEvent (eventMsg, stopping);
+            if stopping then
                return;
             end if;
-            declare
-               Handled : Boolean;
-               Ended : Frame_Rings.Ring_Number;
-            begin
-               Frame_Rings.Take_Notice (eventMsg, Handled, Ended);
-               if Ended /= Frame_Rings.No_Ring then
-                  forgetRing (Ended);
-               end if;
-            end;
          elsif not Frame_Rings.Quiet then
             --  A present arrived while the rings were armed: serve it.
             null;
-         elsif Wait_For_Activity_Until
-              (if presentPending then CuBit.Published_Clock.Milliseconds + Present_Check_Ms
-               else Unsigned_64'Last) = Unavailable
-         then
-            debugPrint ("display: activity wait unavailable" & LF);
-            return;
+         else
+            --  The notice that wakes Display (Desktop's ring rang) comes
+            --  back in the same call: no poll to find it.
+            Wait_For_Activity_Or_Event
+              ((if presentPending then CuBit.Published_Clock.Milliseconds + Present_Check_Ms
+                else Unsigned_64'Last), eventMsg, woke);
+            if woke = Unavailable then
+               debugPrint ("display: activity wait unavailable" & LF);
+               return;
+            elsif woke = Event_Taken then
+               takeEvent (eventMsg, stopping);
+               if stopping then
+                  return;
+               end if;
+            end if;
          end if;
       end if;
    end loop;
