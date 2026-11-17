@@ -1,12 +1,23 @@
 ------------------------------------------------------------------------------
---  CuBit typed input-source publication protocol.
+--  CuBit typed input-source protocol.
 --
---  A report is a state-bearing message, not an unauthenticated device event.
---  It is accepted only through a publication capability carrying the input
---  badge (Publisher_Tag, minted by devmgr or procmgr for an input role's
---  publish notification), and its source is the publisher's identity as the
---  kernel reports it; the sequence, generation, and recovery flag make
---  bounded transport loss observable. This is the driver-facing half of the future input.svc stream.
+--  A report is state-bearing, not an unauthenticated device event; the
+--  sequence, generation, and recovery flag make bounded loss observable.
+--  Reports travel two ways:
+--  * a source ring (IPC-009, CuBit.Input_Rings, CuBit.Input_Source): one
+--    ring per source device, from its driver straight to Desktop, which
+--    owns focus and routing and consumes directly. There is no input.svc
+--    hop: other producers (ccl-remote's remote input, synthetic or
+--    accessibility input) are more sources, each with its own granted
+--    ring. Only an endpoint carrying Source_Ring_Tag (devmgr mints it for
+--    input drivers) opens one, and the source's identity is the ring
+--    itself, bound when Desktop admits it; nothing in a report names it.
+--    Elements are Report_Words, encoded once (Encode_Words).
+--  * the kernel event lane (until every source has its ring: hid-i2c):
+--    a report message published through a capability carrying the input
+--    badge (Publisher_Tag, minted by devmgr or procmgr for an input role's
+--    publish notification); its source is the publisher's identity as the
+--    kernel reports it.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
@@ -98,6 +109,28 @@ package CuBit.Input with SPARK_Mode => On is
       else Observed_Us mod Microseconds_Per_Millisecond);
 
    NULL_SOURCE_REPORT : constant Source_Report := (others => <>);
+
+   --  The badge on the endpoint to Desktop an input driver opens its source
+   --  rings with ("INRING", version 1): Desktop admits no other.
+   Source_Ring_Tag : constant Unsigned_64 := 16#494E_5249_4E47_0001#;
+
+   --  A report as four words: the element of a source ring and the words
+   --  of a report message, the same encoding.
+   type Report_Words is record
+      Sequence, Header, Payload, Snapshot : Unsigned_64 := 0;
+   end record;
+   --  Encode_Stamped's words.
+   function Encode_Words
+     (report : Source_Report; Observed_Us : Unsigned_64) return Report_Words;
+   --  The words as a report message (Desktop's dispatch takes messages).
+   function To_Message (Words : Report_Words) return CuBit.Messages.Message;
+   --  A ring's element: valid as a report message is, its source the ring's
+   --  identity Source (bound when the ring was admitted).
+   procedure Decode_Words
+     (Words  : Report_Words;
+      Source : Unsigned_64;
+      report : out Source_Report;
+      valid  : out Boolean);
 
    function Encode (report : Source_Report) return CuBit.Messages.Message;
    --  Encode, carrying Observed_Us's sub-millisecond part; report.snapshot
