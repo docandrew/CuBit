@@ -5,8 +5,8 @@
 --  @summary
 --  virtio-input driver for absolute pointers (QEMU virtio-tablet-pci and
 --  other virtio tablets). Publishes ABSOLUTE_POINTER source reports
---  (CuBit.Input, Absolute_Pointer wire layout) to the registered mouse
---  consumer, normally desktop.svc.
+--  (CuBit.Input, Absolute_Pointer wire layout) on its source ring to
+--  Desktop (Input_Sources.Absolute_Pointers, IPC-009).
 --
 --  Startup: devmgr maps the modern register BAR, programs MSI-X entry 0 for
 --  the vector in the manifest's device slot, allocates one DMA page and
@@ -17,9 +17,10 @@
 --  posted on the event queue, one event per buffer, a report per
 --  SYN_REPORT. Each interrupt drains every used buffer, assembles frames
 --  (Virtio_Input_Events), re-posts the buffers at once (QEMU discards a
---  whole report when the queue lacks room for it) and appends frames to
---  Absolute_Pending: the newest position replaces an unpublished one,
---  button transitions are never merged or lost.
+--  whole report when the queue lacks room for it) and publishes frames to
+--  the source, whose retention (Absolute_Pending) lets the newest position
+--  replace an unpublished one and never merges or loses a button
+--  transition.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with CuBit.Waits;
@@ -31,14 +32,12 @@ with System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Launch_Configurations;
 with Launch_Configuration;
-with CuBit.Input; use CuBit.Input;
+with CuBit.Control_Events;
 with CuBit.Virtio_Input_Control;
 with CuBit.Device_Interrupts;
 with Startup;
-with Input_Pending;
 with Absolute_Pointer;
-with Absolute_Pending;
-with Input_Stamps;
+with Input_Sources;
 with CuBit.Monotonic;
 with Virtio_Input_Events;
 with Virtio_Input_Transport;
@@ -49,7 +48,7 @@ procedure main is
    package VE renames Virtio_Input_Events;
    package AP renames Absolute_Pointer;
    use type VE.Outcome;
-   use type Absolute_Pending.Append_Outcome;
+   package Pointers renames Input_Sources.Absolute_Pointers;
 
    REPLY_OK  : constant Unsigned_32 := 16#F000#;
    REPLY_ERR : constant Unsigned_32 := 16#F001#;
@@ -153,14 +152,13 @@ procedure main is
    ABS_INFO_BYTES : constant := 20;
 
    Assembler : VE.Assembler;
-   Pending   : Absolute_Pending.State;
-   Consumer  : Process_ID := No_Process;
+   --  The tablet as an input source (DEV-002): its own ring to Desktop.
+   Source    : Pointers.Source;
    Announced : Boolean := False;
    --  The device broke the used-ring contract: stop touching the rings.
    Faulted   : Boolean := False;
-   --  Publication accounting: replaced (latest position wins), explicit
-   --  overflows, kernel credit refusals (kept and retried), device drops.
-   Replaced, Overflows, Busy, Dropped : Unsigned_64 := 0;
+   --  Device drops (the device's own lost events).
+   Dropped : Unsigned_64 := 0;
 
    procedure Barrier is
    begin
@@ -179,62 +177,15 @@ procedure main is
       Avail_Idx := Avail_Idx + 1;
    end Post;
 
-   procedure Refresh_Consumer is
-      Previous : constant Process_ID := Consumer;
+   procedure Publish (Report : AP.Report) is
    begin
-      Consumer := Registered_Driver (DRIVER_MOUSE);
-      if Previous /= Consumer then
-         --  Never deliver the old consumer's backlog. Every absolute report
-         --  carries the full pointer state, so the next one needs no
-         --  separate snapshot; it is flagged for recovery.
-         Absolute_Pending.Reset (Pending);
+      Pointers.Publish (Source, Report, CuBit.Monotonic.Microseconds);
+      if not Announced and then Pointers.Published (Source) > 0 then
+         Announced := True;
+         debugPrint ("virtio-input: absolute pointer reports published" & LF);
       end if;
-   end Refresh_Consumer;
-
-   procedure Flush is
-      Item : Input_Pending.Item;
-   begin
-      for Attempt in 1 .. Input_Pending.Capacity loop
-         exit when Consumer = No_Process or else Absolute_Pending.Count (Pending) = 0;
-         Item := Absolute_Pending.Element (Pending, 0);
-         if not trySendEvent (Consumer, Input_Stamps.Encode
-           (Source_Report'(sourceIdentity => 0, sequence => Item.Sequence,
-             generation => 1, device => CuBit.Input.ABSOLUTE_POINTER,
-             delivery => REPLACEABLE_STATE,
-             flags => [RESYNCHRONIZE => Item.Recover],
-             payload => Item.Payload,
-             snapshot => Input_Stamps.Snapshot
-               (Item.Payload and AP.Byte_Mask, Item)), Item), Startup.Pointer_Events)
-         then
-            Busy := Busy + 1;
-            exit;
-         end if;
-         Absolute_Pending.Acknowledge (Pending);
-         if not Announced then
-            Announced := True;
-            debugPrint ("virtio-input: absolute pointer reports published" & LF);
-         end if;
-      end loop;
-   end Flush;
-
-   procedure Publish (R : AP.Report) is
-      Outcome : Absolute_Pending.Append_Outcome;
-   begin
-      if Consumer = No_Process then
-         return;
-      end if;
-      Absolute_Pending.Append (Pending, R, syscall (SYSCALL_GETTIME), Outcome,
-                               CuBit.Monotonic.Microseconds);
-      case Outcome is
-         when Absolute_Pending.Appended => null;
-         when Absolute_Pending.Replaced => Replaced := Replaced + 1;
-         when Absolute_Pending.Overflowed =>
-            Overflows := Overflows + 1;
-            debugPrint ("virtio-input: pointer retention overflow; resynchronizing" & LF);
-      end case;
    end Publish;
 
-   --  Drain every used buffer, re-post it, and publish completed frames.
    procedure Drain (Progress : out Boolean) is
       Seen : Unsigned_16;
       Elem : Used_Elem;
@@ -270,7 +221,7 @@ procedure main is
                   --  The device lost events: published reports stay, and the
                   --  next one is explicitly flagged for recovery.
                   Dropped := Dropped + 1;
-                  Absolute_Pending.Mark_Lost (Pending);
+                  Pointers.Device_Lost (Source);
                end if;
             end if;
             Post (Id);
@@ -487,22 +438,22 @@ begin
       declare
          Event : Message;
          Progress : Boolean;
-         Deadline : Unsigned_64 := Unsigned_64'Last;
+         --  A source without a ring looks for Desktop again by then;
+         --  Desktop wakes one waiting for room.
+         Deadline : constant Unsigned_64 := Pointers.Next_Deadline (Source);
+         Ended : Boolean;
       begin
          --  Interrupt notifications carry no payload this driver needs:
-         --  the used ring is the state. Consume them, then drain.
+         --  the used ring is the state. Consume them (a source ring's end
+         --  goes to the source), then drain.
          while Poll_Event (Event) loop
-            null;
+            Pointers.Note_Event
+              (Source, CuBit.Control_Events.Decode
+                 (Event.tag.label, Event.tag.length, Event.words (0), Event.words (1), Event.words (2)),
+               Ended);
          end loop;
-         Refresh_Consumer;
+         Pointers.Service (Source, Startup.Ready);
          Drain (Progress);
-         Flush;
-         if Absolute_Pending.Count (Pending) > 0 then
-            --  Back-pressure from the consumer: retry soon; an interrupt
-            --  still wakes earlier.
-            Deadline := Absolute_Pending.Wake_Deadline
-              (Pending, syscall (SYSCALL_GETTIME), Deadline);
-         end if;
          if not Progress then
             if Wait_For_Activity_Until (Deadline) = Unavailable then
                Ignore := CuBit.Waits.Sleep_For (1);

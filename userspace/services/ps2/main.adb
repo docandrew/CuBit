@@ -19,14 +19,12 @@ with Interfaces; use Interfaces;
 with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Input; use CuBit.Input;
+with CuBit.Control_Events;
 with CuBit.Handles;
 with Startup;
 with PS2_Boot_Probe;
-with Input_Pending;
 with Pointer_Pending;
-with Keyboard_Pending;
-with Input_Stamps;
+with Input_Sources;
 with CuBit.Monotonic;
 
 procedure main is
@@ -43,16 +41,13 @@ procedure main is
    hasWheel  : Boolean := False;
    packetLen : Natural := 3;
 
-   --  Consumer PIDs (looked up via sysinfo)
-   kbdConsumer   : Process_ID := No_Process;
-   mouseConsumer : Process_ID := No_Process;
-
-   keyboardPending : Keyboard_Pending.State;
-   keyboardOverflowReported : Boolean := False;
-   pointerPending : Pointer_Pending.State;
+   --  The two input sources (DEV-002): each its own ring to Desktop.
+   package Keyboards renames Input_Sources.Keyboards;
+   package Pointers renames Input_Sources.Relative_Pointers;
+   Keyboard : Keyboards.Source;
+   Mouse : Pointers.Source;
    --  Device flag carried in pointer reports: the mouse negotiated a wheel.
    POINTER_HAS_WHEEL : constant Pointer_Pending.Device_Flags := 1;
-   pointerOverflowReported : Boolean := False;
 
    ---------------------------------------------------------------------------
    --  outb / inb wrappers
@@ -197,84 +192,32 @@ procedure main is
    package Boot_Probe is new PS2_Boot_Probe (inb);
 
    ---------------------------------------------------------------------------
-   --  refreshConsumers - re-read registered consumer PIDs from sysinfo
+   --  The sources' upkeep after every wake: rings (re)established, room
+   --  taken back, kernel events (a ring's end) handed to them.
    ---------------------------------------------------------------------------
-   procedure refreshConsumers is
-      previousMouse : constant Process_ID := mouseConsumer;
-      previousKeyboard : constant Process_ID := kbdConsumer;
+   procedure serviceSources is
    begin
-      kbdConsumer := Registered_Driver (DRIVER_KEYBOARD);
-      if kbdConsumer /= previousKeyboard then
-         Keyboard_Pending.Reset_Consumer (keyboardPending);
-      end if;
-      mouseConsumer := Registered_Driver (DRIVER_MOUSE);
-      if mouseConsumer /= previousMouse then
-         Pointer_Pending.Reset (pointerPending);
-      end if;
-   end refreshConsumers;
+      Keyboards.Service (Keyboard, Startup.Ready);
+      Pointers.Service (Mouse, Startup.Ready);
+   end serviceSources;
 
-   -- A failed nonblocking send leaves the exact head packet intact. Source
-   -- sequence numbers describe reports, not transport attempts. No allocation,
-   -- blocking send, or unbounded drain occurs in this publication path.
-   procedure flushPointer is
-      pending : Input_Pending.Item;
-      report : Source_Report;
+   procedure noteEvent (event : Message) is
+      Item : constant CuBit.Control_Events.Event :=
+        CuBit.Control_Events.Decode
+          (event.tag.label, event.tag.length, event.words (0), event.words (1), event.words (2));
+      Ended : Boolean;
    begin
-      for Attempt in 1 .. Input_Pending.Capacity loop
-         exit when mouseConsumer = No_Process or else
-           Pointer_Pending.Count (pointerPending) = 0;
-         pending := Pointer_Pending.Element (pointerPending, 0);
-         report :=
-           (sourceIdentity => 0,
-            sequence => pending.Sequence,
-            generation => 1,
-            device => RELATIVE_POINTER,
-            delivery => ACCUMULABLE_DISPLACEMENT,
-            flags => (RESYNCHRONIZE => pending.Recover),
-            payload => pending.Payload,
-            snapshot => Input_Stamps.Snapshot (pending.Payload, pending));
-         exit when not trySendEvent (mouseConsumer, Input_Stamps.Encode (report, pending), Startup.Mouse_Events);
-         Pointer_Pending.Acknowledge (pointerPending);
-      end loop;
-   end flushPointer;
+      Keyboards.Note_Event (Keyboard, Item, Ended);
+      Pointers.Note_Event (Mouse, Item, Ended);
+   end noteEvent;
 
-   ---------------------------------------------------------------------------
-   --  handleKeyboard - read keyboard byte and forward to consumer
-   ---------------------------------------------------------------------------
-   procedure flushKeyboard is
-      pending : Input_Pending.Item;
-   begin
-      for Attempt in 1 .. Input_Pending.Capacity loop
-         exit when kbdConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
-         pending := Keyboard_Pending.Element (keyboardPending, 0);
-         exit when not trySendEvent (kbdConsumer, Input_Stamps.Encode
-           (Source_Report'(sourceIdentity => 0, sequence => pending.Sequence,
-            generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
-            flags => (RESYNCHRONIZE => pending.Recover),
-            payload => pending.Payload, snapshot => Input_Stamps.Snapshot (0, pending)), pending),
-            Startup.Keyboard_Events);
-         Keyboard_Pending.Acknowledge (keyboardPending);
-      end loop;
-   end flushKeyboard;
+   function sourcesDeadline return Unsigned_64 is
+     (Unsigned_64'Min (Keyboards.Next_Deadline (Keyboard), Pointers.Next_Deadline (Mouse)));
 
    procedure handleKeyboard (code : Unsigned_8) is
-      added : Keyboard_Pending.Frame_Length;
-      lost : Boolean;
    begin
       --  The acquisition stamp (LAT-002): the byte was read just now.
-      Keyboard_Pending.Append_Byte (keyboardPending, code, added, lost,
-                                    Observed_Us => CuBit.Monotonic.Microseconds);
-      if kbdConsumer = No_Process then
-         -- Consume framing even without a receiver; never retain old input
-         -- for a replacement consumer or deliver an orphan prefix suffix.
-         Keyboard_Pending.Reset_Consumer (keyboardPending);
-      else
-         if lost and then not keyboardOverflowReported then
-            debugPrint ("ps2: keyboard retention overflow; resynchronizing" & LF);
-            keyboardOverflowReported := True;
-         end if;
-         flushKeyboard;
-      end if;
+      Keyboards.Publish (Keyboard, code, CuBit.Monotonic.Microseconds);
    end handleKeyboard;
 
    ---------------------------------------------------------------------------
@@ -291,8 +234,6 @@ procedure main is
       BUTTON_MASK : constant Unsigned_8 := 7;
       wheelRaw : Unsigned_8;
       report : Pointer_Pending.Report;
-      outcome : Pointer_Pending.Append_Outcome;
-      use type Pointer_Pending.Append_Outcome;
    begin
       --  Sync check: byte 0 has an always-one bit.  Overflow reports cannot
       --  express a trustworthy displacement, so discard them as well.  This
@@ -312,7 +253,7 @@ procedure main is
          --  Complete packet received, decode and forward
          byteIdx := 0;
 
-         if mouseConsumer /= No_Process then
+         if Pointers.Established (Mouse) then
             report.Buttons := packetBuf (0) and BUTTON_MASK;
             report.X := Integer (packetBuf (1)) -
               (if (packetBuf (0) and X_SIGN) /= 0 then SIGN_EXTENSION else 0);
@@ -338,16 +279,7 @@ procedure main is
                report.Flags := 0;
             end if;
 
-            Pointer_Pending.Append
-              (pointerPending, report, syscall (SYSCALL_GETTIME), outcome,
-               Observed_Us => CuBit.Monotonic.Microseconds);
-            if outcome = Pointer_Pending.Overflowed and then
-              not pointerOverflowReported
-            then
-               debugPrint ("ps2: pointer retention overflow; resynchronizing" & LF);
-               pointerOverflowReported := True;
-            end if;
-            flushPointer;
+            Pointers.Publish (Mouse, report, CuBit.Monotonic.Microseconds);
          end if;
       end if;
    end handleMouse;
@@ -363,8 +295,6 @@ procedure main is
    --  if a batch fills, the controller is checked again before blocking so
    --  coalesced IRQs cannot strand a partial mouse packet in port 0x60.
    MAX_INPUT_BYTES_PER_BATCH : constant Positive := 64;
-   --  How often the start looks for a registered input consumer.
-   CONSUMER_POLL_MS : constant := 100;
 
 begin
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
@@ -412,61 +342,46 @@ begin
           words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
 
-   --  Wait for at least one consumer to register before starting. Not a
-   --  bare sleep: events are read meanwhile, so a Stop (a system without a
-   --  desktop is shut down before one registers) ends the driver here.
-   --  Input before any consumer is dropped, as handleKeyboard does; the
-   --  controller keeps its byte for the event loop.
+   --  Wait for Desktop before starting: the sources look for it (through
+   --  devmgr) until a ring opens. Not a bare sleep: events are read
+   --  meanwhile, so a Stop (a system without a desktop is shut down before
+   --  one runs) ends the driver here. The controller keeps its byte for
+   --  the event loop.
    loop
-      refreshConsumers;
-      exit when kbdConsumer /= No_Process or mouseConsumer /= No_Process;
+      serviceSources;
+      exit when Keyboards.Established (Keyboard) or else Pointers.Established (Mouse);
       declare
          Event : Message;
-         Drained : Boolean := False;
-         Woke : constant Activity_Result :=
-           Wait_For_Activity_Until (Deadline_After (CONSUMER_POLL_MS));
+         Woke : constant Activity_Result := Wait_For_Activity_Until (sourcesDeadline);
+         pragma Unreferenced (Woke);
       begin
          --  What woke the wait (a Stop ends the driver in Poll_Event).
          while Poll_Event (Event) loop
-            Drained := True;
+            noteEvent (Event);
          end loop;
-         if Woke = Work_Available and then not Drained then
-            --  A request, not this loop's to take: pace the look instead.
-            ignore := CuBit.Waits.Sleep_For (CONSUMER_POLL_MS);
-         end if;
       end;
    end loop;
 
-   debugPrint ("ps2: consumer registered, entering event loop" & LF);
+   debugPrint ("ps2: input source rings open, entering event loop" & LF);
 
-   --  Main event loop
+   --  Main event loop: input is interrupt-driven (the interrupt event wakes
+   --  the wait); a source without a ring looks for Desktop again by its
+   --  deadline, and Desktop wakes a source waiting for room.
    loop
       declare
-         idle : constant Boolean :=
-           Pointer_Pending.Count (pointerPending) = 0 and then
-           Keyboard_Pending.Count (keyboardPending) = 0;
-         now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
          activity : Activity_Result;
       begin
-         --  Idle: no retry timer, ordinary input is interrupt-driven (the
-         --  interrupt event wakes the wait). Otherwise the final refused
-         --  packet must be retried even if the mouse stops; a one-millisecond
-         --  deadline is a retry bound, not a latency promise.
-         activity := Wait_For_Activity_Until
-           (if idle then Unsigned_64'Last
-            else Keyboard_Pending.Wake_Deadline (keyboardPending, now,
-                   Pointer_Pending.Wake_Deadline (pointerPending, now, Unsigned_64'Last)));
+         activity := Wait_For_Activity_Until (sourcesDeadline);
          if activity = Unavailable then
             ignore := CuBit.Waits.Sleep_For (1);
          end if;
          for I in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
             exit when not Poll_Event (event);
+            noteEvent (event);
          end loop;
       end;
 
-      refreshConsumers;
-      flushKeyboard;
-      flushPointer;
+      serviceSources;
 
       loop
          for i in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
@@ -488,7 +403,5 @@ begin
          status := inb (STATUS_PORT);
          exit when (status and 16#01#) = 0;
       end loop;
-      flushKeyboard;
-      flushPointer;
    end loop;
 end main;

@@ -26,10 +26,9 @@ with XHCI_Configure_Reply;
 with XHCI_Controller_Identity;
 with Optical_Service;
 with USB_Keyboards;
-with Input_Pending;
 with Pointer_Pending;
-with Keyboard_Pending;
-with Input_Stamps;
+with Input_Sources;
+with CuBit.Control_Events;
 
 procedure main is
    use type XHCI.Init_Result;
@@ -58,24 +57,19 @@ procedure main is
    msg    : Message;
    initResult : XHCI.Init_Result;
    ignore : Unsigned_64;
-   mouseConsumer : Process_ID := No_Process;
    buttons : Unsigned_8;
    deltaX, deltaY, deltaZ : Integer;
    reportReady, eventAvailable : Boolean;
    interruptMode : XHCI.Runtime_Interrupt_Mode := XHCI.INTERRUPT_POLLING;
    interruptEnabled : Boolean := False;
    lastButtons : Unsigned_8 := 0;
-   pointerPending : Pointer_Pending.State;
-   pointerOverflowReported : Boolean := False;
    pointerNeedsSnapshot : Boolean := True;
-   pointerOutcome : Pointer_Pending.Append_Outcome;
-   --  Publication accounting (stats line): reports the kernel accepted for
-   --  the registered consumer, merged by agreement, true retention
-   --  overflows, and credit refusals (busy: kept and retried).
-   pointerPublished, keyboardPublished : Unsigned_64 := 0;
-   pointerCoalesced : Unsigned_64 := 0;
-   pointerOverflows : Unsigned_64 := 0;
-   publishBusy : Unsigned_64 := 0;
+   --  The boot keyboard and mouse as input sources (DEV-002): each its own
+   --  ring to Desktop, open while the device is attached.
+   package Keyboards renames Input_Sources.Keyboards;
+   package Pointers renames Input_Sources.Relative_Pointers;
+   Keyboard_Source : Keyboards.Source;
+   Mouse_Source : Pointers.Source;
    diagnostics : XHCI.Boot_Mouse_Diagnostics;
    diagnosticsDue : Unsigned_64 := 0;
    diagnosticsCountdown : Natural := STATISTICS_EVERY;
@@ -87,10 +81,8 @@ procedure main is
    keyboardChanges : USB_Keyboards.Changes;
    keyboardResult : USB_Keyboards.Decode_Result;
    keyboardReady, keyboardProgress : Boolean;
-   keyboardPending : Keyboard_Pending.State;
-   keyboardConsumer : Process_ID := No_Process;
-   keyboardOverflowReported : Boolean := False;
    keyboardPresent : Boolean := False;
+   mousePresent : Boolean := False;
    use type USB_Keyboards.Decode_Result;
 
    function Image (Value : Unsigned_64) return String is
@@ -99,69 +91,27 @@ procedure main is
       return Text (Text'First + 1 .. Text'Last);
    end Image;
 
-   procedure Refresh_Pointer_Consumer is
-      previous : constant Process_ID := mouseConsumer;
+   --  Each attached device's source looks for Desktop (through devmgr)
+   --  and pushes what it retained; a detached one has no ring.
+   procedure Service_Sources is
    begin
-      mouseConsumer := Registered_Driver (DRIVER_MOUSE);
-      if previous /= mouseConsumer then
-         Pointer_Pending.Reset (pointerPending);
-         pointerNeedsSnapshot := True;
+      if keyboardPresent then
+         Keyboards.Service (Keyboard_Source, Startup.Ready);
       end if;
-   end Refresh_Pointer_Consumer;
-
-   procedure Flush_Pointer is
-      pending : Input_Pending.Item;
-      report : Source_Report;
-   begin
-      for Attempt in 1 .. Input_Pending.Capacity loop
-         exit when mouseConsumer = No_Process or else
-           Pointer_Pending.Count (pointerPending) = 0;
-         pending := Pointer_Pending.Element (pointerPending, 0);
-         report :=
-           (sourceIdentity => 0, sequence => pending.Sequence,
-            generation => 1, device => RELATIVE_POINTER,
-            delivery => ACCUMULABLE_DISPLACEMENT,
-            flags => [RESYNCHRONIZE => pending.Recover],
-            payload => pending.Payload,
-            snapshot => Input_Stamps.Snapshot (pending.Payload, pending));
-         if not trySendEvent (mouseConsumer, Input_Stamps.Encode (report, pending), Startup.Mouse_Events) then
-            publishBusy := publishBusy + 1;
-            exit;
-         end if;
-         pointerPublished := pointerPublished + 1;
-         Pointer_Pending.Acknowledge (pointerPending);
-      end loop;
-   end Flush_Pointer;
-
-   procedure Refresh_Keyboard_Consumer is
-      Previous : constant Process_ID := keyboardConsumer;
-   begin
-      keyboardConsumer := Registered_Driver (DRIVER_KEYBOARD);
-      if Previous /= keyboardConsumer then
-         Keyboard_Pending.Reset_Consumer (keyboardPending);
+      if mousePresent then
+         Pointers.Service (Mouse_Source, Startup.Ready);
       end if;
-   end Refresh_Keyboard_Consumer;
+   end Service_Sources;
 
-   procedure Flush_Keyboard is
-      Pending : Input_Pending.Item;
+   procedure Note_Source_Event (Event : Message) is
+      Item : constant CuBit.Control_Events.Event :=
+        CuBit.Control_Events.Decode
+          (Event.tag.label, Event.tag.length, Event.words (0), Event.words (1), Event.words (2));
+      Ended : Boolean;
    begin
-      for Attempt in 1 .. Input_Pending.Capacity loop
-         exit when keyboardConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
-         Pending := Keyboard_Pending.Element (keyboardPending, 0);
-         if not trySendEvent (keyboardConsumer, Input_Stamps.Encode
-           (Source_Report'(sourceIdentity => 0, sequence => Pending.Sequence,
-             generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
-             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload,
-             snapshot => Input_Stamps.Snapshot (0, Pending)), Pending),
-           Startup.Keyboard_Events)
-         then
-            publishBusy := publishBusy + 1;
-            exit;
-         end if;
-         keyboardPublished := keyboardPublished + 1;
-         Keyboard_Pending.Acknowledge (keyboardPending);
-      end loop;
-   end Flush_Keyboard;
+      Keyboards.Note_Event (Keyboard_Source, Item, Ended);
+      Pointers.Note_Event (Mouse_Source, Item, Ended);
+   end Note_Source_Event;
 
    procedure Send_Key (Usage : Unsigned_8; Released : Boolean) is
       -- HID usage to existing desktop set-1 boundary; bit 8 means E0 prefix.
@@ -185,21 +135,13 @@ procedure main is
       --  The acquisition stamp (LAT-002): the report was decoded just now.
       Stamp : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
       procedure Send_Byte (Byte : Unsigned_8) is
-         Added : Keyboard_Pending.Frame_Length;
-         Lost : Boolean;
       begin
-         Keyboard_Pending.Append_Byte (keyboardPending, Byte, Added, Lost, Observed_Us => Stamp);
-         if Lost and then not keyboardOverflowReported then
-            Boot_Log.Line ("xhci: " & Location & " keyboard retention overflow; resynchronizing", True);
-            keyboardOverflowReported := True;
-         end if;
+         Keyboards.Publish (Keyboard_Source, Byte, Stamp);
       end Send_Byte;
    begin
       if Code = 0 then return; end if;
       if Code >= PS2_EXTENDED_FLAG then Send_Byte (PS2_EXTENDED); end if;
       Send_Byte (Unsigned_8 (Code and 16#FF#) or (if Released then PS2_RELEASED else 0));
-      if keyboardConsumer = No_Process then Keyboard_Pending.Reset_Consumer (keyboardPending);
-      else Flush_Keyboard; end if;
    end Send_Key;
 
    procedure Send_Changes is
@@ -226,10 +168,10 @@ procedure main is
       end if;
       diagnosticsDue := now + STATISTICS_INTERVAL_MS;
       diagnostics := XHCI.Mouse_Diagnostics;
-      if pointerPublished + keyboardPublished = lastPublished then
+      if Pointers.Published (Mouse_Source) + Keyboards.Published (Keyboard_Source) = lastPublished then
          return;
       end if;
-      lastPublished := pointerPublished + keyboardPublished;
+      lastPublished := Pointers.Published (Mouse_Source) + Keyboards.Published (Keyboard_Source);
       Boot_Log.Serial
         ("xhci: " & Location & " stats events=" & Image (diagnostics.transferEvents) &
          " reports=" & Image (diagnostics.decodedReports) &
@@ -239,12 +181,12 @@ procedure main is
          " short=" & Image (diagnostics.shortReports) &
          " other=" & Image (diagnostics.unexpectedEvents) &
          " cc=" & Image (Unsigned_64 (diagnostics.lastCompletion)) &
-         " published=" & Image (pointerPublished) &
-         " keys-published=" & Image (keyboardPublished) &
-         " coalesced=" & Image (pointerCoalesced) &
-         " overflow=" & Image (pointerOverflows) &
-         " busy=" & Image (publishBusy) &
-         " consumer=" & (if mouseConsumer = No_Process then "none" else "registered"));
+         " published=" & Image (Pointers.Published (Mouse_Source)) &
+         " keys-published=" & Image (Keyboards.Published (Keyboard_Source)) &
+         " overflow=" & Image (Pointers.Overflows (Mouse_Source)) &
+         " keys-overflow=" & Image (Keyboards.Overflows (Keyboard_Source)) &
+         " ring=" & (if Pointers.Established (Mouse_Source) then "open" else "none") &
+         " keys-ring=" & (if Keyboards.Established (Keyboard_Source) then "open" else "none"));
       publish :=
         (tag => (label => CuBit.Devices.OP_PUBLISH_XHCI_STATS,
                  length => 3, protocol => 0, ipc => <>, reserved => 0),
@@ -392,24 +334,30 @@ begin
       irqAvailable := Poll_Event (msg);
       if irqAvailable and then CuBit.Device_Interrupts.Is_Doorbell (msg) then
          XHCI.Acknowledge_Runtime_Interrupt;
+      elsif irqAvailable then
+         --  A source ring's end, or Desktop waking a source for room.
+         Note_Source_Event (msg);
       end if;
       Boot_Log.Poll;
       XHCI.Service (serviceProgress);
       Optical_Service.Poll (storageProgress);
 
-      --  A keyboard that went away releases every key it held.
+      --  A keyboard that went away releases every key it held, then its
+      --  source ends (hot-plug: one that comes back is a new source).
       if keyboardPresent and then not XHCI.Has_Keyboard then
          USB_Keyboards.Release_All (keyboardState, keyboardChanges);
-         Refresh_Keyboard_Consumer;
          Send_Changes;
+         Keyboards.Withdraw (Keyboard_Source);
       end if;
       keyboardPresent := XHCI.Has_Keyboard;
+      if mousePresent and then not XHCI.Has_Mouse then
+         Pointers.Withdraw (Mouse_Source);
+         pointerNeedsSnapshot := True;
+      end if;
+      mousePresent := XHCI.Has_Mouse;
+      Service_Sources;
 
       XHCI.Poll_Boot_Keyboard (keyboardData, keyboardReady, keyboardProgress);
-      if keyboardReady or else Keyboard_Pending.Count (keyboardPending) > 0 then
-         Refresh_Keyboard_Consumer;
-         Flush_Keyboard;
-      end if;
       if keyboardReady then
          USB_Keyboards.Update (keyboardState, keyboardData, keyboardChanges, keyboardResult);
          if keyboardResult = USB_Keyboards.Decoded then
@@ -418,32 +366,16 @@ begin
       end if;
 
       XHCI.Poll_Boot_Mouse (buttons, deltaX, deltaY, deltaZ, reportReady, eventAvailable);
-      if reportReady or else Pointer_Pending.Count (pointerPending) > 0 then
-         Refresh_Pointer_Consumer;
-         Flush_Pointer;
-      end if;
-      if reportReady and then mouseConsumer /= No_Process and then
+      if reportReady and then Pointers.Established (Mouse_Source) and then
         (deltaX /= 0 or else deltaY /= 0 or else deltaZ /= 0 or else
          buttons /= lastButtons or else pointerNeedsSnapshot)
       then
          --  The desktop's event ABI uses PS/2 Y orientation (positive
          --  upward); USB HID uses positive downward.
-         Pointer_Pending.Append
-           (pointerPending,
-            (Buttons => buttons, X => deltaX, Y => -deltaY, Wheel => deltaZ, Flags => 0),
-            CuBit.Monotonic.Milliseconds, pointerOutcome, CuBit.Monotonic.Microseconds);
-         case pointerOutcome is
-            when Pointer_Pending.Appended => null;
-            when Pointer_Pending.Coalesced =>
-               pointerCoalesced := pointerCoalesced + 1;
-            when Pointer_Pending.Overflowed =>
-               pointerOverflows := pointerOverflows + 1;
-               if not pointerOverflowReported then
-                  Boot_Log.Line ("xhci: " & Location & " pointer retention overflow; resynchronizing", True);
-                  pointerOverflowReported := True;
-               end if;
-         end case;
-         Flush_Pointer;
+         Pointers.Publish
+           (Mouse_Source,
+            Pointer_Pending.Report'(Buttons => buttons, X => deltaX, Y => -deltaY, Wheel => deltaZ, Flags => 0),
+            CuBit.Monotonic.Microseconds);
          pointerNeedsSnapshot := False;
          lastButtons := buttons;
       end if;
@@ -468,11 +400,12 @@ begin
          begin
             D := Earliest (D, Boot_Log.Deadline);
             D := Earliest (D, diagnosticsDue);
-            if Pointer_Pending.Count (pointerPending) > 0 then
-               D := Pointer_Pending.Wake_Deadline (pointerPending, Now, D);
+            --  A source still looking for Desktop looks again by then.
+            if keyboardPresent then
+               D := Earliest (D, Keyboards.Next_Deadline (Keyboard_Source));
             end if;
-            if Keyboard_Pending.Count (keyboardPending) > 0 then
-               D := Keyboard_Pending.Wake_Deadline (keyboardPending, Now, D);
+            if mousePresent then
+               D := Earliest (D, Pointers.Next_Deadline (Mouse_Source));
             end if;
             if interruptEnabled and then XHCI.Interrupts_Trusted then
                if D > Now then

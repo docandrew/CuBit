@@ -3651,7 +3651,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
         for ((attempt = 0; attempt < 250; attempt++)); do
             if [ -S "$MONITOR_SOCKET" ] &&
                { [ "$TEST_NAME" != "files" ] || [ -S "$QMP_SOCKET" ]; } &&
-               grep -F "ps2: consumer registered, entering event loop" \
+               grep -F "ps2: input source rings open, entering event loop" \
                  "$SERIAL_LOG" >/dev/null 2>&1; then
                 ready=1
                 break
@@ -6012,7 +6012,7 @@ case "$TEST_NAME" in
 devmgr: startup complete, entering service loop
 procmgr: ready, entering receive loop
 shell: cwd=@nvme:0/
-ps2: consumer registered, entering event loop
+ps2: input source rings open, entering event loop
 "
         ;;
     rust-native)
@@ -8643,7 +8643,7 @@ BENCH: PASS input integrity
     input-stream)
         required_markers="
 desktop: internal shell active
-ps2: consumer registered, entering event loop
+ps2: input source rings open, entering event loop
 ccl-workbench: first frame presented
 input-stress: publication and recovery PASS
 desktop: stats ev=
@@ -9085,6 +9085,16 @@ if [ "$TEST_NAME" = "desktop-restart" ]; then
         exit 1
     fi
     echo "headless: desktop restarted after its failure and presents again"
+    # IPC-009: the input drivers' source rings end with the failed Desktop
+    # and open again to the restarted one.
+    if ! awk '/DESKTOP-TEST-FAULT: restarted; taking the display over/ { restarted = NR }
+              /desktop: input source [0-9]+ opened/ && restarted { reopened = 1 }
+              END { exit !reopened }' "$SERIAL_LOG"; then
+        echo "headless: desktop restart: no input source ring opened to the restarted desktop" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    echo "headless: the input source rings opened again to the restarted desktop"
 fi
 
 if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = large ]; then

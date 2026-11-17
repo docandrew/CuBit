@@ -1,8 +1,9 @@
 # xhci.drv's authority (docs/ccl-driver-manifests.md, CAP-002). devmgr
 # answers every binding when it launches the driver: the register window,
-# the interrupter's vector (MSI-X, else MSI), the keyboard and mouse
-# publications and its endpoint to devmgr. Sizes are upper bounds; devmgr
-# grants what the device reports.
+# the interrupter's vector (MSI-X, else MSI) and its endpoint to devmgr.
+# Its keyboards' and mice's reports go to Desktop on source rings
+# (IPC-009), opened through an endpoint devmgr hands it on request.
+# Sizes are upper bounds; devmgr grants what the device reports.
 (Executable_Manifest
   identity => "com.cubit.xhci"
   version => "0.1.0"
@@ -15,6 +16,4 @@
     # scratchpads: 3079 pages, a 16 MiB order); devmgr allocates what the
     # controller reports (HCSPARAMS1/2).
     (dma "rings" 16777216)
-    (notification "mouse" Notify_Access.Publish "mouse-events")
-    (notification "keyboard" Notify_Access.Publish "keyboard-events")
     (service "device-manager" "ready")])

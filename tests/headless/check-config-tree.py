@@ -81,7 +81,7 @@ with socket.socket(socket.AF_UNIX) as connection:
                         for row in range(y, y + height))
 
     command("qmp_capabilities")
-    wait_for(lambda: log.exists() and "ps2: consumer registered, entering event loop" in log.read_text(errors="replace"),
+    wait_for(lambda: log.exists() and "ps2: input source rings open, entering event loop" in log.read_text(errors="replace"),
              "Desktop input ready")
     time.sleep(1)
     # Apps opens on its first category row, System (UI-013). Right opens its

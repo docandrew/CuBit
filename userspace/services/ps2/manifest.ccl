@@ -1,5 +1,7 @@
 # ps2.drv's authority (CAP-002): devmgr answers these bindings from its
 # platform catalog (ports 0x60/0x64, lines 1 and 12) when it launches it.
+# Its keyboard and mouse reports go to Desktop on source rings (IPC-009):
+# devmgr hands it the endpoint they open through ("ready" carries the ask).
 (executable-manifest v1
   (identity "com.cubit.ps2")
   (version "0.1.0")
@@ -8,6 +10,4 @@
   (io-ports command (resource 1) (count 1))
   (interrupt keyboard-line (resource 2))
   (interrupt mouse-line (resource 3))
-  (request-notification keyboard publish keyboard-events)
-  (request-notification mouse publish mouse-events)
   (request-service device-manager read-write ready))
