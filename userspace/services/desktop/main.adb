@@ -760,6 +760,10 @@ procedure main is
       publicationInputAfter : Unsigned_64 := 0;
       publicationBuffers : Publication_Buffers;
       parkedLoans : Parked_Loans;
+      --  The window publishes through its surface ring (cooperative seal):
+      --  only then may a retired buffer's mapping be parked. A synchronous
+      --  publisher's buffer is writable only once Desktop has let go of it.
+      ringFrames : Boolean := False;
       publicationPolicy : Surface_Policy.State;
       publicationConfiguration : Publication.Configuration_Result;
       bufferAttached : Boolean := False;
@@ -8183,7 +8187,7 @@ procedure main is
       end if;
       --  Park the mapping (no system call) once the renderer has let go of
       --  it, while the surface is open and a parking entry is free.
-      if S.publicationBuffers (I).Acquired and then not S.publicationPolicy.Closing and then
+      if S.ringFrames and then S.publicationBuffers (I).Acquired and then not S.publicationPolicy.Closing and then
         Source_Loans.Current (loans.Policy, S.publicationBuffers (I).Loan) = Source_Loans.Attached
       then
          for P of S.parkedLoans loop
@@ -8885,8 +8889,14 @@ procedure main is
    end ringBounds;
 
    procedure ringStage
-     (From : Process_ID; Value : Publication.Stage_Request; Result : out Publication.Receipt) is
+     (From : Process_ID; Value : Publication.Stage_Request; Result : out Publication.Receipt)
+   is
+      idx : constant Integer := findSurface (Unsigned_64 (Value.Surface));
    begin
+      --  Surface_Access was checked: From owns it.
+      if idx >= 0 then
+         store.Surfaces (SurfaceIndex (idx)).ringFrames := True;
+      end if;
       stageOrRetire (From, True, (True, Value), (Valid => False), Result);
    end ringStage;
 
