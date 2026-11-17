@@ -6,6 +6,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with System.Machine_Code; use System.Machine_Code;
+with CuBit.Call_Census;
 
 package body CuBit.Handles.Kernel is
 
@@ -17,6 +18,7 @@ package body CuBit.Handles.Kernel is
    is
       Result : Unsigned_64;
    begin
+      CuBit.Call_Census.Note (Number);
       Asm
         ("mov %5, %%r10" & ASCII.LF &
          "mov %6, %%r8" & ASCII.LF &

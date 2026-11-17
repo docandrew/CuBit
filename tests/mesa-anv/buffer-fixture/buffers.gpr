@@ -10,7 +10,7 @@ project Buffers is
      ("buffer_bridge_tests.adb", "buffer_c_test.c", "cubit.ads",
       "cubit-handles.ads", "cubit-handles-c_abi.ads", "capability_abi.ads", "capability_abi.adb",
       "broker_handles_fixture.ads", "broker_handles_fixture.adb",
-      "cubit-messages.ads", "cubit-messages.adb", "cubit-grant_references.ads",
+      "cubit-messages.ads", "cubit-messages.adb", "cubit-call_census.ads", "cubit-call_census.adb", "cubit-grant_references.ads",
       "native_gpu_calls.ads", "native_gpu_calls.adb", "native_gpu_buffers.ads", "native_gpu_buffers.adb",
       "intel_gpu_buffer_requests.ads", "intel_gpu_buffer_requests.adb",
       "intel_gpu_buffer_requests-binding.ads", "intel_gpu_buffer_requests-binding.adb",

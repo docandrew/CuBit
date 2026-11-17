@@ -52,6 +52,7 @@ with CuBit.Display_Frame_Damage.Shared;
 with CuBit.Display_Box_Copy;
 with Display_Frame_Ring;
 with Display_Frame_Rings;
+with CuBit.Call_Census;
 
 procedure main is
    --  Every line also reaches logstore (Display_Logs), not only the console.
@@ -746,6 +747,7 @@ procedure main is
       debugPrint (buf (pos + 1 .. buf'Last));
    end printDec;
 
+   statsCensusAt : CuBit.Call_Census.Counts := [others => 0];
    procedure maybePrintStats is
       now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
    begin
@@ -779,8 +781,23 @@ procedure main is
          printDec (if statsForwarded = 0 then 0 else statsForwardUs / statsForwarded);
          debugPrint (" forward_us_max=");
          printDec (statsForwardMaxUs);
+         --  This period's calls by call number (CuBit.Call_Census).
+         debugPrint (" calls");
+         declare
+            Taken : constant CuBit.Call_Census.Counts := CuBit.Call_Census.Census;
+         begin
+            for N in CuBit.Call_Census.Number loop
+               if Taken (N) /= statsCensusAt (N) then
+                  debugPrint (" ");
+                  printDec (Unsigned_64 (N));
+                  debugPrint (":");
+                  printDec (Taken (N) - statsCensusAt (N));
+               end if;
+            end loop;
+         end;
          debugPrint ("" & LF);
       end if;
+      statsCensusAt := CuBit.Call_Census.Census;
 
       statsStartMs := now;
       CuBit.Graphics_Metrics_IO.Publish
@@ -3679,6 +3696,8 @@ procedure main is
    ringsReady, served : Boolean;
 begin
    debugPrint ("display: starting" & LF);
+   --  Its statistics say which calls it makes (display: stats ... calls).
+   CuBit.Call_Census.Enabled := True;
 
    ret := setLatencyContract
       (LATENCY_REALTIME,

@@ -7,7 +7,7 @@ project Startup_Tables is
      ("cubit.ads", "cubit-startup_tables.ads", "cubit-startup_tables.adb",
       "cubit-startup_state.ads", "cubit-startup_state.adb",
       "capability_abi.ads", "capability_abi.adb",
-      "cubit-handles.ads", "cubit-handles-kernel.ads", "cubit-handles-kernel.adb",
+      "cubit-handles.ads", "cubit-handles-kernel.ads", "cubit-handles-kernel.adb", "cubit-call_census.ads", "cubit-call_census.adb",
       "cubit-handles-startup.ads", "cubit-handles-startup.adb",
       "cubit-handles-test_words.ads", "launch_block_stub.ads",
       "cubit-launch_envelopes.ads", "cubit-launch_envelopes.adb",

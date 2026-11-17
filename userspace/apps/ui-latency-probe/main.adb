@@ -18,6 +18,8 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Call_Census;
+with CuBit.Kernel_ABI;
 with CuBit.Published_Clock;
 with CuBit.System_Facts;
 with Startup;
@@ -68,8 +70,40 @@ procedure Main is
    --  Calls since the phase began, less the READ_STATISTICS that asks.
    function Calls_So_Far return Unsigned_64 is (Thread_Calls - Phase_Calls - 1);
 
+   --  The phase's calls by call number (CuBit.Call_Census), without the
+   --  READ_STATISTICS that bracket it: "UI-PROBE: calls ...".
+   Census_At : CuBit.Call_Census.Counts := [others => 0];
+   procedure Print_Census (Name : String) is
+      Taken : constant CuBit.Call_Census.Counts := CuBit.Call_Census.Census;
+      Line : String (1 .. 1024);
+      Used : Natural := 0;
+   begin
+      for N in CuBit.Call_Census.Number loop
+         declare
+            Count : Unsigned_64 := Taken (N) - Census_At (N);
+         begin
+            --  The phase's opening and closing READ_STATISTICS.
+            if N = Natural (CuBit.Kernel_ABI.Read_Statistics) then
+               Count := (if Count >= 2 then Count - 2 else 0);
+            end if;
+            if Count /= 0 then
+               declare
+                  Item : constant String := " " & Decimal (Unsigned_64 (N)) & ":" & Decimal (Count);
+               begin
+                  if Used + Item'Length <= Line'Length then
+                     Line (Used + 1 .. Used + Item'Length) := Item;
+                     Used := Used + Item'Length;
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+      debugPrint ("UI-PROBE: calls phase=" & Name & Line (1 .. Used) & ASCII.LF);
+   end Print_Census;
+
    procedure Begin_Phase (Next : Phase) is
    begin
+      Census_At := CuBit.Call_Census.Census;
       Current := Next;
       Frames := 0;
       Keys_Seen := 0;
@@ -101,6 +135,7 @@ procedure Main is
             begin
                debugPrint ("UI-PROBE: keys keys=" & Decimal (Keys_Seen) & " frames=" & Decimal (Frames) &
                            " calls=" & Decimal (Calls) & ASCII.LF);
+            Print_Census ("keys");
             end;
             Running := False;
          else
@@ -135,6 +170,7 @@ procedure Main is
          begin
             debugPrint ("UI-PROBE: busy frames=" & Decimal (Frames) & " calls=" & Decimal (Calls) &
                         " ms=" & Decimal (CuBit.Published_Clock.Milliseconds - Phase_Ms) & ASCII.LF);
+            Print_Census ("busy");
          end;
          Begin_Phase (Keys);
          debugPrint ("UI-PROBE: keys ready" & ASCII.LF);
@@ -148,6 +184,7 @@ procedure Main is
      (UI, Map, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Next_Deadline, On_Deadline => On_Deadline, Activity_Wait => True);
 begin
+   CuBit.Call_Census.Enabled := True;
    App.Open (Win, WINDOW_W, WINDOW_H, App.WINDOW_FLAG_DECORATED, Opened,
              title => "Latency probe", protected_frames => True, preferred_size => True);
    if Opened then

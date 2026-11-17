@@ -12,6 +12,7 @@ with Ada.Unchecked_Conversion;
 with System;
 with System.Storage_Elements;
 with System.Machine_Code; use System.Machine_Code;
+with CuBit.Call_Census;
 with CuBit.Published_Clock;
 with CuBit.Waits;
 with Wait_ABI;
@@ -41,6 +42,7 @@ package body CuBit.Messages is
 
       ret : Unsigned_64;
    begin
+      CuBit.Call_Census.Note (call);
       --  Use proper register constraints so the compiler places call in rax,
       --  arg0 in rdi, arg1 in rsi, arg2 in rdx.  For r10/r8/r9, which lack
       --  single-letter constraints, we use explicit mov from "rm" operands.

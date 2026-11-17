@@ -5,6 +5,7 @@
 pragma Ada_2022;
 with System.Machine_Code; use System.Machine_Code;
 with Wait_ABI;
+with CuBit.Call_Census;
 
 package body CuBit.Kernel_Calls is
 
@@ -15,6 +16,7 @@ package body CuBit.Kernel_Calls is
       LF : constant Character := ASCII.LF;
       Result : Unsigned_64;
    begin
+      CuBit.Call_Census.Note (Number);
       --  RDI, RSI, RDX have constraint letters; R10, R8, R9 are loaded in
       --  the same block, so nothing can clobber them before the syscall.
       Asm ("mov %5, %%r10" & LF &
@@ -53,6 +55,7 @@ package body CuBit.Kernel_Calls is
         Unsigned_64 (Label) or Shift_Left (Unsigned_64 (Length), 32);
       Result : Unsigned_64;
    begin
+      CuBit.Call_Census.Note (CuBit.Kernel_ABI.Submit_Via_Endpoint_Capability);
       --  RDI slot, RSI tag, RDX word 0, R10/R8/R9 words 1 .. 3, R12 token.
       Asm ("mov %5, %%r10" & LF &
            "mov %6, %%r8" & LF &

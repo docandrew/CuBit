@@ -19,7 +19,7 @@ project Client is
       "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
       "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
-      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
+      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb", "cubit-call_census.ads", "cubit-call_census.adb",
       "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads",
       "cubit-handles.ads", "capability_abi.ads", "capability_abi.adb",
       "cubit-handles-fixture.ads", "cubit-handles-fixture.adb");
