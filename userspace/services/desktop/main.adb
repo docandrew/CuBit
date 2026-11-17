@@ -62,7 +62,9 @@ with Compositor_Input_Batch_Wire;
 with Compositor_Input_Protocol;
 with Compositor_Input_Acknowledgment;
 with Compositor_Input_Delivery_Pool;
+with CuBit.Published_Clock;
 with Desktop_Input_Transfer;
+with Desktop_Surface_Rings;
 with Compositor_Close_Request;
 with Compositor_Dispatch_Budget;
 with CuBit.Monotonic;
@@ -685,7 +687,12 @@ procedure main is
    INITIAL_SURFACES : constant := 8;
    --  Source loans per surface: its publication slots and one replacement
    --  acquisition. The loan table grows with the surface table.
-   LOANS_PER_SURFACE : constant := Surface_Policy.Slot'Last + 1;
+   --  A window's frame buffers stay mapped across frames: a retired
+   --  publication's acquisition is parked for the same buffer's next stage
+   --  instead of being returned and acquired again (two system calls a
+   --  frame). At most this many per window; the client double-buffers.
+   PARKED_LOANS_PER_SURFACE : constant := 2;
+   LOANS_PER_SURFACE : constant := Surface_Policy.Slot'Last + 1 + PARKED_LOANS_PER_SURFACE;
    package Source_Loans renames Compositor_Source_Loans;
    use type Source_Loans.Phase;
    use type Source_Loans.Ticket;
@@ -711,6 +718,15 @@ procedure main is
       Retired : Publication.Receipt;
    end record;
    type Publication_Buffers is array (Surface_Policy.Slot) of Publication_Buffer;
+   --  A parked acquisition: still mapped read-only, renderer references gone.
+   type Parked_Loan is record
+      Used : Boolean := False;
+      Loan : Source_Loans.Ticket := Source_Loans.No_Ticket;
+      Grant : MG.Grant_Reference;
+      Address : System.Address := System.Null_Address;
+      Bytes : Unsigned_64 := 0;
+   end record;
+   type Parked_Loans is array (1 .. PARKED_LOANS_PER_SURFACE) of Parked_Loan;
 
    package Window_Chrome renames CuBit.UI.Window_Chrome;
 
@@ -743,6 +759,7 @@ procedure main is
       publicationMode : Boolean := False;
       publicationInputAfter : Unsigned_64 := 0;
       publicationBuffers : Publication_Buffers;
+      parkedLoans : Parked_Loans;
       publicationPolicy : Surface_Policy.State;
       publicationConfiguration : Publication.Configuration_Result;
       bufferAttached : Boolean := False;
@@ -805,6 +822,7 @@ procedure main is
    package IQ renames Compositor_Input_Queue;
    subtype PendingInput is IQ.Event;
    subtype PendingInputQueue is IQ.Queue;
+
 
    type InputSnapshot is record
       pointerPosition : Unsigned_64 := 0;
@@ -2271,7 +2289,7 @@ procedure main is
    turnWork : Turn_Work;
 
    procedure maybePrintStats is
-      now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
       eventDrops : Unsigned_64;
       eventDropsThisPeriod : Unsigned_64 := 0;
       inputOverflowsThisPeriod : Unsigned_64 := 0;
@@ -2351,7 +2369,6 @@ procedure main is
          end;
       end if;
 
-
       -- Reuse the existing reporting clock. The store sums Counter deltas;
       -- submit each interval once, before resetting the local work counters.
       if DM.Enabled and then not DM.Disabled and then
@@ -2406,9 +2423,11 @@ procedure main is
         " " & Decimal (b) & " " & Decimal (c) & LF);
    end tracePointer;
 
+   --  GET_TIME's clock from the published page: no system call where the
+   --  kernel publishes it (an invariant TSC).
    function nowMs return Unsigned_64 is
    begin
-      return syscall (SYSCALL_GETTIME);
+      return CuBit.Published_Clock.Milliseconds;
    end nowMs;
 
    function alignUpPage (addr : Unsigned_64) return Unsigned_64 is
@@ -7041,7 +7060,7 @@ procedure main is
       Row ("Waiting on: " & bootstrapWaiting.all, Fg);
       if rendererWorkerActive then
          declare
-            Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            Now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
             Running : constant Unsigned_64 :=
               (if Now >= rendererStartedMs then Now - rendererStartedMs else 0);
          begin
@@ -7776,7 +7795,7 @@ procedure main is
 
       Draw_Started := timingNow;
       Latency_Draw_Started := CuBit.Monotonic.Microseconds;
-      t0 := syscall (SYSCALL_GETTIME);
+      t0 := CuBit.Published_Clock.Milliseconds;
       if full then
          redraw;
          damagePixels := Unsigned_64 (damage.w) * Unsigned_64 (damage.h);
@@ -7800,7 +7819,7 @@ procedure main is
          dragPresentedRect := dragPreviewRect;
       end if;
       noteCursorPresented;
-      t1 := syscall (SYSCALL_GETTIME);
+      t1 := CuBit.Published_Clock.Milliseconds;
       Compositor_Latency.Drew (latencyLedger, Latency_Draw_Started, CuBit.Monotonic.Microseconds);
 
       noteTiming (Scene_Draw, Draw_Started);
@@ -8162,6 +8181,40 @@ procedure main is
       if S.publicationPolicy.Buffers (I).Status /= Surface_Policy.Retiring then
          return;
       end if;
+      --  Park the mapping (no system call) once the renderer has let go of
+      --  it, while the surface is open and a parking entry is free.
+      if S.publicationBuffers (I).Acquired and then not S.publicationPolicy.Closing and then
+        Source_Loans.Current (loans.Policy, S.publicationBuffers (I).Loan) = Source_Loans.Attached
+      then
+         for P of S.parkedLoans loop
+            if not P.Used then
+               declare
+                  Renderer : Desktop_Compositor.Source_Release;
+               begin
+                  Desktop_Compositor.Forget_Source (S.publicationBuffers (I).Address, Renderer);
+                  case Renderer is
+                     when Desktop_Compositor.Source_Busy =>
+                        return;   --  still read; asked again next turn
+                     when Desktop_Compositor.Source_Retired =>
+                        P := (Used => True, Loan => S.publicationBuffers (I).Loan,
+                              Grant => S.publicationBuffers (I).Grant,
+                              Address => S.publicationBuffers (I).Address,
+                              Bytes => DP.Byte_Length (S.publicationBuffers (I).Configuration.Layout));
+                        Surface_Policy.Retire (S.publicationPolicy, I, Ticket, True);
+                        S.publicationBuffers (I).Acquired := False;
+                        S.publicationBuffers (I).Loan := Source_Loans.No_Ticket;
+                        S.publicationBuffers (I).Address := System.Null_Address;
+                        S.publicationBuffers (I).Retired :=
+                          (DP.Success, Publication.Identity (Epoch), Publication.Identity (Ticket));
+                        return;
+                     when Desktop_Compositor.Source_Unsafe =>
+                        null;   --  the full retirement path decides
+                  end case;
+               end;
+               exit;
+            end if;
+         end loop;
+      end if;
       if S.publicationBuffers (I).Acquired then
          retireSourceLoan (S.publicationBuffers (I).Loan);
          if Source_Loans.Current (loans.Policy, S.publicationBuffers (I).Loan) /=
@@ -8175,6 +8228,17 @@ procedure main is
       S.publicationBuffers (I).Retired :=
         (DP.Success, Publication.Identity (Epoch), Publication.Identity (Ticket));
    end retirePublicationBuffer;
+
+   --  Return a window's parked mappings (Matching: only those of Grant).
+   procedure returnParkedLoans (S : in out Surface; All_Of_Them : Boolean; Grant : MG.Grant_Reference) is
+   begin
+      for P of S.parkedLoans loop
+         if P.Used and then (All_Of_Them or else P.Grant = Grant) then
+            retireSourceLoan (P.Loan);
+            P := (others => <>);
+         end if;
+      end loop;
+   end returnParkedLoans;
 
    -- New pixels behind S (any buffer/attachment change or client present).
    -- Rows are source rows changed since the previous version; the renderer
@@ -8213,6 +8277,7 @@ procedure main is
          for I in Surface_Policy.Slot loop
             retirePublicationBuffer (S, I);
          end loop;
+         returnParkedLoans (S, True, (others => <>));
       elsif S.bufferAttached then
          retireSourceLoan (S.bufferLoan);
       end if;
@@ -8729,7 +8794,7 @@ procedure main is
          IQ.Has_After (store.Channels (SurfaceIndex (channelSlot)).events, afterSerial));
    end hasInputAfter;
 
-   procedure completeInputWaiter (target : Unsigned_64) is
+   procedure completeSavedInputWaiter (target : Unsigned_64) is
       channelSlot : constant Integer := findInputChannel (target);
       event : PendingInput;
       found : Boolean;
@@ -8771,7 +8836,140 @@ procedure main is
             ignore := replyCap (saved, response);
          end;
       end;
+   end completeSavedInputWaiter;
+
+   ---------------------------------------------------------------------------
+   --  Surface rings (IPC-004): the windows' request channels live in
+   --  Desktop_Surface_Rings; these are the Desktop operations it calls.
+   ---------------------------------------------------------------------------
+
+   procedure presentAttached
+     (from : Process_ID; Value : DP.Present_Request; Status : out DP.Status_Code);
+   procedure publishFrame
+     (from : Process_ID; Decoded : Publication.Publish_Decoding;
+      Result : out Publication.Receipt);
+   procedure stageOrRetire
+     (from : Process_ID; Is_Stage : Boolean; Staged : Publication.Stage_Decoding;
+      Query : Publication.Query_Decoding; Result : out Publication.Receipt);
+
+   function ringSurfaceAccess (From : Process_ID; Target : Unsigned_64) return DP.Status_Code is
+      idx : constant Integer := findSurface (Target);
+   begin
+      return DP.Surface_Access
+        (idx >= 0, (if idx >= 0 then To_Word (store.Surfaces (SurfaceIndex (idx)).owner) else 0),
+         To_Word (From));
+   end ringSurfaceAccess;
+
+   --  The bounds Desktop fixed for Target: never read from shared memory.
+   procedure ringBounds
+     (Target : Unsigned_64; Attached_Width, Attached_Height : out Natural;
+      Source_Width, Source_Height : out Natural)
+   is
+      idx : constant Integer := findSurface (Target);
+   begin
+      Attached_Width := 0; Attached_Height := 0; Source_Width := 0; Source_Height := 0;
+      if idx < 0 then
+         return;
+      end if;
+      declare
+         S : Surface renames store.Surfaces (SurfaceIndex (idx));
+         client : constant Rect := clientRect (S);
+      begin
+         Attached_Width := client.w;
+         Attached_Height := client.h;
+         if S.publicationConfiguration.Status = DP.Success then
+            Source_Width := Natural (S.publicationConfiguration.Value.Layout.Width);
+            Source_Height := Natural (S.publicationConfiguration.Value.Layout.Height);
+         end if;
+      end;
+   end ringBounds;
+
+   procedure ringStage
+     (From : Process_ID; Value : Publication.Stage_Request; Result : out Publication.Receipt) is
+   begin
+      stageOrRetire (From, True, (True, Value), (Valid => False), Result);
+   end ringStage;
+
+   procedure ringPublish
+     (From : Process_ID; Value : Publication.Publish_Request; Result : out Publication.Receipt) is
+   begin
+      publishFrame (From, (True, Value), Result);
+   end ringPublish;
+
+   procedure ringRetirement
+     (From : Process_ID; Value : Publication.Query; Result : out Publication.Receipt) is
+   begin
+      stageOrRetire (From, False, (Valid => False), (True, Value), Result);
+   end ringRetirement;
+
+   procedure ringNextInput
+     (Target, After : Unsigned_64; Item : out DP.Input_Envelope; Got : out Boolean)
+   is
+      Event : PendingInput;
+   begin
+      Item := (others => <>);
+      dequeueInput (Target, After, Got, Event);
+      if not Got then
+         return;
+      end if;
+      --  An unknown kind stays No_Input: the ring skips it.
+      for Kind in DP.Input_Event_Kind loop
+         if Event.kind = DP.Input_Event_Kind'Enum_Rep (Kind) then
+            Item := (Kind, Event.serial, Event.payload0, Event.payload1, False);
+         end if;
+      end loop;
+      Item.Serial := Event.serial;
+   end ringNextInput;
+
+   procedure ringReport (Text : String) is
+   begin
+      Desktop_Logs.Warn (Text);
+   end ringReport;
+
+   package Rings is new Desktop_Surface_Rings
+     (Surface_Access => ringSurfaceAccess, Bounds => ringBounds,
+      Present_Attached => presentAttached, Stage => ringStage, Publish => ringPublish,
+      Retirement => ringRetirement, Next_Input => ringNextInput, Input_After => hasInputAfter,
+      Report => ringReport);
+
+   procedure completeInputWaiter (target : Unsigned_64) is
+   begin
+      completeSavedInputWaiter (target);
+      Rings.Input_Queued (target);
    end completeInputWaiter;
+
+   --  A kernel notice for the surface rings (a channel wake, the end of a
+   --  ring), or a client revoking a buffer whose mapping Desktop keeps
+   --  parked (it is reallocating: the mapping goes back, so its retirement
+   --  completes). True: it was one of these and needs nothing else.
+   function ringNotice (eventMsg : Message; publisher : Process_ID) return Boolean is
+      use type CuBit.Control_Events.Event_Kind;
+      Kind : Rings.Notice_Kind;
+      Event : CuBit.Control_Events.Event;
+      Returned : Boolean := False;
+   begin
+      Rings.Take_Notice (eventMsg, publisher, Kind, Event);
+      case Kind is
+         when Rings.Not_Ours => return False;
+         when Rings.Handled => return True;
+         when Rings.Grant_Event => null;
+      end case;
+      if Event.Kind = CuBit.Control_Events.Grant_Revoked then
+         for S of store.Surfaces loop
+            for P of S.parkedLoans loop
+               if P.Used and then Unsigned_64 (P.Grant.slot) = Event.Slot
+                 and then Unsigned_64 (P.Grant.generation) = Event.Generation
+               then
+                  retireSourceLoan (P.Loan);
+                  P := (others => <>);
+                  Returned := True;
+               end if;
+            end loop;
+         end loop;
+      end if;
+      return Returned;
+   end ringNotice;
+
 
    function nextInputDeadline return Unsigned_64 is
       deadline : Unsigned_64 := 0;
@@ -8889,6 +9087,11 @@ procedure main is
 
    procedure clearInputQueue is
    begin
+      for C of store.Channels loop
+         if C.target /= 0 then
+            Rings.Surface_Ended (C.target);
+         end if;
+      end loop;
       store.Channels := [others => (others => <>)];
    end clearInputQueue;
 
@@ -8920,6 +9123,7 @@ procedure main is
          end;
       end if;
 
+      Rings.Surface_Ended (store.Channels (SurfaceIndex (channelSlot)).target);
       store.Channels (SurfaceIndex (channelSlot)) := (others => <>);
    end clearInputForTarget;
 
@@ -9204,6 +9408,15 @@ procedure main is
                   return (Status => DP.Resources_Exhausted);
                end if;
                Candidate.Epoch := Publication.Identity (S.publicationPolicy.Requested);
+               --  Another size of buffer: the client reallocates, so the
+               --  mappings parked for its old buffers go back now (its
+               --  release waits for them).
+               if Had_Configuration and then
+                 (DP.Byte_Length (S.publicationConfiguration.Value.Layout) + MG.PAGE_SIZE - 1) / MG.PAGE_SIZE /=
+                 (DP.Byte_Length (Candidate.Layout) + MG.PAGE_SIZE - 1) / MG.PAGE_SIZE
+               then
+                  returnParkedLoans (S, True, (others => <>));
+               end if;
                S.publicationConfiguration := (DP.Success, Candidate);
                if Had_Configuration and then S.owner /= No_Process then
                   --  A density change can keep the same logical extent. Wake
@@ -9236,6 +9449,279 @@ procedure main is
       end loop;
    end refreshPublicationConfigurations;
 
+   --  A client's attached buffer changed (OP_SURFACE_PRESENT, or a surface
+   --  ring's Present): schedule the redraw that shows it.
+   procedure presentAttached
+     (from : Process_ID; Value : DP.Present_Request; Status : out DP.Status_Code)
+   is
+   begin
+      Status := DP.Success;
+      declare
+         idx : constant Integer := findSurface (Unsigned_64 (Value.Surface));
+         accessStatus : constant DP.Status_Code := DP.Surface_Access
+           (idx >= 0,
+            (if idx >= 0 then To_Word (store.Surfaces (SurfaceIndex (idx)).owner) else 0),
+            To_Word (from));
+      begin
+         if accessStatus /= DP.Success then
+            Status := accessStatus;
+         elsif store.Surfaces (SurfaceIndex (idx)).publicationMode then
+            Status := DP.Bad_State;
+         elsif
+            (store.Surfaces (SurfaceIndex (idx)).flags and
+             SURFACE_FLAG_SHELL) = 0
+         then
+            --  A client present changes the client buffer contents, not
+            --  the compositor-owned decoration. Keep high-rate surfaces
+            --  such as DOOM clipped to their content area so every tick
+            --  does the minimum useful work. Newer clients may also
+            --  pass a dirty rectangle in client-local coordinates:
+            --  word1 = x/y, word2 = w/h. Legacy zero/zero presents
+            --  still mean "the whole client area changed."
+            declare
+               client : constant Rect :=
+                  clientRect (store.Surfaces (SurfaceIndex (idx)));
+               damage : constant DP.Rectangle :=
+                 DP.Clip (Value.Area, client.w, client.h);
+               bufferH : constant Natural := store.Surfaces (SurfaceIndex (idx)).bufferH;
+            begin
+               -- Client-local damage rows are buffer rows only at 1:1.
+               noteContentChange (store.Surfaces (SurfaceIndex (idx)),
+                 (if DP.Mode (Value) = DP.Whole_Surface or else bufferH /= client.h
+                  then bufferRows (bufferH)
+                  else Compositor_Source_Content.Clip
+                    (Compositor_Source_Content.Band
+                       (Natural'Min (Natural (damage.Y), Compositor_Source_Content.Maximum_Rows),
+                        Natural'Min (Natural (damage.Y) + Natural (damage.Height),
+                          Compositor_Source_Content.Maximum_Rows)),
+                     Natural'Min (bufferH, Compositor_Source_Content.Maximum_Rows))));
+               if DP.Mode (Value) = DP.Whole_Surface then
+                  scheduleRedrawRect (client);
+               else
+                  scheduleRedrawRect
+                    ((x => client.x + Natural (damage.X),
+                      y => client.y + Natural (damage.Y),
+                      w => Natural (damage.Width), h => Natural (damage.Height)));
+               end if;
+            end;
+         else
+            noteContentChange (store.Surfaces (SurfaceIndex (idx)),
+              bufferRows (store.Surfaces (SurfaceIndex (idx)).bufferH));
+            scheduleRedraw;
+         end if;
+      end;
+   end presentAttached;
+
+   --  Publish a staged frame (Publication.Publish_Label, or a surface
+   --  ring's Publish after its stage): the caller is From.
+   procedure publishFrame
+     (from : Process_ID; Decoded : Publication.Publish_Decoding;
+      Result : out Publication.Receipt)
+   is
+      Index : Integer;
+   begin
+      Result := (Status => DP.Invalid_Request);
+      if Decoded.Valid then
+         Index := findSurface (Unsigned_64 (Decoded.Value.Surface));
+         if Index < 0 then
+            Result := (Status => DP.Bad_Object);
+         elsif store.Surfaces (SurfaceIndex (Index)).owner /= from then
+            Result := (Status => DP.Denied);
+         else
+            declare
+               S : Surface renames store.Surfaces (SurfaceIndex (Index));
+               Config : constant Publication.Configuration_Result :=
+                 currentPublicationConfiguration (S);
+               Accepted : Boolean;
+            begin
+               Result := (Status => DP.Bad_State);
+               if S.publicationMode and then Config.Status = DP.Success and then
+                 Decoded.Value.Epoch = Config.Value.Epoch and then S.serial < Unsigned_64'Last
+               then
+                  for I in Surface_Policy.Slot loop
+                     if S.publicationBuffers (I).Acquired and then
+                       Unsigned_64 (S.publicationPolicy.Buffers (I).Ticket) = Decoded.Value.Ticket
+                     then
+                        declare
+                           B : Publication_Buffer renames S.publicationBuffers (I);
+                           Whole_Change : constant Boolean :=
+                             Natural (Decoded.Value.Area.Width) = 0 or else not S.bufferAttached or else
+                             S.bufferW /= Natural (B.Configuration.Layout.Width) or else
+                             S.bufferH /= Natural (B.Configuration.Layout.Height) or else
+                             S.bufferLogicalW /= Natural (B.Configuration.Width) or else
+                             S.bufferLogicalH /= Natural (B.Configuration.Height);
+                           Damage : constant Compositor_Source_Damage.Box :=
+                             Compositor_Source_Damage.Map
+                               (Natural (B.Configuration.Layout.Width), Natural (B.Configuration.Layout.Height),
+                                Natural (B.Configuration.Width), Natural (B.Configuration.Height),
+                                (Natural (Decoded.Value.Area.X), Natural (Decoded.Value.Area.Y),
+                                 Natural (Decoded.Value.Area.Width), Natural (Decoded.Value.Area.Height)),
+                                Full => Whole_Change);
+                           -- Source rows for the persistent renderer image.
+                           Source_Rows : constant Compositor_Source_Content.Row_Band :=
+                             (if Whole_Change or else Natural (Decoded.Value.Area.Height) = 0
+                              then bufferRows (Natural (B.Configuration.Layout.Height))
+                              else Compositor_Source_Content.Clip
+                                (Compositor_Source_Content.Band
+                                   (Natural (Decoded.Value.Area.Y),
+                                    Natural'Min (Compositor_Source_Content.Maximum_Rows,
+                                      Natural (Decoded.Value.Area.Y) + Natural (Decoded.Value.Area.Height))),
+                                 Natural (B.Configuration.Layout.Height)));
+                           Origin_X : constant Natural := S.x +
+                             (if (S.flags and SURFACE_FLAG_WINDOW) /= 0 then CLIENT_INSET_X else 0);
+                           Origin_Y : constant Natural := S.y +
+                             (if (S.flags and SURFACE_FLAG_WINDOW) /= 0 then CLIENT_INSET_TOP else 0);
+                        begin
+                           Surface_Policy.Present (S.publicationPolicy, I,
+                             Surface_Policy.Generation (Decoded.Value.Epoch),
+                             Natural (Decoded.Value.Ticket), Accepted);
+                           if Accepted then
+                              S.bufferGrant := S.publicationBuffers (I).Grant;
+                              S.bufferAddr := S.publicationBuffers (I).Address;
+                              S.bufferW := Natural (S.publicationBuffers (I).Configuration.Layout.Width);
+                              S.bufferH := Natural (S.publicationBuffers (I).Configuration.Layout.Height);
+                              S.bufferPitch := S.publicationBuffers (I).Configuration.Layout.Pitch;
+                              S.bufferLogicalW := Natural (S.publicationBuffers (I).Configuration.Width);
+                              S.bufferLogicalH := Natural (S.publicationBuffers (I).Configuration.Height);
+                              S.bufferFormat := PIXEL_FORMAT_BGRA8888;
+                              S.bufferAttached := True;
+                              S.dirty := True;
+                              S.serial := S.serial + 1;
+                              noteContentChange (S, Source_Rows);
+                              S.publicationInputAfter := Decoded.Value.Input_After;
+                              Compositor_Latency.Published
+                                (latencyLedger, S.id, Decoded.Value.Input_After,
+                                 CuBit.Monotonic.Microseconds);
+                              if Trace_Enabled then
+                                 -- Capture the accepted publication identity; both
+                                 -- exporters perform bounded appends without IPC.
+                                 recordSourceTrace (
+                                   (S.id, Decoded.Value.Epoch, Decoded.Value.Ticket,
+                                    S.publicationInputAfter, timingNow));
+                              end if;
+                              scheduleRedrawRect
+                                ((Origin_X + Damage.Left, Origin_Y + Damage.Top,
+                                  Damage.Right - Damage.Left, Damage.Bottom - Damage.Top));
+                              Result := (DP.Success, Decoded.Value.Epoch, Decoded.Value.Ticket);
+                           end if;
+                        end;
+                        exit;
+                     end if;
+                  end loop;
+               end if;
+            end;
+         end if;
+      end if;
+   end publishFrame;
+
+   --  Stage a frame buffer (Is_Stage: Staged) or answer a retirement query
+   --  (Query) for From (Publication.Stage_Label, Retirement_Label, and the
+   --  surface ring's Publish and Await_Retirement).
+   procedure stageOrRetire
+     (from : Process_ID; Is_Stage : Boolean; Staged : Publication.Stage_Decoding;
+      Query : Publication.Query_Decoding; Result : out Publication.Receipt)
+   is
+      Index : Integer;
+   begin
+      Result := (Status => DP.Invalid_Request);
+      if (Is_Stage and then Staged.Valid) or else
+        (not Is_Stage and then Query.Valid)
+      then
+         Index := findSurface
+           (Unsigned_64 (if Is_Stage then Staged.Value.Surface else Query.Value.Surface));
+         if Index < 0 then
+            Result := (Status => DP.Bad_Object);
+         elsif store.Surfaces (SurfaceIndex (Index)).owner /= from then
+            Result := (Status => DP.Denied);
+         else
+            declare
+               S : Surface renames store.Surfaces (SurfaceIndex (Index));
+            begin
+               Result := (Status => DP.Bad_State);
+               if Is_Stage then
+                  if S.publicationMode or else not S.bufferAttached then
+                     declare
+                        Config : constant Publication.Configuration_Result :=
+                          currentPublicationConfiguration (S);
+                        Accepted : Boolean;
+                        Acquisition : DP.Status_Code;
+                        Loan : Source_Loans.Ticket;
+                        Address : System.Address;
+                        Duplicate : Boolean := False;
+                     begin
+                        for I in Surface_Policy.Slot loop
+                           Duplicate := Duplicate or else
+                             (S.publicationBuffers (I).Acquired and then
+                              S.publicationBuffers (I).Grant = Staged.Value.Grant);
+                        end loop;
+                        if Config.Status /= DP.Success then
+                           Result := (Status => Publication.Failure_Status (Config.Status));
+                        elsif not Duplicate and then Staged.Value.Epoch = Config.Value.Epoch then
+                           for I in Surface_Policy.Slot loop
+                              if S.publicationPolicy.Buffers (I).Status = Surface_Policy.Empty then
+                                 Surface_Policy.Stage
+                                   (S.publicationPolicy, I,
+                                    Surface_Policy.Generation (Staged.Value.Epoch), Accepted);
+                                 if Accepted then
+                                    --  The same buffer staged again: its mapping is
+                                    --  still here (no system call).
+                                    Acquisition := DP.Bad_State;
+                                    for P of S.parkedLoans loop
+                                       if P.Used and then P.Grant = Staged.Value.Grant and then
+                                         P.Bytes >= DP.Byte_Length (Config.Value.Layout)
+                                       then
+                                          Loan := P.Loan;
+                                          Address := P.Address;
+                                          Acquisition := DP.Success;
+                                          P := (others => <>);
+                                          exit;
+                                       end if;
+                                    end loop;
+                                    if Acquisition /= DP.Success then
+                                       acquireSourceLoan (Staged.Value.Grant, from,
+                                         DP.Byte_Length (Config.Value.Layout), Address, Loan, Acquisition);
+                                    end if;
+                                    if Acquisition = DP.Success then
+                                       S.publicationBuffers (I).Loan := Loan;
+                                       S.publicationMode := True;
+                                       S.publicationBuffers (I).Acquired := True;
+                                       S.publicationBuffers (I).Grant := Staged.Value.Grant;
+                                       S.publicationBuffers (I).Address := Address;
+                                       S.publicationBuffers (I).Configuration := Config.Value;
+                                       Result := (DP.Success, Staged.Value.Epoch,
+                                         Publication.Identity (S.publicationPolicy.Buffers (I).Ticket));
+                                    else
+                                       Surface_Policy.Discard (S.publicationPolicy, I,
+                                         S.publicationPolicy.Buffers (I).Ticket);
+                                       Surface_Policy.Retire (S.publicationPolicy, I,
+                                         S.publicationPolicy.Buffers (I).Ticket, True);
+                                       Result := (Status => Publication.Failure_Status (Acquisition));
+                                    end if;
+                                 end if;
+                                 exit;
+                              end if;
+                           end loop;
+                        end if;
+                     end;
+                  end if;
+               elsif S.publicationMode then
+                  for I in Surface_Policy.Slot loop
+                     if Unsigned_64 (S.publicationPolicy.Buffers (I).Ticket) = Query.Value.Ticket then
+                        retirePublicationBuffer (S, I);
+                     end if;
+                     if S.publicationBuffers (I).Retired.Status = DP.Success and then
+                       S.publicationBuffers (I).Retired.Ticket = Query.Value.Ticket
+                     then
+                        Result := S.publicationBuffers (I).Retired;
+                     end if;
+                  end loop;
+               end if;
+            end;
+         end if;
+      end if;
+   end stageOrRetire;
+
+
    procedure handleRequest (from : Process_ID; request : Message) is
       replyMsg : Message := NULL_MESSAGE;
       ignore   : Unsigned_64;
@@ -9253,6 +9739,18 @@ procedure main is
       use type DP.Status_Code;
       use type DP.Operation;
    begin
+      --  A window opening its surface ring (Compositor_Surface_Ring).
+      declare
+         Is_Open : Boolean;
+         Answer : Message;
+      begin
+         Rings.Handle_Open (from, request, Is_Open, Answer);
+         if Is_Open then
+            statsRequests := statsRequests + 1;
+            ignore := reply (from, Answer);
+            return;
+         end if;
+      end;
       if Desktop_Clipboard.Handles (request.tag.label) then
          declare
             focusIdx : constant Integer := findSurface (focusSurface);
@@ -9386,102 +9884,9 @@ procedure main is
       end if;
       if request.tag.label = Publication.Publish_Label then
          declare
-            Decoded : constant Publication.Publish_Decoding :=
-              Publication.Decode_Publish (CuBit.Desktop_Messages.To_Wire (request));
-            Result : Publication.Receipt := (Status => DP.Invalid_Request);
-            Index : Integer;
+            Result : Publication.Receipt;
          begin
-            if Decoded.Valid then
-               Index := findSurface (Unsigned_64 (Decoded.Value.Surface));
-               if Index < 0 then
-                  Result := (Status => DP.Bad_Object);
-               elsif store.Surfaces (SurfaceIndex (Index)).owner /= from then
-                  Result := (Status => DP.Denied);
-               else
-                  declare
-                     S : Surface renames store.Surfaces (SurfaceIndex (Index));
-                     Config : constant Publication.Configuration_Result :=
-                       currentPublicationConfiguration (S);
-                     Accepted : Boolean;
-                  begin
-                     Result := (Status => DP.Bad_State);
-                     if S.publicationMode and then Config.Status = DP.Success and then
-                       Decoded.Value.Epoch = Config.Value.Epoch and then S.serial < Unsigned_64'Last
-                     then
-                        for I in Surface_Policy.Slot loop
-                           if S.publicationBuffers (I).Acquired and then
-                             Unsigned_64 (S.publicationPolicy.Buffers (I).Ticket) = Decoded.Value.Ticket
-                           then
-                              declare
-                                 B : Publication_Buffer renames S.publicationBuffers (I);
-                                 Whole_Change : constant Boolean :=
-                                   Natural (Decoded.Value.Area.Width) = 0 or else not S.bufferAttached or else
-                                   S.bufferW /= Natural (B.Configuration.Layout.Width) or else
-                                   S.bufferH /= Natural (B.Configuration.Layout.Height) or else
-                                   S.bufferLogicalW /= Natural (B.Configuration.Width) or else
-                                   S.bufferLogicalH /= Natural (B.Configuration.Height);
-                                 Damage : constant Compositor_Source_Damage.Box :=
-                                   Compositor_Source_Damage.Map
-                                     (Natural (B.Configuration.Layout.Width), Natural (B.Configuration.Layout.Height),
-                                      Natural (B.Configuration.Width), Natural (B.Configuration.Height),
-                                      (Natural (Decoded.Value.Area.X), Natural (Decoded.Value.Area.Y),
-                                       Natural (Decoded.Value.Area.Width), Natural (Decoded.Value.Area.Height)),
-                                      Full => Whole_Change);
-                                 -- Source rows for the persistent renderer image.
-                                 Source_Rows : constant Compositor_Source_Content.Row_Band :=
-                                   (if Whole_Change or else Natural (Decoded.Value.Area.Height) = 0
-                                    then bufferRows (Natural (B.Configuration.Layout.Height))
-                                    else Compositor_Source_Content.Clip
-                                      (Compositor_Source_Content.Band
-                                         (Natural (Decoded.Value.Area.Y),
-                                          Natural'Min (Compositor_Source_Content.Maximum_Rows,
-                                            Natural (Decoded.Value.Area.Y) + Natural (Decoded.Value.Area.Height))),
-                                       Natural (B.Configuration.Layout.Height)));
-                                 Origin_X : constant Natural := S.x +
-                                   (if (S.flags and SURFACE_FLAG_WINDOW) /= 0 then CLIENT_INSET_X else 0);
-                                 Origin_Y : constant Natural := S.y +
-                                   (if (S.flags and SURFACE_FLAG_WINDOW) /= 0 then CLIENT_INSET_TOP else 0);
-                              begin
-                                 Surface_Policy.Present (S.publicationPolicy, I,
-                                   Surface_Policy.Generation (Decoded.Value.Epoch),
-                                   Natural (Decoded.Value.Ticket), Accepted);
-                                 if Accepted then
-                                    S.bufferGrant := S.publicationBuffers (I).Grant;
-                                    S.bufferAddr := S.publicationBuffers (I).Address;
-                                    S.bufferW := Natural (S.publicationBuffers (I).Configuration.Layout.Width);
-                                    S.bufferH := Natural (S.publicationBuffers (I).Configuration.Layout.Height);
-                                    S.bufferPitch := S.publicationBuffers (I).Configuration.Layout.Pitch;
-                                    S.bufferLogicalW := Natural (S.publicationBuffers (I).Configuration.Width);
-                                    S.bufferLogicalH := Natural (S.publicationBuffers (I).Configuration.Height);
-                                    S.bufferFormat := PIXEL_FORMAT_BGRA8888;
-                                    S.bufferAttached := True;
-                                    S.dirty := True;
-                                    S.serial := S.serial + 1;
-                                    noteContentChange (S, Source_Rows);
-                                    S.publicationInputAfter := Decoded.Value.Input_After;
-                                    Compositor_Latency.Published
-                                      (latencyLedger, S.id, Decoded.Value.Input_After,
-                                       CuBit.Monotonic.Microseconds);
-                                    if Trace_Enabled then
-                                       -- Capture the accepted publication identity; both
-                                       -- exporters perform bounded appends without IPC.
-                                       recordSourceTrace (
-                                         (S.id, Decoded.Value.Epoch, Decoded.Value.Ticket,
-                                          S.publicationInputAfter, timingNow));
-                                    end if;
-                                    scheduleRedrawRect
-                                      ((Origin_X + Damage.Left, Origin_Y + Damage.Top,
-                                        Damage.Right - Damage.Left, Damage.Bottom - Damage.Top));
-                                    Result := (DP.Success, Decoded.Value.Epoch, Decoded.Value.Ticket);
-                                 end if;
-                              end;
-                              exit;
-                           end if;
-                        end loop;
-                     end if;
-                  end;
-               end if;
-            end if;
+            publishFrame (from, Publication.Decode_Publish (CuBit.Desktop_Messages.To_Wire (request)), Result);
             replyMsg := CuBit.Desktop_Messages.From_Wire
               (Publication.Encode_Receipt (Result, Publication.Publish_Label));
             ignore := reply (from, replyMsg);
@@ -9492,93 +9897,12 @@ procedure main is
         request.tag.label = Publication.Retirement_Label
       then
          declare
-            Is_Stage : constant Boolean := request.tag.label = Publication.Stage_Label;
-            Staged : constant Publication.Stage_Decoding :=
-              Publication.Decode_Stage (CuBit.Desktop_Messages.To_Wire (request));
-            Query : constant Publication.Query_Decoding :=
-              Publication.Decode_Query (CuBit.Desktop_Messages.To_Wire (request), True);
-            Result : Publication.Receipt := (Status => DP.Invalid_Request);
-            Index : Integer;
+            Result : Publication.Receipt;
          begin
-            if (Is_Stage and then Staged.Valid) or else
-              (not Is_Stage and then Query.Valid)
-            then
-               Index := findSurface
-                 (Unsigned_64 (if Is_Stage then Staged.Value.Surface else Query.Value.Surface));
-               if Index < 0 then
-                  Result := (Status => DP.Bad_Object);
-               elsif store.Surfaces (SurfaceIndex (Index)).owner /= from then
-                  Result := (Status => DP.Denied);
-               else
-                  declare
-                     S : Surface renames store.Surfaces (SurfaceIndex (Index));
-                  begin
-                     Result := (Status => DP.Bad_State);
-                     if Is_Stage then
-                        if S.publicationMode or else not S.bufferAttached then
-                           declare
-                              Config : constant Publication.Configuration_Result :=
-                                currentPublicationConfiguration (S);
-                              Accepted : Boolean;
-                              Acquisition : DP.Status_Code;
-                              Loan : Source_Loans.Ticket;
-                              Address : System.Address;
-                              Duplicate : Boolean := False;
-                           begin
-                              for I in Surface_Policy.Slot loop
-                                 Duplicate := Duplicate or else
-                                   (S.publicationBuffers (I).Acquired and then
-                                    S.publicationBuffers (I).Grant = Staged.Value.Grant);
-                              end loop;
-                              if Config.Status /= DP.Success then
-                                 Result := (Status => Publication.Failure_Status (Config.Status));
-                              elsif not Duplicate and then Staged.Value.Epoch = Config.Value.Epoch then
-                                 for I in Surface_Policy.Slot loop
-                                    if S.publicationPolicy.Buffers (I).Status = Surface_Policy.Empty then
-                                       Surface_Policy.Stage
-                                         (S.publicationPolicy, I,
-                                          Surface_Policy.Generation (Staged.Value.Epoch), Accepted);
-                                       if Accepted then
-                                          acquireSourceLoan (Staged.Value.Grant, from,
-                                            DP.Byte_Length (Config.Value.Layout), Address, Loan, Acquisition);
-                                          if Acquisition = DP.Success then
-                                             S.publicationBuffers (I).Loan := Loan;
-                                             S.publicationMode := True;
-                                             S.publicationBuffers (I).Acquired := True;
-                                             S.publicationBuffers (I).Grant := Staged.Value.Grant;
-                                             S.publicationBuffers (I).Address := Address;
-                                             S.publicationBuffers (I).Configuration := Config.Value;
-                                             Result := (DP.Success, Staged.Value.Epoch,
-                                               Publication.Identity (S.publicationPolicy.Buffers (I).Ticket));
-                                          else
-                                             Surface_Policy.Discard (S.publicationPolicy, I,
-                                               S.publicationPolicy.Buffers (I).Ticket);
-                                             Surface_Policy.Retire (S.publicationPolicy, I,
-                                               S.publicationPolicy.Buffers (I).Ticket, True);
-                                             Result := (Status => Publication.Failure_Status (Acquisition));
-                                          end if;
-                                       end if;
-                                       exit;
-                                    end if;
-                                 end loop;
-                              end if;
-                           end;
-                        end if;
-                     elsif S.publicationMode then
-                        for I in Surface_Policy.Slot loop
-                           if Unsigned_64 (S.publicationPolicy.Buffers (I).Ticket) = Query.Value.Ticket then
-                              retirePublicationBuffer (S, I);
-                           end if;
-                           if S.publicationBuffers (I).Retired.Status = DP.Success and then
-                             S.publicationBuffers (I).Retired.Ticket = Query.Value.Ticket
-                           then
-                              Result := S.publicationBuffers (I).Retired;
-                           end if;
-                        end loop;
-                     end if;
-                  end;
-               end if;
-            end if;
+            stageOrRetire
+              (from, request.tag.label = Publication.Stage_Label,
+               Publication.Decode_Stage (CuBit.Desktop_Messages.To_Wire (request)),
+               Publication.Decode_Query (CuBit.Desktop_Messages.To_Wire (request), True), Result);
             replyMsg := CuBit.Desktop_Messages.From_Wire
               (Publication.Encode_Receipt (Result, request.tag.label));
             ignore := reply (from, replyMsg);
@@ -10152,60 +10476,17 @@ procedure main is
                              length => 1,
                              protocol  => 0, ipc => <>,
                              reserved  => 0);
-            replyMsg.words (0) := UI_OK;
             declare
-               idx : constant Integer := findSurface (request.words (0));
-               accessStatus : constant DP.Status_Code := DP.Surface_Access
-                 (idx >= 0,
-                  (if idx >= 0 then To_Word (store.Surfaces (SurfaceIndex (idx)).owner) else 0),
-                  To_Word (from));
+               Status : DP.Status_Code;
             begin
-               if accessStatus /= DP.Success then
-                  replyMsg.words (0) := DP.Status_Code'Enum_Rep (accessStatus);
-               elsif store.Surfaces (SurfaceIndex (idx)).publicationMode then
-                  replyMsg.words (0) := UI_ERR_BAD_STATE;
-               elsif
-                  (store.Surfaces (SurfaceIndex (idx)).flags and
-                   SURFACE_FLAG_SHELL) = 0
-               then
-                  --  A client present changes the client buffer contents, not
-                  --  the compositor-owned decoration. Keep high-rate surfaces
-                  --  such as DOOM clipped to their content area so every tick
-                  --  does the minimum useful work. Newer clients may also
-                  --  pass a dirty rectangle in client-local coordinates:
-                  --  word1 = x/y, word2 = w/h. Legacy zero/zero presents
-                  --  still mean "the whole client area changed."
-                  declare
-                     client : constant Rect :=
-                        clientRect (store.Surfaces (SurfaceIndex (idx)));
-                     damage : constant DP.Rectangle :=
-                       DP.Clip (present.Value.Area, client.w, client.h);
-                     bufferH : constant Natural := store.Surfaces (SurfaceIndex (idx)).bufferH;
-                  begin
-                     -- Client-local damage rows are buffer rows only at 1:1.
-                     noteContentChange (store.Surfaces (SurfaceIndex (idx)),
-                       (if DP.Mode (present.Value) = DP.Whole_Surface or else bufferH /= client.h
-                        then bufferRows (bufferH)
-                        else Compositor_Source_Content.Clip
-                          (Compositor_Source_Content.Band
-                             (Natural'Min (Natural (damage.Y), Compositor_Source_Content.Maximum_Rows),
-                              Natural'Min (Natural (damage.Y) + Natural (damage.Height),
-                                Compositor_Source_Content.Maximum_Rows)),
-                           Natural'Min (bufferH, Compositor_Source_Content.Maximum_Rows))));
-                     if DP.Mode (present.Value) = DP.Whole_Surface then
-                        scheduleRedrawRect (client);
-                     else
-                        scheduleRedrawRect
-                          ((x => client.x + Natural (damage.X),
-                            y => client.y + Natural (damage.Y),
-                            w => Natural (damage.Width), h => Natural (damage.Height)));
-                     end if;
-                  end;
+               --  A zero name never resolves (DP.Surface_Access).
+               if request.words (0) = 0 then
+                  Status := DP.Bad_Object;
                else
-                  noteContentChange (store.Surfaces (SurfaceIndex (idx)),
-                    bufferRows (store.Surfaces (SurfaceIndex (idx)).bufferH));
-                  scheduleRedraw;
+                  presentAttached
+                    (from, (DP.Live_Surface_Name (request.words (0)), present.Value.Area), Status);
                end if;
+               replyMsg.words (0) := DP.Status_Code'Enum_Rep (Status);
             end;
 
          when OP_SURFACE_DESTROY =>
@@ -11938,7 +12219,7 @@ procedure main is
        Observed_Ms : Unsigned_64)
    is
       Source_Clock : constant Boolean := Observed_Ms /= Unsigned_64'Last;
-      Click_Ms : constant Unsigned_64 := (if Source_Clock then Observed_Ms else syscall (SYSCALL_GETTIME));
+      Click_Ms : constant Unsigned_64 := (if Source_Clock then Observed_Ms else CuBit.Published_Clock.Milliseconds);
       oldCursor : constant Rect := cursorRect;
       oldCursorStyle : constant Pointer_Cursor_Style := cursorStyle;
       oldBounds : Rect := (others => 0);
@@ -12995,7 +13276,7 @@ procedure main is
             declare
                Observed : constant Unsigned_64 :=
                  CuBit.Input.Pointer_Time (sourceReport.snapshot);
-               Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+               Now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
             begin
                if DM.Enabled and then not DM.Disabled and then Now /= Unsigned_64'Last and then
                  Now >= Observed and then Now < Unsigned_64'Last / MICROSECONDS_PER_MILLISECOND
@@ -14605,6 +14886,16 @@ begin
          return;
       end if;
    end;
+   --  Windows' surface rings (IPC-004). Without them a toolkit window
+   --  cannot open (the synchronous calls stay for the other clients).
+   declare
+      Ready : Boolean;
+   begin
+      Rings.Configure (Ready);
+      if not Ready then
+         debugPrint ("desktop: no memory for surface rings: windows cannot open" & LF);
+      end if;
+   end;
    --  Announce the session before anything slow (configuration, wallpaper
    --  reads): a framebuffer shell started next to the desktop checks this
    --  and leaves the display to it (shell setupDisplayPresent).
@@ -14706,16 +14997,20 @@ begin
                   debugPrint ("desktop: input during frame" &
                     CP.Token (presentations (primaryOutput).Transfer)'Image & LF);
                end if;
-               declare Started : constant Unsigned_64 := timingNow;
-               begin
-                  if pendingInputUs = Compositor_Elapsed.Unavailable then
-                     pendingInputUs := dispatchNow;
-                  end if;
-                  handleEvent (eventMsg, eventPublisher, running);
-                  noteTiming (Input_Dispatch, Started);
-               end;
+               --  A surface ring's wake or end is not input.
+               if not ringNotice (eventMsg, eventPublisher) then
+                  declare Started : constant Unsigned_64 := timingNow;
+                  begin
+                     if pendingInputUs = Compositor_Elapsed.Unavailable then
+                        pendingInputUs := dispatchNow;
+                     end if;
+                     handleEvent (eventMsg, eventPublisher, running);
+                     noteTiming (Input_Dispatch, Started);
+                  end;
+               end if;
             end loop;
          end Drain_Events;
+         requestsTaken : Boolean := False;
          procedure Drain_Requests is
             Batch : DB.Request_Batch := DB.New_Requests (dispatchNow);
          begin
@@ -14728,6 +15023,7 @@ begin
                   handleRequest (from, msg);
                   noteTiming (Request_Dispatch, Started);
                end;
+               requestsTaken := True;
                DB.Charge_Request (Batch);
             end loop;
          end Drain_Requests;
@@ -14772,6 +15068,9 @@ begin
             end;
          end if;
          Drain_Events;
+         --  Input just answered to a sleeping window wakes it now, before
+         --  this turn's drawing.
+         Rings.Wake;
          phaseMark (Phase_Events);
          Desktop_Launch_Refresh.Pump (requestSequence);
 
@@ -14785,7 +15084,20 @@ begin
          --  we resume. Dispatch those arrivals before painting, not one full
          --  repaint later. Both drains share a finite budget: input floods
          --  must still permit requests and rendering to make progress.
-         Drain_Events;
+         --  Nothing replied and the input queue was emptied: no second look
+         --  (an empty poll is still a system call).
+         if requestsTaken or else eventFound then
+            Drain_Events;
+         end if;
+         --  The windows' rings: presents, publications, retirements, input.
+         --  Their answers wake sleeping windows once, at the end of the turn
+         --  (with this turn's retirements), not once per answer.
+         declare
+            Served : Boolean;
+         begin
+            Rings.Serve (Served);
+         end;
+         phaseMark (Phase_Rings);
          --  Auto-repeat only once input is drained (a queued release wins).
          if running and then not eventFound then
             pumpKeyRepeat (running);
@@ -14830,7 +15142,13 @@ begin
          flushCursorPresent;
          pumpPresentation;
          phaseMark (Phase_Frame);
+         --  Drawn: the windows' presented pixels have been read.
+         if not framePending then
+            Rings.Frame_Drawn;
+         end if;
          pumpSourceRetirements;
+         Rings.Pump_Retirements;
+         Rings.Wake;
          phaseMark (Phase_Retire);
          recordTransferWork;
          expireInputWaiters;
@@ -14891,8 +15209,12 @@ begin
             then
                --  Input, requests and frame completions all wake the same
                --  non-consuming wait; typed dispatch remains above.
-               activity := Wait_For_Activity_Until (Unsigned_64'Last);
-               if activity = Unavailable then running := False; end if;
+               --  Every ring armed first: a request that arrived meanwhile
+               --  is served before sleeping.
+               if Rings.Quiet then
+                  activity := Wait_For_Activity_Until (Unsigned_64'Last);
+                  if activity = Unavailable then running := False; end if;
+               end if;
             else
                declare
                   now : constant Unsigned_64 := nowMs;
@@ -14970,7 +15292,7 @@ begin
                      mayWait := False;
                   end if;
 
-                  if mayWait and then nextDueMs /= 0 then
+                  if mayWait and then nextDueMs /= 0 and then Rings.Quiet then
                      activity := Wait_For_Activity_Until (nextDueMs);
                      if activity = Unavailable then running := False; end if;
                      if renderingPending and then Desktop_Compositor.Full_Output then

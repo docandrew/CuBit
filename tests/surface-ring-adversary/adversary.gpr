@@ -1,0 +1,27 @@
+--  Hosted adversary test for Desktop's side of the surface rings (IPC-004).
+project Adversary is
+   for Source_Dirs use
+     (".", "../../userspace/services/desktop", "../../userspace/lib/compositor",
+      "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("main.adb", "cualloc_host.ads", "cualloc_host.adb",
+      "desktop_surface_ring_service.ads", "desktop_surface_ring_service.adb",
+      "desktop_heap_objects.ads", "desktop_heap_objects.adb",
+      "compositor_surface_wire.ads", "compositor_surface_wire.adb",
+      "compositor_surface_ring.ads",
+      "cubit.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "cubit-grant_references.ads",
+      "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb",
+      "cubit-desktop_protocol-publication.ads", "cubit-desktop_protocol-publication.adb",
+      "cubit-protocols.ads", "cubit-channel_contracts.ads", "cubit-channel_contracts.adb",
+      "cubit-request_channels.ads", "cubit-request_channels.adb",
+      "cubit-submission_queues.ads", "cubit-submission_queues.adb",
+      "cubit-slot_rings.ads", "cubit-slot_rings.adb",
+      "cubit-channel_rings.ads", "cubit-channel_rings.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwJ");
+   end Compiler;
+end Adversary;
