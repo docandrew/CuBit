@@ -61,7 +61,30 @@ begin
    pragma Assert (Count (S) = Capacity);
    Add (S, (0, 0, 1, 2));
    pragma Assert (Count (S) = Capacity and Covers (S, (0, 0, 1, 2)));
-   Add (S, (20, 20, 21, 21)); pragma Assert (Count (S) = 1);
+   --  Past Capacity a new box joins the nearest box, not everything
+   --  (LAT-003): the far box joins the last strip; the rest stay apart.
+   Add (S, (20, 20, 21, 21));
+   pragma Assert (Count (S) = Capacity and Covers (S, (20, 20, 21, 21)) and
+                  Covers (S, (0, 0, 1, 2)) and Covers (S, (2, 0, 3, 1)));
+   --  LAT-003 regression (laptop, image 26: an idle desktop drew ~900k px
+   --  frames as one rect): a clock top right, a CPU meter, a log line
+   --  bottom left and a caret over the log line stay separate boxes, about
+   --  their own pixels, not their envelope (half the screen).
+   Clear (S);
+   Add (S, (1800, 0, 1900, 24));      --  clock
+   Add (S, (1700, 0, 1760, 24));      --  CPU meter
+   Add (S, (40, 900, 840, 920));      --  a new log line
+   Add (S, (40, 880, 840, 920));      --  the log scrolled: overlaps the line
+   Add (S, (60, 905, 62, 925));       --  caret overlapping it
+   pragma Assert (Count (S) = 3);
+   declare
+      Pixels : Natural := 0;
+   begin
+      for I in 1 .. Count (S) loop
+         Pixels := Pixels + (Item (S, I).Right - Item (S, I).Left) * (Item (S, I).Bottom - Item (S, I).Top);
+      end loop;
+      pragma Assert (Pixels < 40_000);   --  not the ~1.6 M px envelope
+   end;
    --  Extreme edges need no overflowing coordinate addition in the planner.
    Clear (S);
    Add (S, (0, 0, 1, 1));

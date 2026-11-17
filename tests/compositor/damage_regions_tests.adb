@@ -53,12 +53,17 @@ begin
    D.Capture (Pending, Frame, Accepted);
    D.Restore (Pending, Frame);
    Check (D.Count (Pending) = 1 and then Total (Pending) = Area (Caret), "a lone caret restores as itself");
-   --  Past the ceiling the boxes fall back to one envelope (bounded work).
+   --  Past the ceiling the new box joins its nearest box (LAT-003): the
+   --  others stay apart, not one envelope across the screen.
    D.Clear (Pending);
    for I in 0 .. D.Capacity loop
       D.Add (Pending, (I * 100, 0, I * 100 + 10, 10));
    end loop;
-   Check (D.Count (Pending) = 1 and then D.Item (Pending, 1) = (0, 0, D.Capacity * 100 + 10, 10),
-          "more boxes than the ceiling collapse to their envelope");
+   Check (D.Count (Pending) = D.Capacity and then
+          Total (Pending) = (D.Capacity - 1) * 100 + 110 * 10,
+          "past the ceiling the newest box joins its neighbour only");
+   for I in 0 .. D.Capacity loop
+      Check (D.Covers (Pending, (I * 100, 0, I * 100 + 10, 10)), "every box stays covered");
+   end loop;
    Ada.Text_IO.Put_Line ("DAMAGE-REGIONS: PASS checks=" & Natural'Image (Checks));
 end Damage_Regions_Tests;
