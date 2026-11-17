@@ -68,6 +68,10 @@ with Compositor_Input_Delivery_Pool;
 with CuBit.Published_Clock;
 with Desktop_Input_Transfer;
 with Desktop_Surface_Rings;
+with Desktop_Input_Sources;
+with Desktop_Frame_Ring;
+with CuBit.Call_Census;
+with CuBit.Kernel_ABI;
 with Compositor_Close_Request;
 with Compositor_Dispatch_Budget;
 with CuBit.Monotonic;
@@ -100,6 +104,7 @@ with CuBit.Display_Layouts;
 with CuBit.Display_Arrangement;
 with CuBit.Desktop_Messages;
 with CuBit.Input;
+with CuBit.Channel_Protocol;
 with Absolute_Pointer;
 with CuBit.Audio_Control;
 with CuBit.Clocks;
@@ -1617,6 +1622,11 @@ procedure main is
    type Phase_Counts is array (Call_Phase) of Unsigned_64;
    phaseCalls : Phase_Counts := [others => 0];
    phaseMarkAt : Unsigned_64 := 0;
+   --  The same calls by call number (CuBit.Call_Census), the marks' own
+   --  READ_STATISTICS left out: which calls each phase makes.
+   type Phase_Census is array (Call_Phase) of CuBit.Call_Census.Counts;
+   phaseCensus : Phase_Census := [others => [others => 0]];
+   censusAt : CuBit.Call_Census.Counts := [others => 0];
    function phaseName (P : Call_Phase) return String is
      (case P is
         when Phase_Wait => "wait", when Phase_Collect => "collect", when Phase_Events => "events",
@@ -1639,7 +1649,18 @@ procedure main is
       Now := threadCalls;
       if phaseMarkAt /= 0 and then Now > phaseMarkAt then
          phaseCalls (Ended) := phaseCalls (Ended) + (Now - phaseMarkAt - 1);
+         declare
+            Taken : constant CuBit.Call_Census.Counts := CuBit.Call_Census.Census;
+         begin
+            for N in CuBit.Call_Census.Number loop
+               phaseCensus (Ended) (N) := phaseCensus (Ended) (N) + (Taken (N) - censusAt (N));
+            end loop;
+            --  This mark's own READ_STATISTICS.
+            phaseCensus (Ended) (Natural (CuBit.Kernel_ABI.Read_Statistics)) :=
+              phaseCensus (Ended) (Natural (CuBit.Kernel_ABI.Read_Statistics)) - 1;
+         end;
       end if;
+      censusAt := CuBit.Call_Census.Census;
       phaseMarkAt := Now;
    end phaseMark;
    pendingMotionUs   : Unsigned_64 := Compositor_Elapsed.Unavailable;
@@ -2391,6 +2412,32 @@ procedure main is
                   end loop;
                   debugPrint ("DESKTOP-CALL-PHASES:" & Line (1 .. Used) & LF);
                   phaseCalls := [others => 0];
+                  --  By call number: "phase number:count ...".
+                  for P in Call_Phase loop
+                     declare
+                        Sites : String (1 .. 1024);
+                        Count : Natural := 0;
+                     begin
+                        for N in CuBit.Call_Census.Number loop
+                           if phaseCensus (P) (N) /= 0 then
+                              declare
+                                 Item : constant String :=
+                                   " " & Decimal (Unsigned_64 (N)) & ":" & Decimal (phaseCensus (P) (N));
+                              begin
+                                 if Count + Item'Length <= Sites'Length then
+                                    Sites (Count + 1 .. Count + Item'Length) := Item;
+                                    Count := Count + Item'Length;
+                                 end if;
+                              end;
+                           end if;
+                        end loop;
+                        if Count /= 0 then
+                           debugPrint ("DESKTOP-CALL-SITES: phase=" & phaseName (P) &
+                                       Sites (1 .. Count) & LF);
+                        end if;
+                     end;
+                  end loop;
+                  phaseCensus := [others => [others => 0]];
                end;
             end if;
          end;
@@ -3232,6 +3279,10 @@ procedure main is
       return Unsigned_64 (lo) or Shift_Left (Unsigned_64 (hi), 32);
    end packU32Pair;
 
+   --  A window's surface ring ended since dead clients' windows were last
+   --  looked for (reapDeadClientSurfaces).
+   clientEndNoticed : Boolean := True;
+
    function ensureProcessListBuffer return Boolean is
       raw : Unsigned_64;
    begin
@@ -3248,6 +3299,35 @@ procedure main is
       psBufAddr := To_Address (Integer_Address (raw));
       return True;
    end ensureProcessListBuffer;
+
+   --  The process list once, for several questions: Count entries (0 when
+   --  it could not be read: then every owner counts as alive, fail open).
+   procedure listProcesses (Count : out Unsigned_64) is
+   begin
+      Count := 0;
+      if not ensureProcessListBuffer then
+         return;
+      end if;
+      Count := CuBit.Handles.Control.Process_List
+        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text),
+         psBufAddr, PS_BUF_SIZE);
+      if Count = Unsigned_64'Last then
+         Count := 0;
+      end if;
+   end listProcesses;
+
+   function listed (pid : Process_ID; Count : Unsigned_64) return Boolean is
+   begin
+      if Count = 0 then
+         return True;
+      end if;
+      for i in 0 .. Count - 1 loop
+         if CuBit.Process_List.Get (psBufAddr, Natural (i)).Identity = pid then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end listed;
 
    function processAlive (pid : Process_ID) return Boolean is
       count : Unsigned_64;
@@ -3646,13 +3726,235 @@ procedure main is
    procedure collectPresentations is
       completion : CompletionEntry;
       count : Unsigned_64;
-      matched : Boolean;
       Started : constant Unsigned_64 := dispatchNow;
       Batch : DB.Completion_Batch := DB.New_Completions (Started);
       Non_Metric_Work : Boolean := False;
       Seen : CuBit.Readiness.Count;
       use type DSP.Frame_Outcome, DSP.Buffer_Disposition;
+
+      --  One completion: a kernel one, or Display's answer from the frame
+      --  ring (the same entry, its token the presentation's).
+      procedure dispatch (completion : CompletionEntry) is
+         matched : Boolean;
+      begin
+      if CR.Token (launchRequest) /= 0 and then completion.token = CR.Token (launchRequest) then
+         collectLaunch (completion);
+      elsif Desktop_Launch_Refresh.Token /= 0 and then
+        completion.token = Desktop_Launch_Refresh.Token
+      then
+         Desktop_Launch_Refresh.Collect (completion);
+      elsif Desktop_Pointer_Plane.Matches (completion.token) then
+         Desktop_Pointer_Plane.Collect (completion, requestSequence);
+      elsif Desktop_Status_Refresh.Matches (completion.token) then
+         Desktop_Status_Refresh.Collect (completion, requestSequence);
+      elsif Desktop_Network_Refresh.Matches (completion.token) then
+         Desktop_Network_Refresh.Collect (completion, requestSequence);
+      elsif Desktop_GPU_Wake.Matches (completion.token) then
+         Desktop_GPU_Wake.Collect (completion, nowMs);
+      elsif outputWatchToken /= 0 and then completion.token = outputWatchToken then
+         --  Handled in the main loop (handleOutputChange), never here:
+         --  re-layout releases outputs, which this dispatcher serves.
+         outputWatchToken := 0;
+         declare
+            Answer : constant OM.Revision_Decoding :=
+              (if completion.valid and then completion.status = COMPLETION_OK
+               then OM.Decode_Watch (CuBit.Output_Discovery.Display_Broker,
+                                     CuBit.Desktop_Messages.To_Wire (completion.msg))
+               else (Valid => False));
+         begin
+            if Answer.Valid then
+               outputChangeNoticed := True;
+            else
+               outputWatchUsable := False;
+               debugPrint ("desktop: output mode watch unavailable" & LF);
+            end if;
+         end;
+      elsif completion.token > retiredThrough then
+         matched := False;
+         for Output in Output_Index loop
+            if LR.Token (outputLeaseRequests (Output)) /= 0 and then
+              completion.token = LR.Token (outputLeaseRequests (Output))
+            then
+               matched := True;
+               LR.Complete (outputLeaseRequests (Output), completion.token,
+                 completion.valid and then completion.status = COMPLETION_OK and then
+                 completion.msg.tag.label = OP_DISPLAY_RELEASE and then
+                 completion.msg.tag.length = 1 and then completion.msg.tag.protocol = 0 and then
+                 completion.msg.tag.reserved = 0 and then
+                 (for all Word of completion.msg.words => Word = 0));
+               if LR.Status (outputLeaseRequests (Output)) /= LR.Released then
+                  debugPrint ("desktop: output lease completion uncertain" & LF);
+                  quarantinePresentations;
+               end if;
+               exit;
+            end if;
+         end loop;
+         if not matched then
+         for P of presentations loop
+            if P.Enabled and then completion.token = CP.Token (P.Transfer) then
+               matched := True;
+               -- Continue validating completions while draining. Display
+               -- rejects lease release until its active frame retires;
+               -- the drain guard still prohibits new rendering/submission.
+               declare
+                  GPU_Frame : constant BP.Ticket := BP.Displayed (P.Pool);
+                  result : constant PW.Completion_Decoding :=
+                    PW.Decode_Completion
+                      (CuBit.Desktop_Messages.To_Wire (completion.msg));
+                  Reply : constant CP.Completion :=
+                    (Kernel_Valid => completion.valid,
+                     Kernel_OK => completion.status = COMPLETION_OK,
+                     Payload_Valid => result.Valid and then result.Value.Buffer = BP.Displayed (P.Pool).Buffer,
+                     Kernel_Token => completion.token,
+                     Payload_Session => (if result.Valid then result.Value.Result.Session else 0),
+                     Payload_Frame => (if result.Valid then result.Value.Result.Frame else 0),
+                     Published => result.Valid and then result.Value.Result.Outcome = DSP.Published,
+                     Released => result.Valid and then result.Value.Result.Buffer_State = DSP.Released);
+                  Expected_Token : constant Unsigned_64 := CP.Token (P.Transfer);
+                  Dropped : constant Boolean := CP.Drops (P.Transfer, Reply);
+               begin
+                  -- The non-reused kernel completion token selects the
+                  -- output. Payload session/frame values only validate it.
+                  if Dropped then
+                     --  Display returned the buffer without showing the
+                     --  frame (the GPU refused it with certainty): reuse
+                     --  the buffer and redraw everything, a bounded
+                     --  number of times in a row.
+                     CP.Complete_Dropped (P.Transfer, Reply);
+                     if P.Dropped_In_Row < Natural'Last then P.Dropped_In_Row := P.Dropped_In_Row + 1; end if;
+                     if droppedFrames < Unsigned_64'Last then droppedFrames := droppedFrames + 1; end if;
+                     if P.Dropped_In_Row = 1 or else droppedFrames mod 64 = 0 then
+                        Desktop_Logs.Warn ("desktop: Display dropped frame" & Reply.Payload_Frame'Image &
+                          " (not shown, buffer released); full redraw, in a row" &
+                          P.Dropped_In_Row'Image & ", total" & droppedFrames'Image);
+                     end if;
+                     framePending := True;
+                     Compositor_Damage.Clear (frameRegions);
+                     addRegion (frameRegions, (0, 0, fbWidth, fbHeight));
+                     Compositor_Latency.Dropped (latencyLedger, latencyStats, Expected_Token);
+                  else
+                     CP.Complete (P.Transfer, Reply);
+                     if CP.Writable (P.Transfer) then P.Dropped_In_Row := 0; end if;
+                     --  LAT-002: the backend's timing of this frame's latch.
+                     declare
+                        Seen : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+                        Timing : constant CuBit.Present_Timing.Timing :=
+                          (if result.Valid and then result.Value.Result.Outcome = DSP.Published and then
+                              Seen /= CuBit.Monotonic.Unavailable_Us
+                           then CuBit.Present_Timing.Expand (result.Value.Result.Timing, Seen)
+                           else CuBit.Present_Timing.No_Timing);
+                        use type CuBit.Present_Timing.Latch_Source;
+                     begin
+                        Compositor_Latency.Completed
+                          (latencyLedger, latencyStats, Expected_Token, Timing, Seen);
+                        --  A refresh latched it: the grid and the cost to
+                        --  arm that pace the next composition.
+                        if Timing.Source = CuBit.Present_Timing.Hardware_Latch then
+                           Compositor_Pacing.Latched (P.Pacing, Timing.Latched_Us, Timing.Period);
+                           Compositor_Pacing.Frame_Cost (P.Pacing, P.Compose_Start_Us, Timing.Armed_Us);
+                        end if;
+                     end;
+                  end if;
+                  --  A lent frame stays on screen, held as the front, until
+                  --  the next one latches (which frees this front).
+                  if P.Lent and then not Dropped and then Reply.Published then
+                     BP.Latch_Display (P.Pool, BP.Displayed (P.Pool), BP.Front (P.Pool),
+                                       CP.Writable (P.Transfer));
+                  else
+                     BP.Retire_Display (P.Pool, BP.Displayed (P.Pool), CP.Writable (P.Transfer));
+                  end if;
+                  if not CP.Writable (P.Transfer) or else BP.Faulted (P.Pool) or else
+                    P.Dropped_In_Row > Max_Dropped_In_Row
+                  then
+                     Desktop_Logs.Warn ("desktop: asynchronous transfer quarantined: kernel_valid=" &
+                       Reply.Kernel_Valid'Image & " kernel_ok=" & Reply.Kernel_OK'Image &
+                       " payload_valid=" & Reply.Payload_Valid'Image &
+                       " decoded=" & result.Valid'Image &
+                       " token=" & Reply.Kernel_Token'Image & "/" & Expected_Token'Image &
+                       " frame=" & Reply.Payload_Frame'Image &
+                       " session=" & Reply.Payload_Session'Image & "/" & CP.Session (P.Transfer)'Image &
+                       " published=" & Reply.Published'Image & " released=" & Reply.Released'Image &
+                       " pool_faulted=" & BP.Faulted (P.Pool)'Image &
+                       " dropped_in_row=" & P.Dropped_In_Row'Image);
+                     exitCompositor (1);
+                  elsif Dropped then
+                     null;
+                  else
+                     --  Boot timeline (docs/boot-timeline.md): the first
+                     --  frame Display published. One branch after that.
+                     if result.Valid and then result.Value.Result.Outcome = DSP.Published then
+                        CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Frame_Presented, Startup.Registration);
+                     end if;
+                     if not gpuProgress (P.Trace_Output).Published and then
+                       GPU_Frame /= BP.None and then
+                       GPU_Frame = gpuProgress (P.Trace_Output).Submitted
+                     then
+                        gpuProgress (P.Trace_Output).Published := True;
+                        if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Released); end if;
+                     debugPrint ("DESKTOP-VULKAN: frame=PUBLISHED output=" & P.Trace_Output'Image &
+                          " epoch=" & GPU_Frame.Epoch'Image &
+                          " frame=" & GPU_Frame.Serial'Image &
+                          " buffer=" & GPU_Frame.Buffer'Image &
+                          " session=" & CP.Session (P.Transfer)'Image &
+                          " token=" & completion.token'Image & LF);
+                     end if;
+                     if Desktop_Timing_Policy.Enabled or DM.Enabled then
+                        declare Finished_Us : constant Unsigned_64 := presentationNow;
+                        begin
+                           if Trace_Enabled then
+                              recordFrameTrace (
+                                (Natural (P.Trace_Output), CP.Session (P.Transfer),
+                                 CP.Token (P.Transfer), P.Started_Us, Finished_Us));
+                           end if;
+                           if DM.Enabled then
+                              DM.Record_Completion
+                                ((Natural (P.Trace_Output), CP.Session (P.Transfer),
+                                  CP.Token (P.Transfer), P.Started_Us, Finished_Us));
+                           end if;
+                        end;
+                     end if;
+                     noteTiming (Submit_To_Completion, P.Started_Us);
+                     declare Finished : constant Unsigned_64 := nowMs;
+                     begin
+                        if Finished /= Unsigned_64'Last and P.Started /= Unsigned_64'Last and
+                          Finished >= P.Started
+                        then statsCompletionMs := statsCompletionMs + Finished - P.Started;
+                        end if;
+                     end;
+                     if not releaseAnnounced then
+                        releaseAnnounced := True;
+                        debugPrint ("desktop: asynchronous frame released" & LF);
+                        if Desktop_Fault_Policy.Exit_After_First_Frame and then
+                          not tookOverDisplay
+                        then
+                           debugPrint ("DESKTOP-TEST-FAULT: exiting after the first frame" & LF);
+                           exitCompositor (1);
+                        end if;
+                     end if;
+                  end if;
+               end;
+               exit;
+            end if;
+         end loop;
+         end if;
+         if not matched then
+            -- No buffer may be reused on an unrecognized completion.
+            debugPrint ("desktop: unknown presentation completion" & LF);
+            quarantinePresentations;
+         end if;
+      end if;
+      end dispatch;
+
+      Got : Boolean;
    begin
+      --  Display's answers first: shared memory, no call.
+      while DB.Can_Complete (Batch, dispatchNow) loop
+         Desktop_Frame_Ring.Reap (completion, Got);
+         exit when not Got;
+         DB.Charge_Completion (Batch);
+         Non_Metric_Work := True;
+         dispatch (completion);
+      end loop;
       while CuBit.Readiness.Pending (deskReady, CuBit.Readiness.Completions) and then
         DB.Can_Complete (Batch, dispatchNow)
       loop
@@ -3674,212 +3976,7 @@ procedure main is
          DB.Charge_Completion (Batch);
          --  Metrics take no completions (their outlet ring needs none).
          Non_Metric_Work := True;
-         if CR.Token (launchRequest) /= 0 and then completion.token = CR.Token (launchRequest) then
-            collectLaunch (completion);
-         elsif Desktop_Launch_Refresh.Token /= 0 and then
-           completion.token = Desktop_Launch_Refresh.Token
-         then
-            Desktop_Launch_Refresh.Collect (completion);
-         elsif Desktop_Pointer_Plane.Matches (completion.token) then
-            Desktop_Pointer_Plane.Collect (completion, requestSequence);
-         elsif Desktop_Status_Refresh.Matches (completion.token) then
-            Desktop_Status_Refresh.Collect (completion, requestSequence);
-         elsif Desktop_Network_Refresh.Matches (completion.token) then
-            Desktop_Network_Refresh.Collect (completion, requestSequence);
-         elsif Desktop_GPU_Wake.Matches (completion.token) then
-            Desktop_GPU_Wake.Collect (completion, nowMs);
-         elsif outputWatchToken /= 0 and then completion.token = outputWatchToken then
-            --  Handled in the main loop (handleOutputChange), never here:
-            --  re-layout releases outputs, which this dispatcher serves.
-            outputWatchToken := 0;
-            declare
-               Answer : constant OM.Revision_Decoding :=
-                 (if completion.valid and then completion.status = COMPLETION_OK
-                  then OM.Decode_Watch (CuBit.Output_Discovery.Display_Broker,
-                                        CuBit.Desktop_Messages.To_Wire (completion.msg))
-                  else (Valid => False));
-            begin
-               if Answer.Valid then
-                  outputChangeNoticed := True;
-               else
-                  outputWatchUsable := False;
-                  debugPrint ("desktop: output mode watch unavailable" & LF);
-               end if;
-            end;
-         elsif completion.token > retiredThrough then
-            matched := False;
-            for Output in Output_Index loop
-               if LR.Token (outputLeaseRequests (Output)) /= 0 and then
-                 completion.token = LR.Token (outputLeaseRequests (Output))
-               then
-                  matched := True;
-                  LR.Complete (outputLeaseRequests (Output), completion.token,
-                    completion.valid and then completion.status = COMPLETION_OK and then
-                    completion.msg.tag.label = OP_DISPLAY_RELEASE and then
-                    completion.msg.tag.length = 1 and then completion.msg.tag.protocol = 0 and then
-                    completion.msg.tag.reserved = 0 and then
-                    (for all Word of completion.msg.words => Word = 0));
-                  if LR.Status (outputLeaseRequests (Output)) /= LR.Released then
-                     debugPrint ("desktop: output lease completion uncertain" & LF);
-                     quarantinePresentations;
-                  end if;
-                  exit;
-               end if;
-            end loop;
-            if not matched then
-            for P of presentations loop
-               if P.Enabled and then completion.token = CP.Token (P.Transfer) then
-                  matched := True;
-                  -- Continue validating completions while draining. Display
-                  -- rejects lease release until its active frame retires;
-                  -- the drain guard still prohibits new rendering/submission.
-                  declare
-                     GPU_Frame : constant BP.Ticket := BP.Displayed (P.Pool);
-                     result : constant PW.Completion_Decoding :=
-                       PW.Decode_Completion
-                         (CuBit.Desktop_Messages.To_Wire (completion.msg));
-                     Reply : constant CP.Completion :=
-                       (Kernel_Valid => completion.valid,
-                        Kernel_OK => completion.status = COMPLETION_OK,
-                        Payload_Valid => result.Valid and then result.Value.Buffer = BP.Displayed (P.Pool).Buffer,
-                        Kernel_Token => completion.token,
-                        Payload_Session => (if result.Valid then result.Value.Result.Session else 0),
-                        Payload_Frame => (if result.Valid then result.Value.Result.Frame else 0),
-                        Published => result.Valid and then result.Value.Result.Outcome = DSP.Published,
-                        Released => result.Valid and then result.Value.Result.Buffer_State = DSP.Released);
-                     Expected_Token : constant Unsigned_64 := CP.Token (P.Transfer);
-                     Dropped : constant Boolean := CP.Drops (P.Transfer, Reply);
-                  begin
-                     -- The non-reused kernel completion token selects the
-                     -- output. Payload session/frame values only validate it.
-                     if Dropped then
-                        --  Display returned the buffer without showing the
-                        --  frame (the GPU refused it with certainty): reuse
-                        --  the buffer and redraw everything, a bounded
-                        --  number of times in a row.
-                        CP.Complete_Dropped (P.Transfer, Reply);
-                        if P.Dropped_In_Row < Natural'Last then P.Dropped_In_Row := P.Dropped_In_Row + 1; end if;
-                        if droppedFrames < Unsigned_64'Last then droppedFrames := droppedFrames + 1; end if;
-                        if P.Dropped_In_Row = 1 or else droppedFrames mod 64 = 0 then
-                           Desktop_Logs.Warn ("desktop: Display dropped frame" & Reply.Payload_Frame'Image &
-                             " (not shown, buffer released); full redraw, in a row" &
-                             P.Dropped_In_Row'Image & ", total" & droppedFrames'Image);
-                        end if;
-                        framePending := True;
-                        Compositor_Damage.Clear (frameRegions);
-                        addRegion (frameRegions, (0, 0, fbWidth, fbHeight));
-                        Compositor_Latency.Dropped (latencyLedger, latencyStats, Expected_Token);
-                     else
-                        CP.Complete (P.Transfer, Reply);
-                        if CP.Writable (P.Transfer) then P.Dropped_In_Row := 0; end if;
-                        --  LAT-002: the backend's timing of this frame's latch.
-                        declare
-                           Seen : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
-                           Timing : constant CuBit.Present_Timing.Timing :=
-                             (if result.Valid and then result.Value.Result.Outcome = DSP.Published and then
-                                 Seen /= CuBit.Monotonic.Unavailable_Us
-                              then CuBit.Present_Timing.Expand (result.Value.Result.Timing, Seen)
-                              else CuBit.Present_Timing.No_Timing);
-                           use type CuBit.Present_Timing.Latch_Source;
-                        begin
-                           Compositor_Latency.Completed
-                             (latencyLedger, latencyStats, Expected_Token, Timing, Seen);
-                           --  A refresh latched it: the grid and the cost to
-                           --  arm that pace the next composition.
-                           if Timing.Source = CuBit.Present_Timing.Hardware_Latch then
-                              Compositor_Pacing.Latched (P.Pacing, Timing.Latched_Us, Timing.Period);
-                              Compositor_Pacing.Frame_Cost (P.Pacing, P.Compose_Start_Us, Timing.Armed_Us);
-                           end if;
-                        end;
-                     end if;
-                     --  A lent frame stays on screen, held as the front, until
-                     --  the next one latches (which frees this front).
-                     if P.Lent and then not Dropped and then Reply.Published then
-                        BP.Latch_Display (P.Pool, BP.Displayed (P.Pool), BP.Front (P.Pool),
-                                          CP.Writable (P.Transfer));
-                     else
-                        BP.Retire_Display (P.Pool, BP.Displayed (P.Pool), CP.Writable (P.Transfer));
-                     end if;
-                     if not CP.Writable (P.Transfer) or else BP.Faulted (P.Pool) or else
-                       P.Dropped_In_Row > Max_Dropped_In_Row
-                     then
-                        Desktop_Logs.Warn ("desktop: asynchronous transfer quarantined: kernel_valid=" &
-                          Reply.Kernel_Valid'Image & " kernel_ok=" & Reply.Kernel_OK'Image &
-                          " payload_valid=" & Reply.Payload_Valid'Image &
-                          " decoded=" & result.Valid'Image &
-                          " token=" & Reply.Kernel_Token'Image & "/" & Expected_Token'Image &
-                          " frame=" & Reply.Payload_Frame'Image &
-                          " session=" & Reply.Payload_Session'Image & "/" & CP.Session (P.Transfer)'Image &
-                          " published=" & Reply.Published'Image & " released=" & Reply.Released'Image &
-                          " pool_faulted=" & BP.Faulted (P.Pool)'Image &
-                          " dropped_in_row=" & P.Dropped_In_Row'Image);
-                        exitCompositor (1);
-                     elsif Dropped then
-                        null;
-                     else
-                        --  Boot timeline (docs/boot-timeline.md): the first
-                        --  frame Display published. One branch after that.
-                        if result.Valid and then result.Value.Result.Outcome = DSP.Published then
-                           CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Frame_Presented, Startup.Registration);
-                        end if;
-                        if not gpuProgress (P.Trace_Output).Published and then
-                          GPU_Frame /= BP.None and then
-                          GPU_Frame = gpuProgress (P.Trace_Output).Submitted
-                        then
-                           gpuProgress (P.Trace_Output).Published := True;
-                           if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Released); end if;
-                        debugPrint ("DESKTOP-VULKAN: frame=PUBLISHED output=" & P.Trace_Output'Image &
-                             " epoch=" & GPU_Frame.Epoch'Image &
-                             " frame=" & GPU_Frame.Serial'Image &
-                             " buffer=" & GPU_Frame.Buffer'Image &
-                             " session=" & CP.Session (P.Transfer)'Image &
-                             " token=" & completion.token'Image & LF);
-                        end if;
-                        if Desktop_Timing_Policy.Enabled or DM.Enabled then
-                           declare Finished_Us : constant Unsigned_64 := presentationNow;
-                           begin
-                              if Trace_Enabled then
-                                 recordFrameTrace (
-                                   (Natural (P.Trace_Output), CP.Session (P.Transfer),
-                                    CP.Token (P.Transfer), P.Started_Us, Finished_Us));
-                              end if;
-                              if DM.Enabled then
-                                 DM.Record_Completion
-                                   ((Natural (P.Trace_Output), CP.Session (P.Transfer),
-                                     CP.Token (P.Transfer), P.Started_Us, Finished_Us));
-                              end if;
-                           end;
-                        end if;
-                        noteTiming (Submit_To_Completion, P.Started_Us);
-                        declare Finished : constant Unsigned_64 := nowMs;
-                        begin
-                           if Finished /= Unsigned_64'Last and P.Started /= Unsigned_64'Last and
-                             Finished >= P.Started
-                           then statsCompletionMs := statsCompletionMs + Finished - P.Started;
-                           end if;
-                        end;
-                        if not releaseAnnounced then
-                           releaseAnnounced := True;
-                           debugPrint ("desktop: asynchronous frame released" & LF);
-                           if Desktop_Fault_Policy.Exit_After_First_Frame and then
-                             not tookOverDisplay
-                           then
-                              debugPrint ("DESKTOP-TEST-FAULT: exiting after the first frame" & LF);
-                              exitCompositor (1);
-                           end if;
-                        end if;
-                     end if;
-                  end;
-                  exit;
-               end if;
-            end loop;
-            end if;
-            if not matched then
-               -- No buffer may be reused on an unrecognized completion.
-               debugPrint ("desktop: unknown presentation completion" & LF);
-               quarantinePresentations;
-            end if;
-         end if;
+         dispatch (completion);
       end loop;
       if Non_Metric_Work and then DM.Enabled and then not DM.Disabled then
          DM.Record_Stage (Compositor_Stage_Metrics.Completion_Dispatch,
@@ -3893,18 +3990,16 @@ procedure main is
       Attempt_Time : constant Unsigned_64 := nowMs;
       r : constant Rect := damageRectangle (Compositor_Damage.Bounds (P.Frame_Damage));
       request : Message;
+      Damage : FD.Word_Array := [others => 0];
       Accepted : Boolean;
    begin
       if not CP.Can_Attempt (P.Transfer, Attempt_Time) then return; end if;
       if Held = BP.None or else isEmpty (r) then exitCompositor (1); end if;
-      --  The frame's damage boxes, after its rows, before Display sees it:
-      --  display.svc copies only these (LAT-002 multi-rect submit). A lent
-      --  frame is not copied: its area is what the backend uploads.
+      --  The frame's damage boxes travel in its present: display.svc copies
+      --  only these (LAT-002 multi-rect submit). A lent frame is not
+      --  copied: its area is what the backend uploads.
       if not P.Lent then declare
          Item : FD.Damage;
-         Words : FD.Word_Array with Import,
-           Address => P.Targets (Held.Buffer).Address +
-             Storage_Offset (P.Pitch * Natural (P.Geometry.Height));
       begin
          for I in 1 .. Compositor_Damage.Count (P.Frame_Damage) loop
             declare
@@ -3918,7 +4013,7 @@ procedure main is
                end if;
             end;
          end loop;
-         Words := FD.Encode (CP.Token (P.Transfer), Item);
+         Damage := FD.Encode (CP.Token (P.Transfer), Item);
       end; end if;
       declare
          use type CuBit.Display_Planes.Plan_Epoch;
@@ -3939,7 +4034,15 @@ procedure main is
       P.Started := Attempt_Time;
       P.Started_Us := presentationNow;
       if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Submit); end if;
-      Accepted := capSubmit (Desktop_Endpoints.Display_Service, request, CP.Token (P.Transfer));
+      --  Through the frame ring (opened on the first frame, again after
+      --  Display's end): no call unless Display sleeps.
+      Desktop_Frame_Ring.Open (Desktop_Endpoints.Display_Service, Accepted);
+      if Accepted then
+         Desktop_Frame_Ring.Submit
+           ((Frame => CuBit.Desktop_Messages.To_Wire (request), Damage => Damage,
+             Submitted_Us => P.Started_Us),
+            Token => CP.Token (P.Transfer), Frame => CP.Token (P.Transfer), Accepted => Accepted);
+      end if;
       CP.Submitted (P.Transfer, Accepted, Attempt_Time);
       if Accepted then
          Compositor_Latency.Submitted
@@ -7842,6 +7945,8 @@ procedure main is
    procedure clearInputForTarget (target : Unsigned_64);
 
    procedure reapDeadClientSurfaces (damage : in out Rect);
+   --  Whether Owner has a surface ring open (Desktop_Surface_Rings).
+   function clientHoldsRing (Owner : Process_ID) return Boolean;
 
 
    function taskbarChanges return Rect is
@@ -8465,11 +8570,27 @@ procedure main is
       oldBounds : Rect;
       oldTask   : Rect;
       changed   : Boolean := False;
+      Listed_Count : Unsigned_64;
    begin
+      --  A window's owner that holds a surface ring signals its end: the
+      --  ring's grant ends with it (clientEndNoticed). An owner without one
+      --  signals nothing, so while there is such a window every frame
+      --  looks, as before.
+      if not clientEndNoticed and then
+        (for all S of store.Surfaces =>
+           not S.used or else S.owner = No_Process or else clientHoldsRing (S.owner))
+      then
+         return;
+      end if;
+      clientEndNoticed := False;
+      if (for all S of store.Surfaces => not S.used or else S.owner = No_Process) then
+         return;
+      end if;
+      listProcesses (Listed_Count);
       for i in store.Surfaces'Range loop
          if store.Surfaces (i).used and then
             store.Surfaces (i).owner /= No_Process and then
-            not processAlive (store.Surfaces (i).owner)
+            not listed (store.Surfaces (i).owner, Listed_Count)
          then
             -- The acquisition keeps mappings alive across owner exit. Reaping
             -- releases it; processAlive is no longer the memory-safety fence.
@@ -9042,16 +9163,40 @@ procedure main is
       Retirement => ringRetirement, Next_Input => ringNextInput, Input_After => hasInputAfter,
       Report => ringReport);
 
+   function clientHoldsRing (Owner : Process_ID) return Boolean is (Rings.Holds_Ring (Owner));
+
    procedure completeInputWaiter (target : Unsigned_64) is
    begin
       completeSavedInputWaiter (target);
       Rings.Input_Queued (target);
    end completeInputWaiter;
 
+   --  Input source rings (IPC-009): every input device's reports straight
+   --  from its driver; Desktop_Input_Sources holds them, these are the
+   --  Desktop operations it calls.
+   --  Whether the loop goes on after a report a ring delivered (an exit
+   --  key ends it, as through the event lane).
+   inputRunning : Boolean := True;
+   procedure deliverRingReport (Words : CuBit.Input.Report_Words; Source : Unsigned_64);
+
+   --  A ring that ended takes its source's stream state with it.
+   procedure forgetInputSource (Source : Unsigned_64) is
+   begin
+      for S of inputSources loop
+         if S.used and then S.identity = Source then
+            S := (others => <>);
+         end if;
+      end loop;
+   end forgetInputSource;
+
+   package Inputs is new Desktop_Input_Sources
+     (Deliver => deliverRingReport, Source_Ended => forgetInputSource, Report => ringReport);
+
    --  A kernel notice for the surface rings (a channel wake, the end of a
-   --  ring), or a client revoking a buffer whose mapping Desktop keeps
-   --  parked (it is reallocating: the mapping goes back, so its retirement
-   --  completes). True: it was one of these and needs nothing else.
+   --  ring), the end of an input source ring, or a client revoking a buffer
+   --  whose mapping Desktop keeps parked (it is reallocating: the mapping
+   --  goes back, so its retirement completes). True: it was one of these
+   --  and needs nothing else.
    function ringNotice (eventMsg : Message; publisher : Process_ID) return Boolean is
       use type CuBit.Control_Events.Event_Kind;
       Kind : Rings.Notice_Kind;
@@ -9059,11 +9204,31 @@ procedure main is
       Returned : Boolean := False;
    begin
       Rings.Take_Notice (eventMsg, publisher, Kind, Event);
+      --  A window's surface ring ended (its client closed it, or ended:
+      --  a process that ends revokes its grants): the next frame looks for
+      --  dead clients' windows. A frame's loan coming back says nothing.
+      if Rings."=" (Kind, Rings.Handled) and then publisher = No_Process and then
+        CuBit.Control_Events.Decode
+          (eventMsg.tag.label, eventMsg.tag.length, eventMsg.words (0), eventMsg.words (1),
+           eventMsg.words (2)).Kind in CuBit.Control_Events.Grant_Revoked | CuBit.Control_Events.Grant_Returned
+      then
+         clientEndNoticed := True;
+      end if;
       case Kind is
          when Rings.Not_Ours => return False;
          when Rings.Handled => return True;
          when Rings.Grant_Event => null;
       end case;
+      Inputs.Take_Event (Event, Returned);
+      if Returned then
+         return True;
+      end if;
+      --  The frame ring to Display ended (Display gone): its presents fail
+      --  through collectPresentations.
+      Desktop_Frame_Ring.Take_Event (Event, Returned);
+      if Returned then
+         return True;
+      end if;
       if Event.Kind = CuBit.Control_Events.Grant_Revoked then
          for S of store.Surfaces loop
             for P of S.parkedLoans loop
@@ -9849,7 +10014,30 @@ procedure main is
       use type DP.Status_Code;
       use type DP.Operation;
    begin
-      --  A window opening its surface ring (Compositor_Surface_Ring).
+      --  An input driver opening a source ring (IPC-009), then a window
+      --  opening its surface ring (Compositor_Surface_Ring).
+      declare
+         Is_Open : Boolean;
+         Answer : Message;
+      begin
+         Inputs.Handle_Open (from, request, Is_Open, Answer);
+         if Is_Open then
+            statsRequests := statsRequests + 1;
+            ignore := reply (from, Answer);
+            return;
+         end if;
+      end;
+      --  A driver closing its source ring: one-way, nothing to answer.
+      if request.tag.label = CuBit.Channel_Protocol.OP_CLOSE then
+         declare
+            Closed : Boolean;
+         begin
+            Inputs.Handle_Close (from, request, Closed);
+            if Closed then
+               return;
+            end if;
+         end;
+      end if;
       declare
          Is_Open : Boolean;
          Answer : Message;
@@ -13194,8 +13382,10 @@ procedure main is
       end;
    end pumpKeyRepeat;
 
+   --  Ring_Source: a report a source ring delivered (IPC-009), that ring's
+   --  identity; zero for the kernel event lane.
    procedure handleEvent (eventMsg : Message; publisher : Process_ID;
-                          running : in out Boolean) is
+                          running : in out Boolean; Ring_Source : Unsigned_64 := 0) is
       Reported_Rejects : constant := 4;
       raw : Unsigned_8;
       packed : Unsigned_64;
@@ -13262,7 +13452,14 @@ procedure main is
         eventMsg.words (1), eventMsg.words (2), eventMsg.words (3), Diagnostic_Last_Us);
 
       if eventMsg.tag.label = CuBit.Input.OP_SOURCE_REPORT then
-         CuBit.Input.Decode (eventMsg, publisher, sourceReport, sourceValid);
+         if Ring_Source /= 0 then
+            CuBit.Input.Decode_Words
+              ((Sequence => eventMsg.words (0), Header => eventMsg.words (1),
+                Payload => eventMsg.words (2), Snapshot => eventMsg.words (3)),
+               Ring_Source, sourceReport, sourceValid);
+         else
+            CuBit.Input.Decode (eventMsg, publisher, sourceReport, sourceValid);
+         end if;
          if sourceValid then
             acceptSourceReport
               (sourceReport, sourceAccepted, sourceDiscontinuity,
@@ -13459,6 +13656,32 @@ procedure main is
          scheduleRedrawRect ((x => 0, y => 0, w => fbWidth, h => fbHeight));
       end if;
    end handleEvent;
+
+   procedure deliverRingReport (Words : CuBit.Input.Report_Words; Source : Unsigned_64) is
+   begin
+      handleEvent (CuBit.Input.To_Message (Words), No_Process, inputRunning, Ring_Source => Source);
+   end deliverRingReport;
+
+   --  Sleep until work or Deadline. A kernel notice that woke Desktop (a
+   --  source or surface ring's doorbell, a ring's end) comes back in the
+   --  same call and is handled here: one call per wake, not a wake and a
+   --  poll.
+   function waitForActivity (Deadline : Unsigned_64; running : in out Boolean) return Activity_Result is
+      Notice : aliased Message;
+      Woke : Wake_Result;
+   begin
+      Wait_For_Activity_Or_Event (Deadline, Notice, Woke);
+      case Woke is
+         when Event_Taken =>
+            if not ringNotice (Notice, No_Process) then
+               handleEvent (Notice, No_Process, running);
+            end if;
+            return Work_Available;
+         when Work_Available => return Work_Available;
+         when Deadline_Reached => return Deadline_Reached;
+         when Unavailable => return Unavailable;
+      end case;
+   end waitForActivity;
 
    --  Desktop's calls to display.svc never wait forever: a display
    --  stuck behind the GPU driver fails the call (the caller treats it
@@ -14998,6 +15221,8 @@ procedure main is
    displayInfoOk : Boolean := False;
 begin
    debugPrint ("desktop: starting" & LF);
+   --  Timing builds: which calls each loop phase makes (DESKTOP-CALL-SITES).
+   CuBit.Call_Census.Enabled := Desktop_Timing_Policy.Enabled;
    declare
       Allocated : Boolean;
    begin
@@ -15095,6 +15320,8 @@ begin
          eventMsg   : Message;
          eventPublisher : Process_ID := No_Process;
          eventFound : Boolean := False;
+         --  The input source rings delivered reports this turn.
+         inputDelivered : Boolean := False;
          activity : Activity_Result;
          inputBatch : DB.Input_Batch := DB.New_Input;
          procedure Drain_Events is
@@ -15169,6 +15396,19 @@ begin
          turnStartedUs := dispatchNow;
          turnWork := (statsEvents, statsRequests, statsPresentOps);
          phaseMark (Phase_Wait);
+         --  The input source rings first, oldest acquisition first: what
+         --  woke Desktop is usually a keypress, and taking it costs no call,
+         --  so nothing else in the turn goes ahead of it.
+         declare
+            Delivered : Natural;
+         begin
+            Inputs.Drain (Delivered);
+            inputDelivered := Delivered > 0;
+            if not inputRunning then
+               running := False;
+            end if;
+         end;
+         phaseMark (Phase_Events);
          collectPresentations;
          Desktop_Latency_Report.Tick (latencyLedger, latencyStats, CuBit.Monotonic.Microseconds);
          --  LAT-002's samples to the series store (MET-002): copies into
@@ -15205,6 +15445,18 @@ begin
             end;
          end if;
          Drain_Events;
+         --  A window's surface ring ended: perhaps its owner did. Look now,
+         --  not at the next frame (which may not come).
+         if clientEndNoticed then
+            declare
+               dead : Rect := (others => 0);
+            begin
+               reapDeadClientSurfaces (dead);
+               if not isEmpty (dead) then
+                  scheduleRedrawRect (dead);
+               end if;
+            end;
+         end if;
          --  Input just answered to a sleeping window wakes it now, before
          --  this turn's drawing.
          Rings.Wake;
@@ -15236,7 +15488,7 @@ begin
          end;
          phaseMark (Phase_Rings);
          --  Auto-repeat only once input is drained (a queued release wins).
-         if running and then not eventFound then
+         if running and then not eventFound and then not inputDelivered then
             pumpKeyRepeat (running);
          end if;
          if not running and then not shutdownRequested then
@@ -15348,11 +15600,16 @@ begin
                --  non-consuming wait; typed dispatch remains above.
                --  Every ring armed first: a request that arrived meanwhile
                --  is served before sleeping.
-               --  The readiness page shows unconsumed work: no wait.
-               if Rings.Quiet and then not CuBit.Readiness.Any_Pending (deskReady) then
-                  activity := Wait_For_Activity_Until (Unsigned_64'Last);
+               --  The readiness page shows unconsumed work: no wait (and
+               --  no ring armed, so no producer rings a Desktop awake).
+               if not CuBit.Readiness.Any_Pending (deskReady) and then
+                 Rings.Quiet and then Inputs.Quiet and then Desktop_Frame_Ring.Quiet
+               then
+                  activity := waitForActivity (Unsigned_64'Last, running);
                   if activity = Unavailable then running := False; end if;
                end if;
+               Inputs.Disarm;
+               Desktop_Frame_Ring.Disarm;
             else
                declare
                   now : constant Unsigned_64 := nowMs;
@@ -15430,10 +15687,13 @@ begin
                      mayWait := False;
                   end if;
 
-                  if mayWait and then nextDueMs /= 0 and then Rings.Quiet and then
-                    not CuBit.Readiness.Any_Pending (deskReady)
+                  if mayWait and then nextDueMs /= 0 and then
+                    not CuBit.Readiness.Any_Pending (deskReady) and then
+                    Rings.Quiet and then Inputs.Quiet and then Desktop_Frame_Ring.Quiet
                   then
-                     activity := Wait_For_Activity_Until (nextDueMs);
+                     activity := waitForActivity (nextDueMs, running);
+                     Inputs.Disarm;
+                     Desktop_Frame_Ring.Disarm;
                      if activity = Unavailable then running := False; end if;
                      if renderingPending and then Desktop_Compositor.Full_Output then
                         Desktop_GPU_Wake.Woke (gpuWaitMode, now, nowMs);
