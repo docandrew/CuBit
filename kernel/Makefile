@@ -2851,7 +2851,7 @@ test-programs: $(TEST_PROGRAMS)
 # pack. world builds them too, so a world pass means every image binary
 # compiled and links; the image targets name the same phony targets, so one
 # make invocation builds each once.
-IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots gpio i2c-dw hid-i2c
+IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots gpio i2c-dw hid-i2c acpi-native
 
 # CAP-002: capabilities are named by handles, never numbers. Runs first in
 # world; --self-test shows it rejecting each forbidden form.
