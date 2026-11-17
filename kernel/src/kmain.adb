@@ -5,6 +5,7 @@
 -- CuBitOS Entry Point / Main routine
 -------------------------------------------------------------------------------
 pragma Warnings (Off);
+with CPU_Performance_Report;
 with System.Secondary_Stack;
 pragma Warnings (On);
 
@@ -362,6 +363,8 @@ begin
         timer_pit.disable;
     end initReferenceClock;
     Boot_Timeline.Mark_Stage (BT.Clock_Calibrated);
+    -- PERF-013: how fast the boot CPU runs before any frequency policy.
+    CPU_Performance_Report.Report;
     Boot_Diagnostics.Begin_Step ("Calibrating LAPIC countdown against TSC");
 
 
