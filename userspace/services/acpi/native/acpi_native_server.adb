@@ -1,3 +1,4 @@
+with ACPI_Native_Server.With_Passive_Queries;
 with Interfaces; use Interfaces;
 with ACPI_Native_Endpoint;
 with ACPI_Native_Module_Notes;
@@ -70,7 +71,10 @@ package body ACPI_Native_Server is
          end loop;
       end Serve;
    end With_Dispatch;
-   package Default_Loop is new With_Dispatch (ACPI_Native_Endpoint.Dispatch, Reply_Now => ACPI_Native_Endpoint.Reply_Now);
+   package Default_Queries is new ACPI_Native_Server.With_Passive_Queries;
+   package Default_Loop is new With_Dispatch
+     (ACPI_Native_Endpoint.Dispatch,Advance_Owner=>Default_Queries.Advance,
+      Maintain_Owner=>Default_Queries.Maintain,Reply_Now=>ACPI_Native_Endpoint.Reply_Now);
    procedure Run (Server : in out ACPI_Requests.State; Reason : out Stop_Reason) is
    begin
       Default_Loop.Serve (Server, Reason);

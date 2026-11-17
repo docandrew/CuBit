@@ -16,6 +16,7 @@ with ACPI_Native_Log;
 with ACPI_Native_Lock_Notes;
 package body ACPI_Local_Hardware is
    use Interfaces;
+   use type Lock_Protocol.Lock_Outcome;
    package Firmware renames ACPI_Backend_Firmware_Native;
    package Memory_Classes renames CuBit.ACPI_Memory_Classes;
    use type B.Tick, Mapping_Owner.Outcome, Firmware.Policy.Outcome, Bindings.Owner.Outcome;
@@ -190,6 +191,17 @@ package body ACPI_Local_Hardware is
          Banks : Signaling.Windows := [others => Catalog.W.No_Window];
          use type Catalog.W.P.Address_Space;
       begin
+         if ACPI_FADT.Hardware_Reduced (Facts) then
+            declare Result : Lock_Protocol.Lock_Outcome; begin
+               ACPI_Software_Global_Lock.Configure (Software_Lock, Facts, Result);
+               if Result = Lock_Protocol.Configured then
+                  ACPI_Native_Log.Info ("acpi: stage global-lock ok SOFTWARE_ONLY_HW_REDUCED");
+               else
+                  ACPI_Native_Log.Warning ("acpi: stage global-lock fail SOFTWARE_" & Result'Image);
+               end if;
+            end;
+            return;
+         end if;
          if Address /= 0 and then Address <= Unsigned_64'Last - Unsigned_64 (ACPI_FACS_Header.Minimum_Length - 1) then
             for I in 1 .. Grant.Memory_Used loop
                declare
@@ -339,7 +351,8 @@ package body ACPI_Local_Hardware is
    function Pending return Boolean is
       Engine : constant Lock_Owner.Statistics := Lock_Requests.Observe (Lock_State).Engine;
    begin
-      return Sleep_Working or else Sleep_Uncertain
+      return ACPI_Software_Global_Lock.Observe (Software_Lock).Held
+        or else Sleep_Working or else Sleep_Uncertain
         or else Catalog.Observe (Hardware).Working or else Catalog.Observe (Hardware).Pending /= 0
         or else Engine.Working or else Engine.Stage in Lock_Owner.Held | Lock_Owner.Acquire_Uncertain |
            Lock_Owner.Release_Uncertain | Lock_Owner.Signal_Uncertain;
@@ -348,12 +361,15 @@ package body ACPI_Local_Hardware is
       Engine : constant Lock_Owner.Statistics := Lock_Requests.Observe (Lock_State).Engine;
    begin
       return State = Ready and then not Sleep_Working and then not Sleep_Uncertain
+        and then not ACPI_Software_Global_Lock.Observe (Software_Lock).Held
+        and then not ACPI_Software_Global_Lock.Observe (Software_Lock).Clock_Broken
         and then not Catalog.Observe (Hardware).Working
         and then Catalog.Observe (Hardware).Pending = 0 and then not Catalog.Observe (Hardware).Quarantined
         and then not Engine.Working and then Engine.Stage in Lock_Owner.Fresh | Lock_Owner.Ready;
    end Admitting;
    function May_Exit return Boolean is
-     (not Sleep_Working and then not Sleep_Uncertain
+     (not ACPI_Software_Global_Lock.Observe (Software_Lock).Held
+      and then not Sleep_Working and then not Sleep_Uncertain
       and then Lock_Requests.May_Exit (Lock_State) and then not Catalog.Observe (Hardware).Working
       and then Catalog.Observe (Hardware).Pending = 0);
    function Sleep_Register_Model return ACPI_Sleep_Entry.Register_Model is
@@ -458,7 +474,8 @@ package body ACPI_Local_Hardware is
       if not Startup_Time_Remains then Fail (Deadline_Stopped); return; end if;
       Info.Registers := Catalog.Observe (Hardware).Registers;
       Info.NVS_Records := NVS.Observe (NVS_State).Records;
-      Info.Lock_Ready := Lock_Requests.Observe (Lock_State).Configured;
+      Info.Lock_Ready := ACPI_Software_Global_Lock.Observe (Software_Lock).Configured
+        or else Lock_Requests.Observe (Lock_State).Configured;
       State := Ready; Info.Stage := Ready; Info.Status := Initialized; Result := Info;
       ACPI_Native_Log.Info ("acpi: stage local-hardware ok registers=" & Info.Registers'Image &
         " nvs=" & Info.NVS_Records'Image & " lock=" & Info.Lock_Ready'Image);
@@ -471,10 +488,17 @@ package body ACPI_Local_Hardware is
       Reply : Lock_Requests.Reply;
       Kind : Lock_Requests.Reply_Kind;
       use type Lock_Requests.Reply_Kind;
-      use type Lock_Protocol.Lock_Outcome;
    begin
       Result := Lock_Protocol.Not_Ready;
-      if State /= Ready or else Item.Prepared or else Issued_Nonce = Word'Last then return; end if;
+      if State /= Ready or else Item.Prepared then return; end if;
+      if ACPI_Software_Global_Lock.Observe (Software_Lock).Configured then
+         Lock_Clock (Now, Available);
+         ACPI_Software_Global_Lock.Acquire (Software_Lock, Item.Software_Lease,
+           Now, Available, Deadline_Microseconds, Result);
+         if Result = Lock_Protocol.Acquired then Item.Prepared := True; Item.Software_Only := True; end if;
+         return;
+      end if;
+      if Issued_Nonce = Word'Last then return; end if;
       Issued_Nonce := Issued_Nonce+1;
       Lock_Clock (Now,Available);
       Lock_Requests.Prepare (Lock_State,Lock_Scope (Local_Scope),Self,Issued_Nonce,
@@ -493,9 +517,17 @@ package body ACPI_Local_Hardware is
    end Acquire;
    procedure Check_Access (Item : Lease; Result : out Lock_Protocol.Lock_Outcome) is
       Reply : Lock_Requests.Reply;
+      Now : Word;
+      Available : Boolean;
    begin
       Result := Lock_Protocol.Not_Ready;
       if State /= Ready or else not Item.Prepared then return; end if;
+      if Item.Software_Only then
+         Lock_Clock (Now, Available);
+         ACPI_Software_Global_Lock.Check_Access (Software_Lock, Item.Software_Lease,
+           Now, Available, Result);
+         return;
+      end if;
       Lock_Requests.Check_Access (Lock_State,Lock_Scope (Local_Scope),Self,
         (Item.Domain,Item.Sequence),Reply);
       Result := To_Lock_Outcome (Reply.Outcome);
@@ -508,6 +540,11 @@ package body ACPI_Local_Hardware is
    begin
       Result := Lock_Protocol.Not_Ready;
       if not Item.Prepared then return; end if;
+      if Item.Software_Only then
+         ACPI_Software_Global_Lock.Release (Software_Lock, Item.Software_Lease, Result);
+         if Result = Lock_Protocol.Released then Item.Prepared := False; Item.Software_Only := False; end if;
+         return;
+      end if;
       -- Maintenance records terminal cleanup separately from the original
       -- release result (which can remain Signal_Deferred/Indeterminate).
       Lock_Requests.Query (Lock_State,Lock_Scope (Local_Scope),Self,
@@ -528,6 +565,7 @@ package body ACPI_Local_Hardware is
    begin
       if State = Stopped then return; end if;
       State := Stopping; Info.Stage := Stopping;
+      ACPI_Software_Global_Lock.Begin_Stop (Software_Lock);
       Lock_Requests.Begin_Stop (Lock_State,Lock_Status);
    end Begin_Stop;
    procedure Maintain (Wake_Deadline_Milliseconds : out Word; May_Continue : out Boolean) is

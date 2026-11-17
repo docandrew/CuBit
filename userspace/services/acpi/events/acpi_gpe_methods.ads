@@ -17,6 +17,7 @@ generic
      (Service : in out Core.State; Handle : in out Core.Values.Value_Handle;
       Status : out Core.Values.Access_Status) is Core.Release_Result;
 package ACPI_GPE_Methods with SPARK_Mode is
+   pragma Unevaluated_Use_Of_Old (Allow);
    type Event_Number is range 0 .. 255;
    subtype Trigger_Kind is ACPI_GPE_Lifecycle.Trigger_Kind;
    function Method_Name (Number : Event_Number; Trigger : Trigger_Kind) return AML_Names.Segment;
@@ -73,6 +74,27 @@ package ACPI_GPE_Methods with SPARK_Mode is
    procedure Close
      (Run : in out Invocation; Service : in out Core.State; Action : out Action_Result)
      with Pre => Core.Valid (Service), Post => Core.Valid (Service);
+   type Transfer_Result is (Transferred, Source_Not_Pending, Target_Not_Fresh);
+   -- Move one retained result into fresh persistent owner storage. Both
+   -- invocations remain consumed: this neither retries AML nor resets a slot.
+   -- No evaluator/releaser/Core/hardware callback occurs. The destination keeps
+   -- the original Core identity for Close; a used destination is never replaced.
+   procedure Transfer (Source, Target : in out Invocation; Result : out Transfer_Result)
+     with Global => null,
+       Post => Result =
+         (if Consumed (Target)'Old or else Pending (Target)'Old then Target_Not_Fresh
+          elsif not Pending (Source)'Old then Source_Not_Pending else Transferred)
+         and then (if Result = Transferred then
+           Consumed (Source) and then Consumed (Target)
+           and then not Pending (Source) and then Pending (Target)
+           and then Observe (Target) = Observe (Source)'Old
+           and then Observe (Source) = Observe (Source)'Old
+         else Consumed (Source) = Consumed (Source)'Old
+           and then Consumed (Target) = Consumed (Target)'Old
+           and then Pending (Source) = Pending (Source)'Old
+           and then Pending (Target) = Pending (Target)'Old
+           and then Observe (Source) = Observe (Source)'Old
+           and then Observe (Target) = Observe (Target)'Old);
 private
    type Binding is record
       Bound : Boolean := False;

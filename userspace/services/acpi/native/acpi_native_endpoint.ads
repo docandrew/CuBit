@@ -2,8 +2,9 @@ with ACPI_Requests;
 with ACPI_Serving_State;
 with Interfaces;
 with CuBit.Messages;
--- Request must be received from the kernel. From is used for refusal logging
--- and reply delivery only; no process identity or message word grants authority.
+-- Request and From must come from the actual kernel receive. From supplies
+-- the expected grant owner and refusal identity. Observer authority comes only
+-- from the kernel-stamped authorityTag, never a PID or request word.
 package ACPI_Native_Endpoint is
    -- Native-only page: [revision, mode, reason, runtime-admitted].
    Metrics_Serving_State_Page : constant Interfaces.Unsigned_64 := 19;

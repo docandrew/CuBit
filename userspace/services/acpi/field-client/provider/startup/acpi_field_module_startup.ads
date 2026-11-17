@@ -33,7 +33,8 @@ package ACPI_Field_Module_Startup is
       Allow_Locked_Fields => Provider.Supports_Whole_Field_Locks,
       Enable_Startup_Platform_Resolution => Enable_Startup_Platform_Resolution,
       Resolve_Startup_Platform_Target => Resolve_Startup_Platform_Target,
-      Observe_Field => Provider.Note_Field, Field_Notes_Enabled => Provider.Supports_Field_Notes);
+      Observe_Field => Provider.Note_Field, Field_Notes_Enabled => Provider.Supports_Field_Notes,
+      Global_Lock_Operation => Provider.Operate_Global_Lock);
    -- Trusted startup callback bridge. Provision Provider before this call;
    -- the outer snapshot/controller owns the one-attempt startup latch.
    -- Never serve or retry after module effects/failure/uncertainty. Preserve
@@ -41,5 +42,9 @@ package ACPI_Field_Module_Startup is
    procedure Execute_Frozen
      (Service : in out Core.State; IO : in out Provider.Context;
       Budget : Natural; Report : out Core.Execution_Report;
+      Status : out Core.Values.Access_Status);
+   procedure Initialize_Members
+     (Service : in out Core.State; IO : in out Provider.Context;
+      Budget : Natural; Report : out Core.Namespace.Field_Initialization_Report;
       Status : out Core.Values.Access_Status);
 end ACPI_Field_Module_Startup;

@@ -7,6 +7,8 @@ package AML_Mutexes with SPARK_Mode, Pure is
    Release_Opcode : constant AML_Decode.Byte := 16#27#;
    type Operation is (Acquire_Mutex, Release_Mutex);
    type Timeout is range 0 .. 65_535;
+   Poll_Only : constant Timeout := 0;
+   Wait_Forever : constant Timeout := Timeout'Last;
    Timeout_Bytes : constant := 2;
    Object_Type_Code : constant := 9;
    function Canonical_Flags (Flags : AML_Decode.Byte) return Boolean is

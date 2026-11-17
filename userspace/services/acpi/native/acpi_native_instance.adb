@@ -1,4 +1,6 @@
+with ACPI_Native_Server.With_Passive_Queries;
 with ACPI_Native_Field_Profile;
+with ACPI_Native_Passive_Queries;
 with ACPI_Startup_Phase_Trace;
 with ACPI_Native_HID_Producer;
 with ACPI_Native_HID_Collection;
@@ -48,6 +50,7 @@ with ACPI_Native_Log;
 with ACPI_Native_Diagnostic_Output;
 with ACPI_Native_EC_Discovery;
 with ACPI_Native_Module_Notes;
+with CuBit.CPU_Times;with CuBit.CPU_Load;
 with ACPI_Requests;
 with ACPI_Startup_Diagnostics;
 with ACPI_Allocation_Diagnostics;
@@ -260,6 +263,8 @@ package body ACPI_Native_Instance is
       Result : out ACPI_Service.Execution_Report; Status : out ACPI_Service.Values.Access_Status) is
       package T renames ACPI_Native_Startup_Timing;
       Timing : T.Token;
+      CPU_Before,CPU_After : CuBit.CPU_Load.Snapshot;
+      CPU_Frequency_Before,CPU_Frequency_After : Unsigned_64 := 0;
       Before : constant ACPI_Service.Metrics := ACPI_Service.Observe (Service);
       Module_Before : constant T.P.Counters := T.Snapshot (T.P.Module_Execution);
       Sleep_Before : constant T.P.Counters := T.Snapshot (T.P.AML_Sleep);
@@ -273,7 +278,11 @@ package body ACPI_Native_Instance is
       ACPI_Native_AML_Profile.Start;
       -- The local root's module callback: Hardware -> memory bridge ->
       -- Fields.Begin_Startup from the copied FADT, then module AML.
+      CuBit.CPU_Times.Read(CPU_Before);
+      CPU_Frequency_Before:=CuBit.CPU_Times.Tick_Frequency;
       Root.Evaluation.Execute_Module_Startup (Service,Budget,Result,Status);
+      CuBit.CPU_Times.Read(CPU_After);
+      CPU_Frequency_After:=CuBit.CPU_Times.Tick_Frequency;
       ACPI_Native_AML_Profile.Stop;
       declare
          Anchor : ACPI_Service.Node_Descriptor;
@@ -302,9 +311,31 @@ package body ACPI_Native_Instance is
          After : constant ACPI_Service.Metrics := ACPI_Service.Observe (Service);
          Module_After : constant T.P.Counters := T.Snapshot (T.P.Module_Execution);
          GC_After : constant T.P.Counters := T.Snapshot (T.P.Work_Allocation);
+         CPU_Interval : constant CuBit.CPU_Load.Interval := CuBit.CPU_Load.Sum(CPU_Before,CPU_After);
+         Comparable_CPUs : Unsigned_64 := 0;
+         CPU_Unavailable : constant Boolean := CPU_Before.Count=0 or else CPU_After.Count=0
+           or else CPU_Frequency_Before=0 or else CPU_Frequency_After=0;
+         CPU_Saturated : constant Boolean := CPU_Interval.Total=Unsigned_64'Last or else CPU_Interval.Busy=Unsigned_64'Last;
          Wall : constant Unsigned_64 := Delta_Value (Module_After.Total_US,Module_Before.Total_US);
          External_Time : constant Unsigned_64 := Delta_Value (Module_After.External_US,Module_Before.External_US);
       begin
+         for CPU in CuBit.CPU_Times.CTP.Processor loop
+            exit when Unsigned_64(CPU)>=CPU_Before.Count or else Unsigned_64(CPU)>=CPU_After.Count;
+            if CuBit.CPU_Load.Comparable(CPU_Before.CPUs(CPU),CPU_After.CPUs(CPU)) and then
+              CuBit.CPU_Load.Between(CPU_Before.CPUs(CPU).Totals,CPU_After.CPUs(CPU).Totals).Total>0 then
+               Comparable_CPUs:=Comparable_CPUs+1;
+            end if;
+         end loop;
+         -- System-wide accounting includes other processes and scheduling.
+         -- Raw ticks avoid overflow/rounding in a diagnostic conversion to us.
+         ACPI_Native_Log.Info("acpi: stage module-cpu ok scope=SYSTEM_WIDE busy_ticks="&CPU_Interval.Busy'Image&
+           " total_ticks="&CPU_Interval.Total'Image&" hz="&CPU_Frequency_Before'Image);
+         ACPI_Native_Log.Info("acpi: stage module-cpu-coverage ok before="&CPU_Before.Count'Image&
+           " after="&CPU_After.Count'Image&" comparable="&Comparable_CPUs'Image&
+           " quality="&(if CPU_Unavailable then "UNAVAILABLE"
+             elsif CPU_Before.Count/=CPU_After.Count or else Comparable_CPUs/=CPU_Before.Count
+               or else CPU_Frequency_Before/=CPU_Frequency_After or else CPU_Saturated then "PARTIAL" else "COMPLETE")&
+           " saturated="&CPU_Saturated'Image&" end_hz="&CPU_Frequency_After'Image);
          ACPI_Native_Log.Info ("acpi: stage module-timing ok basis=WALL_ONLY cpu_us=UNAVAILABLE scope=BATCH" &
            " failed-table=" & Result.Modules.Failed_Table'Image & " completed=" & Result.Modules.Completed'Image &
            " charged=" & Result.Modules.Charged'Image & " budget=" & Budget'Image &
@@ -326,8 +357,31 @@ package body ACPI_Native_Instance is
            " elements=" & After.Package_Elements'Image & "/" & Service.Value_Element_Capacity'Image);
       end;
    end Timed_Module_Startup;
+   procedure Logged_Member_Startup
+     (Service : in out ACPI_Service.State; Budget : Natural;
+      Result : out ACPI_Service.Namespace.Field_Initialization_Report;
+      Status : out ACPI_Service.Values.Access_Status) is
+      use type ACPI_Service.Values.Access_Status;
+      use type ACPI_Service.Namespace.Field_Initialization_Outcome;
+   begin
+      Root.Evaluation.Initialize_Member_Startup(Service,Budget,Result,Status);
+      if Status=ACPI_Service.Values.Available
+        and then Result.Outcome=ACPI_Service.Namespace.Initialization_Completed
+        and then Result.Members.Missing=0 and then Result.Members.Unsupported=0
+        and then not Result.Fatal.Present and then not Result.Reconciliation_Required
+      then
+         ACPI_Native_Log.Info("acpi: stage members ok bound=" & Result.Members.Bound'Image &
+           " charged=" & Result.Charged'Image & " effects=" & Result.Provider_May_Have_Effects'Image);
+      else
+         ACPI_Native_Log.Warning("acpi: stage members fail " & Result.Failure'Image &
+           " access=" & Status'Image & " outcome=" & Result.Outcome'Image &
+           " missing=" & Result.Members.Missing'Image & " unsupported=" & Result.Members.Unsupported'Image &
+           " charged=" & Result.Charged'Image & " effects=" & Result.Provider_May_Have_Effects'Image &
+           " pending=" & Result.Reconciliation_Required'Image & " fatal=" & Result.Fatal.Present'Image);
+      end if;
+   end Logged_Member_Startup;
    package Loader is new ACPI_Native_Snapshot_Load.With_Driver
-     (Driver, Timed_Module_Startup);
+     (Driver, Timed_Module_Startup, Logged_Member_Startup);
    -- SCI-DELIVERY binding point: the SCI's fixed events and GPEs go to these
    -- consumers. Fixed facts are copied, EC edges are masked/ACKed before
    -- deferred query work, and all Notify routes precede broker ACK.
@@ -356,6 +410,9 @@ package body ACPI_Native_Instance is
      (Advance_Power, ACPI_Native_Power_Entry.Runnable, ACPI_Native_Power_Entry.Blocks_Runtime,
       ACPI_Native_Power_Entry.Wake_Deadline_Milliseconds, Advance_Normal,
       One.Serving_Maintenance, ACPI_Native_Event_Domain.Diagnostics_Quiet);
+   package Query_Loop is new ACPI_Native_Server.With_Passive_Queries
+     (Power_Loop.Advance,Power_Loop.Maintain);
+   package Observer_Query_Loop is new ACPI_Native_Server.With_Passive_Queries;
    procedure Serving_Event (Publisher : CuBit.Messages.Process_ID; Item : CuBit.Messages.Message;
       Stop : out Boolean; Handled : out Boolean) is
       Ack : ACPI_SCI_Quiesce.Acknowledgement;
@@ -370,9 +427,11 @@ package body ACPI_Native_Instance is
    end Serving_Event;
    package Serving is new ACPI_Native_Server.With_Dispatch
      (ACPI_Native_Endpoint.Dispatch, Handle_Event => Serving_Event,
-      Advance_Owner => Power_Loop.Advance, Maintain_Owner => Power_Loop.Maintain,
+      Advance_Owner => Query_Loop.Advance, Maintain_Owner => Query_Loop.Maintain,
       Diagnostics_Quiet => Power_Loop.Diagnostics_Quiet, Reply_Now => ACPI_Native_Endpoint.Reply_Now);
-   package Observer_Serving is new ACPI_Native_Server.With_Dispatch(ACPI_Native_Endpoint.Dispatch, Reply_Now=>ACPI_Native_Endpoint.Reply_Now);
+   package Observer_Serving is new ACPI_Native_Server.With_Dispatch
+     (ACPI_Native_Endpoint.Dispatch,Advance_Owner=>Observer_Query_Loop.Advance,
+      Maintain_Owner=>Observer_Query_Loop.Maintain,Reply_Now=>ACPI_Native_Endpoint.Reply_Now);
    Device_Run : Driver.Session;
    Owner : L.State_Access;
    function Owner_Quiet return Boolean is
@@ -688,7 +747,8 @@ package body ACPI_Native_Instance is
          " stage=" & Event_Start_View.Stage'Image & " reason=" & Event_Start_View.Why'Image &
          " ec=" & Event_Start_View.EC'Image &
          " consumers=" & Bit (Event_Start_View.Consumers_Started) &
-         " armed=" & Bit (Event_Start_View.EC_Armed),
+         " armed=" & Bit (Event_Start_View.EC_Armed) &
+         " general=" & Event_Start_View.General_GPEs'Image,
          (ACPI_Native_Regions.May_Open_Diagnostic_Channel and then not ACPI_Native_Power_Entry.Blocks_Runtime));
       -- Short records fit image22's single-result log window as well as a photo.
       ACPI_Native_Diagnostic_Output.Write
@@ -1335,6 +1395,7 @@ package body ACPI_Native_Instance is
       declare
          Outcome:ACPI_Native_Event_Domain.Start_Outcome;
          use type ACPI_Native_Event_Domain.Start_Outcome;
+         use type ACPI_Native_Event_Domain.Phase;
          use type ACPI_Native_EC_Discovery.Outcome;
       begin
          Enter_Phase (Phase_Trace.Start_Events);
@@ -1345,7 +1406,10 @@ package body ACPI_Native_Instance is
          Leave_Phase (Phase_Trace.Start_Events, Events_Phase_Result (Outcome),
            Outcome = ACPI_Native_Event_Domain.Ready);
          if ACPI_Native_Event_Domain.Diagnostics_Quiet(Owner.all) then
-            if Outcome=ACPI_Native_Event_Domain.Ready then ACPI_Native_Log.Info("acpi: stage events ok EC_NOTIFY");
+            if Outcome=ACPI_Native_Event_Domain.Ready then ACPI_Native_Log.Info("acpi: stage events ok EC_NOTIFY general="&ACPI_Native_Event_Domain.Observe.General_GPEs'Image);
+            elsif Outcome=ACPI_Native_Event_Domain.EC_Unavailable and then ACPI_Native_Event_Domain.Observe.Stage=ACPI_Native_Event_Domain.Live then
+               ACPI_Native_Log.Info("acpi: stage events ok CONSUMERS ec="&ACPI_Native_Event_Domain.Observe.EC'Image&
+                  " general="&ACPI_Native_Event_Domain.Observe.General_GPEs'Image);
             elsif Outcome=ACPI_Native_Event_Domain.EC_Unavailable and then ACPI_Native_Event_Domain.Observe.EC=ACPI_Native_EC_Discovery.No_EC then
                ACPI_Native_Log.Info("acpi: stage events ok FIXED_ONLY ec=ABSENT");
             else ACPI_Native_Log.Warning("acpi: stage events fail "&Outcome'Image&" ec="&ACPI_Native_Event_Domain.Observe.EC'Image);end if;
@@ -1492,6 +1556,7 @@ package body ACPI_Native_Instance is
       -- Expected failures return typed outcomes from Attempt. The native
       -- runtime terminates unexpected failures; it has no exception handlers.
       Attempt;
+      ACPI_Native_Passive_Queries.Begin_Stop;
       ACPI_Native_Button_Discovery.Begin_Stop;
       ACPI_Native_Power_Buttons.Begin_Stop;
       ACPI_Native_Power_Entry.Begin_Stop;
@@ -1514,6 +1579,15 @@ package body ACPI_Native_Instance is
       -- Route before _REG(0), keep routes alive for its own Notify, then close.
       ACPI_Native_Event_Domain.Begin_Stop;
       Close_SCI;
+      if Owner/=null and then ACPI_Requests.Valid(Owner.all) and then not ACPI_Requests.Storage_Released(Owner.all) then
+         declare Queries_Quiet:Boolean;begin
+            ACPI_Native_Passive_Queries.Drain(Owner.all,Queries_Quiet);
+            if not Queries_Quiet then
+               ACPI_Native_Diagnostic_Output.Write("acpi: stage query-retire fail RETAINED loan-or-reply=PENDING",False);
+               Park_With_Final_Checkpoint;
+            end if;
+         end;
+      end if;
       declare
          Completion : constant Consumer_Completion.Report := Consumer_Completion.Observe;
       begin

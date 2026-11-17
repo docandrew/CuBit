@@ -47,6 +47,9 @@ package ACPI_Local_Sample_Events is
      with Pre => ACPI_Requests.Valid(Server);
    function Started return Boolean;
    function Last_Failure return Status.Failure;
+   -- Metadata-only receipt routing remains available after the shared runtime
+   -- stops, while this consumer is enrolled/healthy. It only invalidates the
+   -- cached value; Read/Advance still require Idle and cannot restart AML.
    procedure Route (Server : ACPI_Requests.State; Routed : out Boolean)
      with Pre => ACPI_Requests.Valid(Server);
    -- At most one collection or publication per turn. Route/ACK all consumers

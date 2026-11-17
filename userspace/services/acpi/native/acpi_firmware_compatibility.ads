@@ -11,5 +11,8 @@ package ACPI_Firmware_Compatibility with Pure, SPARK_Mode is
    function Policy_For (Item : Profile) return AML_Interface_Policy.Policy
      with Post => AML_Interface_Policy.Count (Policy_For'Result) =
        (if Item = Declared.Neutral then 0 else Known_Windows_Interface_Count);
+   Native_OS_Name : constant String := "CuBit";
+   Windows_OS_Name : constant String := "Microsoft Windows NT";
+   function OS_Name_For (Item : Profile) return String;
    function Name (Item : Profile) return String;
 end ACPI_Firmware_Compatibility;

@@ -17,7 +17,7 @@ package GPIO_Native_Policy with Pure, SPARK_Mode is
       events, requests, steps : Burst;
    end record;
    type Timing_Limits is record
-      startup, admission, cleanup, readiness, sweep, progress : Milliseconds;
+      startup, admission, cleanup, readiness, sweep, progress, poll, poll_window : Milliseconds;
    end record;
    type Settings is record
       capacity : GPIO_Controller_Resources.Pin_Limit;
@@ -32,5 +32,5 @@ package GPIO_Native_Policy with Pure, SPARK_Mode is
       pages_per_resource => Maximum_Community_Bytes / GPIO_Mapping_Policy.Page_Bytes,
       work => (events => 2, requests => 2, steps => 4),
       timing => (startup => 5000, admission => 1000, cleanup => 1000,
-         readiness => 1000, sweep => 100, progress => 1));
+         readiness => 1000, sweep => 100, progress => 1, poll => 5, poll_window => 100));
 end GPIO_Native_Policy;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Bootstrap;
 with ACPI_Device_Initialization;
 with ACPI_Service;
 generic
@@ -16,6 +17,10 @@ generic
         (Service : in out ACPI_Service.State; Budget : Natural;
          Report : out ACPI_Service.Execution_Report;
          Status : out ACPI_Service.Values.Access_Status) is ACPI_Service.Execute_Frozen;
+   with procedure Initialize_Member_Startup
+     (Service : in out ACPI_Service.State; Budget : Natural;
+      Result : out ACPI_Service.Namespace.Field_Initialization_Report;
+      Status : out ACPI_Service.Values.Access_Status) is ACPI_Bootstrap.Initialize_Default_Members;
 package ACPI_Snapshot_Startup.With_Driver is
    type Session is limited private;
    function Consumed (Context : Session) return Boolean;

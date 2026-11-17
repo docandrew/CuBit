@@ -15,8 +15,26 @@ package body GPIO_Native_Pump is
    use type M.Protocol_Flags, M.IPC_Flags, I.Tick;
    Counts : Statistics;
    Notices : GPIO_IRQ_Notices.State;
+   Parent_Configured, Polling_Enabled : Boolean := False;
    procedure Configure_Parent (Present : Boolean; Accepted : out Boolean) is
-   begin GPIO_IRQ_Notices.Configure (Notices, Present, Accepted); end Configure_Parent;
+   begin
+      GPIO_IRQ_Notices.Configure (Notices, Present, Accepted);
+      if Accepted then Parent_Configured := True; end if;
+   end Configure_Parent;
+   procedure Enable_Polling (Accepted : out Boolean) is
+      use type Driver.Registry.Channel_ID;
+      State : constant Driver.Registry.Summary := Driver.Registry.Observe;
+   begin
+      Accepted := Parent_Configured and then not Polling_Enabled
+        and then not GPIO_IRQ_Notices.Parent_Present (Notices)
+        and then State.Sealed and then State.Operational and then not State.Stopping
+        and then State.Registered = Driver.Registry.No_Channel;
+      if Accepted then Polling_Enabled := True; end if;
+   end Enable_Polling;
+   function Events_Available return Boolean is
+     (GPIO_IRQ_Notices.Parent_Present (Notices)
+      or else (Polling_Enabled and then Driver.Registry.Observe.Operational
+        and then not Driver.Registry.Observe.Stopping));
    procedure Take_Parent_Notice (Pending : out Boolean) is
    begin GPIO_IRQ_Notices.Take (Notices, Pending); end Take_Parent_Notice;
    procedure Hold_Requests (Held : Boolean) is
@@ -83,7 +101,7 @@ package body GPIO_Native_Pump is
          Driver.Native_Admin.Handle (S, Caller, Message, Setup, Cleanup);
       else
          Driver.Native_Client.Handle (Caller, Message, Result,
-            Events_Available => GPIO_IRQ_Notices.Parent_Present (Notices));
+            Events_Available => Events_Available);
       end if;
    end Poll_Request;
 end GPIO_Native_Pump;

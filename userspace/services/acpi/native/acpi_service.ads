@@ -6,7 +6,9 @@ with ACPI_Native_AML_Profile;
 with ACPI_Clock_Source; with ACPI_Native_Startup_Timing;
 package ACPI_Service is new ACPI_Service_Core (Perform_Delay => ACPI_Native_Delays.Perform,
    Read_Microseconds => ACPI_Clock_Source.Read,
+   Wait_Event_Timeout => ACPI_Native_Delays.Wait_Event_Timeout,
    Supported_Interfaces => ACPI_Native_Firmware_Profile.Interfaces,
+   Operating_System_Name => ACPI_Native_Firmware_Profile.OS_Name,
    Observe_Interface_Query => ACPI_Native_Firmware_Profile.Observe_Query,
    Observe_Work => ACPI_Native_Startup_Timing.Observe_Work,
    Profile_Enabled => ACPI_Native_AML_Profile.Enabled,

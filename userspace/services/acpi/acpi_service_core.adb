@@ -284,6 +284,19 @@ package body ACPI_Service_Core with SPARK_Mode is
      (Service : in out State; Budget : Natural; Report : out Execution_Report;
       Status : out Values.Access_Status);
    package body Field_IO is
+      procedure Initialize_Members
+        (Service : in out State; IO : in out IO_Context;
+         Targets : Module_Target_Set; Count : Module_Target_Count;
+         Budget : Natural; Report : out Namespace.Field_Initialization_Report;
+         Status : out Values.Access_Status) is
+      begin
+         if Service.Import_State not in Legacy_Import | Catalog_Executed then
+            Report := (others => <>); Status := Values.Wrong_Phase; return;
+         end if;
+         Adapter.Seal_With_Tables(Service.Tree,IO,Adapter.Module_Target_Set(Targets),
+            Adapter.Module_Target_Count(Count),Service.Loads,Service.Copies,Service.Backing,Service.Width,Budget,Report,Status);
+      end Initialize_Members;
+
       procedure Execute_Frozen
         (Service : in out State; IO : in out IO_Context;
          Targets : Module_Target_Set; Count : Module_Target_Count;

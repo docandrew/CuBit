@@ -9,7 +9,7 @@ package body ACPI_Native_Consumer_Completion is
    package IPC renames H.IPC;
    package P renames Protocol;
    use type Interfaces.Unsigned_64, Interfaces.Unsigned_32, Interfaces.Unsigned_8, Interfaces.Unsigned_16;
-   use type H.ABI.Kind, P.Phase_Status, P.Receipt;
+   use type H.ABI.Kind, P.Receipt;
    View : Report;
    Saved_Target : H.Endpoint := H.No_Endpoint;
    Original_Message : M.Message := M.NULL_MESSAGE;
@@ -19,7 +19,7 @@ package body ACPI_Native_Consumer_Completion is
      (not View.Working and then View.State not in Completion_Unknown | Invalid_Reply);
    function Completed_Received return Boolean is
      (not View.Working and then View.State = Receipt_Confirmed and then View.Receipt_Known
-      and then View.Declared = P.Completed and then View.Answer = P.Received);
+      and then P.Ran_To_End (View.Declared) and then View.Answer = P.Received);
    function Set_Deadline return Boolean is
       Now : constant Interfaces.Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
@@ -44,10 +44,10 @@ package body ACPI_Native_Consumer_Completion is
       for I in Message.words'Range loop
          if I >= P.Reply_Words and then Message.words (I) /= 0 then View.State := Invalid_Reply; return; end if;
       end loop;
-      -- Only a Completed/Received declaration can release driver launches.
+      -- Only a ran-to-end/Received declaration can release driver launches.
       -- Inconsistent counts are malformed, not a zero-child observation.
       if Message.words (P.Released_Word) /= 0
-        and then (View.Declared /= P.Completed
+        and then (not P.Ran_To_End (View.Declared)
           or else Message.words (P.Receipt_Word) /= P.Receipt'Enum_Rep (P.Received))
       then View.State := Invalid_Reply; return; end if;
       View.Released := Message.words (P.Released_Word);

@@ -22,6 +22,8 @@ package ACPI_Native_Consumer_Completion is
    end record;
    function Observe return Report;
    function Quiet return Boolean;
+   -- A received status that ran to the end, including per-node errors.
+   -- The exact declared status remains available in Observe.
    function Completed_Received return Boolean;
    -- Exactly one immutable declaration per process-lived generic instance.
    -- The native owner instantiates this once and supplies a unique request ID.

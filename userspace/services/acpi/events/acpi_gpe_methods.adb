@@ -107,4 +107,17 @@ package body ACPI_GPE_Methods with SPARK_Mode is
       Action := Accepted; Release (Run, Service);
       if not Pending (Run) then Run.Info.Status := Closed; end if;
    end Close;
+   procedure Transfer (Source, Target : in out Invocation; Result : out Transfer_Result) is
+   begin
+      if Target.Used or else Pending (Target) then Result := Target_Not_Fresh; return; end if;
+      if not Pending (Source) then Result := Source_Not_Pending; return; end if;
+      Target.Used := True;
+      Target.Owner := Source.Owner;
+      Target.Handle := Source.Handle;
+      Target.Info := Source.Info;
+      Source.Used := True;
+      Source.Handle := V.No_Value;
+      Source.Owner := V.No_Node;
+      Result := Transferred;
+   end Transfer;
 end ACPI_GPE_Methods;

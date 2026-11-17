@@ -7,13 +7,15 @@ with ACPI_Native_EC_Discovery;
 package ACPI_Native_Event_Domain is
    type Phase is (Fresh,Starting,Live,Fixed_Only,Stopping,Closed,Failed);
    type Failure is (None,Not_Ready,Consumer_Start_Refused,Routing_Refused,
-      EC_Startup_Refused,Consumer_Work_Refused,EC_Work_Refused);
+      EC_Startup_Refused,Consumer_Work_Refused,EC_Work_Refused,
+      Control_Not_Exclusive,GPE_Startup_Refused,GPE_Work_Refused);
    type Start_Outcome is (Ready,EC_Unavailable,SCI_Unavailable,Refused);
    type Report is record
       Stage:Phase:=Fresh;
       Why:Failure:=None;
       EC:ACPI_Native_EC_Discovery.Outcome:=ACPI_Native_EC_Discovery.Not_Attempted;
       Consumers_Started,EC_Armed:Boolean:=False;
+      General_GPEs:Natural range 0..ACPI_SCI_Registers.GPE_Count:=0;
    end record;
    function Observe return Report;
    function Attempted return Boolean;

@@ -59,6 +59,20 @@ package body ACPI_SCI_Events is
 
    function Observe return Statistics is (S.Stats);
    function Is_Armed return Boolean is (S.Armed);
+   function Control_Layout return R.Layout_Result is
+   begin
+      if not S.Armed or else S.Disarmed or else not S.Line_Held then
+         return (Valid => False, Why => R.No_PM1a_Event_Block);
+      end if;
+      return (Valid => True, Value => S.Layout);
+   end Control_Layout;
+   function GPE_Available (GPE : R.GPE_Number) return Boolean is
+      Where : constant R.GPE_Location := R.Locate (S.Layout, GPE);
+   begin
+      return S.Armed and then not S.Disarmed and then S.Line_Held
+        and then Where.Present and then S.GPE_Status (Where.Block).Present
+        and then S.GPE_Enable (Where.Block).Present;
+   end GPE_Available;
    function Fixed_Power_Button_Available return Boolean is
      (S.Armed and then not S.Disarmed and then S.Layout.Fixed_Hardware (R.Power_Button));
 

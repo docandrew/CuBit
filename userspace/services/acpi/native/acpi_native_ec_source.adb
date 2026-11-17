@@ -69,7 +69,7 @@ package body ACPI_Native_EC_Source is
    procedure Select_Controller(Service:aliased in out C.State;Completed:out Boolean) is
       Result:Selection.Report;Enrollment:Receiver.Enrollment;
    begin
-      Completed:=False;Selection.Configure(Service,AML_Fuel,Result);
+      Completed:=False;Selection.Configure(Service,AML_Fuel,Until_Time,Result);
       if Result.Status=Selection.Ready and then Selection.Current(Service) then
          Receiver.Install(Service,Controller,Epoch,CuBit.Messages.Own_Process,Result.Description.Device,Enrollment);
          if Enrollment=Receiver.Installed then

@@ -1,4 +1,7 @@
 pragma Ada_2022;
+with AML_Global_Locks;
+with AML_Frame_Handles;
+with AML_Mutexes;
 with AML_Field_Notes;
 with AML_Profile_Events;
 with AML_Work_Kinds;
@@ -45,6 +48,7 @@ generic
    -- Pending internal notifications, independent of retained AML values.
    Notification_Capacity : Positive := 32;
    Supported_Interfaces : AML_Interface_Policy.Policy := AML_Interface_Policy.Empty;
+   Operating_System_Name : String := "CuBit";
    -- Passive observer must return normally and must not reenter this owner.
    with procedure Observe_Interface_Query
      (Name : AML_Decode.Bytes; Supported, Truncated : Boolean) is null;
@@ -72,6 +76,7 @@ package ACPI_Service_Core with SPARK_Mode is
       Max_Retained_Roots => Retained_Result_Capacity,
       Max_Pending_Notifications => Notification_Capacity,
       Supported_Interfaces => Supported_Interfaces,
+      Operating_System_Name => Operating_System_Name,
       Observe_Interface_Query => Observe_Interface_Query,
       Wait_Event_Timeout => Wait_Event_Timeout,
       Block_Capacity => Block_Capacity, Enable_PCI_Context => Enable_PCI_Context, Observe_Work => Observe_Work,
@@ -449,11 +454,24 @@ package ACPI_Service_Core with SPARK_Mode is
          Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
    with procedure Observe_Field (Item : AML_Field_Notes.Event) is null;
    Field_Notes_Enabled : Boolean := False;
+   with procedure Global_Lock_Operation
+     (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
+      Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
+      Outcome : in out AML_Global_Locks.Outcome) is null;
    package Field_IO is
       pragma Unevaluated_Use_Of_Old (Allow);
       type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
       subtype Module_Target_Position is Positive range 1 .. Maximum_Bindings;
       type Module_Target_Set is array (Module_Target_Position) of AML_Field_Access.Target;
+      -- Explicit provider-aware static package initialization before ordinary seal.
+      -- Budget refusal has no IO; completed/failed reads are never retried here.
+      -- Callers must reject Initialization_Stopped before service readiness.
+      procedure Initialize_Members
+        (Service : in out State; IO : in out IO_Context;
+         Targets : Module_Target_Set; Count : Module_Target_Count;
+         Budget : Natural; Report : out Namespace.Field_Initialization_Report;
+         Status : out Values.Access_Status)
+        with Pre => Valid(Service), Post => Valid(Service) and then Report.Charged <= Budget;
       -- Trusted provisioned named cells for early module AML. No wire-selected
       -- targets, address access, provider installation or recovery authorization.
       -- Preserve Service, IO and backing after effects, failure or uncertainty.
@@ -598,7 +616,7 @@ package ACPI_Service_Core with SPARK_Mode is
         (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed, Maximum_Bindings,
          Authorize_Target, Maximum_Requests, Maximum_Work, Resolve_Module_Target, Begin_Field, End_Field, Allow_Locked_NVS_Reads,
          Enable_Startup_Firmware_Resolution, Resolve_Startup_Firmware_Target, Allow_Locked_Fields,
-         Enable_Startup_Platform_Resolution, Resolve_Startup_Platform_Target, Observe_Field, Field_Notes_Enabled);
+         Enable_Startup_Platform_Resolution, Resolve_Startup_Platform_Target, Observe_Field, Field_Notes_Enabled, Global_Lock_Operation);
       type Binding is record
          Inner : Adapter.Binding := Adapter.No_Binding;
       end record;

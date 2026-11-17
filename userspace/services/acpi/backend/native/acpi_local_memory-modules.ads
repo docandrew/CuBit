@@ -27,6 +27,9 @@ package ACPI_Local_Memory.Modules is
    procedure Execute_Module_Startup (Service : in out Core.State; Budget : Natural;
       Result : out Core.Execution_Report; Status : out Core.Values.Access_Status)
       renames Startup.Execute_Module_Startup;
+   procedure Initialize_Member_Startup (Service : in out Core.State; Budget : Natural;
+      Result : out Core.Namespace.Field_Initialization_Report; Status : out Core.Values.Access_Status)
+      renames Fields.Initialize_Member_Startup;
    procedure Prepare_Fields (Service : Core.State; Accepted : out Boolean)
       renames Fields.Prepare_Fields;
    procedure Evaluate_Named (Service : aliased in out Core.State; Item : Core.Node_Descriptor;

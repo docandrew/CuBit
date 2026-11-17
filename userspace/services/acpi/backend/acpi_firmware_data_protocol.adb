@@ -1,8 +1,5 @@
 pragma Ada_2022;
-with Capability_ABI;
 package body ACPI_Firmware_Data_Protocol with SPARK_Mode is
-   use type Interfaces.Unsigned_8, Interfaces.Unsigned_16, Interfaces.Unsigned_32;
-   use type Word;
    function Encode (ID : Request_ID; Item : Envelope) return IPC.Packet is
       Result : IPC.Packet := (Label => Wire.Data_Window_Request,
          Length => Wire.Request_Words, others => <>);

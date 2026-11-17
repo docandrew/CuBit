@@ -1,4 +1,5 @@
 with ACPI_Observer_Endpoint;
+with ACPI_Native_Passive_Queries;
 with ACPI_Native_Power_Preparation;
 with ACPI_Native_Power_Entry;
 with ACPI_Native_Power_Buttons;
@@ -43,6 +44,13 @@ package body ACPI_Native_Endpoint is
          ACPI_Native_Power_Preparation.Dispatch (Server,Request,
            Mode.Selected and then Mode.Current=ACPI_Serving_State.Local_Runtime
              and then not ACPI_Native_Power_Entry.Blocks_Runtime,Reply,Power_Handled);
+      end;
+      if Power_Handled then return;end if;
+      declare Mode:constant ACPI_Serving_State.Snapshot:=Serving_State;begin
+         ACPI_Native_Passive_Queries.Dispatch(Server,From,Request,
+           Mode.Selected and then not ACPI_Native_Power_Entry.Blocks_Runtime
+             and then ACPI_Native_Event_Domain.Diagnostics_Quiet(Server),
+           Reply,Power_Handled,Current_Reply_Now);
       end;
       if Power_Handled then return;end if;
       if not ACPI_Protocol.Is_Observer (Stamp)

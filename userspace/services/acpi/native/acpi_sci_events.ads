@@ -57,6 +57,12 @@ package ACPI_SCI_Events is
       Outcome : out Arm_Outcome;
       Layout_Why : out R.Refusal);
    function Is_Armed return Boolean;
+   -- Copied retained register geometry only; no handles, IO or new authority.
+   -- Unavailable before admission or after disarm.
+   function Control_Layout return R.Layout_Result;
+   -- Read-only inventory at this serialized boundary: armed line, accepted
+   -- FADT source and held status/enable windows. No IO or lasting authority.
+   function GPE_Available (GPE : R.GPE_Number) return Boolean;
    -- Successful SCI admission plus FADT fixed-hardware declaration; no probe.
    function Fixed_Power_Button_Available return Boolean;
 

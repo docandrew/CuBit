@@ -16,6 +16,10 @@ package ACPI_Startup_Evaluation is
    procedure Execute_Module_Startup
      (Service : in out Core.State; Budget : Natural;
       Result : out Core.Execution_Report; Status : out Core.Values.Access_Status);
+   procedure Initialize_Member_Startup
+     (Service : in out Core.State; Budget : Natural;
+      Result : out Core.Namespace.Field_Initialization_Report;
+      Status : out Core.Values.Access_Status);
    procedure Prepare_Fields (Service : Core.State; Accepted : out Boolean);
    procedure Evaluate_Named
      (Service : aliased in out Core.State; Item : Core.Node_Descriptor;
@@ -35,4 +39,5 @@ package ACPI_Startup_Evaluation is
 private
    Selected : Mode := Unselected;
    Module_Attempted, Module_Completed : Boolean := False;
+   Members_Attempted, Members_Completed : Boolean := False;
 end ACPI_Startup_Evaluation;

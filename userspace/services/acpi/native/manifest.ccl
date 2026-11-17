@@ -12,6 +12,7 @@
   requests => [
     (service "logstore" "logstore")
     (Request.Firmware_Snapshot "tables")
+    (Request.Publication "cpu-times")
     (Request.ACPI_Hardware "hardware")
     (service "acpi-pci-windows" "pci-windows")
     (notification "acpi" Notify_Access.Manage "registration")]

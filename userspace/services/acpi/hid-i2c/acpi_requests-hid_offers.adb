@@ -14,7 +14,7 @@ package body ACPI_Requests.HID_Offers with SPARK_Mode is
    use type HID.Controller.Admission, HID.Controller.Policy_Outcome, Discovery.Action_Result;
    use type Discovery.Outcome, Resolver.Outcome;
    use type Discovery.Queries.Status_Outcome;
-   use type PCI.Controller.Admission, Reader.Topology_Outcome;
+   use type PCI.Controller.Admission, Reader.Topology_Outcome, Reader.Outcome;
    use type Provenance.Outcome;
    use type Builder.Outcome;
    function Observe (Item : Run) return Report is (Item.View);
@@ -256,8 +256,10 @@ package body ACPI_Requests.HID_Offers with SPARK_Mode is
             end if;
             return;
          end if;
-         Facts := (Has_SEG => True, Has_BBN => True, Has_ADR => True,
-           SEG => Builder.Wire.Word (Item.Last_Topology.Members (Reader.Segment).Raw),
+         Facts := (Has_SEG => Item.Last_Topology.Members (Reader.Segment).Status = Reader.Observed
+             or else Item.Last_Topology.Segment_Defaulted, Has_BBN => True, Has_ADR => True,
+           SEG => (if Item.Last_Topology.Segment_Defaulted then Builder.Wire.Word (Reader.Default_PCI_Segment)
+             else Builder.Wire.Word (Item.Last_Topology.Members (Reader.Segment).Raw)),
            BBN => Builder.Wire.Word (Item.Last_Topology.Members (Reader.Base_Bus).Raw),
            ADR => Builder.Wire.Word (Item.Last_Topology.Members (Reader.Address).Raw));
          Current_Error := Description_Error;

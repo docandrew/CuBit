@@ -21,6 +21,13 @@ package ACPI_Local_Hardware.Pooled_Fields.Runtime is
    procedure Evaluate_Named
      (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
       Result : out Core.Values.Result; Access_Result : out Core.Values.Access_Status);
+   -- Enumeration only: preserve the exact failure result without stopping a
+   -- quiet same-owner window. A failed method may be isolated only with no new
+   -- retained roots; Fatal/module completion, budget/access contract violations
+   -- or actual provider uncertainty still close admission. No retry/reset.
+   procedure Evaluate_Discovery
+     (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
+      Result : out Core.Values.Result; Status : out Core.Values.Access_Status);
    procedure Invoke_Retained
      (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
       Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count; Budget : Natural;

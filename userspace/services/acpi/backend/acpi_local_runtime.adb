@@ -101,6 +101,21 @@ package body ACPI_Local_Runtime is
         Result.Status in AML_Execute.Returned | AML_Execute.Object_Returned | AML_Execute.Reference_Returned |
           AML_Execute.Metadata_Returned | AML_Execute.No_Return);
    end Evaluate_Named;
+   procedure Evaluate_Discovery
+     (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
+      Result : out Core.Values.Result; Status : out Core.Values.Access_Status) is
+      Before_Roots : constant Natural := Core.Retained_Results (Service);
+      Has_Value : Boolean;
+   begin
+      Result := (AML_Execute.Unsupported_Value,0); Status := Core.Values.Wrong_Phase;
+      if not Admits (Service) then return; end if;
+      Busy := True; Evaluate (Service,Item,Budget,Result,Status);
+      Has_Value := Result.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned |
+        AML_Execute.Metadata_Returned;
+      Finish_Evaluation (Service,Status = Core.Values.Available and then Result.Charged <= Budget
+        and then Result.Status not in AML_Execute.Fatal_Requested | AML_Execute.Module_Completed
+        and then (Has_Value or else Core.Retained_Results (Service) = Before_Roots));
+   end Evaluate_Discovery;
    procedure Invoke_Retained
      (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
       Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count; Budget : Natural;

@@ -6,5 +6,6 @@ package ACPI_Native_Firmware_Profile with SPARK_Mode => Off is
    procedure Log_Selected;
    procedure Observe_Query (Name : AML_Decode.Bytes; Supported, Truncated : Boolean);
    function Selected return ACPI_Firmware_Compatibility.Profile;
+   function OS_Name return String;
    function Interfaces return AML_Interface_Policy.Policy;
 end ACPI_Native_Firmware_Profile;

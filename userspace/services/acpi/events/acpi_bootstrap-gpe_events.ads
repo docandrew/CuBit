@@ -15,4 +15,21 @@ package ACPI_Bootstrap.GPE_Events with SPARK_Mode is
    -- and its original Core until cleanup or whole-owner retention is settled.
    procedure Close(Session:in out State;Run:in out Handlers.Invocation;Action:out Handlers.Action_Result)
       with Pre=>Valid(Session),Post=>Valid(Session);
+   -- Trusted process-local callback bridge: select this owner's private Core.
+   -- No pointer/selector is accepted from IPC. Dispatch supplies the existing
+   -- finite runtime window; source admission/rearm remain independent.
+   generic
+      with procedure Dispatch (Service : aliased in out ACPI_Service.State;
+         Item : Handlers.Binding; Budget : Natural; Completed : out Boolean);
+   procedure Deliver_Local (Session : in out State; Item : Handlers.Binding;
+      Budget : Natural; Allowed : out Admission; Completed : out Boolean)
+      with Pre => Valid (Session);
+   -- Original-owner cleanup deliberately bypasses new-work readiness gates,
+   -- including the very retained result being closed. Callback authenticates
+   -- the saved Core identity; a foreign Core must not release its result.
+   generic
+      with procedure Close_Pending (Service : in out ACPI_Service.State;
+         Action : out Handlers.Action_Result);
+   procedure Close_Local (Session : in out State; Action : out Handlers.Action_Result)
+      with Pre => Valid (Session);
 end ACPI_Bootstrap.GPE_Events;

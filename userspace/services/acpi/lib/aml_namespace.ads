@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with AML_Global_Locks;
+with AML_Mutexes;
 with AML_Field_Notes;
 with AML_Profile_Events;
 with AML_Child_Indices;
@@ -59,6 +61,7 @@ generic
    Aggregate_Method_Capacity : Positive := AML_Execute.Max_Method_Bytes;
    Max_Pending_Notifications : Positive := 32;
    Supported_Interfaces : AML_Interface_Policy.Policy := AML_Interface_Policy.Empty;
+   Operating_System_Name : String := "CuBit";
    -- Passive observer must return normally and must not reenter this owner.
    with procedure Observe_Interface_Query
      (Name : AML_Decode.Bytes; Supported, Truncated : Boolean) is null;
@@ -406,6 +409,21 @@ package AML_Namespace with SPARK_Mode is
      with Post => (if Result /= Loaded then Tree = Tree'Old);
    type Initialization_Report is record
       Bound, Missing, Unsupported : Natural := 0;
+   end record;
+   type Field_Initialization_Outcome is (Initialization_Refused, Initialization_Budget_Refused, Initialization_Completed, Initialization_Stopped);
+   type Field_Initialization_Report is record
+      Outcome : Field_Initialization_Outcome := Initialization_Refused;
+      Members : Initialization_Report;
+      Charged, Field_Attempts : Natural := 0;
+      -- Conservative boundary: resolution/context/provider callbacks may have
+      -- effects even when no Field transaction completed. False never certifies
+      -- that effects from an earlier invocation have been retired.
+      Provider_May_Have_Effects : Boolean := False;
+      -- Preserve the original report until uncertainty is authoritatively
+      -- reconciled. A refusal or repeated call is not reconciliation.
+      Reconciliation_Required : Boolean := False;
+      Failure : AML_Execute.Execution_Status := AML_Execute.No_Return;
+      Fatal : AML_Fatal.Observation;
    end record;
    function Pending_Members (Tree : State) return Natural;
    function Initialization_Frame (Tree, Prior : State) return Boolean with Ghost;
@@ -1688,7 +1706,7 @@ package Owned with SPARK_Mode is
               and then Pins_Cleared (A, Retention_Model (A)'Old)
             else Retention_Model (A) = Retention_Model (A)'Old
               and then Current (A) = Current (A)'Old);
-      Firmware_Seed_Count : constant Positive := 7;
+      Firmware_Seed_Count : constant Positive := 9;
       function Canonical_Firmware_Initial_State (A : Arena) return Boolean with Pre => Valid (A), Ghost;
       procedure Prepare_Firmware_Namespace (A : in out Arena;
          Outcome : out Preparation_Outcome; Status : out Access_Status)
@@ -1892,11 +1910,25 @@ package Owned with SPARK_Mode is
       -- reentry, retained aliases or mutation of any existing owner.
       with procedure Observe_Field (Item : AML_Field_Notes.Event) is null;
    Field_Notes_Enabled : Boolean := False;
+      with procedure Global_Lock_Operation
+        (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
+         Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
+         Outcome : in out AML_Global_Locks.Outcome) is null;
       package Field_IO is
          pragma Unevaluated_Use_Of_Old (Allow);
          type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
          subtype Module_Target_Position is Positive range 1 .. Maximum_Bindings;
          type Module_Target_Set is array (Module_Target_Position) of AML_Field_Access.Target;
+         procedure Seal_With_Tables
+           (A : in out Arena; IO : in out IO_Context;
+            Targets : Module_Target_Set; Count : Module_Target_Count;
+            Loads : AML_Definition_Loads.State; Copies : AML_Copied_Tables.State;
+            Input : aliased AML_Table_Backing.State;
+            Width : AML_Decode.Integer_Width; Budget : Natural;
+            Report : out Field_Initialization_Report; Status : out Access_Status)
+           with Pre => Valid(A) and then AML_Definition_Loads.Valid(Loads) and then AML_Copied_Tables.Valid(Copies),
+             Post => Valid(A) and then Report.Charged <= Budget;
+
          -- Trusted startup-only named cells, selected before module execution.
          -- Firmware supplies no targets. Geometry and current identities are
          -- rechecked for reachable direct/bank/index Field dependencies.

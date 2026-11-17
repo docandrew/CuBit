@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Event_Waits;
 with ACPI_Delay_Waits; with ACPI_Native_Startup_Timing;
 with ACPI_Clock_Source;
 with CuBit.Kernel_ABI;
@@ -119,4 +120,12 @@ package body ACPI_Native_Delays is
       Execute;
       ACPI_Native_Startup_Timing.Leave (Timing);
    end Perform;
+   package Event_Waits is new ACPI_Event_Waits (Perform);
+   procedure Wait_Event_Timeout
+     (Milliseconds : AML_Events.Timeout; Outcome : out AML_Events.Timeout_Outcome) is
+      Observation : Event_Waits.Report;
+   begin
+      Event_Waits.Run (Milliseconds, Observation);
+      Outcome := Observation.Code;
+   end Wait_Event_Timeout;
 end ACPI_Native_Delays;

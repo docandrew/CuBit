@@ -27,4 +27,17 @@ package body ACPI_Bootstrap.GPE_Events with SPARK_Mode is
    end Invoke;
    procedure Close(Session:in out State;Run:in out Handlers.Invocation;Action:out Handlers.Action_Result) is
    begin Handlers.Close(Run,Session.Core,Action);end Close;
+   procedure Deliver_Local (Session : in out State; Item : Handlers.Binding;
+      Budget : Natural; Allowed : out Admission; Completed : out Boolean) is
+   begin
+      Completed := False; Allowed := Not_Ready;
+      if not Ready (Session) then return; end if;
+      if Session.Notify_Enabled and then Natural (ACPI_Service.Pending_Notifications (Session.Core)) > 0 then
+         Allowed := Notifications_Pending; return;
+      end if;
+      if Retained_Results_Pending (Session) then Allowed := Results_Pending; return; end if;
+      Allowed := Admitted; Dispatch (Session.Core, Item, Budget, Completed);
+   end Deliver_Local;
+   procedure Close_Local (Session : in out State; Action : out Handlers.Action_Result) is
+   begin Close_Pending (Session.Core, Action); end Close_Local;
 end ACPI_Bootstrap.GPE_Events;

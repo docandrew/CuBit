@@ -7,7 +7,8 @@ package ACPI_HID_Offer_Builder with Pure, SPARK_Mode is
    package Wire renames HID_Offer_Payload;
    use type Wire.Request;
    -- The serialized owning Core supplies this after re-observing the device,
-   -- both resource sources and actual PCI methods. These are descriptions,
+   -- both resource sources and PCI identity/properties. Resolved segment0
+   -- may use the explicitly recorded standard absent-SEG default. These are descriptions,
    -- not freshness evidence or hardware authority by themselves.
    type Context is record
       Epoch, Catalog_Revision, Observation_Sequence : Wire.Word := 0;

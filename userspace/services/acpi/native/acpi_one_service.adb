@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Native_Passive_Queries;
 with ACPI_Power_Retirement_Replies; with ACPI_Endpoint;
 with CuBit.Messages;
 with CuBit.Monotonic;
@@ -85,7 +86,7 @@ package body ACPI_One_Service is
    procedure Other_Owners_View (Quiescent : out Boolean;
       Wake_Deadline_Milliseconds : out Word) is
    begin
-      Quiescent := ACPI_Native_Button_Discovery.Quiet and then ACPI_Native_Power_Buttons.Quiet and then ACPI_Native_Power_Entry.Quiet and then Consumers_Closed and then Final_Core_View in No_Core|Clear_Core
+      Quiescent := ACPI_Native_Passive_Queries.Quiet and then ACPI_Native_Button_Discovery.Quiet and then ACPI_Native_Power_Buttons.Quiet and then ACPI_Native_Power_Entry.Quiet and then Consumers_Closed and then Final_Core_View in No_Core|Clear_Core
         and then Final_SCI_View in Not_Armed|Clear_SCI
         and then Runtime.Current = Runtime.Status.Stopped
         and then Runtime.Observation /= Runtime.Status.Stop_Pending;
@@ -156,7 +157,8 @@ package body ACPI_One_Service is
          ACPI_Region_Stop_Policy.Hardware_Quiet => View.Hardware_Idle and then Root.Hardware.May_Exit
            and then not Root.Hardware.Pending,
          ACPI_Region_Stop_Policy.Backing_Quiet => Root.Backing_Quiet,
-         ACPI_Region_Stop_Policy.Other_Actors_Quiet => Consumers_Closed and then ACPI_Native_Pre_Device.Quiet
+         ACPI_Region_Stop_Policy.Other_Actors_Quiet => ACPI_Native_Passive_Queries.Quiet
+           and then Consumers_Closed and then ACPI_Native_Pre_Device.Quiet
            and then ACPI_Native_Button_Discovery.Quiet and then ACPI_Native_Power_Buttons.Quiet
            and then ACPI_Native_Power_Entry.Quiet,
          ACPI_Region_Stop_Policy.Region_Work_Quiet => not Regions.Working and then not Regions.Pending];

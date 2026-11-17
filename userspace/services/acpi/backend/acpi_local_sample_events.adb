@@ -33,7 +33,8 @@ package body ACPI_Local_Sample_Events is
          Observed : Boolean;
       begin
          Accepted:=False;
-         if not Started or else Working or else Runtime_Current/=R.Idle or else ID=0 or else
+         if State not in Ready|Publishing or else Working or else not Events_Healthy
+           or else Runtime_Current not in R.Idle|R.Stopped or else ID=0 or else
            not C.Current_Context(Service,Anchor) or else ID<Last_Receipt then return;end if;
          if ID=Last_Receipt then Accepted:=True;return;end if;
          Observe_Claimed(Data,Server,Observed);if not Observed then return;end if;

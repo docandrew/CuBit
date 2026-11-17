@@ -11,4 +11,15 @@ package body ACPI_Requests.GPE_Events with SPARK_Mode is
    end Invoke;
    procedure Close(Server:in out State;Run:in out Handlers.Invocation;Action:out Handlers.Action_Result) is
    begin Controller.Close(Server.Boot,Run,Action);end Close;
+   procedure Deliver_Local (Server : in out State; Item : Handlers.Binding;
+      Budget : Natural; Allowed : out Controller.Admission; Completed : out Boolean) is
+      procedure Run is new Controller.Deliver_Local (Dispatch);
+   begin
+      Completed := False;
+      if Notifications_Pending (Server) then Allowed := Controller.Notifications_Pending; return; end if;
+      Run (Server.Boot, Item, Budget, Allowed, Completed);
+   end Deliver_Local;
+   procedure Close_Local (Server : in out State; Action : out Handlers.Action_Result) is
+      procedure Run is new Controller.Close_Local (Close_Pending);
+   begin Run (Server.Boot, Action); end Close_Local;
 end ACPI_Requests.GPE_Events;

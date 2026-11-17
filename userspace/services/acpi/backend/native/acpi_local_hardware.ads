@@ -5,6 +5,7 @@ with CuBit.ACPI_Windows;
 with CuBit.ACPI_Memory_Classes;
 with CuBit.Handles;
 with ACPI_FADT;
+with ACPI_Software_Global_Lock;
 with ACPI_Sleep_Entry;
 with ACPI_Backend_Binding_Types;
 with ACPI_Backend_Mapping_Startup;
@@ -106,12 +107,14 @@ private
    Bound_Run : Bindings.Owner.Context;
    Grant : aliased CuBit.ACPI_Windows.Grant;
    Facts : ACPI_FADT.Description;
+   Software_Lock : ACPI_Software_Global_Lock.Context;
    Self : CuBit.Messages.Process_ID := CuBit.Messages.No_Process;
    State : Phase := Fresh;
    Info : Report;
    Last_Startup_Time, Until_Time : B.Tick := 0;
    type Lease is limited record
-      Prepared : Boolean := False;
+      Prepared, Software_Only : Boolean := False;
+      Software_Lease : ACPI_Software_Global_Lock.Lease;
       Domain, Sequence : Word := 0;
    end record;
 end ACPI_Local_Hardware;

@@ -8,7 +8,9 @@ package body ACPI_Fatal_Diagnostics with SPARK_Mode is
    Code_Hex_Digits : constant Positive := 8;
    Argument_Hex_Digits : constant Positive := 16;
    Context_Hex_Digits : constant Positive := 16;
-   function Hex (Value : Interfaces.Unsigned_64; Hex_Digits : Positive) return String is
+   function Hex (Value : Interfaces.Unsigned_64; Hex_Digits : Positive) return String
+     with Post => Hex'Result'Length = Hex_Digits
+   is
       Alphabet : constant String := "0123456789ABCDEF";
       Result : String (1 .. Hex_Digits);
       Remaining : Interfaces.Unsigned_64 := Value;
@@ -25,6 +27,7 @@ package body ACPI_Fatal_Diagnostics with SPARK_Mode is
       return "acpi fatal origin=" &
         (if Seen.Source.Kind = Definition_Block then
            "module table=" & Hex (Interfaces.Unsigned_64 (Seen.Source.Table_ID), Context_Hex_Digits)
+         elsif Seen.Source.Kind = Member_Initialization then "members"
          else "initializer scope=" & Hex (Interfaces.Unsigned_64 (Seen.Source.Initializer_Scope), Context_Hex_Digits)) &
         " type=" & Hex (Interfaces.Unsigned_64 (Seen.Item.Literal.Kind), Byte_Hex_Digits) &
         " code=" & Hex (Interfaces.Unsigned_64 (Seen.Item.Literal.Code), Code_Hex_Digits) &

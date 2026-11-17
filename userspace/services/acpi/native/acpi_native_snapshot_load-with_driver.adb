@@ -14,7 +14,7 @@ package body ACPI_Native_Snapshot_Load.With_Driver is
    begin Read_Chunk (Saved, ID, Offset, Into, Copied, Status); end Read_Part;
    package Adapter is new L.With_Driver
      (Device_Driver, Info, Describe, ACPI_Native_Snapshot_Read.K.Chunk_Max,
-      Read_Part, Read_Clock, Execute_Module_Startup);
+      Read_Part, Read_Clock, Execute_Module_Startup, Initialize_Member_Startup);
    Context : Adapter.Session;
    function Consumed return Boolean is (Adapter.Consumed (Context));
    procedure Load

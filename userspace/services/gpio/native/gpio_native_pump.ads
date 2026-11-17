@@ -13,6 +13,10 @@ package GPIO_Native_Pump is
    end record;
    function Observe return Statistics;
    procedure Configure_Parent (Present : Boolean; Accepted : out Boolean);
+   -- Trusted Main only, after no-parent configuration and registry sealing.
+   -- This never fabricates parent IRQ presence or broadens pin admission.
+   procedure Enable_Polling (Accepted : out Boolean);
+   function Events_Available return Boolean;
    procedure Take_Parent_Notice (Pending : out Boolean);
    procedure Hold_Requests (Held : Boolean);
    function Requests_Held return Boolean;

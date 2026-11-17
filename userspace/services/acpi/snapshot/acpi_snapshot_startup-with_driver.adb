@@ -2,7 +2,7 @@ pragma Ada_2022;
 with ACPI_Requests.With_Driver;
 package body ACPI_Snapshot_Startup.With_Driver is
    use type ACPI_Requests.Outcome;
-   package Controller is new ACPI_Requests.With_Driver (Device_Driver, Execute_Module_Startup);
+   package Controller is new ACPI_Requests.With_Driver (Device_Driver, Execute_Module_Startup, Initialize_Member_Startup);
    function Consumed (Context : Session) return Boolean is (Context.Attempt.Started);
    procedure Load (Context : in out Session; Run : in out Device_Driver.Session;
       Deadline : R.Tick; Owner : out State_Access; Result : out Report) is

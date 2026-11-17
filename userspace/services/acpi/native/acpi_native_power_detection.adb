@@ -191,7 +191,10 @@ package body ACPI_Native_Power_Detection is
                  then No_Devices else Finished); return;
             when Batteries.Controller.Not_Ready => Finish (Not_Ready); return;
             when Batteries.Controller.Incomplete => Finish (Budget_Exhausted); return;
-            when Batteries.Controller.Found => null;
+            when Batteries.Controller.Found =>
+               -- The limit bounds samples, not a completed end-of-enumeration search.
+               -- Search once more under the same remaining fuel before reporting truncation.
+               if Saved.Batteries = Limits.Batteries then Finish (Battery_Limit); return; end if;
             when others =>
                ACPI_Native_Log.Warning ("acpi: stage battery-discovery fail " & Search.Outcome'Image &
                  " identity=" & Search.Last_Identity.Outcome'Image &
@@ -239,7 +242,6 @@ package body ACPI_Native_Power_Detection is
                when others => Finish (Battery_Failed); return;
             end case;
          end if;
-         if Saved.Batteries = Limits.Batteries then Finish (Battery_Limit); return; end if;
          Cursor := Device;
       end loop;
    end Run;

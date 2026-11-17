@@ -1,4 +1,8 @@
 pragma Ada_2022;
+with AML_Global_Locks;
+with AML_Frame_Handles;
+with AML_Mutexes;
+with ACPI_AML_Global_Lock;
 with AML_Field_Notes;
 with ACPI_Service_Core;
 with ACPI_Local_Register_Provider;
@@ -82,6 +86,11 @@ package ACPI_Local_Hardware.Pooled_Fields is
       Registers : Natural := 0;
    end record;
    function Observe return Field_Report;
+   -- Copied diagnostics only; none of these values authorizes hardware.
+   function AML_Lock_Last_Result return AML_Global_Locks.Outcome;
+   function AML_Lock_First_Failure return AML_Global_Locks.Outcome;
+   function AML_Lock_Had_Failure return Boolean;
+   function AML_Lock_Attempts return Natural;
    type Preparation_Outcome is (Not_Prepared, Prepared, Runtime_Already_Claimed,
       Startup_Owner_Mismatch, Provider_Not_Ready, Binding_Metadata_Refused,
       Provider_IO_Pending, Binding_Namespace_Unavailable,
@@ -104,6 +113,8 @@ package ACPI_Local_Hardware.Pooled_Fields is
    procedure Begin_Startup (Symbol : AML_Field_Access.Endpoint_ID; Accepted : out Boolean);
    procedure Execute_Module_Startup (Service : in out Core.State; Budget : Natural;
       Result : out Core.Execution_Report; Status : out Core.Values.Access_Status);
+   procedure Initialize_Member_Startup (Service : in out Core.State; Budget : Natural;
+      Result : out Core.Namespace.Field_Initialization_Report; Status : out Core.Values.Access_Status);
    procedure Prepare_Fields (Service : Core.State; Accepted : out Boolean);
    procedure Evaluate_Named (Service : aliased in out Core.State; Item : Core.Node_Descriptor;
       Budget : Natural; Result : out Core.Values.Result; Status : out Core.Values.Access_Status)
@@ -139,6 +150,18 @@ private
    package Scope is new ACPI_Local_Field_Scope
       (Lease,Admitting,Needs_Cleanup,Begin_Window,Acquire,Check_Access,Release,Maximum_Depth,Inspect_IO_Window);
    Transaction : Scope.Context;
+   procedure AML_Lock_Clock (Now : out Word; Available : out Boolean);
+   procedure AML_Lock_Wait (Target : Word; Completed : out Boolean);
+   -- Per-invocation work ceiling, independent of the AML timeout value.
+   -- Exhaustion is refusal, never a fabricated successful/elapsed timeout.
+   AML_Lock_Maximum_Wait_Slices : constant Positive := 64;
+   AML_Lock_Slice_Microseconds : constant Word := 1_000;
+   package AML_Lock is new ACPI_AML_Global_Lock
+     (Scope, Transaction, AML_Lock_Clock, Inspect_IO_Window, AML_Lock_Wait,
+      AML_Lock_Maximum_Wait_Slices, AML_Lock_Slice_Microseconds);
+   AML_Lock_State : AML_Lock.Context;
+   AML_Lock_Good_Logged, AML_Lock_Failure_Seen : Boolean := False;
+   First_AML_Lock_Failure : AML_Global_Locks.Outcome := AML_Global_Locks.Unavailable;
    type Declaration is record
       Region : Core.Namespace.Operation_Region_Attributes;
       Name : AML_Names.Segment;
@@ -177,6 +200,10 @@ private
    procedure Resolve_Platform (IO : in out Mux.Context; Region : Core.Namespace.Operation_Region_Attributes;
       Name : AML_Names.Segment; Node : Core.Namespace.Node_ID; Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean);
+   procedure Operate_AML_Lock
+     (IO : in out Mux.Context; Domain : AML_Frame_Handles.Invocation_Domain;
+      Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
+      Outcome : in out AML_Global_Locks.Outcome);
    procedure Begin_Field (IO : in out Mux.Context; Requires_Lock, For_Write : Boolean; Accepted : in out Boolean);
    procedure End_Field (IO : in out Mux.Context; Accepted : in out Boolean);
    Last_Field_Trace : Field_Trace_Report;
@@ -186,7 +213,8 @@ private
      (Mux.Context,Provider_Ready,Mux.Identity,Provider_Pending,Mux.Register_Count,
       Mux.Export_Target,Mux.Select_Target,Mux.Describe,Mux.Authorize,Dispatch_Profile,Mux.Reconciled,
       Resolve_Target => Resolve_Module,Begin_Transaction => Begin_Field,End_Transaction => End_Field,
-      Allow_Locked_Fields => True, Observe_Field => Note_Field, Field_Notes_Enabled => True);
+      Allow_Locked_Fields => True, Observe_Field => Note_Field, Field_Notes_Enabled => True,
+      Global_Lock_Operation => Operate_AML_Lock);
    package Evaluation is new ACPI_Field_Evaluation (Core,View,Maximum_Bindings,
       Enable_Startup_Platform_Resolution => True,Resolve_Startup_Platform_Target => Resolve_Platform);
    IO : Mux.Context;
@@ -200,6 +228,7 @@ private
    Last_Preparation : Preparation_Report;
    Field_State : Field_Phase := Owner_Fresh;
    Attempted, Completed, Finished, Has_Anchor : Boolean := False;
+   Members_Attempted, Members_Completed : Boolean := False;
    Runtime_Claimed : Boolean := False;
    Anchor : Core.Context_Key := Core.No_Context;
    function Owns (Service : Core.State) return Boolean;

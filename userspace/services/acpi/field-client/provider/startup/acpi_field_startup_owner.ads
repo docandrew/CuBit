@@ -97,6 +97,10 @@ package ACPI_Field_Startup_Owner is
    -- Callback-compatible trusted entry points. No arena/buffer alias is saved.
    -- Module success precedes these; Initialize_Members precedes first Prepare
    -- or evaluation. The cache never installs a handler or establishes _REG.
+   procedure Initialize_Member_Startup
+     (Service : in out Core.State; Budget : Natural;
+      Result : out Core.Namespace.Field_Initialization_Report;
+      Status : out Core.Values.Access_Status);
    procedure Prepare_Fields (Service : Core.State; Accepted : out Boolean);
    procedure Evaluate_Named
      (Service : aliased in out Core.State; Item : Core.Node_Descriptor;
@@ -208,6 +212,7 @@ private
    Stage : Phase := Fresh;
    Until_Time, Last_Sample : Wire.Time_Instant := 0;
    Module_Attempted, Module_Completed : Boolean := False;
+   Members_Attempted : Boolean := False;
    IO : Root_Context;
    Cache : Evaluation.Context (Maximum_Bindings);
 end ACPI_Field_Startup_Owner;

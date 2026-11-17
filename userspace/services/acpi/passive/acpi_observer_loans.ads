@@ -2,7 +2,7 @@ pragma Ada_2022;
 with ACPI_Protocol;
 with ACPI_Passive_Query.Pages;
 generic
-   type Context is limited private;
+   type Context (<>) is limited private;
    type Sender_ID is private;
    type Reference is private;
    No_Reference : Reference;

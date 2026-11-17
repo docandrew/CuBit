@@ -2,7 +2,8 @@ pragma Ada_2022;
 with ACPI_One_Service;with ACPI_Service;
 with ACPI_Native_Consumers;
 with ACPI_Native_EC_Source;
-with ACPI_Native_Log;
+with ACPI_Native_GPE_Source;with ACPI_Native_GPE_Control;
+with ACPI_Native_Log;with ACPI_Native_Diagnostic_Output;
 with ACPI_Native_Power_Buttons;
 with ACPI_Native_Power_Entry;
 with ACPI_Native_Button_Discovery;
@@ -12,11 +13,18 @@ package body ACPI_Native_Event_Domain is
    package Q renames ACPI_Requests;package One renames ACPI_One_Service;
    package S renames ACPI_Native_EC_Source;
    use type Q.Phase,One.Runtime.Status.Phase,S.Phase;
-   use type ACPI_Native_Server.Owner_Outcome,Interfaces.Unsigned_64;
+   use type ACPI_Native_Server.Owner_Outcome,Interfaces.Unsigned_64,ACPI_SCI_Events.Disposition;
+   use type One.Root.Fields.EC_Boot_Status;
    Last:Report;
    Has_Attempted,Working,Captures_Healthy,Consumers_Active,Source_Used:Boolean:=False;
    Consumer_Pending:Boolean:=False;
-   type Turn is (Source_Turn,Consumer_Turn);
+   GPE_Used,GPE_Active:Boolean:=False;
+   GPE_Failure_Noted:Boolean:=False;
+   procedure Drain_GPE_Notifications(Server:in out Q.State;Complete:out Boolean);
+   package General is new ACPI_Native_GPE_Source
+     (ACPI_Native_GPE_Control.Exclusive,Drain_GPE_Notifications);
+   use type General.Phase;
+   type Turn is (Source_Turn,General_Turn,Consumer_Turn);
    Next_Turn:Turn:=Consumer_Turn;
    type Button is (Power_Button,Sleep_Button);
    Presses:array(Button) of Interfaces.Unsigned_64:=[others=>0];
@@ -52,8 +60,36 @@ package body ACPI_Native_Event_Domain is
       elsif Consumers_Active then Pump.Advance(Server,Result);
       else Result:=ACPI_Native_Server.Owner_Refused;end if;
    end Pump_One;
+   procedure Drain_GPE_Notifications(Server:in out Q.State;Complete:out Boolean) is
+      Work:ACPI_Native_Server.Owner_Outcome;
+   begin
+      Complete:=False;
+      for Step in 1..Shutdown_Turns loop
+         exit when not Q.Notifications_Pending(Server);
+         Pump_One(Server,Work);
+         if Work=ACPI_Native_Server.Owner_Refused then return;end if;
+      end loop;
+      Complete:=not Q.Notifications_Pending(Server);
+   end Drain_GPE_Notifications;
+   procedure Note_GPE(Server:Q.State;Success:Boolean) is
+      View:constant General.Report:=General.Observe;
+   begin
+      if Success then
+         ACPI_Native_Diagnostic_Output.Write("acpi: stage general-gpe ok handlers="&View.Sources'Image&
+            " ec-armed="&Boolean'Image(Last.EC_Armed),
+            Diagnostics_Quiet(Server) and then not ACPI_Native_Power_Entry.Blocks_Runtime,True);
+      elsif not GPE_Failure_Noted then
+         GPE_Failure_Noted:=True;
+         -- Established-ring/serial copy only on failure: never open a channel
+         -- while original result/window/control obligations may be retained.
+         ACPI_Native_Diagnostic_Output.Write("acpi: stage general-gpe fail "&Last.Why'Image&
+            " state="&View.Stage'Image&" reason="&View.Why'Image&
+            " source="&(if View.Sources=0 then "NONE" else View.At_Source'Image),False);
+      end if;
+   end Note_GPE;
    procedure Start(Server:in out Q.State;Result:out Start_Outcome) is
-      Accepted,Source_Ready,Closed_Consumers:Boolean;
+      Accepted,Source_Ready:Boolean;
+      Boot:One.Root.Fields.EC_Boot_Report;
       Work:ACPI_Native_Server.Owner_Outcome;
       Button_Start:ACPI_Native_Button_Discovery.Outcome;
    begin
@@ -63,6 +99,7 @@ package body ACPI_Native_Event_Domain is
         or else One.Runtime.Current/=One.Runtime.Status.Idle
         or else not One.Root.Fields.Control_Idle or else Q.Retained_Results_Pending(Server) then Fail(Not_Ready);return;end if;
       if not ACPI_SCI_Events.Is_Armed then Last.Stage:=Fixed_Only;Result:=SCI_Unavailable;return;end if;
+      if not ACPI_Native_GPE_Control.Exclusive then Fail(Control_Not_Exclusive);Note_GPE(Server,False);return;end if;
       Working:=True;
       -- Captured startup Notify values have the original Core's provenance.
       -- Binding/routes run no AML; collect/publish starts only after admission.
@@ -78,34 +115,36 @@ package body ACPI_Native_Event_Domain is
       if Q.Notifications_Pending(Server) then Fail(Routing_Refused);Working:=False;return;end if;
       Source_Used:=True;S.Configure(Server,Source_Ready);Last.EC:=ACPI_Native_EC_Discovery.Observe.Status;
       if not Source_Ready then
-         -- A safely refused EC is a visible lack of live family support, not
-         -- fresh data. Fixed buttons and read-only table/metrics IPC still work.
-         for Step in 1..Shutdown_Turns loop
-            exit when not Q.Notifications_Pending(Server);
-            Pump_One(Server,Work);
-            if Work=ACPI_Native_Server.Owner_Refused then Fail(Routing_Refused);Working:=False;return;end if;
-         end loop;
-         if Diagnostics_Quiet(Server) and then One.Runtime.Current=One.Runtime.Status.Idle and then S.Quiet then
-            Consumers.Close(Server,Closed_Consumers);
-            if Closed_Consumers then
-               Consumers_Active:=False;Last.Stage:=Fixed_Only;Result:=EC_Unavailable;Working:=False;return;
-            end if;
+         -- Distinguish safely unavailable EC from retained/uncertain startup.
+         -- Consumers and ordinary GPEs remain useful on a system without EC.
+         Drain_GPE_Notifications(Server,Accepted);
+         if not Accepted or else not Diagnostics_Quiet(Server)
+           or else One.Runtime.Current/=One.Runtime.Status.Idle or else not S.Quiet then
+            Fail(EC_Startup_Refused);Working:=False;return;
          end if;
-         Fail(EC_Startup_Refused);Working:=False;return;
+      else
+         if not ACPI_Native_GPE_Control.Exclusive then Fail(Control_Not_Exclusive);Note_GPE(Server,False);Working:=False;return;end if;
+         S.Arm(Consumers_Active,Accepted);
+         if not Accepted then Fail(EC_Startup_Refused);Working:=False;return;end if;
+         Last.EC_Armed:=True;
       end if;
-      S.Arm(Consumers_Active,Accepted);
-      if not Accepted then Fail(EC_Startup_Refused);Working:=False;return;end if;
-      Last.EC_Armed:=True;
       for Step in 1..Shutdown_Turns loop
          exit when not Q.Notifications_Pending(Server);Pump_One(Server,Work);
          if Work=ACPI_Native_Server.Owner_Refused then Fail(Routing_Refused);Working:=False;return;end if;
       end loop;
       if Q.Notifications_Pending(Server) then Fail(Routing_Refused);Working:=False;return;end if;
+      Boot:=One.Root.Fields.EC_Boot_Observation;
+      GPE_Used:=True;
+      General.Start(Server,Consumers_Active,Boot.Status=One.Root.Fields.EC_Ready,
+         ACPI_SCI_Registers.GPE_Number(Boot.GPE),Accepted);
+      if not Accepted then Fail(GPE_Startup_Refused);Note_GPE(Server,False);Working:=False;return;end if;
+      GPE_Active:=True;Last.General_GPEs:=General.Observe.Sources;
       ACPI_Native_Button_Discovery.Start(Server,ACPI_SCI_Events.Fixed_Power_Button_Available,Button_Start);
       if not ACPI_Native_Button_Discovery.Quiet or else One.Runtime.Current/=One.Runtime.Status.Idle then
          Fail(Consumer_Start_Refused);Working:=False;return;
       end if;
-      Last.Stage:=Live;Consumer_Pending:=True;Result:=Ready;Working:=False;
+      Note_GPE(Server,True);
+      Last.Stage:=Live;Consumer_Pending:=True;Result:=(if Source_Ready then Ready else EC_Unavailable);Working:=False;
    end Start;
    procedure Fixed_Event(Event:ACPI_SCI_Registers.Fixed_Event;Result:out ACPI_SCI_Events.Disposition) is
       procedure Record_Press(Item:Button) is
@@ -128,7 +167,10 @@ package body ACPI_Native_Event_Domain is
    procedure GPE_Event(GPE:ACPI_SCI_Registers.GPE_Number;Result:out ACPI_SCI_Events.Disposition) is
    begin
       Result:=ACPI_SCI_Events.Unbound;
-      if Last.Stage=Live then S.GPE_Event(GPE,Result);end if;
+      if Last.Stage=Live then
+         if Last.EC_Armed then S.GPE_Event(GPE,Result);end if;
+         if Result=ACPI_SCI_Events.Unbound and then GPE_Active then General.GPE_Event(GPE,Result);end if;
+      end if;
    end GPE_Event;
    function Buttons_Pending return Boolean is (for some B in Button=>Presses(B)/=0);
    function Facts_Pending return Boolean is
@@ -137,7 +179,8 @@ package body ACPI_Native_Event_Domain is
    function Query_Pending return Boolean is
      (Last.Stage=Live and then S.Observe.Stage in S.Query_Pending|S.Awaiting_Notifications);
    function Runnable return Boolean is
-     (Facts_Pending or else Query_Pending or else (Consumers_Active and then Consumer_Pending));
+     (Facts_Pending or else Query_Pending or else (GPE_Active and then General.Runnable)
+      or else (Consumers_Active and then Consumer_Pending));
    procedure Publish_One(Server:Q.State;Published:out Boolean) is
       Fact:S.Query_Fact;Present:Boolean;
       Line:Consumers.Fact_Line;Length:Consumers.Fact_Length;
@@ -169,7 +212,8 @@ package body ACPI_Native_Event_Domain is
    begin
       Result:=ACPI_Native_Server.Owner_Refused;
       if Working or Last.Stage not in Live|Fixed_Only then return;end if;
-      if Last.Stage=Live and then S.Observe.Stage=S.Failed then Fail(EC_Work_Refused);return;end if;
+      if Last.Stage=Live and then Last.EC_Armed and then S.Observe.Stage=S.Failed then Fail(EC_Work_Refused);return;end if;
+      if Last.Stage=Live and then GPE_Used and then General.Observe.Stage=General.Failed then Fail(GPE_Work_Refused);Note_GPE(Server,False);return;end if;
       Working:=True;Pump_One(Server,Work);
       if Work=ACPI_Native_Server.Owner_Refused then Fail(Routing_Refused);Working:=False;return;end if;
       if Work=ACPI_Native_Server.Owner_Pending then Result:=Work;Working:=False;return;end if;
@@ -180,13 +224,39 @@ package body ACPI_Native_Event_Domain is
       if not Diagnostics_Quiet(Server) then Fail(Not_Ready);Working:=False;return;end if;
       Work:=ACPI_Native_Server.Owner_Idle;
       if Last.Stage=Live then
-         if Next_Turn=Consumer_Turn and then Consumers_Active then
-            Consumers.Advance(Server,Work);Consumer_Pending:=Work=ACPI_Native_Server.Owner_Pending;Next_Turn:=Source_Turn;
-            if Work=ACPI_Native_Server.Owner_Refused then Fail(Consumer_Work_Refused);end if;
-         else
-            S.Advance(Server,Work);Next_Turn:=Consumer_Turn;
-            if Work=ACPI_Native_Server.Owner_Refused then Fail(EC_Work_Refused);end if;
-         end if;
+         -- Rotate even across an idle owner so a busy family cannot starve peers.
+         case Next_Turn is
+            when Consumer_Turn=>
+               if Consumers_Active then
+                  Consumers.Advance(Server,Work);Consumer_Pending:=Work=ACPI_Native_Server.Owner_Pending;
+                  if Work=ACPI_Native_Server.Owner_Refused then
+                     Fail(Consumer_Work_Refused);
+                     declare
+                        View:constant Consumers.Report:=Consumers.Observe;
+                     begin
+                        -- Preserve the copied reason without opening IPC while
+                        -- runtime/Field/result ownership may be uncertain.
+                        ACPI_Native_Diagnostic_Output.Write
+                          ("acpi: stage consumer fail reason="&View.Why'Image&
+                           " family="&View.At_Family'Image&
+                           " runtime="&One.Runtime.Current'Image,False);
+                     end;
+                  end if;
+               end if;
+               Next_Turn:=Source_Turn;
+            when Source_Turn=>
+               if Last.EC_Armed then
+                  S.Advance(Server,Work);
+                  if Work=ACPI_Native_Server.Owner_Refused then Fail(EC_Work_Refused);end if;
+               end if;
+               Next_Turn:=General_Turn;
+            when General_Turn=>
+               if GPE_Active then
+                  General.Advance(Server,Work);
+                  if Work=ACPI_Native_Server.Owner_Refused then Fail(GPE_Work_Refused);Note_GPE(Server,False);end if;
+               end if;
+               Next_Turn:=Consumer_Turn;
+         end case;
       end if;
       Result:=(if Last.Stage=Failed then ACPI_Native_Server.Owner_Refused
          elsif Work=ACPI_Native_Server.Owner_Pending or else Runnable then ACPI_Native_Server.Owner_Pending
@@ -196,19 +266,38 @@ package body ACPI_Native_Event_Domain is
    begin
       Last.Stage:=Stopping;ACPI_Native_Button_Discovery.Begin_Stop;
       if Source_Used then S.Stop;end if;
+      if GPE_Used then General.Stop;end if;
       if Consumers_Active then Consumers.Begin_Stop;end if;
    end Begin_Stop;
    procedure Confirm_Disarm(Result:ACPI_SCI_Quiesce.Result) is
-   begin if Source_Used then S.Confirm_Disarm(Result);end if;end Confirm_Disarm;
+   begin
+      if Source_Used then S.Confirm_Disarm(Result);end if;
+      if GPE_Used then General.Confirm_Disarm(Result);end if;
+   end Confirm_Disarm;
    procedure Drain(Server:in out Q.State;Result:out Drain_Outcome) is
       Work:ACPI_Native_Server.Owner_Outcome;Published,Source_Closed:Boolean;
+      General_Closed:Boolean:=False;
    begin
       Result:=Retained;if Working then return;end if;
       if Last.Stage/=Stopping then Begin_Stop;end if;
       if not Has_Attempted and then not Buttons_Pending then Result:=Drained;return;end if;
-      Working:=True;Pump_One(Server,Work);
+      Working:=True;
+      -- A known retained result can block both notification routing and the
+      -- final quiet gate. Let its original owner release it first. Close may
+      -- still be incomplete because notifications have yet to be acknowledged.
+      if GPE_Used then General.Close(Server,General_Closed);end if;
+      if Q.Retained_Results_Pending(Server) then Working:=False;return;end if;
+      Pump_One(Server,Work);
       if Work=ACPI_Native_Server.Owner_Refused then Working:=False;return;end if;
       if Work=ACPI_Native_Server.Owner_Pending then Result:=Pending;Working:=False;return;end if;
+      -- Close the known retained GPE result before the global quiet gate.
+      -- That gate deliberately rejects retained results; checking it first
+      -- would make their original owner's release path unreachable.
+      if GPE_Used then
+         if not General_Closed then General.Close(Server,General_Closed);end if;
+         if not General_Closed then Working:=False;return;end if;
+         GPE_Active:=False;
+      end if;
       if not Diagnostics_Quiet(Server) then Working:=False;return;end if;
       Publish_One(Server,Published);
       if Published then Result:=Pending;Working:=False;return;end if;
@@ -236,5 +325,6 @@ package body ACPI_Native_Event_Domain is
      (Last.Stage=Closed and then ACPI_Native_Button_Discovery.Quiet and then not Working and then not Facts_Pending
       and then (not Has_Attempted or else Diagnostics_Quiet(Server))
       and then (not Source_Used or else S.Quiet)
+      and then (not GPE_Used or else General.Observe.Stage=General.Stopped)
       and then not Consumers_Active);
 end ACPI_Native_Event_Domain;

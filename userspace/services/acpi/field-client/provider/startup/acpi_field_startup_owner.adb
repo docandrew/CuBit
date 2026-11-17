@@ -19,6 +19,7 @@ package body ACPI_Field_Startup_Owner is
    function Plain_Ready (IO : Plain.Context) return Boolean is
      (Plain.Status (IO) = Plain.Ready);
    use type Provider.Startup_State;
+   use type Core.Namespace.Field_Initialization_Outcome;
    use type Core.Values.Access_Status, Core.Execution_Phase_Result, Core.Values.Module_Outcome;
    Provider_Symbol : constant AML_Field_Access.Endpoint_ID := 1;
    procedure Record_Capacity_Failure (Item : ACPI_Capacity_Diagnostics.Report) is
@@ -136,6 +137,27 @@ package body ACPI_Field_Startup_Owner is
         and then Result.Modules.Outcome = Core.Values.Modules_Completed;
       if not Module_Completed then Stage := Failed; end if;
    end Execute_Module_Startup;
+   procedure Initialize_Member_Startup
+     (Service : in out Core.State; Budget : Natural;
+      Result : out Core.Namespace.Field_Initialization_Report;
+      Status : out Core.Values.Access_Status) is
+   begin
+      Result := (others => <>); Status := Core.Values.Wrong_Phase;
+      if Members_Attempted then return;end if;
+      Members_Attempted := True;
+      if Root_Pending(IO) then
+         Status := Core.Values.Busy;Result.Failure := AML_Execute.Field_Indeterminate;
+         Result.Reconciliation_Required := True;Stage := Failed;return;
+      end if;
+      if not Module_Completed or else not Usable then return;end if;
+      Last_Capacity := ACPI_Capacity_Diagnostics.No_Report;
+      Evaluation.Bindings.Startup.Initialize_Members(Service,IO,Budget,Result,Status);
+      if Status /= Core.Values.Available
+        or else Result.Outcome /= Core.Namespace.Initialization_Completed
+        or else Result.Members.Missing /= 0 or else Result.Members.Unsupported /= 0
+        or else Result.Reconciliation_Required or else Result.Fatal.Present
+      then Stage := Failed;end if;
+   end Initialize_Member_Startup;
    procedure Prepare_Fields (Service : Core.State; Accepted : out Boolean) is
    begin
       Accepted := False;

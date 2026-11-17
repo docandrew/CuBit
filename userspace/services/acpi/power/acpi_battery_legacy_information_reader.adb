@@ -6,6 +6,7 @@ package body ACPI_Battery_Legacy_Information_Reader with SPARK_Mode is
    package N renames Core.Namespace;
    package F renames Format;
    use type V.Access_Status;
+   use type AML_Decode.Byte;
    use type V.Value_Handle;
    use type V.Value_Kind;
    use type N.Object_Kind;
@@ -27,6 +28,8 @@ package body ACPI_Battery_Legacy_Information_Reader with SPARK_Mode is
       Identifiers : F.Texts := F.Empty_Texts;
       Data : AML_Decode.Bytes (1 .. F.Text_Capacity) := [others => 0];
       Copied : Natural;
+      Read_Length, Text_Length : Natural;
+      Terminator : AML_Decode.Bytes (1 .. 1);
       Decoded : F.Decode_Result;
       procedure Drop (Handle : in out V.Value_Handle; Tried : in out Boolean) is
          Status : V.Access_Status;
@@ -50,20 +53,44 @@ package body ACPI_Battery_Legacy_Information_Reader with SPARK_Mode is
          Core.Describe_Result (Service, Element, Description, Report.Access_Result);
          if Report.Access_Result /= V.Available then Report.Outcome := Evaluation_Failed; return False; end if;
          if Item in F.Text_Field then
-            if Description.Kind /= V.String_Description then Report.Outcome := Wrong_Element_Type; return False; end if;
-            if Description.Length > F.Text_Capacity then Report.Outcome := Text_Too_Long; return False; end if;
-            if Description.Length > Budget - Report.Charged then Report.Outcome := Budget_Exhausted; return False; end if;
-            Report.Charged := Report.Charged + Description.Length;
-            if Description.Length > 0 then
-               Core.Read_Result_Bytes (Service, Element, 0, Data (1 .. Description.Length), Copied, Report.Access_Result);
-               if Report.Access_Result /= V.Available or else Copied /= Description.Length then
+            -- Predefined battery text may be returned as a Buffer by firmware.
+            -- Copy its NUL-terminated prefix without changing the AML object.
+            if Description.Kind not in V.String_Description | V.Buffer_Description then
+               Report.Outcome := Wrong_Element_Type; return False;
+            end if;
+            if Description.Kind = V.String_Description and then Description.Length > F.Text_Capacity then
+               Report.Outcome := Text_Too_Long; return False;
+            end if;
+            Read_Length := Natural'Min (Description.Length, F.Text_Capacity);
+            if Read_Length > Budget - Report.Charged then Report.Outcome := Budget_Exhausted; return False; end if;
+            Report.Charged := Report.Charged + Read_Length;
+            if Read_Length > 0 then
+               Core.Read_Result_Bytes (Service, Element, 0, Data (1 .. Read_Length), Copied, Report.Access_Result);
+               if Report.Access_Result /= V.Available or else Copied /= Read_Length then
                   Report.Outcome := Evaluation_Failed; return False;
                end if;
-               for I in 1 .. Description.Length loop
-                  Identifiers (Item).Data (I) := Interfaces.Unsigned_8 (Data (I));
-               end loop;
             end if;
-            Identifiers (Item).Length := Description.Length;
+            Text_Length := Read_Length;
+            if Description.Kind = V.Buffer_Description then
+               for I in 1 .. Read_Length loop
+                  if Data (I) = 0 then Text_Length := I - 1; exit; end if;
+               end loop;
+               if Text_Length = Read_Length and then Description.Length > Read_Length then
+                  -- A terminator immediately after a full-sized payload fits.
+                  -- Read one additional byte; never copy an unbounded buffer.
+                  if Report.Charged = Budget then Report.Outcome := Budget_Exhausted; return False; end if;
+                  Report.Charged := Report.Charged + 1;
+                  Core.Read_Result_Bytes (Service, Element, Read_Length, Terminator, Copied, Report.Access_Result);
+                  if Report.Access_Result /= V.Available or else Copied /= Terminator'Length then
+                     Report.Outcome := Evaluation_Failed; return False;
+                  end if;
+                  if Terminator (1) /= 0 then Report.Outcome := Text_Too_Long; return False; end if;
+               end if;
+            end if;
+            for I in 1 .. Text_Length loop
+               Identifiers (Item).Data (I) := Interfaces.Unsigned_8 (Data (I));
+            end loop;
+            Identifiers (Item).Length := Text_Length;
          else
             if Description.Kind /= V.Integer_Description then Report.Outcome := Wrong_Element_Type; return False; end if;
             Report.Raw (Item) := Interfaces.Unsigned_64 (Description.Number);

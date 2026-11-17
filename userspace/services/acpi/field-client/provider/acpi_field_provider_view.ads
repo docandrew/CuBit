@@ -1,4 +1,7 @@
 pragma Ada_2022;
+with AML_Global_Locks;
+with AML_Frame_Handles;
+with AML_Mutexes;
 with AML_Field_Notes;
 with AML_Field_Access;
 with AML_Field_Layout;
@@ -41,6 +44,10 @@ generic
    Allow_Locked_Fields : Boolean := False;
    with procedure Observe_Field (Item : AML_Field_Notes.Event) is null;
    Field_Notes_Enabled : Boolean := False;
+   with procedure Global_Lock_Operation
+     (IO : in out Provider_Context; Domain : AML_Frame_Handles.Invocation_Domain;
+      Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
+      Outcome : in out AML_Global_Locks.Outcome) is null;
 package ACPI_Field_Provider_View is
    Supports_Field_Notes : constant Boolean := Field_Notes_Enabled;
    procedure Note_Field (Item : AML_Field_Notes.Event) renames Observe_Field;
@@ -73,4 +80,8 @@ package ACPI_Field_Provider_View is
       Accepted : in out Boolean) renames Begin_Transaction;
    procedure End_Field
      (IO : in out Context; Accepted : in out Boolean) renames End_Transaction;
+   procedure Operate_Global_Lock
+     (IO : in out Context; Domain : AML_Frame_Handles.Invocation_Domain;
+      Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
+      Outcome : in out AML_Global_Locks.Outcome) renames Global_Lock_Operation;
 end ACPI_Field_Provider_View;

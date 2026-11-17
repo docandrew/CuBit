@@ -8,7 +8,11 @@ package body HID_I2C_Descriptors with SPARK_Mode is
    is (Interfaces.Unsigned_16 (Data (Data'First + Offset))
        or Interfaces.Shift_Left
          (Interfaces.Unsigned_16 (Data (Data'First + (Offset + 1))), 8))
-      with Pre => Data'Length = Descriptor_Bytes;
+      with Global => null,
+        Pre => Interfaces.Unsigned_64 (Data'Length) = Interfaces.Unsigned_64 (Descriptor_Bytes),
+        Post => Word'Result = Interfaces.Unsigned_16 (Data (Data'First + Offset))
+          + Interfaces.Unsigned_16 (Byte_Scale)
+            * Interfaces.Unsigned_16 (Data (Data'First + (Offset + 1)));
    function Decode (Data : Bytes) return Decode_Result is
       Length_Offset : constant Word_Offset := 0;
       Version_Offset : constant Word_Offset := 2;
@@ -26,9 +30,9 @@ package body HID_I2C_Descriptors with SPARK_Mode is
       Reserved_Low_Offset : constant Word_Offset := 26;
       Reserved_High_Offset : constant Word_Offset := 28;
    begin
-      if Data'Length < Descriptor_Bytes then
+      if Interfaces.Unsigned_64 (Data'Length) < Interfaces.Unsigned_64 (Descriptor_Bytes) then
          return (Status => Short_Transfer);
-      elsif Data'Length > Descriptor_Bytes then
+      elsif Interfaces.Unsigned_64 (Data'Length) > Interfaces.Unsigned_64 (Descriptor_Bytes) then
          return (Status => Trailing_Data);
       elsif Word (Data, Length_Offset) /=
         Interfaces.Unsigned_16 (Descriptor_Bytes) then

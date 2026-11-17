@@ -525,7 +525,8 @@ package AML_Execute with SPARK_Mode, Pure is
       Require_Invocation_Authority : Boolean := False;
       with procedure Operate_Mutex
         (Environment : in out Context; Item : Datum; Action : AML_Mutexes.Operation;
-         Timeout : AML_Mutexes.Timeout; Status : in out Execution_Status) is null;
+         Timeout : AML_Mutexes.Timeout; Timed_Out : in out Boolean;
+         Status : in out Execution_Status) is null;
       with procedure Enter_Serialized_Method
         (Environment : in out Context; Method : Natural;
          Frame : AML_Frame_Handles.Frame_Handle; Status : in out Execution_Status) is null;
@@ -667,6 +668,15 @@ package AML_Execute with SPARK_Mode, Pure is
       -- allocation, logging, hardware, reentry or an effect on execution policy.
       Profile_Enabled : Boolean := False;
       with procedure Observe_Profile (Item : AML_Profile_Events.Event) is null;
+      -- Authenticate a live String and resolve its ASL path in the current
+      -- lexical scope. Actuals perform no allocation, collection, AML reentry
+      -- or hardware access. The caller initializes a refusal and no reference;
+      -- the default leaves that refusal unchanged.
+      with procedure Resolve_String_Name
+        (Environment : in out Context; Scope : Natural; Item : Datum;
+         Budget : Natural; Charged : in out Natural;
+         Ref : in out AML_References.Reference;
+         Status : in out Execution_Status) is null;
    procedure Execute_From_Source
      (Code : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
       Args : Value_Arguments; Argument_Count : Natural; Budget : Natural;

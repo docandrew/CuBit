@@ -2,6 +2,9 @@ pragma Ada_2022;
 with AML_Decode;
 package body ACPI_Firmware_Compatibility with SPARK_Mode is
    use type AML_Interface_Policy.Add_Status;
+   function OS_Name_For (Item : Profile) return String is
+     (case Item is when Declared.Neutral => Native_OS_Name,
+      when Declared.Known_Windows => Windows_OS_Name);
    function Name (Item : Profile) return String is
      (case Item is when Declared.Neutral => "neutral",
       when Declared.Known_Windows => "known-windows-compatibility");

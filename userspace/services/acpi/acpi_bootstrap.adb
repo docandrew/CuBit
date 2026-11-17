@@ -4,6 +4,7 @@ package body ACPI_Bootstrap with SPARK_Mode is
    function Retained_Results_Pending (Session : State) return Boolean is
      (Natural (ACPI_Service.Retained_Results (Session.Core)) > 0);
    use type Devices.Phase;
+   use type ACPI_Service.Namespace.Field_Initialization_Outcome;
    package Unconfigured is new ACPI_Unprovisioned_Regions (ACPI_Service);
    procedure Unconfigured_Regions
      (Service : aliased in out ACPI_Service.State; Budget : Natural;
@@ -25,6 +26,9 @@ package body ACPI_Bootstrap with SPARK_Mode is
            Source => (Kind => ACPI_Fatal_Diagnostics.Definition_Block,
              Table_ID => ACPI_Fatal_Diagnostics.Catalog_Identifier
                (Session.Completion_Data.Execution.Failed_Table_ID)));
+      elsif Session.Completion_Data.Members.Fatal.Present then
+         return (Present => True, Item => Session.Completion_Data.Members.Fatal.Item,
+           Source => (Kind => ACPI_Fatal_Diagnostics.Member_Initialization));
       elsif Session.Device_Data.Fatal.Present then
          return (Present => True, Item => Session.Device_Data.Fatal.Item,
            Source => (Kind => ACPI_Fatal_Diagnostics.Device_Initializer,
@@ -33,7 +37,8 @@ package body ACPI_Bootstrap with SPARK_Mode is
       else return (Present => False); end if;
    end Fatal_Diagnostic;
    function Startup_Charged (Session : State) return Natural is
-     (Session.Completion_Data.Execution.Modules.Charged + Session.Device_Data.Charged);
+     (Session.Completion_Data.Execution.Modules.Charged +
+      Session.Completion_Data.Members.Charged + Session.Device_Data.Charged);
    function Public_Report (Item : Devices.Report) return Device_Report is
      (Stage => (case Item.Stage is
         when Devices.Not_Started => Devices_Not_Started,
@@ -172,12 +177,37 @@ package body ACPI_Bootstrap with SPARK_Mode is
       -- count at this boundary before exposing Receiving/Complete again.
       if ACPI_Service.Observe (Session.Core).Tables > Session.Required then Session.Stage := Failed; end if;
    end Import_Table;
+   procedure Initialize_Default_Members
+     (Service : in out ACPI_Service.State; Budget : Natural;
+      Report : out ACPI_Service.Namespace.Field_Initialization_Report;
+      Status : out ACPI_Service.Values.Access_Status) is
+      Pending : constant Natural := ACPI_Service.Pending_Members(Service);
+   begin
+      Report := (others => <>);
+      if Pending > Budget then
+         Status := ACPI_Service.Values.Available;
+         Report.Outcome := ACPI_Service.Namespace.Initialization_Budget_Refused;
+         return;
+      end if;
+      ACPI_Service.Initialize_Members(Service,Report.Members,Status);
+      if Status /= ACPI_Service.Values.Available then return;end if;
+      Report.Charged := Pending;
+      Report.Outcome := (if Report.Members.Missing=0 and Report.Members.Unsupported=0
+        then ACPI_Service.Namespace.Initialization_Completed
+        else ACPI_Service.Namespace.Initialization_Stopped);
+   end Initialize_Default_Members;
+
    generic
       with procedure Initialize_Devices (Session : in out State; Budget : Natural);
       with procedure Execute_Module_Startup
         (Service : in out ACPI_Service.State; Budget : Natural;
          Report : out ACPI_Service.Execution_Report;
          Status : out ACPI_Service.Values.Access_Status) is ACPI_Service.Execute_Frozen;
+
+      with procedure Initialize_Member_Startup
+        (Service : in out ACPI_Service.State; Budget : Natural;
+         Report : out ACPI_Service.Namespace.Field_Initialization_Report;
+         Status : out ACPI_Service.Values.Access_Status) is Initialize_Default_Members;
 
    procedure Finish_Session
      (Session : in out State; Budget : Startup_Budget);
@@ -207,24 +237,29 @@ package body ACPI_Bootstrap with SPARK_Mode is
         or else Session.Completion_Data.Execution.Modules.Outcome /= ACPI_Service.Values.Modules_Completed
       then return; end if;
       Session.Completion_Data.Stage := Members_Failed;
-      declare
-         Prior : constant ACPI_Service.State_Model := Core_Model (Session) with Ghost;
-         Pending : constant Natural := Pending_Members (Session);
-         Report : ACPI_Service.Namespace.Initialization_Report;
-      begin
-         ACPI_Service.Initialize_Members
-           (Session.Core, Report, Session.Completion_Data.Member_Status);
-         if Session.Completion_Data.Member_Status /= ACPI_Service.Values.Available then return; end if;
-         pragma Assert (ACPI_Service.Initialization_Frame (Core_Model (Session), Prior));
-         pragma Assert (Report.Bound + Report.Missing + Report.Unsupported = Pending);
-         Session.Initialization := Report;
-      end;
+      Initialize_Member_Startup
+        (Session.Core, Budget - Session.Completion_Data.Execution.Modules.Charged,
+         Session.Completion_Data.Members, Session.Completion_Data.Member_Status);
+      -- The actual may have completed provider effects. Preserve its original
+      -- report before any readiness decision; no retry or namespace rollback.
+      Session.Initialization := Session.Completion_Data.Members.Members;
+      if Session.Completion_Data.Members.Charged >
+        Budget - Session.Completion_Data.Execution.Modules.Charged
+      then raise Program_Error with "member initializer exceeded startup budget";end if;
+      if Session.Completion_Data.Member_Status /= ACPI_Service.Values.Available
+        or else Session.Completion_Data.Members.Outcome /= ACPI_Service.Namespace.Initialization_Completed
+        or else Session.Completion_Data.Members.Members.Missing /= 0
+        or else Session.Completion_Data.Members.Members.Unsupported /= 0
+        or else Session.Completion_Data.Members.Fatal.Present
+        or else Session.Completion_Data.Members.Reconciliation_Required
+      then return;end if;
       Session.Initialized := True;
       ACPI_Service.Configure_Notifications
         (Session.Core, Session.Notify_Requested, Session.Notify_Status);
       if Session.Notify_Status /= ACPI_Service.Values.Available then return; end if;
       Session.Notify_Enabled := Session.Notify_Requested;
-      Initialize_Devices (Session, Budget - Session.Completion_Data.Execution.Modules.Charged);
+      Initialize_Devices (Session, Budget - Session.Completion_Data.Execution.Modules.Charged -
+        Session.Completion_Data.Members.Charged);
       -- Method declarations and provisional members must be cleaned at return.
       -- Do not label the retained snapshot complete if that invariant is lost.
       if ACPI_Service.Pending_Members (Session.Core) /= 0 then return; end if;
@@ -282,7 +317,7 @@ package body ACPI_Bootstrap with SPARK_Mode is
             Regions_Attempted => Item.Regions_Attempted, Region_Status => Item.Region_Status, First_Error_Node => Item.First_Error_Node,
             First_Error => Item.First_Error, Fatal => Item.Fatal, Fatal_Initializer => Item.Fatal_Initializer);
       end Initialize_Controlled;
-      procedure Complete is new Finish_Session (Initialize_Controlled, Execute_Module_Startup);
+      procedure Complete is new Finish_Session (Initialize_Controlled, Execute_Module_Startup, Initialize_Member_Startup);
    begin
       if Session.Stage = Receiving then
          Device_Driver.Claim_Startup (Run, Claimed);

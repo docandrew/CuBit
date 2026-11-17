@@ -18,7 +18,7 @@ package body ACPI_Native_Firmware_Profile is
    procedure Log_Selected is
    begin
       ACPI_Native_Log.Info ("acpi: stage firmware-profile ok profile=" & P.Name (Chosen) &
-        " interfaces=" & AML_Interface_Policy.Count (Supported)'Image);
+        " os=""" & OS_Name & """ interfaces=" & AML_Interface_Policy.Count (Supported)'Image);
    end Log_Selected;
    procedure Observe_Query (Name : AML_Decode.Bytes; Supported, Truncated : Boolean) is
       Shown : constant Natural := Natural'Min (Name'Length, Maximum_Shown_Bytes);
@@ -37,5 +37,6 @@ package body ACPI_Native_Firmware_Profile is
         " log-clipped=" & Boolean'Image (Shown < Name'Length));
    end Observe_Query;
    function Selected return P.Profile is (Chosen);
+   function OS_Name return String is (P.OS_Name_For (Chosen));
    function Interfaces return AML_Interface_Policy.Policy is (Supported);
 end ACPI_Native_Firmware_Profile;

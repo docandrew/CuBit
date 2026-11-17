@@ -32,6 +32,7 @@ package ACPI_Bootstrap with SPARK_Mode is
       Freeze : ACPI_Service.Freeze_Status := ACPI_Service.Freeze_Wrong_Phase;
       Execution : ACPI_Service.Execution_Report;
       Execution_Status : ACPI_Service.Values.Access_Status := ACPI_Service.Values.Wrong_Phase;
+      Members : ACPI_Service.Namespace.Field_Initialization_Report;
       Member_Status : ACPI_Service.Values.Access_Status := ACPI_Service.Values.Wrong_Phase;
    end record;
    type Device_Phase is (Devices_Not_Started, Devices_Preparing, Devices_Awaiting_Regions,
@@ -202,6 +203,16 @@ package ACPI_Bootstrap with SPARK_Mode is
              and then Completion (Session) = Completion (Session)'Old
          else Model (Session) = Model (Session)'Old);
 
+   -- Metadata-only observer policy. Hardware-dependent members are reported
+   -- stopped, never silently certified as initialized. A provider-selected
+   -- driver passes its explicit member adapter through With_Driver instead.
+   procedure Initialize_Default_Members
+     (Service : in out ACPI_Service.State; Budget : Natural;
+      Report : out ACPI_Service.Namespace.Field_Initialization_Report;
+      Status : out ACPI_Service.Values.Access_Status)
+     with Pre => ACPI_Service.Valid(Service), Post => ACPI_Service.Valid(Service)
+       and then Report.Charged <= Budget;
+
    -- Trusted controller selects an actual device driver, including its region
    -- barrier and provisioned evaluator. Run is process-lifetime state: it is
    -- never reset/replayed. A consumed Run cannot report readiness for a new
@@ -216,6 +227,10 @@ package ACPI_Bootstrap with SPARK_Mode is
         (Service : in out ACPI_Service.State; Budget : Natural;
          Report : out ACPI_Service.Execution_Report;
          Status : out ACPI_Service.Values.Access_Status) is ACPI_Service.Execute_Frozen;
+      with procedure Initialize_Member_Startup
+        (Service : in out ACPI_Service.State; Budget : Natural;
+         Report : out ACPI_Service.Namespace.Field_Initialization_Report;
+         Status : out ACPI_Service.Values.Access_Status) is Initialize_Default_Members;
    package With_Driver is
       pragma Unevaluated_Use_Of_Old (Allow);
    procedure Finish

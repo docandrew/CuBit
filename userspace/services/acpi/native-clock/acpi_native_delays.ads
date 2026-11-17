@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with Interfaces;
 with AML_Delays;
+with AML_Events;
 -- Trusted process-lifetime delay domain. The current native observer closes
 -- startup before registration. An event controller may instead transfer a
 -- successful startup to runtime, then supply one finite window per event.
@@ -24,4 +25,8 @@ package ACPI_Native_Delays is
    -- Terminal in every phase; does not cancel an outstanding wait.
    procedure Close_Startup;
    procedure Perform (Item : AML_Delays.Request; Result : out AML_Delays.Outcome);
+   -- Finite event timeout through the same original delay domain. No signal
+   -- delivery or new time allowance is implied; poll/forever are refused here.
+   procedure Wait_Event_Timeout
+     (Milliseconds : AML_Events.Timeout; Outcome : out AML_Events.Timeout_Outcome);
 end ACPI_Native_Delays;

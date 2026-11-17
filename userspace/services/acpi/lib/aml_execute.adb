@@ -3618,7 +3618,42 @@ package body AML_Execute with SPARK_Mode is
                   elsif Stack (Depth).Op = 16#83# then
                      Resolve_Expression_Slot (Pending_Slot, V, S, Pending_Identity);
                      if S /= Returned then return; end if;
-                     if V.Value_Kind = Metadata_Datum and then Pending_Slot /= 0 then
+                     declare
+                        String_Source : constant Boolean :=
+                          V.Value_Kind = Object_Datum and then V.Object.Type_Code = 2;
+                     begin
+                     if String_Source then
+                        declare
+                           Ref : AML_References.Reference := AML_References.No_Reference;
+                           Name_Charge : Natural := 0;
+                           Metadata : Reference_Metadata;
+                           Resolved : Datum;
+                        begin
+                           -- Retain the path object while the resulting Field
+                           -- read may allocate or evaluate setup properties.
+                           Stack (Depth).Left := V; Stack (Depth).Has_Left := True;
+                           Publish_Live;
+                           S := Unsupported_Value;
+                           Resolve_String_Name (Environment, Current_Lexical_Scope, V,
+                             Budget - Charged, Name_Charge, Ref, S);
+                           if Name_Charge > Budget - Charged then S := Budget_Exceeded; return; end if;
+                           Charged := Charged + Name_Charge;
+                           if S /= Returned then return; end if;
+                           Describe_Named_Identity (Environment, Ref, Metadata);
+                           if Metadata.Kind = Invalid_Reference then S := Unsupported_Value; return;
+                           elsif Metadata.Kind = Metadata_Only and then
+                             Metadata.Object_Type not in Field_Metadata | Buffer_Field_Metadata
+                           then
+                              V := (Metadata_Datum, (Live_Namespace, Ref));
+                           else
+                              Read_Reference_Result (Ref, Resolved, S);
+                              if S /= Returned then return; end if;
+                              V := Resolved;
+                              Complete_Integer_Result (V, S);
+                              if S /= Returned then return; end if;
+                           end if;
+                        end;
+                     elsif V.Value_Kind = Metadata_Datum and then Pending_Slot /= 0 then
                         -- DerefOf(Local/Arg) first unwraps that slot. A metadata
                         -- expression result is not itself a reference.
                         declare Metadata : Reference_Metadata; begin
@@ -3641,10 +3676,11 @@ package body AML_Execute with SPARK_Mode is
                         if S /= Returned then return; end if;
                      end;
                      end if;
-                     -- Unwrapping a Local/Arg may reveal a named field only
-                     -- after resolving its reference cell. Evaluate that live
-                     -- field through the ordinary authenticated operand reader.
-                     if Pending_Slot /= 0 and then V.Value_Kind = Metadata_Datum then
+                     -- A Local/Arg or a resolved String path may reveal a
+                     -- table Field descriptor. Read through the ordinary
+                     -- authenticated operand reader even without a source slot.
+                     if (Pending_Slot /= 0 or else String_Source)
+                       and then V.Value_Kind = Metadata_Datum then
                         declare Metadata : Reference_Metadata; begin
                            Describe_Metadata_Value (Environment, V.Metadata, Metadata);
                            if Metadata.Kind /= Metadata_Only then S := Unsupported_Value; return; end if;
@@ -3681,6 +3717,7 @@ package body AML_Execute with SPARK_Mode is
                            end if;
                         end;
                      end if;
+                     end;
                   elsif Stack (Depth).Op = Copy_Object_Op then
                      Resolve_Expression_Slot (Pending_Slot, V, S, Pending_Identity);
                      if S /= Returned then return; end if;
@@ -3762,6 +3799,7 @@ package body AML_Execute with SPARK_Mode is
                         Timeout : constant AML_Mutexes.Timeout := AML_Mutexes.Timeout
                           (Natural (Code (Code'First + Offset)) + 256 * Natural (Code (Code'First + Offset + 1)));
                         Target : Datum := V;
+                        Timed_Out : Boolean := False;
                      begin
                         Charged := Charged + AML_Mutexes.Timeout_Bytes;
                         Offset := Offset + AML_Mutexes.Timeout_Bytes;
@@ -3774,9 +3812,10 @@ package body AML_Execute with SPARK_Mode is
                         end if;
                         Publish_Live ([Target]);
                         S := Unsupported_Value;
-                        Operate_Mutex (Environment, Target, AML_Mutexes.Acquire_Mutex, Timeout, S);
+                        Operate_Mutex (Environment, Target, AML_Mutexes.Acquire_Mutex, Timeout, Timed_Out, S);
                         if S /= Returned then return; end if;
-                        V := (Integer_Datum, 0, Ordinary_Integer);
+                        V := (Integer_Datum,
+                          (if Timed_Out then AML_Integers.Normalize (Integer_Value'Last, Width) else 0), Ordinary_Integer);
                      end;
                   elsif Stack (Depth).Op = Wait_Extension then
                      if not Stack (Depth).Has_Left then
@@ -4230,7 +4269,6 @@ package body AML_Execute with SPARK_Mode is
                Open_Container (Offset - 1, State);
                if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
             when Alias_Op =>
-               if not Module_Root then Body_Result := Failure (Unsupported, Charged); return; end if;
                declare
                   use type AML_Names.Parse_Status;
                   Source_Path, Target_Path : AML_Names.Name_Result;
@@ -4446,6 +4484,7 @@ package body AML_Execute with SPARK_Mode is
                      Binding : Binding_Result;
                      Source_Byte : constant Byte := Code (Code'First + Offset);
                      Resolved : Datum;
+                     Timed_Out : Boolean := False;
                   begin
                      if AML_Names.Lead (Source_Byte) or else Source_Byte in 16#5C# | 16#5E# | 16#2E# | 16#2F# then
                         if Charged = Budget then Body_Result := Failure (Budget_Exceeded, Charged); return; end if;
@@ -4467,7 +4506,7 @@ package body AML_Execute with SPARK_Mode is
                         Value := Resolved;
                      end if;
                      State := Unsupported_Value;
-                     Operate_Mutex (Environment, Value, AML_Mutexes.Release_Mutex, 0, State);
+                     Operate_Mutex (Environment, Value, AML_Mutexes.Release_Mutex, 0, Timed_Out, State);
                      if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
                   end;
                elsif Code (Code'First + Offset) in Signal_Extension | Reset_Extension then

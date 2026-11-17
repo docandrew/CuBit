@@ -6,6 +6,7 @@ with ACPI_Backend_Memory_Access;
 with ACPI_EC_Boot_Table;
 with Firmware_Tables;
 with ACPI_Clock_Source;
+with ACPI_Native_Log;
 with ACPI_Native_Delays;
 with AML_Delays;with ACPI_Native_Field_Profile;
 with CuBit.Handles.Devices;
@@ -15,6 +16,7 @@ package body ACPI_Local_Hardware.Pooled_Fields is
    use type Core.Values.Access_Status, Core.Execution_Phase_Result, Core.Values.Module_Outcome;
    use type AML_Decode.Byte, Core.Context_Key;
    use type Core.Namespace.Region_Space_ID;
+   use type Core.Namespace.Field_Initialization_Outcome;
    function Check_Field_Access (For_Write : Boolean) return Boolean is
       pragma Unreferenced (For_Write);
       Accepted : Boolean;
@@ -22,10 +24,66 @@ package body ACPI_Local_Hardware.Pooled_Fields is
       if Field_State /= Owner_Ready then return False; end if;
       Scope.Check_Datum (Transaction,Accepted); return Accepted;
    end Check_Field_Access;
+   procedure AML_Lock_Clock (Now : out Word; Available : out Boolean) is
+   begin ACPI_Clock_Source.Read (Now, Available); end AML_Lock_Clock;
+   procedure AML_Lock_Wait (Target : Word; Completed : out Boolean) is
+      Now, Remaining, Milliseconds : Word;
+      Result : AML_Delays.Outcome;
+      use type AML_Delays.Outcome;
+      Microseconds_Per_Millisecond : constant Word := 1_000;
+   begin
+      Completed := False;
+      ACPI_Clock_Source.Read (Now, Completed);
+      if not Completed or else Now >= Target then return; end if;
+      Remaining := Target - Now;
+      if Remaining <= Word (AML_Delays.Stall_Microseconds'Last) then
+         ACPI_Native_Delays.Perform ((Kind => AML_Delays.Stall_Delay,
+           Microseconds => AML_Delays.Stall_Microseconds (Remaining)), Result);
+      else
+         Milliseconds := Remaining / Microseconds_Per_Millisecond
+           + (if Remaining mod Microseconds_Per_Millisecond = 0 then 0 else 1);
+         if Milliseconds > Word (AML_Delays.Sleep_Milliseconds'Last) then Completed := False; return; end if;
+         ACPI_Native_Delays.Perform ((Kind => AML_Delays.Sleep_Delay,
+           Milliseconds => AML_Delays.Sleep_Milliseconds (Milliseconds)), Result);
+      end if;
+      Completed := Result = AML_Delays.Completed;
+   end AML_Lock_Wait;
+   function AML_Lock_Last_Result return AML_Global_Locks.Outcome is
+     (AML_Lock.Observe (AML_Lock_State).Last_Result);
+   function AML_Lock_First_Failure return AML_Global_Locks.Outcome is (First_AML_Lock_Failure);
+   function AML_Lock_Had_Failure return Boolean is (AML_Lock_Failure_Seen);
+   function AML_Lock_Attempts return Natural is (Natural (AML_Lock.Observe (AML_Lock_State).Attempts));
+   procedure Operate_AML_Lock
+     (IO : in out Mux.Context; Domain : AML_Frame_Handles.Invocation_Domain;
+      Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
+      Outcome : in out AML_Global_Locks.Outcome) is
+      use type AML_Global_Locks.Operation, AML_Global_Locks.Outcome;
+   begin
+      Outcome := AML_Global_Locks.Refused;
+      -- Cleanup must remain possible after ordinary provider admission closes.
+      if Action = AML_Global_Locks.Acquire_Lease and then not Provider_Ready (IO) then return; end if;
+      AML_Lock.Operate (AML_Lock_State, Domain, Action, Timeout, Outcome);
+      if Outcome in AML_Global_Locks.Succeeded | AML_Global_Locks.Timed_Out then
+         if not AML_Lock_Good_Logged then
+            AML_Lock_Good_Logged := True;
+            ACPI_Native_Log.Copied ("acpi: stage aml-global-lock ok " & Outcome'Image &
+              " attempts=" & AML_Lock_Attempts'Image, Peer_Quiet => Control_Idle, Success => True);
+         end if;
+      elsif not AML_Lock_Failure_Seen then
+         AML_Lock_Failure_Seen := True; First_AML_Lock_Failure := Outcome;
+         ACPI_Native_Log.Copied ("acpi: stage aml-global-lock fail " &
+           AML_Lock.Observe (AML_Lock_State).Last_Reason'Image &
+           " result=" & Outcome'Image & " attempts=" & AML_Lock_Attempts'Image,
+           Peer_Quiet => Control_Idle, Success => False);
+      end if;
+   end Operate_AML_Lock;
+
    function Control_Idle return Boolean is
       S : constant Scope.Statistics := Scope.Observe (Transaction);
    begin
-      return S.Depth = 0 and then not S.Working and then not S.Held
+      return not AML_Lock.Observe (AML_Lock_State).Working
+        and then not AML_Lock.Observe (AML_Lock_State).Cleanup_Required
+        and then S.Depth = 0 and then not S.Working and then not S.Held
         and then not S.Cleanup_Required and then not Mux.Pending (IO);
    end Control_Idle;
    function PCI_Setup_Allowed return Boolean is
@@ -200,15 +258,17 @@ package body ACPI_Local_Hardware.Pooled_Fields is
       Origin : out Maps.Source; Accepted : out Boolean) is
    begin
       Origin := (Item.Name,CuBit.Messages.To_Word (Self),0,Word (Item.Node));
-      Accepted := Item.Region.Origin.Known and then Item.Node > Core.Namespace.Root
+      Accepted := Item.Node > Core.Namespace.Root
         and then Item.Region.Space = Core.Namespace.Region_Space_ID (AML_Field_Layout.Memory_Space)
         and then Geometry.Region.Space = AML_Field_Layout.Memory_Space and then not Geometry.Region.PCI.Known
         and then Geometry.Region.Base = Item.Region.Address and then Geometry.Region.Length = Item.Region.Length;
-      -- Core already checked original loaded definition/table/liveness. Zero
+      -- Core supplies a live declaration and exact geometry. The independent
+      -- platform pool/map and envelope checks provide memory authority. Zero
       -- Namespace_Revision is unknown metadata, not a claimed current revision.
    end Validate_Declaration;
    function Provider_Ready (IO : Mux.Context) return Boolean is
-     (Field_State = Owner_Ready and then Scope.Ready (Transaction)
+     (Field_State = Owner_Ready and then not AML_Lock.Observe (AML_Lock_State).Working
+      and then Scope.Ready (Transaction)
       and then (Scope.Observe (Transaction).Held or else ACPI_Local_Hardware.Admitting)
       and then Mux.Is_Ready (IO));
    function EC_Handler_Available return Boolean is
@@ -217,8 +277,9 @@ package body ACPI_Local_Hardware.Pooled_Fields is
    function Provider_Pending (IO : Mux.Context) return Boolean is
       S : constant Scope.Statistics := Scope.Observe (Transaction);
    begin
-      return Mux.Pending (IO) or else S.Working or else S.Faulted
-        or else (S.Depth = 0 and then S.Cleanup_Required);
+      return Mux.Pending (IO) or else AML_Lock.Observe (AML_Lock_State).Working
+        or else S.Working or else S.Faulted
+        or else (S.Depth = 0 and then S.Cleanup_Required and then not Scope.AML_Borrowed (Transaction));
    end Provider_Pending;
    procedure Resolve_Module (IO : in out Mux.Context; Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is
@@ -265,7 +326,7 @@ package body ACPI_Local_Hardware.Pooled_Fields is
    function Observe return Field_Report is
      ((Field_State,Attempted,Completed,Finished,Provider_Pending (IO) or else ACPI_Local_Hardware.Pending,Mux.Register_Count (IO)));
    function Owns (Service : Core.State) return Boolean is
-     (Completed and then Has_Anchor and then Core.Valid (Service) and then Core.Current_Context (Service,Anchor));
+     (Completed and then Members_Completed and then Has_Anchor and then Core.Valid (Service) and then Core.Current_Context (Service,Anchor));
    function Runtime_Ready (Service : Core.State) return Boolean is
      (Finished and then Cache/=null and then Owns (Service) and then Provider_Ready (IO)
       and then Evaluation.Observe(Cache.all).Status in Evaluation.Bindings.Built|Evaluation.Bindings.Built_With_Gaps);
@@ -332,6 +393,27 @@ package body ACPI_Local_Hardware.Pooled_Fields is
       if not Has_Anchor then Field_State := Owner_Failed; Status := Core.Values.Wrong_Phase; end if;
    exception when others => ACPI_Native_Field_Profile.Stop; raise;
    end Execute_Module_Startup;
+   procedure Initialize_Member_Startup (Service : in out Core.State; Budget : Natural;
+      Result : out Core.Namespace.Field_Initialization_Report; Status : out Core.Values.Access_Status) is
+   begin
+      Result := (others => <>);Status := Core.Values.Wrong_Phase;
+      if Members_Attempted or else Finished then return;end if;
+      Members_Attempted := True;
+      if Provider_Pending(IO) or else ACPI_Local_Hardware.Pending then
+         Result.Failure := AML_Execute.Field_Indeterminate;
+         Result.Reconciliation_Required := True;Status := Core.Values.Busy;
+         Field_State := Owner_Failed;return;
+      end if;
+      if not Completed or else not Has_Anchor or else not Core.Valid(Service)
+        or else not Core.Current_Context(Service,Anchor) or else not Provider_Ready(IO)
+      then return;end if;
+      Evaluation.Bindings.Startup.Initialize_Members(Service,IO,Budget,Result,Status);
+      Members_Completed := Status=Core.Values.Available
+        and then Result.Outcome=Core.Namespace.Initialization_Completed
+        and then Result.Members.Missing=0 and then Result.Members.Unsupported=0
+        and then not Result.Fatal.Present and then not Result.Reconciliation_Required;
+      if not Members_Completed then Field_State := Owner_Failed;end if;
+   end Initialize_Member_Startup;
    function Ensure_Cache(Service:Core.State) return Boolean is
       Info:Evaluation.Allocation_Report;
    begin
@@ -433,18 +515,22 @@ package body ACPI_Local_Hardware.Pooled_Fields is
    end Invoke_With_Arguments;
    procedure Finish_Startup (Accepted : out Boolean) is
    begin
-      Accepted := Completed and then Has_Anchor and then not Finished and then Provider_Ready (IO);
+      Accepted := Completed and then Members_Completed and then Has_Anchor and then not Finished and then Provider_Ready (IO);
       if Accepted then Mux.Close_Setup (IO); Finished := True; end if;
    end Finish_Startup;
    procedure Close is
       Stopped:Boolean;
    begin Field_State := Owner_Closed;EC_Commands.Request_Stop(Stopped);end Close;
    procedure Cleanup (Completed : out Boolean) is
+      Global_Result : AML_Global_Locks.Outcome;
+      use type AML_Global_Locks.Outcome;
    begin
       Field_State := Owner_Closed;
+      AML_Lock.Maintain (AML_Lock_State, Global_Result);
       Scope.Cleanup (Transaction,Completed);
       EC_Commands.Reconcile;
-      Completed := Completed and then not Mux.Pending (IO) and then EC_Commands.Quiescent;
+      Completed := Completed and then Global_Result = AML_Global_Locks.Succeeded
+        and then not Mux.Pending (IO) and then EC_Commands.Quiescent;
    end Cleanup;
    function Uncertain return AML_Field_Access.Observation is (Mux.Uncertain (IO));
 end ACPI_Local_Hardware.Pooled_Fields;

@@ -1,7 +1,7 @@
 with AML_Fatal;
 package ACPI_Fatal_Diagnostics with SPARK_Mode, Pure is
    -- Copied diagnostic positions only, never namespace or hardware authority.
-   type Origin is (Definition_Block, Device_Initializer);
+   type Origin is (Definition_Block, Device_Initializer, Member_Initialization);
    type Catalog_Identifier is new Natural;
    type Namespace_Position is new Natural;
    type Location (Kind : Origin := Definition_Block) is record
@@ -10,6 +10,7 @@ package ACPI_Fatal_Diagnostics with SPARK_Mode, Pure is
          -- Scope whose initializer was invoked, not the nested fatal opcode's
          -- exact instruction/method location. Zero denotes the namespace root.
          when Device_Initializer => Initializer_Scope : Namespace_Position;
+         when Member_Initialization => null;
       end case;
    end record;
    type Observation (Present : Boolean := False) is record
