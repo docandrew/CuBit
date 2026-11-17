@@ -9,10 +9,12 @@
 --  consumer side is Desktop_Input_Sources.
 --
 --  @description
---  Establishment is the control plane: the driver asks devmgr for an
---  endpoint to Desktop (Binding_Label, accepting a capability in the
---  reply). devmgr hands one, badged CuBit.Input.Source_Ring_Tag, only to
---  the input drivers it launched. The driver opens one channel per source
+--  Establishment is the control plane, typed by Contract (its schema
+--  identity), with no operation of its own: the driver asks devmgr, its
+--  launcher, to introduce it to the peer serving Contract
+--  (CuBit.Channels.Introduce). devmgr answers with an endpoint to Desktop,
+--  badged CuBit.Input.Source_Ring_Tag, only to the input drivers it
+--  launched, and never maps a ring. The driver opens one channel per source
 --  device over it (CuBit.Channels.Open, Contract, producing); Desktop
 --  admits an open only through that badge, and the channel it accepts is
 --  the source's identity. After that the kernel only wakes: each side
@@ -21,7 +23,6 @@
 --  drivers ask devmgr again and reopen.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
-with Interfaces; use Interfaces;
 with CuBit.Channel_Contracts;
 with CuBit.Event_Channels;
 with CuBit.Input;
@@ -47,15 +48,6 @@ package CuBit.Input_Rings is
       Pages   => Channels.Producer_Pages,
       Buffers => Channels.Consumer_Pages,
       Rule    => CuBit.Channel_Contracts.Copy_Then_Validate);
-
-   --  An input driver's request to devmgr for its endpoint to Desktop: no
-   --  words, accepting a capability. Answered Binding_Label with the
-   --  endpoint (word 0 Bound), or without one (word 0 No_Desktop while no
-   --  Desktop runs; Not_Input to anything but an input driver).
-   Binding_Label : constant Unsigned_32 := 16#0A01#;
-   Bound : constant := 0;
-   No_Desktop : constant := 1;
-   Not_Input : constant := 2;
 
    --  Desktop's admission limits: sources per driver (a USB controller's
    --  keyboards and pointers) and in all.

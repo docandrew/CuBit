@@ -117,6 +117,27 @@ package CuBit.Channels is
      (C : in out Channel; Reply : CuBit.Messages.Message;
       Result : out Open_Result; Refusal : out CP.Open_Refusal);
 
+   --  Ask Broker for an endpoint to the peer that serves Item, then Open
+   --  there (OP_INTRODUCE). Introduced: Peer is that endpoint (the caller
+   --  closes it when done). Refused: the broker said why (Refusal); Failed:
+   --  no usable answer by Deadline.
+   type Introduction_Result is (Introduced, Refused, Failed);
+   procedure Introduce
+     (Broker : CuBit.Handles.Endpoint; Item : CC.Contract;
+      Peer : out CuBit.Handles.Endpoint; Result : out Introduction_Result;
+      Refusal : out CP.Open_Refusal; Connector : Unsigned_16 := 0;
+      Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever)
+   with Pre => CC.Valid (Item);
+
+   --  A broker's side: whether Request asks for an introduction, and to
+   --  which contract (Valid: it decoded).
+   procedure Decode_Introduce
+     (Request : CuBit.Messages.Message; Is_Introduce : out Boolean; Valid : out Boolean;
+      Item : out CC.Contract; Connector : out Unsigned_16);
+   --  The reply that carries the peer's endpoint (CuBit.Handles.IPC.Reply_With);
+   --  a refusal is Refusal_Reply.
+   function Introduction_Reply return CuBit.Messages.Message;
+
    --  Whether Request is an open request; its contract, the side the
    --  opener takes and the connector it names when it is (Valid: the
    --  contract decoded).

@@ -19,6 +19,9 @@ with CuBit.Log_Protocol;
 with CuBit.Handles;
 with CuBit.Input;
 with CuBit.Input_Rings;
+with CuBit.Channel_Contracts;
+with CuBit.Channel_Protocol;
+with CuBit.Channels;
 with CuBit.Handles.Boot_Roots;
 with CuBit.Handles.Control;
 with CuBit.Handles.IPC;
@@ -8272,13 +8275,14 @@ begin
                Launch_Pending_Generic;
             end if;
          end;
-      elsif msg.tag.label = CuBit.Input_Rings.Binding_Label then
-         --  An input driver asks for its endpoint to Desktop to open its
-         --  source rings over (IPC-009): only the input drivers devmgr
-         --  launched get one, badged for input sources, which is the one
-         --  badge Desktop admits a source ring through.
+      elsif msg.tag.label = CuBit.Channel_Protocol.OP_INTRODUCE then
+         --  A driver asks to be introduced to the peer serving a channel
+         --  contract (CuBit.Channels.Introduce). devmgr brokers one: input
+         --  source rings (IPC-009). Only the input drivers devmgr launched
+         --  get Desktop's endpoint, badged for input sources, the one badge
+         --  Desktop admits a source ring through. devmgr maps nothing.
          declare
-            package IR renames CuBit.Input_Rings;
+            use type CuBit.Channel_Contracts.Contract;
             --  A HID-over-I2C driver devmgr had procmgr start (its touchpad).
             function HID_Driver return Boolean is
             begin
@@ -8297,20 +8301,22 @@ begin
               from /= No_Process and then
               (from = ps2PID or else from = virtioInputPID or else Instance_Of (from, "xhci.drv") /= 0
                or else HID_Driver);
-            Code : Unsigned_64 := IR.Not_Input;
+            Is_Introduce, Valid : Boolean;
+            Wanted : CuBit.Channel_Contracts.Contract;
+            Ignore_Connector : Unsigned_16;
+            Why : CuBit.Channel_Protocol.Open_Refusal := CuBit.Channel_Protocol.Unknown_Type;
             Replied : Boolean := False;
          begin
-            if Input_Driver and then
-              msg.tag = (label => IR.Binding_Label, length => 0, protocol => 0, ipc => Accepting, reserved => 0)
-            then
-               if not H.Valid (Desktop_Endpoint) then
-                  Code := IR.No_Desktop;
+            CuBit.Channels.Decode_Introduce (msg, Is_Introduce, Valid, Wanted, Ignore_Connector);
+            if Valid and then Wanted = CuBit.Input_Rings.Contract and then msg.tag.ipc = Accepting then
+               if not Input_Driver then
+                  Why := CuBit.Channel_Protocol.Not_Admitted;
+               elsif not H.Valid (Desktop_Endpoint) then
+                  Why := CuBit.Channel_Protocol.No_Room;
                else
                   declare
                      Result : constant IPC.Reply_Result := IPC.Reply_With
-                       (from, (tag => (label => IR.Binding_Label, length => 1,
-                                       protocol => 0, ipc => <>, reserved => 0),
-                               authorityTag => 0, words => [IR.Bound, 0, 0, 0]),
+                       (from, CuBit.Channels.Introduction_Reply,
                         H.Badged (Desktop_Endpoint, Read_Write_Grant, CuBit.Input.Source_Ring_Tag));
                   begin
                      Replied := Result.Outcome /= IPC.Refused;
@@ -8318,9 +8324,7 @@ begin
                end if;
             end if;
             if not Replied then
-               ret := reply (from, (tag => (label => IR.Binding_Label, length => 1,
-                                            protocol => 0, ipc => <>, reserved => 0),
-                 authorityTag => 0, words => [Code, 0, 0, 0]));
+               ret := reply (from, CuBit.Channels.Refusal_Reply (Why));
             end if;
          end;
       elsif msg.tag.label = GP.Desktop_Binding_Label then

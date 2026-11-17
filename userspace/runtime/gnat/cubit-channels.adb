@@ -8,6 +8,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Datagram_Rings;
 with CuBit.Doorbells;
 with CuBit.Grant_References;
+with CuBit.Handles.IPC;
 with CuBit.Kernel_ABI;
 with CuBit.Owned_Reservations;
 with CuBit.Protocols;
@@ -372,6 +373,67 @@ package body CuBit.Channels is
          end if;
       end if;
    end Begin_Open;
+
+   procedure Introduce
+     (Broker : CuBit.Handles.Endpoint; Item : CC.Contract;
+      Peer : out CuBit.Handles.Endpoint; Result : out Introduction_Result;
+      Refusal : out CP.Open_Refusal; Connector : Unsigned_16 := 0;
+      Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever)
+   is
+      Words : constant CC.Words := CC.Encode (Item);
+      M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+      Carried : CuBit.Handles.IPC.Carried;
+      Ignore_Tag : CuBit.Messages.MessageTag;
+   begin
+      Peer := CuBit.Handles.No_Endpoint;
+      Result := Failed;
+      Refusal := CP.Unsupported;
+      M.tag := (label => CP.OP_INTRODUCE, length => CP.Introduce_Words, protocol => 0, ipc => <>,
+                reserved => Connector);
+      M.words := [Words (0), Words (1), Words (2), 0];
+      Ignore_Tag := CuBit.Handles.IPC.Call_Accepting (Broker, M, Deadline, Carried);
+      if M.tag.label = KA.Reply_Error then
+         Result := Refused;
+         Refusal := (if CP.Is_Refusal_Code (M.words (0))
+                     then CP.Open_Refusal'Enum_Val (M.words (0)) else CP.Unsupported);
+         return;
+      elsif M.tag.label /= KA.Reply_OK then
+         return;
+      end if;
+      declare
+         Accepted : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+           CuBit.Handles.IPC.Accept_Endpoint (Carried);
+      begin
+         if Accepted.OK then
+            Peer := Accepted.Value;
+            Result := Introduced;
+         end if;
+      end;
+   end Introduce;
+
+   procedure Decode_Introduce
+     (Request : CuBit.Messages.Message; Is_Introduce : out Boolean; Valid : out Boolean;
+      Item : out CC.Contract; Connector : out Unsigned_16)
+   is
+      Accepted : Boolean;
+   begin
+      Is_Introduce := Request.tag.label = CP.OP_INTRODUCE;
+      Connector := Request.tag.reserved;
+      Valid := False;
+      Item := (others => <>);
+      if not Is_Introduce or else Request.tag.length /= CP.Introduce_Words then
+         return;
+      end if;
+      CC.Decode ([Request.words (0), Request.words (1), Request.words (2)], Item, Accepted);
+      Valid := Accepted;
+   end Decode_Introduce;
+
+   function Introduction_Reply return CuBit.Messages.Message is
+      M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+   begin
+      M.tag := (label => KA.Reply_OK, length => 0, protocol => 0, ipc => <>, reserved => 0);
+      return M;
+   end Introduction_Reply;
 
    procedure Decode_Open
      (Request : CuBit.Messages.Message; Is_Open : out Boolean; Valid : out Boolean;

@@ -76,29 +76,20 @@ package body CuBit.Input_Source is
 
    --  devmgr's endpoint to Desktop for input sources, then the ring.
    procedure Establish (S : in out Source; Manager : CuBit.Handles.Endpoint) is
-      Msg : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
-      Returned : CuBit.Messages.MessageTag;
-      Carried : CuBit.Handles.IPC.Carried;
+      use type CuBit.Channels.Introduction_Result;
+      Introduced : CuBit.Channels.Introduction_Result;
       Result : CuBit.Channels.Open_Result;
       Refusal : CuBit.Channel_Protocol.Open_Refusal;
    begin
       S.Retry_At := Later (Now, Establish_Retry_Ms);
       if not CuBit.Handles.Valid (S.Desktop) then
-         Msg.tag := (label => IR.Binding_Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
-         Returned := CuBit.Handles.IPC.Call_Accepting
-           (Manager, Msg, CuBit.Messages.Deadline_After (Open_Limit_Ms), Carried);
-         if Returned.label /= IR.Binding_Label or else Msg.words (0) /= IR.Bound then
+         --  devmgr introduces the driver to whoever serves source rings.
+         CuBit.Channels.Introduce
+           (Manager, IR.Contract, S.Desktop, Introduced, Refusal,
+            Deadline => CuBit.Messages.Deadline_After (Open_Limit_Ms));
+         if Introduced /= CuBit.Channels.Introduced then
             return;
          end if;
-         declare
-            Accepted : constant CuBit.Handles.IPC.Accepted_Endpoint :=
-              CuBit.Handles.IPC.Accept_Endpoint (Carried);
-         begin
-            if not Accepted.OK then
-               return;
-            end if;
-            S.Desktop := Accepted.Value;
-         end;
       end if;
       CuBit.Channels.Open
         (S.Desktop, IR.Contract, CuBit.Channels.Producing, S.Channel, Result, Refusal,

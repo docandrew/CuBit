@@ -23,6 +23,16 @@
 --      queue's pages as the peer accepted them (a broadcast outlet answers
 --      with its ring's).
 --      REPLY_ERR: word 0 an Open_Refusal.
+--  OP_INTRODUCE: the opener asks a broker for the peer that serves a
+--    contract (a call accepting a capability). Words 0 .. 2: the contract;
+--    the tag's reserved field the connector, as for an open. Nothing is
+--    granted: the broker never maps the channel's data (docs/data-plane.md,
+--    "brokering is introduction").
+--    Reply REPLY_OK, no words, carrying an endpoint to the peer (badged as
+--      the broker decides); the opener then opens the channel there.
+--      REPLY_ERR: word 0 an Open_Refusal (Unknown_Type: it brokers no such
+--      channel; Not_Admitted: not for this opener; No_Room: no peer serves
+--      it now).
 --  OP_CLOSE (one-way): word 0 the channel's number at the receiver, 1 a
 --    grant of the channel (either side's, encoded): a number is reused once
 --    its channel ends, so the receiver closes only the channel holding
@@ -47,7 +57,9 @@ package CuBit.Channel_Protocol with Pure, SPARK_Mode is
    OP_OPEN_CONSUMING : constant := 16#0E01#;
    OP_CLOSE          : constant := 16#0E02#;
    OP_KICK           : constant := 16#0E03#;
+   OP_INTRODUCE      : constant := 16#0E04#;
    Open_Words  : constant := Contract_Words + 1;
+   Introduce_Words : constant := Contract_Words;
    Reply_Words : constant := 3;
    Close_Words : constant := 2;
 
