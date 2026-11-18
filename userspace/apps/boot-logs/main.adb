@@ -15,7 +15,8 @@ with Clipboard_Text;
 with CuBit.UI.State;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
-with Boot_Logs_Repaint;
+with CuBit.UI.Text_Views;
+with Ada.Unchecked_Deallocation;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    use type P.Status;
@@ -29,18 +30,19 @@ procedure Main is
    Records : array (1 .. 512) of CuBit.Log_Records.Log_Record;
    --  Each record's source (the process logstore stamped it with).
    Record_Sources : array (Records'Range) of Unsigned_64 := [others => 0];
-   Count, Page : Natural := 0;
+   Count : Natural := 0;
    Lost_Records : Unsigned_64 := 0;
    Viewer_Dropped : Unsigned_64 := 0;
-   Rows : Positive := 25;
-   --  Records that explain a boot, pinned above the rotating pages so one
-   --  photograph of any page shows them: every Warning or worse, and the
-   --  key startup lines (the renderer's result and why it stopped).
+   --  Records that explain a boot, pinned above the records so one
+   --  photograph shows them: every Warning or worse, and the key startup
+   --  lines (the renderer's result and why it stopped).
    --  Left (and right) text margin of every line.
    MARGIN : constant := 12;
    Summary_Capacity : constant := 6;
    Summary : array (1 .. Summary_Capacity) of CuBit.Log_Records.Log_Record;
    Summary_Count : Natural range 0 .. Summary_Capacity := 0;
+   --  Counts the summary's changes (Pin), for repainting it only then.
+   Summary_Version : Natural := 0;
    Key_Prefixes : constant array (1 .. 4) of access constant String :=
      [new String'("DESKTOP-VULKAN:"), new String'("intel-gpu: backing denied"),
       new String'("desktop: software rendering"), new String'("procmgr: render")];
@@ -240,110 +242,130 @@ procedure Main is
          end loop;
       end if;
       Summary (Summary_Count) := Item;
+      Summary_Version := Summary_Version + 1;
    end Pin;
-   Due, Turn_Page : Unsigned_64 := 0;
+   Due : Unsigned_64 := 0;
    Opened : Boolean;
-   --  The records the filter shows, in order.
-   Visible : array (1 .. 512) of Positive;
+
+   --  The window (UI-043): a header line, the pinned summary (all sources
+   --  only), the records the filter shows in a Text_Views view (scrolled,
+   --  selectable, following the newest record while scrolled to the end),
+   --  and the counts line. A change repaints only the rows it changes
+   --  (Text_Views.Changed), and a scroll copies the rows that only moved
+   --  from the frame before (Text_Views.Draw_Moved).
+   package TV renames CuBit.UI.Text_Views;
+   type Text_Access is access String;
+   procedure Free is new Ada.Unchecked_Deallocation (String, Text_Access);
+   --  The view's text now, and as the last frame drew it (often the same).
+   View_Text, Drawn_Text : Text_Access := new String'("");
+   View, Drawn_View : TV.View;
+   --  What the last frame drew outside the view.
+   Drawn_Header, Drawn_Counts : Text_Access := new String'("");
+   Drawn_Summary : Natural := 0;
+   Drawn_Summary_Version : Natural := 0;
+   Drawn_Filter : Filter_Kind := All_Sources;
+   Drawn_Status : P.Status := P.Unavailable;
    Visible_Count : Natural := 0;
-   --  A page is anchored to the records it shows, not to positions: Anchor
-   --  is the number (since the viewer started) of its first record. Once
-   --  the viewer is full, each new record drops the oldest and shifts every
-   --  position; the page shown stays put (only the counts line changes)
-   --  until its own records are dropped or it turns.
-   Anchor : Unsigned_64 := 0;
-   --  The page's first row, as a position in Visible (Select_Visible).
-   Shown_First : Positive := 1;
-   function Number_Of (Index : Positive) return Unsigned_64 is
-     (Viewer_Dropped + Unsigned_64 (Index));
-   procedure Select_Visible is
+   Frames, Rendered_Rows, Copied_Rows : Natural := 0;
+
+   HEADER_Y : constant := 10;
+   SUMMARY_Y : constant := 40;
+   COUNTS_FROM_BOTTOM : constant := 30;
+   function Header_Text return String is
+     ("Boot diagnostics: " & Filter_Text & " (Tab: next source, B: bring-up; " &
+      "Up/Down, Page Up/Down, Home/End scroll; drag selects, Ctrl+C copies)");
+   function Status_Text return String is
+     (if Status = P.Denied then "Log read authority denied"
+      elsif Status not in P.OK | P.Empty | P.Gap then
+        "Logstore read failed: " & P.Status'Image (Status) & " (retrying)"
+      elsif Count = 0 then "Waiting for driver startup records via logstore..."
+      else "");
+   --  Rows above the view: the summary while all sources show, else none
+   --  (a status line takes the summary's first row when there is one).
+   function Summary_Rows return Natural is
+     (if Status_Text'Length > 0 then 1
+      elsif Filter = All_Sources and then Summary_Count > 0 then Summary_Count + 1
+      else 0);
+   function Counts_Text return String is
+     ("Records" & Natural'Image (Visible_Count) & " of" & Natural'Image (Count) &
+      "  Service lost" & Unsigned_64'Image (Lost_Records) &
+      "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped) &
+      (if View.Follow_End then "  (following)" else ""));
+   function Counts_Rect (Win : CuBit.UI.App.Window) return Rect is
+     (0, Natural'Max (CuBit.UI.App.Height (Win), COUNTS_FROM_BOTTOM) - COUNTS_FROM_BOTTOM,
+      CuBit.UI.App.Width (Win), Natural'Min (CuBit.UI.App.Height (Win), COUNTS_FROM_BOTTOM));
+   function Header_Rect (Win : CuBit.UI.App.Window) return Rect is
+     (0, 0, CuBit.UI.App.Width (Win), SUMMARY_Y);
+   function Summary_Rect (Win : CuBit.UI.App.Window; Rows : Natural) return Rect is
+     (0, SUMMARY_Y, CuBit.UI.App.Width (Win), Rows * Line_Height);
+   --  The view, between the summary and the counts line.
+   function View_Box (Win : CuBit.UI.App.Window) return Rect is
+      Top : constant Natural := SUMMARY_Y + Summary_Rows * Line_Height;
+      Bottom : constant Natural := Counts_Rect (Win).y;
+      Width : constant Natural := CuBit.UI.App.Width (Win);
+   begin
+      return (MARGIN, Top, (if Width > 2 * MARGIN then Width - 2 * MARGIN else 0),
+              (if Bottom > Top + MARGIN then Bottom - Top - MARGIN / 2 else 0));
+   end View_Box;
+
+   --  The view's text: each record the filter shows, one per line.
+   procedure Rebuild is
+      Length : Natural := 0;
+      Next : Text_Access;
+      At_Char : Positive := 1;
    begin
       Visible_Count := 0;
       for I in 1 .. Count loop
          if Shown (I) then
             Visible_Count := Visible_Count + 1;
-            Visible (Visible_Count) := I;
+            Length := Length + Shown_Text (I)'Length + (if Visible_Count > 1 then 1 else 0);
          end if;
       end loop;
-      Shown_First := 1;
-      while Shown_First <= Visible_Count and then Number_Of (Visible (Shown_First)) < Anchor loop
-         Shown_First := Shown_First + 1;
-      end loop;
-      if Shown_First > Visible_Count then
-         --  Every record at or after the anchor is gone: the last page.
-         Shown_First := (if Visible_Count = 0 then 1 else ((Visible_Count - 1) / Rows) * Rows + 1);
-      end if;
-      Page := (Shown_First - 1) / Rows;
-   end Select_Visible;
-
-   --  Where the counts line is drawn: its top, and the band repainted for
-   --  it (to the window's bottom edge).
-   COUNTS_FROM_BOTTOM : constant := 30;
-   function Counts_Text return String is
-     ("Page" & Natural'Image (Page + 1) &
-      "  Records" & Natural'Image (Visible_Count) & " of" & Natural'Image (Count) &
-      "  Service lost" & Unsigned_64'Image (Lost_Records) &
-      "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped));
-   function Counts_Rect (Win : CuBit.UI.App.Window) return Rect is
-     (0, Natural'Max (CuBit.UI.App.Height (Win), COUNTS_FROM_BOTTOM) - COUNTS_FROM_BOTTOM,
-      CuBit.UI.App.Width (Win), Natural'Min (CuBit.UI.App.Height (Win), COUNTS_FROM_BOTTOM));
-
-   --  Every line of the window above the counts line, in drawing order.
-   procedure Body_Lines
-     (Visit : not null access procedure (Y : Natural; Text : String; Danger : Boolean))
-   is
-      First : Natural;
-      --  Rows below the pinned summary (and its divider line).
-      Top : constant Natural := 40 + (if Summary_Count = 0 then 0
-                                      else (Summary_Count + 1) * Line_Height);
-   begin
-      Select_Visible;
-      First := Shown_First;
-      Visit (10, "Boot diagnostics: " & Filter_Text & " (Tab: next source, B: bring-up); pages rotate every 8 s",
-             False);
-      if Status = P.Denied then
-         Visit (36, "Log read authority denied", True);
-      elsif Status not in P.OK | P.Empty | P.Gap then
-         Visit (36, "Logstore read failed: " & P.Status'Image (Status) & " (retrying)", True);
-      elsif Count = 0 then
-         Visit (36, "Waiting for driver startup records via logstore...", False);
-      else
-         if Filter = All_Sources then
-            for I in 1 .. Summary_Count loop
-               Visit (40 + (I - 1) * Line_Height,
-                 CuBit.Log_Records.Text (Summary (I)),
-                 CuBit.Log_Records.Level (Summary (I)) >= CuBit.Log_Records.Warning);
-            end loop;
-         end if;
-         for I in 0 .. Rows - 1 loop
-            if First + I <= Visible_Count then
-               Visit ((if Filter = All_Sources then Top else 40) + I * Line_Height,
-                 Shown_Text (Visible (First + I)),
-                 CuBit.Log_Records.Level (Records (Visible (First + I))) >= CuBit.Log_Records.Warning);
+      Next := new String (1 .. Length);
+      Visible_Count := 0;
+      for I in 1 .. Count loop
+         if Shown (I) then
+            Visible_Count := Visible_Count + 1;
+            if Visible_Count > 1 then
+               Next (At_Char) := ASCII.LF;
+               At_Char := At_Char + 1;
             end if;
-         end loop;
+            declare
+               Line : constant String := Shown_Text (I);
+            begin
+               Next (At_Char .. At_Char + Line'Length - 1) := Line;
+               At_Char := At_Char + Line'Length;
+            end;
+         end if;
+      end loop;
+      if View_Text /= Drawn_Text then
+         Free (View_Text);
       end if;
-   end Body_Lines;
+      View_Text := Next;
+   end Rebuild;
 
-   --  What the window shows now, and what it showed when last painted.
-   BODY_SNAPSHOT_BYTES : constant := 64 * 1024;
-   COUNTS_SNAPSHOT_BYTES : constant := 256;
-   Body_Now, Painted_Body : Boot_Logs_Repaint.Snapshot (BODY_SNAPSHOT_BYTES);
-   Counts_Now, Painted_Counts : Boot_Logs_Repaint.Snapshot (COUNTS_SNAPSHOT_BYTES);
-   procedure Add_Body_Line (Y : Natural; Text : String; Danger : Boolean) is
+   --  What changed since the last frame, for Dirty.
+   function Changes (Win : CuBit.UI.App.Window) return Rect is
+      Box : constant Rect := View_Box (Win);
+      Result : Rect := TV.Changed (Box, Drawn_View, Drawn_Text.all, View, View_Text.all);
    begin
-      Boot_Logs_Repaint.Add_Line (Body_Now, Y, Text, Danger);
-   end Add_Body_Line;
-   procedure Take_Snapshot is
-   begin
-      Boot_Logs_Repaint.Clear (Body_Now);
-      Body_Lines (Add_Body_Line'Access);
-      Boot_Logs_Repaint.Clear (Counts_Now);
-      Boot_Logs_Repaint.Add_Line (Counts_Now, 0, Counts_Text, False);
-   end Take_Snapshot;
-   function Covers (Outer, Inner : Rect) return Boolean is
-     (Outer.x <= Inner.x and then Outer.y <= Inner.y and then
-      Outer.x + Outer.w >= Inner.x + Inner.w and then Outer.y + Outer.h >= Inner.y + Inner.h);
+      if Header_Text /= Drawn_Header.all or else Filter /= Drawn_Filter then
+         Result := Union_Rect (Result, Header_Rect (Win));
+      end if;
+      if Summary_Rows /= Drawn_Summary then
+         --  The view moved: everything below the header.
+         return CuBit.UI.App.Full_Rect (Win);
+      end if;
+      if Summary_Rows > 0 and then
+        (Status /= Drawn_Status or else Summary_Version /= Drawn_Summary_Version)
+      then
+         Result := Union_Rect (Result, Summary_Rect (Win, Summary_Rows));
+      end if;
+      if Counts_Text /= Drawn_Counts.all then
+         Result := Union_Rect (Result, Counts_Rect (Win));
+      end if;
+      return Result;
+   end Changes;
 
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
       C : constant Canvas := CuBit.UI.App.Canvas (Win, Damage);
@@ -351,6 +373,7 @@ procedure Main is
       --  Every line elided to keep MARGIN clear of the right edge too.
       Lines : constant Rect := (MARGIN, 0, Natural'Max (CuBit.UI.App.Width (Win), 2 * MARGIN) - 2 * MARGIN,
                                 CuBit.UI.App.Height (Win));
+      Box : constant Rect := View_Box (Win);
       procedure Line (Y : Natural; Text : String; Danger : Boolean) is
       begin
          Draw_UI_Text_Fitted (C, Lines, MARGIN, Y, Text,
@@ -358,50 +381,91 @@ procedure Main is
       end Line;
    begin
       Fill_Rect (C, CuBit.UI.App.Full_Rect (Win), Colors.panel);
-      Body_Lines (Line'Access);
-      Line (Counts_Rect (Win).y, Counts_Text, False);
-      --  Remember what is on screen now, for the next change (Tick).
-      Take_Snapshot;
-      if Covers (Damage, CuBit.UI.App.Full_Rect (Win)) then
-         Painted_Body := Body_Now;
-      end if;
-      if Covers (Damage, Counts_Rect (Win)) then
-         Painted_Counts := Counts_Now;
-      end if;
-   end Render;
-   --  What Ctrl+C copies (docs/clipboard.md): the summary and the page shown,
-   --  one record per line. Records are short; this is ample.
-   COPY_CAPACITY : constant := 16_384;
-   Copy_Form : Clipboard_Text.Builder (COPY_CAPACITY);
-   procedure Copy_Shown (Win : CuBit.UI.App.Window) is
-      Result : CuBit.UI.Clipboard.Outcome;
-      First : Positive;
-      procedure Line (Text : String) is
-      begin
-         if Copy_Form.Length > 0 then
-            Clipboard_Text.Append (Copy_Form, [1 => ASCII.LF]);
-         end if;
-         Clipboard_Text.Append (Copy_Form, Text);
-      end Line;
-   begin
-      Clipboard_Text.Clear (Copy_Form);
-      Select_Visible;
-      First := Shown_First;
-      if Filter = All_Sources then
+      Line (HEADER_Y, Header_Text, False);
+      if Status_Text'Length > 0 then
+         Line (SUMMARY_Y, Status_Text, Status = P.Denied or else Status not in P.OK | P.Empty | P.Gap);
+      elsif Filter = All_Sources then
          for I in 1 .. Summary_Count loop
-            Line (CuBit.Log_Records.Text (Summary (I)));
+            Line (SUMMARY_Y + (I - 1) * Line_Height, CuBit.Log_Records.Text (Summary (I)),
+                  CuBit.Log_Records.Level (Summary (I)) >= CuBit.Log_Records.Warning);
          end loop;
       end if;
-      for I in First .. Natural'Min (Visible_Count, First + Rows - 1) loop
-         Line (Shown_Text (Visible (I)));
-      end loop;
-      CuBit.UI.Clipboard.Copy_Built (CuBit.UI.App.Surface_ID (Win), "", Copy_Form, Copy_Form, Result);
+      TV.Sync (View, View_Text.all, Box);
+      TV.Draw_Moved (C, CuBit.UI.App.Previous_Canvas (Win), Box, Colors,
+                     Drawn_View, Drawn_Text.all, View, View_Text.all, Focused => False);
+      Line (Counts_Rect (Win).y, Counts_Text, False);
+      Rendered_Rows := Rendered_Rows + TV.Visible_Lines (Box) - TV.Last_Copied_Rows;
+      Copied_Rows := Copied_Rows + TV.Last_Copied_Rows;
+      Frames := Frames + 1;
+      --  What this frame shows, for the next change.
+      if Drawn_Text /= View_Text then
+         Free (Drawn_Text);
+         Drawn_Text := View_Text;
+      end if;
+      Drawn_View := View;
+      Free (Drawn_Header);
+      Drawn_Header := new String'(Header_Text);
+      Free (Drawn_Counts);
+      Drawn_Counts := new String'(Counts_Text);
+      Drawn_Summary := Summary_Rows;
+      Drawn_Summary_Version := Summary_Version;
+      Drawn_Filter := Filter;
+      Drawn_Status := Status;
+   end Render;
+
+   --  What Ctrl+C copies (docs/clipboard.md): the selection, or without one
+   --  the records shown, one per line.
+   procedure Copy_Shown (Win : CuBit.UI.App.Window) is
+      Result : CuBit.UI.Clipboard.Outcome;
+      Box : constant Rect := View_Box (Win);
+   begin
+      if TV.Selection_First (View) /= TV.Selection_Last (View) then
+         CuBit.UI.Clipboard.Copy_Text (CuBit.UI.App.Surface_ID (Win), TV.Selection (View, View_Text.all),
+                                       CuBit.UI.Clipboard.Ordinary, Result);
+      else
+         declare
+            Everything : TV.View := View;
+            Text : constant String := View_Text.all;
+            First : Positive := Text'First;
+            Last : Natural := Text'Last;
+            Line : Positive := 1;
+         begin
+            --  The shown lines: from the first line's start to the end of
+            --  the last one.
+            Everything.Anchor := 1;
+            for I in Text'Range loop
+               if Text (I) = ASCII.LF then
+                  Line := Line + 1;
+                  if Line = View.First_Line then
+                     First := I + 1;
+                  elsif Line = View.First_Line + TV.Visible_Lines (Box) then
+                     Last := I - 1;
+                     exit;
+                  end if;
+               end if;
+            end loop;
+            CuBit.UI.Clipboard.Copy_Text (CuBit.UI.App.Surface_ID (Win),
+                                          (if First <= Last then Text (First .. Last) else ""),
+                                          CuBit.UI.Clipboard.Ordinary, Result);
+         end;
+      end if;
       debugPrint ("boot-logs: copy " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
    end Copy_Shown;
+
+   --  A new filter shows other records: back to the newest.
+   procedure Refilter (Win : CuBit.UI.App.Window; Dirty : in out Rect) is
+   begin
+      View := (others => <>);
+      Rebuild;
+      TV.Sync (View, View_Text.all, View_Box (Win));
+      Dirty := CuBit.UI.App.Full_Rect (Win);
+   end Refilter;
 
    procedure Handle_Event (Win : in out CuBit.UI.App.Window;
      Event : CuBit.UI.App.Input_Event; Dirty : in out Rect; Running : in out Boolean) is
       use type Clipboard_Chords.Command;
+      Box : constant Rect := View_Box (Win);
+      Handled : Boolean;
    begin
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
          Running := False;
@@ -419,42 +483,55 @@ procedure Main is
          else
             Filter := All_Sources;
          end if;
-         Page := 0;
-         Anchor := 0;
-         Dirty := CuBit.UI.App.Full_Rect (Win);
+         Refilter (Win, Dirty);
       elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN and then Event.payload0 = KEY_B then
          Filter := (if Filter = Bring_Up then All_Sources else Bring_Up);
-         Page := 0;
-         Anchor := 0;
-         Dirty := CuBit.UI.App.Full_Rect (Win);
+         Refilter (Win, Dirty);
+      elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then
+         TV.Key (View, View_Text.all, Box, Natural (Event.payload0 and 16#FFFF#),
+                 Shift => (Event.payload1 and CuBit.UI.App.KEYMOD_SHIFT) /= 0,
+                 Ctrl => (Event.payload1 and CuBit.UI.App.KEYMOD_CTRL) /= 0, Handled => Handled);
+         if Handled then
+            Dirty := Union_Rect (Dirty, Changes (Win));
+         end if;
+      elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_WHEEL then
+         TV.Wheel (View, View_Text.all, Box, CuBit.UI.Input.Pointer_Wheel_Delta (Event));
+         Dirty := Union_Rect (Dirty, Changes (Win));
+      elsif Event.kind in CuBit.UI.Input.INPUT_POINTER_DOWN | CuBit.UI.Input.INPUT_POINTER_MOVE |
+                          CuBit.UI.Input.INPUT_POINTER_UP
+      then
+         declare
+            Down : constant Boolean := (CuBit.UI.Input.Pointer_Buttons (Event) and 1) /= 0;
+         begin
+            if Event.kind = CuBit.UI.Input.INPUT_POINTER_MOVE and then not View.Selecting then
+               return;
+            end if;
+            TV.Pointer (View, View_Text.all, Box, CuBit.UI.Input.Pointer_X (Event), CuBit.UI.Input.Pointer_Y (Event),
+                        Down => Down,
+                        Pressed => Event.kind = CuBit.UI.Input.INPUT_POINTER_DOWN,
+                        Released => Event.kind = CuBit.UI.Input.INPUT_POINTER_UP,
+                        Shift => (CuBit.UI.Input.Pointer_Modifiers (Event) and CuBit.UI.App.KEYMOD_SHIFT) /= 0);
+            Dirty := Union_Rect (Dirty, Changes (Win));
+         end;
       elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
-         Rows := Positive'Max (1, (CuBit.UI.App.Height (Win) - 80 -
-           (Summary_Capacity + 1) * Line_Height) / Line_Height);
-         Select_Visible;
+         TV.Sync (View, View_Text.all, Box);
          Dirty := CuBit.UI.App.Full_Rect (Win);
       end if;
    end Handle_Event;
    function Deadline return Unsigned_64 is (Due);
-   --  How many changes Tick repainted whole, as the counts line, or not.
-   DECIDED_REPORT_MS : constant := 10_000;
-   type Need_Counts is array (Boot_Logs_Repaint.Need) of Natural;
-   Decided : Need_Counts := [others => 0];
-   Decided_Report_Due : Unsigned_64 := 0;
-   Decision : Boot_Logs_Repaint.Need;
-   use type Boot_Logs_Repaint.Need;
-   --  The first line a whole repaint of the period changed (serial evidence).
-   type Example_Text is record
-      Length : Natural range 0 .. 96 := 0;
-      Text : String (1 .. 96) := [others => ' '];
-   end record;
-   Whole_Example : Example_Text;
+
+   --  Serial evidence (not logstore, so it feeds no viewer): per period,
+   --  the frames painted and the view's rows drawn and copied.
+   REPAINT_REPORT_MS : constant := 10_000;
+   Report_Due : Unsigned_64 := 0;
+
    procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
       Event : P.Event;
       Lost : Unsigned_64;
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
       --  Sources were asked for this time already.
       Asked : Boolean := False;
-      --  Something shown may have changed: compare before repainting.
+      --  Something shown may have changed: rebuild and compare.
       Changed : Boolean := False;
    begin
       Due := Now + 250;
@@ -475,7 +552,21 @@ procedure Main is
             if Count < Records'Length then
                Count := Count + 1;
             else
-               -- Preserve the latest diagnosis and final capture summary.
+               --  The oldest record gives way. While the view is scrolled
+               --  back, it keeps showing the same records: it moves up a
+               --  line (and the selection with it) when the dropped record
+               --  was one it lists.
+               if Shown (Records'First) then
+                  declare
+                     Gone : constant Positive := Shown_Text (Records'First)'Length + 1;
+                  begin
+                     if not View.Follow_End and then View.First_Line > 1 then
+                        View.First_Line := View.First_Line - 1;
+                     end if;
+                     View.Cursor := Positive'Max (1, View.Cursor - Integer'Min (Gone, View.Cursor - 1));
+                     View.Anchor := Positive'Max (1, View.Anchor - Integer'Min (Gone, View.Anchor - 1));
+                  end;
+               end if;
                for J in Records'First .. Records'Last - 1 loop
                   Records (J) := Records (J + 1);
                   Record_Sources (J) := Record_Sources (J + 1);
@@ -510,52 +601,26 @@ procedure Main is
             Changed := True;
          end if;
       end if;
-      if Now >= Turn_Page then
-         Select_Visible;
-         --  The next page, after the last the first.
-         Anchor := (if Shown_First + Rows <= Visible_Count then Number_Of (Visible (Shown_First + Rows))
-                    else 0);
-         Turn_Page := Now + 8000;
-         Changed := True;
-      end if;
       if Status /= Reported_Status then
          debugPrint ("boot-logs: reader status=" & P.Status'Image (Status) & ASCII.LF);
          Reported_Status := Status;
          Changed := True;
       end if;
       if Changed then
-         Take_Snapshot;
-         Decision := Boot_Logs_Repaint.Decide (Painted_Body, Body_Now, Painted_Counts, Counts_Now);
-         if Decision = Boot_Logs_Repaint.Whole and then Whole_Example.Length = 0 then
-            declare
-               Line : constant String := Boot_Logs_Repaint.First_Change (Painted_Body, Body_Now);
-               Kept : constant Natural := Natural'Min (Line'Length, Whole_Example.Text'Length);
-            begin
-               Whole_Example.Length := Kept;
-               Whole_Example.Text (1 .. Kept) := Line (Line'First .. Line'First + Kept - 1);
-            end;
-         end if;
-         Decided (Decision) := Decided (Decision) + 1;
-         case Decision is
-            when Boot_Logs_Repaint.Whole => Dirty := CuBit.UI.App.Full_Rect (Win);
-            when Boot_Logs_Repaint.Counts_Only => Dirty := Union_Rect (Dirty, Counts_Rect (Win));
-            when Boot_Logs_Repaint.Nothing => null;
-         end case;
+         Rebuild;
+         TV.Sync (View, View_Text.all, View_Box (Win));
+         Dirty := Union_Rect (Dirty, Changes (Win));
       end if;
-      --  Serial only (not logstore, so it feeds no viewer): the repaints of
-      --  the last period, each of which was a whole-window repaint before.
-      if Now >= Decided_Report_Due then
-         Decided_Report_Due := Now + DECIDED_REPORT_MS;
-         if Decided /= Need_Counts'[others => 0] then
-            debugPrint ("boot-logs: changes whole=" & Natural'Image (Decided (Boot_Logs_Repaint.Whole)) &
-                        " counts_only=" & Natural'Image (Decided (Boot_Logs_Repaint.Counts_Only)) &
-                        " nothing=" & Natural'Image (Decided (Boot_Logs_Repaint.Nothing)) &
-                        " in" & Natural'Image (DECIDED_REPORT_MS) & " ms" &
-                        (if Whole_Example.Length = 0 then ""
-                         else "; first whole change: " & Whole_Example.Text (1 .. Whole_Example.Length)) &
-                        ASCII.LF);
-            Decided := [others => 0];
-            Whole_Example.Length := 0;
+      if Now >= Report_Due then
+         Report_Due := Now + REPAINT_REPORT_MS;
+         if Frames > 0 then
+            debugPrint ("boot-logs: frames=" & Natural'Image (Frames) &
+                        " rows_drawn=" & Natural'Image (Rendered_Rows) &
+                        " rows_copied=" & Natural'Image (Copied_Rows) &
+                        " in" & Natural'Image (REPAINT_REPORT_MS) & " ms" & ASCII.LF);
+            Frames := 0;
+            Rendered_Rows := 0;
+            Copied_Rows := 0;
          end if;
       end if;
    end Tick;
