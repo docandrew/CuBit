@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Waits;
 with Interfaces;
 with CuBit.Messages; with CuBit.Process_IDs; with CuBit.Driver_Readiness;
 with CuBit.Launch_Configurations; with CuBit.Control_Events;
@@ -82,7 +83,7 @@ procedure Main is
       I2C_Log.Disable ("retained-supervision");
       -- Startup touched a controller whose quiescence is uncertain. Keep its
       -- MMIO mapping and process for supervision; no reset/retry or exit here.
-      loop Ignored := M.syscall (M.SYSCALL_SLEEP, Health_Milliseconds); end loop;
+      loop Ignored := CuBit.Waits.Sleep_For (Health_Milliseconds); end loop;
    end Wait_Retained;
    procedure Event_Message (Publisher : PID.Process_ID; Message : M.Message) is
       Item : E.Event;
@@ -253,7 +254,7 @@ begin
          end if;
          if Service.Retained then
             -- Ready rings must not spin a retained supervisor wait.
-            Ignored := M.syscall (M.SYSCALL_SLEEP, Health_Milliseconds);
+            Ignored := CuBit.Waits.Sleep_For (Health_Milliseconds);
          elsif Device.Has_Payload and then Binding.Delivery = IRQ.MSI then
             if Device.Observe.Waiting_For_Hardware then
                Device.Arm_Interrupt_Wait (IRQ_Result);
@@ -282,7 +283,7 @@ begin
          elsif Device.Has_Payload then
             -- Work_Burst/Budget assumes a bounded polling interval. Other
             -- channels may already be ready; Arm must not bypass this yield.
-            Ignored := M.syscall (M.SYSCALL_SLEEP, Poll_Milliseconds);
+            Ignored := CuBit.Waits.Sleep_For (Poll_Milliseconds);
          else
             Service.Sleep (Until_Time, Woke);
          end if;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with Wait_ABI;
 with ACPI_Event_Waits;
 with ACPI_Delay_Waits; with ACPI_Native_Startup_Timing;
 with ACPI_Clock_Source;
@@ -20,7 +21,7 @@ package body ACPI_Native_Delays is
       -- an already-due target; neither syscall return alone proves elapsed time.
       Yielded := CuBit.Kernel_Calls.Call (K.Yield);
       if Yielded /= 0 then Accepted := False; return; end if;
-      Slept := CuBit.Kernel_Calls.Call (K.Sleep_Until_Monotonic_Microsecond, Target);
+      Slept := CuBit.Kernel_Calls.Call (K.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever, Target);
       Accepted := Slept = 0;
    end Sleep_Until;
    package Waits is new ACPI_Delay_Waits

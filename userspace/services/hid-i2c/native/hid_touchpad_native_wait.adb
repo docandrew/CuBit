@@ -1,10 +1,11 @@
 pragma Ada_2022;
+with CuBit.Waits;
 package body HID_Touchpad_Native_Wait is
    package M renames CuBit.Messages;
    use type M.Activity_Result;
    procedure Delay_Retry (Fallback : Backoff_Milliseconds;
       Result : out M.Activity_Result) is
-      Reply : constant Pump.W.Word := M.syscall (M.SYSCALL_SLEEP, Fallback);
+      Reply : constant Pump.W.Word := CuBit.Waits.Sleep_For (Fallback);
    begin
       Result := (if Reply = Pump.W.Word'Last then M.Unavailable else M.Deadline_Reached);
    end Delay_Retry;

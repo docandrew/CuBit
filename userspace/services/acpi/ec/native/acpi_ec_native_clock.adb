@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with Wait_ABI;
 with Interfaces;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -13,7 +14,7 @@ package body ACPI_EC_Native_Clock is
    end Sample;
    procedure Pause (Until_Time : Interfaces.Unsigned_64; Accepted : out Boolean) is
       Result : constant Interfaces.Unsigned_64 :=
-        CuBit.Kernel_Calls.Call (K.Sleep_Until_Monotonic_Microsecond, Until_Time);
+        CuBit.Kernel_Calls.Call (K.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever, Until_Time);
    begin
       Accepted := Result = 0;
    end Pause;
