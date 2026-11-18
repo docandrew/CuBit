@@ -16,6 +16,16 @@ libm = "=0.2.16"
 # Pixel-equivalence oracle; not part of the native font engine.
 ab_glyph = { version = "=0.2.32", default-features = false, features = ["libm"] }
 
-[target.'cfg(target_os = "none")'.dependencies]
-cubit-allocator = { path = "../allocator" }
-cubit = { path = "../cubit" }
+# The native staticlib Ada programs link (make ui-fonts-native): no std, its
+# own allocator (CuAlloc) and panic handler. Without it (hosted tests, Servo
+# on CuBit's std) the crate uses std's.
+[features]
+native = ["dep:cubit-allocator", "dep:cubit"]
+
+[dependencies.cubit-allocator]
+path = "../allocator"
+optional = true
+
+[dependencies.cubit]
+path = "../cubit"
+optional = true

@@ -1,6 +1,12 @@
 # Invoke through nix develop. Cargo builds Rust only; GNU ld attaches the same
 # CCL ELF metadata and stack contract used by native Ada applications.
 TARGET := x86_64-unknown-none
+# The font engine is floating-point work: it builds for CuBit's userspace
+# target (hardware SSE2 floating point, std/x86_64-unknown-cubit.json), with
+# core and alloc built for it, not for the soft-float bootstrap target, where
+# every float operation was a library call (~10x slower rasterization).
+# Only integers and pointers cross its C ABI, so Ada links it unchanged.
+FONT_TARGET := $(abspath std/x86_64-unknown-cubit.json)
 MANIFEST := ../ccl/build/manifest/ccl-manifest
 CATALOG := ../ccl/catalogs/native-runtime-services.ccl
 LIB := build/cargo/$(TARGET)/release/libcubit_rust_probe.a
@@ -52,9 +58,10 @@ fonts-host:
 
 fonts-native:
 	cd ../../kernel && alr exec -- gprbuild $(NATIVE_GPRBUILD_CONFIG) -p -P ../userspace/allocator/allocator_native.gpr
-	$(CARGO) build --locked --offline --release -p cubit-fonts
+	RUSTC_BOOTSTRAP=1 $(CARGO) --config 'target.x86_64-unknown-cubit.rustflags=["--remap-path-prefix=$(REPO_ROOT)=."]' \
+	  build --locked --offline --profile fonts -p cubit-fonts --features native --target $(FONT_TARGET) -Zjson-target-spec -Zbuild-std=core,alloc
 	mkdir -p build/font-native
-	printf '%s\n' 'CREATE build/font-native/libcubit_fonts.a' 'ADDLIB build/cargo/$(TARGET)/release/libcubit_fonts.a' 'ADDLIB ../allocator/build/native-lib/libcubit_allocator.a' 'SAVE' 'END' | ar -M
+	printf '%s\n' 'CREATE build/font-native/libcubit_fonts.a' 'ADDLIB build/cargo/x86_64-unknown-cubit/fonts/libcubit_fonts.a' 'ADDLIB ../allocator/build/native-lib/libcubit_allocator.a' 'SAVE' 'END' | ar -M
 	# memcpy, memmove, memset and memcmp are the runtime's (CuBit.String),
 	# for the Rust code too. Rust's core brings weak copies of them
 	# (compiler_builtins, one per archive member); this archive is linked

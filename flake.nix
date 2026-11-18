@@ -103,9 +103,23 @@
               "emSign ECC Root CA - C3"
             ];
           };
-          cubitRustVendor = pkgs.rustPlatform.importCargoLock {
+          # One offline crates directory: the workspace's crates and the
+          # toolchain's own library dependencies, so -Zbuild-std (the font
+          # engine's hard-float core/alloc, std on CuBit) builds offline from
+          # pinned sources too. A crate in both is the same name and version.
+          cubitRustVendorWorkspace = pkgs.rustPlatform.importCargoLock {
             lockFile = ./userspace/rust/Cargo.lock;
           };
+          cubitRustVendorSysroot = pkgs.rustPlatform.importCargoLock {
+            lockFile = "${cubitRust}/lib/rustlib/src/rust/library/Cargo.lock";
+          };
+          cubitRustVendor = pkgs.runCommand "cubit-rust-vendor" { } ''
+            mkdir -p $out
+            for crate in ${cubitRustVendorWorkspace}/* ${cubitRustVendorSysroot}/*; do
+              name=$(basename "$crate")
+              [ -e "$out/$name" ] || ln -s "$crate" "$out/$name"
+            done
+          '';
           # Freestanding math library: no Linux TLS canary or fortified libc
           # dependency. Native CuBit supplies process isolation/ELF runtime.
           sameboyMath = pkgs.openlibm.overrideAttrs (previous: {

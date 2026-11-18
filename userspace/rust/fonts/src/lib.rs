@@ -1,6 +1,7 @@
 //! Shared userspace TrueType rasterizer. Only bundled font bytes, and a
 //! program's own embedded face (`cubit_font_register`), are accepted.
-#![cfg_attr(target_os = "none", no_std)]
+#![cfg_attr(feature = "native", no_std)]
+#![cfg_attr(feature = "native", feature(linkage))]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 extern crate alloc;
@@ -905,11 +906,27 @@ mod tests {
     }
 }
 
-#[cfg(target_os = "none")]
+/// alloc, built for the native target (-Zbuild-std), keeps CString's
+/// conversions in the object the engine needs, and they name the C library's
+/// strlen, which CuBit's Ada programs do not have. The engine never calls it
+/// (it has no C strings); a program that has a C library's own wins (weak).
+#[cfg(feature = "native")]
+#[unsafe(no_mangle)]
+#[linkage = "weak"]
+pub unsafe extern "C" fn strlen(text: *const core::ffi::c_char) -> usize {
+    let mut length = 0;
+    // SAFETY: the caller passes a NUL-terminated string (strlen's contract).
+    while unsafe { *text.add(length) } != 0 {
+        length += 1;
+    }
+    length
+}
+
+#[cfg(feature = "native")]
 #[global_allocator]
 static ALLOCATOR: cubit_allocator::BoundedAllocator = cubit_allocator::BoundedAllocator;
 
-#[cfg(target_os = "none")]
+#[cfg(feature = "native")]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     use core::fmt::Write;
