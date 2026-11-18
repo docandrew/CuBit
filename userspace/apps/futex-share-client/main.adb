@@ -106,6 +106,13 @@ procedure Main is
 
    --  Ping rounds against the server's pong. True when every round was
    --  answered (no wake lost, nothing timed out).
+   --  Diagnostics of the last Ping: the fastest batch of Batch_Rounds, and
+   --  how often the peer was found asleep (a wake woke a waiter) and how
+   --  often this side's wait slept (woken) or found the answer (retry).
+   Batch_Rounds : constant := 2_000;
+   Min_Batch_Us : Unsigned_64 := Unsigned_64'Last;
+   Wakes_Woke, Waits_Slept, Waits_Retried : Unsigned_64 := 0;
+
    function Ping (Count : Unsigned_64; Mode : Unsigned_64) return Boolean is
       Ping_W : constant Word_Access := At_Offset (First_Base, Ping_At);
       Pong_W : constant Word_Access := At_Offset (First_Base, Pong_At);
@@ -117,7 +124,12 @@ procedure Main is
       Run_Deadline : constant Unsigned_64 := Deadline_After (Run_Ms);
       Result : Unsigned_64;
       Value : Unsigned_32;
+      Batch_Start : Unsigned_64 := CuBit.Monotonic.Microseconds;
    begin
+      Min_Batch_Us := Unsigned_64'Last;
+      Wakes_Woke := 0;
+      Waits_Slept := 0;
+      Waits_Retried := 0;
       --  The server starts from Base: a ping written before it looks is
       --  still news to it.
       if not Call (OP_PINGPONG, Count, Mode, Unsigned_64 (Base)) then
@@ -129,8 +141,15 @@ procedure Main is
          if Mode = Mode_Hand_Off then
             Result := W.Hand_Off (Ping_Name, Pong_Name, Unsigned_64 (Value - 1), Run_Deadline);
          else
-            Result := W.Futex_Wake (Ping_Name, 1);
+            if W.Futex_Wake (Ping_Name, 1) = 1 then
+               Wakes_Woke := Wakes_Woke + 1;
+            end if;
             Result := W.Futex_Wait (Pong_Name, Unsigned_64 (Value - 1), Run_Deadline);
+         end if;
+         if Result = Wait_ABI.Futex_Woken then
+            Waits_Slept := Waits_Slept + 1;
+         elsif Result = Wait_ABI.Futex_Retry then
+            Waits_Retried := Waits_Retried + 1;
          end if;
          while Unsigned_32 (Pong_W.all) /= Value loop
             if Result = Wait_ABI.Futex_Timed_Out or else Result = Wait_ABI.Futex_Fault then
@@ -138,6 +157,14 @@ procedure Main is
             end if;
             Result := W.Futex_Wait (Pong_Name, Unsigned_64 (Value - 1), Run_Deadline);
          end loop;
+         if Round mod Batch_Rounds = 0 then
+            declare
+               Now_Us : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
+            begin
+               Min_Batch_Us := Unsigned_64'Min (Min_Batch_Us, Now_Us - Batch_Start);
+               Batch_Start := Now_Us;
+            end;
+         end if;
       end loop;
       return True;
    end Ping;
@@ -154,7 +181,12 @@ procedure Main is
       debugPrint ("FUTEX-SHARE: pingpong mode=" & Name & " rounds=" & Image (Rounds) &
                   " us=" & Image (Elapsed) &
                   " ns_per_round=" & Image (Elapsed * Nanoseconds_Per_Microsecond / Rounds) &
-                  " client_calls_per_round_x100=" & Image (Calls * 100 / Rounds) & LF);
+                  " client_calls_per_round_x100=" & Image (Calls * 100 / Rounds) &
+                  " min_batch_ns_per_round=" &
+                  Image ((if Min_Batch_Us = Unsigned_64'Last then 0
+                          else Min_Batch_Us * Nanoseconds_Per_Microsecond / Batch_Rounds)) &
+                  " wakes_woke=" & Image (Wakes_Woke) & " waits_slept=" & Image (Waits_Slept) &
+                  " waits_retried=" & Image (Waits_Retried) & LF);
    end Timed_Ping;
 
    Heap : Unsigned_64;
