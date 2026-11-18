@@ -3321,9 +3321,10 @@ procedure main is
    --  A window's surface ring ended since dead clients' windows were last
    --  looked for (reapDeadClientSurfaces).
    clientEndNoticed : Boolean := True;
-   --  A window whose owner holds no ring and no attached buffer: nothing
-   --  signals its end, so it is looked for every Ringless_Reap_Interval_Ms
-   --  even when no frame is drawn (0: no such window, no timer).
+   --  A window whose owner holds no ring: nothing reliably signals its end
+   --  (an ending owner's buffer grant brings no notice), so it is looked
+   --  for every Ringless_Reap_Interval_Ms even when no frame is drawn (0:
+   --  no such window, no timer).
    Ringless_Reap_Interval_Ms : constant := 1_000;
    ringlessReapDueMs : Unsigned_64 := 0;
 
@@ -15731,8 +15732,7 @@ begin
          end if;
          --  The next look for windows nothing would signal the end of.
          if (for some S of store.Surfaces =>
-               S.used and then S.owner /= No_Process and then not S.bufferAttached
-               and then not clientHoldsRing (S.owner))
+               S.used and then S.owner /= No_Process and then not clientHoldsRing (S.owner))
          then
             if ringlessReapDueMs = 0 or else nowMs >= ringlessReapDueMs then
                ringlessReapDueMs := nowMs + Ringless_Reap_Interval_Ms;
