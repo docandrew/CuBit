@@ -347,3 +347,84 @@ mod tests {
         );
     }
 }
+
+/// Hosted timing of one miss, step by step (cargo test --release breakdown
+/// -- --ignored --nocapture). Linux-hosted: not native, not QEMU.
+#[cfg(test)]
+mod breakdown {
+    use super::*;
+    extern crate std;
+    use std::{println, time::Instant, vec};
+
+    fn request(face: u32, code: u32, n: u32, d: u32) -> Request {
+        let w = (BASE_WIDTH_BOUND * n + d - 1) / d;
+        let h = (BASE_LINE * n + d - 1) / d;
+        let pitch = (w + 15) / 16 * 16;
+        Request { face, code, em_numerator: BASE_EM_PX * n, em_denominator: d, width: w, height: h, pitch,
+                  capacity: pitch * h * PHASES, phases: PHASES }
+    }
+
+    #[test]
+    #[ignore]
+    fn miss_breakdown() {
+        for (face, n, d) in [(0u32, 1u32, 1u32), (2, 1, 1), (0, 2, 1), (0, 3, 2)] {
+            let codes: vec::Vec<u32> = (33..=126).collect();
+            let rounds = 20u32;
+            let (mut parse, mut zone, mut dark, mut prep, mut each, mut total, mut decode) = (0u128, 0u128, 0u128, 0u128, 0u128, 0u128, 0u128);
+            let mut glyphs = 0u128;
+            for _ in 0..rounds {
+                for &code in &codes {
+                    let r = request(face, code, n, d);
+                    let mut pixels = vec![0u8; r.capacity as usize];
+                    let t0 = Instant::now();
+                    render_with(&r, &mut pixels, STYLE).unwrap();
+                    total += t0.elapsed().as_nanos();
+                    // The same steps, timed one by one.
+                    let t = Instant::now();
+                    let font = Face::parse(face_bytes(face as usize).unwrap(), 0).unwrap();
+                    parse += t.elapsed().as_nanos();
+                    let ratio = (r.em_numerator as f32 / r.em_denominator as f32) / f32::from(font.units_per_em());
+                    let density = r.em_numerator as f32 / BASE_EM / r.em_denominator as f32;
+                    let t = Instant::now();
+                    let zones = zones(&font, ratio, STYLE.hinted);
+                    zone += t.elapsed().as_nanos();
+                    let t = Instant::now();
+                    let dk = darken(&font, ratio, STYLE);
+                    dark += t.elapsed().as_nanos();
+                    let id = font.glyph_index(char_of(printable(face as usize, code)).unwrap()).unwrap();
+                    struct Count(u32);
+                    impl ttf_parser::OutlineBuilder for Count {
+                        fn move_to(&mut self, _: f32, _: f32) { self.0 += 1; }
+                        fn line_to(&mut self, _: f32, _: f32) { self.0 += 1; }
+                        fn quad_to(&mut self, _: f32, _: f32, _: f32, _: f32) { self.0 += 1; }
+                        fn curve_to(&mut self, _: f32, _: f32, _: f32, _: f32, _: f32, _: f32) { self.0 += 1; }
+                        fn close(&mut self) {}
+                    }
+                    let t = Instant::now();
+                    let mut c = Count(0);
+                    let _ = font.outline_glyph(id, &mut c);
+                    decode += t.elapsed().as_nanos() * PHASES as u128;
+                    core::hint::black_box(c.0);
+                    for phase in 0..PHASES {
+                        let shift = ORIGIN as f32 * density + phase as f32 / PHASES as f32;
+                        let t = Instant::now();
+                        let o = outline::prepare(&font, id, ratio, shift, zones, dk, r.width + 2, r.height + 2).unwrap();
+                        prep += t.elapsed().as_nanos();
+                        if let Outline::Ready(p) = o {
+                            let t = Instant::now();
+                            let mut sum = 0u32;
+                            p.each(|_, _, c| sum += c as u32);
+                            each += t.elapsed().as_nanos();
+                            core::hint::black_box(sum);
+                        }
+                    }
+                    glyphs += 1;
+                }
+            }
+            let us = |v: u128| v as f64 / glyphs as f64 / 1000.0;
+            println!("BREAKDOWN face={face} density={n}/{d}: total={:.2}us parse={:.2} zones={:.2} darken={:.2} \
+                      prepare(4 phases)={:.2} [of which outline decode x4={:.2}] each(4)={:.2} (per glyph, {} glyphs)",
+                     us(total), us(parse), us(zone), us(dark), us(prep), us(decode), us(each), glyphs);
+        }
+    }
+}
