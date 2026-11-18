@@ -103,7 +103,10 @@ package body Desktop_Path_Timing is
          F.Pixels (P) := Pixels (P);
          F.Micros (P) := Micros (Ticks (P));
          Claimed := Claimed + Ticks (P);
-         Written := Written + Pixels (P);
+         --  A layer build writes the private layer, not the frame.
+         if P /= Backdrop_Build then
+            Written := Written + Pixels (P);
+         end if;
       end loop;
       F.Sampler_Pixels := Reasons;
       F.Total_Micros := (if End_Tick >= Frame_Since then Micros (End_Tick - Frame_Since) else 0);
@@ -138,7 +141,8 @@ package body Desktop_Path_Timing is
    function Name (P : Path) return String is
      (case P is
         when Client_Row_Copy => "client_row_copy", when Client_Sampler => "client_sampler",
-        when Fill => "fill", when Backdrop => "backdrop", when Blend => "blend",
+        when Fill => "fill", when Backdrop => "backdrop",
+        when Backdrop_Build => "backdrop_build", when Blend => "blend",
         when Text => "text", when Icon => "icon", when Chrome => "chrome",
         when Deskbar => "deskbar", when Cursor => "cursor");
 

@@ -3,6 +3,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages;
 with CuBit.Owned_Reservations;
 with Desktop_Logs;
+with Desktop_Path_Timing;
 with Desktop_Wallpaper;
 
 package body Desktop_Wallpaper_Layers is
@@ -72,7 +73,9 @@ package body Desktop_Wallpaper_Layers is
          L.Bytes := Needed;
       end if;
       Started := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Backdrop_Build);
       Desktop_Wallpaper.Paint (L.Base, Width, Height, Width * Pixel_Bytes, 0, 0, Width, Height, Style);
+      Desktop_Path_Timing.Leave (Unsigned_64 (Width) * Unsigned_64 (Height));
       L.Width := Width;
       L.Height := Height;
       L.Style := Style;

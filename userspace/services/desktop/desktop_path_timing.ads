@@ -28,7 +28,9 @@ package Desktop_Path_Timing is
      (Client_Row_Copy,   --  a client's 1:1 rows, memcpy (Compositor_Row_Copy)
       Client_Sampler,    --  a client's pixels through Compositor_Sampling
       Fill,              --  solid rectangles
-      Backdrop,          --  the wallpaper and backdrop layers
+      Backdrop,          --  the wallpaper and backdrop layers (row copies)
+      Backdrop_Build,    --  (re)building a retained wallpaper layer: resampling
+                         --  the image at the output's size, once per change
       Blend,             --  shadows and other blended rectangles
       Text,              --  glyphs and text runs
       Icon,              --  icons
