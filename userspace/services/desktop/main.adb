@@ -7518,14 +7518,20 @@ procedure main is
          drawUIText (24, 104, "If this remains visible, photograph this screen.", 16#00FFFFFF#, 16#00203648#);
          drawBootstrapDiagnostics;
       else
-         Desktop_Path_Timing.Begin_Frame;
+         --  The full-repaint oracle's private redraw is not a frame: it is
+         --  left out of the per-path attribution.
+         if not repaintChecking then
+            Desktop_Path_Timing.Begin_Frame;
+         end if;
          drawCurrentScene;
          Desktop_Path_Timing.Enter (Desktop_Path_Timing.Cursor);
          drawCursorOverlay;
          Desktop_Path_Timing.Leave;
-         Desktop_Path_Timing.End_Frame (Pixels);
-         if Desktop_Timing_Policy.Enabled then
-            DM.Record_Paths (Desktop_Path_Timing.Last_Frame, CuBit.Monotonic.Microseconds);
+         if not repaintChecking then
+            Desktop_Path_Timing.End_Frame (Pixels);
+            if Desktop_Timing_Policy.Enabled then
+               DM.Record_Paths (Desktop_Path_Timing.Last_Frame, CuBit.Monotonic.Microseconds);
+            end if;
          end if;
       end if;
       nativeOutputPass := False;
