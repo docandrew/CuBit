@@ -3777,7 +3777,7 @@ procedure main is
             return;
          end if;
          pciWriteConfig16 (dev.bus, dev.slot, dev.func, PMCSR, PCI_Power_Control.To_D0 (Before));
-         Ignored := syscall (SYSCALL_SLEEP, PCI_Power_Control.D3hot_Recovery_Ms);
+         Ignored := CuBit.Waits.Sleep_For (PCI_Power_Control.D3hot_Recovery_Ms);
          After := pciReadConfig16 (dev.bus, dev.slot, dev.func, PMCSR);
          Warnings.Inform
            ("devmgr: " & Name & " at " & Location_Text (dev) & " BAR at " & Hex (Unsigned_64 (Register))
