@@ -704,6 +704,12 @@ procedure Draw_Shadow
 begin
 if Use_GPU then GPU.Draw_Shadow (Target, Target_Bytes, Window, Damage, Color, Secondary, Drawn, Must_Restart); else CPU.Draw_Shadow (Target, Target_Bytes, Window, Damage, Color, Secondary, Drawn, Must_Restart); end if;
 end Draw_Shadow;
+procedure Prepare_Text
+     (Face : Compositor_Text.L.Face_Index; Code : Compositor_Text.L.Code_Point;
+      Scale : CuBit.Display_Geometry.UI_Scale; Resident : out Boolean) is
+begin
+if Use_GPU then Resident := False; else CPU.Prepare_Text (Face, Code, Scale, Resident); end if;
+end Prepare_Text;
 procedure Draw_Text
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;

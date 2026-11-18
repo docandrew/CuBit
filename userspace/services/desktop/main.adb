@@ -5250,6 +5250,7 @@ procedure main is
           when DI.No_Time => "NO_TIME", when DI.Backward => "BACKWARD", when DI.OK => "OK"));
    end Paint_Diagnostic;
 
+   slowTextReports : Natural := 0;
    procedure drawUITextUntimed
       (x, y : Natural;
        s    : String;
@@ -5276,6 +5277,7 @@ procedure main is
       Damage : DG.Physical_Rectangle;
       Area : Rect;
       Glyph_Pixels : Unsigned_64 := 0;
+      Batch_From : Unsigned_64 := 0;
 
       --  One compositor batch: each glyph's cell is the whole raster (its
       --  pen origin CuBit.Fonts.Origin in), never clipped to the advance, at
@@ -5300,6 +5302,7 @@ procedure main is
             Desktop_Path_Timing.Add_Items (Desktop_Path_Timing.Text_Glyphs, Unsigned_64 (Count));
          end if;
          Desktop_Path_Timing.Enter (Desktop_Path_Timing.Text_Glyphs);
+         Batch_From := (if Desktop_Timing_Policy.Enabled then CuBit.Monotonic.Microseconds else 0);
          Desktop_Compositor.Draw_Text
            ((Target, Unsigned_32 (Target_W), Unsigned_32 (Target_H), Unsigned_32 (Target_Pitch), 1),
             Unsigned_64 (Target_Pitch) * Unsigned_64 (Target_H), Screen,
@@ -5308,6 +5311,16 @@ procedure main is
              else backBufferAddr = dragBaseBufferAddr),
             Drawn, Repaint, Must_Restart);
          Desktop_Path_Timing.Leave (Glyph_Pixels);
+         --  Timing builds: say which batches were slow (a glyph cache miss
+         --  rasterizes), the first few times.
+         if Desktop_Timing_Policy.Enabled and then slowTextReports < 24 and then
+           CuBit.Monotonic.Microseconds - Batch_From >= 100
+         then
+            slowTextReports := slowTextReports + 1;
+            debugPrint ("DESKTOP-TEXT-SLOW: us=" & Decimal (CuBit.Monotonic.Microseconds - Batch_From) &
+                        " glyphs=" & Decimal (Unsigned_64 (Count)) & " face=" & CuBit.Fonts.Face'Image (face) &
+                        " text=" & Chars (1 .. Count) & LF);
+         end if;
          if Must_Restart then
             debugPrint ("desktop: text completion uncertain; restarting" & LF);
             exitCompositor (1);
@@ -14028,6 +14041,38 @@ procedure main is
    --  source or surface ring's doorbell, a ring's end) comes back in the
    --  same call and is handled here: one call per wake, not a wake and a
    --  poll.
+   --  Idle glyph warming. A glyph's first use rasterizes it into the glyph
+   --  cache (~100 us each in QEMU), on the frame that first shows it: a new
+   --  window's title cost that frame ~1.4 ms. While Desktop has nothing to
+   --  do it rasterizes the printable Sans glyphs ahead, a few per turn, so a
+   --  turn never holds input back for more than that; it stops when done,
+   --  when text is not the CPU renderer's, or when the cache is full.
+   Glyph_Warm_Per_Turn : constant := 2;
+   Last_Warm_Code : constant := 126;
+   glyphWarmNext : Natural := Compositor_Text.L.First_Code;
+   function glyphsWarming return Boolean is
+     (glyphWarmNext <= Last_Warm_Code and then desktopStarted and then not Bootstrap_CPU and then
+      Desktop_Compositor.Selected and then Desktop_Compositor.Software_Text and then
+      presentations (primaryOutput).Enabled);
+   procedure warmGlyphs is
+      Resident : Boolean;
+   begin
+      for I in 1 .. Glyph_Warm_Per_Turn loop
+         exit when glyphWarmNext > Last_Warm_Code;
+         Desktop_Compositor.Prepare_Text
+           (CuBit.Fonts.Face'Pos (CuBit.Fonts.Sans), glyphWarmNext,
+            presentations (primaryOutput).Geometry.Scale, Resident);
+         if not Resident then
+            glyphWarmNext := Last_Warm_Code + 1;   --  stop: no room, or no CPU text
+            exit;
+         end if;
+         glyphWarmNext := glyphWarmNext + 1;
+      end loop;
+      if glyphWarmNext > Last_Warm_Code then
+         debugPrint ("desktop: glyph cache warmed" & LF);
+      end if;
+   end warmGlyphs;
+
    function waitForActivity (Deadline : Unsigned_64; running : in out Boolean) return Activity_Result is
       Notice : aliased Message;
       Woke : Wake_Result;
@@ -16083,6 +16128,14 @@ begin
                      mayWait := False;
                   end if;
 
+                  --  Nothing to do: warm a few glyphs instead, then look again.
+                  if mayWait and then glyphsWarming and then
+                    not CuBit.Readiness.Any_Pending (deskReady) and then
+                    not Inputs.Waiting and then not Rings.Waiting
+                  then
+                     warmGlyphs;
+                     mayWait := False;
+                  end if;
                   if mayWait and then nextDueMs /= 0 and then
                     not CuBit.Readiness.Any_Pending (deskReady) and then
                     Rings.Quiet and then Inputs.Quiet and then Desktop_Frame_Ring.Quiet

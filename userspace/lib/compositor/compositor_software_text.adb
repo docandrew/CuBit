@@ -80,6 +80,14 @@ package body Compositor_Software_Text with SPARK_Mode is
       Storage.Paint (S.Backing, T.Position, Screen, Origin, Offset, Damage, Target, Pitch, Tint, Success);
       C.Complete (S.Registry, R, True);
    end Paint;
+   procedure Prepare (S : in out State; Key : C.Key; Resident : out Boolean) is
+      T : C.Token;
+   begin
+      Resident := False;
+      if not S.Running then return; end if;
+      Obtain (S, Key, T);
+      Resident := T /= C.No_Token;
+   end Prepare;
    procedure Shutdown (S : in out State; Success : out Boolean) is
       T : C.Token;
       OK : Boolean;

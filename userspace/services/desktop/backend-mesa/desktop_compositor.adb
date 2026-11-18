@@ -43,6 +43,14 @@ package body Desktop_Compositor with SPARK_Mode,
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Color : Compositor_Formats.Word; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) renames Renderer.Draw_Shadow;
+   procedure Prepare_Text
+     (Face : Compositor_Text.L.Face_Index; Code : Compositor_Text.L.Code_Point;
+      Scale : CuBit.Display_Geometry.UI_Scale; Resident : out Boolean) is
+      pragma Unreferenced (Face, Code, Scale);
+   begin
+      --  Mesa keeps its own retained masks.
+      Resident := False;
+   end Prepare_Text;
    procedure Draw_Text
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;

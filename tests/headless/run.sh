@@ -9155,6 +9155,23 @@ if [ "$TEST_NAME" = "ui-latency" ] && [ "$QEMU_ACCEL" = "kvm" ]; then
         exit 1
     fi
     echo "headless: every key published within 1 ms of its delivery"
+    # Idle glyph warming: once Desktop says the cache is warm, no Sans text
+    # batch waits for a glyph to be rasterized (a new window's title did,
+    # ~1.4 ms for 13 glyphs). Sans_Semibold is not warmed (the cache holds
+    # one face's printable set).
+    if ! grep -aq "desktop: glyph cache warmed" "$SERIAL_LOG"; then
+        echo "headless: ui-latency: the glyph cache was never warmed" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    cold=$(awk '/desktop: glyph cache warmed/ {w=1} w && /DESKTOP-TEXT-SLOW:.* face=SANS / {n++} END {print n+0}' "$SERIAL_LOG")
+    if [ "$cold" -ne 0 ]; then
+        echo "headless: ui-latency: $cold slow Sans text batches after the glyph cache was warmed" >&2
+        grep -a "DESKTOP-TEXT-SLOW" "$SERIAL_LOG" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    echo "headless: no Sans text waited for rasterization after warming"
 fi
 
 if [ "$TEST_NAME" = "desktop-restart" ]; then

@@ -29,6 +29,11 @@ package Compositor_Software_Text with SPARK_Mode is
            (if not Success or else not Software.Inside
              (I, Pitch, Software.Bounds (Screen, Origin, Offset, Damage)) then
                 Target (I) = Target'Old (I)));
+   --  Make Key's mask resident without painting it: a miss rasterizes it
+   --  now (warming the cache while idle), a hit does nothing. Resident: the
+   --  mask is ready.
+   procedure Prepare (S : in out State; Key : C.Key; Resident : out Boolean)
+     with Pre => Valid (S), Post => Valid (S);
    procedure Shutdown (S : in out State; Success : out Boolean)
      with Pre => Valid (S), Post => Valid (S) and
        (if Success then Charged (S) = 0);

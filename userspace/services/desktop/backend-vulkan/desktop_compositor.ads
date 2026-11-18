@@ -95,6 +95,13 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initialize
      with Global => (Proof_In => Desktop_Vulkan_Startup.Engine, In_Out => Engine),
        Pre => Valid and Desktop_Vulkan_Startup.Valid,
        Post => Valid and Desktop_Vulkan_Startup.Valid;
+   --  Rasterize Face's glyph Code at Scale into the CPU text renderer's
+   --  glyph cache when it is not there (idle warming); Resident: it is
+   --  there now. False whenever text is not drawn by the CPU renderer.
+   procedure Prepare_Text
+     (Face : Compositor_Text.L.Face_Index; Code : Compositor_Text.L.Code_Point;
+      Scale : CuBit.Display_Geometry.UI_Scale; Resident : out Boolean)
+     with Global => (In_Out => Engine);
    procedure Draw_Text
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;

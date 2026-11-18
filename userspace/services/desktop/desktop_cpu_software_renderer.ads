@@ -85,6 +85,12 @@ package Desktop_CPU_Software_Renderer with SPARK_Mode, Abstract_State => State, 
       Color : Compositor_Formats.Word; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
      with Global => (Proof_In => State);
+   --  Rasterize Face's glyph Code at Scale into the glyph cache if it is not
+   --  there (idle warming); Resident: it is there now.
+   procedure Prepare_Text
+     (Face : Compositor_Text.L.Face_Index; Code : Compositor_Text.L.Code_Point;
+      Scale : CuBit.Display_Geometry.UI_Scale; Resident : out Boolean)
+     with Global => (In_Out => State);
    procedure Draw_Text
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;

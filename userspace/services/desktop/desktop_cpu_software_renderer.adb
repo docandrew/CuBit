@@ -93,6 +93,17 @@ package body Desktop_CPU_Software_Renderer with SPARK_Mode,
       pragma Assert (Glyphs.Valid (Text));
       Drawn := False; Must_Restart := False;
    end Draw_Shadow;
+   procedure Prepare_Text
+     (Face : Compositor_Text.L.Face_Index; Code : Compositor_Text.L.Code_Point;
+      Scale : CuBit.Display_Geometry.UI_Scale; Resident : out Boolean)
+     with Refined_Global => (In_Out => Text) is
+   begin
+      pragma Assert (Glyphs.Valid (Text));
+      Resident := False;
+      if Glyphs.Enabled (Text) then
+         Glyphs.Prepare (Text, (Face, Code, Scale), Resident);
+      end if;
+   end Prepare_Text;
    procedure Draw_Text
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
