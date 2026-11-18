@@ -197,6 +197,7 @@ package body Desktop_Surface_Ring_Service is
    procedure Input_Queued (Target : Unsigned_64) is
       Result : Wire.Result;
       Found : Boolean;
+      Answered : Boolean := False;
    begin
       if Table = null then
          return;
@@ -210,10 +211,22 @@ package body Desktop_Surface_Ring_Service is
                if Found then
                   Answer (Ring_Index (R), D.Tag, Result);
                   D := (others => <>);
+                  Answered := True;
                end if;
             end if;
          end;
       end loop;
+      --  Nobody asked yet: the owner's rings say so, so its next request
+      --  wakes Desktop (Compositor_Surface_Ring.Input_Generation_At).
+      if not Answered then
+         for R in Table.Rings'Range loop
+            if Is_Active (Ring_Index (R))
+              and then Surface_Access (Client_Of (Ring_Index (R)), Target) = DP.Success
+            then
+               Note_Unrequested_Input (Ring_Index (R));
+            end if;
+         end loop;
+      end if;
    end Input_Queued;
 
    ---------------------------------------------------------------------------

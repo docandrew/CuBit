@@ -58,4 +58,14 @@ package Compositor_Surface_Ring is
    --  surface table can hold.
    Channels_Per_Client : constant := 16;
 
+   --  Desktop's word in each ring's status block (CuBit.Request_Channels:
+   --  Desktop writes it, the client reads it): the unrequested-input
+   --  generation, counted up each time Desktop queues input for one of the
+   --  client's windows that no outstanding input request could take. A
+   --  window posting its next input request wakes a sleeping Desktop only
+   --  when this moved since its last request, or its last answer said
+   --  more was pending: otherwise Desktop has nothing to answer it with
+   --  yet, and the input that will answer it wakes Desktop itself.
+   Input_Generation_At : constant := 0;
+
 end Compositor_Surface_Ring;

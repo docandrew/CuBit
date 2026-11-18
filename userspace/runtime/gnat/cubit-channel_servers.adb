@@ -563,6 +563,8 @@ package body CuBit.Channel_Servers is
      (if Is_Active (S, I) then RC.Read_Payload (Link_Of (S, I).Ring) else RC.Empty_Payload);
    function Client_Of (S : Server; I : Index) return CuBit.Messages.Process_ID is
      (Link_Of (S, I).Client);
+   function Status_Block (S : Server; I : Index) return System.Address is
+     (if Link_Of (S, I).Active then RC.Status_Block (Link_Of (S, I).Ring) else System.Null_Address);
    function Offer_Of (S : Server; I : Index) return Offer_Index is (Link_Of (S, I).Offer);
    function Owed (S : Server; I : Index) return Natural is (RC.Owed (Link_Of (S, I).Ring));
    function Refusals (S : Server) return Refusal_Counts is (S.Counts);

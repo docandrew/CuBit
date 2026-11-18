@@ -335,6 +335,12 @@ private
       ringEvents : Compositor_Surface_Wire.Event_Array;
       ringCount, ringNext : Natural := 0;
       ringMore : Boolean := False;
+      --  Desktop's unrequested-input generation when the last input
+      --  request went out (Client_Surface_Ring.Input_Generation).
+      inputGeneration : Interfaces.Unsigned_32 := 0;
+      --  An input request went out on this ring (the first always wakes:
+      --  input queued before the ring opened told no ring).
+      inputRequested : Boolean := False;
       ringAcked : Unsigned_64 := 0;
       --  Attached-buffer damage waiting for a frame slot in the ring.
       presentBacklog : CuBit.UI.Rect := (others => 0);

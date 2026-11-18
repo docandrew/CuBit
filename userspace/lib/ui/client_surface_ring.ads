@@ -57,9 +57,19 @@ package Client_Surface_Ring is
    function Can_Submit (C : Connection; Kind : Wire.Request_Kind) return Boolean;
 
    type Submit_Result is (Queued, Full, Ended);
+   --  Wake False: if Desktop sleeps, do not owe it a wake for this request
+   --  (yet): Owe_Skipped_Wake owes it later if the caller decides it needs
+   --  one. Desktop's arming is not lost: the next request that wakes it
+   --  does, though the ring counts this arming rung.
    procedure Submit
-     (C : in out Connection; Item : Wire.Request; Tag : out Token; Result : out Submit_Result)
+     (C : in out Connection; Item : Wire.Request; Tag : out Token; Result : out Submit_Result;
+      Wake : Boolean := True)
    with Pre => Wire.Valid (Item);
+   procedure Owe_Skipped_Wake (C : in out Connection);
+
+   --  Desktop's unrequested-input generation for this ring
+   --  (Compositor_Surface_Ring.Input_Generation_At), read once; 0 closed.
+   function Input_Generation (C : Connection) return Interfaces.Unsigned_32;
 
    --  Wake Desktop if a request queued since the last Flush found it
    --  asleep (one system call); nothing otherwise.
@@ -96,5 +106,8 @@ private
       Strays   : Unsigned_64 := 0;
       --  A queued request found Desktop asleep: Flush wakes it.
       Wake_Owed : Boolean := False;
+      --  A request found Desktop asleep and was told not to wake it: this
+      --  arming is spent at the ring, so a later request owes the wake.
+      Wake_Skipped : Boolean := False;
    end record;
 end Client_Surface_Ring;

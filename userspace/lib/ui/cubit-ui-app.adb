@@ -352,6 +352,7 @@ package body CuBit.UI.App is
       win.lastEvent := 0; win.inputMayRemain := False;
       win.inputStats := (Batch_Enabled => True, others => <>);
       win.ringCount := 0; win.ringNext := 0; win.ringMore := False; win.ringAcked := 0;
+      win.inputGeneration := 0; win.inputRequested := False;
       win.presentBacklog := (others => 0);
       win.configStale := True;
       win.deferredDamage := (others => 0);
@@ -788,8 +789,23 @@ package body CuBit.UI.App is
       if win.surfaceId = 0 or else win.inputStopped or else win.ringNext < win.ringCount or else
         Input_Wait_Pending (win) or else Ring.Outstanding (win.ring, Wire.Receive_Input) > 0
       then return; end if;
+      --  Parking the next request needs no wake: Desktop answers it from
+      --  input yet to come, and that input wakes Desktop. Unless Desktop
+      --  already holds input for this window (its generation moved since
+      --  the last request) or said more was pending: then it must hear now.
       Ring.Submit (win.ring, (Kind => Wire.Receive_Input, Surface => DP.Live_Surface_Name (win.surfaceId),
-                              After => win.ringAcked), Ignore, Result);
+                              After => win.ringAcked), Ignore, Result, Wake => False);
+      if Result = Ring.Queued then
+         declare
+            Generation : constant Interfaces.Unsigned_32 := Ring.Input_Generation (win.ring);
+         begin
+            if not win.inputRequested or else Generation /= win.inputGeneration or else win.ringMore then
+               Ring.Owe_Skipped_Wake (win.ring);
+            end if;
+            win.inputGeneration := Generation;
+            win.inputRequested := True;
+         end;
+      end if;
       case Result is
          when Ring.Queued => win.inputStallReported := False;
          when Ring.Full => Report_Stop (win, Wait_Not_Submitted, "ring=full");

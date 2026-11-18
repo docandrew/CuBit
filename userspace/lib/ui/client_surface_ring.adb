@@ -57,6 +57,7 @@ package body Client_Surface_Ring is
       CuBit.Channels.Close (C.Channel);
       C.Open := False;
       C.Wake_Owed := False;
+      C.Wake_Skipped := False;
       C.Table := [others => <>];
    end Close;
 
@@ -79,7 +80,8 @@ package body Client_Surface_Ring is
           when others => Outstanding (C, Kind) < Limit (Kind)));
 
    procedure Submit
-     (C : in out Connection; Item : Wire.Request; Tag : out Token; Result : out Submit_Result)
+     (C : in out Connection; Item : Wire.Request; Tag : out Token; Result : out Submit_Result;
+      Wake : Boolean := True)
    is
       Free : Natural := 0;
       Submitted, Ring : Boolean;
@@ -114,16 +116,42 @@ package body Client_Surface_Ring is
       C.Table (Free) := (True, C.Next_Tag, Item.Kind);
       Tag := C.Next_Tag;
       --  Desktop sleeps and asked to be woken (once per arming): Flush
-      --  pays it, once for everything the frame queued.
-      C.Wake_Owed := C.Wake_Owed or else Ring;
+      --  pays it, once for everything the frame queued. A wake skipped
+      --  earlier in this arming is owed by the next request that wakes.
+      if Wake then
+         C.Wake_Owed := C.Wake_Owed or else Ring or else C.Wake_Skipped;
+      else
+         C.Wake_Skipped := C.Wake_Skipped or else Ring;
+      end if;
       Result := Queued;
    end Submit;
+
+   procedure Owe_Skipped_Wake (C : in out Connection) is
+   begin
+      C.Wake_Owed := C.Wake_Owed or else C.Wake_Skipped;
+   end Owe_Skipped_Wake;
+
+   function Input_Generation (C : Connection) return Interfaces.Unsigned_32 is
+   begin
+      if not C.Open then
+         return 0;
+      end if;
+      declare
+         --  SEC-025: single-read: Desktop's word, read once into the result.
+         Word : Interfaces.Unsigned_32 with Import, Volatile,
+           Address => System.Storage_Elements."+"
+             (SR.RC.Server_Status (C.Ring), SR.Input_Generation_At);
+      begin
+         return Word;
+      end;
+   end Input_Generation;
 
    procedure Flush (C : in out Connection) is
       Ignore : CuBit.Channels.Signal_Result;
    begin
       if C.Open and then C.Wake_Owed then
          CuBit.Channels.Signal (C.Channel, Sync => False, Result => Ignore);
+         C.Wake_Skipped := False;
       end if;
       C.Wake_Owed := False;
    end Flush;

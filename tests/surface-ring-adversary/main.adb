@@ -119,6 +119,13 @@ procedure Main is
       Check (Active (I), "answers go only to open rings");
       RC.Complete (Servers (I), Tag, Answer, Ring_Peer);
    end Complete;
+   --  Unrequested input noted per ring (Compositor_Surface_Ring's word).
+   Unrequested : array (Ring_Index) of Natural := [others => 0];
+   procedure Note_Unrequested_Input (I : Ring_Index) is
+   begin
+      Unrequested (I) := Unrequested (I) + 1;
+   end Note_Unrequested_Input;
+
    procedure End_Ring (I : Ring_Index) is
    begin
       Active (I) := False;
@@ -265,7 +272,8 @@ procedure Main is
 
    package Service is new Desktop_Surface_Ring_Service
      (Ring_Index => Ring_Index, Is_Active => Is_Active, Client_Of => Client_Of,
-      Complete => Complete, End_Ring => End_Ring, Surface_Access => Surface_Access,
+      Complete => Complete, End_Ring => End_Ring, Note_Unrequested_Input => Note_Unrequested_Input,
+      Surface_Access => Surface_Access,
       Bounds => Bounds, Present_Attached => Present_Attached, Stage => Stage,
       Publish => Publish, Retirement => Retirement, Next_Input => Next_Input,
       Input_After => Input_After, Report => Report);
@@ -440,6 +448,29 @@ begin
    Service.Frame_Drawn;
    Check (Nothing_To_Reap (Over_Limit), "its owed presents are dropped");
    Honest_Round;
+
+   --  Input queued while the window has no input request out: the owner's
+   --  ring is told (its next request wakes Desktop), no other ring is, and
+   --  the next request is answered at once. With a request out, input
+   --  answers it and nothing is told.
+   declare
+      Told : constant Natural := Unrequested (Honest);
+   begin
+      Push_Key (Honest);
+      Service.Input_Queued (1);
+      Check (Unrequested (Honest) = Told + 1, "unrequested input is told to the owner's ring");
+      Check ((for all R in Ring_Index => R = Honest or else Unrequested (R) = 0),
+             "no other client's ring is told");
+      Submit (Honest, (Kind => Wire.Receive_Input, Surface => 1, After => Serial - 1));
+      Serve (Honest);
+      Check (Reap (Honest, Wire.Receive_Input), "the next request takes the queued input at once");
+      Submit (Honest, (Kind => Wire.Receive_Input, Surface => 1, After => Serial));
+      Serve (Honest);
+      Push_Key (Honest);
+      Service.Input_Queued (1);
+      Check (Unrequested (Honest) = Told + 1, "input a request takes is not told");
+      Check (Reap (Honest, Wire.Receive_Input), "and answers that request");
+   end;
 
    --  Twice: a second input request while one is owed.
    Submit (Twice, (Kind => Wire.Receive_Input, Surface => 4, After => Serial));

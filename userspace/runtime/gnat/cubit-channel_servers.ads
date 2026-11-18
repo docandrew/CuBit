@@ -152,6 +152,9 @@ package CuBit.Channel_Servers is
    function Write_Payload (S : Server; I : Index) return RC.Payload_View;
    function Read_Payload (S : Server; I : Index) return RC.Payload_View;
    function Client_Of (S : Server; I : Index) return CuBit.Messages.Process_ID;
+   --  Channel I's protocol status block (RC.Status_Block: this server
+   --  writes it, its client reads it); Null_Address when I is not active.
+   function Status_Block (S : Server; I : Index) return System.Address;
    --  Kernel-stamped opening authority, retained after Admit accepts it.
    --  Closed/absent channels return zero; payload words never update it.
    function Badge_Of (S : Server; I : Index) return Unsigned_64;

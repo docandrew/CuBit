@@ -48,6 +48,10 @@ generic
      (I : Ring_Index; Tag : Compositor_Surface_Ring.RC.Token;
       Answer : Compositor_Surface_Wire.Result_Words);
    with procedure End_Ring (I : Ring_Index);
+   --  Input was queued for one of ring I's client's windows and no request
+   --  could take it: count up the ring's unrequested-input generation
+   --  (Compositor_Surface_Ring.Input_Generation_At).
+   with procedure Note_Unrequested_Input (I : Ring_Index);
 
    --  Desktop. Surface_Access: Success when From owns Target, Bad_Object
    --  when there is no such surface, Denied otherwise.

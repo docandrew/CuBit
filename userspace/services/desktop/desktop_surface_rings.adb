@@ -10,6 +10,7 @@ with CuBit.Channel_Bells;
 with CuBit.Channel_Limits;
 with CuBit.Channel_Servers;
 with CuBit.Process_IDs;
+with System.Storage_Elements;
 with Channel_Wake_ABI;
 with Compositor_Surface_Ring;
 with Compositor_Surface_Wire;
@@ -47,9 +48,25 @@ package body Desktop_Surface_Rings is
       Servers.End_Channel (Rings, I);
    end End_Ring;
 
+   procedure Note_Unrequested_Input (I : Servers.Index) is
+      use type System.Address;
+      Block : constant System.Address := Servers.Status_Block (Rings, I);
+   begin
+      if Block = System.Null_Address then
+         return;
+      end if;
+      declare
+         --  SEC-025: own: Desktop's own status block; only Desktop writes it.
+         Generation : Unsigned_32 with Import, Volatile,
+           Address => System.Storage_Elements."+" (Block, SR.Input_Generation_At);
+      begin
+         Generation := Generation + 1;
+      end;
+   end Note_Unrequested_Input;
+
    package Service is new Desktop_Surface_Ring_Service
      (Ring_Index => Servers.Index, Is_Active => Is_Active, Client_Of => Client_Of,
-      Complete => Complete, End_Ring => End_Ring,
+      Complete => Complete, End_Ring => End_Ring, Note_Unrequested_Input => Note_Unrequested_Input,
       Surface_Access => Surface_Access, Bounds => Bounds,
       Present_Attached => Present_Attached, Stage => Stage, Publish => Publish,
       Retirement => Retirement, Next_Input => Next_Input, Input_After => Input_After,
