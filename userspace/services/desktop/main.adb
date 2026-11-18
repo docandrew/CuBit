@@ -48,6 +48,8 @@ with Client_Glyph_Blend;
 with Glyph_Gamma;
 with Glyph_Pen;
 with Compositor_Sampling;
+with Compositor_Pointer_Over;
+with Client_Raster;
 with Compositor_Row_Copy;
 with Compositor_Elapsed;
 with Compositor_Latency;
@@ -4576,11 +4578,6 @@ procedure main is
       minY : Natural := y;
       maxX : Natural := x + w;
       maxY : Natural := y + h;
-      pairColor : constant Unsigned_64 :=
-         Shift_Left (Unsigned_64 (color), 32) or Unsigned_64 (color);
-      startX : Natural;
-      endX : Natural;
-      offset : Storage_Offset;
       Target : System.Address := backBufferAddr;
       Pitch : Natural := fbPitch;
    begin
@@ -4639,46 +4636,21 @@ procedure main is
          return;
       end if;
 
-      --  Rect fills dominate compositor redraws. Do clipping and target
-      --  selection once, then write the clipped rows directly instead of
-      --  paying putPixel's bounds/clip checks for every pixel.
-      for yy in minY .. maxY - 1 loop
-         startX := minX;
-         endX := maxX;
-
-         if startX < endX and then startX mod 2 /= 0 then
-            declare
-               offset : constant Storage_Offset :=
-                  Storage_Offset (yy * Pitch + startX * 4);
-               pixel : Unsigned_32 with
-                  Import, Address => Target + offset;
-            begin
-               pixel := color;
-            end;
-            startX := startX + 1;
-         end if;
-
-         while startX + 1 < endX loop
-            offset := Storage_Offset (yy * Pitch + startX * 4);
-            declare
-               pixels : Unsigned_64 with
-                  Import, Address => Target + offset;
-            begin
-               pixels := pairColor;
-            end;
-            startX := startX + 2;
-         end loop;
-
-         if startX < endX then
-            offset := Storage_Offset (yy * Pitch + startX * 4);
-            declare
-               pixel : Unsigned_32 with
-                  Import, Address => Target + offset;
-            begin
-               pixel := color;
-            end;
-         end if;
-      end loop;
+      --  Rect fills dominate compositor redraws. Clip and pick the target
+      --  once, then fill the rows through the proved Client_Raster.Fill
+      --  (built without run-time checks, at -O3).
+      if Pitch mod 4 /= 0 or else maxX > Pitch / 4 then
+         return;
+      end if;
+      declare
+         Row_Words : constant Positive := Pitch / 4;
+         --  SEC-025: own: the frame Desktop is drawing (its private target or scene, or a
+         --  scanout buffer display.svc lent it); no peer writes it while Desktop draws.
+         Rows : Client_Raster.Pixels (0 .. (maxY - minY - 1) * Row_Words + maxX - 1)
+           with Import, Address => Target + Storage_Offset (minY * Pitch);
+      begin
+         Client_Raster.Fill (Rows, Row_Words, (minX, 0, maxX - minX, maxY - minY), color);
+      end;
    end fillRectUntimed;
 
    --  The pixels of x, y, w, h inside the clip and the frame buffer: what a
@@ -5891,17 +5863,24 @@ procedure main is
               DG."<" (Shape.Left, Shape.Right) and then DG."<" (Shape.Top, Shape.Bottom)
             then
                declare
-                  type Column_Samples is array (Natural range <>) of Compositor_Sampling.Axis_Result;
-                  Columns : Column_Samples (Natural (Damage.Left) .. Natural (Damage.Right) - 1);
+                  package PO renames Compositor_Pointer_Over;
+                  Left : constant Natural := Natural (Damage.Left);
+                  Width : constant Natural := Natural (Damage.Right) - Left;
+                  --  Each frame column's pointer image column (PO.No_Column: none).
+                  Columns : PO.Column_Map (0 .. Width - 1);
                   Shape_W : constant Compositor_Sampling.Logical_Size :=
                     Compositor_Sampling.Logical_Size (DG."-" (Shape.Right, Shape.Left));
                   Shape_H : constant Compositor_Sampling.Logical_Size :=
                     Compositor_Sampling.Logical_Size (DG."-" (Shape.Bottom, Shape.Top));
                begin
                   for X in Columns'Range loop
-                     Columns (X) := Compositor_Sampling.Axis
-                       (DG.Pixel_Index (X), O.Geometry.Scale, O.Geometry.X, Shape.Left, Shape_W,
-                        DG.Physical_Extent (metadata.Width));
+                     declare
+                        MX : constant Compositor_Sampling.Axis_Result := Compositor_Sampling.Axis
+                          (DG.Pixel_Index (Left + X), O.Geometry.Scale, O.Geometry.X, Shape.Left, Shape_W,
+                           DG.Physical_Extent (metadata.Width));
+                     begin
+                        Columns (X) := (if MX.Valid then Natural (MX.Index) else PO.No_Column);
+                     end;
                   end loop;
                   for Y in Natural (Damage.Top) .. Natural (Damage.Bottom) - 1 loop
                      declare
@@ -5910,17 +5889,17 @@ procedure main is
                            DG.Physical_Extent (metadata.Height));
                      begin
                         if MY.Valid then
-                           for X in Columns'Range loop
-                              if Columns (X).Valid then
-                                 declare
-                                    --  SEC-025: own: the frame Desktop is drawing (its private target, or a scanout
-                                    --  buffer display.svc lent it); no peer writes it while Desktop draws.
-                                    Target : Unsigned_32 with Import, Address => O.Buffer + Storage_Offset (Y * O.Pitch + X * 4);
-                                    Source : constant Unsigned_32 := Desktop_Cursors.Pixels
-                                      (metadata.Offset + Natural (MY.Index) * metadata.Width + Natural (Columns (X).Index));
-                                 begin Target := premultipliedPixelOver (Source, Target); end;
-                              end if;
-                           end loop;
+                           declare
+                              --  SEC-025: own: the frame Desktop is drawing (its private target, or a scanout
+                              --  buffer display.svc lent it); no peer writes it while Desktop draws.
+                              Frame_Row : PO.Words (0 .. Width - 1) with Import, Address =>
+                                O.Buffer + Storage_Offset (Y * O.Pitch + Left * 4);
+                              --  SEC-025: own: Desktop's compiled-in pointer images (constant data).
+                              Source_Row : PO.Words (0 .. metadata.Width - 1) with Import, Address =>
+                                Desktop_Cursors.Pixels (metadata.Offset + Natural (MY.Index) * metadata.Width)'Address;
+                           begin
+                              PO.Over_Row (Frame_Row, Source_Row, Columns);
+                           end;
                         end if;
                      end;
                   end loop;

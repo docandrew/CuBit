@@ -111,6 +111,8 @@ project Desktop is
         for Switches ("compositor_damage.adb") use Proved_Compose_Switches;
         for Switches ("compositor_repaint.adb") use Proved_Compose_Switches;
         for Switches ("compositor_pool.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_pointer_over.adb") use Proved_Compose_Switches;
+        for Switches ("client_raster.adb") use Proved_Compose_Switches;
     end Compiler;
 
     package Binder is
