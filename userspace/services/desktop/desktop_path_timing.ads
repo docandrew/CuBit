@@ -32,7 +32,8 @@ package Desktop_Path_Timing is
       Backdrop_Build,    --  (re)building a retained wallpaper layer: resampling
                          --  the image at the output's size, once per change
       Blend,             --  shadows and other blended rectangles
-      Text,              --  glyphs and text runs
+      Text,              --  text runs: layout, clipping, batching
+      Text_Glyphs,       --  the runs' glyphs: cache lookups and blending
       Icon,              --  icons
       Chrome,            --  window frames, titles, buttons
       Deskbar,           --  the Deskbar and its menus, panels, toasts, tooltips
@@ -44,6 +45,8 @@ package Desktop_Path_Timing is
    procedure Enter (P : Path) with Inline;
    procedure Leave (Pixels : Unsigned_64 := 0) with Inline;
    procedure Sampler_Because (Why : Sampler_Reason; Pixels : Unsigned_64);
+   --  Count N items of path P this frame (text runs, glyphs).
+   procedure Add_Items (P : Path; N : Unsigned_64);
 
    --  The frame begins and ends (the scene's drawing for one output).
    procedure Begin_Frame;
@@ -52,7 +55,7 @@ package Desktop_Path_Timing is
    type Path_Counts is array (Path) of Unsigned_64;
    type Reason_Counts is array (Sampler_Reason) of Unsigned_64;
    type Frame_Paths is record
-      Pixels, Micros : Path_Counts := [others => 0];
+      Pixels, Micros, Items : Path_Counts := [others => 0];
       Sampler_Pixels : Reason_Counts := [others => 0];
       Other_Micros, Total_Micros, Overdraw_Pixels : Unsigned_64 := 0;
    end record;

@@ -2438,7 +2438,8 @@ procedure main is
                         for P in Desktop_Path_Timing.Path loop
                            if T.Pixels (P) /= 0 or else T.Micros (P) /= 0 then
                               Add (" " & Desktop_Path_Timing.Name (P) & "=" & Decimal (T.Pixels (P)) &
-                                   "/" & Decimal (T.Micros (P)));
+                                   "/" & Decimal (T.Micros (P)) &
+                                   (if T.Items (P) /= 0 then "/" & Decimal (T.Items (P)) else ""));
                            end if;
                         end loop;
                         for R in Desktop_Path_Timing.Sampler_Reason loop
@@ -5274,6 +5275,7 @@ procedure main is
         DG.Physical_Extent (fbHeight), DG.Unrotated, (1, 1), 0, 0);
       Damage : DG.Physical_Rectangle;
       Area : Rect;
+      Glyph_Pixels : Unsigned_64 := 0;
 
       --  One compositor batch: each glyph's cell is the whole raster (its
       --  pen origin CuBit.Fonts.Origin in), never clipped to the advance, at
@@ -5282,6 +5284,22 @@ procedure main is
          Drawn, Repaint, Must_Restart : Boolean;
       begin
          if Count = 0 or else Stopped then Count := 0; return; end if;
+         if Desktop_Timing_Policy.Enabled then
+            --  The glyph cells inside the damage (timing builds).
+            Glyph_Pixels := 0;
+            for I in 1 .. Count loop
+               declare
+                  C : constant DG.Physical_Rectangle := T.Clip (Screen, Batch (I).Cell, Damage);
+               begin
+                  if C.Left < C.Right and then C.Top < C.Bottom then
+                     Glyph_Pixels := Glyph_Pixels +
+                       Unsigned_64 (C.Right - C.Left) * Unsigned_64 (C.Bottom - C.Top);
+                  end if;
+               end;
+            end loop;
+            Desktop_Path_Timing.Add_Items (Desktop_Path_Timing.Text_Glyphs, Unsigned_64 (Count));
+         end if;
+         Desktop_Path_Timing.Enter (Desktop_Path_Timing.Text_Glyphs);
          Desktop_Compositor.Draw_Text
            ((Target, Unsigned_32 (Target_W), Unsigned_32 (Target_H), Unsigned_32 (Target_Pitch), 1),
             Unsigned_64 (Target_Pitch) * Unsigned_64 (Target_H), Screen,
@@ -5289,6 +5307,7 @@ procedure main is
             (if nativeOutputPass then activeOutput = 1
              else backBufferAddr = dragBaseBufferAddr),
             Drawn, Repaint, Must_Restart);
+         Desktop_Path_Timing.Leave (Glyph_Pixels);
          if Must_Restart then
             debugPrint ("desktop: text completion uncertain; restarting" & LF);
             exitCompositor (1);
@@ -5391,6 +5410,7 @@ procedure main is
    is
    begin
       Desktop_Path_Timing.Enter (Desktop_Path_Timing.Text);
+      Desktop_Path_Timing.Add_Items (Desktop_Path_Timing.Text, 1);
       drawUITextUntimed (x, y, s, fg, bg, transparent, face);
       Desktop_Path_Timing.Leave (0);
    end drawUIText;

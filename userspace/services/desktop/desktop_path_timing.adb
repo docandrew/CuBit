@@ -18,7 +18,7 @@ package body Desktop_Path_Timing is
    Running_Since, Frame_Since : Unsigned_64 := 0;
    In_Frame : Boolean := False;
 
-   Ticks, Pixels : Path_Counts := [others => 0];
+   Ticks, Pixels, Items : Path_Counts := [others => 0];
    Reasons : Reason_Counts := [others => 0];
 
    Last : Frame_Paths;
@@ -73,6 +73,13 @@ package body Desktop_Path_Timing is
       end if;
    end Sampler_Because;
 
+   procedure Add_Items (P : Path; N : Unsigned_64) is
+   begin
+      if Desktop_Timing_Policy.Enabled and then In_Frame then
+         Items (P) := Items (P) + N;
+      end if;
+   end Add_Items;
+
    procedure Begin_Frame is
    begin
       if not Desktop_Timing_Policy.Enabled then
@@ -80,6 +87,7 @@ package body Desktop_Path_Timing is
       end if;
       Ticks := [others => 0];
       Pixels := [others => 0];
+      Items := [others => 0];
       Reasons := [others => 0];
       Depth := 0;
       Frame_Since := Now;
@@ -101,6 +109,7 @@ package body Desktop_Path_Timing is
       Depth := 0;
       for P in Path loop
          F.Pixels (P) := Pixels (P);
+         F.Items (P) := Items (P);
          F.Micros (P) := Micros (Ticks (P));
          Claimed := Claimed + Ticks (P);
          --  A layer build writes the private layer, not the frame.
@@ -117,6 +126,7 @@ package body Desktop_Path_Timing is
       Last := F;
       for P in Path loop
          Period.Pixels (P) := Period.Pixels (P) + F.Pixels (P);
+         Period.Items (P) := Period.Items (P) + F.Items (P);
          Period.Micros (P) := Period.Micros (P) + F.Micros (P);
       end loop;
       for R in Sampler_Reason loop
@@ -143,7 +153,7 @@ package body Desktop_Path_Timing is
         when Client_Row_Copy => "client_row_copy", when Client_Sampler => "client_sampler",
         when Fill => "fill", when Backdrop => "backdrop",
         when Backdrop_Build => "backdrop_build", when Blend => "blend",
-        when Text => "text", when Icon => "icon", when Chrome => "chrome",
+        when Text => "text", when Text_Glyphs => "text_glyphs", when Icon => "icon", when Chrome => "chrome",
         when Deskbar => "deskbar", when Cursor => "cursor");
 
    function Name (R : Sampler_Reason) return String is
