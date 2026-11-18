@@ -356,7 +356,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -964,6 +964,11 @@ with open(sys.argv[1], "wb") as f:
             *invtsc*) ;;
             *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
         esac
+        ;;
+    font-masks)
+        # The native font engine's masks, hashed: every printable glyph of
+        # Sans and Sans_Semibold at densities 1, 3/2 and 2, four phases each.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-font-masks.ccl"
         ;;
     avx)
         # Two processes sharing one CPU, each holding its own YMM pattern
@@ -2643,6 +2648,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WIFI_CRYPTO_IMAGE $WIFI_CRYPTO_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $WIFI_CRYPTO_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "font-masks" ]; then
+        for FONT_IMAGE in logstore.svc font-masks.app; do
+            debugfs -w -R "rm $FONT_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$FONT_IMAGE $FONT_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $FONT_IMAGE" >&2
                 exit 1
             fi
         done
@@ -7104,6 +7119,11 @@ RUST-STD: PASS
 wifi-crypto-check: pbkdf2-sha1-pmk=ok aes-cmac=ok xmd-sha256=ok PASS
 "
         ;;
+    font-masks)
+        required_markers="
+font-masks: glyphs=570 failed=0 all=
+"
+        ;;
     avx)
         required_markers="
 Process: user FP/SIMD state saved with XSAVEOPT
@@ -9171,6 +9191,19 @@ if [ "$TEST_NAME" = "ui-latency" ] && [ "$QEMU_ACCEL" = "kvm" ]; then
         exit 1
     fi
     echo "headless: no text waited for rasterization after warming"
+fi
+
+if [ "$TEST_NAME" = "font-masks" ]; then
+    # The native masks are byte for byte those of the hosted engine's golden
+    # (userspace/rust/fonts/tests/masks.golden, its masks_match_golden test):
+    # every glyph's hash and advance, in order.
+    if ! diff <(grep -a "^font-masks: face=" "$SERIAL_LOG" | sed 's/^font-masks: //') \
+              "$ROOT_DIR/userspace/rust/fonts/tests/masks.golden" >&2; then
+        echo "headless: font-masks: native masks differ from userspace/rust/fonts/tests/masks.golden" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    echo "headless: every native glyph mask matches the hosted golden"
 fi
 
 if [ "$TEST_NAME" = "desktop-restart" ]; then

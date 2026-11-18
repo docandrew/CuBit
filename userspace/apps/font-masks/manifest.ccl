@@ -1,0 +1,5 @@
+# Native glyph masks, hashed (tests/headless --test font-masks): the font
+# engine's output as CuBit runs it, for comparing builds. No authority.
+(executable-manifest v1
+  (identity "com.cubit.font-masks")
+  (version "0.1.0"))
