@@ -54,6 +54,15 @@
 --              without taking a request or a completion. With A /= 0, a
 --              pending kernel notice is taken into A (a Message) in the
 --              same call. Result: a Readiness value.
+--    Ready_Word  Ready + {Futex_Word} (IPC-010 option B): as Ready, and B
+--              names this process's wake word (an aligned word of its own
+--              memory, CuBit.Wake_Words) and C the value it was last seen
+--              to hold (at most 2**32 - 1). The word becomes the process's
+--              wake word: a futex wake of it, by the process or by a party
+--              of a grant of its page, wakes this wait. Returns Ready_Word
+--              when the word no longer holds C or such a wake came since
+--              the last was taken (it is taken now), checked under the
+--              same lock as the queues: no wake is lost between the two.
 --    Futex     {Futex_Word}: sleep while the 32-bit word at A holds B.
 --              With Shared_Futex, A is a Futex_ABI shared word (a grant's
 --              slot and offset) of a grant this process is a party of.
@@ -116,6 +125,9 @@ package Wait_ABI with Pure, SPARK_Mode is
    Completions_Sources : constant := Completions_Bit;
    Ready_Sources       : constant :=
      Requests_Bit + Events_Bit + Completions_Bit + Readiness_Only;
+   Ready_Word_Sources  : constant := Ready_Sources + Futex_Word_Bit;
+   --  Ready_Word's C: a 32-bit word's value.
+   Word_Value_Last     : constant := 2 ** 32 - 1;
    Futex_Sources       : constant := Futex_Word_Bit;
    Offered_Sources     : constant := Offered_Capability_Bit;
    Timer_Sources       : constant := Timer_Bit;
@@ -145,6 +157,8 @@ package Wait_ABI with Pure, SPARK_Mode is
    Ready_Deadline : constant Unsigned_64 := 0;
    Ready_Work     : constant Unsigned_64 := 1;
    Ready_Event    : constant Unsigned_64 := 2;
+   --  Ready_Word: the wake word moved, or was woken.
+   Ready_Word     : constant Unsigned_64 := 3;
    Ready_Closed   : constant Unsigned_64 := Unsigned_64'Last;
    --  Futex (as Process.Futex.wait answers).
    Futex_Woken     : constant Unsigned_64 := 0;

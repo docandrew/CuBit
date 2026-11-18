@@ -27,6 +27,8 @@ package body Wait_Policy with SPARK_Mode => On is
             end if;
         elsif Sources = ABI.Ready_Sources then
             return Ready;
+        elsif Sources = ABI.Ready_Word_Sources then
+            return (if C <= ABI.Word_Value_Last then Ready_Word else Unsupported);
         elsif ABI.Futex_Form (Sources) then
             return Futex;
         elsif Sources = ABI.Offered_Sources then

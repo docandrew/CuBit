@@ -30,6 +30,7 @@ with Boot_Timeline_Layout;
 with Firmware_Snapshot_Export;
 with Wait_ABI;
 with Wait_Policy;
+with Futex_ABI;
 
 
 package body Syscall is
@@ -271,7 +272,7 @@ package body Syscall is
                 when SYSCALL_WAIT =>
                     case Wait_Policy.Decide (arg0, arg1, arg3, arg4) is
                         when Wait_Policy.Messages_Forever | Wait_Policy.Messages_Until
-                           | Wait_Policy.Ready =>
+                           | Wait_Policy.Ready | Wait_Policy.Ready_Word =>
                             Boot_Timeline.Note_Event
                               (Natural (Process.processOf (percpu.currentThread)),
                                Boot_Timeline.Received);
@@ -336,10 +337,12 @@ package body Syscall is
             when SYSCALL_THREAD_EXIT =>
                 Process.exitThread;
 
-            -- arg0 the word (an address, or a shared word), arg1 maximum
-            -- waiters to wake, arg2 its space (Futex_ABI, IPC-010).
+            -- arg0 the word (an address, a shared word, or a peer's grant),
+            -- arg1 maximum waiters to wake, arg2 its space, arg3 a sync hint
+            -- (Futex_ABI, IPC-010).
             when SYSCALL_FUTEX_WAKE =>
-                retval := Process.Futex.wakeSpace (arg0, arg1, arg2);
+                retval := Process.Futex.wakeSpace
+                  (arg0, arg1, arg2, sync => arg3 = Futex_ABI.Sync_Hint);
 
             when SYSCALL_SBRK =>
                 -- Serialized against sibling threads' faults and sbrk.

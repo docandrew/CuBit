@@ -24,6 +24,7 @@ package Wait_Policy with SPARK_Mode => On, Pure is
        Completions_Wait,  -- {Completions}, Forever: at least C of B
        Completions_Now,   -- {Completions}, Now: up to B, C = 0
        Ready,             -- {Requests, Events, Completions} + Readiness_Only
+       Ready_Word,        -- Ready + {Futex_Word}: C a 32-bit value
        Futex,             -- {Futex_Word} + modifiers (ABI.Futex_Form), any deadline
        Offered,           -- {Offered_Capability}, Now
        Timer,             -- {Timer}, Forever
@@ -50,6 +51,8 @@ package Wait_Policy with SPARK_Mode => On, Pure is
               Sources = ABI.Completions_Sources and then Deadline = ABI.Now
               and then B /= 0 and then C = 0,
           when Ready => Sources = ABI.Ready_Sources,
+          when Ready_Word =>
+              Sources = ABI.Ready_Word_Sources and then C <= ABI.Word_Value_Last,
           when Futex => ABI.Futex_Form (Sources),
           when Offered =>
               Sources = ABI.Offered_Sources and then Deadline = ABI.Now,
@@ -64,12 +67,13 @@ package Wait_Policy with SPARK_Mode => On, Pure is
                             and then ((Deadline = ABI.Forever and then C <= B)
                                       or else (Deadline = ABI.Now and then C = 0)))
                    or else Sources = ABI.Ready_Sources
+                   or else (Sources = ABI.Ready_Word_Sources and then C <= ABI.Word_Value_Last)
                    or else ABI.Futex_Form (Sources)
                    or else (Sources = ABI.Offered_Sources and then Deadline = ABI.Now)
                    or else (Sources = ABI.Timer_Sources and then Deadline = ABI.Forever)));
 
     -- A form that may block the caller.
     function Blocks (F : Form) return Boolean is
-      (F in Messages_Forever | Messages_Until | Completions_Wait | Ready | Futex | Timer);
+      (F in Messages_Forever | Messages_Until | Completions_Wait | Ready | Ready_Word | Futex | Timer);
 
 end Wait_Policy;

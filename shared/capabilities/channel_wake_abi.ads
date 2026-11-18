@@ -3,45 +3,35 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Channel wakes (CAP-002 step 3; docs/capability-handles.md section 4),
---  shared by the kernel and the runtime. No system call of their own: a
---  wake is SEND_EVENT (19) with Wake_Label, coalesced in the kernel.
+--  Channel wakes (IPC-010 option B), shared by the kernel and the runtime:
+--  the notice a process's wake word raises. No system call of its own.
 --
 --  @description
---  A channel side wakes its peer when the peer declared itself asleep (its
---  needs-wake word in the shared ring, CuBit.Request_Channels): SEND_EVENT
---  with
---    label   Wake_Label, length 1 (or 2 with a Sync_Hint in word 1);
---    word 0  the reference word of the grant of the region the sender owns
---            (CuBit.Grant_References' wire form: generation << 32 | slot);
---    dest    ignored: the wake goes to that grant's grantee;
---    arg 6   ignored: owning the grant is the authority.
---  Result 1: accepted (pending, or already pending: coalesced); 0: refused
---  (not the grant's owner, or the grant has ended).
+--  Each process has one wake word: a futex word in a page it owns
+--  (CuBit.Wake_Words), which its Ready wait names (Wait_ABI's Ready_Word
+--  form). Every channel peer holds a read-only grant of that page and wakes
+--  the process with a futex wake of the word (FUTEX_WAKE, shared space): it
+--  needs no request credit, never overflows and is never lost. The waker
+--  must be a party of a live grant of the page; nobody can send the notice
+--  (SEND_EVENT with Wake_Label is refused).
 --
---  The kernel keeps one pending wake per grant (per sender and channel), so
---  wakes never consume the receiver's request credits, never overflow and
---  are never lost. The grantee's receive (any mixed or event receive) takes
---  them as one event: label Wake_Label, sender NO_PROCESS, words 0 .. n-1 up
---  to Wakes_Per_Event grant reference words. A process cannot forge one:
---  every SEND_EVENT with Wake_Label goes through the coalescing path.
+--  The kernel coalesces wakes until one is taken: a Ready_Word wait returns
+--  Ready_Word, and any other receive or event poll takes one event: label
+--  Wake_Label, sender NO_PROCESS, Notice_Words word(s), word 0
+--  Wake_Word_Notice. The notice names no channel: the process looks at the
+--  channels it serves.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 
 package Channel_Wake_ABI with Pure, SPARK_Mode is
 
-   Wake_Label      : constant := 16#010F#;
-   Wake_Length     : constant := 1;
-   --  Length 2 with word 1 = Sync_Hint: the sender is about to block (its
-   --  end of turn); the kernel places the woken thread on the sender's CPU,
-   --  so it runs there when the sender sleeps, with no inter-processor wake
-   --  (Linux's WF_SYNC). Only placement changes; the scheduler still orders.
-   Sync_Length     : constant := 2;
-   Sync_Hint       : constant Unsigned_64 := 1;
-   Wakes_Per_Event : constant := 4;
-
-   Accepted_Word : constant Unsigned_64 := 1;
-   Refused_Word  : constant Unsigned_64 := 0;
+   Wake_Label       : constant := 16#010F#;
+   Notice_Words     : constant := 1;
+   Wake_Word_Notice : constant Unsigned_64 := 0;
+   --  The most words a wake notice carries (receivers check lengths with it).
+   Wakes_Per_Event  : constant := 4;
+   pragma Compile_Time_Error (Notice_Words > Wakes_Per_Event,
+                              "a wake notice fits a receiver's bound");
 
 end Channel_Wake_ABI;

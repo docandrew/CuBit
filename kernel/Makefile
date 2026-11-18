@@ -389,7 +389,7 @@ test-futex-queues:
 
 prove-futex-queues:
 	$(ALR) gnatprove -P../tests/futex-queues/futex_queues_tests.gpr \
-		-u futex_queues_small.ads futex_queues_large.ads futex_keys.adb futex_protocol.adb \
+		-u futex_queues_small.ads futex_queues_large.ads futex_keys.adb futex_protocol.adb wake_word_protocol.adb \
 		--level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/futex-queues/build/gnatprove/gnatprove.out
 

@@ -4,7 +4,8 @@ project Futex_Queues_Tests is
    for Source_Files use ("main.adb", "futex_keys.ads", "futex_keys.adb",
                          "futex_queues.ads", "futex_queues.adb",
                          "futex_queues_small.ads", "futex_queues_large.ads",
-                         "futex_protocol.ads", "futex_protocol.adb");
+                         "futex_protocol.ads", "futex_protocol.adb",
+                         "wake_word_protocol.ads", "wake_word_protocol.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

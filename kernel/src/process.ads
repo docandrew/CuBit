@@ -54,7 +54,6 @@ with IPC_Request_Ids;
 with LinkedLists;
 with Memory_Grants;
 with Grant_Windows;
-with Grant_Doorbells;
 with Object_Table;
 with Retained_Record_Blocks;
 with Quiescent_Reclamation;
@@ -571,13 +570,10 @@ package Process is
         ownerNotice      : Boolean := False;
         noticeGeneration : Memory_Grants.Grant_Generation := 0;
         noticePeer       : Process_Identities.Identity := Process_Identities.No_Identity;
-        -- The grantee's channel wake (CAP-002 step 3, Grant_Doorbells): sent
-        -- by the owner (SEND_EVENT with Channel_Wake_ABI's label), taken by
-        -- the grantee's receive as an EVENT_CHANNEL_WAKE. Coalesced: one
-        -- pending wake per grant (per sender and channel). While pending,
-        -- the grant is on the grantee's bell list through bellPrev/bellNext.
-        bell             : Grant_Doorbells.Bell := Grant_Doorbells.Silent;
-        bellPrev, bellNext : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+        -- This life ended (revoked, given back, retired, or a party died):
+        -- its shared-futex waiters are swept as Revoked (IPC-010) and no
+        -- wait or wake through it is accepted.
+        lifeEnded        : Boolean := False;
     end record;
 
 
@@ -949,11 +945,14 @@ package Process is
         -- until read, so this may be stale but never misses one.
         kernelNoticePending : Boolean := False;
 
-        -- A channel wake is pending for it (CAP-002 step 3): its bell list
-        -- is not empty. A persistent, coalescing doorbell under the mailbox
-        -- lock, like the device-work doorbell above, kept apart from the
-        -- notice doorbell so taking the last wake clears it exactly.
-        bellPending : Boolean := False;
+        -- Its wake word (IPC-010 option B): the futex word its Ready wait
+        -- names (0: none). A futex wake of that word, by the process or by
+        -- a party of a grant of its page, wakes its Ready wait and its
+        -- receive like a doorbell: wakeWordPending, under the mailbox lock,
+        -- set by such a wake and cleared when the wait or a receive takes
+        -- it (one Channel_Wake_ABI notice).
+        wakeWord        : Unsigned_64 := 0;
+        wakeWordPending : Boolean := False;
 
         -- Control messages kept for this process until it reads them, a
         -- slot per sender (Kernel_Controls; Process.IPC.controlLock). All
@@ -1134,10 +1133,6 @@ package Process is
         granteeNotices            : Natural := 0;
         wakeQueued                : Boolean := False;
         wakeNext                  : ProcessID := NO_PROCESS;
-        -- Its received grants with a pending channel wake, oldest first
-        -- (Grant_Bell_Lists over bellPrev/bellNext).
-        bellHead, bellTail        : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
-        bellCount                 : Natural := 0;
     end record;
 
     type Process_State is record

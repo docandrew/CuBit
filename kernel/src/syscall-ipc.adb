@@ -78,6 +78,10 @@ package body Syscall.IPC is
     pragma Compile_Time_Error
       (Natural (BuddyAllocator.Order'Last) /= Contiguous_Memory.Maximum_Order,
        "the kernel's largest contiguous block is not the one userspace sizes DMA by");
+    -- WAIT's Ready_Word answer is the activity wait's (IPC-010 option B).
+    pragma Compile_Time_Error
+      (Process.IPC.Activity_Word /= Wait_ABI.Ready_Word,
+       "Activity_Word must be Wait_ABI.Ready_Word");
     -- Shared-memory grant flags (arg3 of the create-grant calls): bit 0
     -- read-write, then these.
     Grant_Flag_Forwardable : constant Unsigned_64 := 2;
@@ -1514,13 +1518,10 @@ package body Syscall.IPC is
           (Capabilities.RIGHT_WRITE => True, others => False);
         eventMsg : Process.Message;
     begin
-        -- A channel wake (CAP-002 step 3, Channel_Wake_ABI): coalesced on
-        -- the grant it names, whose ownership is the authority; it never
-        -- takes a request credit. dest and arg6 are not used.
+        -- Channel_Wake_ABI's label is the kernel's wake-word notice (IPC-010):
+        -- nobody sends it.
         if u64ToTag (arg1).label = Channel_Wake_ABI.Wake_Label then
-            retval := Process.IPC.sendChannelWake
-              (arg2, sync => u64ToTag (arg1).length = Channel_Wake_ABI.Sync_Length
-                             and then arg3 = Channel_Wake_ABI.Sync_Hint);
+            retval := reterr;
             return;
         end if;
         Process.resolveIdentity (Process_Identities.From_Word (arg0), destPID, generation);
@@ -2203,6 +2204,28 @@ package body Syscall.IPC is
                     return;
                 end if;
                 Process.IPC.waitForActivityUntil (deadline, a /= 0, msg, retval);
+                if retval = Process.IPC.Activity_Event then
+                    Process.User_Memory.Write_Message (caller, a, msg, ok);
+                    if not ok then
+                        retval := WA.Ready_Closed;
+                    end if;
+                end if;
+
+            when Wait_Policy.Ready_Word =>
+                -- As Ready, and b this process's wake word, c its last value
+                -- (IPC-010 option B). A word that is not the caller's own
+                -- aligned memory answers Ready_Word at once (a fault reads
+                -- as moved), so a loop never sleeps on it.
+                if a /= 0 and then not Process.User_Memory.Message_Writable (caller, a) then
+                    retval := WA.Ready_Closed;
+                    return;
+                end if;
+                if b = 0 or else b mod 4 /= 0 then
+                    retval := WA.Unsupported_Form;
+                    return;
+                end if;
+                Process.IPC.waitForActivityUntil
+                  (deadline, a /= 0, msg, retval, wakeWord => b, expected => c);
                 if retval = Process.IPC.Activity_Event then
                     Process.User_Memory.Write_Message (caller, a, msg, ok);
                     if not ok then

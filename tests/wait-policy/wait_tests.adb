@@ -53,6 +53,8 @@ procedure Wait_Tests is
       elsif Sources = CO and then B > 0 and then Deadline = W.Now and then C = 0 then
          return P.Completions_Now;
       elsif Sources = R + E + CO + RO then return P.Ready;
+      elsif Sources = R + E + CO + RO + F then
+         return (if C <= W.Word_Value_Last then P.Ready_Word else P.Unsupported);
       elsif Sources in F | F + SF | F + WF | F + WF + WS | F + SF + WF | F + SF + WF + WS then
          return P.Futex;
       elsif Sources = O and then Deadline = W.Now then return P.Offered;
@@ -92,6 +94,10 @@ begin
    end loop;
    Check (W.Messages_Sources = W.Bit (W.Requests) + W.Bit (W.Events), "messages word");
    Check (W.Nothing /= W.Unsupported_Form and then W.Nothing /= 0, "Nothing is distinct");
+   --  Ready_Word: its value must fit a 32-bit word.
+   Check (P.Decide (W.Ready_Word_Sources, W.Forever, 4096, W.Word_Value_Last) = P.Ready_Word and then
+          P.Decide (W.Ready_Word_Sources, W.Now, 4096, W.Word_Value_Last + 1) = P.Unsupported,
+          "Ready_Word takes a 32-bit value");
    --  The futex form's modifiers.
    Check (W.Waits_Shared (W.Futex_Sources + W.Shared_Futex) and then
           not W.Waits_Shared (W.Futex_Sources + W.Wake_First + W.Wake_Shared), "shared wait bit");

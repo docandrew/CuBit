@@ -114,13 +114,15 @@ package body Process.Futex is
     -- or not a party of a live grant.
     procedure lockWord (pid : ProcessID; shared : Boolean; word : Unsigned_64;
                         k : out Key; b : out Bucket_Index; address : out Unsigned_64;
-                        owner : out ProcessID; locked : out Boolean; ok : out Boolean) is
+                        owner : out ProcessID; ownerAddress : out Unsigned_64;
+                        locked : out Boolean; ok : out Boolean) is
         generation : Unsigned_32;
     begin
         k := No_Key;
         b := Bucket_Index'First;
         address := 0;
         owner := NO_PROCESS;
+        ownerAddress := 0;
         locked := False;
         ok := False;
         if pid = NO_PROCESS then
@@ -133,6 +135,7 @@ package body Process.Futex is
             k := keyOf (pid, word);
             b := Bucket_Of (k);
             address := word;
+            ownerAddress := word;
             ok := True;
             return;
         end if;
@@ -145,7 +148,7 @@ package body Process.Futex is
         Spinlocks.enterCriticalSection (bucketLocks (b));
         locked := True;
         IPC.resolveSharedWord (pid, Futex_ABI.Slot_Of (word), Futex_ABI.Offset_Of (word),
-                               generation, address, owner, ok);
+                               generation, address, owner, ownerAddress, ok);
         if ok then
             k := Shared_Key (Unsigned_32 (Futex_ABI.Slot_Of (word)), generation,
                              Futex_ABI.Offset_Of (word));
@@ -211,10 +214,11 @@ package body Process.Futex is
         b : Bucket_Index;
         address : Unsigned_64;
         owner : ProcessID;
+        ownerAddress : Unsigned_64;
         locked, ok : Boolean;
         woken : Unsigned_64;
     begin
-        lockWord (pid, shared, word, k, b, address, owner, locked, ok);
+        lockWord (pid, shared, word, k, b, address, owner, ownerAddress, locked, ok);
         if not ok then
             if locked then
                 Spinlocks.exitCriticalSection (bucketLocks (b));
@@ -226,6 +230,14 @@ package body Process.Futex is
         end if;
         woken := wakeKeyLocked (k, count, sync);
         Spinlocks.exitCriticalSection (bucketLocks (b));
+        -- The word's owner may have named it as its wake word (IPC-010
+        -- option B): its Ready wait and its receive wake too.
+        if woken < count and then
+           IPC.noteWakeWord ((if shared then owner else pid), ownerAddress,
+                             sync => sync and then woken = 0)
+        then
+            woken := woken + 1;
+        end if;
         return woken;
     end wakeWordOf;
 
@@ -318,6 +330,7 @@ package body Process.Futex is
         b : Bucket_Index;
         address : Unsigned_64;
         owner : ProcessID;
+        ownerAddress : Unsigned_64;
         locked, ok : Boolean;
         result : Unsigned_64;
     begin
@@ -332,7 +345,7 @@ package body Process.Futex is
                 return FUTEX_FAULT;
             end if;
         end if;
-        lockWord (pid, shared, word, k, b, address, owner, locked, ok);
+        lockWord (pid, shared, word, k, b, address, owner, ownerAddress, locked, ok);
         if not ok then
             if locked then
                 Spinlocks.exitCriticalSection (bucketLocks (b));
@@ -376,12 +389,14 @@ package body Process.Futex is
         return wakeFor (PerCPUData.getCurrentPID, address, count);
     end wake;
 
-    function wakeSpace (word, count, space : Unsigned_64) return Unsigned_64 is
+    function wakeSpace (word, count, space : Unsigned_64; sync : Boolean) return Unsigned_64 is
     begin
         if space = Futex_ABI.Private_Space then
             return wake (word, count);
         elsif space = Futex_ABI.Shared_Space then
-            return wakeWordOf (PerCPUData.getCurrentPID, True, word, count, sync => False);
+            return wakeWordOf (PerCPUData.getCurrentPID, True, word, count, sync => sync);
+        elsif space = Futex_ABI.Peer_Space then
+            return IPC.wakePeer (PerCPUData.getCurrentPID, word, sync);
         else
             return WAKE_REFUSED;
         end if;

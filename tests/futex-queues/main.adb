@@ -8,6 +8,7 @@ with Futex_Keys; use Futex_Keys;
 with Futex_Queues_Small; use Futex_Queues_Small;
 with Futex_Queues_Large;
 with Futex_Protocol;
+with Wake_Word_Protocol;
 
 procedure Main is
    Checked : Natural := 0;
@@ -219,6 +220,7 @@ begin
    Futex_Protocol.Prove_Racing_Store_Covered (0, 1);
    Futex_Protocol.Prove_Revoke_Race (3);
    Futex_Protocol.Prove_Wake_Then_Wait (0, 1);
+   Wake_Word_Protocol.Prove_Racing_Wake (0, 1);
 
    pragma Assert (Full_Seen > 0 and then Timeouts > 0 and then
                   Wakes > 0 and then Empty_Wakes > 0 and then Revoked > 0);

@@ -72,7 +72,11 @@ package Process.Futex is
     -- FUTEX_WAKE (arg2 = Futex_ABI.Private_Space or Shared_Space): a
     -- private address, or a shared word of a grant the caller is a party
     -- of (else WAKE_REFUSED).
-    function wakeSpace (word, count, space : Unsigned_64) return Unsigned_64;
+    --
+    -- Peer_Space (IPC-010 option B): word is a grant reference; the caller,
+    -- a party of that live notified grant, wakes the other party's wake word
+    -- (Process.IPC.wakePeer); sync places the woken thread on this CPU.
+    function wakeSpace (word, count, space : Unsigned_64; sync : Boolean) return Unsigned_64;
 
     -- Wake up to count waiters of pid on address (thread exit).
     function wakeFor (pid : ProcessID; address, count : Unsigned_64)

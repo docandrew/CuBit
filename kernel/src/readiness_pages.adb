@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System;
+with System.Machine_Code;
 with BuddyAllocator;
 with Util;
 
@@ -37,6 +38,9 @@ package body Readiness_Pages is
         end if;
     end Release;
 
+    -- One locked add: a class may be noted under different locks (events
+    -- under a mailbox lock, and grant notices under grantLock), so the
+    -- increment itself is atomic. 2**64 entries are never reached.
     procedure Note (Frame : Virtmem.PhysAddress; Class : RP.Queue_Class) is
     begin
         if Frame = No_Frame then
@@ -44,9 +48,13 @@ package body Readiness_Pages is
         end if;
         declare
             Page : RP.Readiness_Page with Import, Address => Virtmem.P2Va (Frame);
-            Counter : RP.Count with Import, Atomic, Address => Page.Produced (Class)'Address;
+            One : RP.Count := 1;
         begin
-            Counter := RP.Next (Counter);
+            System.Machine_Code.Asm
+              ("lock xaddq %0, %1",
+               Outputs => (RP.Count'Asm_Output ("+r", One),
+                           RP.Count'Asm_Output ("+m", Page.Produced (Class))),
+               Clobber => "memory, cc", Volatile => True);
         end;
     end Note;
 

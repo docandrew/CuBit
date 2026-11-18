@@ -139,15 +139,24 @@ package Process.IPC is
     -- A kernel notice (grant lifecycle, child exit, channel wakes) was
     -- taken into event: the woken thread needs no second call to read it.
     Activity_Event    : constant Unsigned_64 := 2;
+    -- The wake word moved, or was woken (IPC-010 option B).
+    Activity_Word     : constant Unsigned_64 := 3;
     Activity_Closed   : constant Unsigned_64 := Unsigned_64'Last;
 
     -- Wait without consuming messages or completions (or reply authority).
     -- With takeEvent, a pending kernel notice is taken into event and the
     -- result is Activity_Event (nothing else is consumed); the caller must
     -- have checked that it can store event before asking.
+    --
+    -- With wakeWord /= 0 (an aligned word of the caller's own memory): it
+    -- becomes the process's wake word, and the wait also returns
+    -- Activity_Word, taking the pending wake, when the word no longer holds
+    -- expected or a futex wake of it came (noteWakeWord). Both are checked
+    -- under the mailbox lock, which noteWakeWord takes: no lost wake.
     procedure waitForActivityUntil
       (deadlineMs : Unsigned_64; takeEvent : Boolean;
-       event : out Message; result : out Unsigned_64);
+       event : out Message; result : out Unsigned_64;
+       wakeWord : Unsigned_64 := 0; expected : Unsigned_64 := 0);
 
     --  Block until any IPC arrives or the absolute monotonic millisecond
     --  deadline is reached. Unlike a userspace sleep/poll loop, publication
@@ -441,12 +450,21 @@ package Process.IPC is
       (reference : Memory_Grants.Reference;
        success   : out Boolean);
 
-    -- A channel wake (CAP-002 step 3): SEND_EVENT with Channel_Wake_ABI's
-    -- label. The caller owns the live, notified grant named by reference;
-    -- its grantee gets one coalesced wake (Channel_Wake_ABI). Returns
-    -- Accepted_Word or Refused_Word. sync: the sender is about to block
-    -- (Channel_Wake_ABI.Sync_Hint); a woken thread is placed on this CPU.
-    function sendChannelWake (reference : Unsigned_64; sync : Boolean) return Unsigned_64;
+    -- A futex wake reached owner's word at ownerAddress (its own address):
+    -- if that is owner's registered wake word (IPC-010 option B), its Ready
+    -- wait and its receive wake as for a doorbell (one Channel_Wake_ABI
+    -- notice, coalesced). True when it was. Caller holds no futex bucket
+    -- lock, no grantLock and no mailbox lock.
+    function noteWakeWord (owner : ProcessID; ownerAddress : Unsigned_64; sync : Boolean)
+      return Boolean;
+
+    -- Wake a channel peer (FUTEX_WAKE, Futex_ABI.Peer_Space): caller is a
+    -- party of the live grant named by reference (generation << 32 | slot),
+    -- made with the notify flag; the other party's wake word is woken (its
+    -- Ready_Word wait or its receive: one coalesced Channel_Wake_ABI
+    -- notice). Returns 1, or Futex_ABI.Wake_Refused.
+    function wakePeer (caller : ProcessID; reference : Unsigned_64; sync : Boolean)
+      return Unsigned_64;
 
     -- Called once after reserving a PID, before resetting/publishing its
     -- process record: True when no grant of an earlier life of this slot is
@@ -562,6 +580,7 @@ package Process.IPC is
        generation : out Unsigned_32;
        address    : out Unsigned_64;
        owner      : out ProcessID;
+       ownerAddress : out Unsigned_64;
        ok         : out Boolean);
 
     -- Whether that grant life is still live (the futex sweep after a

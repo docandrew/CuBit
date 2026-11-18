@@ -12,14 +12,14 @@ cd "$here/../../kernel"
 mutate() {  # name file sed-expression
     local name=$1 file=$2 expr=$3 dir="$work/$1"
     mkdir -p "$dir/src"
-    cp "$ksrc"/futex_queues.ad? "$ksrc"/futex_keys.ad? "$here"/futex_queues_small.ads "$here"/futex_queues_large.ads "$here"/futex_protocol.ad? "$here"/main.adb "$dir/src/"
+    cp "$ksrc"/futex_queues.ad? "$ksrc"/futex_keys.ad? "$here"/futex_queues_small.ads "$here"/futex_queues_large.ads "$here"/futex_protocol.ad? "$here"/wake_word_protocol.ad? "$here"/main.adb "$dir/src/"
     sed -i "$expr" "$dir/src/$file"
     if cmp -s "$dir/src/$file" "$ksrc/$file" 2>/dev/null || cmp -s "$dir/src/$file" "$here/$file" 2>/dev/null; then
         echo "MUTANT $name: NOT APPLIED"; return 1
     fi
     sed "s|\"../../kernel/src\"|\"$dir/src\"|; s|for Object_Dir use \"build\"|for Object_Dir use \"$dir/build\"|; s|for Exec_Dir use \"build\"|for Exec_Dir use \"$dir/build\"|; s|(\".\", Kernel_Src)|(\"$dir/src\")|" \
         "$here/futex_queues_tests.gpr" > "$dir/t.gpr"
-    if alr exec -- gnatprove -P"$dir/t.gpr" -u futex_queues_small.ads futex_protocol.adb futex_keys.adb \
+    if alr exec -- gnatprove -P"$dir/t.gpr" -u futex_queues_small.ads futex_protocol.adb futex_keys.adb wake_word_protocol.adb \
          --level=2 --timeout=30 -j0 --report=fail >"$dir/log" 2>&1 \
        && ! grep -q "medium\|high" "$dir/log"; then
         echo "MUTANT $name: SURVIVED (proof still passes)"; return 1
@@ -59,4 +59,11 @@ mutate revoke-any-life futex_queues.ads 's/(K.Space = Shared_Space and then K.Ow
 mutate revoke-any-slot futex_queues.ads 's/(K.Space = Shared_Space and then K.Owner = Slot and then K.Generation = Generation)/(K.Space = Shared_Space and then K.Generation = Generation)/' || fail=1
 # A grant's shared keys spread over buckets (a one-bucket sweep would miss some).
 mutate grant-spread futex_keys.adb 's/                return Grant_Bucket (K.Owner);/                return Bucket_Index ((Unsigned_64 (K.Owner) + K.Address) mod Bucket_Count);/' || fail=1
+# Wake words (IPC-010 option B).
+# The Ready_Word wait sleeps although a wake of its word is pending.
+mutate word-ignores-flag wake_word_protocol.adb 's/Back := S.Activity or else S.Flag or else S.Value \/= E;/Back := S.Activity or else S.Value \/= E;/' || fail=1
+# It does not compare the word.
+mutate word-no-compare wake_word_protocol.adb 's/Back := S.Activity or else S.Flag or else S.Value \/= E;/Back := S.Activity or else S.Flag;/' || fail=1
+# A futex wake of the word that does not wake the sleeper.
+mutate word-wake-no-ready wake_word_protocol.adb '/procedure Note_Wake/,/end Note_Wake;/ s/S.P := Running;/null;/' || fail=1
 exit $fail
