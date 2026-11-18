@@ -194,19 +194,28 @@ is
         end case;
     end record;
 
-    -- The narrowest supported width that covers the host width and the
-    -- unit's MGAW allows.
+    -- The narrowest supported table width (SAGAW: how many levels) that
+    -- covers the host width, on a unit whose MGAW admits every host address.
+    -- MGAW bounds the DMA addresses a unit accepts, not the table's levels:
+    -- Intel client parts report MGAW 39 with only 4-level (48-bit) tables,
+    -- and a 4-level table holding only addresses below 2**39 is valid
+    -- (VT-d 3.x section 9.3; Linux does the same). Mappings are identity
+    -- (I/O address = physical address) and physical addresses stay below the
+    -- host width, so Host_Bits <= MGAW_Bits keeps every mapping inside MGAW.
     function Choose_Width
       (SAGAW : SAGAW_Field; MGAW_Bits, Host_Bits : Natural) return Width_Choice
     with Post =>
       (if Choose_Width'Result.Found then
          Supports (SAGAW, Choose_Width'Result.Width)
          and then Width_Bits (Choose_Width'Result.Width) >= Host_Bits
-         and then Width_Bits (Choose_Width'Result.Width) <= MGAW_Bits
+         and then Host_Bits <= MGAW_Bits
+         and then (for all V in Address_Width =>
+                     (if V < Choose_Width'Result.Width then
+                        not (Supports (SAGAW, V) and then Width_Bits (V) >= Host_Bits)))
        else
-         (for all W in Address_Width =>
-            not (Supports (SAGAW, W) and then Width_Bits (W) >= Host_Bits
-                 and then Width_Bits (W) <= MGAW_Bits)));
+         Host_Bits > MGAW_Bits
+         or else (for all W in Address_Width =>
+                    not (Supports (SAGAW, W) and then Width_Bits (W) >= Host_Bits)));
 
     -- A run of Pages frames from First lies wholly inside the width.
     function Run_In_Width (First : Unsigned_64; Pages : Unsigned_64;

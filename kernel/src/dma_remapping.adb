@@ -707,6 +707,15 @@ package body DMA_Remapping with SPARK_Mode => Off is
             Unit_Note (U, "not responding (CAP all ones or zero)");
             return;
         end if;
+        -- The raw capability words, so a laptop log shows why a width was
+        -- (not) chosen without a debugger (IOMMU-001: image 27b's units were
+        -- refused under a 39-bit MGAW with 4-level-only tables).
+        print ("IOMMU: unit");
+        print (Integer (U));
+        print (" CAP=");
+        print (Units (U).CAP);
+        print (" ECAP=");
+        println (Units (U).ECAP);
         declare
             CAP : constant Unsigned_64 := Units (U).CAP;
             ECAP : constant Unsigned_64 := Units (U).ECAP;

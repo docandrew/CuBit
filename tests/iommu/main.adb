@@ -572,8 +572,15 @@ procedure Main is
          Check (C.Found and then C.Width = Width_48, "46-bit host needs 48");
          C := Choose_Width (SAGAW_39, 39, 46);
          Check (not C.Found, "39-bit unit cannot cover a 46-bit host");
+         --  Intel client parts (the IdeaPad's ADL-N: CAP SAGAW 4-level only,
+         --  MGAW 39, DMAR host width 39). Refusing this left the laptop's
+         --  DMA unconfined ("no supported address width covers the host").
          C := Choose_Width (SAGAW_48, 39, 39);
-         Check (not C.Found, "MGAW below the only width");
+         Check (C.Found and then C.Width = Width_48, "4-level tables under a 39-bit MGAW");
+         C := Choose_Width (SAGAW_48, 39, 46);
+         Check (not C.Found, "host wider than MGAW refused");
+         C := Choose_Width (SAGAW_39 or SAGAW_48, 39, 39);
+         Check (C.Found and then C.Width = Width_39, "narrowest still first under MGAW 39");
          C := Choose_Width (0, 48, 39);
          Check (not C.Found, "no supported width");
       end;

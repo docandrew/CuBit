@@ -22,15 +22,15 @@ package body IO_Page_Tables with SPARK_Mode => On is
       (SAGAW : SAGAW_Field; MGAW_Bits, Host_Bits : Natural) return Width_Choice
     is
     begin
+        if Host_Bits > MGAW_Bits then
+            return (Found => False);
+        end if;
         for W in Address_Width loop
             pragma Loop_Invariant
               (for all V in Address_Width'First .. W =>
                  (if V /= W then
-                    not (Supports (SAGAW, V) and then Width_Bits (V) >= Host_Bits
-                         and then Width_Bits (V) <= MGAW_Bits)));
-            if Supports (SAGAW, W) and then Width_Bits (W) >= Host_Bits
-              and then Width_Bits (W) <= MGAW_Bits
-            then
+                    not (Supports (SAGAW, V) and then Width_Bits (V) >= Host_Bits)));
+            if Supports (SAGAW, W) and then Width_Bits (W) >= Host_Bits then
                 return (Found => True, Width => W);
             end if;
         end loop;
