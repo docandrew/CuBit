@@ -129,12 +129,19 @@ private
       Mask : Token := No_Token;
    end record;
    type Readers is array (Reader_Slot) of Reader;
+   --  Where each face's code was last reserved (0: nowhere yet): Find tries
+   --  it first, so a hit costs one comparison instead of a pass over every
+   --  slot. Only a hint; Find still scans when it does not match.
+   type Hint_Row is array (L.Code_Point) of Search_Result;
+   type Hints is array (L.Face_Index) of Hint_Row;
+   No_Hints : constant Hints := [others => [others => 0]];
    type State is record
       Budget : Byte_Count := 0;
       Issued, Read_Issued : Serial_Number range 0 .. Last_Identity := 0;
       Cursor : Slot := Slot'First;
       Masks : Items;
       Reading : Readers;
+      Hint : Hints := No_Hints;
    end record;
    function Prefix (V : Items; N : Search_Result) return Byte_Count is
      (if N = 0 then 0 else Prefix (V, N - 1) + V (N).Bytes)

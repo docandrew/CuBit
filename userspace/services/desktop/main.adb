@@ -14042,33 +14042,40 @@ procedure main is
    --  same call and is handled here: one call per wake, not a wake and a
    --  poll.
    --  Idle glyph warming. A glyph's first use rasterizes it into the glyph
-   --  cache (~100 us each in QEMU), on the frame that first shows it: a new
+   --  cache (~110 us each in QEMU), on the frame that first shows it: a new
    --  window's title cost that frame ~1.4 ms. While Desktop has nothing to
-   --  do it rasterizes the printable Sans glyphs ahead, a few per turn, so a
-   --  turn never holds input back for more than that; it stops when done,
-   --  when text is not the CPU renderer's, or when the cache is full.
+   --  do it rasterizes the printable glyphs of the faces it draws with
+   --  (Sans, then Sans_Semibold) ahead, a few per turn, so a turn never
+   --  holds input back for more than that; it stops when done, when text is
+   --  not the CPU renderer's, or when the cache has no room.
    Glyph_Warm_Per_Turn : constant := 2;
    Last_Warm_Code : constant := 126;
+   type Warm_Faces is array (Positive range <>) of CuBit.Fonts.Face;
+   Warmed_Faces : constant Warm_Faces := [CuBit.Fonts.Sans, CuBit.Fonts.Sans_Semibold];
+   glyphWarmFace : Positive := Warmed_Faces'First;
    glyphWarmNext : Natural := Compositor_Text.L.First_Code;
    function glyphsWarming return Boolean is
-     (glyphWarmNext <= Last_Warm_Code and then desktopStarted and then not Bootstrap_CPU and then
+     (glyphWarmFace <= Warmed_Faces'Last and then desktopStarted and then not Bootstrap_CPU and then
       Desktop_Compositor.Selected and then Desktop_Compositor.Software_Text and then
       presentations (primaryOutput).Enabled);
    procedure warmGlyphs is
       Resident : Boolean;
    begin
       for I in 1 .. Glyph_Warm_Per_Turn loop
-         exit when glyphWarmNext > Last_Warm_Code;
+         exit when glyphWarmFace > Warmed_Faces'Last;
          Desktop_Compositor.Prepare_Text
-           (CuBit.Fonts.Face'Pos (CuBit.Fonts.Sans), glyphWarmNext,
+           (CuBit.Fonts.Face'Pos (Warmed_Faces (glyphWarmFace)), glyphWarmNext,
             presentations (primaryOutput).Geometry.Scale, Resident);
          if not Resident then
-            glyphWarmNext := Last_Warm_Code + 1;   --  stop: no room, or no CPU text
-            exit;
+            glyphWarmFace := Warmed_Faces'Last + 1;   --  stop: no room, or no CPU text
+         elsif glyphWarmNext < Last_Warm_Code then
+            glyphWarmNext := glyphWarmNext + 1;
+         else
+            glyphWarmFace := glyphWarmFace + 1;
+            glyphWarmNext := Compositor_Text.L.First_Code;
          end if;
-         glyphWarmNext := glyphWarmNext + 1;
       end loop;
-      if glyphWarmNext > Last_Warm_Code then
+      if glyphWarmFace > Warmed_Faces'Last then
          debugPrint ("desktop: glyph cache warmed" & LF);
       end if;
    end warmGlyphs;

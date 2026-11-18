@@ -44,13 +44,15 @@ package body Compositor_Glyph_Cache with SPARK_Mode is
       end loop;
    end Empty_Tables;
    function Open (Budget : Byte_Count) return State is
-      S : constant State := (Budget => Budget, others => <>);
+      S : constant State := (Budget => Budget, Hint => No_Hints, others => <>);
    begin
       Empty_Tables (S.Masks, S.Reading);
       return S;
    end Open;
    function Find (S : State; K : Key) return Search_Result is
+      H : constant Search_Result := S.Hint (K.Face) (K.Code);
    begin
+      if H /= 0 and then Matches (S, H, K) then return H; end if;
       for I in Slot loop
          if Matches (S, I, K) then return I; end if;
          pragma Loop_Invariant (for all J in Slot'First .. I => not Matches (S, J, K));
@@ -76,6 +78,7 @@ package body Compositor_Glyph_Cache with SPARK_Mode is
          if S.Masks (I).Stage = Free then
             S.Issued := Compositor_Identity.Next (S.Issued, Last_Identity);
             S.Masks (I) := (Building, S.Issued, K, Size);
+            S.Hint (K.Face) (K.Code) := I;
             Changed_Bytes (Before, S.Masks, I);
             T := (I, S.Issued);
             return;

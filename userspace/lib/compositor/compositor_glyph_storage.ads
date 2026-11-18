@@ -6,7 +6,8 @@ package Compositor_Glyph_Storage with SPARK_Mode is
    package L renames Compositor_Glyph_Layout;
    package Software renames Compositor_Glyph_Software;
    use type Software.Word;
-   subtype Slot is Positive range 1 .. 128;
+   --  Two faces' printable sets (Desktop warms Sans and Sans_Semibold).
+   subtype Slot is Positive range 1 .. 256;
    type State is limited private with Default_Initial_Condition => Empty (State);
    type Flags is array (Slot) of Boolean;
    function Same_Others (Before, After : Flags; I : Slot) return Boolean is
