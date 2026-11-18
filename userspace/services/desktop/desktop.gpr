@@ -96,6 +96,21 @@ project Desktop is
             "-mno-red-zone",
             "-fno-pic"
         );
+        --  Compose units proved free of run-time errors (SPARK level 2, no
+        --  unproved checks, no assumptions): built without run-time checks
+        --  and at -O3, like drivers and services. Proof: the units' own
+        --  gnatprove runs (tests/compositor). -fno-tree-vrp: GCC's
+        --  value-range propagation miscompiles some Ada in GNAT 15.
+        Proved_Compose_Switches :=
+          ("-O3", "-gnatp", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
+           "-mno-red-zone", "-fno-pic", "-fno-tree-vrp");
+        for Switches ("compositor_row_copy.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_sampling.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_image_sampling.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_backdrop_strips.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_damage.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_repaint.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_pool.adb") use Proved_Compose_Switches;
     end Compiler;
 
     package Binder is
