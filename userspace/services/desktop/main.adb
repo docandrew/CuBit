@@ -4698,6 +4698,12 @@ procedure main is
          R := Natural'Min (R, clipRect.x + clipRect.w); B := Natural'Min (B, clipRect.y + clipRect.h);
       end if;
       R := Natural'Min (R, fbWidth); B := Natural'Min (B, fbHeight);
+      --  Drawing an output, the frame's damage clips (unscaled outputs:
+      --  logical and physical pixels are the same).
+      if nativeOutputPass then
+         L := Natural'Max (L, Natural (outputDamage.Left)); T := Natural'Max (T, Natural (outputDamage.Top));
+         R := Natural'Min (R, Natural (outputDamage.Right)); B := Natural'Min (B, Natural (outputDamage.Bottom));
+      end if;
       return (if L < R and then T < B then Unsigned_64 (R - L) * Unsigned_64 (B - T) else 0);
    end clippedPixels;
 
