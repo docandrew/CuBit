@@ -9163,7 +9163,7 @@ if [ "$TEST_NAME" = "ui-latency" ] && [ "$QEMU_ACCEL" = "kvm" ]; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi
-    cold=$(awk '/desktop: glyph cache warmed/ {w=1} w && /DESKTOP-TEXT-SLOW:/ {n++} END {print n+0}' "$SERIAL_LOG")
+    cold=$(awk '/^desktop: glyph cache warmed/ {w=1} w && /^DESKTOP-TEXT-SLOW:/ {n++} END {print n+0}' "$SERIAL_LOG")
     if [ "$cold" -ne 0 ]; then
         echo "headless: ui-latency: $cold slow text batches after the glyph cache was warmed" >&2
         grep -a "DESKTOP-TEXT-SLOW" "$SERIAL_LOG" >&2
