@@ -620,6 +620,8 @@ procedure main is
    procedure renderOutput (Output : Output_Index; Area : Rect);
    --  The frame's area, which the backdrop covers (per-path attribution).
    backdropPixels : Unsigned_64 := 0;
+   --  The lent buffers' memory type was logged (once).
+   lentMappingReported : Boolean := False;
    procedure Paint_Diagnostic (Output : Output_Index);
    function physicalClip (Area : Rect) return DG.Physical_Rectangle is
      (Compositor_Text.Clip
@@ -14275,6 +14277,13 @@ procedure main is
                end if;
                P.Targets (B).Address := Mapped;
                if Loan.Value.On_Screen then On_Screen := B; end if;
+               --  Grant mappings are write-back: the kernel maps every
+               --  acquired grant with PG_USERDATA (PAT entry 0), whatever
+               --  the owner's own mapping is. Said once.
+               if not lentMappingReported then
+                  lentMappingReported := True;
+                  debugPrint ("desktop: lent buffer mapped WB (kernel grant mappings are PAT 0, write-back)" & LF);
+               end if;
             end;
          elsif Response.tag.label /= PW.Attach_Buffer or else Response.tag.length /= 1 or else
            Response.tag.protocol /= 0 or else Response.tag.reserved /= 0 or else Response.words (0) /= 0
