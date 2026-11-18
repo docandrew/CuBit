@@ -197,11 +197,69 @@ isr12:
 	jmp isrCommon
 
 ; GPF exception (CPU pushes error code)
+; A #GP raised by one of the recovering MSR accesses below (kernel mode
+; only: user code cannot run at their addresses) resumes at its fault
+; label instead: the error code is dropped and IRETQ returns there.
 isr13:
+    push rax
+    lea rax, [rel msrSafeWriteInsn]
+    cmp [rsp + 16], rax                ; rax, error code, then RIP
+    je .msrWriteFaulted
+    lea rax, [rel msrSafeReadInsn]
+    cmp [rsp + 16], rax
+    je .msrReadFaulted
+    pop rax
     swapGSIfFromProcessErr
 	; returns error code
 	push long 13
 	jmp isrCommon
+.msrWriteFaulted:
+    lea rax, [rel msrSafeWriteFault]
+    jmp .msrResume
+.msrReadFaulted:
+    lea rax, [rel msrSafeReadFault]
+.msrResume:
+    mov [rsp + 16], rax
+    pop rax
+    add rsp, 8                         ; the error code
+    iretq
+
+;------------------------------------------------------------------------------
+; MSR accesses that survive a refusal (Msr_Safe): a CPU may advertise a
+; feature yet refuse its MSR (the N150's HWP read, image 27). Each returns
+; 0 on success and 1 when the instruction raised #GP (isr13 above).
+;   cubitWrmsrSafe (rdi = MSR, rsi = value)
+;   cubitRdmsrSafe (rdi = MSR, rsi = address of the 64-bit result)
+;------------------------------------------------------------------------------
+global cubitWrmsrSafe
+global cubitRdmsrSafe
+cubitWrmsrSafe:
+    mov ecx, edi
+    mov eax, esi
+    mov rdx, rsi
+    shr rdx, 32
+msrSafeWriteInsn:
+    wrmsr
+    xor eax, eax
+    ret
+msrSafeWriteFault:
+    mov eax, 1
+    ret
+
+cubitRdmsrSafe:
+    mov ecx, edi
+msrSafeReadInsn:
+    rdmsr
+    shl rdx, 32
+    mov eax, eax
+    or rax, rdx
+    mov [rsi], rax
+    xor eax, eax
+    ret
+msrSafeReadFault:
+    mov qword [rsi], 0
+    mov eax, 1
+    ret
 
 ; page fault (CPU pushes error code)
 isr14:

@@ -49,6 +49,7 @@ with Video.EGA;
 with Boot_Diagnostics;
 with Boot_Timer_Setup;
 with Boot_Timeline;
+with User_Wait;
 with Boot_Timeline_Layout;
 with Virtmem; use Virtmem;
 with x86;
@@ -167,6 +168,9 @@ begin
 
     earlyCheckpoint ("interrupt tables");
     Interrupts.setup;
+    -- The futex pause's MSR (IPC-010), through the recovering MSR path,
+    -- which needs the #GP handler.
+    User_Wait.Setup_This_CPU (Boot_CPU => True);
 
     earlyCheckpoint ("normalize boot memory map");
     Multiboot.getMemoryAreas (mbInfo, bootMemoryAreas, memAreaCount);
@@ -603,6 +607,7 @@ begin
     System.Secondary_Stack.SS_Init (ssPtr);
 
     Interrupts.loadIDT;
+    User_Wait.Setup_This_CPU (Boot_CPU => False);
 
     -- switch to the kernel's primary page tables.
     Mem_mgr.switchAddressSpace;

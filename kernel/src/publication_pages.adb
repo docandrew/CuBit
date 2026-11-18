@@ -9,6 +9,7 @@ with acpi;
 with BuddyAllocator;
 with Multiboot;
 with Platform_Monotonic;
+with User_Wait;
 with Util;
 
 package body Publication_Pages with
@@ -61,6 +62,7 @@ is
                Timer_Offset => Platform_Monotonic.Diagnostic (3),
                Timer_Before => Platform_Monotonic.Diagnostic (4),
                Timer_After  => Platform_Monotonic.Diagnostic (5));
+            Facts.User_Wait_Cycles := User_Wait.Published_Cycles;
             Facts.Version := SP.Layout_Version;
             Registry.Version := SP.Layout_Version;
             Wall.Version := SP.Layout_Version;
@@ -119,6 +121,17 @@ is
             Count_Word := Count;
         end if;
     end Set_Device_Memory_Denials;
+
+    procedure Set_User_Wait_Cycles (Cycles : Unsigned_64) is
+        Facts : SP.Facts_Page with
+            Import, Volatile, Address => Virtmem.P2Va (Facts_Frame);
+        Cycles_Word : Unsigned_64 with
+            Import, Atomic, Address => Facts.User_Wait_Cycles'Address;
+    begin
+        if Facts_Frame /= 0 then
+            Cycles_Word := Cycles;
+        end if;
+    end Set_User_Wait_Cycles;
 
     procedure Set_Process_Kills (Count : Unsigned_64) is
         Facts : SP.Facts_Page with

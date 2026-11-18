@@ -488,6 +488,7 @@ is
             if maxStdLeaf >= 7 then
                 cpuid (7, eax, ebx, ecx, unused);
                 leaf7ebx := toRecord (ebx);
+                leaf7ecx := toRecord (ecx);
             end if;
 
             -- TSC frequency info

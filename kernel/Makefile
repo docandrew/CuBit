@@ -14,6 +14,9 @@ WAKEUP_SCHEDULING ?= 1
 ONESHOT_SCHEDULING ?= 1
 # Idle CPUs take ready work from busy CPUs (docs/threads.md).
 WORK_STEALING ?= 1
+# The futex pause (IPC-010, UMWAIT): off by default until proved on the
+# laptop; USER_WAIT_PAUSE=1 make -C kernel world turns it on.
+USER_WAIT_PAUSE ?= 0
 # Records in the kernel log ring (LOG-004, src/kernel_log.ads): at most
 # Kernel_Log_Publication.Maximum_Records (4096). Tests shrink it to overflow
 # the ring before logstore starts (tests/kernel-log-ring/run.sh); src/build.ads
@@ -109,6 +112,7 @@ build/libcubit.a:
 		-e 's/SED_WAKEUP_SCHEDULING/$(if $(filter 1,$(WAKEUP_SCHEDULING)),True,False)/' \
 		-e 's/SED_ONESHOT_SCHEDULING/$(if $(filter 1,$(ONESHOT_SCHEDULING)),True,False)/' \
 		-e 's/SED_WORK_STEALING/$(if $(filter 1,$(WORK_STEALING)),True,False)/' \
+		-e 's/SED_USER_WAIT_PAUSE/$(if $(filter 1,$(USER_WAIT_PAUSE)),True,False)/' \
 		-e 's/SED_KERNEL_LOG_RECORDS/$(KERNEL_LOG_RECORDS)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 

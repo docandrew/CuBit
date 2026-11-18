@@ -7696,6 +7696,7 @@ futex-share: ALL PASS
 futex-share-outsider: wake without the grant refused PASS
 futex-share-outsider: wait without the grant refused PASS
 futex-share-outsider: ALL PASS
+msr-safe: an absent MSR faulted and was recovered
 "
         if grep -aE 'futex-share(-outsider)?: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
            grep -aqF 'futex-share-server: pong FAIL' "$SERIAL_LOG"; then

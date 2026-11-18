@@ -85,6 +85,10 @@ package CuBit.System_Facts is
    --  owner copies a whole frame again.
    function Scanout_Overwrites return Unsigned_64;
 
+   --  The futex pause's limit in TSC cycles (IPC-010, kernel User_Wait);
+   --  0: no pause (the build, the CPU or a CPU's MSR said no).
+   function User_Wait_Cycles return Unsigned_64;
+
    --  The platform clock's startup diagnostic (snapshot at boot).
    function Clock return SP.Clock_Diagnostic;
 

@@ -55,4 +55,7 @@ is
 
     -- The boot display adapter is driven natively (1) or not (0).
     procedure Set_Boot_Display_Native (Native : Boolean);
+
+    -- The futex pause's limit (User_Wait), 0 for none.
+    procedure Set_User_Wait_Cycles (Cycles : Unsigned_64);
 end Publication_Pages;

@@ -91,6 +91,10 @@ package System_Publications with Pure, SPARK_Mode is
       --  region of it. Its owner (display.svc) copies a whole frame on the
       --  next present after this changes; the kernel cannot repaint it.
       Scanout_Overwrites : Unsigned_64 := 0;
+      --  The futex pause (IPC-010): the most TSC cycles a thread may UMWAIT
+      --  on its futex word before the kernel sleep (the kernel's
+      --  IA32_UMWAIT_CONTROL maximum on every CPU); 0: no pause.
+      User_Wait_Cycles : Unsigned_64 := 0;
    end record;
    for Facts_Page use record
       Version             at 0 range 0 .. 63;
@@ -102,6 +106,7 @@ package System_Publications with Pure, SPARK_Mode is
       Device_Memory_Denials at 112 range 0 .. 63;
       Process_Kills         at 120 range 0 .. 63;
       Scanout_Overwrites    at 128 range 0 .. 63;
+      User_Wait_Cycles      at 136 range 0 .. 63;
    end record;
    for Framebuffer_Geometry use record
       Width          at 0 range 0 .. 63;

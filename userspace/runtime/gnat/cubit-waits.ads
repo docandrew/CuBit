@@ -52,21 +52,34 @@ package CuBit.Waits is
    --  a grant this process is a party of (its owner or its grantee), named
    --  by the grant and the word's byte offset in it. Both parties name a
    --  shared word the same way, whatever their mappings.
+   --  Where: this process's mapping of the word, when known (the futex
+   --  pause watches it); Null_Address: no pause.
    type Futex_Name is record
       Shared : Boolean := False;
       Word   : Unsigned_64 := 0;
+      Where  : System.Address := System.Null_Address;
    end record;
 
    function Private_Word (Where : System.Address) return Futex_Name is
-     ((Shared => False, Word => Unsigned_64 (System.Storage_Elements.To_Integer (Where))));
+     ((Shared => False, Word => Unsigned_64 (System.Storage_Elements.To_Integer (Where)),
+       Where => Where));
 
-   function Shared_Word (Grant : GR.Reference; Offset : FA.Grant_Offset) return Futex_Name is
-     ((Shared => True, Word => FA.Shared_Word (Grant.slot, Offset)))
+   --  Mapped: where this process maps the grant (its owner's pages, or
+   --  its grantee's window), for the pause; Null_Address: no pause.
+   function Shared_Word (Grant : GR.Reference; Offset : FA.Grant_Offset;
+                         Mapped : System.Address := System.Null_Address) return Futex_Name is
+     ((Shared => True, Word => FA.Shared_Word (Grant.slot, Offset),
+       Where => (if System."=" (Mapped, System.Null_Address) then System.Null_Address
+                 else System.Storage_Elements."+" (Mapped, System.Storage_Elements.Storage_Offset (Offset)))))
    with Pre => Grant.slot /= 0;
 
    --  Sleep while Name holds Expected, until a wake or the deadline. A
    --  Wait_ABI futex result; Futex_Revoked when a shared word's grant life
-   --  ended; Futex_Fault when not a party of a live grant.
+   --  ended; Futex_Fault when not a party of a live grant. With a known
+   --  mapping and the kernel's pause published (CuBit.System_Facts.
+   --  User_Wait_Cycles, IPC-010), it first waits up to Pause_Cycles in user
+   --  mode on the word (UMONITOR, UMWAIT): a change in that time returns
+   --  Futex_Retry with no system call.
    function Futex_Wait (Name : Futex_Name; Expected, Deadline : Unsigned_64)
      return Unsigned_64;
 
@@ -83,5 +96,8 @@ package CuBit.Waits is
    --  Peer is refused).
    function Hand_Off (Peer, Mine : Futex_Name; Expected, Deadline : Unsigned_64)
      return Unsigned_64;
+
+   --  The futex pause's length, under the kernel's limit.
+   Pause_Cycles : constant Unsigned_64 := 4_000;
 
 end CuBit.Waits;
