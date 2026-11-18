@@ -29,23 +29,25 @@ package body Desktop_Wallpaper is
    function Image_Height (Style : Preferences) return Positive is
      (if Image_Ready (Style) then Style.Height else 1);
 
+   --  Integer bilinear filtering of the three colour channels:
+   --  (A * (256 - Fraction) + B * Fraction + 128) / 256 each, alpha opaque.
+   --  Red and blue share one multiply in 16-bit lanes (each lane's sum is at
+   --  most 255 * 256 + 128 < 2**16, so no carry crosses lanes), green takes
+   --  another: the same pixels as a per-channel loop, two multiplies fewer.
    function Blend (A, B : Unsigned_32; Fraction : Natural)
      return Unsigned_32
    is
-      Result : Unsigned_32 := 16#FF00_0000#;
-      Channel : Unsigned_32;
+      F : constant Unsigned_32 := Unsigned_32 (Fraction);
+      G : constant Unsigned_32 := 256 - F;
+      Red_Blue : constant Unsigned_32 :=
+        (A and 16#00FF_00FF#) * G + (B and 16#00FF_00FF#) * F + 16#0080_0080#;
+      Green : constant Unsigned_32 :=
+        (A and 16#0000_FF00#) * G + (B and 16#0000_FF00#) * F + 16#0000_8000#;
    begin
-      --  Integer bilinear filtering; only exposed damage is resampled.
-      for Component in 0 .. 2 loop
-         Channel :=
-           ((Shift_Right (A, Component * 8) and 255) *
-              Unsigned_32 (256 - Fraction) +
-            (Shift_Right (B, Component * 8) and 255) *
-              Unsigned_32 (Fraction) + 128) / 256;
-         Result := Result or Shift_Left (Channel, Component * 8);
-      end loop;
-      return Result;
+      return 16#FF00_0000# or (Shift_Right (Red_Blue, 8) and 16#00FF_00FF#) or
+        (Shift_Right (Green, 8) and 16#0000_FF00#);
    end Blend;
+   pragma Inline (Blend);
 
    procedure Render
      (Target : System.Address;
@@ -84,32 +86,67 @@ package body Desktop_Wallpaper is
       then return; end if;
       Plan := S.Prepare (S.Extent (Width), S.Extent (Height), Source_Width, Source_Height,
         Desktop_Backdrop_Style.Placement (Style.Position));
+      --  Strip by strip (Strips.Width columns), row by row. A source row's
+      --  horizontal pass is kept (two rows, Row_Pass) and reused while the
+      --  output rows below still sample it, so each pixel costs one
+      --  vertical blend and, amortized, at most one horizontal one: the
+      --  pixels are the same as blending all four neighbours per pixel.
       while First < X + W loop
          declare
             Length : constant Strips.Count := Natural'Min (Strips.Width, X + W - First);
             Columns : constant Strips.Samples :=
               (if Has_Image then Strips.Prepare (Plan, S.Index (First), Length)
                else (others => (Valid => False)));
+            type Row_Pass is array (Strips.Slot) of Unsigned_32;
+            Passes : array (0 .. 1) of Row_Pass := (others => (others => 0));
+            --  The source row each pass holds (none yet: -1).
+            Held : array (0 .. 1) of Integer := (-1, -1);
             AY : S.Axis_Sample;
+            --  The pass holding source row R, computed into the slot that
+            --  Keep does not hold when it is missing.
+            function Pass_For (R : S.Index; Keep : Integer) return Natural is
+               Slot : Natural;
+            begin
+               if Held (0) = R then return 0; elsif Held (1) = R then return 1; end if;
+               Slot := (if Held (0) = Keep then 1 else 0);
+               for I in 0 .. Length - 1 loop
+                  declare
+                     AX : S.Axis_Sample renames Columns (I);
+                  begin
+                     if AX.Valid then
+                        Passes (Slot) (I) := Blend (Sample (AX.First, R), Sample (AX.Last, R), AX.Weight);
+                     end if;
+                  end;
+               end loop;
+               Held (Slot) := R;
+               return Slot;
+            end Pass_For;
          begin
             for Row in Y .. Y + H - 1 loop
                AY := (if Has_Image then S.Vertical (Plan, S.Position (Row * 256))
                       else (Valid => False));
-               for I in 0 .. Length - 1 loop
+               if AY.Valid then
                   declare
-                     AX : S.Axis_Sample renames Columns (I);
-                     Color : Unsigned_32 := Background;
-                     Pixel : Unsigned_32 with Import, Address => Target +
-                       Storage_Offset (Row * Pitch + (First + I) * 4);
+                     Top : constant Natural := Pass_For (AY.First, AY.Last);
+                     Bottom : constant Natural := Pass_For (AY.Last, AY.First);
+                     Target_Row : Pixels (0 .. Length - 1) with Import, Address => Target +
+                       Storage_Offset (Row * Pitch + First * 4);
                   begin
-                     if AX.Valid and then AY.Valid then
-                        Color := Blend
-                          (Blend (Sample (AX.First, AY.First), Sample (AX.Last, AY.First), AX.Weight),
-                           Blend (Sample (AX.First, AY.Last), Sample (AX.Last, AY.Last), AX.Weight), AY.Weight);
-                     end if;
-                     Pixel := Color;
+                     for I in 0 .. Length - 1 loop
+                        Target_Row (I) :=
+                          (if Columns (I).Valid
+                           then Blend (Passes (Top) (I), Passes (Bottom) (I), AY.Weight)
+                           else Background);
+                     end loop;
                   end;
-               end loop;
+               else
+                  declare
+                     Target_Row : Pixels (0 .. Length - 1) with Import, Address => Target +
+                       Storage_Offset (Row * Pitch + First * 4);
+                  begin
+                     Target_Row := (others => Background);
+                  end;
+               end if;
             end loop;
             First := First + Length;
          end;
