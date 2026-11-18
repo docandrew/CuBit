@@ -71,6 +71,7 @@ with Desktop_Surface_Rings;
 with Desktop_Input_Sources;
 with Desktop_Frame_Ring;
 with Desktop_Path_Timing;
+with Desktop_Memory_Bench;
 with CuBit.Call_Census;
 with CuBit.Kernel_ABI;
 with Compositor_Close_Request;
@@ -14283,6 +14284,9 @@ procedure main is
                if not lentMappingReported then
                   lentMappingReported := True;
                   debugPrint ("desktop: lent buffer mapped WB (kernel grant mappings are PAT 0, write-back)" & LF);
+               end if;
+               if not Loan.Value.On_Screen then
+                  Desktop_Memory_Bench.Run_Once (Mapped, Natural (DP.Byte_Length (Layout)));
                end if;
             end;
          elsif Response.tag.label /= PW.Attach_Buffer or else Response.tag.length /= 1 or else
