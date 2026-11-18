@@ -102,6 +102,11 @@ package CuBit.Channel_Servers is
    --  Arm the channels that need it before sleeping. False: work arrived.
    function Arm (S : in out Server) return Boolean;
 
+   --  Some channel has a request waiting (reading the rings only: nothing
+   --  is armed, marked ready or taken). For a server deciding whether to
+   --  start or go on with optional work.
+   function Any_Waiting (S : in out Server) return Boolean;
+
    --  For a server with its own event loop (it does not Sleep here):
    --  Look_All marks every channel with a request waiting ready, whether or
    --  not its client rang (a busy server is not rung: clients ring only a

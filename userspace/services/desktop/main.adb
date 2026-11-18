@@ -618,7 +618,7 @@ procedure main is
    activeOutput : Output_Index := 0;
    outputDamage : DG.Physical_Rectangle := (others => 0);
    function nativeScene return Boolean is (Desktop_Compositor.Selected);
-   procedure renderOutput (Output : Output_Index; Area : Rect);
+   procedure renderOutput (Output : Output_Index; Area : Rect; With_Cursor : Boolean := True);
    --  The frame's area, which the backdrop covers (per-path attribution).
    backdropPixels : Unsigned_64 := 0;
    --  The lent buffers' memory type was logged (once).
@@ -7494,7 +7494,7 @@ procedure main is
       end if;
    end drawBootstrapDiagnostics;
 
-   procedure renderOutput (Output : Output_Index; Area : Rect) is
+   procedure renderOutput (Output : Output_Index; Area : Rect; With_Cursor : Boolean := True) is
       Saved_Clip : constant Rect := clipRect;
       Saved_Backdrop : constant Unsigned_64 := backdropPixels;
       Saved_Enabled : constant Boolean := clipEnabled;
@@ -7524,9 +7524,11 @@ procedure main is
             Desktop_Path_Timing.Begin_Frame;
          end if;
          drawCurrentScene;
-         Desktop_Path_Timing.Enter (Desktop_Path_Timing.Cursor);
-         drawCursorOverlay;
-         Desktop_Path_Timing.Leave;
+         if With_Cursor then
+            Desktop_Path_Timing.Enter (Desktop_Path_Timing.Cursor);
+            drawCursorOverlay;
+            Desktop_Path_Timing.Leave;
+         end if;
          if not repaintChecking then
             Desktop_Path_Timing.End_Frame (Pixels);
             if Desktop_Timing_Policy.Enabled then
@@ -7563,6 +7565,12 @@ procedure main is
    repaintCheckDueMs : Unsigned_64 := 0;
    repaintCheckedOps : Unsigned_64 := 0;
    repaintChecks, repaintMismatches : Unsigned_64 := 0;
+   --  The oracle's redraw goes in bands of this many rows; between bands it
+   --  yields to any waiting work.
+   Repaint_Check_Band_Rows : constant := 64;
+   repaintYields : Unsigned_64 := 0;
+   function oracleShouldYield return Boolean;
+
    procedure checkFullRepaint is
       Now : constant Unsigned_64 := nowMs;
    begin
@@ -7600,14 +7608,42 @@ procedure main is
                     with Import, Address => P.Targets (Slot).Address;
                   Mismatched : Unsigned_64 := 0;
                   First_X, First_Y : Natural := 0;
+                  Yielded : Boolean := False;
                   Drawn_From : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
                   Drawn_Us : Unsigned_64;
                begin
                   repaintChecking := True;
                   P.Buffer := repaintScratch.all'Address;
-                  renderOutput (Output, (0, 0, Width, Height));
+                  --  In bands, yielding to any work that arrives (a key, a
+                  --  window's request): the oracle is the timing build's own
+                  --  check and must not stand between input and its frame.
+                  --  A check that yields is dropped and tried again later.
+                  declare
+                     Row : Natural := 0;
+                     Rows : Natural;
+                     C : constant Rect := cursorRect;
+                  begin
+                     while Row < Height loop
+                        if oracleShouldYield then
+                           Yielded := True;
+                           exit;
+                        end if;
+                        Rows := Natural'Min (Repaint_Check_Band_Rows, Height - Row);
+                        renderOutput (Output, (0, Row, Width, Rows), With_Cursor => False);
+                        Row := Row + Rows;
+                     end loop;
+                     if not Yielded and then not isEmpty (C) then
+                        renderOutput (Output, C);
+                     end if;
+                  end;
                   P.Buffer := Saved;
                   repaintChecking := False;
+                  if Yielded then
+                     repaintYields := repaintYields + 1;
+                     repaintCheckDueMs := Now;
+                     repaintCheckedOps := 0;
+                     return;
+                  end if;
                   --  A warm, naive (no culling) full-output CPU repaint.
                   Drawn_Us := CuBit.Monotonic.Microseconds - Drawn_From;
                   for Y in 0 .. Height - 1 loop
@@ -7624,7 +7660,7 @@ procedure main is
                     ("COMPOSITOR-REPAINT-CHECK: output=" & Decimal (Unsigned_64 (Output)) &
                      " check=" & Decimal (repaintChecks) & " mismatched_px=" & Decimal (Mismatched) &
                      " full_px=" & Decimal (Unsigned_64 (Width) * Unsigned_64 (Height)) &
-                     " full_us=" & Decimal (Drawn_Us) &
+                     " full_us=" & Decimal (Drawn_Us) & " yielded=" & Decimal (repaintYields) &
                      (if Mismatched = 0 then ""
                       else " first=" & Decimal (Unsigned_64 (First_X)) & "," & Decimal (Unsigned_64 (First_Y))) & LF);
                end;
@@ -9381,6 +9417,12 @@ procedure main is
 
    package Inputs is new Desktop_Input_Sources
      (Deliver => deliverRingReport, Source_Ended => forgetInputSource, Report => ringReport);
+
+   --  Work is waiting that the full-repaint oracle must not delay: a queue
+   --  the kernel counted, a report in an input ring, a window's request.
+   --  Reads only (nothing is armed or taken).
+   function oracleShouldYield return Boolean is
+     (CuBit.Readiness.Any_Pending (deskReady) or else Inputs.Waiting or else Rings.Waiting);
 
    --  A kernel notice for the surface rings (a channel wake, the end of a
    --  ring), the end of an input source ring, or a client revoking a buffer

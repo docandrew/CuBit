@@ -130,6 +130,7 @@ package body Desktop_Input_Sources is
    end Drain;
 
    function Quiet return Boolean is (Set.Quiet);
+   function Waiting return Boolean is (Set.Waiting);
 
    procedure Disarm is
    begin

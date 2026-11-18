@@ -218,6 +218,8 @@ package body Desktop_Surface_Rings is
       end if;
    end Take_Notice;
 
+   function Waiting return Boolean is (Configured and then Servers.Any_Waiting (Rings));
+
    function Holds_Ring (Client : CuBit.Messages.Process_ID) return Boolean is
    begin
       if not Configured then

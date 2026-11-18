@@ -386,6 +386,20 @@ package body CuBit.Channel_Servers is
       end if;
    end Ring_Now;
 
+   function Any_Waiting (S : in out Server) return Boolean is
+   begin
+      for I in 1 .. S.Size loop
+         declare
+            L : constant Link := Link_Of (S, I);
+         begin
+            if L.Active and then RC.Can_Take (L.Ring) then
+               return True;
+            end if;
+         end;
+      end loop;
+      return False;
+   end Any_Waiting;
+
    function Arm (S : in out Server) return Boolean is
       Order : Schedule.State (S.Size) with Import, Address => S.Order_At;
       Quiet : Boolean := True;

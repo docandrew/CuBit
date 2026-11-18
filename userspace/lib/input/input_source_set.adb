@@ -124,6 +124,16 @@ package body Input_Source_Set is
       return True;
    end Quiet;
 
+   function Waiting return Boolean is
+   begin
+      for S in Slot_Number loop
+         if Rings (S).Used and then Channels.Can_Take (Rings (S).Ring) then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Waiting;
+
    procedure Disarm_All is
    begin
       for S in Slot_Number loop

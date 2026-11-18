@@ -104,6 +104,9 @@ package Desktop_Surface_Rings is
    --  comes as a kernel grant event: Take_Notice).
    function Holds_Ring (Client : CuBit.Messages.Process_ID) return Boolean;
 
+   --  A window's ring has a request waiting (nothing armed or taken).
+   function Waiting return Boolean;
+
    function Ended_For_Bad_Requests return Unsigned_64;
    function Skipped_Input return Unsigned_64;
 

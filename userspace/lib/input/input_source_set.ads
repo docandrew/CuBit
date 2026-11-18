@@ -74,6 +74,9 @@ package Input_Source_Set is
    --  After waking.
    procedure Disarm_All;
 
+   --  Some ring holds a report (reading only: nothing is armed or taken).
+   function Waiting return Boolean;
+
    --  Retention overflows the producer of Slot has published.
    function Producer_Overflows (Slot : Slot_Number) return Unsigned_32;
 

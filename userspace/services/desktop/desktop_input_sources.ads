@@ -53,6 +53,8 @@ package Desktop_Input_Sources is
    --  Before sleeping: every ring armed (False: a report arrived; drain).
    function Quiet return Boolean;
    procedure Disarm;
+   --  A source ring holds a report (nothing armed or taken).
+   function Waiting return Boolean;
 
    --  A kernel grant event: Ended when it ended one of our rings.
    procedure Take_Event (Event : CuBit.Control_Events.Event; Ended : out Boolean);
