@@ -8582,15 +8582,6 @@ procedure main is
       then
          return;
       end if;
-      --  The interval's look is for clients whose end no ring would
-      --  signal: none here, nothing to look for.
-      if not clientEndNoticed and then
-        (for all S of store.Surfaces =>
-           not S.used or else S.owner = No_Process or else clientHoldsRing (S.owner))
-      then
-         lastClientReapMs := Now;
-         return;
-      end if;
       clientEndNoticed := False;
       if (for all S of store.Surfaces => not S.used or else S.owner = No_Process) then
          return;
