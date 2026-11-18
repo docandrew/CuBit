@@ -2005,7 +2005,7 @@ package body Process is
                                 end if;
                                 t := threadtab (t).nextSibling;
                             end loop;
-                            proctab(p).threadCount := proctab(p).threadCount - 1;
+                            -- Its quota slot was returned at THREAD_EXIT.
                         end;
                         exit;
                     end if;
@@ -2371,6 +2371,15 @@ package body Process is
         if me = mainThreadOf (pid) then
             kill (pid);
         end if;
+
+        -- The process's quota counts its live threads: this one gives its
+        -- slot back before its exit word is cleared, so a thread that has
+        -- been joined never holds one, whenever the reaper frees it. The
+        -- table itself (MAX_EXTRA_THREADS) is returned at reaping, as
+        -- before.
+        Spinlocks.enterCriticalSection (lock);
+        proctab(pid).threadCount := proctab(pid).threadCount - 1;
+        Spinlocks.exitCriticalSection (lock);
 
         -- Join support: clear the word, then wake whoever waits on it.
         if addr /= 0 then
