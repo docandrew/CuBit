@@ -5883,6 +5883,48 @@ procedure main is
                O.Geometry, asset, Shape, Damage, activeOutput = 1, Drawn, Must_Restart);
             if Must_Restart then exitCompositor (1); end if;
             if Drawn then return; end if;
+            --  Unrotated, the sampling axes are independent (Compositor_Sampling
+            --  Map = Axis x Axis, tests/compositor/test-separable-sampling.py):
+            --  each column's source index once per call, each row's once per
+            --  row, instead of mapping every pixel.
+            if DG."=" (O.Geometry.Rotation, DG.Unrotated) and then
+              DG."<" (Shape.Left, Shape.Right) and then DG."<" (Shape.Top, Shape.Bottom)
+            then
+               declare
+                  type Column_Samples is array (Natural range <>) of Compositor_Sampling.Axis_Result;
+                  Columns : Column_Samples (Natural (Damage.Left) .. Natural (Damage.Right) - 1);
+                  Shape_W : constant Compositor_Sampling.Logical_Size :=
+                    Compositor_Sampling.Logical_Size (DG."-" (Shape.Right, Shape.Left));
+                  Shape_H : constant Compositor_Sampling.Logical_Size :=
+                    Compositor_Sampling.Logical_Size (DG."-" (Shape.Bottom, Shape.Top));
+               begin
+                  for X in Columns'Range loop
+                     Columns (X) := Compositor_Sampling.Axis
+                       (DG.Pixel_Index (X), O.Geometry.Scale, O.Geometry.X, Shape.Left, Shape_W,
+                        DG.Physical_Extent (metadata.Width));
+                  end loop;
+                  for Y in Natural (Damage.Top) .. Natural (Damage.Bottom) - 1 loop
+                     declare
+                        MY : constant Compositor_Sampling.Axis_Result := Compositor_Sampling.Axis
+                          (DG.Pixel_Index (Y), O.Geometry.Scale, O.Geometry.Y, Shape.Top, Shape_H,
+                           DG.Physical_Extent (metadata.Height));
+                     begin
+                        if MY.Valid then
+                           for X in Columns'Range loop
+                              if Columns (X).Valid then
+                                 declare
+                                    Target : Unsigned_32 with Import, Address => O.Buffer + Storage_Offset (Y * O.Pitch + X * 4);
+                                    Source : constant Unsigned_32 := Desktop_Cursors.Pixels
+                                      (metadata.Offset + Natural (MY.Index) * metadata.Width + Natural (Columns (X).Index));
+                                 begin Target := premultipliedPixelOver (Source, Target); end;
+                              end if;
+                           end loop;
+                        end if;
+                     end;
+                  end loop;
+               end;
+               return;
+            end if;
             for Y in Natural (Damage.Top) .. Natural (Damage.Bottom) - 1 loop
                for X in Natural (Damage.Left) .. Natural (Damage.Right) - 1 loop
                   declare
@@ -7533,7 +7575,13 @@ procedure main is
          if With_Cursor then
             Desktop_Path_Timing.Enter (Desktop_Path_Timing.Cursor);
             drawCursorOverlay;
-            Desktop_Path_Timing.Leave;
+            declare
+               C : constant Rect := cursorRect;
+            begin
+               Desktop_Path_Timing.Leave
+                 (if Desktop_Pointer_Plane.Composed_Hardware then 0
+                  else clippedPixels (C.x, C.y, C.w, C.h));
+            end;
          end if;
          if not repaintChecking then
             Desktop_Path_Timing.End_Frame (Pixels);
