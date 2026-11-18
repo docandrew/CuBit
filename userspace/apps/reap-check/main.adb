@@ -11,6 +11,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Waits;
 with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
 with UI_Desktop_Service;
@@ -18,6 +19,7 @@ with Startup;
 pragma Unreferenced (Startup);
 
 procedure Main is
+   Settle_Ms : constant := 4_000;
    function Send (Wire : Wire_Message) return Wire_Message is
       Msg : Message := From_Wire (Wire);
    begin
@@ -31,6 +33,13 @@ begin
       debugPrint ("reap-check: FAIL no surface" & ASCII.LF);
       return;
    end if;
+   --  Let Desktop's start settle first: the test is about a window that
+   --  ends while nothing is composed.
+   declare
+      Ignore : constant Unsigned_64 := CuBit.Waits.Sleep_For (Settle_Ms);
+   begin
+      null;
+   end;
    declare
       Text : constant String := Unsigned_64'Image (Unsigned_64 (Created.Surface));
    begin
