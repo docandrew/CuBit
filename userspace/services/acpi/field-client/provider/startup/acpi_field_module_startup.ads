@@ -1,5 +1,8 @@
 pragma Ada_2022;
 with AML_Names;
+with Interfaces;
+with System;
+with ACPI_Fallible_Heap;
 with AML_Field_Access;
 with AML_Field_Layout;
 with ACPI_Service_Core;
@@ -21,6 +24,10 @@ generic
       Name : AML_Names.Segment; Node : Core.Namespace.Node_ID;
       Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+   -- Fresh aligned private heap storage only; no address comes from AML or IPC.
+   with function Reserve_Targets (Bytes, Alignment : Interfaces.Unsigned_64)
+     return System.Address is ACPI_Fallible_Heap.Reserve;
+   with procedure Release_Targets (Address : System.Address) is ACPI_Fallible_Heap.Release;
 package ACPI_Field_Module_Startup is
    package Fields is new Core.Field_IO
      (Provider.Context, Provider.Pending, Provider.Describe, Provider.Dispatch,

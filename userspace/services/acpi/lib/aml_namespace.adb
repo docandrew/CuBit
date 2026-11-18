@@ -13877,7 +13877,7 @@ package body Owned with SPARK_Mode is
             if not Current then return; end if;
             Make_Named_Identity (E, Natural (Region), Key.Region, Current);
             if not Current or else not Key_Matches (E, Key) then return; end if;
-            for Position in Module_Target_Position loop
+            for Position in Targets'Range loop
                exit when Module_Target_Count (Position) > Count;
                Charge (Current); if not Current then return; end if;
                Bind_Owned (E, Context, Key, Targets (Position), Candidate, Bound);
@@ -13895,7 +13895,7 @@ package body Owned with SPARK_Mode is
                Selected.Read_Field := Field; Selected.Writes_Enabled := True;
                for Datum in AML_Field_Plans.Datum_Position range 1 .. Selected.Read_Count loop
                   Matched := False;
-                  for Position in Module_Target_Position loop
+                  for Position in Targets'Range loop
                      exit when Module_Target_Count (Position) > Count;
                      Charge (Current); if not Current then return; end if;
                      Describe_Target (Context, Targets (Position), Geometry, Current);
@@ -13960,7 +13960,7 @@ package body Owned with SPARK_Mode is
             for Datum in AML_Field_Datums.Datum_Index range 0 .. AML_Field_Datums.Count (Plan) - 1 loop
                declare D : constant AML_Field_Datums.Datum := AML_Field_Datums.At_Index (Plan, Datum); begin
                   Found := False; Chosen := AML_Field_Access.No_Target;
-                  for Position in Module_Target_Position loop
+                  for Position in Targets'Range loop
                      exit when Module_Target_Count (Position) > Count;
                      Charge (Current); if not Current then return; end if;
                      Describe_Target (Context, Targets (Position), Register, Current);
@@ -14052,7 +14052,7 @@ package body Owned with SPARK_Mode is
          Loads : AML_Definition_Loads.State; Input : aliased AML_Table_Backing.State) is
          Found : Boolean := False;
          Effects : Boolean := False;
-         Empty_Targets : constant Module_Target_Set := [others => AML_Field_Access.No_Target];
+         Empty_Targets : constant Default_Module_Target_Set := [others => AML_Field_Access.No_Target];
       begin
          -- Never retry after a bound access failed: it may already have
          -- changed a selector/data register. A field with NO direct cached
@@ -14110,7 +14110,10 @@ package body Owned with SPARK_Mode is
             Report.Failure:=AML_Execute.Field_Indeterminate;
             Report.Reconciliation_Required:=True;return;
          end if;
-         for Position in Module_Target_Position loop
+         if Targets'First /= 1 or else Natural (Count) > Targets'Length then
+            Status := Out_Of_Bounds; return;
+         end if;
+         for Position in Targets'Range loop
             if Module_Target_Count(Position)>Count and then Targets(Position)/=AML_Field_Access.No_Target then return;end if;
          end loop;
          Total:=Static_Members.Count(A.Inner.Tree.Journal);
@@ -14261,7 +14264,10 @@ package body Owned with SPARK_Mode is
          Report := (Outcome => Module_Rejected, Failure => AML_Execute.Field_Indeterminate, others => <>);
          Status := Invalid_Value;
          if A.Inner.Field_Uncertain.Present or else Pending (IO) then return; end if;
-         for Position in Module_Target_Position loop
+         if Targets'First /= 1 or else Natural (Count) > Targets'Length then
+            Status := Out_Of_Bounds; return;
+         end if;
+         for Position in Targets'Range loop
             if Module_Target_Count (Position) > Count and then Targets (Position) /= AML_Field_Access.No_Target then return; end if;
          end loop;
          Run (A, Loads, Copies, True, IO, Input, Budget, Report, Status);

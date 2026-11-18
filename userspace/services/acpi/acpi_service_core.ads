@@ -460,9 +460,10 @@ package ACPI_Service_Core with SPARK_Mode is
       Outcome : in out AML_Global_Locks.Outcome) is null;
    package Field_IO is
       pragma Unevaluated_Use_Of_Old (Allow);
-      type Module_Target_Count is new Natural range 0 .. Maximum_Bindings;
+      type Module_Target_Count is new Natural;
       subtype Module_Target_Position is Positive range 1 .. Maximum_Bindings;
-      type Module_Target_Set is array (Module_Target_Position) of AML_Field_Access.Target;
+      type Module_Target_Set is array (Positive range <>) of AML_Field_Access.Target;
+      subtype Default_Module_Target_Set is Module_Target_Set (Module_Target_Position);
       -- Explicit provider-aware static package initialization before ordinary seal.
       -- Budget refusal has no IO; completed/failed reads are never retried here.
       -- Callers must reject Initialization_Stopped before service readiness.
