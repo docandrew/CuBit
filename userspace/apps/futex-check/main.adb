@@ -43,6 +43,13 @@ procedure Main is
    Result : Unsigned_64;
    Start  : Unsigned_64;
    Created : Natural;
+   --  The last-slot probe: 126 parked threads and the main thread leave one
+   --  slot of the 128; Stacks (128) is free (test 3 parks on 1 .. 127 and
+   --  is refused at 128; 129 and 130 are the spinners').
+   Quota_Probe_Parked : constant := 126;
+   Quota_Probe_Rounds : constant := 200;
+   Quota_Probe_Stack  : constant := 128;
+   Probe_Refusals : Natural;
 begin
    debugPrint ("futex-check: starting" & LF);
 
@@ -120,11 +127,33 @@ begin
    end loop;
    Check (Short_Lived = 320, "320 short-lived threads ran and were joined");
 
-   --  Test 3: the quota. Park threads until creation fails.
+   --  Test 3: the quota. Park threads until creation fails, but first, one
+   --  slot short of it, check that a joined thread's slot is free at once:
+   --  its exit word is cleared before the reaper has freed it, and a
+   --  process must not see THREAD_CREATE refused for a thread it joined.
    Created := 0;
    Gate := 0;
    Parked := 0;
-   for I in Stacks'Range loop
+   for I in 1 .. Quota_Probe_Parked loop
+      Result := Spawn (Sleeper'Access, Stacks (I), 0, 0, null);
+      exit when Result = CREATE_FAILED;
+      Created := Created + 1;
+   end loop;
+   Probe_Refusals := 0;
+   for Round in 1 .. Quota_Probe_Rounds loop
+      Exit_Words (1) := 1;
+      Result := Spawn (Quick'Access, Stacks (Quota_Probe_Stack), 1, 0, Exit_Words (1)'Access);
+      if Result = CREATE_FAILED then
+         Exit_Words (1) := 0;
+         Probe_Refusals := Probe_Refusals + 1;
+      end if;
+      Join (Exit_Words (1)'Access);
+   end loop;
+   debugPrint ("futex-check: last-slot creations refused after a join:" &
+               Probe_Refusals'Image & LF);
+   Check (Created = Quota_Probe_Parked and then Probe_Refusals = 0,
+          "a joined thread's quota slot is free at once");
+   for I in Quota_Probe_Parked + 1 .. Stacks'Last loop
       Result := Spawn (Sleeper'Access, Stacks (I), 0, 0, null);
       exit when Result = CREATE_FAILED;
       Created := Created + 1;

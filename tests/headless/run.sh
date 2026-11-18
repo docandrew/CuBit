@@ -7703,6 +7703,7 @@ futex-check: mutex counter exact under contention PASS
 futex-check: mutual exclusion held PASS
 futex-check: each thread keeps its own fs base PASS
 futex-check: 320 short-lived threads ran and were joined PASS
+futex-check: a joined thread's quota slot is free at once PASS
 futex-check: thread quota is 128 including the main thread PASS
 futex-check: exited threads reaped and quota returned PASS
 TEST: PASS futex
