@@ -9094,6 +9094,21 @@ if [ "$missing" -ne 0 ]; then
     exit 1
 fi
 
+if [ "$TEST_NAME" = "ui-latency" ] && [ "$QEMU_ACCEL" = "kvm" ]; then
+    # LAT-002: a key delivered to the probe is published within 1 ms in
+    # every report period. The window used to hear its answer only at the
+    # end of Desktop's turn, after the frame was composed (about 2 ms).
+    slow=$(grep -a "latency stage=delivery_to_publish" "$SERIAL_LOG" |
+           grep -oE "max=[0-9]+" | awk -F= '$2 > 1000' | wc -l)
+    if [ "$slow" -ne 0 ]; then
+        echo "headless: ui-latency: $slow report periods with delivery_to_publish max over 1000 us" >&2
+        grep -a "latency stage=delivery_to_publish" "$SERIAL_LOG" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    echo "headless: every key published within 1 ms of its delivery"
+fi
+
 if [ "$TEST_NAME" = "desktop-restart" ]; then
     # Exactly one failure, and the restarted desktop presents frames again.
     faults=$(grep -cF 'DESKTOP-TEST-FAULT: exiting after the first frame' "$SERIAL_LOG")

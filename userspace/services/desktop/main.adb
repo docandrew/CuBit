@@ -15762,12 +15762,19 @@ begin
             Drain_Events;
          end if;
          --  The windows' rings: presents, publications, retirements, input.
-         --  Their answers wake sleeping windows once, at the end of the turn
-         --  (with this turn's retirements), not once per answer.
+         --  An answer written while serving them (input already queued for
+         --  a window that just asked, a buffer already retired) wakes its
+         --  sleeping window now, before this turn's drawing: waiting for the
+         --  end of the turn put the frame's composition (milliseconds) between
+         --  a key's delivery and the window hearing it. Answers written later
+         --  (presents, at Frame_Drawn) wake at the end of the turn.
          declare
             Served : Boolean;
          begin
             Rings.Serve (Served);
+            if Served then
+               Rings.Wake;
+            end if;
          end;
          phaseMark (Phase_Rings);
          --  Auto-repeat only once input is drained (a queued release wins).
