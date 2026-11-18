@@ -136,10 +136,15 @@ procedure Main is
    end Check_No_Offerable_Self;
 begin
    Check_No_Offerable_Self;
-   CuBit.UI.App.Open (Win, WINDOW_W, WINDOW_H,
-     CuBit.Desktop_Protocol.Feature_Bits
-       ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Closeable => True, others => False]),
-     Opened, title => "Frame ticker", protected_frames => True, preferred_size => True);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open (Win, WINDOW_W, WINDOW_H,
+        CuBit.Desktop_Protocol.Feature_Bits
+          ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Closeable => True, others => False]),
+        Open_Outcome, title => "Frame ticker", protected_frames => True, preferred_size => True);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+   end;
    if Opened then
       Due := syscall (SYSCALL_GETTIME) + 1;
       Run (Win);

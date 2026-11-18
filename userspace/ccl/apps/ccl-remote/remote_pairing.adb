@@ -330,10 +330,15 @@ package body Remote_Pairing is
                Least, Natural_Size : B.Size;
             begin
                Window_Size (Least, Natural_Size);
-               A.Open (Win, Natural_Size.Width, Natural_Size.Height,
-                       A.WINDOW_FLAG_DECORATED or A.WINDOW_FLAG_CLOSEABLE, OK,
-                       title => "Remote access", protected_frames => True,
-                       minimum_width => Least.Width, minimum_height => Least.Height, preferred_size => True);
+               declare
+                  Open_Outcome : A.Open_Result;
+               begin
+                  A.Open (Win, Natural_Size.Width, Natural_Size.Height,
+                          A.WINDOW_FLAG_DECORATED or A.WINDOW_FLAG_CLOSEABLE, Open_Outcome,
+                          title => "Remote access", protected_frames => True,
+                          minimum_width => Least.Width, minimum_height => Least.Height, preferred_size => True);
+                  OK := Open_Outcome in A.Opened;
+               end;
             end;
             if OK then
                Open := True;

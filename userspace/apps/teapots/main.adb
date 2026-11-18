@@ -175,15 +175,20 @@ procedure Main is
 begin
    debugPrint ("teapots: starting" & ASCII.LF);
    CuBit.Logging.Announce ("teapots: started", Opened, Startup.Logstore);
-   CuBit.UI.App.Open
-     (Win, INITIAL_WIDTH, INITIAL_HEIGHT,
-      CuBit.Desktop_Protocol.Feature_Bits
-        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
-          CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
-          CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
-          others => False]),
-      Opened, title => "Teapots", protected_frames => True,
-      minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open
+        (Win, INITIAL_WIDTH, INITIAL_HEIGHT,
+         CuBit.Desktop_Protocol.Feature_Bits
+           ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+             CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+             CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+             others => False]),
+         Open_Outcome, title => "Teapots", protected_frames => True,
+         minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+   end;
    if not Opened then
       debugPrint ("teapots: no window" & ASCII.LF);
       return;

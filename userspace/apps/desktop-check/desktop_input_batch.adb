@@ -67,7 +67,12 @@ begin
    Destroy (Created.Surface);
    --  A toolkit window receives input through its surface ring (IPC-004):
    --  one answer carries the queued batch.
-   App.Open (Win, 160, 120, 0, OK, title => "Batch input probe");
+   declare
+      Open_Outcome : App.Open_Result;
+   begin
+      App.Open (Win, 160, 120, 0, Open_Outcome, title => "Batch input probe");
+      OK := Open_Outcome in App.Opened;
+   end;
    Check (OK, "ring UI window");
    if not OK then return; end if;
    for I in 1 .. 3 loop
@@ -90,7 +95,12 @@ begin
    Check (App.Input_Statistics (Win).Delivered_Events = 2, "diagnostics survive close");
    C.Clear (Cache);
    --  A second window has a ring of its own and fresh diagnostics.
-   App.Open (Win, 160, 120, 0, OK, title => "Second ring window");
+   declare
+      Open_Outcome : App.Open_Result;
+   begin
+      App.Open (Win, 160, 120, 0, Open_Outcome, title => "Second ring window");
+      OK := Open_Outcome in App.Opened;
+   end;
    Check (OK, "second window");
    if not OK then return; end if;
    App.Wait_Input_Until (Win, syscall (SYSCALL_GETTIME) + RING_WAIT_MS, Event, Found);

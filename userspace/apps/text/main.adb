@@ -489,15 +489,20 @@ begin
    Text_Shell.Set_Clock (App, Now_Us);
    Text_Shell.Open (App, FIRST_DOCUMENT);
    Was_Loading := Text_Shell.Loading (App);
-   CuBit.UI.App.Open
-     (Win, INITIAL_WIDTH, INITIAL_HEIGHT,
-      CuBit.Desktop_Protocol.Feature_Bits
-        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
-          CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
-          CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
-          others => False]),
-      Opened, title => "Text", protected_frames => True,
-      minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open
+        (Win, INITIAL_WIDTH, INITIAL_HEIGHT,
+         CuBit.Desktop_Protocol.Feature_Bits
+           ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+             CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+             CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+             others => False]),
+         Open_Outcome, title => "Text", protected_frames => True,
+         minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+   end;
    if Opened then
       debugPrint ("text: native window ready t_us=" & Since (Now_Us) & ASCII.LF);
       Text_Host_Native.Set_Surface (Host, CuBit.UI.App.Surface_ID (Win));

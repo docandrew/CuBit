@@ -210,9 +210,14 @@ package body CCL_Desktop_Platform is
       end if;
       Requested_Width := Natural'Max (MINIMUM_WIDTH, Natural (Width));
       Requested_Height := Natural'Max (MINIMUM_HEIGHT, Natural (Height));
-      CuBit.UI.App.Open
-        (Native_Window, Requested_Width, Requested_Height, Flags, OK,
-         title => Title, protected_frames => True);
+      declare
+         Open_Outcome : CuBit.UI.App.Open_Result;
+      begin
+         CuBit.UI.App.Open
+           (Native_Window, Requested_Width, Requested_Height, Flags, Open_Outcome,
+            title => Title, protected_frames => True);
+         OK := Open_Outcome in CuBit.UI.App.Opened;
+      end;
       Native_Open := OK;
       if OK then
          debugPrint (Name & ": native window ready" & ASCII.LF);

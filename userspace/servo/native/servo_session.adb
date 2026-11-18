@@ -248,12 +248,17 @@ package body Servo_Session is
       OK : Boolean;
       Fresh_Interaction : App.Pointer_Interaction;
    begin
-      App.Open (Win, 800, 600,
-        App.WINDOW_FLAG_DECORATED or App.WINDOW_FLAG_RESIZABLE or
-        App.WINDOW_FLAG_MINIMIZABLE or App.WINDOW_FLAG_MAXIMIZABLE or
-        App.WINDOW_FLAG_CLOSEABLE or CuBit.Desktop_Protocol.Feature_Bits
-          ([CuBit.Desktop_Protocol.Graceful_Close => True, others => False]),
-        OK, title => "Penny", protected_frames => True);
+      declare
+         Open_Outcome : App.Open_Result;
+      begin
+         App.Open (Win, 800, 600,
+           App.WINDOW_FLAG_DECORATED or App.WINDOW_FLAG_RESIZABLE or
+           App.WINDOW_FLAG_MINIMIZABLE or App.WINDOW_FLAG_MAXIMIZABLE or
+           App.WINDOW_FLAG_CLOSEABLE or CuBit.Desktop_Protocol.Feature_Bits
+             ([CuBit.Desktop_Protocol.Graceful_Close => True, others => False]),
+           Open_Outcome, title => "Penny", protected_frames => True);
+         OK := Open_Outcome in App.Opened;
+      end;
       if not OK then return 0; end if;
       Editor.Initialize (Address_Edit, "", OK);
       Read_Preference; Rail_Dragging := False;

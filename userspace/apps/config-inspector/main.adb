@@ -331,11 +331,16 @@ procedure Main is
 begin
    CuBit.Logging.Announce ("config-inspector: started (read-only)", Announced, Startup.Logstore);
    Refresh;
-   CuBit.UI.App.Open (Win, 860, 560,
-     CuBit.UI.App.WINDOW_FLAG_DECORATED or CuBit.UI.App.WINDOW_FLAG_RESIZABLE or
-     CuBit.UI.App.WINDOW_FLAG_MINIMIZABLE or CuBit.UI.App.WINDOW_FLAG_MAXIMIZABLE or
-     CuBit.UI.App.WINDOW_FLAG_CLOSEABLE or
-     CuBit.Desktop_Protocol.Window_Feature'Enum_Rep (CuBit.Desktop_Protocol.Graceful_Close), Opened, title => "Config Inspector", protected_frames => True);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open (Win, 860, 560,
+        CuBit.UI.App.WINDOW_FLAG_DECORATED or CuBit.UI.App.WINDOW_FLAG_RESIZABLE or
+        CuBit.UI.App.WINDOW_FLAG_MINIMIZABLE or CuBit.UI.App.WINDOW_FLAG_MAXIMIZABLE or
+        CuBit.UI.App.WINDOW_FLAG_CLOSEABLE or
+        CuBit.Desktop_Protocol.Window_Feature'Enum_Rep (CuBit.Desktop_Protocol.Graceful_Close), Open_Outcome, title => "Config Inspector", protected_frames => True);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+   end;
    if Opened then
       debugPrint ("config-inspector: native window ready" & ASCII.LF);
       Run_UI (Win);

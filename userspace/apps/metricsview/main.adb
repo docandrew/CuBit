@@ -585,15 +585,20 @@ begin
                & Decimal (Unsigned_64 (Board.Panels_Used))
                & (if Dash_Query_Feeds.Bound (Feed) then " store=bound" else " store=absent") & ASCII.LF);
    Dash_View.Initialize (View, Feed'Unchecked_Access, Board);
-   CuBit.UI.App.Open
-     (Win, WINDOW_WIDTH, WINDOW_HEIGHT,
-      CuBit.Desktop_Protocol.Feature_Bits
-        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
-          CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
-          CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
-          others => False]),
-      Opened, title => "Metrics", protected_frames => True,
-      minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open
+        (Win, WINDOW_WIDTH, WINDOW_HEIGHT,
+         CuBit.Desktop_Protocol.Feature_Bits
+           ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+             CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+             CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+             others => False]),
+         Open_Outcome, title => "Metrics", protected_frames => True,
+         minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+   end;
    if not Opened then
       debugPrint ("metricsview: no window" & ASCII.LF);
       return;

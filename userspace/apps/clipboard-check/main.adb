@@ -169,9 +169,14 @@ procedure Main is
 begin
    Editor.Initialize (Fields (Name_Field), "", Accepted);
    Editor.Initialize (Fields (Secret_Field), "", Accepted, Kind => Editor.Sensitive);
-   App.Open (Win, WINDOW_W, WINDOW_H,
-             App.WINDOW_FLAG_DECORATED or App.WINDOW_FLAG_CLOSEABLE, OK,
-             title => "Clipboard check", protected_frames => True);
+   declare
+      Open_Outcome : App.Open_Result;
+   begin
+      App.Open (Win, WINDOW_W, WINDOW_H,
+                App.WINDOW_FLAG_DECORATED or App.WINDOW_FLAG_CLOSEABLE, Open_Outcome,
+                title => "Clipboard check", protected_frames => True);
+      OK := Open_Outcome in App.Opened;
+   end;
    if not OK then
       Say ("FAIL window");
       Ignore := syscall (SYSCALL_EXIT, 1);

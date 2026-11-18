@@ -565,13 +565,22 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Deadline, On_Deadline => Tick, Activity_Wait => True);
 begin
-   CuBit.UI.App.Open (Win, 950, 610,
-     CuBit.Desktop_Protocol.Feature_Bits
-       ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
-         CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
-         CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
-         others => False]),
-     Opened, title => "CuBit boot diagnostics", protected_frames => True);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open (Win, 950, 610,
+        CuBit.Desktop_Protocol.Feature_Bits
+          ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+            CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+            CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+            others => False]),
+        Open_Outcome, title => "CuBit boot diagnostics", protected_frames => True);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+      if not Opened then
+         --  Never silent: without its window Boot Logs relays nothing.
+         debugPrint ("boot-logs: no window (" & CuBit.UI.App.Image (Open_Outcome) & "); exiting" & ASCII.LF);
+      end if;
+   end;
    if Opened then
       Due := syscall (SYSCALL_GETTIME) + 1;
       debugPrint ("boot-logs: window ready" & ASCII.LF);

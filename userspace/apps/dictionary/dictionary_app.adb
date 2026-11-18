@@ -126,14 +126,19 @@ package body Dictionary_App is
       debugPrint (Name & ": starting" & ASCII.LF);
       CuBit.Logging.Announce (Name & ": started", Announced, Startup.Logstore);
       Views.Initialize (View, Views.Dictionary_Mode);
-      CuBit.UI.App.Open (Win, WINDOW_WIDTH, WINDOW_HEIGHT,
-        CuBit.Desktop_Protocol.Feature_Bits
-          ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
-            CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
-            CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
-            others => False]),
-        Opened, title => "Dictionary", protected_frames => True,
-        minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+      declare
+         Open_Outcome : CuBit.UI.App.Open_Result;
+      begin
+         CuBit.UI.App.Open (Win, WINDOW_WIDTH, WINDOW_HEIGHT,
+           CuBit.Desktop_Protocol.Feature_Bits
+             ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+               CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+               CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+               others => False]),
+           Open_Outcome, title => "Dictionary", protected_frames => True,
+           minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+         Opened := Open_Outcome in CuBit.UI.App.Opened;
+      end;
       if Opened then
          Views.Handle (View, (Kind => Views.Resize, X => CuBit.UI.App.Width (Win),
                               Y => CuBit.UI.App.Height (Win), others => <>), Map, Opened);

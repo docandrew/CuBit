@@ -185,8 +185,13 @@ procedure Main is
       Next_Deadline => Next_Deadline, On_Deadline => On_Deadline, Activity_Wait => True);
 begin
    CuBit.Call_Census.Enabled := True;
-   App.Open (Win, WINDOW_W, WINDOW_H, App.WINDOW_FLAG_DECORATED, Opened,
-             title => "Latency probe", protected_frames => True, preferred_size => True);
+   declare
+      Open_Outcome : App.Open_Result;
+   begin
+      App.Open (Win, WINDOW_W, WINDOW_H, App.WINDOW_FLAG_DECORATED, Open_Outcome,
+                title => "Latency probe", protected_frames => True, preferred_size => True);
+      Opened := Open_Outcome in App.Opened;
+   end;
    if Opened then
       Run (Win);
       App.Close (Win);

@@ -506,15 +506,20 @@ begin
    Initialize (View, PANE_ENTRIES, PANE_NAME_BYTES, "", "");
    debugPrint ((if Files_Queue.Ready then "files: filesystem queue ready" else "files: no filesystem queue")
                & ASCII.LF);
-   CuBit.UI.App.Open
-     (Win, INITIAL_WIDTH, INITIAL_HEIGHT,
-      CuBit.Desktop_Protocol.Feature_Bits
-        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
-          CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
-          CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
-          others => False]),
-      Opened, title => "Files", protected_frames => True,
-      minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open
+        (Win, INITIAL_WIDTH, INITIAL_HEIGHT,
+         CuBit.Desktop_Protocol.Feature_Bits
+           ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+             CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+             CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+             others => False]),
+         Open_Outcome, title => "Files", protected_frames => True,
+         minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+   end;
    if Opened then
       debugPrint ("files: native window ready" & ASCII.LF);
       declare

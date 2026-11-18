@@ -25,6 +25,7 @@ with CuBit.Published_Clock;
 with Client_Frame_Wakeup;
 with UI_Desktop_Service;
 with CuBit.Log;
+with CuBit.Handles;
 
 package body CuBit.UI.App is
    use ASCII;
@@ -46,6 +47,10 @@ package body CuBit.UI.App is
    use type Ring.Submit_Result;
    --  Opening a window's ring is one call to Desktop, at most this long.
    RING_OPEN_LIMIT_MS : constant := 2_000;
+   --  How long Open waits for each of Desktop's answers. A window asked for
+   --  while Desktop is still starting is answered when its start is done
+   --  (LOG-011): the wait is for that answer, not a retry.
+   OPEN_ANSWER_LIMIT_MS : constant := 30_000;
 
    function Align_Up_Page (value : Unsigned_64) return Unsigned_64 is
    begin
@@ -103,6 +108,18 @@ package body CuBit.UI.App is
             CuBit.Log.Warning (Window_Text & " input stalled: wait not submitted" & Tail);
       end case;
    end Report_Stop;
+
+   function Image (Item : Open_Result) return String is
+     (case Item is
+        when Opened => "opened",
+        when Invalid_Request => "invalid request (size, minima or flags)",
+        when Window_Busy => "the window is still waiting or closing",
+        when Desktop_Unavailable => "no desktop to ask (no endpoint, or no answer)",
+        when Desktop_Refused => "the desktop refused the hello or its information",
+        when Surface_Refused => "the desktop refused the surface",
+        when Limits_Refused => "the desktop refused the window's limits",
+        when Buffer_Not_Attached => "its frame buffers were not attached",
+        when Ring_Not_Opened => "its surface ring did not open");
 
    function Is_Open (win : Window) return Boolean is
    begin
@@ -318,7 +335,7 @@ package body CuBit.UI.App is
       (win : in out Window;
        width, height : Natural;
        flags : Unsigned_64;
-       ok : out Boolean;
+       Result : out Open_Result;
        title : String := "Application";
        protected_frames : Boolean := False;
        minimum_width : Natural := 0;
@@ -336,13 +353,19 @@ package body CuBit.UI.App is
       maxH : Unsigned_64 := 0;
       attached : Boolean;
       Fresh_Provenance : IP.State;
+      procedure Fail (Why : Open_Result) is
+      begin
+         Result := Why;
+         debugPrint ("ui-app: window '" & title & "' not opened: " & Image (Why) & LF);
+         CuBit.Log.Warning ("ui-app: window '" & title & "' not opened: " & Image (Why));
+      end Fail;
    begin
-      ok := False;
-      if Input_Wait_Pending (win) then return; end if;
+      Result := Window_Busy;
+      if Input_Wait_Pending (win) then Fail (Window_Busy); return; end if;
       if Is_Open (win) then Close (win); end if;
-      if Is_Open (win) then return; end if;
+      if Is_Open (win) then Fail (Window_Busy); return; end if;
       FP.Reset (win.frames, attached);
-      if not attached then return; end if;
+      if not attached then Fail (Window_Busy); return; end if;
       win.protectedFrames := protected_frames;
       win.sentBye := False;
       win.inputStopped := False;
@@ -366,6 +389,7 @@ package body CuBit.UI.App is
         minimum_width > width or else minimum_height > height or else
         flags > DP.Feature_Bits ([others => True])
       then
+         Fail (Invalid_Request);
          return;
       end if;
       initialW := Unsigned_64 (width + WINDOW_CHROME_W);
@@ -383,29 +407,45 @@ package body CuBit.UI.App is
 
       hello := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Hello (DP.Current_Revision));
-      hello.tag := capCall (UI_Desktop_Service.Endpoint, hello, CuBit.Messages.Wait_Forever);
+      if not CuBit.Handles.Valid (UI_Desktop_Service.Endpoint) then
+         Fail (Desktop_Unavailable);
+         return;
+      end if;
+      hello.tag := capCall (UI_Desktop_Service.Endpoint, hello, CuBit.Messages.Deadline_After (OPEN_ANSWER_LIMIT_MS));
+      if hello.tag.label = CuBit.Messages.REPLY_TIMEOUT then
+         Fail (Desktop_Unavailable);
+         return;
+      end if;
       if DP.Decode_Hello_Result (CuBit.Desktop_Messages.To_Wire (hello)).Status /= DP.Success then
-         debugPrint ("ui-app: desktop hello failed" & LF);
+         Fail (Desktop_Refused);
          return;
       end if;
 
       Refresh_Theme;
       info := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Empty_Request (DP.Get_Information));
-      info.tag := capCall (UI_Desktop_Service.Endpoint, info, CuBit.Messages.Wait_Forever);
+      info.tag := capCall (UI_Desktop_Service.Endpoint, info, CuBit.Messages.Deadline_After (OPEN_ANSWER_LIMIT_MS));
+      if info.tag.label = CuBit.Messages.REPLY_TIMEOUT then
+         Fail (Desktop_Unavailable);
+         return;
+      end if;
       if DP.Decode_Information_Result (CuBit.Desktop_Messages.To_Wire (info)).Status /= DP.Success then
-         debugPrint ("ui-app: desktop info failed" & LF);
+         Fail (Desktop_Refused);
          return;
       end if;
 
       created := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Create ((DP.Pixel_Extent (initialW), DP.Pixel_Extent (initialH), DP.Window_Surface,
                             (if preferred_size then DP.Preferred_Size else DP.Desktop_Sized))));
-      created.tag := capCall (UI_Desktop_Service.Endpoint, created, CuBit.Messages.Wait_Forever);
+      created.tag := capCall (UI_Desktop_Service.Endpoint, created, CuBit.Messages.Deadline_After (OPEN_ANSWER_LIMIT_MS));
+      if created.tag.label = CuBit.Messages.REPLY_TIMEOUT then
+         Fail (Desktop_Unavailable);
+         return;
+      end if;
       creation := DP.Decode_Creation_Result (CuBit.Desktop_Messages.To_Wire (created));
       if creation.Status /= DP.Success then
-         debugPrint ("ui-app: surface create failed" & LF);
          Close (win);
+         Fail (Surface_Refused);
          return;
       end if;
       win.surfaceId := Unsigned_64 (creation.Surface);
@@ -421,12 +461,12 @@ package body CuBit.UI.App is
            (flags and DP.Window_Feature'Enum_Rep (feature)) /= 0;
       end loop;
       reply := CuBit.Desktop_Messages.From_Wire (DP.Encode_Limits (limits));
-      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Wait_Forever);
+      reply.tag := capCall (UI_Desktop_Service.Endpoint, reply, CuBit.Messages.Deadline_After (OPEN_ANSWER_LIMIT_MS));
       if DP.Decode_Limits_Result
         (CuBit.Desktop_Messages.To_Wire (reply)).Status /= DP.Success
       then
-         debugPrint ("ui-app: window limits failed" & LF);
          Close (win);
+         Fail (Limits_Refused);
          return;
       end if;
 
@@ -434,8 +474,8 @@ package body CuBit.UI.App is
 
       Ensure_Buffer (win, width, height, attached);
       if not attached then
-         debugPrint ("ui-app: buffer attach failed" & LF);
          Close (win);
+         Fail (Buffer_Not_Attached);
          return;
       end if;
 
@@ -461,11 +501,12 @@ package body CuBit.UI.App is
                     Natural'Image (RING_OPEN_LIMIT_MS) & " ms, or no grant)",
                   when CuBit.Channels.Opened => "attach failed"));
             Close (win);
+            Fail (Ring_Not_Opened);
             return;
          end if;
       end;
 
-      ok := True;
+      Result := Opened;
    end Open;
 
    procedure Request_Size

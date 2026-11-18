@@ -79,11 +79,26 @@ package CuBit.UI.App is
    -- retain initial dimensions regardless of smaller requested minima.
    -- There is no maximum: a resizable window grows to whatever Desktop
    -- offers (frame buffers grow with it); a fixed-size one keeps its size.
+   --  What Open did: Opened, or why the window is not open.
+   type Open_Result is
+     (Opened,
+      Invalid_Request,      --  size, minima or flags out of range
+      Window_Busy,          --  the window is still waiting or closing
+      Desktop_Unavailable,  --  no desktop endpoint, or Desktop did not answer
+      Desktop_Refused,      --  Desktop refused the hello or the information
+      Surface_Refused,      --  Desktop refused the surface
+      Limits_Refused,       --  Desktop refused the window's limits
+      Buffer_Not_Attached,  --  the window's frame buffers were not attached
+      Ring_Not_Opened);     --  the window's surface ring did not open
+   function Image (Item : Open_Result) return String;
+
+   --  Open the window. Result says how it went; every outcome but Opened is
+   --  also a line on the console and in the log, with the window's title.
    procedure Open
       (win : in out Window;
        width, height : Natural;
        flags : Unsigned_64;
-       ok : out Boolean;
+       Result : out Open_Result;
        title : String := "Application";
        protected_frames : Boolean := False;
        minimum_width : Natural := 0;

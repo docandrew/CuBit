@@ -957,8 +957,13 @@ begin
         CuBit.UI.App.WINDOW_FLAG_MAXIMIZABLE or
         CuBit.UI.App.WINDOW_FLAG_CLOSEABLE;
    begin
-      CuBit.UI.App.Open
-        (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, ok, title => "Devices", protected_frames => True);
+      declare
+         Open_Outcome : CuBit.UI.App.Open_Result;
+      begin
+         CuBit.UI.App.Open
+           (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, Open_Outcome, title => "Devices", protected_frames => True);
+         ok := Open_Outcome in CuBit.UI.App.Opened;
+      end;
       if not ok then
          ignore := syscall (SYSCALL_EXIT, 1);
          return;

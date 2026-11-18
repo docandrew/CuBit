@@ -237,15 +237,20 @@ begin
    Size := Shell.Size_Of (Shell.Options (App).Mode);
    --  The window opens at the remembered mode's designed size (a compact
    --  tool, not the desktop's default share of the screen).
-   CuBit.UI.App.Open
-     (Win, Size.Width, Size.Height,
-      CuBit.Desktop_Protocol.Feature_Bits
-        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
-          CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
-          CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
-          others => False]),
-      Opened, title => "Calculator", protected_frames => True,
-      minimum_width => Size.Minimum_Width, minimum_height => Size.Minimum_Height, preferred_size => True);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open
+        (Win, Size.Width, Size.Height,
+         CuBit.Desktop_Protocol.Feature_Bits
+           ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+             CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+             CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+             others => False]),
+         Open_Outcome, title => "Calculator", protected_frames => True,
+         minimum_width => Size.Minimum_Width, minimum_height => Size.Minimum_Height, preferred_size => True);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+   end;
    if Opened then
       Calc_Host_Native.Set_Surface (Host, CuBit.UI.App.Surface_ID (Win));
       Shell.Set_Bounds (App, CuBit.UI.App.Full_Rect (Win));
