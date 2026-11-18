@@ -392,6 +392,13 @@ procedure main is
    end registerOutput;
 
    statsStartMs  : Unsigned_64 := 0;
+   --  The stats line covers Desktop's latency report period (LAT-002), not
+   --  one second: a line every second fed log viewers a new record each
+   --  second, and a full Boot Logs repainted its whole window for each
+   --  (laptop, image 27b). Graphics metrics still publish every second.
+   STATS_LINE_PERIOD_MS : constant := 5_000;
+   METRICS_PERIOD_MS    : constant := 1_000;
+   metricsStartMs : Unsigned_64 := 0;
    statsRequests : Unsigned_64 := 0;
    statsQueued   : Unsigned_64 := 0;
    statsPresents : Unsigned_64 := 0;
@@ -762,10 +769,19 @@ procedure main is
 
       if statsStartMs = 0 then
          statsStartMs := now;
+         metricsStartMs := now;
          return;
       end if;
 
-      if now < statsStartMs or else now - statsStartMs < 1000 then
+      if now >= metricsStartMs and then now - metricsStartMs >= METRICS_PERIOD_MS then
+         metricsStartMs := now;
+         CuBit.Graphics_Metrics_IO.Publish
+           (GM.Display_Backend, backendCopies, backendReporter);
+         CuBit.Graphics_Metrics_IO.Publish
+           (GM.Display_Repair, repairCopies, repairReporter);
+      end if;
+
+      if now < statsStartMs or else now - statsStartMs < STATS_LINE_PERIOD_MS then
          return;
       end if;
 
@@ -805,10 +821,6 @@ procedure main is
       statsCensusAt := CuBit.Call_Census.Census;
 
       statsStartMs := now;
-      CuBit.Graphics_Metrics_IO.Publish
-        (GM.Display_Backend, backendCopies, backendReporter);
-      CuBit.Graphics_Metrics_IO.Publish
-        (GM.Display_Repair, repairCopies, repairReporter);
       statsRequests := 0;
       statsQueued := 0;
       statsPresents := 0;
