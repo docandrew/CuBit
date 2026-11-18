@@ -2310,6 +2310,15 @@ procedure main is
       Published : Boolean;
       Matched : Boolean;
    begin
+      --  Nothing of display.svc's is out (no present, plane move or mode
+      --  watch at the GPU: the firmware framebuffer's case): no completion
+      --  can be waiting, so no poll to find the queue empty.
+      if gpuWatchToken = 0 and then
+        (for all State of outputStates => State.backendToken = 0 and then State.legacyToken = 0)
+        and then (for all B of planeBuffers => B.Move_Token = 0)
+      then
+         return;
+      end if;
       --  At most two backend operations are outstanding; do not let a faulty
       --  producer monopolize this loop with unbounded completion traffic.
       for Count in 1 .. COMPLETION_QUEUE_SIZE loop
