@@ -54,6 +54,7 @@ with CuBit.Display_Box_Copy;
 with Display_Frame_Ring;
 with Display_Frame_Rings;
 with CuBit.Call_Census;
+with CuBit.Readiness;
 
 procedure main is
    --  Every line also reaches logstore (Display_Logs), not only the console.
@@ -255,6 +256,9 @@ procedure main is
       Taken_Us : Unsigned_64 := 0;
    end record;
    frameDebts : array (Output_Index) of Frame_Debt;
+   --  KERN-013: what this loop consumed of each queue, against the kernel's
+   --  readiness page; a queue that did not move is not polled.
+   displayReady : CuBit.Readiness.Tracker;
    --  The ring present being served (No_Ring: a request message), and its
    --  damage boxes as the ring entry carried them.
    servingRing    : Frame_Rings.Ring_Number := Frame_Rings.No_Ring;
@@ -2322,7 +2326,16 @@ procedure main is
       --  At most two backend operations are outstanding; do not let a faulty
       --  producer monopolize this loop with unbounded completion traffic.
       for Count in 1 .. COMPLETION_QUEUE_SIZE loop
-         exit when Poll_Completion (Completion'Address) /= 1;
+         exit when not CuBit.Readiness.Pending (displayReady, CuBit.Readiness.Completions);
+         declare
+            Seen : constant CuBit.Readiness.Count := CuBit.Readiness.Produced (CuBit.Readiness.Completions);
+         begin
+            if Poll_Completion (Completion'Address) /= 1 then
+               CuBit.Readiness.Caught_Up (displayReady, CuBit.Readiness.Completions, Seen);
+               exit;
+            end if;
+         end;
+         CuBit.Readiness.Took (displayReady, CuBit.Readiness.Completions);
          if gpuWatchToken /= 0 and then Completion.token = gpuWatchToken then
             gpuWatchToken := 0;
             collectGpuWatch (Completion);
@@ -3709,6 +3722,17 @@ procedure main is
 
    --  A kernel notice: the Stop (let go of the buffers in order, then end
    --  with exit code 0: Stopping), a frame ring's wake or end.
+   --  One event, if the readiness page says one may be queued.
+   function pollEvent (Notice : out Message) return Boolean is
+      Seen : constant CuBit.Readiness.Count := CuBit.Readiness.Produced (CuBit.Readiness.Events);
+   begin
+      if Poll_Event (Notice) then
+         return True;
+      end if;
+      CuBit.Readiness.Caught_Up (displayReady, CuBit.Readiness.Events, Seen);
+      return False;
+   end pollEvent;
+
    procedure takeEvent (Notice : Message; Stopping : out Boolean) is
       Handled : Boolean;
       Ended : Frame_Rings.Ring_Number;
@@ -3806,7 +3830,19 @@ begin
       collectFrames;
       checkPresentDeadlines;
       retryMoves;
-      Poll_Service_Request (from, msg, found);
+      found := False;
+      if CuBit.Readiness.Pending (displayReady, CuBit.Readiness.Requests) then
+         declare
+            Seen : constant CuBit.Readiness.Count := CuBit.Readiness.Produced (CuBit.Readiness.Requests);
+         begin
+            Poll_Service_Request (from, msg, found);
+            if found then
+               CuBit.Readiness.Took (displayReady, CuBit.Readiness.Requests);
+            else
+               CuBit.Readiness.Caught_Up (displayReady, CuBit.Readiness.Requests, Seen);
+            end if;
+         end;
+      end if;
       served := False;
       if found then
          deferredReply := False;
@@ -3835,7 +3871,9 @@ begin
       end if;
       maybePrintStats;
       if not found and then not served then
-         if Poll_Event (eventMsg) then
+         if CuBit.Readiness.Pending (displayReady, CuBit.Readiness.Events) and then
+           pollEvent (eventMsg)
+         then
             takeEvent (eventMsg, stopping);
             if stopping then
                return;
