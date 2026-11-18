@@ -122,12 +122,15 @@ procedure main is
          end if;
       end Expect;
       procedure Fill (Address : Unsigned_64; Value : Unsigned_64) is
+         --  SEC-025: own (this test's owned-memory region; no peer maps it).
          Word : Unsigned_64 with Import, Volatile, Address => To_Address (Integer_Address (Address));
       begin
          Word := Value;
       end Fill;
       function Holds (Address : Unsigned_64; Value : Unsigned_64) return Boolean is
+         --  SEC-025: own (this test's owned-memory region; no peer maps it).
          Word : Unsigned_64 with Import, Volatile, Address => To_Address (Integer_Address (Address));
+         --  SEC-025: own (the same region's last word of the page).
          Last : Unsigned_64 with Import, Volatile,
            Address => To_Address (Integer_Address (Address + PAGE_SIZE - 8));
       begin
