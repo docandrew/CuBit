@@ -36,7 +36,7 @@ package body Futex_Queues with SPARK_Mode => On is
         Removed := B.S (At_Slot).Used and then B.S (At_Slot).Waiter = W;
         if Removed then
             B.S (At_Slot) := (Used => False, Waiter => No_Waiter,
-                              K => (Owner => 0, Address => 0), Ticket => 0);
+                              K => No_Key, Ticket => 0);
         end if;
     end Remove_At;
 
@@ -96,8 +96,83 @@ package body Futex_Queues with SPARK_Mode => On is
         pragma Assert (Oldest (B, K, From_Slot));
         W := B.S (From_Slot).Waiter;
         B.S (From_Slot) := (Used => False, Waiter => No_Waiter,
-                            K => (Owner => 0, Address => 0), Ticket => 0);
+                            K => No_Key, Ticket => 0);
     end Wake_One;
+
+    procedure Remove_Of_Life (B : in out Bucket; Slot, Generation : Unsigned_32;
+                              W : out Waiter_Id; From_Slot : out Slot_Index)
+    is
+        Found : Boolean := False;
+    begin
+        W := No_Waiter;
+        From_Slot := Slot_Index'First;
+        for I in Slot_Index loop
+            pragma Loop_Invariant
+              (for all J in Slot_Index'First .. I - 1 =>
+                 not (B.S (J).Used and then Of_Life (B.S (J).K, Slot, Generation)));
+            if B.S (I).Used and then Of_Life (B.S (I).K, Slot, Generation) then
+                From_Slot := I;
+                Found := True;
+                exit;
+            end if;
+        end loop;
+        if not Found then
+            return;
+        end if;
+        W := B.S (From_Slot).Waiter;
+        B.S (From_Slot) := (Used => False, Waiter => No_Waiter,
+                            K => No_Key, Ticket => 0);
+    end Remove_Of_Life;
+
+    procedure Prove_Life_Waiter_Taken (B : Bucket; W : Waiter_Id;
+                                       Slot, Generation : Unsigned_32; Offset : Unsigned_64) is
+        C : Bucket := B;
+        S, F : Slot_Index;
+        Ok : Boolean;
+        Removed : Waiter_Id;
+    begin
+        Enqueue (C, W, Shared_Key (Slot, Generation, Offset), C.Next_Ticket, S, Ok);
+        if not Ok then
+            return;
+        end if;
+        Remove_Of_Life (C, Slot, Generation, Removed, F);
+        -- It was the life's only waiter: it is the one taken.
+        pragma Assert (Removed = W);
+        pragma Assert (not Contains (C, W));
+    end Prove_Life_Waiter_Taken;
+
+    procedure Prove_Other_Life_Kept (B : Bucket; W : Waiter_Id;
+                                     Slot, Generation, Other_Slot, Other : Unsigned_32;
+                                     Offset : Unsigned_64) is
+        C : Bucket := B;
+        S, F : Slot_Index;
+        Ok : Boolean;
+        Removed : Waiter_Id;
+    begin
+        Enqueue (C, W, Shared_Key (Other_Slot, Other, Offset), C.Next_Ticket, S, Ok);
+        if not Ok then
+            return;
+        end if;
+        Remove_Of_Life (C, Slot, Generation, Removed, F);
+        pragma Assert (Removed /= W);
+        pragma Assert (Contains (C, W));
+    end Prove_Other_Life_Kept;
+
+    procedure Prove_Private_Kept (B : Bucket; W : Waiter_Id;
+                                  Slot, Generation : Unsigned_32; Address : Unsigned_64) is
+        C : Bucket := B;
+        S, F : Slot_Index;
+        Ok : Boolean;
+        Removed : Waiter_Id;
+    begin
+        Enqueue (C, W, Private_Key (Slot, Address), C.Next_Ticket, S, Ok);
+        if not Ok then
+            return;
+        end if;
+        Remove_Of_Life (C, Slot, Generation, Removed, F);
+        pragma Assert (Removed /= W);
+        pragma Assert (Contains (C, W));
+    end Prove_Private_Kept;
 
     procedure Prove_FIFO (B : Bucket; K : Key; W1, W2 : Waiter_Id) is
         C : Bucket := B;

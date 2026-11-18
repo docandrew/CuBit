@@ -545,4 +545,27 @@ package Process.IPC is
                                 detail1    : Unsigned_64;
                                 detail2    : Unsigned_64);
 
+    ---------------------------------------------------------------------------
+    -- Shared futexes (IPC-010, Process.Futex, Futex_ABI)
+    ---------------------------------------------------------------------------
+
+    -- Where pid's 32-bit word at offset of the grant in slot lies in pid's
+    -- own address space, and the grant life it belongs to. ok only when the
+    -- grant is live (active, not being revoked, not ended), pid is its
+    -- owner or its grantee (this life of the process), and offset is
+    -- 4-aligned and inside the grant. Takes grantLock: callers may hold a
+    -- futex bucket lock (bucket lock, then grantLock), never grantLock.
+    procedure resolveSharedWord
+      (pid        : ProcessID;
+       slot       : Unsigned_64;
+       offset     : Unsigned_64;
+       generation : out Unsigned_32;
+       address    : out Unsigned_64;
+       owner      : out ProcessID;
+       ok         : out Boolean);
+
+    -- Whether that grant life is still live (the futex sweep after a
+    -- sweep queue overflow). Takes grantLock, as above.
+    function sharedLifeLive (slot, generation : Unsigned_32) return Boolean;
+
 end Process.IPC;

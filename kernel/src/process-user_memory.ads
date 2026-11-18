@@ -51,4 +51,13 @@ package Process.User_Memory is
    procedure Store_Word32
      (Caller : ProcessID; Address : Unsigned_64; Value : Unsigned_32;
       Success : out Boolean);
+
+   --  A shared futex word (IPC-010): the caller's 32-bit word at Address
+   --  in a grant Owner owns, through the caller's own mapping (its owned
+   --  pages, or its received window when it is the grantee). The frame
+   --  must be Owner's; Process.IPC.resolveSharedWord checked the caller
+   --  is a party of the live grant and Address is inside it.
+   procedure Load_Shared_Word32
+     (Caller : ProcessID; Owner : ProcessID; Address : Unsigned_64;
+      Value : out Unsigned_32; Success : out Boolean);
 end Process.User_Memory;

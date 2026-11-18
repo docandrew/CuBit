@@ -2098,7 +2098,7 @@ package body Syscall.IPC is
     -- point it replaces used, so the queues, reply authority and wakeups
     -- behave as before.
     ---------------------------------------------------------------------------
-    procedure handleWait (sources, deadline, a, b, c : Unsigned_64;
+    procedure handleWait (sources, deadline, a, b, c, wakeWord : Unsigned_64;
                           retval : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -2211,8 +2211,17 @@ package body Syscall.IPC is
                 end if;
 
             when Wait_Policy.Futex =>
-                -- a word address, b expected value; the deadline as given.
-                retval := Process.Futex.wait (a, b, deadline);
+                -- a the word (an address, or a shared word), b the expected
+                -- value; the deadline as given; wakeWord the hand-off's
+                -- wake (IPC-010).
+                retval := Process.Futex.waitForm
+                  (shared     => WA.Waits_Shared (sources),
+                   word       => a,
+                   expected   => b,
+                   deadlineMs => deadline,
+                   wakeFirst  => WA.Wakes_First (sources),
+                   wakeShared => WA.Wakes_Shared (sources),
+                   wakeWord   => wakeWord);
 
             when Wait_Policy.Offered =>
                 retval := Process.IPC.acceptOffered

@@ -45,9 +45,15 @@ procedure Main is
    end record;
    Threads : array (Waiter_Id range 1 .. 200) of Where;
 
-   Keys : constant array (1 .. 6) of Key :=
-     [(1, 16#1000#), (1, 16#1004#), (2, 16#1000#), (3, 16#7FFF_FFFF_FFFC#),
-      (1, 16#2000_0000#), (2, 16#2000_0004#)];
+   --  Private keys, and shared keys (IPC-010): two lives of grant slot 9
+   --  (offsets 0 and 64 of the first), and slot 10. Private (9, 0) has the
+   --  same numbers as a shared key and is another key.
+   Keys : constant array (1 .. 10) of Key :=
+     [Private_Key (1, 16#1000#), Private_Key (1, 16#1004#), Private_Key (2, 16#1000#),
+      Private_Key (3, 16#7FFF_FFFF_FFFC#), Private_Key (1, 16#2000_0000#),
+      Private_Key (2, 16#2000_0004#), Shared_Key (9, 1, 0), Shared_Key (9, 1, 64),
+      Shared_Key (9, 2, 0), Shared_Key (10, 1, 0)];
+   Private_9 : constant Key := Private_Key (9, 0);
 
    procedure Ref_Remove (B : Bucket_Index; W : Waiter_Id) is
    begin
@@ -88,7 +94,7 @@ procedure Main is
       end loop;
    end Check_Agrees;
 
-   Full_Seen, Timeouts, Wakes, Empty_Wakes : Natural := 0;
+   Full_Seen, Timeouts, Wakes, Empty_Wakes, Revoked : Natural := 0;
 begin
    for Step in 1 .. 400_000 loop
       declare
@@ -96,7 +102,7 @@ begin
          W : constant Waiter_Id := Waiter_Id (R mod 200 + 1);
          K : constant Key := Keys (Positive ((R / 256) mod Keys'Length + 1));
          B : constant Bucket_Index := Bucket_Of (K);
-         Op : constant Unsigned_64 := (R / 65536) mod 10;
+         Op : constant Unsigned_64 := (R / 65536) mod 11;
       begin
          if Op < 5 then
             --  FUTEX_WAIT by an idle thread.
@@ -137,6 +143,28 @@ begin
                end if;
                Check_Agrees (B);
             end;
+         elsif Op = 10 then
+            --  A grant life ends: every waiter of it, any offset, and none
+            --  of any other key (another life, another grant, private).
+            if K.Space = Shared_Space then
+               loop
+                  declare
+                     Woken : Waiter_Id;
+                     From  : Slot_Index;
+                  begin
+                     Remove_Of_Life (Buckets (B), K.Owner, K.Generation, Woken, From);
+                     exit when Woken = No_Waiter;
+                     pragma Assert (Threads (Woken).Waiting and then Threads (Woken).S = From);
+                     Threads (Woken).Waiting := False;
+                     Ref_Remove (B, Woken);
+                     Revoked := Revoked + 1;
+                  end;
+               end loop;
+               for I in 1 .. Ref (B).N loop
+                  pragma Assert (not Of_Life (Ref (B).L (I).K, K.Owner, K.Generation));
+               end loop;
+               Check_Agrees (B);
+            end if;
          else
             --  Timeout or kill of a waiting thread, via its recorded slot.
             if Threads (W).Waiting then
@@ -168,7 +196,7 @@ begin
       Woken : Waiter_Id;
    begin
       for W in 1 .. Waiter_Id'Last loop
-         Futex_Queues_Large.Enqueue (L, W, Keys (Integer (W mod 6) + 1),
+         Futex_Queues_Large.Enqueue (L, W, Keys (Integer (W mod 10) + 1),
                                      L.Next_Ticket, S, Ok);
          pragma Assert (Ok);
       end loop;
@@ -180,12 +208,23 @@ begin
    --  The proved lemmas, executed.
    Prove_FIFO (Empty_Bucket, Keys (1), 5, 6);
    Prove_Key_Isolation (Empty_Bucket, Keys (1), Keys (2), 7);
+   Prove_Key_Isolation (Empty_Bucket, Private_9, Keys (9), 8);
+   Prove_Life_Waiter_Taken (Empty_Bucket, 9, 9, 1, 64);
+   Prove_Other_Life_Kept (Empty_Bucket, 9, 9, 1, 9, 2, 0);
+   Prove_Other_Life_Kept (Empty_Bucket, 9, 9, 1, 10, 1, 0);
+   Prove_Private_Kept (Empty_Bucket, 9, 9, 1, 0);
+   pragma Assert (Private_9 /= Keys (9));
+   pragma Assert (Bucket_Of (Keys (7)) = Bucket_Of (Keys (8)) and then
+                  Bucket_Of (Keys (7)) = Bucket_Of (Keys (9)));
    Futex_Protocol.Prove_Racing_Store_Covered (0, 1);
+   Futex_Protocol.Prove_Revoke_Race (3);
+   Futex_Protocol.Prove_Wake_Then_Wait (0, 1);
 
    pragma Assert (Full_Seen > 0 and then Timeouts > 0 and then
-                  Wakes > 0 and then Empty_Wakes > 0);
+                  Wakes > 0 and then Empty_Wakes > 0 and then Revoked > 0);
    Ada.Text_IO.Put_Line
      ("futex-queues: PASS" & Checked'Image & " operations," & Wakes'Image &
-      " wakes," & Timeouts'Image & " removals," & Full_Seen'Image &
+      " wakes," & Timeouts'Image & " removals," & Revoked'Image & " revoked," &
+      Full_Seen'Image &
       " full-bucket refusals");
 end Main;

@@ -24,7 +24,7 @@ package Wait_Policy with SPARK_Mode => On, Pure is
        Completions_Wait,  -- {Completions}, Forever: at least C of B
        Completions_Now,   -- {Completions}, Now: up to B, C = 0
        Ready,             -- {Requests, Events, Completions} + Readiness_Only
-       Futex,             -- {Futex_Word}, any deadline
+       Futex,             -- {Futex_Word} + modifiers (ABI.Futex_Form), any deadline
        Offered,           -- {Offered_Capability}, Now
        Timer,             -- {Timer}, Forever
        Unsupported);
@@ -50,7 +50,7 @@ package Wait_Policy with SPARK_Mode => On, Pure is
               Sources = ABI.Completions_Sources and then Deadline = ABI.Now
               and then B /= 0 and then C = 0,
           when Ready => Sources = ABI.Ready_Sources,
-          when Futex => Sources = ABI.Futex_Sources,
+          when Futex => ABI.Futex_Form (Sources),
           when Offered =>
               Sources = ABI.Offered_Sources and then Deadline = ABI.Now,
           when Timer =>
@@ -64,7 +64,7 @@ package Wait_Policy with SPARK_Mode => On, Pure is
                             and then ((Deadline = ABI.Forever and then C <= B)
                                       or else (Deadline = ABI.Now and then C = 0)))
                    or else Sources = ABI.Ready_Sources
-                   or else Sources = ABI.Futex_Sources
+                   or else ABI.Futex_Form (Sources)
                    or else (Sources = ABI.Offered_Sources and then Deadline = ABI.Now)
                    or else (Sources = ABI.Timer_Sources and then Deadline = ABI.Forever)));
 

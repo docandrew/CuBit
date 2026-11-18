@@ -10,6 +10,6 @@ cd "$(dirname "$0")/../../kernel"
 alr exec -- gprbuild -q -p -P ../tests/wait-policy/wait.gpr
 ../tests/wait-policy/build/wait_tests
 alr exec -- gnatprove -P ../tests/wait-policy/wait.gpr \
-  -u wait_policy.adb -u wait_abi.ads -u readiness_publication.ads \
+  -u wait_policy.adb -u wait_abi.ads -u futex_abi.ads -u readiness_publication.ads \
   --level=2 --timeout=60 --report=fail --checks-as-errors=on -j2
 echo 'wait policy: proved'

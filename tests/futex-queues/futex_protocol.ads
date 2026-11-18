@@ -14,6 +14,20 @@
 -- or is covered by a pending wake. Hence a sleeper never waits forever on a
 -- stale value when every changing store is followed by a wake (no lost
 -- wakeup), even though stores race with the kernel's load.
+--
+-- Shared futexes (IPC-010): the word is in a grant whose life can end at
+-- any time (End, under the grant lock, not the bucket lock). Wait_Load
+-- reads whether the life is still live under the bucket lock and refuses
+-- a dead one; the end then sweeps the bucket (Sweep, under the bucket
+-- lock), waking every sleeper as Revoked. The invariant adds: no thread
+-- sleeps on an ended life unless the sweep is still to run, so after the
+-- sweep nobody sleeps on it (Prove_No_Sleeper_After_Revoke), however the
+-- end races a waiter between its load and its commit.
+--
+-- Wake-plus-wait (IPC-010): Wait's wake operand is an ordinary wake of
+-- another word, then this word's Wait_Load and Wait_Commit; each step keeps
+-- its word's invariant, so the pair loses no wake on either word
+-- (Prove_Wake_Then_Wait).
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
@@ -26,6 +40,7 @@ package Futex_Protocol with SPARK_Mode => On is
         P        : Phase := Running;
         Expected : Unsigned_32 := 0;   -- FUTEX_WAIT's expected value
         Seen     : Unsigned_32 := 0;   -- the word as loaded under the lock
+        Live     : Boolean := True;    -- the life was live at the load
     end record;
 
     type Threads is array (Thread) of Thread_State;
@@ -36,6 +51,8 @@ package Futex_Protocol with SPARK_Mode => On is
         Holder  : Boolean := False;    -- the bucket lock is held
         Owner   : Thread := Thread'First;
         Pending : Boolean := False;    -- a store changed the word since the last wake
+        Ended   : Boolean := False;    -- the grant life ended (shared futexes)
+        Sweep_Pending : Boolean := False;  -- its sweep has not run yet
     end record;
 
     function Lock_Consistent (S : State) return Boolean is
@@ -45,15 +62,18 @@ package Futex_Protocol with SPARK_Mode => On is
     -- The protocol invariant.
     function Inv (S : State) return Boolean is
       (Lock_Consistent (S) and then
+       (if S.Sweep_Pending then S.Ended) and then
        (for all I in Thread =>
           (case S.T (I).P is
              when Running  => True,
-             when Loaded   => S.T (I).Seen = S.Value or else S.Pending,
-             when Sleeping => S.T (I).Expected = S.Value or else S.Pending)));
+             when Loaded   => (S.T (I).Seen = S.Value or else S.Pending) and then
+                              (if S.T (I).Live and then S.Ended then S.Sweep_Pending),
+             when Sleeping => (S.T (I).Expected = S.Value or else S.Pending) and then
+                              (if S.Ended then S.Sweep_Pending))));
 
     function Initial (V : Unsigned_32) return State is
-      (Value => V, T => (others => (Running, 0, 0)), Holder => False,
-       Owner => Thread'First, Pending => False);
+      (Value => V, T => (others => (Running, 0, 0, True)), Holder => False,
+       Owner => Thread'First, Pending => False, Ended => False, Sweep_Pending => False);
 
     procedure Prove_Initial (V : Unsigned_32)
     with Ghost, Global => null, Post => Inv (Initial (V));
@@ -75,6 +95,8 @@ package Futex_Protocol with SPARK_Mode => On is
         Pre  => Inv (S) and then S.T (I).P = Running and then not S.Holder,
         Post => Inv (S) and then S.T (I).P = Loaded and then
                 S.T (I).Seen = S.Value and then S.T (I).Expected = E and then
+                S.T (I).Live = not S.Ended and then
+                S.Ended = S'Old.Ended and then S.Sweep_Pending = S'Old.Sweep_Pending and then
                 S.Value = S'Old.Value and then S.Pending = S'Old.Pending and then
                 S.Holder and then S.Owner = I and then
                 (for all J in Thread => (if J /= I then S.T (J) = S'Old.T (J)));
@@ -86,7 +108,8 @@ package Futex_Protocol with SPARK_Mode => On is
         Global => null,
         Pre  => Inv (S) and then S.T (I).P = Loaded,
         Post => Inv (S) and then not S.Holder and then
-                Slept = (S'Old.T (I).Seen = S'Old.T (I).Expected) and then
+                Slept = (S'Old.T (I).Seen = S'Old.T (I).Expected and then S'Old.T (I).Live) and then
+                S.Ended = S'Old.Ended and then S.Sweep_Pending = S'Old.Sweep_Pending and then
                 (if Slept then S.T (I).P = Sleeping else S.T (I).P = Running) and then
                 S.T (I).Expected = S'Old.T (I).Expected and then
                 S.Value = S'Old.Value and then S.Pending = S'Old.Pending and then
@@ -100,6 +123,7 @@ package Futex_Protocol with SPARK_Mode => On is
         Pre  => Inv (S) and then not S.Holder,
         Post => Inv (S) and then not S.Pending and then not S.Holder and then
                 S.Value = S'Old.Value and then
+                S.Ended = S'Old.Ended and then S.Sweep_Pending = S'Old.Sweep_Pending and then
                 (for all I in Thread => S.T (I).P /= Sleeping);
 
     -- FUTEX_WAKE of one waiter (a mutex unlock). The obligation remains
@@ -111,7 +135,50 @@ package Futex_Protocol with SPARK_Mode => On is
         Post => Inv (S) and then S.T (I).P = Running and then
                 not S.Holder and then S.Value = S'Old.Value and then
                 S.Pending = S'Old.Pending and then
+                S.Ended = S'Old.Ended and then S.Sweep_Pending = S'Old.Sweep_Pending and then
                 (for all J in Thread => (if J /= I then S.T (J) = S'Old.T (J)));
+
+    -- The grant life ends (revoke, give back, a party's death): marked
+    -- under the grant lock only, so it races every futex step; its sweep
+    -- is owed.
+    procedure End_Life (S : in out State)
+    with
+        Global => null,
+        Pre  => Inv (S) and then not S.Ended,
+        Post => Inv (S) and then S.Ended and then S.Sweep_Pending and then
+                S.T = S'Old.T and then S.Value = S'Old.Value and then
+                S.Pending = S'Old.Pending and then S.Holder = S'Old.Holder and then
+                S.Owner = S'Old.Owner;
+
+    -- The sweep: takes the bucket lock and wakes every sleeper (Revoked).
+    procedure Sweep (S : in out State)
+    with
+        Global => null,
+        Pre  => Inv (S) and then not S.Holder and then S.Sweep_Pending,
+        Post => Inv (S) and then not S.Sweep_Pending and then S.Ended and then
+                not S.Holder and then S.Value = S'Old.Value and then
+                S.Pending = S'Old.Pending and then
+                (for all I in Thread => S.T (I).P /= Sleeping);
+
+    -- No one sleeps on an ended life once its sweep has run, and no later
+    -- wait can sleep on it (its load sees the end).
+    procedure Prove_No_Sleeper_After_Revoke (S : State)
+    with
+        Ghost, Global => null,
+        Pre  => Inv (S) and then S.Ended and then not S.Sweep_Pending,
+        Post => (for all I in Thread => S.T (I).P /= Sleeping);
+
+    -- The end racing a waiter between its load and its commit: the waiter
+    -- sleeps on the stale life, and the sweep, which needs the lock it held,
+    -- wakes it.
+    procedure Prove_Revoke_Race (V : Unsigned_32)
+    with Ghost, Global => null;
+
+    -- Wake-plus-wait across two words: a hand-off wakes the peer's word,
+    -- then waits on its own; the peer's store-and-wake racing either step
+    -- is not lost.
+    procedure Prove_Wake_Then_Wait (V0, V1 : Unsigned_32)
+    with Ghost, Global => null, Pre => V0 /= V1;
 
     -- The theorem: with no wake pending, every sleeper expects the word's
     -- current value, so a store-then-wake discipline never strands one.

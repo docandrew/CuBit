@@ -844,6 +844,8 @@ package Process is
         futexSlot           : Natural := 0;
         futexInOverflow     : Boolean := False;
         futexTimedOut       : Boolean := False;
+        -- The shared futex's grant life ended while waiting (IPC-010).
+        futexRevoked        : Boolean := False;
         futexDeadlineActive : Boolean := False;
         futexDeadlineMs     : Unsigned_64 := 0;
 

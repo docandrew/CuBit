@@ -6,7 +6,7 @@ project Wait is
    for Source_Dirs use (".", "../../kernel/src", "../../shared/capabilities",
                         "../../shared/publications", "../../shared/time");
    for Source_Files use
-     ("wait_tests.adb", "wait_abi.ads", "wait_policy.ads", "wait_policy.adb",
+     ("wait_tests.adb", "wait_abi.ads", "futex_abi.ads", "wait_policy.ads", "wait_policy.adb",
       "readiness_publication.ads", "clock_publication.ads", "clock_publication.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";

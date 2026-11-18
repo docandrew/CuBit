@@ -108,7 +108,7 @@ is
 
     -- WAIT (ABI-002 slice 2, Wait_ABI): arg0 the Sources word, arg1 the
     -- deadline, arg2 .. arg4 the source's parameters A, B, C.
-    procedure handleWait (sources, deadline, a, b, c : Unsigned_64;
+    procedure handleWait (sources, deadline, a, b, c, wakeWord : Unsigned_64;
                           retval : out Unsigned_64);
 
     procedure handleGrant (callerPID : Process.ProcessID;

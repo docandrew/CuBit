@@ -336,9 +336,10 @@ package body Syscall is
             when SYSCALL_THREAD_EXIT =>
                 Process.exitThread;
 
-            -- arg0 word address, arg1 maximum waiters to wake.
+            -- arg0 the word (an address, or a shared word), arg1 maximum
+            -- waiters to wake, arg2 its space (Futex_ABI, IPC-010).
             when SYSCALL_FUTEX_WAKE =>
-                retval := Process.Futex.wake (arg0, arg1);
+                retval := Process.Futex.wakeSpace (arg0, arg1, arg2);
 
             when SYSCALL_SBRK =>
                 -- Serialized against sibling threads' faults and sbrk.
@@ -497,7 +498,7 @@ package body Syscall is
             -- The one wait (Wait_ABI): arg0 the Sources word, arg1 the
             -- deadline, arg2 .. arg4 the source's parameters.
             when SYSCALL_WAIT =>
-                IPC.handleWait (arg0, arg1, arg2, arg3, arg4, retval);
+                IPC.handleWait (arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_FIRMWARE_SNAPSHOT =>
                 Firmware_Snapshot_Export.Handle

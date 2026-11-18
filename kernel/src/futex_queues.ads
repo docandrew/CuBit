@@ -4,8 +4,9 @@
 --
 -- @summary Futex wait queues (docs/threads.md)
 --
--- Pure SPARK data structure for the kernel's futex buckets. A futex key is a
--- (process, user address) pair: futexes are private to one address space.
+-- Pure SPARK data structure for the kernel's futex buckets. A futex key is
+-- private (process, user address) or shared (grant slot, grant life,
+-- offset; IPC-010), Futex_Keys.
 -- Each bucket holds a bounded set of waiters. Every waiter carries a ticket
 -- from its bucket's counter, so waking the lowest ticket with a key wakes
 -- that key's oldest waiter (FIFO per key).
@@ -47,7 +48,7 @@ package Futex_Queues with SPARK_Mode => On is
 
     Empty_Bucket : constant Bucket :=
       (S => (others => (Used => False, Waiter => No_Waiter,
-                        K => (Owner => 0, Address => 0), Ticket => 0)),
+                        K => No_Key, Ticket => 0)),
        Next_Ticket => 0);
 
     ---------------------------------------------------------------------------
@@ -164,6 +165,33 @@ package Futex_Queues with SPARK_Mode => On is
                    not Contains (B, W) and then
                    Others_Unchanged (B, B'Old, From_Slot));
 
+    -- Whether K is a shared key of this life of grant slot Slot.
+    function Of_Life (K : Key; Slot, Generation : Unsigned_32) return Boolean is
+      (K.Space = Shared_Space and then K.Owner = Slot and then K.Generation = Generation);
+
+    function Has_Life (B : Bucket; Slot, Generation : Unsigned_32) return Boolean is
+      (for some I in Slot_Index =>
+         B.S (I).Used and then Of_Life (B.S (I).K, Slot, Generation));
+
+    -- The grant life ended (IPC-010): remove one of its waiters, any
+    -- offset, or No_Waiter when none is left. Nothing else changes, so a
+    -- caller that repeats until No_Waiter has woken exactly that life's
+    -- waiters and no other key's.
+    procedure Remove_Of_Life (B : in out Bucket; Slot, Generation : Unsigned_32;
+                              W : out Waiter_Id; From_Slot : out Slot_Index)
+    with
+        Pre  => Well_Formed (B),
+        Post => Well_Formed (B) and then Tickets_Monotonic (B, B'Old) and then
+                (if W = No_Waiter then
+                   B = B'Old and then not Has_Life (B'Old, Slot, Generation)
+                 else
+                   B'Old.S (From_Slot).Used and then
+                   Of_Life (B'Old.S (From_Slot).K, Slot, Generation) and then
+                   B'Old.S (From_Slot).Waiter = W and then
+                   not B.S (From_Slot).Used and then
+                   not Contains (B, W) and then
+                   Others_Unchanged (B, B'Old, From_Slot));
+
     ---------------------------------------------------------------------------
     -- Proved lemmas
     ---------------------------------------------------------------------------
@@ -187,5 +215,36 @@ package Futex_Queues with SPARK_Mode => On is
         Global => null,
         Pre  => Well_Formed (B) and then K1 /= K2 and then W /= No_Waiter and then
                 not Contains (B, W) and then B.Next_Ticket < Unsigned_64'Last;
+
+    -- Ending a grant life (Remove_Of_Life), stated on the keys themselves:
+    -- a waiter on any offset of that life is taken, ...
+    procedure Prove_Life_Waiter_Taken (B : Bucket; W : Waiter_Id;
+                                       Slot, Generation : Unsigned_32; Offset : Unsigned_64)
+    with
+        Ghost,
+        Global => null,
+        Pre  => Well_Formed (B) and then W /= No_Waiter and then not Contains (B, W) and then
+                not Has_Life (B, Slot, Generation) and then B.Next_Ticket < Unsigned_64'Last;
+
+    -- ... a waiter on another life, of this grant or another, is not, ...
+    procedure Prove_Other_Life_Kept (B : Bucket; W : Waiter_Id;
+                                     Slot, Generation, Other_Slot, Other : Unsigned_32;
+                                     Offset : Unsigned_64)
+    with
+        Ghost,
+        Global => null,
+        Pre  => Well_Formed (B) and then W /= No_Waiter and then not Contains (B, W) and then
+                (Other_Slot /= Slot or else Generation /= Other) and then
+                B.Next_Ticket < Unsigned_64'Last;
+
+    -- ... nor a private waiter whose numbers match (a live grant's life is
+    -- never zero, a private key's always is).
+    procedure Prove_Private_Kept (B : Bucket; W : Waiter_Id;
+                                  Slot, Generation : Unsigned_32; Address : Unsigned_64)
+    with
+        Ghost,
+        Global => null,
+        Pre  => Well_Formed (B) and then W /= No_Waiter and then not Contains (B, W) and then
+                Generation /= 0 and then B.Next_Ticket < Unsigned_64'Last;
 
 end Futex_Queues;

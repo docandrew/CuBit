@@ -242,6 +242,46 @@ package body Process.User_Memory is
       Success := True;
    end Load_Word32;
 
+   procedure Load_Shared_Word32
+     (Caller : ProcessID; Owner : ProcessID; Address : Unsigned_64;
+      Value : out Unsigned_32; Success : out Boolean)
+   is
+      function Readable is new User_Page_Walk.Readable_Frame (Read_Table_Entry);
+      Frame : Unsigned_64;
+      Pinned : Boolean;
+   begin
+      Value := 0;
+      Success := False;
+      if Caller = NO_PROCESS or else Owner = NO_PROCESS or else
+        Caller /= PerCPUData.getCurrentPID or else
+        proctab(Caller).pgTable = NO_PROCESS or else Address mod 4 /= 0 or else
+        Address >= User_Page_Walk.User_Limit
+      then
+         return;
+      end if;
+      Frame := Readable
+        (Unsigned_64 (rootPhysical (proctab(Caller).pgTable)),
+         Address, Unsigned_64 (Virtmem.MAX_PHYS_USABLE));
+      if Frame = 0 then
+         return;
+      end if;
+      -- The grant owner's frame, never MMIO or a third party's page.
+      BuddyAllocator.pinOwnedFrame
+        (Virtmem.PhysAddress (Frame), BuddyAllocator.Frame_Owner (Owner), Pinned);
+      if not Pinned then
+         return;
+      end if;
+      declare
+         Word : Unsigned_32 with Import, Atomic,
+           Address => Virtmem.P2Va (Virtmem.PhysAddress (Frame)) +
+                      Storage_Offset (Address mod User_Page_Walk.Page_Size);
+      begin
+         Value := Word;
+      end;
+      Unpin_Word_Frame (Frame);
+      Success := True;
+   end Load_Shared_Word32;
+
    procedure Store_Word32
      (Caller : ProcessID; Address : Unsigned_64; Value : Unsigned_32;
       Success : out Boolean)

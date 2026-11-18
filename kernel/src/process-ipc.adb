@@ -10,6 +10,7 @@
 -- See process-ipc.ads for lock ordering documentation.
 -------------------------------------------------------------------------------
 with Readiness_Pages;
+with Process.Futex;
 with Readiness_Publication;
 with Boot_Diagnostics;
 with BuddyAllocator;
@@ -2503,6 +2504,72 @@ package body Process.IPC is
     -- notice, so ringGrantNotices skips grantLock when this is False.
     noticeWakesPending  : Boolean := False with Volatile;
 
+    -- Grant lives whose shared-futex waiters are still to be woken as
+    -- Revoked (IPC-010): queued under grantLock when a life ends
+    -- (endBellLocked), swept by ringGrantNotices once grantLock is free
+    -- (the sweep takes a futex bucket lock, which is taken before
+    -- grantLock, never under it). A full queue sweeps every bucket for
+    -- dead lives instead (futexSweepAll), so no end is lost.
+    Futex_End_Capacity : constant := 256;
+    type Futex_End_Index is mod Futex_End_Capacity;
+    type Futex_End is record
+        slot       : Unsigned_32 := 0;
+        generation : Unsigned_32 := 0;
+    end record;
+    futexEnds      : array (Futex_End_Index) of Futex_End;
+    futexEndHead   : Futex_End_Index := 0;
+    futexEndCount  : Natural range 0 .. Futex_End_Capacity := 0;
+    futexSweepAll  : Boolean := False;
+    futexEndsPending : Boolean := False with Volatile;
+
+    procedure queueFutexEnd (slot : Memory_Grants.Global_Slot;
+                             generation : Memory_Grants.Grant_Generation) is
+    begin
+        if futexEndCount = Futex_End_Capacity then
+            futexSweepAll := True;
+        else
+            futexEnds (futexEndHead + Futex_End_Index (futexEndCount)) :=
+              (slot => Unsigned_32 (slot), generation => Unsigned_32 (generation));
+            futexEndCount := futexEndCount + 1;
+        end if;
+        futexEndsPending := True;
+    end queueFutexEnd;
+
+    -- Wake the waiters of every ended life queued so far. Caller holds no
+    -- grantLock (nor a futex bucket lock).
+    procedure sweepFutexEnds is
+        item : Futex_End;
+        found, all_lives : Boolean;
+    begin
+        if not futexEndsPending then
+            return;
+        end if;
+        loop
+            Spinlocks.enterCriticalSection (grantLock);
+            found := futexEndCount > 0;
+            if found then
+                item := futexEnds (futexEndHead);
+                futexEndHead := futexEndHead + 1;
+                futexEndCount := futexEndCount - 1;
+            end if;
+            all_lives := not found and then futexSweepAll;
+            if all_lives then
+                futexSweepAll := False;
+            end if;
+            if not found then
+                futexEndsPending := False;
+            end if;
+            Spinlocks.exitCriticalSection (grantLock);
+            if found then
+                Futex.endSharedLife (item.slot, item.generation);
+            elsif all_lives then
+                Futex.endDeadSharedLives;
+            else
+                exit;
+            end if;
+        end loop;
+    end sweepFutexEnds;
+
     -- Exit and fault reports. reportLock is a leaf.
     reportLock : Spinlocks.spinlock;
     reports    : Kernel_Reports.Table;
@@ -2547,6 +2614,9 @@ package body Process.IPC is
     procedure ringGrantNotices is
         dest : ProcessID := NO_PROCESS;
     begin
+        -- Ended lives first: their futex waiters learn of the end (Revoked)
+        -- no later than the grant-end notice.
+        sweepFutexEnds;
         -- Set under grantLock before it is released; this thread released
         -- it after its own grant work, so its notices are visible here.
         if not noticeWakesPending then
@@ -2954,6 +3024,8 @@ package body Process.IPC is
         end if;
         grantee := value.granteePID;
         Grant_Doorbells.Finish (value.bell, wasPending);
+        -- Its shared-futex waiters wake as Revoked once grantLock is free.
+        queueFutexEnd (slot, value.generation);
         if wasPending and then grantee /= NO_PROCESS then
             l := bellListOf (grantee);
             Bell_Lists.Remove (l, slot);
@@ -4916,5 +4988,74 @@ package body Process.IPC is
         end loop;
     end retireMailboxes;
 
+
+    ---------------------------------------------------------------------------
+    -- Shared futexes (IPC-010)
+    ---------------------------------------------------------------------------
+
+    procedure resolveSharedWord
+      (pid        : ProcessID;
+       slot       : Unsigned_64;
+       offset     : Unsigned_64;
+       generation : out Unsigned_32;
+       address    : out Unsigned_64;
+       owner      : out ProcessID;
+       ok         : out Boolean)
+    is
+        value : Grant_Pointer;
+        base : System.Address := System.Null_Address;
+        bytes : Unsigned_64;
+        use type System.Address;
+    begin
+        generation := 0;
+        address := 0;
+        owner := NO_PROCESS;
+        ok := False;
+        if pid = NO_PROCESS or else slot = 0
+          or else slot > Unsigned_64 (Memory_Grants.Global_Slot'Last)
+          or else offset mod 4 /= 0
+        then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (grantLock);
+        value := grantFor (Memory_Grants.Global_Slot (slot));
+        if value /= null and then Memory_Grants.Is_Active (value.lifecycle)
+          and then not Memory_Grants.Is_Revocation_Pending (value.lifecycle)
+          and then not value.bell.Ended and then value.numPages > 0
+        then
+            -- Either party of this life of the grant, through its own
+            -- mapping of it.
+            if value.granterPID = pid and then value.granterIdentity = identityOf (pid) then
+                base := value.granterAddr;
+            elsif value.granteePID = pid and then value.granteeIdentity = identityOf (pid) then
+                base := value.granteeAddr;
+            end if;
+            bytes := Unsigned_64 (value.numPages) * Memory_Grants.Page_Size;
+            if base /= System.Null_Address and then offset < bytes then
+                generation := Unsigned_32 (value.generation);
+                address := Unsigned_64 (System.Storage_Elements.To_Integer (base)) + offset;
+                owner := value.granterPID;
+                ok := True;
+            end if;
+        end if;
+        Spinlocks.exitCriticalSection (grantLock);
+    end resolveSharedWord;
+
+    function sharedLifeLive (slot, generation : Unsigned_32) return Boolean is
+        value : Grant_Pointer;
+        live : Boolean := False;
+    begin
+        if slot = 0 or else Unsigned_64 (slot) > Unsigned_64 (Memory_Grants.Global_Slot'Last) then
+            return False;
+        end if;
+        Spinlocks.enterCriticalSection (grantLock);
+        value := grantFor (Memory_Grants.Global_Slot (slot));
+        live := value /= null and then Unsigned_32 (value.generation) = generation
+          and then Memory_Grants.Is_Active (value.lifecycle)
+          and then not Memory_Grants.Is_Revocation_Pending (value.lifecycle)
+          and then not value.bell.Ended;
+        Spinlocks.exitCriticalSection (grantLock);
+        return live;
+    end sharedLifeLive;
 
 end Process.IPC;

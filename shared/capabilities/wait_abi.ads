@@ -16,16 +16,18 @@
 --  FUTEX_WAIT and ACCEPT_OFFERED_CAPABILITY.
 --
 --  Registers: arg0 the Sources word (Source bits, plus the modifiers
---  Readiness_Only and Wake_First), arg1 the deadline, arg2 .. arg4 the
---  source's parameters A, B, C, arg5 the wake operand.
+--  Readiness_Only, Shared_Futex, Wake_First and Wake_Shared), arg1 the
+--  deadline, arg2 .. arg4 the source's parameters A, B, C, arg5 the wake
+--  operand.
 --
---  Wake_First and arg5 are reserved for IPC-010 (wake-plus-wait, the
---  futex counterpart of Reply_Wait): with Wake_First set, the kernel will
---  wake the futex arg5 names (a word address now; a descriptor for a
---  shared futex, grant and offset, later) before it waits on the sources,
---  in one call. Today every Sources word with Wake_First is refused
---  (Unsupported_Form) and arg5 is ignored without it, so adding it
---  renumbers and reshapes nothing.
+--  Wake-plus-wait (IPC-010, the futex counterpart of Reply_Wait): with
+--  Wake_First, the futex form first wakes one waiter of the futex arg5
+--  names (a private address, or with Wake_Shared a Futex_ABI shared
+--  word), then waits, in one kernel entry. The wakee is placed on this CPU
+--  without preempting the caller, and the caller's sleep switches straight
+--  to it if it is still ready here (no slice donation; deadline order
+--  holds). The wake happens whatever the wait then answers. Wake_First is
+--  refused with every other form; arg5 is ignored without it.
 --
 --  Deadline: an absolute monotonic millisecond (the clock of Call and
 --  CuBit.Deadlines), Now (0: look once, never block) or Forever
@@ -53,8 +55,11 @@
 --              pending kernel notice is taken into A (a Message) in the
 --              same call. Result: a Readiness value.
 --    Futex     {Futex_Word}: sleep while the 32-bit word at A holds B.
---              Result: Futex_Woken, Futex_Retry, Futex_Timed_Out or
---              Futex_Fault.
+--              With Shared_Futex, A is a Futex_ABI shared word (a grant's
+--              slot and offset) of a grant this process is a party of.
+--              Result: Futex_Woken, Futex_Retry, Futex_Timed_Out,
+--              Futex_Revoked (shared: the grant's life ended) or
+--              Futex_Fault (also: not a party of a live grant).
 --    Offered   {Offered_Capability}, deadline Now: take the capability the
 --              current caller (identity word A) offered with its call.
 --              Result: a handle word or a Capability_ABI refusal code.
@@ -83,8 +88,12 @@ package Wait_ABI with Pure, SPARK_Mode is
    Offered_Capability_Bit : constant := 2 ** 4;
    Timer_Bit              : constant := 2 ** 5;
    Readiness_Only         : constant := 2 ** 8;
-   --  Reserved (IPC-010): wake arg5's futex first. Refused today.
+   --  Futex form (IPC-010): wake arg5's futex first.
    Wake_First             : constant := 2 ** 9;
+   --  Futex form: A is a shared word (Futex_ABI).
+   Shared_Futex           : constant := 2 ** 10;
+   --  With Wake_First: arg5 is a shared word (Futex_ABI).
+   Wake_Shared            : constant := 2 ** 11;
 
    function Bit (S : Source) return Unsigned_64 is
      (case S is
@@ -111,6 +120,21 @@ package Wait_ABI with Pure, SPARK_Mode is
    Offered_Sources     : constant := Offered_Capability_Bit;
    Timer_Sources       : constant := Timer_Bit;
 
+   --  The futex form's words: Futex_Sources with any of its modifiers
+   --  (Wake_Shared only with Wake_First).
+   Futex_Modifiers : constant := Shared_Futex + Wake_First + Wake_Shared;
+
+   function Futex_Form (Sources : Unsigned_64) return Boolean is
+     ((Sources and not Unsigned_64 (Futex_Modifiers)) = Futex_Word_Bit
+      and then (if (Sources and Wake_Shared) /= 0 then (Sources and Wake_First) /= 0));
+
+   function Waits_Shared (Sources : Unsigned_64) return Boolean is
+     ((Sources and Shared_Futex) /= 0);
+   function Wakes_First (Sources : Unsigned_64) return Boolean is
+     ((Sources and Wake_First) /= 0);
+   function Wakes_Shared (Sources : Unsigned_64) return Boolean is
+     ((Sources and Wake_Shared) /= 0);
+
    --  Results.
    --  Messages / Requests: nothing arrived before the deadline.
    Nothing : constant Unsigned_64 := Unsigned_64'Last;
@@ -127,6 +151,8 @@ package Wait_ABI with Pure, SPARK_Mode is
    --  The word did not hold B: recheck it and retry.
    Futex_Retry     : constant Unsigned_64 := 1;
    Futex_Timed_Out : constant Unsigned_64 := 2;
+   --  A shared futex's grant life ended while waiting (IPC-010).
+   Futex_Revoked   : constant Unsigned_64 := 3;
    --  Unaligned, not user RAM, or not mapped.
    Futex_Fault     : constant Unsigned_64 := Unsigned_64'Last;
    --  A form the kernel does not offer, or a malformed argument.
