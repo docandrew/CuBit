@@ -67,19 +67,6 @@ package CuBit.Messages is
    SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION :
       constant Unsigned_64 := 111;
 
-   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET
-   --  (/home/doc/cubit-build-tmp/abi002/wait-acpi-sites.md). SLEEP is
-   --  retired; the ACPI-owned services (gpio, hid-i2c, i2c-dw) still spell
-   --  syscall (SYSCALL_SLEEP, Milliseconds) until they call
-   --  CuBit.Waits.Sleep_For. This overload sends exactly that through WAIT;
-   --  the type keeps every other caller from reaching it by a number.
-   type ACPI_Shim_Call is (Sleep_Shim);
-   SYSCALL_SLEEP : constant ACPI_Shim_Call := Sleep_Shim;
-   function syscall
-     (call : ACPI_Shim_Call; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
-      arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0;
-      arg4 : Unsigned_64 := 0; arg5 : Unsigned_64 := 0) return Unsigned_64;
-
    type Activity_Result is (Work_Available, Deadline_Reached, Unavailable);
    --  TRACE_SUMMARY controls beyond Summary require a LATENCY_TRACE kernel.
    type Trace_Control_Operation is

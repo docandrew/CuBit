@@ -50,13 +50,6 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  ACCEPT_OFFERED_CAPABILITY.
    Wait                         : constant System_Call := Wait_ABI.System_Call_Number;
 
-   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET
-   --  (/home/doc/cubit-build-tmp/abi002/wait-acpi-sites.md). The ACPI
-   --  service's delay and EC clock still spell
-   --  Kernel_Calls.Call (Sleep_Until_Monotonic_Microsecond, Instant); this
-   --  type selects the Kernel_Calls overload that sends it through WAIT.
-   type ACPI_Shim_Call is (Sleep_Until_Shim);
-   Sleep_Until_Monotonic_Microsecond : constant ACPI_Shim_Call := Sleep_Until_Shim;
    Yield                        : constant System_Call := 118;
    --  Owned memory, one region API (kernel Process.Owned_Memory, ABI-002;
    --  CuBit.Owned_Reservations wraps it). Reserve_Owned_Region (bytes,

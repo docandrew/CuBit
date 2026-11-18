@@ -36,16 +36,6 @@ package body CuBit.Kernel_Calls is
       return Result;
    end Call;
 
-   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET.
-   function Call
-     (Number : CuBit.Kernel_ABI.ACPI_Shim_Call;
-      A0, A1, A2, A3, A4, A5 : Unsigned_64 := 0) return Unsigned_64
-   is
-      pragma Unreferenced (Number, A1, A2, A3, A4, A5);
-   begin
-      return Call (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever, A0);
-   end Call;
-
    function Submit
      (Slot : Unsigned_64; Label : Unsigned_32; Length : Unsigned_8;
       W0, W1, W2, W3 : Unsigned_64; Token : Unsigned_64) return Unsigned_64

@@ -69,17 +69,6 @@ package body CuBit.Messages is
       return ret;
    end syscall;
 
-   --  ACPI-SHIM (ABI-002 slice 2): DELETE WITH THE ACPI PACKET.
-   function syscall
-     (call : ACPI_Shim_Call; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
-      arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0;
-      arg4 : Unsigned_64 := 0; arg5 : Unsigned_64 := 0) return Unsigned_64
-   is
-      pragma Unreferenced (call, arg1, arg2, arg3, arg4, arg5);
-   begin
-      return CuBit.Waits.Sleep_For (arg0);
-   end syscall;
-
    --  The kernel's results (Process.IPC.Activity_*).
    Activity_Deadline : constant Unsigned_64 := Wait_ABI.Ready_Deadline;
    Activity_Work     : constant Unsigned_64 := Wait_ABI.Ready_Work;
