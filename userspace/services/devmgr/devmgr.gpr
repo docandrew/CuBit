@@ -28,6 +28,8 @@ project Devmgr is
        "pci_capabilities.ads", "pci_capabilities.adb",
        --  Every BAR's extent, sized at enumeration (PCI_BAR_Extents).
        "pci_bar_extents.ads", "pci_bar_extents.adb",
+       "pci_power_control.ads", "pci_power_control.adb",
+       "pci_bar_placement.ads", "pci_bar_placement.adb",
        "xhci_configure_reply.ads", "xhci_controller_identity.ads",
        "driver_manifests.ads", "driver_manifests.adb",
        --  Devices bound by their drivers' declared matches (HW-002).

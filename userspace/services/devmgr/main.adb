@@ -79,6 +79,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with PCI_Power_Control;
 with DMA_Allocation_ABI;
 with CuBit.Launch_Configurations;
 with CuBit.System_Facts;
@@ -3737,6 +3738,58 @@ procedure main is
       end if;
    end Remember_Refused_BAR;
 
+   --  PCI-BAR-001: a function whose memory BAR reads 0 while it is in
+   --  D3hot is brought to D0 before the BAR is judged, as Linux's
+   --  pci_enable_device does. The IdeaPad's LPSS I2C controllers arrive this
+   --  way (the firmware's _PS3 clears BAR 0). The PMCSR write keeps PME_En
+   --  and never clears a pending PME (PCI_Power_Control.To_D0); the
+   --  function then gets its D3hot recovery time. Logged either way, so a
+   --  BAR still at 0 in D0 is known to be unassigned, not hidden by D3.
+   procedure Prepare_BAR (dev : PCIDeviceInfo; Register : Unsigned_8; Name : String) is
+      Low : constant Unsigned_32 := pciReadConfig32 (dev.bus, dev.slot, dev.func, Register);
+      Is_64 : constant Boolean := (Low and PCI_BAR_TYPE_MASK) = PCI_BAR_TYPE_64;
+      High : constant Unsigned_32 :=
+        (if Is_64 and then Register < PCI_BASEADDR_0 + 5 * PCI_BAR_BYTES
+         then pciReadConfig32 (dev.bus, dev.slot, dev.func, Register + PCI_BAR_BYTES) else 0);
+      Config : PCI_Power_Control.Configuration;
+      Where : PCI_Power_Control.Location;
+      use type PCI_Power_Control.Location_Status;
+   begin
+      if (Low and PCI_BAR_IO) /= 0 or else (Low and PCI_BAR_ADDRESS_MASK) /= 0 or else High /= 0 then
+         return;
+      end if;
+      for Byte in Config'Range loop
+         Config (Byte) := pciReadConfig8 (dev.bus, dev.slot, dev.func, Unsigned_8 (Byte));
+      end loop;
+      Where := PCI_Power_Control.Locate (Config);
+      if Where.Status /= PCI_Power_Control.Found then
+         return;
+      end if;
+      declare
+         use type PCI_Power_Control.Power_State;
+         PMCSR : constant Unsigned_8 :=
+           Unsigned_8 (Where.Offset + PCI_Power_Control.PMCSR_Offset_From_Capability);
+         Before : constant Unsigned_16 := pciReadConfig16 (dev.bus, dev.slot, dev.func, PMCSR);
+         After : Unsigned_16;
+         Ignored : Unsigned_64;
+      begin
+         if PCI_Power_Control.State_Of (Before) = PCI_Power_Control.D0 then
+            return;
+         end if;
+         pciWriteConfig16 (dev.bus, dev.slot, dev.func, PMCSR, PCI_Power_Control.To_D0 (Before));
+         Ignored := syscall (SYSCALL_SLEEP, PCI_Power_Control.D3hot_Recovery_Ms);
+         After := pciReadConfig16 (dev.bus, dev.slot, dev.func, PMCSR);
+         Warnings.Inform
+           ("devmgr: " & Name & " at " & Location_Text (dev) & " BAR at " & Hex (Unsigned_64 (Register))
+            & " read 0 in " & PCI_Power_Control.Power_State'Image (PCI_Power_Control.State_Of (Before))
+            & "; now " & PCI_Power_Control.Power_State'Image (PCI_Power_Control.State_Of (After))
+            & (if PCI_Power_Control.Resets_On_D0 (Before) then " (function reset on D0)" else "")
+            & "; BAR low=" & Hex (Unsigned_64 (pciReadConfig32 (dev.bus, dev.slot, dev.func, Register)))
+            & " high=" & Hex (Unsigned_64 (if Is_64 then pciReadConfig32 (dev.bus, dev.slot, dev.func,
+                                                                          Register + PCI_BAR_BYTES) else 0)));
+      end;
+   end Prepare_BAR;
+
    procedure Report_Refused_BARs (Moment : String) is
    begin
       for I in 1 .. Refused_BAR_Total loop
@@ -4082,6 +4135,7 @@ procedure main is
                   if Window = LC.Maximum_Windows then
                      Refuse ("more device-memory requests than PCI BARs");
                   else
+                     Prepare_BAR (dev, PCI_BASEADDR_0 + Unsigned_8 (R.Index) * PCI_BAR_BYTES, Name);
                      declare
                         Offset : constant Unsigned_8 := PCI_BASEADDR_0 + Unsigned_8 (R.Index) * PCI_BAR_BYTES;
                         Low : constant Unsigned_32 := pciReadConfig32 (dev.bus, dev.slot, dev.func, Offset);
