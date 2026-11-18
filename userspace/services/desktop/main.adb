@@ -5913,6 +5913,8 @@ procedure main is
                            for X in Columns'Range loop
                               if Columns (X).Valid then
                                  declare
+                                    --  SEC-025: own: the frame Desktop is drawing (its private target, or a scanout
+                                    --  buffer display.svc lent it); no peer writes it while Desktop draws.
                                     Target : Unsigned_32 with Import, Address => O.Buffer + Storage_Offset (Y * O.Pitch + X * 4);
                                     Source : constant Unsigned_32 := Desktop_Cursors.Pixels
                                       (metadata.Offset + Natural (MY.Index) * metadata.Width + Natural (Columns (X).Index));

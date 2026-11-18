@@ -129,6 +129,8 @@ package body Desktop_Wallpaper is
                   declare
                      Top : constant Natural := Pass_For (AY.First, AY.Last);
                      Bottom : constant Natural := Pass_For (AY.Last, AY.First);
+                     --  SEC-025: own: the caller's private target (a wallpaper layer or the frame
+                     --  Desktop draws); no peer writes it.
                      Target_Row : Pixels (0 .. Length - 1) with Import, Address => Target +
                        Storage_Offset (Row * Pitch + First * 4);
                   begin
@@ -141,6 +143,8 @@ package body Desktop_Wallpaper is
                   end;
                else
                   declare
+                     --  SEC-025: own: the caller's private target (a wallpaper layer or the frame
+                     --  Desktop draws); no peer writes it.
                      Target_Row : Pixels (0 .. Length - 1) with Import, Address => Target +
                        Storage_Offset (Row * Pitch + First * 4);
                   begin
