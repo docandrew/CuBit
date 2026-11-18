@@ -3282,6 +3282,11 @@ procedure main is
    --  A window's surface ring ended since dead clients' windows were last
    --  looked for (reapDeadClientSurfaces).
    clientEndNoticed : Boolean := True;
+   --  A window whose owner holds no ring and no attached buffer: nothing
+   --  signals its end, so it is looked for every Ringless_Reap_Interval_Ms
+   --  even when no frame is drawn (0: no such window, no timer).
+   Ringless_Reap_Interval_Ms : constant := 1_000;
+   ringlessReapDueMs : Unsigned_64 := 0;
 
    function ensureProcessListBuffer return Boolean is
       raw : Unsigned_64;
@@ -9230,6 +9235,16 @@ procedure main is
          return True;
       end if;
       if Event.Kind = CuBit.Control_Events.Grant_Revoked then
+         --  A window's attached buffer revoked: its owner let go of it or
+         --  ended (an ending process revokes its grants). Look now.
+         for S of store.Surfaces loop
+            if S.used and then S.bufferAttached
+              and then Unsigned_64 (S.bufferGrant.slot) = Event.Slot
+              and then Unsigned_64 (S.bufferGrant.generation) = Event.Generation
+            then
+               clientEndNoticed := True;
+            end if;
+         end loop;
          for S of store.Surfaces loop
             for P of S.parkedLoans loop
                if P.Used and then Unsigned_64 (P.Grant.slot) = Event.Slot
@@ -15447,15 +15462,29 @@ begin
          Drain_Events;
          --  A window's surface ring ended: perhaps its owner did. Look now,
          --  not at the next frame (which may not come).
-         if clientEndNoticed then
+         if clientEndNoticed or else
+           (ringlessReapDueMs /= 0 and then nowMs >= ringlessReapDueMs)
+         then
             declare
                dead : Rect := (others => 0);
             begin
+               clientEndNoticed := True;
                reapDeadClientSurfaces (dead);
                if not isEmpty (dead) then
                   scheduleRedrawRect (dead);
                end if;
             end;
+         end if;
+         --  The next look for windows nothing would signal the end of.
+         if (for some S of store.Surfaces =>
+               S.used and then S.owner /= No_Process and then not S.bufferAttached
+               and then not clientHoldsRing (S.owner))
+         then
+            if ringlessReapDueMs = 0 or else nowMs >= ringlessReapDueMs then
+               ringlessReapDueMs := nowMs + Ringless_Reap_Interval_Ms;
+            end if;
+         else
+            ringlessReapDueMs := 0;
          end if;
          --  Input just answered to a sleeping window wakes it now, before
          --  this turn's drawing.
@@ -15586,7 +15615,7 @@ begin
                --  take the next turn without sleeping.
                null;
             elsif not framePending and then not cursorPresentPending and then
-              nextInputDeadline = 0 and then statusDueMs = 0 and then
+              nextInputDeadline = 0 and then statusDueMs = 0 and then ringlessReapDueMs = 0 and then
               Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) = Unsigned_64'Last and then
               DN.Toast_Due (notifications) = DN.Never and then
               not Desktop_Capture.Marked and then
@@ -15621,6 +15650,9 @@ begin
                   if statusDueMs /= 0 and then
                     (nextDueMs = 0 or else statusDueMs < nextDueMs)
                   then nextDueMs := statusDueMs; end if;
+                  if ringlessReapDueMs /= 0 and then
+                    (nextDueMs = 0 or else ringlessReapDueMs < nextDueMs)
+                  then nextDueMs := ringlessReapDueMs; end if;
                   --  The memory bar, the open panel's scan refresh and a
                   --  join's address wait (refreshNetwork).
                   if trayDueMs /= 0 and then

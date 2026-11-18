@@ -305,7 +305,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel)
+        desktop-display|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         shutdown|acpi-shutdown)
             TIMEOUT_SECONDS=$SHUTDOWN_TIMEOUT_SECONDS ;;
@@ -356,7 +356,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -679,6 +679,12 @@ with open(sys.argv[1], "wb") as f:
         # A process the kernel kills for a fault is recorded, logged and
         # shown on the Desktop bootstrap screen.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-process-kill.ccl"
+        ;;
+    desktop-reap)
+        # IPC-009: a client holding a window but no ring and no buffer ends
+        # without goodbye; nothing redraws after it. Desktop still removes
+        # its window (tests/headless/init-desktop-reap.ccl, reap-check).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-reap.ccl"
         ;;
     trap-flag)
         # SYSCALL with RFLAGS.TF set: the kernel masks TF on entry and
@@ -1614,6 +1620,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "devmem-denials" ] ||
        [ "$TEST_NAME" = "process-kill" ] ||
        [ "$TEST_NAME" = "desktop-restart" ] ||
+       [ "$TEST_NAME" = "desktop-reap" ] ||
        [ "$TEST_NAME" = "scanout-repair" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
        [ "$TEST_NAME" = "managed-ui" ] ||
@@ -2587,6 +2594,14 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "desktop-reap" ]; then
+        debugfs -w -R "rm reap-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/reap-check.app reap-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install reap-check.app (make -C kernel reap-check)" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "oom-reclaim" ]; then
         debugfs -w -R "rm oom-check.app" "$TEMP_DISK" >/dev/null 2>&1
@@ -8090,6 +8105,13 @@ STUCK-CALL: stall-check.app
 stall-check: call ended
 stall-check: done
 display: kernel diagnostics erased the scanout; copying a whole frame
+"
+        ;;
+    desktop-reap)
+        required_markers="
+reap-check: surface
+procmgr: process com.cubit.reap-check
+ended: its process ended
 "
         ;;
     process-kill)

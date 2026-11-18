@@ -1,0 +1,10 @@
+# Headless desktop-reap test (IPC-009): reap-check holds one window with no
+# ring and no buffer and ends without goodbye; Desktop must remove the
+# window though nothing is redrawn after it ("ended: its process ended").
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "reap-check.app" (priority 3))
+)
