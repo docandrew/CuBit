@@ -12,6 +12,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with acpi;
+with Platform_Power_Port_Guard;
 with Boot_Timeline;
 with Boot_Timeline_Layout;
 with Capabilities;
@@ -330,6 +331,27 @@ package body Syscall.Admin is
             print (" write=");
             println (writeAccess);
         end logDenied;
+
+        -- KERN-004: sleep and reset go only through the platform power
+        -- object; a port capability over the PM1 or reset ports (acpi.svc
+        -- holds one for AML) never starts them by a raw write.
+        function powerRefused (port : Unsigned_64; width : Platform_Power_Port_Guard.Width;
+                               value : Unsigned_64) return Boolean is
+            Refused : constant Boolean := Platform_Power_Port_Guard.Refuses
+              (acpi.powerRegisters, Platform_Power_Port_Guard.Port (port and 16#FFFF#),
+               width, Unsigned_32 (value and 16#FFFF_FFFF#));
+        begin
+            if Refused then
+                print ("PORTIO: refused pid=");
+                print (Unsigned_16 (callerPID));
+                print (" port=");
+                print (port and 16#FFFF#);
+                print (" size=");
+                print (Unsigned_64 (width));
+                println (": sleep and reset go through the platform power object (KERN-004)");
+            end if;
+            return Refused;
+        end powerRefused;
     begin
         held := findOwn (callerPID, arg2, Capabilities.CAP_IOPORT, Capabilities.NO_RIGHTS);
         case syscallNum is
@@ -351,6 +373,8 @@ package body Syscall.Admin is
                 checkPortAccess (arg0 and 16#FFFF#, 1, True, capAllowed);
                 if not capAllowed then
                     logDenied (arg0, 1, True);
+                    retval := reterr;
+                elsif powerRefused (arg0, 1, arg1 and 16#FF#) then
                     retval := reterr;
                 else
                     x86.out8 (x86.IOPort(arg0 and 16#FFFF#),
@@ -377,6 +401,8 @@ package body Syscall.Admin is
                 if not capAllowed then
                     logDenied (arg0, 2, True);
                     retval := reterr;
+                elsif powerRefused (arg0, 2, arg1 and 16#FFFF#) then
+                    retval := reterr;
                 else
                     x86.out16 (x86.IOPort(arg0 and 16#FFFF#),
                                Unsigned_16(arg1 and 16#FFFF#));
@@ -401,6 +427,8 @@ package body Syscall.Admin is
                 checkPortAccess (arg0 and 16#FFFF#, 4, True, capAllowed);
                 if not capAllowed then
                     logDenied (arg0, 4, True);
+                    retval := reterr;
+                elsif powerRefused (arg0, 4, arg1 and 16#FFFF_FFFF#) then
                     retval := reterr;
                 else
                     x86.out32 (x86.IOPort(arg0 and 16#FFFF#),
