@@ -8,14 +8,11 @@
 -- request is written, so the core runs at whatever the firmware left. This
 -- one-line boot report shows how fast the boot CPU actually runs, so a
 -- weak machine's latency can be read against its clock before any policy:
---  - effective MHz from a dependent-add chain timed against the calibrated
---    TSC (any x86, QEMU included);
---  - APERF/MPERF over the same loop, when CPUID.06H:ECX[0] reports them;
---  - IA32_PERF_STATUS's current ratio, when CPUID.01H:ECX[7] (EST);
---  - HWP enable, capabilities and request, when CPUID.06H:EAX[7] (HWP).
--- Each MSR is read only behind the CPUID bit that makes it architectural,
--- so a CPU or hypervisor without it never takes a #GP here. Read-only: it
--- writes no MSR.
+-- effective MHz from a dependent-add chain timed against the calibrated
+-- TSC (any x86, QEMU included), plus the CPUID facts (turbo, HWP, EPP,
+-- APERF/MPERF). It reads no MSR: on the N150 one HWP MSR read raised #GP
+-- although CPUID listed HWP (image 27), so MSR state waits for a reader
+-- that recovers from #GP (PERF-013).
 -------------------------------------------------------------------------------
 package CPU_Performance_Report with SPARK_Mode => Off is
     -- BSP, after Time.calibrateTSC, interrupts disabled.
