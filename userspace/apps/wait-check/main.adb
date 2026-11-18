@@ -19,6 +19,7 @@ with CuBit.Readiness;
 with CuBit.Monotonic;
 with CuBit.Waits;
 with Wait_ABI;
+with Channel_Wake_ABI;
 
 procedure Main is
    package W renames Wait_ABI;
@@ -152,6 +153,46 @@ begin
       Result := CuBit.Messages.reply (From_Word (Result), M);
       Result := CuBit.Waits.Wait (W.Completions_Sources, W.Now,
                                   Unsigned_64 (System.Storage_Elements.To_Integer (C'Address)), 1, 0);
+   end;
+
+   --  Ready_Word (IPC-010 option B): the activity wait with a wake word.
+   declare
+      Cell : aliased Unsigned_32 := 0 with Volatile;
+      At_Word : constant Unsigned_64 := Unsigned_64 (System.Storage_Elements.To_Integer (Cell'Address));
+      Wake_Message : Message := NULL_MESSAGE;
+      Before_Events : R.Count;
+   begin
+      Check (CuBit.Waits.Wait (W.Ready_Word_Sources, W.Now, 0, At_Word, 0) = W.Ready_Deadline,
+             "Ready_Word with nothing pending: deadline");
+      Check (CuBit.Waits.Wait (W.Ready_Word_Sources, W.Now, 0, At_Word, 1) = W.Ready_Word,
+             "Ready_Word: the word no longer holds the value");
+      Before_Events := R.Produced (R.Events);
+      Check (CuBit.Waits.Futex_Wake (CuBit.Waits.Private_Word (Cell'Address), 1) = 1,
+             "a futex wake of the wake word wakes it");
+      Check (R.Produced (R.Events) = Before_Events + 1, "the wake counts one event");
+      Check (CuBit.Waits.Wait (W.Ready_Word_Sources, W.Now, 0, At_Word, 0) = W.Ready_Word,
+             "the next Ready_Word wait takes the wake");
+      Check (CuBit.Waits.Wait (W.Ready_Word_Sources, W.Now, 0, At_Word, 0) = W.Ready_Deadline,
+             "a wake is taken once");
+      Check (CuBit.Waits.Wait (W.Ready_Word_Sources, CuBit.Messages.Deadline_After (30), 0, At_Word, 0)
+               = W.Ready_Deadline,
+             "a Ready_Word deadline expires");
+      Check (CuBit.Waits.Wait (W.Ready_Word_Sources, W.Now, 0, At_Word, W.Word_Value_Last + 1)
+               = W.Unsupported_Form,
+             "Ready_Word with a value past 32 bits refused");
+      Check (CuBit.Waits.Wait (W.Ready_Word_Sources, W.Now, 0, At_Word + 1, 0) = W.Unsupported_Form,
+             "Ready_Word with an unaligned word refused");
+      --  A wake taken by a receive instead: the wake notice.
+      Check (CuBit.Waits.Futex_Wake (CuBit.Waits.Private_Word (Cell'Address), 1) = 1,
+             "a second wake");
+      M := NULL_MESSAGE;
+      Check (CuBit.Waits.Wait (W.Events_Sources, W.Now, Address_Of (M)) = W.Taken
+               and then M.tag.label = Channel_Wake_ABI.Wake_Label,
+             "an event poll takes the wake as the wake notice");
+      --  Nobody can send the notice.
+      Wake_Message.tag := (label => Channel_Wake_ABI.Wake_Label, length => 1, protocol => 0,
+                           ipc => <>, reserved => 0);
+      Check (not trySendEvent (Own_Process, Wake_Message, Self), "a sent wake notice is refused");
    end;
 
    debugPrint ((if Passed then "wait-check: ALL PASS" else "wait-check: SOME FAIL") & LF);

@@ -39,6 +39,8 @@ procedure Main is
    OP_PINGPONG  : constant Unsigned_32 := 16#0A11#;
    OP_FIFO_WAKE : constant Unsigned_32 := 16#0A12#;
    OP_WAIT_END  : constant Unsigned_32 := 16#0A13#;
+   OP_PEER_WAKE : constant Unsigned_32 := 16#0A15#;
+   Peer_Wake_Bound_Ms : constant := 2_000;
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
    Mode_Hand_Off : constant Unsigned_64 := 0;
    Mode_Separate : constant Unsigned_64 := 1;
@@ -165,7 +167,7 @@ begin
    debugPrint ("futex-share: starting" & LF);
 
    --  Two pages this process owns, granted to the server.
-   Heap := syscall (SYSCALL_SBRK, 3 * Page);
+   Heap := syscall (SYSCALL_SBRK, 4 * Page);
    Aligned := (Heap + Page - 1) and not (Page - 1);
    First_Base := To_Address (Integer_Address (Aligned));
    Second_Base := To_Address (Integer_Address (Aligned + Page));
@@ -302,6 +304,33 @@ begin
       --  At most one CPU's worth taken from CPUs bystanders.
       Check (CPUs < 2 or else Beside * CPUs >= Alone * (CPUs - 1),
              "bystanders keep their share beside a ping-pong");
+   end;
+
+   --  A peer wake (IPC-010 option B): the server wakes this process's wake
+   --  word through a grant made with the notify flag, while it sleeps in an
+   --  ordinary activity wait; through a grant without the flag it may not.
+   declare
+      Notified_Base : constant System.Address := To_Address (Integer_Address (Aligned + 2 * Page));
+      Notified : GR.Reference;
+      M : Message := NULL_MESSAGE;
+      Tag : MessageTag;
+      Started : Unsigned_64;
+      Woke : Activity_Result;
+   begin
+      At_Offset (Notified_Base, 0).all := 0;
+      CuBit.Memory_Grants.Create_Via_Capability
+        (Server, Notified_Base, 1, False, Notified, Ok, notify => True);
+      Check (Ok, "a notified grant made");
+      M.tag := (label => OP_PEER_WAKE, length => 1, protocol => 0, ipc => <>, reserved => 0);
+      M.words (0) := GR.Encode (Notified);
+      Tag := capCall (Server, M, Deadline);
+      Check (Tag.label = REPLY_OK and then M.words (0) = 1,
+             "a peer wake through a grant without the notify flag refused");
+      Started := CuBit.Monotonic.Microseconds;
+      Woke := Wait_For_Activity_Until (Deadline_After (Answer_Ms));
+      Check (Woke = Work_Available and then
+             CuBit.Monotonic.Microseconds - Started < Peer_Wake_Bound_Ms * 1_000,
+             "a peer wake ends an activity wait");
    end;
 
    if Failures = 0 then

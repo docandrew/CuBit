@@ -12,6 +12,7 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Waits;
+with CuBit.Grant_References;
 with Wait_ABI;
 with Futex_ABI;
 with Startup;
@@ -22,7 +23,7 @@ procedure Main is
 
    OP_WORD  : constant Unsigned_32 := 16#0A14#;
    REPLY_OK : constant Unsigned_32 := 16#F000#;
-   Attempts : constant := 500;
+   Attempts : constant := 3_000;
    Retry_Ms : constant := 10;
    Answer_Ms : constant := 2_000;
 
@@ -51,6 +52,7 @@ procedure Main is
    M : Message;
    Tag : MessageTag;
    Shared : W.Futex_Name := Raw (0);
+   Notified : CuBit.Grant_References.Reference;
    Learned : Boolean := False;
 begin
    for Attempt in 1 .. Attempts loop
@@ -59,6 +61,9 @@ begin
       Tag := capCall (Server, M, Deadline_After (Answer_Ms));
       if Tag.label = REPLY_OK then
          Shared.Word := M.words (0);
+         if CuBit.Grant_References.Valid_Wire (M.words (1)) then
+            Notified := CuBit.Grant_References.Decode (M.words (1));
+         end if;
          Learned := True;
          exit;
       end if;
@@ -69,6 +74,7 @@ begin
    Check (W.Futex_Wait (Shared, 0, W.Now) = Wait_ABI.Futex_Fault, "wait without the grant refused");
    Check (W.Hand_Off (Shared, W.Private_Word (Shared'Address), 0, W.Now) = Wait_ABI.Futex_Fault,
           "hand-off waking a word without the grant refused");
+   Check (not W.Wake_Peer (Notified), "peer wake without being a party refused");
    if Failures = 0 then
       debugPrint ("futex-share-outsider: ALL PASS" & LF);
    else

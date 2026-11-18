@@ -7715,11 +7715,15 @@ futex-share: bystanders keep their share beside a ping-pong PASS
 futex-share: ALL PASS
 futex-share-outsider: wake without the grant refused PASS
 futex-share-outsider: wait without the grant refused PASS
+futex-share: a peer wake through a grant without the notify flag refused PASS
+futex-share: a peer wake ends an activity wait PASS
+futex-share-outsider: peer wake without being a party refused PASS
 futex-share-outsider: ALL PASS
 msr-safe: an absent MSR faulted and was recovered
 "
         if grep -aE 'futex-share(-outsider)?: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
-           grep -aqF 'futex-share-server: pong FAIL' "$SERIAL_LOG"; then
+           grep -aqF 'futex-share-server: pong FAIL' "$SERIAL_LOG" ||
+           grep -aqF 'futex-share-server: peer wake FAIL' "$SERIAL_LOG"; then
             echo "headless: futex-share checks failed" >&2
             exit 1
         fi
@@ -7745,6 +7749,12 @@ wait-check: events counter moved by one PASS
 wait-check: Now on events takes it, with its publisher PASS
 wait-check: a new request is pending PASS
 wait-check: taking every counted request needs no empty poll PASS
+wait-check: Ready_Word: the word no longer holds the value PASS
+wait-check: a futex wake of the wake word wakes it PASS
+wait-check: the next Ready_Word wait takes the wake PASS
+wait-check: a wake is taken once PASS
+wait-check: an event poll takes the wake as the wake notice PASS
+wait-check: a sent wake notice is refused PASS
 wait-check: ALL PASS
 readiness-writer: page readable PASS
 readiness-writer: storing to the page

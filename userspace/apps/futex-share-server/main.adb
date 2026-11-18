@@ -39,6 +39,8 @@ procedure Main is
    OP_FIFO_WAKE : constant Unsigned_32 := 16#0A12#;
    OP_WAIT_END  : constant Unsigned_32 := 16#0A13#;
    OP_WORD      : constant Unsigned_32 := 16#0A14#;
+   OP_PEER_WAKE : constant Unsigned_32 := 16#0A15#;
+   Peer_Wake_Delay_Ms : constant := 20;
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
    REPLY_NOT_YET : constant Unsigned_32 := 16#F001#;
    REPLY_FAILED : constant Unsigned_32 := 16#F002#;
@@ -66,6 +68,10 @@ procedure Main is
      (Words.To_Pointer (Base + Storage_Offset (Offset)));
 
    First, Second : GR.Reference;
+   --  A grant made with the notify flag (a channel's): either party may
+   --  wake the other's wake word through it (IPC-010 option B).
+   Notified : GR.Reference;
+   Has_Notified : Boolean := False;
    First_Base : System.Address := System.Null_Address;
    Shared : Boolean := False;
    from : Process_ID;
@@ -222,13 +228,34 @@ begin
          receive (from, msg);
 
       elsif msg.tag.label = OP_WORD then
-         --  The outsider: the first page's Ping word, as a shared word.
-         if Shared then
-            replyWait (from, Reply (REPLY_OK, Futex_ABI.Shared_Word (First.slot, Ping_At)),
-                       from, msg);
+         --  The outsider: the first page's Ping word, as a shared word, and
+         --  the notified grant's reference.
+         if Shared and then Has_Notified then
+            declare
+               R : Message := Reply (REPLY_OK, Futex_ABI.Shared_Word (First.slot, Ping_At));
+            begin
+               R.tag.length := 2;
+               R.words (1) := GR.Encode (Notified);
+               replyWait (from, R, from, msg);
+            end;
          else
             replyWait (from, Reply (REPLY_NOT_YET), from, msg);
          end if;
+
+      elsif msg.tag.label = OP_PEER_WAKE then
+         --  words: the client's notified grant. Answer whether a peer wake
+         --  through a grant made without the notify flag is refused (1),
+         --  then wake the client's wake word through the notified one,
+         --  after it has gone to sleep.
+         Notified := GR.Decode (msg.words (0));
+         Has_Notified := True;
+         Ignore := CuBit.Messages.reply
+           (from, Reply (REPLY_OK, (if W.Wake_Peer (First) then 0 else 1)));
+         W.Sleep_For (Peer_Wake_Delay_Ms);
+         if not W.Wake_Peer (Notified) then
+            debugPrint ("futex-share-server: peer wake FAIL" & LF);
+         end if;
+         receive (from, msg);
 
       else
          replyWait (from, Reply (REPLY_FAILED), from, msg);
