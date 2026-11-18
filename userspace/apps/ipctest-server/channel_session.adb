@@ -10,7 +10,6 @@ with CuBit.Channel_Limits;
 with CuBit.Channel_Servers;
 with CuBit.Control_Events;
 with CuBit.Deadlines;
-with CuBit.Doorbells;
 with CuBit.System_Facts;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_Events;

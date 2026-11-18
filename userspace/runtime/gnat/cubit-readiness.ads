@@ -14,14 +14,15 @@
 --  poll found nothing. Work that arrives meanwhile is above that count and
 --  shows as Pending, so no entry is missed.
 --
---  Requests and completions are counted exactly once each when queued, so
---  the entries still queued never exceed Produced minus Consumed. For them a
---  loop also calls Took per entry, and a drain that took every counted entry
---  stops with no empty poll. Events are not counted one to one (one doorbell
---  can stand for several grant notices, channel wakes coalesce), so an
---  event drain always runs until a poll finds nothing; Took does not accept
---  Events. A count with no entry behind it (an entry another thread took)
---  costs one empty poll. Without the page (an older kernel) every class is
+--  Every entry is counted at least once before it can be taken (requests
+--  and completions once each; events once per notice, IRQ doorbell, wake
+--  or published event; IPC-010), so the entries still queued never exceed
+--  Produced minus what was consumed. A loop calls Took per entry it takes,
+--  and a drain that took every counted entry stops with no empty poll. A
+--  count with no entry behind it (a coalesced IRQ, an entry another thread
+--  took) costs one empty poll. A wait that takes an entry itself (a kernel
+--  notice, a wake of the wake word) says so with Note_Taken: every tracker
+--  counts it consumed. Without the page (an older kernel) every class is
 --  Pending, which is polling as before.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
@@ -50,12 +51,12 @@ package CuBit.Readiness is
    function Any_Pending (T : Tracker) return Boolean is
      (for some C in Queue_Class => Pending (T, C));
 
-   --  The classes whose every entry is counted once when queued.
-   subtype Counted_Class is Queue_Class
-     with Static_Predicate => Counted_Class in RP.Requests | RP.Completions;
-
    --  A poll of Class took one entry.
-   procedure Took (T : in out Tracker; Class : Counted_Class);
+   procedure Took (T : in out Tracker; Class : Queue_Class);
+
+   --  A wait took one entry of Class for this process (CuBit.Messages'
+   --  activity waits: a notice or a wake); every tracker sees it consumed.
+   procedure Note_Taken (Class : Queue_Class);
 
    --  A poll of Class found nothing after Produced returned Seen.
    procedure Caught_Up (T : in out Tracker; Class : Queue_Class; Seen : Count);

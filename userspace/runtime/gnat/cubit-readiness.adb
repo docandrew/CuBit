@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with System.Storage_Elements;
+with System.Machine_Code;
 with Interfaces;
 
 package body CuBit.Readiness is
@@ -18,20 +19,40 @@ package body CuBit.Readiness is
       return (if Available then Value else Count'Last);
    end Produced;
 
-   function Pending (T : Tracker; Class : Queue_Class) return Boolean is
-     (not Available or else RP.Behind (Page.Produced (Class), T.Consumed (Class)));
+   --  Entries waits took (Note_Taken), for every tracker; added atomically
+   --  (any thread may wait).
+   Taken_By_Waits : RP.Produced_Counts := [others => 0] with Volatile;
 
-   procedure Took (T : in out Tracker; Class : Counted_Class) is
+   function Taken (Class : Queue_Class) return Count is (Taken_By_Waits (Class));
+
+   function Pending (T : Tracker; Class : Queue_Class) return Boolean is
+     (not Available or else
+      RP.Behind (Page.Produced (Class), T.Consumed (Class) + Taken (Class)));
+
+   procedure Took (T : in out Tracker; Class : Queue_Class) is
    begin
       if Available then
          T.Consumed (Class) := RP.Next (T.Consumed (Class));
       end if;
    end Took;
 
-   procedure Caught_Up (T : in out Tracker; Class : Queue_Class; Seen : Count) is
+   procedure Note_Taken (Class : Queue_Class) is
+      One : Count := 1;
    begin
-      if Available and then Seen > T.Consumed (Class) and then Seen /= Count'Last then
-         T.Consumed (Class) := Seen;
+      System.Machine_Code.Asm
+        ("lock xaddq %0, %1",
+         Outputs => (Count'Asm_Output ("+r", One),
+                     Count'Asm_Output ("+m", Taken_By_Waits (Class))),
+         Clobber => "memory, cc", Volatile => True);
+   end Note_Taken;
+
+   procedure Caught_Up (T : in out Tracker; Class : Queue_Class; Seen : Count) is
+      By_Waits : constant Count := Taken (Class);
+   begin
+      if Available and then Seen /= Count'Last and then Seen >= By_Waits
+        and then Seen - By_Waits > T.Consumed (Class)
+      then
+         T.Consumed (Class) := Seen - By_Waits;
       end if;
    end Caught_Up;
 

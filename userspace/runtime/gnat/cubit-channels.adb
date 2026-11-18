@@ -6,7 +6,7 @@ pragma Ada_2022;
 with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Datagram_Rings;
-with CuBit.Doorbells;
+with CuBit.Waits;
 with CuBit.Grant_References;
 with CuBit.Handles.IPC;
 with CuBit.Kernel_ABI;
@@ -590,7 +590,7 @@ package body CuBit.Channels is
          Result := No_Region;
          return;
       end if;
-      Result := (if CuBit.Doorbells.Ring (C.Own_Grant, Sync) then Signalled else Ended);
+      Result := (if CuBit.Waits.Wake_Peer (C.Own_Grant, Sync) then Signalled else Ended);
    end Signal;
 
    --  The consumer's index, as far as the producer can trust it.

@@ -6,7 +6,6 @@ pragma Ada_2022;
 with System.Address_To_Access_Conversions;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Channel_Bells;
-with CuBit.Grant_References;
 with CuBit.Channel_Protocol;
 with CuBit.Process_IDs;
 with CuBit.Protocols;
@@ -283,8 +282,6 @@ package body CuBit.Channel_Servers is
 
    procedure Refresh (S : in out Server) is
       Order : Schedule.State (S.Size) with Import, Address => S.Order_At;
-      use type CuBit.Grant_References.Reference;
-
       procedure Look (I : Index);
       procedure Look (I : Index) is
          L : constant Link := Link_Of (S, I);
@@ -295,34 +292,17 @@ package body CuBit.Channel_Servers is
          end if;
       end Look;
    begin
-      if S.Wake_Bells_Valid and then not CuBit.Channel_Bells.Noted then
-         --  Only the channels whose grants the wake named.
-         for B in 1 .. S.Wake_Bell_Count loop
-            for I in 1 .. S.Size loop
-               declare
-                  L : constant Link := Link_Of (S, I);
-               begin
-                  if L.Active and then L.Channel.Peer_Grant = S.Wake_Bells (B) then
-                     Look (I);
-                     exit;
-                  end if;
-               end;
-            end loop;
-         end loop;
-      else
-         CuBit.Channel_Bells.Clear_Noted;
-         for I in 1 .. S.Size loop
-            declare
-               L : constant Link := Link_Of (S, I);
-            begin
-               if L.Active and then CuBit.Channel_Bells.Take (L.Channel.Peer_Grant, L.Routed) then
-                  Look (I);
-               end if;
-            end;
-         end loop;
-      end if;
-      S.Wake_Bells_Valid := False;
-      S.Wake_Bell_Count := 0;
+      --  A wake names no channel (IPC-010 option B): every channel looks.
+      CuBit.Channel_Bells.Clear_Noted;
+      for I in 1 .. S.Size loop
+         declare
+            L : constant Link := Link_Of (S, I);
+         begin
+            if L.Active and then CuBit.Channel_Bells.Take (L.Channel.Peer_Grant, L.Routed) then
+               Look (I);
+            end if;
+         end;
+      end loop;
    end Refresh;
 
    procedure Next (S : in out Server; Found : out Boolean; I : out Index) is
@@ -461,7 +441,6 @@ package body CuBit.Channel_Servers is
       Last : Natural := 0;
       Received : Boolean;
       Is_Wake : Boolean;
-      Count : CuBit.Doorbells.Wake_Count;
    begin
       Woke := (others => <>);
       --  Every owed wake goes now (each to a client that declared itself
@@ -492,13 +471,14 @@ package body CuBit.Channel_Servers is
          Woke.Kind := Deadline_Passed;
          return;
       end if;
-      CuBit.Doorbells.Decode
-        (Woke.Msg.tag.label, Woke.Msg.tag.length,
-         [Woke.Msg.words (0), Woke.Msg.words (1), Woke.Msg.words (2), Woke.Msg.words (3)],
-         Is_Wake, S.Wake_Bells, Count);
-      if Is_Wake and then CuBit.Messages."=" (Woke.From, CuBit.Messages.No_Process) then
-         S.Wake_Bell_Count := Count;
-         S.Wake_Bells_Valid := True;
+      Is_Wake := False;
+      if CuBit.Messages."=" (Woke.From, CuBit.Messages.No_Process) then
+         CuBit.Channel_Bells.Note_Notice
+           (Woke.Msg.tag.label, Woke.Msg.tag.length,
+            [Woke.Msg.words (0), Woke.Msg.words (1), Woke.Msg.words (2), Woke.Msg.words (3)],
+            Is_Wake);
+      end if;
+      if Is_Wake then
          Woke.Kind := Channels_Woken;
       else
          Woke.Kind := Message_Received;

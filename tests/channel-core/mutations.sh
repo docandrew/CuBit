@@ -43,10 +43,6 @@ mutate schedule-ignores-served cubit-channel_schedule.ads "(S.Active (I) and the
 mutate tags-reuse cubit-request_tags.adb "            T.Next_Tag := T.Next_Tag + 1;" "            null;" || fail=1
 mutate tags-duplicate-accepted cubit-request_tags.adb "            if T.Entries (I).State = Waiting then" "            if True then" || fail=1
 mutate tags-fail-misses cubit-request_tags.adb "            T.Entries (I).State := Ended;" "            null;" || fail=1
-mutate bells-take-any cubit-bell_sets.adb "            Was_Rung := Was_Rung or else S (B) (I).Rung;" "            Was_Rung := True;" || fail=1
-mutate bells-note-other cubit-bell_sets.adb "         if S (B) (I).Used and then S (B) (I).Ref = Ref then
-            S (B) (I).Rung := True;" "         if S (B) (I).Used then
-            S (B) (I).Rung := True;" || fail=1
 mutate rc-never-rings cubit-request_channels.adb "      Ring := Armed /= 0 and then Armed /= Last;" "      Ring := False;" || fail=1
 mutate rc-arm-no-recheck cubit-request_channels.adb "      if Can_Take (S) then
          Disarm_For_Requests (S);

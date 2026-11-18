@@ -1,6 +1,6 @@
 ------------------------------------------------------------------------------
 --  Hosted differential tests for the channel core (CAP-002 step 3):
---  Bell_Sets, Channel_Admission, Channel_Schedule and Request_Tags, each
+--  Channel_Admission, Channel_Schedule and Request_Tags, each
 --  against a straightforward reference model over random operations.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
@@ -35,58 +35,6 @@ procedure Main is
    end Check;
 
    Steps : constant := 200_000;
-
-   ---------------------------------------------------------------------------
-   procedure Test_Bells is
-      --  Universe: 40 references (slots 0..19 x generations 1..2) over 8
-      --  buckets of 2 ways, so buckets fill and registrations go Unrouted.
-      subtype U is Natural range 0 .. 39;
-      function Ref (I : U) return GR.Reference is
-        ((slot => GR.Global_Slot (I mod 20), generation => GR.Generation (1 + I / 20)));
-      Registered, Rung : array (U) of Boolean := [others => False];
-      S : Bells.Set := Bells.Empty;
-      R : Bells.Register_Result;
-      Known, Was : Boolean;
-      I : U;
-      use type Bells.Register_Result;
-   begin
-      for Step in 1 .. Steps loop
-         I := Pick (40);
-         case Pick (4) is
-            when 0 =>
-               Bells.Register (S, Ref (I), R);
-               if Registered (I) then
-                  Check (R = Bells.Already, "register twice is Already");
-               elsif R = Bells.Registered then
-                  Registered (I) := True; Rung (I) := False;
-               else
-                  --  Unrouted only when its bucket holds Ways others.
-                  declare
-                     In_Bucket : Natural := 0;
-                  begin
-                     for J in U loop
-                        if Registered (J) and then Bells.Bucket_Of (Ref (J)) = Bells.Bucket_Of (Ref (I)) then
-                           In_Bucket := In_Bucket + 1;
-                        end if;
-                     end loop;
-                     Check (In_Bucket = 2, "unrouted only for a full bucket");
-                  end;
-               end if;
-            when 1 =>
-               Bells.Unregister (S, Ref (I));
-               Registered (I) := False; Rung (I) := False;
-            when 2 =>
-               Bells.Note (S, Ref (I), Known);
-               Check (Known = Registered (I), "note knows exactly the registered");
-               if Known then Rung (I) := True; end if;
-            when others =>
-               Bells.Take (S, Ref (I), Was);
-               Check (Was = (Registered (I) and then Rung (I)), "take reports exactly its own ring");
-               Rung (I) := False;
-         end case;
-         Check (Bells.Holds (S, Ref (I)) = Registered (I), "holds matches model");
-      end loop;
-   end Test_Bells;
 
    ---------------------------------------------------------------------------
    procedure Test_Admission is
@@ -481,7 +429,6 @@ begin
       Seed := Integer'Value (Ada.Command_Line.Argument (1));
    end if;
    Random_Natural.Reset (Gen, Seed);
-   Test_Bells;
    Test_Admission;
    Test_Schedule;
    Test_Tags;

@@ -34,7 +34,6 @@ with CuBit.Channel_Schedule;
 with CuBit.Channels;
 with CuBit.Control_Events;
 with CuBit.Deadlines;
-with CuBit.Doorbells;
 with CuBit.Messages;
 with CuBit.Request_Channels;
 with System;
@@ -175,7 +174,6 @@ package CuBit.Channel_Servers is
    function Refusals (S : Server) return Refusal_Counts;
 
 private
-   Bells_Per_Wake : constant := CuBit.Doorbells.ABI.Wakes_Per_Event;
    Maximum_Blocks : constant := Schedule.Maximum_Size / Block_Size;
    type Block_Directory is array (1 .. Maximum_Blocks) of System.Address;
 
@@ -205,10 +203,5 @@ private
       Limits_At, Order_At : System.Address := System.Null_Address;
       Counts  : Refusal_Counts;
       Started : Boolean := False;
-      --  The grants the last wake event named (Refresh looks only at their
-      --  channels when Wake_Bells_Valid).
-      Wake_Bells : CuBit.Doorbells.Bell_Array (1 .. Bells_Per_Wake);
-      Wake_Bell_Count : CuBit.Doorbells.Wake_Count := 0;
-      Wake_Bells_Valid : Boolean := False;
    end record;
 end CuBit.Channel_Servers;

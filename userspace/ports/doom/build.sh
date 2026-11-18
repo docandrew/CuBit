@@ -52,7 +52,7 @@ for unit in "$here"/cubit-doom_*.adb; do
 done
 # The runtime units the platform layer needs that libc.a does not hold
 # (it holds the startup table, clock and system facts units).
-for unit in audio messages waits monotonic process_ids memory_grants desktop_protocol desktop_messages \
+for unit in audio messages waits monotonic readiness channel_bells wake_words process_ids memory_grants desktop_protocol desktop_messages \
     handles-kernel handles-ipc handles-grants handles-control handles-devices; do
     compile_ada "$runtime/cubit-$unit.adb"
 done

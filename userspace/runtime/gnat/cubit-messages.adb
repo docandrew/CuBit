@@ -15,6 +15,9 @@ with System.Machine_Code; use System.Machine_Code;
 with CuBit.Call_Census;
 with CuBit.Published_Clock;
 with CuBit.Waits;
+with CuBit.Wake_Words;
+with CuBit.Readiness;
+with CuBit.Channel_Bells;
 with Wait_ABI;
 with CuBit.System_Facts;
 with CuBit.Handles.Control;
@@ -73,6 +76,21 @@ package body CuBit.Messages is
    Activity_Deadline : constant Unsigned_64 := Wait_ABI.Ready_Deadline;
    Activity_Work     : constant Unsigned_64 := Wait_ABI.Ready_Work;
    Activity_Event    : constant Unsigned_64 := Wait_ABI.Ready_Event;
+   Activity_Word     : constant Unsigned_64 := Wait_ABI.Ready_Word;
+
+   --  A wait took an entry for this process (a notice, a wake of the wake
+   --  word): every readiness tracker counts it consumed, and a wake tells
+   --  the channels to look (IPC-010 option B).
+   procedure Took_By_Wait (Word : Unsigned_64);
+   procedure Took_By_Wait (Word : Unsigned_64) is
+   begin
+      if Word = Activity_Event or else Word = Activity_Word then
+         CuBit.Readiness.Note_Taken (CuBit.Readiness.Events);
+      end if;
+      if Word = Activity_Word then
+         CuBit.Channel_Bells.Note_Wake;
+      end if;
+   end Took_By_Wait;
 
    --  Stop (see the spec). Set once at startup, before the first receive.
    Disposition : Stop_Disposition := Program_Reads_Stop;
@@ -114,10 +132,12 @@ package body CuBit.Messages is
       return Activity_Result
    is
       Result : constant Unsigned_64 :=
-        CuBit.Waits.Wait (Wait_ABI.Ready_Sources, Deadline);
+        CuBit.Waits.Wait (Wait_ABI.Ready_Word_Sources, Deadline, 0,
+                          CuBit.Wake_Words.Address, CuBit.Wake_Words.Value);
    begin
+      Took_By_Wait (Result);
       case Result is
-         when Activity_Work => return Work_Available;
+         when Activity_Work | Activity_Word => return Work_Available;
          when Activity_Deadline => return Deadline_Reached;
          when others => return Unavailable;
       end case;
@@ -130,11 +150,13 @@ package body CuBit.Messages is
    begin
       Event := NULL_MESSAGE;
       Word := CuBit.Waits.Wait
-        (Wait_ABI.Ready_Sources, Deadline,
-         Unsigned_64 (System.Storage_Elements.To_Integer (Event'Address)));
+        (Wait_ABI.Ready_Word_Sources, Deadline,
+         Unsigned_64 (System.Storage_Elements.To_Integer (Event'Address)),
+         CuBit.Wake_Words.Address, CuBit.Wake_Words.Value);
+      Took_By_Wait (Word);
       Result := (case Word is
                    when Activity_Event    => Event_Taken,
-                   when Activity_Work     => Work_Available,
+                   when Activity_Work | Activity_Word => Work_Available,
                    when Activity_Deadline => Deadline_Reached,
                    when others            => Unavailable);
       if Result = Event_Taken then

@@ -3,49 +3,45 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
-with CuBit.Bell_Sets;
+with Channel_Wake_ABI;
 
 package body CuBit.Channel_Bells is
 
-   --  256 watched grants in 64 buckets of 4: about 6 KiB.
-   package Sets is new CuBit.Bell_Sets (Bucket_Count => 64, Ways => 4);
-   use type Sets.Register_Result;
-
-   Watched : Sets.Set := Sets.Empty;
-   --  A watched grant's wake was noted since Clear_Noted.
-   Any_Noted : Boolean := False;
+   Any_Noted : Boolean := False with Volatile;
 
    procedure Watch (Grant : GR.Reference; Result : out Watch_Result) is
-      R : Sets.Register_Result;
+      pragma Unreferenced (Grant);
    begin
-      Sets.Register (Watched, Grant, R);
-      Result := (if R = Sets.Unrouted then Unrouted else Routed);
+      Result := Unrouted;
    end Watch;
 
    procedure Unwatch (Grant : GR.Reference) is
+      pragma Unreferenced (Grant);
    begin
-      Sets.Unregister (Watched, Grant);
+      null;
    end Unwatch;
 
    function Take (Grant : GR.Reference; Routed : Boolean) return Boolean is
-      Was : Boolean;
+      pragma Unreferenced (Grant, Routed);
    begin
-      if not Routed then
-         return True;
-      end if;
-      Sets.Take (Watched, Grant, Was);
-      return Was;
+      return True;
    end Take;
 
-   procedure Note (Grant : GR.Reference);
-   procedure Note (Grant : GR.Reference) is
-      Known : Boolean;
+   procedure Note_Notice (Label : Unsigned_32; Length : Unsigned_8; W : Words;
+                          Is_Notice : out Boolean) is
+      pragma Unreferenced (W);
    begin
-      Sets.Note (Watched, Grant, Known);
-      if Known then
+      Is_Notice := Label = Channel_Wake_ABI.Wake_Label
+        and then Natural (Length) in 1 .. Channel_Wake_ABI.Wakes_Per_Event;
+      if Is_Notice then
          Any_Noted := True;
       end if;
-   end Note;
+   end Note_Notice;
+
+   procedure Note_Wake is
+   begin
+      Any_Noted := True;
+   end Note_Wake;
 
    function Noted return Boolean is (Any_Noted);
 
@@ -53,23 +49,5 @@ package body CuBit.Channel_Bells is
    begin
       Any_Noted := False;
    end Clear_Noted;
-
-   procedure Note_Notice (Label : Unsigned_32; Length : Unsigned_8; W : Words;
-                          Is_Notice : out Boolean) is
-      Bells : CuBit.Doorbells.Bell_Array (1 .. CuBit.Doorbells.ABI.Wakes_Per_Event);
-      Count : CuBit.Doorbells.Wake_Count;
-   begin
-      CuBit.Doorbells.Decode (Label, Length, W, Is_Notice, Bells, Count);
-      for I in 1 .. Count loop
-         Note (Bells (I));
-      end loop;
-   end Note_Notice;
-
-   procedure Note_Bells (Bells : CuBit.Doorbells.Bell_Array) is
-   begin
-      for B of Bells loop
-         Note (B);
-      end loop;
-   end Note_Bells;
 
 end CuBit.Channel_Bells;

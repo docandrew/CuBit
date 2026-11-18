@@ -9,6 +9,6 @@ alr exec -- gprbuild -p -q -P "$here/channel_core.gpr"
 "$here/build/main" "${SEED:-20261017}"
 if [[ ${1:-} == --prove ]]; then
     alr exec -- gnatprove -P "$here/channel_core.gpr" -u core_instances.ads -u wake_handshake_model.adb \
-        -u cubit-bell_sets.adb -u cubit-channel_admission.adb \
+        -u cubit-channel_admission.adb \
         -u cubit-channel_schedule.adb -u cubit-request_tags.adb -u cubit-channel_declarations.adb
 fi

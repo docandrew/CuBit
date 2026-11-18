@@ -198,13 +198,14 @@ package CuBit.Channels is
    --  Replaced by Signal; deleted when its last user moves (CAP-002 step 3).
    procedure Kick (C : Channel);
 
-   --  Wake the peer (a coalesced channel wake, CuBit.Doorbells) through the
-   --  grant of this side's own region (the peer is its grantee). Either side may signal;
-   --  callers signal only when the peer armed its waiting word, so bulk
-   --  traffic rings once per batch. No_Region: this side owns no region
+   --  Wake the peer: a futex wake of its wake word (IPC-010 option B,
+   --  CuBit.Wake_Words) through the grant of this side's own region (the
+   --  peer is its grantee), coalesced by the kernel. Either side may
+   --  signal; callers signal only when the peer armed its waiting word, so
+   --  bulk traffic wakes once per batch. No_Region: this side owns no region
    --  (a drop-oldest reader); Ended: the channel's grant has ended.
    type Signal_Result is (Signalled, No_Region, Ended);
-   --  Sync: this thread is about to block (CuBit.Doorbells.Ring).
+   --  Sync: this thread is about to block (the woken thread runs here).
    procedure Signal (C : Channel; Sync : Boolean; Result : out Signal_Result);
 
    --  Producers: whether the consumer armed its waiting word (it sleeps

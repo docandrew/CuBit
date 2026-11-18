@@ -60,7 +60,7 @@ package body CuBit.Process_Events is
    procedure File (Event : Message) is
       Bell_Notice : Boolean;
    begin
-      --  Rung channel grants (CAP-002 step 3) go to CuBit.Channel_Bells.
+      --  The wake notice (IPC-010 option B) goes to CuBit.Channel_Bells.
       CuBit.Channel_Bells.Note_Notice
         (Event.tag.label, Event.tag.length,
          [Event.words (0), Event.words (1), Event.words (2), Event.words (3)], Bell_Notice);
@@ -119,6 +119,7 @@ package body CuBit.Process_Events is
             CuBit.Readiness.Caught_Up (Events_Read, CuBit.Readiness.Events, Seen);
             exit;
          end if;
+         CuBit.Readiness.Took (Events_Read, CuBit.Readiness.Events);
          File (M);
       end loop;
    end Poll;

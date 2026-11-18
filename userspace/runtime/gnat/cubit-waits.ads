@@ -97,6 +97,13 @@ package CuBit.Waits is
    function Hand_Off (Peer, Mine : Futex_Name; Expected, Deadline : Unsigned_64)
      return Unsigned_64;
 
+   --  Wake a channel peer (IPC-010 option B): a futex wake of its wake
+   --  word through Grant, a live channel grant (made with the notify flag)
+   --  this process is a party of. Sync: this thread is about to block (the
+   --  woken thread is placed on its CPU). False: refused (not a party, or
+   --  the grant or the peer has ended).
+   function Wake_Peer (Grant : GR.Reference; Sync : Boolean := False) return Boolean;
+
    --  The futex pause's length, under the kernel's limit.
    Pause_Cycles : constant Unsigned_64 := 4_000;
 

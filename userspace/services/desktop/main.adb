@@ -15762,6 +15762,10 @@ begin
                   CuBit.Readiness.Caught_Up (deskReady, CuBit.Readiness.Events, Seen);
                   exit;
                end if;
+               --  Every event is counted before it can be taken (IPC-010):
+               --  a drain that took every counted event stops without an
+               --  empty poll.
+               CuBit.Readiness.Took (deskReady, CuBit.Readiness.Events);
                DB.Charge_Input (inputBatch);
                if Desktop_Timing_Policy.Enabled and then CR.Busy (launchRequest) and then
                  not launchInputAnnounced
