@@ -100,6 +100,10 @@ package Desktop_Surface_Rings is
 
    --  For Desktop's statistics: rings ended for a bad request; input
    --  events skipped because they were not valid.
+   --  Whether Client has a surface ring open (its end, when Client ends,
+   --  comes as a kernel grant event: Take_Notice).
+   function Holds_Ring (Client : CuBit.Messages.Process_ID) return Boolean;
+
    function Ended_For_Bad_Requests return Unsigned_64;
    function Skipped_Input return Unsigned_64;
 

@@ -201,6 +201,21 @@ package body Desktop_Surface_Rings is
       end if;
    end Take_Notice;
 
+   function Holds_Ring (Client : CuBit.Messages.Process_ID) return Boolean is
+   begin
+      if not Configured then
+         return False;
+      end if;
+      for I in 1 .. Servers.Size (Rings) loop
+         if Servers.Is_Active (Rings, Servers.Index (I))
+           and then Servers.Client_Of (Rings, Servers.Index (I)) = Client
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Holds_Ring;
+
    function Ended_For_Bad_Requests return Unsigned_64 is
       Total : Unsigned_64 := 0;
    begin
