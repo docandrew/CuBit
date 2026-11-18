@@ -1077,3 +1077,16 @@ rings a side that sleeps.
 ```sh
 bash tests/frame-rings/run.sh
 ```
+
+## desktop-reap (IPC-009: a dead client's window goes though nothing redraws)
+
+reap-check holds a window with no surface ring and no buffer and ends
+without goodbye. Nothing it held signals its end and nothing redraws
+afterwards; Desktop's look for windows like it (every
+Ringless_Reap_Interval_Ms) still removes the window ("ended: its process
+ended"). Failed before: the look ran only when a frame was composed.
+
+```sh
+make -C kernel world reap-check
+bash tests/headless/run.sh --test desktop-reap --accel kvm --timeout 60
+```
