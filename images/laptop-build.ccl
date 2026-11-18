@@ -85,7 +85,6 @@
   (file optical "boot-logs" "apps/boot-logs.app")
   (file optical "logs" "apps/logs.app")
   (file optical "metricsview" "apps/metricsview.app")
-  (file optical "gpu-viewer" "apps/gpu-viewer.app")
   (file optical "files" "apps/files.app")
   (file optical "doom" "apps/doom.elf")
   (file optical "sameboy" "apps/sameboy.app")
