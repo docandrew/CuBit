@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile,subprocess,os,json,hashlib
 assert os.environ.get('IN_NIX_SHELL')
 r=Path(__file__).resolve().parents[2];w=Path(tempfile.mkdtemp(prefix='software-text-',dir=r/'tests/compositor/build'));print(w,flush=True)
-names=['compositor_software_text','compositor_glyph_cache','compositor_glyph_storage','compositor_glyph_software','glyph_gamma','compositor_glyph_placement','compositor_glyph_layout','compositor_glyph_memory','compositor_glyph_ffi','compositor_identity','compositor_affine','compositor_transform','compositor_formats','cubit-display_geometry','cubit']
+names=['compositor_software_text','compositor_glyph_cache','compositor_glyph_storage','compositor_glyph_software','glyph_gamma','compositor_glyph_placement','compositor_glyph_layout','compositor_glyph_memory','compositor_glyph_ffi','compositor_identity','compositor_affine','compositor_transform','compositor_formats','cubit-display_geometry','cubit-ui_metrics','cubit']
 inputs={}
 for name in names:
  for ext in ['ads','adb']:
