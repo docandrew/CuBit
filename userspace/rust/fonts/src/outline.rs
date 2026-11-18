@@ -439,9 +439,36 @@ pub(crate) enum Outline {
 /// and origin margin), hinted through `zones` and emboldened by `darken`.
 /// Rejects (None) grids larger than `max_width` x `max_height`, before
 /// allocating.
+/// A glyph's outline, decoded (and emboldened) once for every subpixel
+/// phase: emboldening works in font units, before the phase's shift.
+pub(crate) enum Glyph {
+    /// No outline box: nothing to draw.
+    Empty,
+    /// Drawn straight from the font (no darkening).
+    Plain(ttf_parser::Rect),
+    /// Decoded and emboldened.
+    Recorded(ttf_parser::Rect, Recorded),
+}
+
+/// Decode `id` once; None when the font's outline cannot be read.
+pub(crate) fn decode(font: &Face, id: GlyphId, darken: Darken) -> Option<Glyph> {
+    let Some(bounds) = font.glyph_bounding_box(id) else {
+        return Some(Glyph::Empty);
+    };
+    if !darken.active() {
+        return Some(Glyph::Plain(bounds));
+    }
+    let mut recorded = Recorded::default();
+    font.outline_glyph(id, &mut recorded)?;
+    recorded.close_contour();
+    recorded.embolden(darken);
+    Some(Glyph::Recorded(bounds, recorded))
+}
+
 pub(crate) fn prepare(
     font: &Face,
     id: GlyphId,
+    glyph: &Glyph,
     ratio: f32,
     shift: f32,
     zones: Zones,
@@ -449,8 +476,9 @@ pub(crate) fn prepare(
     max_width: u32,
     max_height: u32,
 ) -> Option<Outline> {
-    let Some(bounds) = font.glyph_bounding_box(id) else {
-        return Some(Outline::Empty);
+    let bounds = match glyph {
+        Glyph::Empty => return Some(Outline::Empty),
+        Glyph::Plain(bounds) | Glyph::Recorded(bounds, _) => *bounds,
     };
     // Emboldening moves a point at most EMBOLDEN_REACH times its per-side
     // strength along an axis (at the sharpest turn it still shifts).
@@ -484,14 +512,11 @@ pub(crate) fn prepare(
         first: point(0.0, 0.0),
         current: point(0.0, 0.0),
     };
-    if darken.active() {
-        let mut recorded = Recorded::default();
-        font.outline_glyph(id, &mut recorded)?;
-        recorded.close_contour();
-        recorded.embolden(darken);
-        recorded.replay(&mut contours);
-    } else {
-        font.outline_glyph(id, &mut contours)?;
+    match glyph {
+        Glyph::Recorded(_, recorded) => recorded.replay(&mut contours),
+        _ => {
+            font.outline_glyph(id, &mut contours)?;
+        }
     }
     Some(Outline::Ready(Prepared { contours, left: left as i32, top: top as i32 }))
 }

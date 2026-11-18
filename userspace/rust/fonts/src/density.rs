@@ -66,8 +66,8 @@ fn render_with(r: &Request, pixels: &mut [u8], style: Style) -> Option<Metrics> 
         return None;
     }
     let (baseline, _) = line_box(face, &font, r.em_numerator as f32 / r.em_denominator as f32);
-    let zones = zones(&font, ratio, style.hinted);
-    let darken = darken(&font, ratio, style);
+    let (zones, darken) = measured(face, &font, r.em_numerator, r.em_denominator, ratio, style);
+    let glyph = outline::decode(&font, id, darken)?;
     let raster = (r.pitch * r.height) as usize;
     // Prepare every phase's outline before changing caller pixels. These
     // temporary coverage grids are bounded; no glyph pointer or destination
@@ -75,7 +75,7 @@ fn render_with(r: &Request, pixels: &mut [u8], style: Style) -> Option<Metrics> 
     let mut prepared: [Option<outline::Prepared>; PHASES as usize] = [const { None }; PHASES as usize];
     for (phase, slot) in prepared.iter_mut().enumerate().take(r.phases as usize) {
         let shift = ORIGIN as f32 * density + phase as f32 / r.phases as f32;
-        *slot = match outline::prepare(&font, id, ratio, shift, zones, darken, r.width + 2, r.height + 2)? {
+        *slot = match outline::prepare(&font, id, &glyph, ratio, shift, zones, darken, r.width + 2, r.height + 2)? {
             Outline::Ready(p) => Some(p),
             Outline::Empty => None,
         };
@@ -97,6 +97,59 @@ fn render_with(r: &Request, pixels: &mut [u8], style: Style) -> Option<Metrics> 
         advance,
         height: r.height,
     })
+}
+/// A face's hinting zones and darkening at one size: the same for every
+/// glyph of it, so measured once per (face, size, style) (each measure
+/// reads reference glyphs) and kept. A full table measures without keeping.
+#[derive(Clone, Copy)]
+struct Measure {
+    face: u32,
+    em_numerator: u32,
+    em_denominator: u32,
+    hinted: bool,
+    darkened: bool,
+    zones: Zones,
+    darken: Darken,
+}
+const MEASURES: usize = 32;
+struct MeasureTable {
+    busy: core::sync::atomic::AtomicBool,
+    items: core::cell::UnsafeCell<[Option<Measure>; MEASURES]>,
+}
+// Only read or written while `busy` is held (acquire/release below).
+unsafe impl Sync for MeasureTable {}
+static MEASURED: MeasureTable = MeasureTable {
+    busy: core::sync::atomic::AtomicBool::new(false),
+    items: core::cell::UnsafeCell::new([None; MEASURES]),
+};
+fn with_table<T>(f: impl FnOnce(&mut [Option<Measure>; MEASURES]) -> T) -> T {
+    use core::sync::atomic::Ordering;
+    while MEASURED.busy.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        core::hint::spin_loop();
+    }
+    // SAFETY: `busy` is held: no other reference to the table exists.
+    let result = f(unsafe { &mut *MEASURED.items.get() });
+    MEASURED.busy.store(false, Ordering::Release);
+    result
+}
+fn measured(face: usize, font: &Face, em_numerator: u32, em_denominator: u32, ratio: f32, style: Style) -> (Zones, Darken) {
+    let same = |m: &Measure| {
+        m.face == face as u32 && m.em_numerator == em_numerator && m.em_denominator == em_denominator
+            && m.hinted == style.hinted && m.darkened == style.darkened
+    };
+    if let Some(m) = with_table(|t| t.iter().flatten().find(|m| same(m)).copied()) {
+        return (m.zones, m.darken);
+    }
+    let (zones, darken) = (zones(font, ratio, style.hinted), darken(font, ratio, style));
+    with_table(|t| {
+        if !t.iter().flatten().any(|m| same(m)) {
+            if let Some(free) = t.iter_mut().find(|m| m.is_none()) {
+                *free = Some(Measure { face: face as u32, em_numerator, em_denominator, hinted: style.hinted,
+                                       darkened: style.darkened, zones, darken });
+            }
+        }
+    });
+    (zones, darken)
 }
 fn separate(a: usize, size_a: usize, b: usize, size_b: usize) -> bool {
     match (a.checked_add(size_a), b.checked_add(size_b)) {
@@ -408,7 +461,8 @@ mod breakdown {
                     for phase in 0..PHASES {
                         let shift = ORIGIN as f32 * density + phase as f32 / PHASES as f32;
                         let t = Instant::now();
-                        let o = outline::prepare(&font, id, ratio, shift, zones, dk, r.width + 2, r.height + 2).unwrap();
+                        let g = outline::decode(&font, id, dk).unwrap();
+                        let o = outline::prepare(&font, id, &g, ratio, shift, zones, dk, r.width + 2, r.height + 2).unwrap();
                         prep += t.elapsed().as_nanos();
                         if let Outline::Ready(p) = o {
                             let t = Instant::now();
@@ -426,5 +480,54 @@ mod breakdown {
                       prepare(4 phases)={:.2} [of which outline decode x4={:.2}] each(4)={:.2} (per glyph, {} glyphs)",
                      us(total), us(parse), us(zone), us(dark), us(prep), us(decode), us(each), glyphs);
         }
+    }
+}
+
+/// Every printable glyph of both bundled UI faces at densities 1, 3/2 and
+/// 2, all four phases, hashed with its advance and compared with
+/// tests/masks.golden (the engine's output when the golden was written):
+/// a change to the engine must leave every byte of every mask the same.
+/// CUBIT_FONTS_WRITE_GOLDEN=1 rewrites the file.
+#[cfg(test)]
+mod golden {
+    use super::*;
+    extern crate std;
+    use std::{format, string::String, vec};
+
+    fn request(face: u32, code: u32, n: u32, d: u32) -> Request {
+        let w = (BASE_WIDTH_BOUND * n + d - 1) / d;
+        let h = (BASE_LINE * n + d - 1) / d;
+        let pitch = (w + 15) / 16 * 16;
+        Request { face, code, em_numerator: BASE_EM_PX * n, em_denominator: d, width: w, height: h, pitch,
+                  capacity: pitch * h * PHASES, phases: PHASES }
+    }
+
+    #[test]
+    fn masks_match_golden() {
+        let mut text = String::new();
+        for face in [0u32, 2] {
+            for (n, d) in [(1u32, 1u32), (3, 2), (2, 1)] {
+                for code in 32..=126u32 {
+                    let r = request(face, code, n, d);
+                    let mut pixels = vec![0u8; r.capacity as usize];
+                    let m = render(&r, &mut pixels).expect("printable glyphs render");
+                    let mut h: u64 = 0xCBF2_9CE4_8422_2325;
+                    for &b in &pixels {
+                        h = (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01B3);
+                    }
+                    h = (h ^ u64::from(m.advance)).wrapping_mul(0x0000_0100_0000_01B3);
+                    text.push_str(&format!("face={face} density={n}/{d} code={code} advance={} hash={h:016x}\n", m.advance));
+                }
+            }
+        }
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/masks.golden");
+        if std::env::var_os("CUBIT_FONTS_WRITE_GOLDEN").is_some() {
+            std::fs::write(path, &text).unwrap();
+        }
+        let golden = std::fs::read_to_string(path).expect("tests/masks.golden");
+        for (line, (got, want)) in text.lines().zip(golden.lines()).enumerate() {
+            assert_eq!(got, want, "mask {line} differs from the golden");
+        }
+        assert_eq!(text.lines().count(), golden.lines().count());
     }
 }

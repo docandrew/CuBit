@@ -289,8 +289,10 @@ fn rasterize(face: usize, size: usize, code: u32, phase: u32, style: Style) -> O
     let mut cell = Cell { advance: advance.max(1), height, baseline: baseline as u32, ..Cell::EMPTY };
     let shift = ORIGIN as f32 + phase as f32 / PHASES as f32;
     let zones = zones(&font, ratio, style.hinted);
+    let darken = darken(&font, ratio, style);
+    let glyph = outline::decode(&font, id, darken)?;
     if let Outline::Ready(prepared) = outline::prepare(
-        &font, id, ratio, shift, zones, darken(&font, ratio, style), WIDTH as u32, HEIGHT as u32,
+        &font, id, &glyph, ratio, shift, zones, darken, WIDTH as u32, HEIGHT as u32,
     )?
     {
         let (mut x0, mut y0, mut x1, mut y1) = (WIDTH as i32, HEIGHT as i32, -1, -1);
