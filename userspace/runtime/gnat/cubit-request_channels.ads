@@ -53,6 +53,9 @@ package CuBit.Request_Channels is
    Submitted_At      : constant := 0;
    Reaped_At         : constant := 64;
    Client_Waiting_At : constant := 128;
+   --  The kinds of answers that should not wake the client (Wake_Kind
+   --  bits; 0: every kind wakes it), written before its arming.
+   Client_Skip_At    : constant := 136;
    Room_Waiting_At   : constant := 192;
    Client_State_At   : constant := 256;
    Client_State_Last : constant := 1_023;
@@ -113,7 +116,10 @@ package CuBit.Request_Channels is
 
    --  Before sleeping for completions: arm. False: one arrived meanwhile
    --  (do not sleep). Disarm after waking.
-   function Arm_For_Completions (C : in out Client) return Boolean;
+   --  Skip: the answer kinds (Kind_Bit) that should not wake it this time
+   --  (they stay in the ring for the next Reap; the arming is kept for an
+   --  answer that wakes it).
+   function Arm_For_Completions (C : in out Client; Skip : Unsigned_32 := 0) return Boolean;
    procedure Disarm_For_Completions (C : Client);
    --  Before sleeping for room in the request ring.
    function Arm_For_Room (C : in out Client) return Boolean;
@@ -145,9 +151,17 @@ package CuBit.Request_Channels is
    --  the copy). Ring_Peer: the client waits for room and asked to be rung.
    procedure Take (S : in out Server; Item : out Queues.Submission; Got, Ring_Peer : out Boolean);
 
+   --  An answer's kind, the protocol's (at most 32 kinds): a client may arm
+   --  for some kinds only (Arm_For_Completions' Skip).
+   subtype Wake_Kind is Natural range 0 .. 31;
+   function Kind_Bit (Kind : Wake_Kind) return Unsigned_32 is (Shift_Left (1, Kind));
+
    --  Answer one taken request; it always has room. Ring_Peer: the client
-   --  sleeps for completions and asked to be rung.
-   procedure Complete (S : in out Server; Tag : Token; Answer : Result; Ring_Peer : out Boolean)
+   --  sleeps for completions of this Kind and asked to be rung (once per
+   --  arming; an answer of a kind it skips neither rings nor uses the
+   --  arming).
+   procedure Complete (S : in out Server; Tag : Token; Answer : Result; Ring_Peer : out Boolean;
+                       Kind : Wake_Kind := 0)
    with Pre => Owed (S) > 0;
 
    --  Before sleeping for requests.

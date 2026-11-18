@@ -336,14 +336,15 @@ package body CuBit.Channel_Servers is
       end if;
    end Take;
 
-   procedure Complete (S : in out Server; I : Index; Tag : RC.Token; Answer : RC.Result) is
+   procedure Complete (S : in out Server; I : Index; Tag : RC.Token; Answer : RC.Result;
+                       Kind : RC.Wake_Kind := 0) is
       L : constant Link := Link_Of (S, I);
       Ring : Boolean;
    begin
       if not L.Active or else RC.Owed (L.Ring) = 0 then
          return;
       end if;
-      RC.Complete (L.Ring, Tag, Answer, Ring);
+      RC.Complete (L.Ring, Tag, Answer, Ring, Kind);
       if Ring then
          L.Ring_Owed := True;
       end if;

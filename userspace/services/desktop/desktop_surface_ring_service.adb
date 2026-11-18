@@ -115,7 +115,7 @@ package body Desktop_Surface_Ring_Service is
    procedure Answer (I : Ring_Index; Tag : SR.RC.Token; Value : Wire.Result) is
    begin
       if Is_Active (I) then
-         Complete (I, Tag, Wire.Encode (Value));
+         Complete (I, Tag, Wire.Encode (Value), Value.Kind);
       end if;
    end Answer;
 

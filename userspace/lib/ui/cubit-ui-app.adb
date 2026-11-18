@@ -914,11 +914,15 @@ package body CuBit.UI.App is
    --  for, a completion, a message) or Deadline (a kernel word). Armed
    --  first: an answer that arrived meanwhile returns at once. One system
    --  call per wake; a kernel notice (the ring's wake) comes back with it.
-   procedure Sleep_For_Activity (win : in out Window; Deadline : Unsigned_64; Woke : out Wake_Result) is
+   --  Need_Frames False: no frame waits on a present's or publication's
+   --  answer, so those answers do not wake it (IPC-010: Desktop's
+   --  retirement wakes skip an idle window).
+   procedure Sleep_For_Activity (win : in out Window; Deadline : Unsigned_64; Woke : out Wake_Result;
+                                 Need_Frames : Boolean := True) is
       Notice : aliased Message;
       Slept : constant Unsigned_64 := (if Trace_Wakes then CuBit.Monotonic.Microseconds else 0);
    begin
-      if not Ring.Arm (win.ring) then
+      if not Ring.Arm (win.ring, Skip_Frames => not Need_Frames) then
          Woke := Work_Available;
          if Trace_Wakes then
             Wake_Trace := (CuBit.UI.App.Answer_Waiting, Slept, Slept,
@@ -1471,7 +1475,8 @@ package body CuBit.UI.App is
                      On_Deadline (win, timerDirty, running);
                   else
                      Request_Ring_Input (win);
-                     Sleep_For_Activity (win, (if deadline = 0 then Wait_Forever else deadline), woke);
+                     Sleep_For_Activity (win, (if deadline = 0 then Wait_Forever else deadline), woke,
+                                         Need_Frames => blocked);
                      if woke = Unavailable then
                         Report_Stop (win, Activity_Unavailable);
                         abnormal := True;

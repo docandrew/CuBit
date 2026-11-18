@@ -156,11 +156,13 @@ package body CuBit.Request_Channels is
       end;
    end Reap;
 
-   function Arm_For_Completions (C : in out Client) return Boolean is
+   function Arm_For_Completions (C : in out Client; Skip : Unsigned_32 := 0) return Boolean is
    begin
       if not Client_Attached (C) then
          return True;
       end if;
+      --  The skip mask first: a server that sees this arming sees it.
+      Store (C.Own, Client_Skip_At, Skip);
       C.Arming := Next_Arming (C.Arming);
       Store (C.Own, Client_Waiting_At, C.Arming);
       Full_Fence;
@@ -262,14 +264,24 @@ package body CuBit.Request_Channels is
       Ring_Once (Load (S.Peer, Room_Waiting_At), S.Rung_Room, Ring_Peer);
    end Take;
 
-   procedure Complete (S : in out Server; Tag : Token; Answer : Result; Ring_Peer : out Boolean) is
+   procedure Complete (S : in out Server; Tag : Token; Answer : Result; Ring_Peer : out Boolean;
+                       Kind : Wake_Kind := 0) is
       Slots : Queues.Completions.Ring with Import, Address => At_Offset (S.Own, Ring_At);
+      Armed : Unsigned_32;
    begin
       Queues.Complete (S.Ring, Slots, Tag, Answer);
       Barrier;
       Store (S.Own, Completed_At, Unsigned_32 (S.Ring.Answers.Produced));
       Full_Fence;
-      Ring_Once (Load (S.Peer, Client_Waiting_At), S.Rung_Arming, Ring_Peer);
+      --  The arming, then its skip mask (written before it): loads stay in
+      --  order, so a skip read here belongs to this arming or a later one.
+      Armed := Load (S.Peer, Client_Waiting_At);
+      Barrier;
+      if (Load (S.Peer, Client_Skip_At) and Kind_Bit (Kind)) /= 0 then
+         Ring_Peer := False;
+      else
+         Ring_Once (Armed, S.Rung_Arming, Ring_Peer);
+      end if;
    end Complete;
 
    function Arm_For_Requests (S : in out Server) return Boolean is

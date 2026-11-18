@@ -194,11 +194,15 @@ package body Client_Surface_Ring is
       end loop;
    end Reap;
 
-   function Arm (C : in out Connection) return Boolean is
+   function Arm (C : in out Connection; Skip_Frames : Boolean := False) return Boolean is
+      Frames : constant Interfaces.Unsigned_32 :=
+        SR.RC.Kind_Bit (Wire.Request_Kind'Enum_Rep (Wire.Present))
+        or SR.RC.Kind_Bit (Wire.Request_Kind'Enum_Rep (Wire.Publish));
    begin
       --  Desktop must hear what this side queued before it sleeps.
       Flush (C);
-      return not C.Open or else SR.RC.Arm_For_Completions (C.Ring);
+      return not C.Open or else
+        SR.RC.Arm_For_Completions (C.Ring, Skip => (if Skip_Frames then Frames else 0));
    end Arm;
 
    procedure Disarm (C : Connection) is

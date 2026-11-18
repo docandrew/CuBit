@@ -80,8 +80,10 @@ package Client_Surface_Ring is
      (C : in out Connection; Tag : out Token; Answer : out Wire.Result; Got : out Boolean);
 
    --  Before sleeping: declare this side asleep. False: an answer arrived
-   --  meanwhile (do not sleep; Reap). Disarm after waking.
-   function Arm (C : in out Connection) return Boolean;
+   --  meanwhile (do not sleep; Reap). Disarm after waking. Skip_Frames:
+   --  answers to presents and publications do not wake this side this time
+   --  (no frame waits on one; they are reaped at the next wake).
+   function Arm (C : in out Connection; Skip_Frames : Boolean := False) return Boolean;
    procedure Disarm (C : Connection);
 
    --  A kernel grant event: whether it ended this channel (Desktop gone).

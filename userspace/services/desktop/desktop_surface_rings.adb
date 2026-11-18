@@ -39,9 +39,11 @@ package body Desktop_Surface_Rings is
    function Is_Active (I : Servers.Index) return Boolean is (Servers.Is_Active (Rings, I));
    function Client_Of (I : Servers.Index) return CuBit.Process_IDs.Process_ID is
      (Servers.Client_Of (Rings, I));
-   procedure Complete (I : Servers.Index; Tag : SR.RC.Token; Answer : Compositor_Surface_Wire.Result_Words) is
+   procedure Complete (I : Servers.Index; Tag : SR.RC.Token; Answer : Compositor_Surface_Wire.Result_Words;
+                       Kind : Compositor_Surface_Wire.Request_Kind) is
    begin
-      Servers.Complete (Rings, I, Tag, Answer);
+      --  Retirement wakes skip a client that armed for input only (IPC-010).
+      Servers.Complete (Rings, I, Tag, Answer, Compositor_Surface_Wire.Request_Kind'Enum_Rep (Kind));
    end Complete;
    procedure End_Ring (I : Servers.Index) is
    begin

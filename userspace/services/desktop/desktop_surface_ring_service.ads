@@ -44,9 +44,11 @@ generic
    --  into it, end it (its client loses the channel).
    with function Is_Active (I : Ring_Index) return Boolean;
    with function Client_Of (I : Ring_Index) return CuBit.Process_IDs.Process_ID;
+   --  Kind: the answer's request kind (a client may arm for some only).
    with procedure Complete
      (I : Ring_Index; Tag : Compositor_Surface_Ring.RC.Token;
-      Answer : Compositor_Surface_Wire.Result_Words);
+      Answer : Compositor_Surface_Wire.Result_Words;
+      Kind : Compositor_Surface_Wire.Request_Kind);
    with procedure End_Ring (I : Ring_Index);
    --  Input was queued for one of ring I's client's windows and no request
    --  could take it: count up the ring's unrequested-input generation

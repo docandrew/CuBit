@@ -90,7 +90,9 @@ package CuBit.Channel_Servers is
 
    procedure Next (S : in out Server; Found : out Boolean; I : out Index);
    procedure Take (S : in out Server; I : Index; Item : out RC.Queues.Submission; Got : out Boolean);
-   procedure Complete (S : in out Server; I : Index; Tag : RC.Token; Answer : RC.Result);
+   --  Kind: the answer's kind, for clients that arm for some kinds only.
+   procedure Complete (S : in out Server; I : Index; Tag : RC.Token; Answer : RC.Result;
+                       Kind : RC.Wake_Kind := 0);
    procedure Served (S : in out Server; I : Index);
 
    --  Ring I's client now if it is owed a ring, instead of at the end of

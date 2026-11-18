@@ -362,6 +362,58 @@ procedure Main is
       end loop;
    end Test_Hostile_Client;
 
+   --  A client that arms skipping a kind of answer (IPC-010): an answer of
+   --  that kind neither rings it nor uses its arming, so the next answer of
+   --  a kind it wants still rings it, once; an arming with no skip rings for
+   --  every kind.
+   procedure Test_Skip_Kinds is
+      use RC_Instance;
+      use Interfaces;
+      type Region is array (1 .. 8 * RC.Page_Bytes) of System.Storage_Elements.Storage_Element
+        with Alignment => 4096;
+      Client_Region, Server_Region : aliased Region := [others => 0];
+      C : RC.Client;
+      S : RC.Server;
+      Item : RC.Queues.Submission;
+      Got, Ring, Submitted, Armed : Boolean;
+      Retirement : constant RC.Wake_Kind := 1;
+      Input      : constant RC.Wake_Kind := 4;
+      procedure Owe_Two is
+      begin
+         for T in RC.Token range 1 .. 2 loop
+            RC.Submit (C, T, (Value => Unsigned_64 (T)), Submitted, Ring);
+            RC.Take (S, Item, Got, Ring);
+         end loop;
+      end Owe_Two;
+      procedure Reap_All is
+         Answer : RC.Queues.Completion;
+      begin
+         loop
+            RC.Reap (C, Answer, Got);
+            exit when not Got;
+         end loop;
+      end Reap_All;
+   begin
+      RC.Attach_Client (C, Client_Region'Address, Server_Region'Address);
+      RC.Attach_Server (S, Server_Region'Address, Client_Region'Address);
+      Owe_Two;
+      Armed := RC.Arm_For_Completions (C, Skip => RC.Kind_Bit (Retirement));
+      Check (Armed, "armed with nothing waiting");
+      RC.Complete (S, 1, (Value => 1), Ring, Kind => Retirement);
+      Check (not Ring, "a skipped kind does not ring");
+      RC.Complete (S, 2, (Value => 2), Ring, Kind => Input);
+      Check (Ring, "a wanted kind still rings: the skipped one kept the arming");
+      RC.Disarm_For_Completions (C);
+      Reap_All;
+      Owe_Two;
+      Armed := RC.Arm_For_Completions (C);
+      Check (Armed, "armed again with nothing waiting");
+      RC.Complete (S, 1, (Value => 1), Ring, Kind => Retirement);
+      Check (Ring, "with no skip every kind rings");
+      RC.Complete (S, 2, (Value => 2), Ring, Kind => Input);
+      Check (not Ring, "one ring per arming");
+   end Test_Skip_Kinds;
+
 
    ---------------------------------------------------------------------------
    --  .cubit.channels: random valid tables round trip; flipped bytes of an
@@ -434,6 +486,7 @@ begin
    Test_Tags;
    Test_Request_Channel;
    Test_Hostile_Client;
+   Test_Skip_Kinds;
    Test_Declarations;
    Put_Line ("channel-core: checks" & Checks'Image & ", failures" & Failures'Image);
    if Failures > 0 then
