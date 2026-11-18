@@ -4680,27 +4680,32 @@ procedure main is
       end loop;
    end fillRectUntimed;
 
+   --  The pixels of x, y, w, h inside the clip and the frame buffer: what a
+   --  primitive drawing that rectangle covers (timing builds' per-path
+   --  attribution).
+   function clippedPixels (x, y, w, h : Natural) return Unsigned_64 is
+      L : Natural := x;
+      T : Natural := y;
+      R : Natural := x + w;
+      B : Natural := y + h;
+   begin
+      if not Desktop_Timing_Policy.Enabled then
+         return 0;
+      end if;
+      if clipEnabled then
+         L := Natural'Max (L, clipRect.x); T := Natural'Max (T, clipRect.y);
+         R := Natural'Min (R, clipRect.x + clipRect.w); B := Natural'Min (B, clipRect.y + clipRect.h);
+      end if;
+      R := Natural'Min (R, fbWidth); B := Natural'Min (B, fbHeight);
+      return (if L < R and then T < B then Unsigned_64 (R - L) * Unsigned_64 (B - T) else 0);
+   end clippedPixels;
+
    procedure fillRect (x, y, w, h : Natural; color : Unsigned_32;
                        Use_Compositor : Boolean := True) is
-      --  The pixels the fill covers, clipped as fillRectUntimed clips them
-      --  (timing builds' per-path attribution).
-      function Covered return Unsigned_64 is
-         L : Natural := x;
-         T : Natural := y;
-         R : Natural := x + w;
-         B : Natural := y + h;
-      begin
-         if clipEnabled then
-            L := Natural'Max (L, clipRect.x); T := Natural'Max (T, clipRect.y);
-            R := Natural'Min (R, clipRect.x + clipRect.w); B := Natural'Min (B, clipRect.y + clipRect.h);
-         end if;
-         R := Natural'Min (R, fbWidth); B := Natural'Min (B, fbHeight);
-         return (if L < R and then T < B then Unsigned_64 (R - L) * Unsigned_64 (B - T) else 0);
-      end Covered;
    begin
       Desktop_Path_Timing.Enter (Desktop_Path_Timing.Fill);
       fillRectUntimed (x, y, w, h, color, Use_Compositor);
-      Desktop_Path_Timing.Leave ((if Desktop_Timing_Policy.Enabled then Covered else 0));
+      Desktop_Path_Timing.Leave (clippedPixels (x, y, w, h));
    end fillRect;
 
    wallpaperCullAnnounced : Boolean := False;
@@ -4879,7 +4884,7 @@ procedure main is
    begin
       Desktop_Path_Timing.Enter (Desktop_Path_Timing.Blend);
       drawDappledShadowUntimed (x, y, w, h);
-      Desktop_Path_Timing.Leave (Unsigned_64 (w) * Unsigned_64 (h));
+      Desktop_Path_Timing.Leave (clippedPixels (x, y, w, h));
    end drawDappledShadow;
 
    procedure strokeRect
