@@ -70,4 +70,26 @@ package CuBit.UI.Text_Views is
    function Selection (V : View; Text : String) return String;
 
    procedure Draw (C : Canvas; Box : Rect; Colors : Theme; V : View; Text : String; Focused : Boolean);
+
+   --  Repainting only what changed (UI-043). Old and Old_Text are what the
+   --  last frame drew, with the same Box, Colors and focus.
+   --
+   --  Changed: the part of Box that drawing V over Text changes: the rows
+   --  whose line or selection differ, and the scroll bar when it moved.
+   --  Empty when nothing changes.
+   function Changed (Box : Rect; Old : View; Old_Text : String; V : View; Text : String) return Rect;
+   --  Lines > 0: V shows Old's rows moved up by Lines (row R shows what old
+   --  row R + Lines showed, for every row both show), with no selection in
+   --  either, so those rows can be copied instead of drawn.
+   function Moved_Lines (Box : Rect; Old : View; Old_Text : String; V : View; Text : String) return Natural;
+   --  As Draw (the same pixels), but when Moved_Lines allows it the rows
+   --  that only moved are copied from Previous, the frame that drew Old
+   --  over Old_Text (CuBit.UI.App.Previous_Canvas): only the rows that
+   --  appear and the scroll bar are drawn. Without a usable Previous it
+   --  draws everything in C's clip, as Draw.
+   procedure Draw_Moved
+     (C, Previous : Canvas; Box : Rect; Colors : Theme;
+      Old : View; Old_Text : String; V : View; Text : String; Focused : Boolean);
+   --  The rows Draw_Moved copied in its last call (0: it drew everything).
+   function Last_Copied_Rows return Natural;
 end CuBit.UI.Text_Views;

@@ -227,13 +227,193 @@ package body CuBit.UI.Text_Views is
       return Text (Text'First + First - 1 .. Text'First + Last - 2);
    end Selection;
 
+   --  One shown row: its line's characters (Text indices First .. Last,
+   --  empty when Last < First) and the columns of it that are selected
+   --  (From .. To - 1, none when To <= From). Present: the line exists.
+   type Row is record
+      Present : Boolean := False;
+      First : Positive := 1;
+      Last : Natural := 0;
+      From, To : Natural := 0;
+   end record;
+   type Rows is array (Natural range <>) of Row;
+
+   --  The rows V shows of Text, in one pass over it.
+   function Shown_Rows (Text : String; V : View; Count : Positive) return Rows is
+      Result : Rows (0 .. Count - 1);
+      Line : Positive := 1;
+      Start : Positive := Text'First;
+      Sel_First : constant Positive := Selection_First (V);
+      Sel_Last : constant Positive := Selection_Last (V);
+      procedure Finish (Last : Natural) is
+         R : Natural;
+         Start_Position, End_Position : Positive;
+      begin
+         if Line >= V.First_Line and then Line - V.First_Line < Count then
+            R := Line - V.First_Line;
+            Result (R) := (Present => True, First => Start, Last => Last, From => 0, To => 0);
+            --  Positions are 1-based in Text.
+            Start_Position := Start - Text'First + 1;
+            End_Position := Start_Position + (if Last >= Start then Last - Start + 1 else 0);
+            if Sel_First < Sel_Last and then Sel_First < End_Position and then Sel_Last > Start_Position then
+               Result (R).From := Positive'Max (Sel_First, Start_Position) - Start_Position;
+               Result (R).To := Positive'Min (Sel_Last, End_Position) - Start_Position;
+            end if;
+         end if;
+      end Finish;
+   begin
+      for I in Text'Range loop
+         if Text (I) = ASCII.LF then
+            Finish (I - 1);
+            Line := Line + 1;
+            exit when Line >= V.First_Line + Count;
+            Start := I + 1;
+         end if;
+      end loop;
+      if Line >= V.First_Line and then Line - V.First_Line < Count then
+         Finish (Text'Last);
+      end if;
+      return Result;
+   end Shown_Rows;
+
+   function Same_Row (A : Row; A_Text : String; B : Row; B_Text : String) return Boolean is
+     (A.Present = B.Present and then
+      (not A.Present or else
+       (A.Last - A.First = B.Last - B.First and then A.From = B.From and then A.To = B.To and then
+        (A.Last < A.First or else A_Text (A.First .. A.Last) = B_Text (B.First .. B.Last)))));
+
+   --  Row R of Box's text area: the band its line is drawn in.
+   function Row_Rect (Box : Rect; R : Natural) return Rect is
+     ((Text_Box (Box).x, Text_Box (Box).y + Multiline_Text_Top + R * Line_Pitch,
+       Text_Box (Box).w, Line_Pitch));
+
+   function Changed (Box : Rect; Old : View; Old_Text : String; V : View; Text : String) return Rect is
+      Count : constant Positive := Visible_Lines (Box);
+      Before : constant Rows := Shown_Rows (Old_Text, Old, Count);
+      After : constant Rows := Shown_Rows (Text, V, Count);
+      Result : Rect := (others => 0);
+   begin
+      for R in 0 .. Count - 1 loop
+         if not Same_Row (Before (R), Old_Text, After (R), Text) then
+            Result := Union_Rect (Result, Row_Rect (Box, R));
+         end if;
+      end loop;
+      if Old.First_Line /= V.First_Line or else Last_Top (Old_Text, Box) /= Last_Top (Text, Box) then
+         Result := Union_Rect (Result, Bar_Box (Box));
+      end if;
+      return Result;
+   end Changed;
+
+   function Moved_Lines (Box : Rect; Old : View; Old_Text : String; V : View; Text : String) return Natural is
+      Count : constant Positive := Visible_Lines (Box);
+   begin
+      if Selection_First (Old) /= Selection_Last (Old) or else Selection_First (V) /= Selection_Last (V) or else
+        Count < 2
+      then
+         return 0;
+      end if;
+      declare
+         Before : constant Rows := Shown_Rows (Old_Text, Old, Count);
+         After : constant Rows := Shown_Rows (Text, V, Count);
+         Matches : Boolean;
+      begin
+         for Lines in 1 .. Count - 1 loop
+            Matches := True;
+            for R in 0 .. Count - 1 - Lines loop
+               if not Same_Row (After (R), Text, Before (R + Lines), Old_Text) then
+                  Matches := False;
+                  exit;
+               end if;
+            end loop;
+            if Matches then
+               return Lines;
+            end if;
+         end loop;
+      end;
+      return 0;
+   end Moved_Lines;
+
+   Copied_Rows : Natural := 0;
+   function Last_Copied_Rows return Natural is (Copied_Rows);
+
+   procedure Draw_Moved
+     (C, Previous : Canvas; Box : Rect; Colors : Theme;
+      Old : View; Old_Text : String; V : View; Text : String; Focused : Boolean)
+   is
+      Lines : constant Natural := Moved_Lines (Box, Old, Old_Text, V, Text);
+      Count : constant Positive := Visible_Lines (Box);
+      Band : Rect;
+      Copied : Boolean := False;
+   begin
+      Copied_Rows := 0;
+      if Lines > 0 then
+         --  New rows 0 .. Count - 1 - Lines were old rows Lines .. Count - 1.
+         Band := Row_Rect (Box, 0);
+         Band.h := (Count - Lines) * Line_Pitch;
+         Copy_Moved (C, Previous, Band, Band.y + Lines * Line_Pitch, Copied);
+      end if;
+      if not Copied then
+         Draw (C, Box, Colors, V, Text, Focused);
+         return;
+      end if;
+      Copied_Rows := Count - Lines;
+      --  Everything else C's clip asks for: at most four pieces around the
+      --  copied band (the new rows, the field's edges, the scroll bar).
+      declare
+         Region : constant Rect := (if C.clipEnabled then C.clip else (0, 0, C.width, C.height));
+         Left : constant Natural := Natural'Max (Region.x, Band.x);
+         Top : constant Natural := Natural'Max (Region.y, Band.y);
+         Right : constant Natural := Natural'Min (Region.x + Region.w, Band.x + Band.w);
+         Bottom : constant Natural := Natural'Min (Region.y + Region.h, Band.y + Band.h);
+         procedure Piece (R : Rect) is
+         begin
+            if not Is_Empty (R) then
+               Draw (With_Clip (C, R), Box, Colors, V, Text, Focused);
+            end if;
+         end Piece;
+      begin
+         if Left >= Right or else Top >= Bottom then
+            Draw (C, Box, Colors, V, Text, Focused);
+            return;
+         end if;
+         Piece ((Region.x, Region.y, Region.w, Top - Region.y));
+         Piece ((Region.x, Bottom, Region.w, Region.y + Region.h - Bottom));
+         Piece ((Region.x, Top, Left - Region.x, Bottom - Top));
+         Piece ((Right, Top, Region.x + Region.w - Right, Bottom - Top));
+      end;
+   end Draw_Moved;
+
    procedure Draw (C : Canvas; Box : Rect; Colors : Theme; V : View; Text : String; Focused : Boolean) is
       T : constant Rect := Text_Box (Box);
    begin
-      --  Read-only: no caret; the focus ring shows where keys go.
-      Draw_Multiline_Text_Edit
-        (C, T, Colors, Text, V.First_Line, Visible_Lines (Box), V.Cursor,
-         Selection_First (V), Selection_Last (V), focused => False, hot => False);
+      --  Read-only: no caret; the focus ring shows where keys go. Only the
+      --  shown lines go to the grid (it walks every character it is given),
+      --  with the positions moved to that slice and clamped to it.
+      declare
+         Count : constant Positive := Visible_Lines (Box);
+         Shown : constant Rows := Shown_Rows (Text, V, Count);
+         First : constant Positive := (if Shown (0).Present then Shown (0).First else Text'First);
+         Last : Natural := (if Shown (0).Present then Shown (0).Last else Text'First - 1);
+         Offset : Natural;
+         function Moved (Position : Positive) return Positive is
+           (if Position <= Offset then 1
+            else Positive'Min (Position - Offset, Last - First + 2));
+      begin
+         for R of Shown loop
+            if R.Present then
+               Last := R.Last;
+            end if;
+         end loop;
+         if Shown (0).Present then
+            Offset := First - Text'First;
+            Draw_Multiline_Text_Edit
+              (C, T, Colors, Text (First .. Last), 1, Count, Moved (V.Cursor),
+               Moved (Selection_First (V)), Moved (Selection_Last (V)), focused => False, hot => False);
+         else
+            Draw_Multiline_Text_Edit
+              (C, T, Colors, "", 1, Count, 1, 1, 1, focused => False, hot => False);
+         end if;
+      end;
       if Focused then
          Draw_Focus_Ring (C, T, Colors);
       end if;

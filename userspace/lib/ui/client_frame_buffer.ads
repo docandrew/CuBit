@@ -17,6 +17,9 @@ package Client_Frame_Buffer with SPARK_Mode => Off is
    type Buffer is limited private;
    procedure Allocate (B : in out Buffer; Bytes : Natural; OK : out Boolean);
    function Writable_Address (B : Buffer) return System.Address;
+   --  The buffer's pixels for reading (its owner's own memory, whatever the
+   --  write policy); null while none is allocated.
+   function Readable_Address (B : Buffer) return System.Address;
    function Capacity (B : Buffer) return Natural;
    procedure Prepare_Write (B : in out Buffer; Ready : out Boolean);
    procedure Present

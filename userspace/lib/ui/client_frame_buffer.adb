@@ -30,6 +30,8 @@ package body Client_Frame_Buffer is
    function Writable_Address (B : Buffer) return System.Address is
      (if B.Policy.Mode = P.Writable then To_Address (Integer_Address (B.Base))
       else System.Null_Address);
+   function Readable_Address (B : Buffer) return System.Address is
+     (if B.Bytes > 0 then To_Address (Integer_Address (B.Base)) else System.Null_Address);
    function Capacity (B : Buffer) return Natural is (B.Bytes);
    procedure Allocate (B : in out Buffer; Bytes : Natural; OK : out Boolean) is
       Cleaned : Boolean;

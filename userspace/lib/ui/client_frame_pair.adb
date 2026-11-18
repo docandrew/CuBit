@@ -15,6 +15,7 @@ package body Client_Frame_Pair is
       if Ready then
          O.Config := (Status => DP.Invalid_Request);
          O.Next := 1;
+         O.Previous_Current := False;
          O.Closing := False;
       end if;
    end Reset;
@@ -25,6 +26,10 @@ package body Client_Frame_Pair is
      (O.Config.Status = DP.Success and then Debt.Nonempty (Debt.Publication_Damage (O.Damage)));
    function Address (O : Owner) return System.Address is
      (if O.Painting and not O.Closing then Frames.Writable_Address (O.Frames (O.Next))
+      else System.Null_Address);
+   function Previous_Address (O : Owner) return System.Address is
+     (if O.Painting and not O.Closing and O.Previous_Current
+      then Frames.Readable_Address (O.Frames (if O.Next = 1 then 2 else 1))
       else System.Null_Address);
    procedure Configure (O : in out Owner; Surface : DP.Live_Surface_Name; OK : out Boolean) is
       Request : Message := CuBit.Desktop_Messages.From_Wire
@@ -44,6 +49,7 @@ package body Client_Frame_Pair is
          O.Config := Result;
          O.Surface := Surface;
          O.Damage := Debt.Open ((0, 0, Natural (Result.Value.Width), Natural (Result.Value.Height)));
+         O.Previous_Current := False;
       end if;
       OK := True;
    end Configure;
@@ -138,6 +144,9 @@ package body Client_Frame_Pair is
          Debt.Published (O.Damage, O.Next, Rendered);
          O.Next := (if O.Next = 1 then 2 else 1);
       end if;
+      --  Accepted: the slot just painted becomes the other one. Not: this
+      --  slot holds the newest pixels and will be painted again.
+      O.Previous_Current := Accepted;
    end Publish_With;
    procedure Publish (O : in out Owner; Rendered : Debt.Box; Accepted : out Boolean;
                       Input_After : Interfaces.Unsigned_64 := 0) is

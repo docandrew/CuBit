@@ -165,6 +165,14 @@ package body CuBit.UI.App is
          clip        => (others => 0), others => <>);
    end Canvas;
 
+   function Previous_Canvas (win : Window) return CuBit.UI.Canvas is
+     (if win.protectedFrames and then System."/=" (FP.Previous_Address (win.frames), System.Null_Address)
+      then (addr => FP.Previous_Address (win.frames), width => win.width, height => win.height,
+            pitch => win.pitch, densityNumerator => win.densityNumerator,
+            densityDenominator => win.densityDenominator, clipEnabled => False,
+            clip => (others => 0), others => <>)
+      else (others => <>));
+
    function Canvas
       (win : Window; clip : CuBit.UI.Rect) return CuBit.UI.Canvas
    is

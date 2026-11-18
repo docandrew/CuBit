@@ -21,6 +21,12 @@ package Client_Frame_Pair with SPARK_Mode => Off is
    procedure Begin_Paint (O : in out Owner; Changed : Debt.Box;
                           Repair : out Debt.Box; Ready : out Boolean);
    function Address (O : Owner) return System.Address;
+   --  While painting: the buffer holding the frame painted and published
+   --  just before, at the same configuration (same size and layout), for
+   --  copying pixels that only moved (scroll-by-copy); null when there is
+   --  none (the first frames, after a reconfiguration, or when the last
+   --  publication was not submitted). Read only.
+   function Previous_Address (O : Owner) return System.Address;
    -- Rendered must cover all repair debt, including any deferred damage.
    -- Success withdraws writable access. Failure retains damage for retry.
    procedure Publish (O : in out Owner; Rendered : Debt.Box; Accepted : out Boolean;
@@ -55,6 +61,9 @@ private
       Surface : DP.Live_Surface_Name := 1;
       Damage : Debt.State;
       Next : Debt.Slot := 1;
+      --  The other slot holds the last frame painted, and it was published
+      --  at the current configuration.
+      Previous_Current : Boolean := False;
       Painting : Boolean := False;
       Closing : Boolean := False;
    end record;

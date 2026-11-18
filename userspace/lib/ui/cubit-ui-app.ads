@@ -155,6 +155,12 @@ package CuBit.UI.App is
    function Canvas (win : Window) return CuBit.UI.Canvas;
    function Canvas
       (win : Window; clip : CuBit.UI.Rect) return CuBit.UI.Canvas;
+   --  While painting (inside Render): the frame painted just before, at
+   --  the same size and density, to copy pixels that only moved from
+   --  (CuBit.UI.Copy_Moved); its addr is null when there is none (the
+   --  first frames, after a resize, a window without protected frames, or
+   --  when the last frame was not submitted). Never written.
+   function Previous_Canvas (win : Window) return CuBit.UI.Canvas;
 
    --  The next event from the window's ring, if one has arrived; never
    --  blocks and makes no system call (it keeps one input request

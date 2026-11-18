@@ -6,6 +6,7 @@
 --  read-only text field (CuBit.UI.Text_Views): scrolling, following the
 --  end, selecting by pointer and keys.
 with Ada.Text_IO;
+with Interfaces;
 with Ada.Numerics.Discrete_Random;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.Boxes;
@@ -344,9 +345,103 @@ procedure Layout_Tests is
       TV.Sync (V, "short", Box);
       Check (TV.Selection_Last (V) <= 6 and V.First_Line = 1, "clamped");
    end Text_View_Tests;
+   ---------------------------------------------------------------------------
+   --  Text views: repainting only what changed (UI-043)
+   ---------------------------------------------------------------------------
+   procedure Text_View_Repaint_Tests is
+      use type Interfaces.Unsigned_32;
+      W : constant := 420;
+      H : constant := 200;
+      type Pixels is array (0 .. W * H - 1) of Interfaces.Unsigned_32;
+      Previous, Target, Expected : aliased Pixels;
+      function On (P : access Pixels) return Canvas is
+        (addr => P.all'Address, width => W, height => H, pitch => W * 4, others => <>);
+      Colors : constant Theme := Current_Theme;
+      Box : constant Rect := (10, 10, 400, TV.Height_Hint (8, 8).Minimum);
+      function Log (From, To : Natural) return String is
+        (if From > To then ""
+         elsif From = To then "record" & From'Image & "  devmgr: bound device" & From'Image
+         else Log (From, To - 1) & ASCII.LF & Log (To, To));
+      Old_Text : constant String := Log (1, 20);
+      Old, V : TV.View;
+      function Same_Pixels return Boolean is (Target = Expected);
+      Dirty : Rect;
+   begin
+      TV.Sync (Old, Old_Text, Box);
+      --  Following the end, a new record moves every row up one: every row
+      --  changes, and all but the new one can be copied.
+      declare
+         New_Text : constant String := Log (1, 21);
+      begin
+         V := Old;
+         TV.Sync (V, New_Text, Box);
+         Dirty := TV.Changed (Box, Old, Old_Text, V, New_Text);
+         Check (Dirty.y <= Box.y + Multiline_Text_Top and Dirty.h >= 8 * TV.Line_Pitch,
+                "a scrolled view repaints its rows");
+         Check (TV.Moved_Lines (Box, Old, Old_Text, V, New_Text) = 1, "one line moved");
+         --  The copy plus the new row is the full drawing, pixel for pixel.
+         Previous := [others => 16#FF00_00FF#];
+         TV.Draw (On (Previous'Access), Box, Colors, Old, Old_Text, False);
+         Target := [others => 16#FF00_FF00#];
+         TV.Draw_Moved (On (Target'Access), On (Previous'Access), Box, Colors, Old, Old_Text, V, New_Text, False);
+         Expected := [others => 16#FF00_FF00#];
+         TV.Draw (On (Expected'Access), Box, Colors, V, New_Text, False);
+         Check (TV.Last_Copied_Rows = 7, "seven rows copied");
+         Check (Same_Pixels, "scroll-by-copy draws what drawing everything draws");
+         --  The copy really comes from the previous frame: from a wrong one
+         --  the result differs (the test would catch a broken copy).
+         Previous := [others => 16#FF12_3456#];
+         Target := [others => 16#FF00_FF00#];
+         TV.Draw_Moved (On (Target'Access), On (Previous'Access), Box, Colors, Old, Old_Text, V, New_Text, False);
+         Check (not Same_Pixels, "the rows came from the previous frame");
+         --  No previous frame: everything is drawn.
+         Target := [others => 16#FF00_FF00#];
+         TV.Draw_Moved (On (Target'Access), (others => <>), Box, Colors, Old, Old_Text, V, New_Text, False);
+         Check (TV.Last_Copied_Rows = 0 and Same_Pixels, "without a previous frame it draws everything");
+      end;
+      --  Scrolled back, a new record at the end changes no row: only the
+      --  scroll bar.
+      declare
+         New_Text : constant String := Log (1, 21);
+         Back : TV.View := Old;
+      begin
+         TV.Scroll (Back, Old_Text, Box, -5);
+         V := Back;
+         TV.Sync (V, New_Text, Box);
+         Dirty := TV.Changed (Box, Back, Old_Text, V, New_Text);
+         Check (Dirty = TV.Bar_Box (Box), "an unseen record repaints only the scroll bar");
+      end;
+      --  One shown line changes: only its row.
+      declare
+         New_Text : String := Old_Text;
+      begin
+         V := Old;
+         New_Text (New_Text'Last) := 'X';
+         Dirty := TV.Changed (Box, Old, Old_Text, V, New_Text);
+         Check (Dirty.h = TV.Line_Pitch and Dirty.y = Box.y + Multiline_Text_Top + 7 * TV.Line_Pitch,
+                "one changed line repaints one row");
+         Check (TV.Moved_Lines (Box, Old, Old_Text, V, New_Text) = 0, "nothing moved");
+      end;
+      --  Draw hands the grid only the shown lines: the same pixels as the
+      --  whole text with a selection reaching across the slice's edges.
+      V := Old;
+      V.Anchor := 30;
+      V.Cursor := Old_Text'Length - 10;
+      Target := [others => 0];
+      TV.Draw (On (Target'Access), Box, Colors, V, Old_Text, False);
+      Expected := [others => 0];
+      Draw_Multiline_Text_Edit
+        (On (Expected'Access), TV.Text_Box (Box), Colors, Old_Text, V.First_Line, TV.Visible_Lines (Box),
+         V.Cursor, TV.Selection_First (V), TV.Selection_Last (V), focused => False, hot => False);
+      Draw_Vertical_Scrollbar
+        (On (Expected'Access), TV.Bar_Box (Box), Colors, 1, TV.Line_Count (Old_Text) - TV.Visible_Lines (Box) + 1,
+         V.First_Line, hot => False, active => False, pageSize => TV.Visible_Lines (Box));
+      Check (Same_Pixels, "drawing the shown lines only is drawing the whole text");
+   end Text_View_Repaint_Tests;
 begin
    Random_Distributions;
    Boxes_Tests;
    Text_View_Tests;
+   Text_View_Repaint_Tests;
    Ada.Text_IO.Put_Line ("PASS layout containers (UI-033):" & Checks'Image & " checks");
 end Layout_Tests;

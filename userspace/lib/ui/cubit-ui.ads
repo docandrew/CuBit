@@ -236,6 +236,13 @@ package CuBit.UI is
    procedure Draw_Bitmap_Native
      (c : Canvas; r : Rect; pixels : ARGB_Bitmap; enabled : Boolean := True);
    procedure Fill_Rect (c : Canvas; r : Rect; fill : Color);
+   --  Scroll-by-copy: Area of c gets the pixels Source has in the rows of
+   --  Area moved to start at row From_Y (Source is normally the frame
+   --  painted before, CuBit.UI.App.Previous_Canvas), within c's clip.
+   --  Copied is False when nothing was copied: no source, a different
+   --  layout or density, a scaled canvas (unit density only), or source
+   --  rows outside it; the caller then draws Area itself.
+   procedure Copy_Moved (c, Source : Canvas; Area : Rect; From_Y : Natural; Copied : out Boolean);
    procedure Fill_Vertical_Gradient
       (c : Canvas; r : Rect; topColor, bottomColor : Color);
    procedure Stroke_Rect

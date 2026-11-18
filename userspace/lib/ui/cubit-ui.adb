@@ -216,6 +216,40 @@ package body CuBit.UI is
       end;
    end Fill_Rect;
 
+   procedure Copy_Moved (c, Source : Canvas; Area : Rect; From_Y : Natural; Copied : out Boolean) is
+      use type Client_Canvas_Geometry.Component;
+      function Memmove (Target, From : System.Address; Bytes : Storage_Count) return System.Address
+        with Import, Convention => C, External_Name => "memmove";
+      Target : constant Rect := Raster_Rect (c, Area);
+      Ignore : System.Address;
+      Source_Top : Integer;
+   begin
+      Copied := False;
+      if c.addr = System.Null_Address or else Source.addr = System.Null_Address or else
+        c.pitch /= Source.pitch or else c.width /= Source.width or else c.height /= Source.height or else
+        c.densityNumerator /= c.densityDenominator or else
+        Source.densityNumerator /= c.densityNumerator or else
+        Source.densityDenominator /= c.densityDenominator or else
+        c.originX /= Source.originX or else c.originY /= Source.originY or else
+        c.pitch mod 4 /= 0 or else Is_Empty (Target) or else Target.x + Target.w > c.pitch / 4
+      then
+         return;
+      end if;
+      --  Unit density: physical rows are logical rows plus the origin, so
+      --  the move is the same in both.
+      Source_Top := Target.y + (From_Y - Area.y);
+      if Source_Top < 0 or else Source_Top + Target.h > Source.height then
+         return;
+      end if;
+      for Row in 0 .. Target.h - 1 loop
+         Ignore := Memmove
+           (c.addr + Storage_Offset ((Target.y + Row) * c.pitch + Target.x * 4),
+            Source.addr + Storage_Offset ((Source_Top + Row) * Source.pitch + Target.x * 4),
+            Storage_Count (Target.w * 4));
+      end loop;
+      Copied := True;
+   end Copy_Moved;
+
    procedure Stroke_Rect
       (c : Canvas; r : Rect; light : Color; dark : Color)
    is
