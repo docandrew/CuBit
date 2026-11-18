@@ -1,0 +1,6 @@
+# Shared futex checks (IPC-010, headless --test futex-share): a process
+# that holds neither grant tries to wake and wait on a shared word.
+(Executable_Manifest
+  identity => "com.cubit.futex-share.outsider"
+  version => "1.0.0"
+  requests => [(service "ipc-test" "ipc-test")])

@@ -356,7 +356,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -848,6 +848,11 @@ with open(sys.argv[1], "wb") as f:
         # (wait-check), and a store to the page that must fault
         # (readiness-writer).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-wait.ccl"
+        ;;
+    futex-share)
+        # IPC-010: shared futexes across processes (wake, wait, FIFO,
+        # revocation, a refused outsider, wake-plus-wait, starvation).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex-share.ccl"
         ;;
     secondary-stacks)
         # secondary-stack-check (build: make -C kernel secondary-stack-check):
@@ -2348,6 +2353,17 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WAIT_IMAGE $WAIT_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $WAIT_IMAGE (make -C kernel wait-check readiness-writer)" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "futex-share" ]; then
+        for SHARE_IMAGE in logstore.svc futex-share-server.app futex-share-client.app \
+          futex-share-outsider.app; do
+            debugfs -w -R "rm $SHARE_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$SHARE_IMAGE $SHARE_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $SHARE_IMAGE (make -C kernel futex-share)" >&2
                 exit 1
             fi
         done
@@ -7658,6 +7674,32 @@ platform-pool-check: touching the revoked mapping
            [ "$(grep -acF 'platform-pool: shared phys=' "$SERIAL_LOG")" -ne 1 ] ||
            [ "$(grep -acF 'TEST: PASS platform-pool' "$SERIAL_LOG")" -ne 1 ]; then
             echo "headless: platform-pool checks failed, or the revoked mapping stayed readable" >&2
+            exit 1
+        fi
+        ;;
+    futex-share)
+        required_markers="
+futex-share: two pages granted PASS
+futex-share: server acquired them PASS
+futex-share: unaligned shared word refused PASS
+futex-share: shared word past the grant refused PASS
+futex-share: hand-off with a refused wake does not wait PASS
+futex-share: ping-pong of 20000 rounds, handoff, no wake lost PASS
+futex-share: ping-pong of 20000 rounds, separate, no wake lost PASS
+futex-share: eight waiters woken oldest first PASS
+futex-share: owner's waiter woken as revoked PASS
+futex-share: grantee's waiter woken as revoked PASS
+futex-share: wait on an ended grant refused PASS
+futex-share: wake on an ended grant refused PASS
+futex-share: bystanders keep their share beside a ping-pong PASS
+futex-share: ALL PASS
+futex-share-outsider: wake without the grant refused PASS
+futex-share-outsider: wait without the grant refused PASS
+futex-share-outsider: ALL PASS
+"
+        if grep -aE 'futex-share(-outsider)?: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aqF 'futex-share-server: pong FAIL' "$SERIAL_LOG"; then
+            echo "headless: futex-share checks failed" >&2
             exit 1
         fi
         ;;

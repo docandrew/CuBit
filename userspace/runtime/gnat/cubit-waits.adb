@@ -1,5 +1,4 @@
 pragma Ada_2022;
-with System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Monotonic;
@@ -40,5 +39,24 @@ package body CuBit.Waits is
      return Unsigned_64 is
      (Wait (W.Futex_Sources, Deadline,
             Unsigned_64 (System.Storage_Elements.To_Integer (Word)), Expected));
+
+   function Futex_Wait (Name : Futex_Name; Expected, Deadline : Unsigned_64)
+     return Unsigned_64 is
+     (Wait (W.Futex_Sources + (if Name.Shared then W.Shared_Futex else 0), Deadline,
+            Name.Word, Expected));
+
+   function Futex_Wake (Name : Futex_Name; Count : Unsigned_64) return Unsigned_64 is
+     (CuBit.Kernel_Calls.Call
+        (CuBit.Kernel_ABI.Futex_Wake, Name.Word, Count,
+         (if Name.Shared then FA.Shared_Space else FA.Private_Space)));
+
+   function Hand_Off (Peer, Mine : Futex_Name; Expected, Deadline : Unsigned_64)
+     return Unsigned_64 is
+     (CuBit.Kernel_Calls.Call
+        (CuBit.Kernel_ABI.Wait,
+         W.Futex_Sources + W.Wake_First
+           + (if Mine.Shared then W.Shared_Futex else 0)
+           + (if Peer.Shared then W.Wake_Shared else 0),
+         Deadline, Mine.Word, Expected, 0, Peer.Word));
 
 end CuBit.Waits;

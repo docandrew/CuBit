@@ -1627,6 +1627,14 @@ wait-check: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/wait-check/build
 	$(CCL_BUILD) ../userspace/apps/wait-check/component.ccl
 	cp ../userspace/apps/wait-check/build/wait-check.app isodir/boot/wait-check.app
+# Shared futexes (IPC-010): headless --test futex-share.
+.PHONY : futex-share
+futex-share: ccl-build user_runtime ccl-manifest
+	for app in futex-share-server futex-share-client futex-share-outsider; do \
+	  mkdir -p ../userspace/apps/$$app/build && \
+	  $(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
+	  cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
+	done
 readiness-writer: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/readiness-writer/build
 	$(CCL_BUILD) ../userspace/apps/readiness-writer/component.ccl
@@ -2860,7 +2868,7 @@ check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 
-world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview
+world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview
 
 .PHONY : headless-test
 headless-test: world

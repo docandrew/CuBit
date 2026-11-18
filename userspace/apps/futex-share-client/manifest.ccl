@@ -1,0 +1,6 @@
+# Shared futex checks (IPC-010, headless --test futex-share): the owner
+# side; grants two pages to the server and runs the checks.
+(Executable_Manifest
+  identity => "com.cubit.futex-share.client"
+  version => "1.0.0"
+  requests => [(service "ipc-test" "ipc-test")])

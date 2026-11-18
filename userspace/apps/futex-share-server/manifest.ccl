@@ -1,0 +1,6 @@
+# Shared futex checks (IPC-010, headless --test futex-share): the grantee
+# side. Registers the IPC test service its two peers call.
+(executable-manifest v1
+  (identity "com.cubit.futex-share.server")
+  (version "1.0.0")
+  (request-notification ipc-test-registration manage registration))

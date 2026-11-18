@@ -83,8 +83,10 @@ begin
    Check (CuBit.Waits.Wait (W.Messages_Sources + W.Timer_Sources, W.Now) = W.Unsupported_Form,
           "mixed sources refused");
    Check (CuBit.Waits.Wait (16#4000#, W.Now) = W.Unsupported_Form, "unknown source refused");
-   Check (CuBit.Waits.Wait (W.Futex_Sources + W.Wake_First, W.Now) = W.Unsupported_Form,
-          "reserved wake-first refused");
+   Check (CuBit.Waits.Wait (W.Messages_Sources + W.Wake_First, W.Now) = W.Unsupported_Form,
+          "wake-first outside the futex form refused");
+   Check (CuBit.Waits.Wait (W.Futex_Sources + W.Wake_Shared, W.Now) = W.Unsupported_Form,
+          "a shared wake without wake-first refused");
 
    --  Deadlines expire.
    Started := CuBit.Monotonic.Milliseconds;

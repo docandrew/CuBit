@@ -1,0 +1,2 @@
+(Component name => "futex-share-outsider" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

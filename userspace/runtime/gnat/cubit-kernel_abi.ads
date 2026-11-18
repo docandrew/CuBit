@@ -93,6 +93,7 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Futex_Woken     : constant Unsigned_64 := Wait_ABI.Futex_Woken;
    Futex_Retry     : constant Unsigned_64 := Wait_ABI.Futex_Retry;
    Futex_Timed_Out : constant Unsigned_64 := Wait_ABI.Futex_Timed_Out;
+   Futex_Revoked   : constant Unsigned_64 := Wait_ABI.Futex_Revoked;
 
    --  The largest owned-memory region (kernel Owned_Reservation_Policy).
    Maximum_Owned_Region_Bytes : constant := 2 * 1024 * 1024 * 1024;
