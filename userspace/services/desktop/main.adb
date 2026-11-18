@@ -10190,6 +10190,24 @@ procedure main is
    end stageOrRetire;
 
 
+   --  LOG-011: a window asked for while Desktop is still starting (its
+   --  display not set up) waits here, its reply saved, until the start is
+   --  done; then it is answered as if it had just come. The client waits
+   --  for that answer with its own deadline (CuBit.UI.App.Open).
+   Deferred_Creates_Max : constant := 32;
+   type Deferred_Create is record
+      Used    : Boolean := False;
+      From    : Process_ID := No_Process;
+      Request : Message := NULL_MESSAGE;
+      Saved   : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+   end record;
+   deferredCreates : array (1 .. Deferred_Creates_Max) of Deferred_Create;
+   --  Desktop's start is done: windows are created when asked.
+   desktopStarted : Boolean := False;
+   --  A deferred request is being answered (the reply goes to Saved).
+   answeringDeferred : CuBit.Handles.Reply := CuBit.Handles.No_Reply;
+   replayingDeferred : Boolean := False;
+
    procedure handleRequest (from : Process_ID; request : Message) is
       replyMsg : Message := NULL_MESSAGE;
       ignore   : Unsigned_64;
@@ -10612,6 +10630,30 @@ procedure main is
             end if;
 
          when OP_SURFACE_CREATE =>
+           if not desktopStarted and then not replayingDeferred then
+            declare
+               saved : constant CuBit.Handles.IPC.Saved_Reply := CuBit.Handles.IPC.Save_Reply;
+               Kept : Boolean := False;
+            begin
+               if saved.Saved then
+                  for D of deferredCreates loop
+                     if not D.Used then
+                        D := (True, from, request, saved.Handle);
+                        Kept := True;
+                        exit;
+                     end if;
+                  end loop;
+                  if not Kept then
+                     ignore := replyCap (saved.Handle, CuBit.Desktop_Messages.From_Wire
+                       (DP.Encode_Creation_Result ((Status => DP.Resources_Exhausted))));
+                  end if;
+                  replyNow := False;
+               else
+                  replyMsg := CuBit.Desktop_Messages.From_Wire
+                    (DP.Encode_Creation_Result ((Status => DP.Bad_State)));
+               end if;
+            end;
+           else
             declare
                slot : Integer := -1;
                reqW : Natural := Natural (creation.Value.Width);
@@ -10727,6 +10769,7 @@ procedure main is
                   scheduleRedraw;
                end if;
             end;
+           end if;
 
          when OP_SURFACE_RESIZE =>
             declare
@@ -11114,9 +11157,31 @@ procedure main is
       end case;
 
       if replyNow then
-         ignore := reply (from, replyMsg);
+         if replayingDeferred then
+            ignore := replyCap (answeringDeferred, replyMsg);
+         else
+            ignore := reply (from, replyMsg);
+         end if;
       end if;
    end handleRequest;
+
+   --  Desktop's start is done: answer the windows asked for meanwhile.
+   procedure answerDeferredCreates is
+   begin
+      desktopStarted := True;
+      for D of deferredCreates loop
+         if D.Used then
+            replayingDeferred := True;
+            answeringDeferred := D.Saved;
+            debugPrint ("desktop: a window asked for during the start is created now (process" &
+                        Unsigned_64'Image (CuBit.Messages.To_Word (D.From)) & ")" & LF);
+            handleRequest (D.From, D.Request);
+            replayingDeferred := False;
+            answeringDeferred := CuBit.Handles.No_Reply;
+            D := (others => <>);
+         end if;
+      end loop;
+   end answerDeferredCreates;
 
    procedure closeClipboardMenu (damage : in out Rect) is
    begin
@@ -15493,6 +15558,7 @@ begin
       else
          debugPrint ("desktop: waiting for shell client" & LF);
       end if;
+      answerDeferredCreates;
    end;
 
    Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Entered);
