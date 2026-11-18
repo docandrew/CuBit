@@ -70,6 +70,7 @@ with Desktop_Input_Transfer;
 with Desktop_Surface_Rings;
 with Desktop_Input_Sources;
 with Desktop_Frame_Ring;
+with Desktop_Path_Timing;
 with CuBit.Call_Census;
 with CuBit.Kernel_ABI;
 with Compositor_Close_Request;
@@ -617,6 +618,8 @@ procedure main is
    outputDamage : DG.Physical_Rectangle := (others => 0);
    function nativeScene return Boolean is (Desktop_Compositor.Selected);
    procedure renderOutput (Output : Output_Index; Area : Rect);
+   --  The frame's area, which the backdrop covers (per-path attribution).
+   backdropPixels : Unsigned_64 := 0;
    procedure Paint_Diagnostic (Output : Output_Index);
    function physicalClip (Area : Rect) return DG.Physical_Rectangle is
      (Compositor_Text.Clip
@@ -2411,6 +2414,39 @@ procedure main is
                      end;
                   end loop;
                   debugPrint ("DESKTOP-CALL-PHASES:" & Line (1 .. Used) & LF);
+                  --  Where the period's drawing time went, by path: pixels/us.
+                  declare
+                     T : Desktop_Path_Timing.Frame_Paths;
+                     Frames : Unsigned_64;
+                     Text : String (1 .. 1024);
+                     N : Natural := 0;
+                     procedure Add (Item : String) is
+                     begin
+                        if N + Item'Length <= Text'Length then
+                           Text (N + 1 .. N + Item'Length) := Item;
+                           N := N + Item'Length;
+                        end if;
+                     end Add;
+                  begin
+                     Desktop_Path_Timing.Take_Period (T, Frames);
+                     if Frames > 0 then
+                        for P in Desktop_Path_Timing.Path loop
+                           if T.Pixels (P) /= 0 or else T.Micros (P) /= 0 then
+                              Add (" " & Desktop_Path_Timing.Name (P) & "=" & Decimal (T.Pixels (P)) &
+                                   "/" & Decimal (T.Micros (P)));
+                           end if;
+                        end loop;
+                        for R in Desktop_Path_Timing.Sampler_Reason loop
+                           if T.Sampler_Pixels (R) /= 0 then
+                              Add (" sampler_" & Desktop_Path_Timing.Name (R) & "_px=" & Decimal (T.Sampler_Pixels (R)));
+                           end if;
+                        end loop;
+                        debugPrint ("DESKTOP-PATHS: frames=" & Decimal (Frames) & " total_us=" &
+                                    Decimal (T.Total_Micros) & " other_us=" & Decimal (T.Other_Micros) &
+                                    " overdraw_px=" & Decimal (T.Overdraw_Pixels) & " (px/us)" &
+                                    Text (1 .. N) & LF);
+                     end if;
+                  end;
                   phaseCalls := [others => 0];
                   --  By call number: "phase number:count ...".
                   for P in Call_Phase loop
@@ -4530,7 +4566,7 @@ procedure main is
       end if;
    end pumpPresentation;
 
-   procedure fillRect (x, y, w, h : Natural; color : Unsigned_32;
+   procedure fillRectUntimed (x, y, w, h : Natural; color : Unsigned_32;
                        Use_Compositor : Boolean := True) is
       minX : Natural := x;
       minY : Natural := y;
@@ -4639,6 +4675,29 @@ procedure main is
             end;
          end if;
       end loop;
+   end fillRectUntimed;
+
+   procedure fillRect (x, y, w, h : Natural; color : Unsigned_32;
+                       Use_Compositor : Boolean := True) is
+      --  The pixels the fill covers, clipped as fillRectUntimed clips them
+      --  (timing builds' per-path attribution).
+      function Covered return Unsigned_64 is
+         L : Natural := x;
+         T : Natural := y;
+         R : Natural := x + w;
+         B : Natural := y + h;
+      begin
+         if clipEnabled then
+            L := Natural'Max (L, clipRect.x); T := Natural'Max (T, clipRect.y);
+            R := Natural'Min (R, clipRect.x + clipRect.w); B := Natural'Min (B, clipRect.y + clipRect.h);
+         end if;
+         R := Natural'Min (R, fbWidth); B := Natural'Min (B, fbHeight);
+         return (if L < R and then T < B then Unsigned_64 (R - L) * Unsigned_64 (B - T) else 0);
+      end Covered;
+   begin
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Fill);
+      fillRectUntimed (x, y, w, h, color, Use_Compositor);
+      Desktop_Path_Timing.Leave ((if Desktop_Timing_Policy.Enabled then Covered else 0));
    end fillRect;
 
    wallpaperCullAnnounced : Boolean := False;
@@ -4763,7 +4822,7 @@ procedure main is
       end loop;
    end drawWallpaper;
 
-   procedure drawDappledShadow (x, y, w, h : Natural) is
+   procedure drawDappledShadowUntimed (x, y, w, h : Natural) is
    begin
       if w = 0 or else h = 0 then
          return;
@@ -4811,6 +4870,13 @@ procedure main is
             end loop;
          end loop;
       end if;
+   end drawDappledShadowUntimed;
+
+   procedure drawDappledShadow (x, y, w, h : Natural) is
+   begin
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Blend);
+      drawDappledShadowUntimed (x, y, w, h);
+      Desktop_Path_Timing.Leave (Unsigned_64 (w) * Unsigned_64 (h));
    end drawDappledShadow;
 
    procedure strokeRect
@@ -4941,7 +5007,7 @@ procedure main is
    end putNativePixel;
 
    --  Icon id, designed design logical pixels square at (x, y), over bg.
-   procedure drawIcon
+   procedure drawIconUntimed
       (id : Desktop_Icons.Icon_ID;
        x, y : Natural;
        bg   : Unsigned_32;
@@ -5033,6 +5099,18 @@ procedure main is
             end loop;
          end loop;
       end;
+   end drawIconUntimed;
+
+   procedure drawIcon
+      (id : Desktop_Icons.Icon_ID;
+       x, y : Natural;
+       bg   : Unsigned_32;
+       design : Icon_Edge_Choice.Edge := Desktop_Icons.ICON_SIZE)
+   is
+   begin
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Icon);
+      drawIconUntimed (id, x, y, bg, design);
+      Desktop_Path_Timing.Leave (0);
    end drawIcon;
 
    --  The toolkit's one measure (CuBit.Fonts.Width): kerned, unrounded
@@ -5043,7 +5121,7 @@ procedure main is
    --  CPU text (bootstrap and fallback): blend ch's ink with its pen at Pen
    --  (quarter-pixel phase), coverage through the ink's Glyph_Gamma row like
    --  every other glyph path. The run's background is already drawn.
-   procedure drawUIGlyph
+   procedure drawUIGlyphUntimed
       (Pen  : Glyph_Pen.Position;
        y    : Natural;
        ch   : Character;
@@ -5113,6 +5191,19 @@ procedure main is
             end;
          end loop;
       end loop;
+   end drawUIGlyphUntimed;
+
+   procedure drawUIGlyph
+      (Pen  : Glyph_Pen.Position;
+       y    : Natural;
+       ch   : Character;
+       fg   : Unsigned_32;
+       face : CuBit.Fonts.Face)
+   is
+   begin
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Text);
+      drawUIGlyphUntimed (Pen, y, ch, fg, face);
+      Desktop_Path_Timing.Leave (0);
    end drawUIGlyph;
 
    procedure Paint_Diagnostic (Output : Output_Index) is
@@ -5171,7 +5262,7 @@ procedure main is
           when DI.No_Time => "NO_TIME", when DI.Backward => "BACKWARD", when DI.OK => "OK"));
    end Paint_Diagnostic;
 
-   procedure drawUIText
+   procedure drawUITextUntimed
       (x, y : Natural;
        s    : String;
        fg   : Unsigned_32;
@@ -5301,6 +5392,20 @@ procedure main is
       end if;
       Each_Batched (face, s, x);
       Flush;
+   end drawUITextUntimed;
+
+   procedure drawUIText
+      (x, y : Natural;
+       s    : String;
+       fg   : Unsigned_32;
+       bg   : Unsigned_32;
+       transparent : Boolean := False;
+       face : CuBit.Fonts.Face := CuBit.Fonts.Sans)
+   is
+   begin
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Text);
+      drawUITextUntimed (x, y, s, fg, bg, transparent, face);
+      Desktop_Path_Timing.Leave (0);
    end drawUIText;
 
    --  What a window is called (title bar and task button).
@@ -5311,7 +5416,7 @@ procedure main is
          when others       =>
            (if s.title.Length > 0 then s.title.Text else "Application"));
 
-   procedure drawSurfaceTitle
+   procedure drawSurfaceTitleUntimed
       (s       : Surface;
        x, y    : Natural;
        fg, bg  : Unsigned_32;
@@ -5320,6 +5425,19 @@ procedure main is
    is
    begin
       drawUIText (x, y, surfaceTitle (s), fg, bg, transparent, face);
+   end drawSurfaceTitleUntimed;
+
+   procedure drawSurfaceTitle
+      (s       : Surface;
+       x, y    : Natural;
+       fg, bg  : Unsigned_32;
+       transparent : Boolean := False;
+       face    : CuBit.Fonts.Face := CuBit.Fonts.Sans)
+   is
+   begin
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Text);
+      drawSurfaceTitleUntimed (s, x, y, fg, bg, transparent, face);
+      Desktop_Path_Timing.Leave (0);
    end drawSurfaceTitle;
 
    function streamName (id : Natural) return String is
@@ -5470,6 +5588,8 @@ procedure main is
         (if S.publicationMode then S.bufferLogicalH else S.bufferH);
       drawn, mustRestart : Boolean;
       Sampled : Boolean := False;
+      --  The sampler's pixels (timing builds' per-path attribution).
+      samplerPixels : Unsigned_64 := 0;
    begin
       if not s.bufferAttached or else
          s.bufferAddr = System.Null_Address or else
@@ -5535,6 +5655,7 @@ procedure main is
                Ignore : System.Address;
             begin
                if Rows.Width > 0 then
+                  Desktop_Path_Timing.Enter (Desktop_Path_Timing.Client_Row_Copy);
                   for Row in 0 .. Rows.Height - 1 loop
                      Ignore := memcpy
                        (O.Buffer + Storage_Offset
@@ -5543,10 +5664,28 @@ procedure main is
                           ((Rows.Source_Y + Row) * s.bufferPitch + Rows.Source_X * 4),
                         Storage_Count (Rows.Width * 4));
                   end loop;
+                  Desktop_Path_Timing.Leave (Unsigned_64 (Rows.Width) * Unsigned_64 (Rows.Height));
                   noteClientDraw (S);
                   return;
                end if;
             end;
+            --  The sampler, and why the row copy declined (timing builds).
+            if Desktop_Timing_Policy.Enabled then
+               declare
+                  Area : constant Unsigned_64 :=
+                    Unsigned_64 (Damage.Right - Damage.Left) * Unsigned_64 (Damage.Bottom - Damage.Top);
+               begin
+                  Desktop_Path_Timing.Sampler_Because
+                    ((if O.Geometry.Rotation /= DG.Unrotated then Desktop_Path_Timing.Rotated
+                      elsif DG."/=" (O.Geometry.Scale.Numerator, O.Geometry.Scale.Denominator)
+                      then Desktop_Path_Timing.Scaled
+                      elsif s.bufferW /= Logical_W or else s.bufferH /= Logical_H
+                      then Desktop_Path_Timing.Size_Differs
+                      else Desktop_Path_Timing.Other_Reason), Area);
+                  Desktop_Path_Timing.Enter (Desktop_Path_Timing.Client_Sampler);
+                  samplerPixels := Area;
+               end;
+            end if;
             -- On unrotated outputs the two sampling axes are independent.
             -- Hoist Y out of the pixel loop; keep the same proved centre-based
             -- Axis operation for fractional DPI and density-aware clients.
@@ -5580,6 +5719,7 @@ procedure main is
                      end if;
                   end;
                end loop;
+               Desktop_Path_Timing.Leave (samplerPixels);
                if Sampled then noteClientDraw (S); end if;
                return;
             end if;
@@ -5605,6 +5745,7 @@ procedure main is
                end loop;
             end loop;
          end;
+         Desktop_Path_Timing.Leave (samplerPixels);
          if Sampled then noteClientDraw (S); end if;
          return;
       end if;
@@ -6262,9 +6403,16 @@ procedure main is
    end drawBox;
 
    --  The emphasis face, IBM Plex Sans SemiBold.
-   procedure drawBoldText (x, y : Natural; s : String; fg, bg : Unsigned_32) is
+   procedure drawBoldTextUntimed (x, y : Natural; s : String; fg, bg : Unsigned_32) is
    begin
       drawUIText (x, y, s, fg, bg, face => CuBit.Fonts.Sans_Semibold);
+   end drawBoldTextUntimed;
+
+   procedure drawBoldText (x, y : Natural; s : String; fg, bg : Unsigned_32) is
+   begin
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Text);
+      drawBoldTextUntimed (x, y, s, fg, bg);
+      Desktop_Path_Timing.Leave (0);
    end drawBoldText;
 
    --  s cut to fit width pixels, ending in "..." when cut.
@@ -7189,7 +7337,9 @@ procedure main is
       --  pixels for now; the shell owns policy and talks through the protocol.
       --  Shared client buffers can replace this drawing path later without
       --  changing the surface/session shape.
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Backdrop);
       drawWallpaper (Cull_Windows => True);
+      Desktop_Path_Timing.Leave (backdropPixels);
       if Timed then noteTiming (Shell_Wallpaper, Started); Started := timingNow; end if;
 
       for i in store.Surfaces'Range loop
@@ -7198,12 +7348,15 @@ procedure main is
             store.Surfaces (i).id /= compositionExcludedSurface and then
             (store.Surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
          then
+            Desktop_Path_Timing.Enter (Desktop_Path_Timing.Chrome);
             drawWindow (store.Surfaces (i));
+            Desktop_Path_Timing.Leave;
          end if;
       end loop;
       if Timed then noteTiming (Shell_Windows, Started); Started := timingNow; end if;
 
       --  The Deskbar is the top layer under popups, menus and tooltips.
+      Desktop_Path_Timing.Enter (Desktop_Path_Timing.Deskbar);
       drawDeskbar;
       drawLaunchMenu;
       drawGroupList;
@@ -7213,6 +7366,7 @@ procedure main is
       drawShutdownDialog;
       drawToast;
       drawTooltip;
+      Desktop_Path_Timing.Leave;
       if Timed then noteTiming (Shell_Overlays, Started); end if;
    end drawDesktopShell;
 
@@ -7233,7 +7387,13 @@ procedure main is
       -- the software fallback and cannot request another text retry.
       for Pass in Compositor_Text.Attempt loop
          textSceneRetry := False;
-         if shellVisible then drawDesktopShell; else drawWallpaper; end if;
+         if shellVisible then
+            drawDesktopShell;
+         else
+            Desktop_Path_Timing.Enter (Desktop_Path_Timing.Backdrop);
+            drawWallpaper;
+            Desktop_Path_Timing.Leave (backdropPixels);
+         end if;
          drawDragOutline;
          case Compositor_Text.Finish (Pass, textSceneRetry) is
             when Compositor_Text.Complete => exit;
@@ -7327,6 +7487,7 @@ procedure main is
 
    procedure renderOutput (Output : Output_Index; Area : Rect) is
       Saved_Clip : constant Rect := clipRect;
+      Saved_Backdrop : constant Unsigned_64 := backdropPixels;
       Saved_Enabled : constant Boolean := clipEnabled;
       Saved_Excluded : constant Unsigned_64 := compositionExcludedSurface;
       Started : constant Unsigned_64 := timingNow;
@@ -7334,6 +7495,7 @@ procedure main is
       Pixels : constant Unsigned_64 := Unsigned_64 (Area.w) * Unsigned_64 (Area.h);
    begin
       if isEmpty (Area) then return; end if;
+      backdropPixels := Unsigned_64 (Area.w) * Unsigned_64 (Area.h);
       activeOutput := Output;
       outputDamage := (DG.Pixel_Edge (Area.x), DG.Pixel_Edge (Area.y),
         DG.Pixel_Edge (Area.x + Area.w), DG.Pixel_Edge (Area.y + Area.h));
@@ -7347,12 +7509,20 @@ procedure main is
          drawUIText (24, 104, "If this remains visible, photograph this screen.", 16#00FFFFFF#, 16#00203648#);
          drawBootstrapDiagnostics;
       else
+         Desktop_Path_Timing.Begin_Frame;
          drawCurrentScene;
+         Desktop_Path_Timing.Enter (Desktop_Path_Timing.Cursor);
          drawCursorOverlay;
+         Desktop_Path_Timing.Leave;
+         Desktop_Path_Timing.End_Frame (Pixels);
+         if Desktop_Timing_Policy.Enabled then
+            DM.Record_Paths (Desktop_Path_Timing.Last_Frame, CuBit.Monotonic.Microseconds);
+         end if;
       end if;
       nativeOutputPass := False;
       clipRect := Saved_Clip; clipEnabled := Saved_Enabled;
       compositionExcludedSurface := Saved_Excluded;
+      backdropPixels := Saved_Backdrop;
       statsScenePixels := Unsigned_64'Min (statsScenePixels, Unsigned_64'Last - Pixels) + Pixels;
       declare Finished : constant Unsigned_64 := nowMs; begin
          if Start_Ms /= Unsigned_64'Last and then Finished /= Unsigned_64'Last and then Finished >= Start_Ms then

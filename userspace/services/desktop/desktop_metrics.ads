@@ -3,6 +3,7 @@ with Compositor_Frame_Trace;
 with Compositor_Latency;
 with Compositor_Stage_Metrics;
 with Compositor_Work_Metrics;
+with Desktop_Path_Timing;
 
 --  Desktop's metrics (MET-002): always on, published through the
 --  com.cubit-os.stdmetric outlet Desktop's manifest declares (CuBit.Metrics),
@@ -44,4 +45,8 @@ package Desktop_Metrics with SPARK_Mode => Off is
       Draw_Us, Write_Out_Us : Interfaces.Unsigned_64 := 0;
    end record;
    procedure Record_Breakdown (Item : Frame_Breakdown; Now_Us : Interfaces.Unsigned_64);
+   --  Timing builds: where the frame's drawing went, by path
+   --  (desktop.frames.cpu.path.<path>_px / _us, sampler_<reason>_px,
+   --  other_us, overdraw_px), one sample per frame (Desktop_Path_Timing).
+   procedure Record_Paths (Item : Desktop_Path_Timing.Frame_Paths; Now_Us : Interfaces.Unsigned_64);
 end Desktop_Metrics;

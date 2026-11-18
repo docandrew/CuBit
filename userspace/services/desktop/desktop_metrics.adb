@@ -200,4 +200,39 @@ package body Desktop_Metrics with SPARK_Mode => Off is
          Metrics.Observe_At (Breakdown_Series (F), Values (F), Now_Us);
       end loop;
    end Record_Breakdown;
+   Path_Pixels, Path_Micros : array (Desktop_Path_Timing.Path) of Metrics.Series :=
+     [others => Metrics.No_Series];
+   Reason_Pixels : array (Desktop_Path_Timing.Sampler_Reason) of Metrics.Series :=
+     [others => Metrics.No_Series];
+   Other_Micros_Series, Overdraw_Series : Metrics.Series := Metrics.No_Series;
+   Paths_Declared : Boolean := False;
+
+   procedure Record_Paths (Item : Desktop_Path_Timing.Frame_Paths; Now_Us : Interfaces.Unsigned_64) is
+      Prefix : constant String := Frames_Prefix & "cpu.path.";
+   begin
+      if not Paths_Declared then
+         for P in Desktop_Path_Timing.Path loop
+            Path_Pixels (P) := Metrics.Series_Named
+              (Prefix & Desktop_Path_Timing.Name (P) & "_px", Metrics.Distribution, Metrics.Pixels);
+            Path_Micros (P) := Metrics.Series_Named
+              (Prefix & Desktop_Path_Timing.Name (P) & "_us", Metrics.Distribution, Metrics.Microseconds);
+         end loop;
+         for R in Desktop_Path_Timing.Sampler_Reason loop
+            Reason_Pixels (R) := Metrics.Series_Named
+              (Prefix & "sampler_" & Desktop_Path_Timing.Name (R) & "_px", Metrics.Distribution, Metrics.Pixels);
+         end loop;
+         Other_Micros_Series := Metrics.Series_Named (Prefix & "other_us", Metrics.Distribution, Metrics.Microseconds);
+         Overdraw_Series := Metrics.Series_Named (Prefix & "overdraw_px", Metrics.Distribution, Metrics.Pixels);
+         Paths_Declared := True;
+      end if;
+      for P in Desktop_Path_Timing.Path loop
+         Metrics.Observe_At (Path_Pixels (P), Item.Pixels (P), Now_Us);
+         Metrics.Observe_At (Path_Micros (P), Item.Micros (P), Now_Us);
+      end loop;
+      for R in Desktop_Path_Timing.Sampler_Reason loop
+         Metrics.Observe_At (Reason_Pixels (R), Item.Sampler_Pixels (R), Now_Us);
+      end loop;
+      Metrics.Observe_At (Other_Micros_Series, Item.Other_Micros, Now_Us);
+      Metrics.Observe_At (Overdraw_Series, Item.Overdraw_Pixels, Now_Us);
+   end Record_Paths;
 end Desktop_Metrics;
