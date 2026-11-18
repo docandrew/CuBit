@@ -79,6 +79,31 @@ package CuBit.UI.App is
    -- retain initial dimensions regardless of smaller requested minima.
    -- There is no maximum: a resizable window grows to whatever Desktop
    -- offers (frame buffers grow with it); a fixed-size one keeps its size.
+   --  Timing diagnostics a program may turn on (the ui-latency probe):
+   --  how Run's last sleep ended and when its last frame was published.
+   --  Off, nothing is recorded.
+   type Wake_Cause is
+     (Not_Slept,      --  no sleep since the last look
+      Answer_Waiting, --  Arm found an answer already there: no sleep
+      Notice,         --  a kernel notice (a ring's doorbell) woke it
+      Work,           --  a message or completion woke it
+      Deadline,       --  its deadline passed
+      Unavailable);   --  the wait failed
+   type Wake_Record is record
+      Cause       : Wake_Cause := Not_Slept;
+      Slept_Us    : Interfaces.Unsigned_64 := 0;   --  CuBit.Monotonic
+      Woke_Us     : Interfaces.Unsigned_64 := 0;
+      Deadline_Ms : Interfaces.Unsigned_64 := 0;   --  0: none (forever)
+   end record;
+   type Publish_Record is record
+      At_Us    : Interfaces.Unsigned_64 := 0;
+      Pixels   : Interfaces.Unsigned_64 := 0;
+      Accepted : Boolean := False;
+   end record;
+   Trace_Wakes : Boolean := False;
+   function Last_Wake return Wake_Record;
+   function Last_Publish return Publish_Record;
+
    --  What Open did: Opened, or why the window is not open.
    type Open_Result is
      (Opened,

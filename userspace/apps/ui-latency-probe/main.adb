@@ -21,6 +21,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Call_Census;
 with CuBit.Kernel_ABI;
 with CuBit.Published_Clock;
+with CuBit.Monotonic;
 with CuBit.System_Facts;
 with Startup;
 pragma Unreferenced (Startup);
@@ -111,13 +112,65 @@ procedure Main is
       Phase_Calls := Thread_Calls;
    end Begin_Phase;
 
+   --  Each key's way through the app (App.Trace_Wakes): how the sleep
+   --  before it ended, then handled, drawn, published ("UI-PROBE: key").
+   type Key_Trace is record
+      Wake : App.Wake_Record;
+      Handled_Us, Drawn_Us : Unsigned_64 := 0;
+      Published : App.Publish_Record;
+      Pixels : Unsigned_64 := 0;
+      Done : Boolean := False;
+   end record;
+   Max_Traced : constant := 64;
+   Traces : array (1 .. Max_Traced) of Key_Trace;
+   Traced : Natural := 0;
+   --  A key handled whose frame has not been published yet.
+   Awaiting_Publish : Boolean := False;
+
    procedure Render (W : in out App.Window; Damage : Rect) is
       C : constant Canvas := App.Canvas (W, Damage);
    begin
       Fill_Rect (C, App.Full_Rect (W), Background);
       Fill_Rect (C, (Box_X, WINDOW_H / 2, BOX, BOX), Ink);
       Frames := Frames + 1;
+      if Awaiting_Publish and then Traced > 0 and then Traces (Traced).Drawn_Us = 0 then
+         Traces (Traced).Drawn_Us := CuBit.Monotonic.Microseconds;
+         Traces (Traced).Pixels := Unsigned_64 (Damage.w) * Unsigned_64 (Damage.h);
+      end if;
    end Render;
+
+   --  The frame after the key was published (Run calls this before it sleeps).
+   procedure Note_Published is
+      P : constant App.Publish_Record := App.Last_Publish;
+   begin
+      if Awaiting_Publish and then Traced > 0 and then Traces (Traced).Drawn_Us /= 0
+        and then P.At_Us >= Traces (Traced).Drawn_Us
+      then
+         Traces (Traced).Published := P;
+         Traces (Traced).Done := True;
+         Awaiting_Publish := False;
+      end if;
+   end Note_Published;
+
+   procedure Print_Traces is
+      function D (A, B : Unsigned_64) return String is
+        (if B >= A and then A /= 0 then Decimal (B - A) else "?");
+   begin
+      for I in 1 .. Traced loop
+         declare
+            T : Key_Trace renames Traces (I);
+         begin
+            debugPrint ("UI-PROBE: key" & Natural'Image (I) & " wake=" & App.Wake_Cause'Image (T.Wake.Cause) &
+                        " slept_us=" & D (T.Wake.Slept_Us, T.Wake.Woke_Us) &
+                        " deadline_ms=" & Decimal (T.Wake.Deadline_Ms) &
+                        " wake_to_handled_us=" & D (T.Wake.Woke_Us, T.Handled_Us) &
+                        " handled_to_drawn_us=" & D (T.Handled_Us, T.Drawn_Us) &
+                        " drawn_to_published_us=" & D (T.Drawn_Us, T.Published.At_Us) &
+                        " px=" & Decimal (T.Pixels) & " accepted=" & Boolean'Image (T.Published.Accepted) &
+                        " woke_at_us=" & Decimal (T.Wake.Woke_Us) & ASCII.LF);
+         end;
+      end loop;
+   end Print_Traces;
 
    function Box_Rect return Rect is ((0, WINDOW_H / 2, WINDOW_W, BOX));
 
@@ -135,11 +188,18 @@ procedure Main is
             begin
                debugPrint ("UI-PROBE: keys keys=" & Decimal (Keys_Seen) & " frames=" & Decimal (Frames) &
                            " calls=" & Decimal (Calls) & ASCII.LF);
+            Print_Traces;
             Print_Census ("keys");
             end;
             Running := False;
          else
             Keys_Seen := Keys_Seen + 1;
+            if Traced < Max_Traced then
+               Traced := Traced + 1;
+               Traces (Traced) := (Wake => App.Last_Wake, Handled_Us => CuBit.Monotonic.Microseconds,
+                                   others => <>);
+               Awaiting_Publish := True;
+            end if;
             Box_X := (Box_X + BOX) mod (WINDOW_W - BOX);
             Dirty := Union_Rect (Dirty, Box_Rect);
          end if;
@@ -149,6 +209,7 @@ procedure Main is
    --  Busy: always due. Otherwise no timed work.
    function Next_Deadline return Unsigned_64 is
    begin
+      Note_Published;
       if Current = Starting then
          --  The first frame is done (Run painted it before its loop).
          debugPrint ("UI-PROBE: first frame ms=" &
@@ -185,6 +246,7 @@ procedure Main is
       Next_Deadline => Next_Deadline, On_Deadline => On_Deadline, Activity_Wait => True);
 begin
    CuBit.Call_Census.Enabled := True;
+   App.Trace_Wakes := True;
    declare
       Open_Outcome : App.Open_Result;
    begin

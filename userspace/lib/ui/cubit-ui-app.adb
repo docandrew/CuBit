@@ -26,6 +26,7 @@ with Client_Frame_Wakeup;
 with UI_Desktop_Service;
 with CuBit.Log;
 with CuBit.Handles;
+with CuBit.Monotonic;
 
 package body CuBit.UI.App is
    use ASCII;
@@ -108,6 +109,11 @@ package body CuBit.UI.App is
             CuBit.Log.Warning (Window_Text & " input stalled: wait not submitted" & Tail);
       end case;
    end Report_Stop;
+
+   Wake_Trace : Wake_Record;
+   Publish_Trace : Publish_Record;
+   function Last_Wake return Wake_Record is (Wake_Trace);
+   function Last_Publish return Publish_Record is (Publish_Trace);
 
    function Image (Item : Open_Result) return String is
      (case Item is
@@ -902,12 +908,26 @@ package body CuBit.UI.App is
    --  call per wake; a kernel notice (the ring's wake) comes back with it.
    procedure Sleep_For_Activity (win : in out Window; Deadline : Unsigned_64; Woke : out Wake_Result) is
       Notice : aliased Message;
+      Slept : constant Unsigned_64 := (if Trace_Wakes then CuBit.Monotonic.Microseconds else 0);
    begin
       if not Ring.Arm (win.ring) then
          Woke := Work_Available;
+         if Trace_Wakes then
+            Wake_Trace := (CuBit.UI.App.Answer_Waiting, Slept, Slept,
+                           (if Deadline = Wait_Forever then 0 else Deadline));
+         end if;
          return;
       end if;
       Wait_For_Activity_Or_Event (Deadline, Notice, Woke);
+      if Trace_Wakes then
+         Wake_Trace := ((case Woke is
+                           when Event_Taken => CuBit.UI.App.Notice,
+                           when Work_Available => CuBit.UI.App.Work,
+                           when Deadline_Reached => CuBit.UI.App.Deadline,
+                           when CuBit.Messages.Unavailable => CuBit.UI.App.Unavailable),
+                        Slept, CuBit.Monotonic.Microseconds,
+                        (if Deadline = Wait_Forever then 0 else Deadline));
+      end if;
       Ring.Disarm (win.ring);
       Events_Polled_At := CuBit.Published_Clock.Milliseconds;
       case Woke is
@@ -1007,6 +1027,10 @@ package body CuBit.UI.App is
                        then IP.Frozen (win.provenance) else 0);
          FP.Publish (win.frames, win.ring, (r.x, r.y, r.x + r.w, r.y + r.h), accepted, Watermark);
          Ring.Flush (win.ring);
+         if Trace_Wakes then
+            Publish_Trace := (CuBit.Monotonic.Microseconds,
+                              Unsigned_64 (r.w) * Unsigned_64 (r.h), accepted);
+         end if;
          IP.End_Paint (win.provenance, accepted, Watermark);
          if accepted and then not win.firstManagedFrame then
             win.firstManagedFrame := True;
