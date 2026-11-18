@@ -4,7 +4,7 @@
   (start "logstore.svc" (priority 5))
   (start "acpi.svc" (priority 4) (stop-stage power-tail)
     (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Neutral))
-    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
     (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared))
   (start "shutdown-cooperative.app" (priority 3) (stop-grace-ms 2000)
     (arguments (Cooperative_Parameters quiesce_ms => 200)))

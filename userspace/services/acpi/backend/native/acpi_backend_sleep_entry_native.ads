@@ -21,7 +21,9 @@ package ACPI_Backend_Sleep_Entry_Native is
       Input : Interfaces.Unsigned_64; Output : out Interfaces.Unsigned_64;
       Status : out ACPI_Sleep_Entry.Completion);
    procedure Read_Clock (Now : out Interfaces.Unsigned_64; Available : out Boolean);
+   procedure Enter_Final (Type_A, Type_B : ACPI_Sleep_Entry.E.Sleep_Type;
+      Status : out ACPI_Sleep_Entry.Completion);
    package Owner is new ACPI_Backend_Sleep_Entry
      (Catalog.Context, Catalog.Bindings.Access_View, View_Allowed,
-      Catalog.Select_Access, Transfer_View, Read_Clock);
+      Catalog.Select_Access, Transfer_View, Read_Clock, Enter_Final);
 end ACPI_Backend_Sleep_Entry_Native;

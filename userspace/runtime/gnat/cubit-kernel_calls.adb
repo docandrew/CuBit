@@ -4,7 +4,6 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with System.Machine_Code; use System.Machine_Code;
-with Wait_ABI;
 with CuBit.Call_Census;
 
 package body CuBit.Kernel_Calls is

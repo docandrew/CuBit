@@ -3,6 +3,9 @@ with ACPI_Backend_Kernel_Handles;
 with ACPI_Backend_Binding_Types;
 with ACPI_Backend_Memory_Access;
 with ACPI_Backend_Port_Access;
+with ACPI_Platform_Power_Completion;
+with CuBit.Handles.Power;
+with Startup;
 package body ACPI_Backend_Sleep_Entry_Native is
    package W renames ACPI_Backend_Windows;
    package T renames W.T;
@@ -38,4 +41,13 @@ package body ACPI_Backend_Sleep_Entry_Native is
       ACPI_Backend_Kernel_Handles.Read_Clock (Value, Available);
       Now := Interfaces.Unsigned_64 (Value);
    end Read_Clock;
+   procedure Enter_Final (Type_A, Type_B : ACPI_Sleep_Entry.E.Sleep_Type;
+      Status : out ACPI_Sleep_Entry.Completion) is
+      package P renames ACPI_Platform_Power_Completion;
+      Reply : constant CuBit.Handles.Power.Outcome := CuBit.Handles.Power.Enter_State
+        (Startup.Power, P.ABI.S5, P.ABI.Sleep_Type (Type_A), P.ABI.Sleep_Type (Type_B));
+   begin
+      Status := P.Classify (if Reply.Answered then (Decoded => True, Reason => Reply.Why)
+        else (Decoded => False));
+   end Enter_Final;
 end ACPI_Backend_Sleep_Entry_Native;

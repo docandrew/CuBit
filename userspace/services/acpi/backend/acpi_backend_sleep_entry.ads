@@ -18,6 +18,11 @@ generic
       For_Write : Boolean; Input : Interfaces.Unsigned_64; Output : out Interfaces.Unsigned_64;
       Status : out ACPI_Sleep_Entry.Completion);
    with procedure Read_Clock (Now : out Interfaces.Unsigned_64; Available : out Boolean);
+   -- Named final S5 operation, after this owner's clock/deadline/action checks.
+   -- Successful machine entry does not return. Any returned result consumes
+   -- this owner; even an unexpected Completed is treated as an unknown effect.
+   with procedure Enter_Final (Type_A, Type_B : ACPI_Sleep_Entry.E.Sleep_Type;
+      Status : out ACPI_Sleep_Entry.Completion);
 package ACPI_Backend_Sleep_Entry with SPARK_Mode is
    package W renames ACPI_Backend_Windows;
    package S renames ACPI_Sleep_Entry;
@@ -36,7 +41,7 @@ package ACPI_Backend_Sleep_Entry with SPARK_Mode is
    type Outcome is (Not_Prepared, Prepared, Already_Prepared, Reentered,
       Missing_Register, Bad_Geometry, Overlapping_Registers, Window_Unavailable,
       Invalid_Action, Replayed_Action, Invalid_Deadline, Clock_Unavailable,
-      Clock_Reversed, Deadline_Expired, Transferred, Not_Sent, Unknown_Effect);
+      Clock_Reversed, Deadline_Expired, Transfer_Limit, Transferred, Not_Sent, Unknown_Effect);
    subtype Transfer_Count is Natural range 0 .. 1_024;
    type Report is record
       Status : Outcome := Not_Prepared;
@@ -57,7 +62,8 @@ package ACPI_Backend_Sleep_Entry with SPARK_Mode is
    -- Each action is consumed once. Any failure is terminal; partial bulk
    -- effects become Indeterminate. Every datum obtains a fresh catalog view.
    procedure Execute (Item : in out State; Hardware : Hardware_State;
-      Command : S.Command; Deadline : Word; Output : out S.Control_Word; Result : out Report);
+      Command : S.Command; Deadline : Word; Output : out S.Control_Word; Result : out Report)
+     with Always_Terminates => False;
 private
    type Descriptor is record
       Present : Boolean := False;
@@ -72,6 +78,8 @@ private
    type State is limited record
       Stage : Phase := Fresh;
       Working, Clock_Seen : Boolean := False;
+      Staged_A, Staged_B : Boolean := False;
+      Type_A, Type_B : S.E.Sleep_Type := 0;
       Until_Time, Last_Time : Word := 0;
       Items : Descriptors;
       Seen : Action_Set := [others => False];

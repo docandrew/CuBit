@@ -14,6 +14,8 @@
     (Request.Firmware_Snapshot "tables")
     (Request.Publication "cpu-times")
     (Request.ACPI_Hardware "hardware")
+    # KERN-004: named terminal S5/reset capability, gated by the launch plan.
+    (Request.Platform_Power "power")
     (service "acpi-pci-windows" "pci-windows")
     (notification "acpi" Notify_Access.Manage "registration")]
   optional => ["pci-windows"])

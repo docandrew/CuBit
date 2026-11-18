@@ -31,7 +31,7 @@
   # not handed over (no firmware-state handover yet, LIVE-001): a
   # development path while bring-up stops before _INI on the laptop.
   (start "acpi.svc" (priority 5) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Known_Windows))
-    (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
     (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared)
     (replace graceful)
     # The root stop keeps it for the firmware's last step (PWR-003).

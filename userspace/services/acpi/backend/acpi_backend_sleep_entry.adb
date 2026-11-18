@@ -10,6 +10,34 @@ package body ACPI_Backend_Sleep_Entry with SPARK_Mode is
    Wake_Mask : constant Word := 16#8000#;
    Reduced_Wake_Mask : constant Word := 16#80#;
    Clear_Byte : constant Word := 16#FF#;
+   function PM1_Type (Value : S.Control_Word) return S.E.Sleep_Type is
+     (S.E.Sleep_Type (Interfaces.Shift_Right
+       (Value and S.E.SLP_TYP_Mask, S.E.SLP_TYP_Shift)));
+   procedure Record_Refusal (Info : in out Report; Wrote : Boolean;
+      Why : Outcome; Unknown : Boolean := False)
+     with Global => null,
+       Post => Info = (Info'Old with delta Status => Why,
+         Completion => (if Unknown or Wrote then S.Indeterminate else S.Not_Attempted))
+   is
+   begin
+      Info.Status := Why;
+      Info.Completion := (if Unknown or Wrote then S.Indeterminate else S.Not_Attempted);
+   end Record_Refusal;
+   procedure Inspect_Clock (Item : in out State; Wrote : Boolean; Good : out Boolean)
+     with Always_Terminates => False
+   is
+      Now : Word; Available : Boolean;
+   begin
+      Good := False;
+      Read_Clock (Now, Available);
+      if not Available then Record_Refusal (Item.Info, Wrote, Clock_Unavailable); return;
+      elsif Item.Clock_Seen and then Now < Item.Last_Time then
+         Record_Refusal (Item.Info, Wrote, Clock_Reversed); return;
+      elsif Now >= Item.Until_Time then Record_Refusal (Item.Info, Wrote, Deadline_Expired); return;
+      end if;
+      Item.Clock_Seen := True; Item.Last_Time := Now;
+      Good := True;
+   end Inspect_Clock;
    function Port_Window_Matches (Current : ACPI_Backend_Binding_Types.Description;
       Retained : W.Window_Result; Expected_First : Interfaces.Unsigned_16;
       Expected_Count : Interfaces.Unsigned_32; Address, Length : Word;
@@ -33,15 +61,57 @@ package body ACPI_Backend_Sleep_Entry with SPARK_Mode is
    function View (Item : State; Hardware : Hardware_State; Name : Register_Name;
       Offset : Natural; Width : T.Access_Width; Writing : Boolean) return Access_View is
      (Select_Access (Hardware, Item.Items (Name).Window, Item.Items (Name).Space,
-       Item.Items (Name).Address + Word (Offset), Width, Writing));
+       Item.Items (Name).Address + Word (Offset), Width, Writing))
+     with Pre => Word (Offset) <= Word'Last - Item.Items (Name).Address;
+   procedure Reserve_Transfer (Info : in out Report; Wrote, Writing : Boolean; OK : out Boolean)
+     with Global => null,
+       Post => (if OK and Writing then Info.Completed_Writes < Transfer_Count'Last)
+   is
+   begin
+      OK := False;
+      if Info.Transfers = Transfer_Count'Last
+        or else (Writing and then Info.Completed_Writes = Transfer_Count'Last)
+      then Record_Refusal (Info, Wrote, Transfer_Limit); return; end if;
+      Info.Transfers := Info.Transfers + 1;
+      OK := True;
+   end Reserve_Transfer;
+   procedure Transfer_Datum (Item : in out State; Hardware : Hardware_State; Wrote : in out Boolean;
+      Name : Register_Name; Offset : Natural; Width : T.Access_Width;
+      Writing : Boolean; Input : Word; Value : out Word; OK : out Boolean)
+     with Always_Terminates => False
+   is
+      Done : S.Completion;
+   begin
+      Value := 0; Item.Info.At_Register := Name;
+      Inspect_Clock (Item, Wrote, OK);
+      if not OK then return; end if;
+      OK := False;
+      if not Item.Items (Name).Present or else Offset >= Item.Items (Name).Length
+        or else T.Octets (Width) > Item.Items (Name).Length - Offset
+        or else Word (Offset) > Word'Last - Item.Items (Name).Address
+      then Record_Refusal (Item.Info, Wrote, Bad_Geometry); return; end if;
+      declare Borrowed : constant Access_View := View (Item, Hardware, Name, Offset, Width, Writing); begin
+         if not Allowed (Borrowed) then Record_Refusal (Item.Info, Wrote, Window_Unavailable); return; end if;
+         Reserve_Transfer (Item.Info, Wrote, Writing, OK);
+         if not OK then return; end if;
+         OK := False;
+         Transfer (Borrowed, Width, Writing, Input, Value, Done);
+      end;
+      if Done /= S.Completed then Record_Refusal (Item.Info, Wrote, (if Done = S.Indeterminate then Unknown_Effect else Not_Sent), Done = S.Indeterminate); return; end if;
+      if Writing then Wrote := True; Item.Info.Completed_Writes := Item.Info.Completed_Writes + 1; end if;
+      OK := True;
+   end Transfer_Datum;
    procedure Prepare (Item : in out State; Hardware : Hardware_State;
       FADT : ACPI_FADT.Description; Held : Windows; Result : out Report) is
-      procedure Run is
+      procedure Prepare_Registers is
          procedure Admit (Name : Register_Name; D : Descriptor; OK : out Boolean) is
             Width : constant T.Access_Width := (if Name in Reduced_Control | Reduced_Status or Is_GPE (Name)
               then T.Byte_Access else T.Word_Access);
          begin
             OK := False; Item.Info.At_Register := Name; Item.Items (Name) := D;
+            if Word (D.Length - 1) > Word'Last - D.Address then
+               Item.Info.Status := Bad_Geometry; return;
+            end if;
             for Other in Register_Name loop
                if Other /= Name and then Item.Items (Other).Present and then Item.Items (Other).Space = D.Space
                  and then (if D.Address <= Item.Items (Other).Address then
@@ -52,6 +122,11 @@ package body ACPI_Backend_Sleep_Entry with SPARK_Mode is
             if not T.Aligned (D.Address, Width) then Item.Info.Status := Bad_Geometry; return; end if;
             if Is_GPE (Name) then
                for Offset in 0 .. D.Length - 1 loop
+                  pragma Loop_Invariant
+                    (Item.Items (Name) = D and then
+                     Word (D.Length - 1) <= Word'Last - D.Address);
+                  pragma Assert (Offset < D.Length);
+                  pragma Assert (Word (Offset) <= Word (D.Length - 1));
                   if not Allowed (View (Item, Hardware, Name, Offset, Width, True)) then
                      Item.Info.Status := Window_Unavailable; return;
                   end if;
@@ -109,51 +184,24 @@ package body ACPI_Backend_Sleep_Entry with SPARK_Mode is
             end loop;
          end if;
          Item.Info.Status := Prepared;
-      end Run;
+      end Prepare_Registers;
    begin
       if Item.Working then Result := (Status => Reentered, Completion => S.Indeterminate, others => <>); return;
       elsif Item.Stage /= Fresh then Result := Item.Info; Result.Status := Already_Prepared; return; end if;
-      Item.Working := True; Run; Item.Working := False;
+      Item.Working := True; Prepare_Registers; Item.Working := False;
       Item.Stage := (if Item.Info.Status = Prepared then Ready else Failed); Result := Item.Info;
    end Prepare;
    procedure Execute (Item : in out State; Hardware : Hardware_State;
       Command : S.Command; Deadline : Word; Output : out S.Control_Word; Result : out Report) is
-      Writes : Natural := 0;
-      procedure Fail (Why : Outcome; Unknown : Boolean := False) is
-      begin
-         Item.Info.Status := Why;
-         Item.Info.Completion := (if Unknown or Writes /= 0 then S.Indeterminate else S.Not_Attempted);
-      end Fail;
-      procedure Datum (Name : Register_Name; Offset : Natural; Width : T.Access_Width;
-         Writing : Boolean; Input : Word; Value : out Word; OK : out Boolean) is
-         Now : Word; Available : Boolean; Done : S.Completion;
-      begin
-         Value := 0; OK := False; Item.Info.At_Register := Name;
-         Read_Clock (Now, Available);
-         if not Available then Fail (Clock_Unavailable); return;
-         elsif Item.Clock_Seen and then Now < Item.Last_Time then Fail (Clock_Reversed); return;
-         elsif Now >= Item.Until_Time then Fail (Deadline_Expired); return; end if;
-         Item.Clock_Seen := True; Item.Last_Time := Now;
-         if not Item.Items (Name).Present or else Offset >= Item.Items (Name).Length
-           or else T.Octets (Width) > Item.Items (Name).Length - Offset
-         then Fail (Bad_Geometry); return; end if;
-         declare Borrowed : constant Access_View := View (Item, Hardware, Name, Offset, Width, Writing); begin
-            if not Allowed (Borrowed) then Fail (Window_Unavailable); return; end if;
-            Item.Info.Transfers := Item.Info.Transfers + 1;
-            Transfer (Borrowed, Width, Writing, Input, Value, Done);
-         end;
-         if Done /= S.Completed then Fail ((if Done = S.Indeterminate then Unknown_Effect else Not_Sent), Done = S.Indeterminate); return; end if;
-         if Writing then Writes := Writes + 1; Item.Info.Completed_Writes := Item.Info.Completed_Writes + 1; end if;
-         OK := True;
-      end Datum;
-      procedure Run is
+      Some_Write_Completed : Boolean := False;
+      procedure Execute_Command is
          Value : Word; OK : Boolean;
       begin
          if Deadline = 0 or else Deadline = Word'Last
            or else (Item.Until_Time /= 0 and then Item.Until_Time /= Deadline)
-         then Fail (Invalid_Deadline); return; end if;
+         then Record_Refusal (Item.Info, Some_Write_Completed, Invalid_Deadline); return; end if;
          Item.Until_Time := Deadline;
-         if Item.Seen (Command.Kind) then Fail (Replayed_Action); return; end if;
+         if Item.Seen (Command.Kind) then Record_Refusal (Item.Info, Some_Write_Completed, Replayed_Action); return; end if;
          Item.Seen (Command.Kind) := True;
          if (Item.Info.Model = S.Hardware_Reduced and Command.Kind not in S.Clear_Wake | S.Reduced_Enable)
            or else (Item.Info.Model /= S.Hardware_Reduced and Command.Kind = S.Reduced_Enable)
@@ -163,13 +211,13 @@ package body ACPI_Backend_Sleep_Entry with SPARK_Mode is
              (Command.Value > 16#FF# or else (Command.Value and not 16#3C#) /= 0 or else (Command.Value and 16#20#) = 0))
            or else (Command.Kind in S.Stage_A | S.Stage_B and (Command.Value and 16#2000#) /= 0)
            or else (Command.Kind in S.Enable_A | S.Enable_B and (Command.Value and 16#2000#) = 0)
-         then Fail (Invalid_Action); return; end if;
+         then Record_Refusal (Item.Info, Some_Write_Completed, Invalid_Action); return; end if;
          case Command.Kind is
             when S.Mask_GPEs | S.Clear_GPEs =>
                for Name in GPE0_Block .. GPE1_Block loop
                   if Item.Items (Name).Present then
                      for I in 0 .. Item.Items (Name).Length / 2 - 1 loop
-                        Datum (Name, (if Command.Kind = S.Mask_GPEs then Item.Items (Name).Length / 2 + I else I),
+                        Transfer_Datum (Item, Hardware, Some_Write_Completed, Name, (if Command.Kind = S.Mask_GPEs then Item.Items (Name).Length / 2 + I else I),
                           T.Byte_Access, True, (if Command.Kind = S.Mask_GPEs then 0 else Clear_Byte), Value, OK);
                         if not OK then return; end if;
                      end loop;
@@ -177,36 +225,67 @@ package body ACPI_Backend_Sleep_Entry with SPARK_Mode is
                end loop;
             when S.Clear_Wake =>
                if Item.Info.Model = S.Hardware_Reduced then
-                  Datum (Reduced_Status, 0, T.Byte_Access, True, Reduced_Wake_Mask, Value, OK);
+                  Transfer_Datum (Item, Hardware, Some_Write_Completed, Reduced_Status, 0, T.Byte_Access, True, Reduced_Wake_Mask, Value, OK);
                   if not OK then return; end if;
                else
                   for Name in Status_A .. Status_B loop
                      if Item.Items (Name).Present then
-                        Datum (Name, 0, T.Word_Access, True, Wake_Mask, Value, OK);
+                        Transfer_Datum (Item, Hardware, Some_Write_Completed, Name, 0, T.Word_Access, True, Wake_Mask, Value, OK);
                         if not OK then return; end if;
                      end if;
                   end loop;
                end if;
             when S.Read_A | S.Read_B =>
-               Datum ((if Command.Kind = S.Read_A then Control_A else Control_B), 0, T.Word_Access, False, 0, Value, OK);
+               Transfer_Datum (Item, Hardware, Some_Write_Completed, (if Command.Kind = S.Read_A then Control_A else Control_B), 0, T.Word_Access, False, 0, Value, OK);
                if not OK then return; end if;
-               if Value > Word (S.Control_Word'Last) then Fail (Bad_Geometry); return; end if;
+               if Value > Word (S.Control_Word'Last) then Record_Refusal (Item.Info, Some_Write_Completed, Bad_Geometry); return; end if;
                Output := S.Control_Word (Value);
-            when S.Stage_A | S.Enable_A | S.Stage_B | S.Enable_B =>
-               Datum ((if Command.Kind in S.Stage_A | S.Enable_A then Control_A else Control_B),
+            when S.Stage_A | S.Stage_B =>
+               Transfer_Datum (Item, Hardware, Some_Write_Completed, (if Command.Kind = S.Stage_A then Control_A else Control_B),
                  0, T.Word_Access, True, Word (Command.Value), Value, OK);
                if not OK then return; end if;
-            when S.Reduced_Enable =>
-               Datum (Reduced_Control, 0, T.Byte_Access, True, Word (Command.Value), Value, OK);
+               -- Retain only a stage whose actual transaction completed.
+               if Command.Kind = S.Stage_A then
+                  Item.Type_A := PM1_Type (Command.Value); Item.Staged_A := True;
+               else
+                  Item.Type_B := PM1_Type (Command.Value); Item.Staged_B := True;
+               end if;
+            when S.Enable_A | S.Reduced_Enable =>
+               if Command.Kind = S.Enable_A and then
+                 (not Item.Staged_A or else PM1_Type (Command.Value) /= Item.Type_A
+                  or else (Item.Info.Model = S.PM1A_And_B and then not Item.Staged_B))
+               then Record_Refusal (Item.Info, Some_Write_Completed, Invalid_Action); return; end if;
+               Inspect_Clock (Item, Some_Write_Completed, OK);
                if not OK then return; end if;
+               Item.Info.At_Register := (if Command.Kind = S.Reduced_Enable then Reduced_Control else Control_A);
+               declare
+                  A : constant S.E.Sleep_Type := (if Command.Kind = S.Reduced_Enable then
+                    S.E.Sleep_Type (Interfaces.Shift_Right
+                      (Command.Value and S.Control_Word (S.E.Reduced_SLP_TYP_Mask), S.E.Reduced_SLP_TYP_Shift))
+                    else Item.Type_A);
+                  B : constant S.E.Sleep_Type := (if Item.Info.Model = S.PM1A_And_B then Item.Type_B else 0);
+                  Done : S.Completion;
+               begin
+                  Reserve_Transfer (Item.Info, Some_Write_Completed, False, OK);
+                  if not OK then return; end if;
+                  Enter_Final (A, B, Done);
+                  if Done = S.Not_Attempted then Record_Refusal (Item.Info, Some_Write_Completed, Not_Sent);
+                  else Record_Refusal (Item.Info, Some_Write_Completed, Unknown_Effect, True);
+                  end if;
+                  return;
+               end;
+            when S.Enable_B =>
+               -- The single object call owns both final block writes. No
+               -- returned result authorizes another/raw enable transaction.
+               Record_Refusal (Item.Info, Some_Write_Completed, Invalid_Action); return;
          end case;
          Item.Info.Status := Transferred; Item.Info.Completion := S.Completed;
-      end Run;
+      end Execute_Command;
    begin
       Output := 0;
       if Item.Working then Result := (Status => Reentered, Completion => S.Indeterminate, others => <>); return;
       elsif Item.Stage /= Ready then Result := Item.Info; return; end if;
-      Item.Working := True; Item.Info.Completion := S.Not_Attempted; Run; Item.Working := False;
+      Item.Working := True; Item.Info.Completion := S.Not_Attempted; Execute_Command; Item.Working := False;
       if Item.Info.Status /= Transferred then Item.Stage := Failed; end if;
       Result := Item.Info;
    end Execute;
