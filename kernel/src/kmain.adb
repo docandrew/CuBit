@@ -53,6 +53,8 @@ with User_Wait;
 with Boot_Timeline_Layout;
 with Virtmem; use Virtmem;
 with x86;
+with CPUID;
+with CPU_Baseline;
 
 -- Not explicitly called, need to be with'd here for compilation
 with Last_Chance_Handler;
@@ -107,6 +109,50 @@ is
     end earlyCheckpoint;
 
     --  Serial keeps the milestone record; graphics updates a fixed slot.
+    --  CuBit's userspace is built for x86-64-v3 (the font engine's target):
+    --  a CPU without it would fault on an instruction mid-run. Refuse it
+    --  here, before any program starts, with one line naming what it lacks.
+    --  CPUID and XGETBV only (no MSR).
+    procedure requireBaseline is
+        eax, ebx, ecx, edx : Unsigned_32;
+        W : CPU_Baseline.Words;
+    begin
+        CPUID.cpuid (0, 0, eax, ebx, ecx, edx);
+        W.Leaf7_Present := eax >= 7;
+        CPUID.cpuid (1, 0, eax, ebx, ecx, edx);
+        W.Leaf1_ECX := ecx;
+        if W.Leaf7_Present then
+            CPUID.cpuid (7, 0, eax, ebx, ecx, edx);
+            W.Leaf7_EBX := ebx;
+        end if;
+        CPUID.cpuid (16#8000_0000#, 0, eax, ebx, ecx, edx);
+        W.Extended_Present := eax >= 16#8000_0001#;
+        if W.Extended_Present then
+            CPUID.cpuid (16#8000_0001#, 0, eax, ebx, ecx, edx);
+            W.Extended_ECX := ecx;
+        end if;
+        if (x86.getCR4 and x86.CR4_OSXSAVE) /= 0 then
+            W.XCR0 := x86.getXCR0;
+        end if;
+        if not CPU_Baseline.Meets (W) then
+            --  Before the secondary stack exists: no string building.
+            declare
+                Text : CPU_Baseline.Names_Text;
+                Length : Natural;
+            begin
+                CPU_Baseline.Describe (CPU_Baseline.Missing (W), Text, Length);
+                println;
+                print ("CuBit needs an x86-64-v3 CPU; this one lacks: ");
+                print (Text (1 .. Length));
+                println (". Halted.");
+            end;
+            loop
+                x86.cli;
+                x86.halt;
+            end loop;
+        end if;
+    end requireBaseline;
+
     procedure showBootStage (message : String) is
     begin
         Boot_Diagnostics.Complete_Step (message);
@@ -124,6 +170,8 @@ begin
         TextIO.enableSerial;
         print ("CuBit v0.0.1");
     end if;
+    --  First, before anything relies on what such a CPU may lack.
+    requireBaseline;
 
     Multiboot.Read_Information (magic, mbInfoPhysical, mbInfo);
     earlyText := mbInfo.framebuffer_type = 2;

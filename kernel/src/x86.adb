@@ -291,6 +291,17 @@ is
     ---------------------------------------------------------------------------
     -- get CR4 register
     ---------------------------------------------------------------------------
+    function getXCR0 return Unsigned_64 is
+        low, high : Unsigned_32;
+    begin
+        Asm("xgetbv",
+            Inputs   => Unsigned_32'Asm_Input("c", 0),
+            Outputs  => (Unsigned_32'Asm_Output("=a", low),
+                         Unsigned_32'Asm_Output("=d", high)),
+            Volatile => True);
+        return Shift_Left (Unsigned_64 (high), 32) or Unsigned_64 (low);
+    end getXCR0;
+
     function getCR4 return Unsigned_64 is
         ret : Unsigned_64;
     begin

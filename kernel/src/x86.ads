@@ -223,6 +223,9 @@ is
     -- Get/Set the current value of the CR4 register
     ---------------------------------------------------------------------------
     function getCR4 return Unsigned_64;
+    --  XCR0 (XGETBV with ECX = 0): the state components XSAVE manages.
+    --  Only with CR4.OSXSAVE set (otherwise the instruction faults).
+    function getXCR0 return Unsigned_64;
 
     --  CR4.OSXSAVE: XSAVE is enabled (boot.asm), with XCR0's components.
     CR4_OSXSAVE : constant Unsigned_64 := 2 ** 18;

@@ -5,9 +5,9 @@
 ; CuBit boot procedure, execution of the kernel starts here. This is expected
 ; to have been loaded by a Multiboot-compliant bootloader such as GRUB.
 ;
-; TODO: Some of the code here expects fairly modern CPUs for things like the
-;  FSGSBASE instructions, and it would be helpful to add checks here to ensure
-;  that they are present before continuing to boot.
+; CPU features are enabled here only when present (FSGSBASE, XSAVE, AVX), so
+; any x86-64 CPU reaches kmain, which refuses one without x86-64-v3 in one
+; line (CPU_Baseline).
 ;------------------------------------------------------------------------------
 
 %include "cubit.inc"
@@ -157,6 +157,24 @@ boot_ap_entry:
     mov cr3, eax
 
 enable_pae:
+    ; FSGSBASE only when the CPU has it (CPUID 7.0 EBX bit 0): setting
+    ; CR4.FSGSBASE on a CPU without it faults here, before any message, and
+    ; such a CPU must reach kmain, which refuses it in one line (it lacks
+    ; x86-64-v3 too). CPUID clobbers EBX, an AP's CPU number: kept in EBP.
+    mov ebp, ebx
+    xor eax, eax
+    cpuid               ; EAX: the highest basic leaf
+    cmp eax, 7
+    jb .no_fsgsbase
+    mov eax, 7
+    xor ecx, ecx
+    cpuid
+    and ebx, 1          ; FSGSBASE
+    shl ebx, 16         ; as CR4.FSGSBASE (bit 16)
+    jmp .set_cr4
+.no_fsgsbase:
+    xor ebx, ebx
+.set_cr4:
     ; enable PAE, set CR4.PAE (bit 5) = 1
     mov eax, cr4
     ;or eax, 1 << 2     ; disable RDTSC calls from Ring 3 - this is touted
@@ -165,8 +183,9 @@ enable_pae:
     or eax, 1 << 5      ; enable PAE
     or eax, 1 << 9      ; enable SSE (OSFXSR)
     or eax, 1 << 10     ; enable SSE exceptions (OSXMMEXCPT)
-    or eax, 1 << 16     ; enable FSGSBASE instructions
+    or eax, ebx         ; enable FSGSBASE instructions, when present
     mov cr4, eax
+    mov ebx, ebp
 
     ; XSAVE and AVX, on every CPU (the BSP and each AP pass through here):
     ; CR4.OSXSAVE, then XCR0 = x87 | SSE, plus AVX when present. User FP/SIMD

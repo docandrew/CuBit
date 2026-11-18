@@ -1,0 +1,11 @@
+--  Hosted test of the kernel's x86-64-v3 boot check (CPU_Baseline): run.sh.
+project Test is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("cpu_baseline_tests.adb", "cpu_baseline.ads", "cpu_baseline.adb");
+   for Main use ("cpu_baseline_tests.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O1");
+   end Compiler;
+end Test;
