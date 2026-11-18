@@ -12,6 +12,9 @@ package ACPI_Native_Server is
       May_Continue : out Boolean);
    function Always_Quiet (Server:ACPI_Requests.State) return Boolean;
    function Reply_Immediately return Boolean;
+   procedure Reject_Completion
+     (Server : in out ACPI_Requests.State; Item : CuBit.Messages.CompletionEntry;
+      Handled : out Boolean);
    generic
       with procedure Dispatch_Message
         (Server : in out ACPI_Requests.State; From : CuBit.Messages.Process_ID;
@@ -37,6 +40,13 @@ package ACPI_Native_Server is
       with function Diagnostics_Quiet (Server:ACPI_Requests.State) return Boolean is Always_Quiet;
       -- Per request, not whether another saved reply is held.
       with function Reply_Now return Boolean is Reply_Immediately;
+      -- The completion is copied from the kernel lane. The owner must match
+      -- its original pending token and validate sender/status/reply before
+      -- reporting Handled. No blocking call, AML evaluation or replay here.
+      -- The default refuses every completion, preserving synchronous callers.
+      with procedure Handle_Completion
+        (Server : in out ACPI_Requests.State; Item : CuBit.Messages.CompletionEntry;
+         Handled : out Boolean) is Reject_Completion;
    package With_Dispatch is
       procedure Serve (Server : in out ACPI_Requests.State; Reason : out Stop_Reason);
    end With_Dispatch;

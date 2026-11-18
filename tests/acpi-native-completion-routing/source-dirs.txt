@@ -1,0 +1,12 @@
+tests/acpi-native-completion-routing/models
+tests/acpi-native-completion-routing/boundary
+userspace/services/acpi
+userspace/services/acpi/lib
+userspace/services/acpi/request-driver
+userspace/services/acpi/region-init
+shared/firmware
+shared/acpi
+userspace/services/acpi/resource-consumer
+userspace/services/acpi/field-client/provider
+tests/acpi-target-heap-model
+userspace/services/acpi/resource-data

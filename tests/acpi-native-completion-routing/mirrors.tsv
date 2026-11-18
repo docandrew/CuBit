@@ -1,0 +1,4 @@
+tests/acpi-native-completion-routing/boundary/acpi_native_server.ads	userspace/services/acpi/native/acpi_native_server.ads
+tests/acpi-native-completion-routing/boundary/acpi_native_server.adb	userspace/services/acpi/native/acpi_native_server.adb
+tests/acpi-native-completion-routing/boundary/acpi_native_server-with_passive_queries.ads	userspace/services/acpi/native/acpi_native_server-with_passive_queries.ads
+tests/acpi-native-completion-routing/boundary/acpi_native_server-with_passive_queries.adb	userspace/services/acpi/native/acpi_native_server-with_passive_queries.adb

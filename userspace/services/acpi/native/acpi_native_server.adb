@@ -18,12 +18,19 @@ package body ACPI_Native_Server is
       pragma Unreferenced(Server);
    begin return True;end Always_Quiet;
    function Reply_Immediately return Boolean is (True);
+   procedure Reject_Completion
+     (Server : in out ACPI_Requests.State; Item : CompletionEntry;
+      Handled : out Boolean) is
+      pragma Unreferenced (Server, Item);
+   begin
+      Handled := False;
+   end Reject_Completion;
    package body With_Dispatch is
       procedure Serve (Server : in out ACPI_Requests.State; Reason : out Stop_Reason) is
          Request, Response : Message;
          From : Process_ID;
          Completion : CompletionEntry;
-         Found, Event_Found, Stop, Handled : Boolean;
+         Found, Completion_Found, Event_Found, Stop, Handled : Boolean;
          Event : Message;
          Publisher : Process_ID;
          Ignore : Unsigned_64;
@@ -32,10 +39,12 @@ package body ACPI_Native_Server is
          May_Continue : Boolean;
       begin
          loop
-            -- This synchronous observer runner submits no asynchronous work.
-            -- A completion must stop it, rather than leave a ready queue spinning.
-            if Poll_Completion (Completion'Address) /= 0 then
-               Reason := Unexpected_Completion; return;
+            -- One completion per turn; only its original owner can accept it.
+            -- Unknown completions stop rather than disappearing or spinning.
+            Completion_Found := Poll_Completion (Completion'Address) /= 0;
+            if Completion_Found then
+               Handle_Completion (Server, Completion, Handled);
+               if not Handled then Reason := Unexpected_Completion; return; end if;
             end if;
             -- One event and one IPC opportunity per turn. A readable event
             -- lane must be consumed before another wait; it is also ready work.
@@ -64,7 +73,7 @@ package body ACPI_Native_Server is
                -- Kernel reply-cap checks decide delivery; a lost/one-way reply
                -- never replays a dispatch, table import, or AML startup.
                if Reply_Now then Ignore := reply (From, Response); end if;
-            elsif not Event_Found and then Owner_Result = Owner_Idle
+            elsif not Completion_Found and then not Event_Found and then Owner_Result = Owner_Idle
               and then Wait_For_Activity_Until (Owner_Deadline) = Unavailable then
                Reason := Wait_Unavailable; return;
             end if;
