@@ -17,7 +17,7 @@
     (config [File_Right.Read] "system.assets.")
     # The reader's remembered face and translation.
     (config [File_Right.Read File_Right.Write] "bible.")
-    # Exactly the Bible package on each image's system volume.
-    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-bible/")
-    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")
-    (filesystem [File_Right.Read] "@ufs:0/Assets/cubit-bible/")])
+    # Exactly the Bible package on the system volume (FS-033) and on the
+    # optical live medium.
+    (filesystem [File_Right.Read] "@system/Assets/cubit-bible/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")])

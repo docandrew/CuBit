@@ -5,5 +5,5 @@
   (request-service filesystem read-write filesystem)
   (request-service config read-write config)
   (config-scope (rights read) "cubit.config.storage.database")
-  (filesystem-scope (rights read write create) "@nvme:0/system-config.sqlite")
-  (filesystem-scope (rights read write create) "@nvme:0/system-config.sqlite-wal"))
+  (filesystem-scope (rights read write create) "@system/system-config.sqlite")
+  (filesystem-scope (rights read write create) "@system/system-config.sqlite-wal"))

@@ -1,5 +1,5 @@
 # CuBit installed-system configuration (SYS-001): the live profile with
-# the installed root (@ufs:0) as the system volume.
+# the installed root as the system volume (storage.system-volume below binds it).
 #
 # Authoritative installed-boot CCL profile. Config has no filesystem authority and
 # cannot load overrides or write to an internal disk behind this declaration.
@@ -8,9 +8,9 @@
   (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
   # Asset packages on the live disc (docs/assets.md). The all-in-initrd
   # laptop image has none; Desktop then draws the flat theme colour.
-  (setting "system.assets.root" "@ufs:0/Assets/")
+  (setting "system.assets.root" "@system/Assets/")
   # The installed root: devmgr lets the filesystem write it, logstore
-  # persists the log to it (@ufs:0/logstore.log).
+  # persists the log to it (@system/logstore.log).
   (setting "storage.system-volume" "ufs:0")
   # Keyboard auto-repeat (Desktop, docs/development-backlog.md UI-022): the
   # delay before a held key's first repeat and the repeats per second. The

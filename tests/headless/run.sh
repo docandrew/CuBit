@@ -8644,9 +8644,9 @@ mixer: HDA period IRQ active
 display: gpu not primary, using linear-fb
 display: session copies frames
 desktop: output 0 copies frames to Display
-desktop: wallpaper catalog @nvme:0/Assets/cubit-wallpapers/2/catalog.ccl loaded 1 wallpaper(s)
-desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/2/cubes.qoi size= 2048 x 576
-desktop: icons loaded @nvme:0/Assets/cubit-icons/5/applications.qoi
+desktop: wallpaper catalog @system/Assets/cubit-wallpapers/2/catalog.ccl loaded 1 wallpaper(s)
+desktop: wallpaper loaded @system/Assets/cubit-wallpapers/2/cubes.qoi size= 2048 x 576
+desktop: icons loaded @system/Assets/cubit-icons/5/applications.qoi
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/

@@ -230,6 +230,12 @@ prove-process-lifetime:
 
 # SEC-025: decoders read peer-writable memory once (a private copy); every
 # Import/Address overlay is reviewed; procmgr's images are in private pages.
+# FS-033: places are named by alias (@system, @boot), never by device,
+# outside the reviewed allowlist (tests/fs033/check_device_locators.py).
+.PHONY : test-fs033
+test-fs033:
+	python3 -I ../tests/fs033/check_device_locators.py ..
+
 .PHONY : test-sec025
 test-sec025:
 	python3 -I ../tests/sec025/check_shared_overlays.py

@@ -9,7 +9,7 @@
   (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
   # Where read-only asset packages live (docs/assets.md): Desktop reads its
   # wallpapers from <root>cubit-wallpapers/2/.
-  (setting "system.assets.root" "@nvme:0/Assets/")
+  (setting "system.assets.root" "@system/Assets/")
   # The desktop's Apps menu, in key order (userspace/services/desktop/
   # desktop_launch.ads). Entries name programs; what they may do is decided
   # by their manifests and procmgr's launch policy.
@@ -78,7 +78,7 @@
   (setting "desktop.input.key-repeat"
     (Key_Repeat enabled => true delay_ms => 500 rate_hz => 30))
   (setting "clock.time-zone" "UTC")
-  (setting "cubit.config.storage.database" "@nvme:0/system-config.sqlite")
+  (setting "cubit.config.storage.database" "@system/system-config.sqlite")
   # SNTP servers for timesync.svc (host or host:port). A majority of at least
   # two must agree before the clock is adjusted.
   (setting "tls.hosts" "llm-mock.cubit.internal=10.0.2.2")

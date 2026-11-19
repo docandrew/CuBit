@@ -59,13 +59,12 @@
     # Which processor composes the UI (Desktop_Composition_Settings,
     # LAT-002): the operator's A/B switch (read only).
     (config [File_Right.Read] "desktop.composition")
-    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-wallpapers/")
+    # The system volume's asset packages (FS-033: by alias, whichever disk
+    # booted), and the optical live medium's (its own store).
+    (filesystem [File_Right.Read] "@system/Assets/cubit-wallpapers/")
+    (filesystem [File_Right.Read] "@system/Assets/cubit-icons/")
     (filesystem [File_Right.Read] "@cd:0/Assets/cubit-wallpapers/")
-    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-icons/")
     (filesystem [File_Right.Read] "@cd:0/Assets/cubit-icons/")
-    # The installed root (SYS-001).
-    (filesystem [File_Right.Read] "@ufs:0/Assets/cubit-wallpapers/")
-    (filesystem [File_Right.Read] "@ufs:0/Assets/cubit-icons/")
     (config [File_Right.Read] "system.assets.")]
   # LAT-002's display-latency samples and the frame-time series
   # (Desktop_Metrics, CuBit.Metrics), into metrics.svc's store (MET-002).

@@ -779,15 +779,15 @@ procedure Main is
    ---------------------------------------------------------------------------
    --  Start-up: trust store, static hosts, buffers.
    ---------------------------------------------------------------------------
-   --  Where the trust store may be, first found wins: the development disk,
-   --  the live medium (its optical tree, @cd:0), and the installed root
-   --  (@ufs:0). Each has a read-only filesystem scope in the manifest.
-   type Roots_Location is (Development_Disk, Live_Medium, Installed_Root);
+   --  Where the trust store may be, first found wins: the system volume,
+   --  by alias (FS-033: whichever disk booted), then the optical live
+   --  medium's own tree. Each has a read-only filesystem scope in the
+   --  manifest.
+   type Roots_Location is (System_Volume, Live_Medium);
    function Roots_Path (Location : Roots_Location) return String is
      (case Location is
-         when Development_Disk => "@nvme:0/tls/roots.der",
-         when Live_Medium => "@cd:0/tls/roots.der",
-         when Installed_Root => "@ufs:0/tls/roots.der");
+         when System_Volume => "@system/tls/roots.der",
+         when Live_Medium => "@cd:0/tls/roots.der");
    Roots_Capacity : constant := 262_144;
 
    function Load_Roots return Boolean is
