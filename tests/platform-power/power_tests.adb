@@ -97,6 +97,18 @@ procedure Power_Tests is
       Check (D.Model = PR.PM1A_Only, "q35: PM1a only");
       Check (D.PM1A_Control = (True, PR.System_IO, 16#604#, 2), "q35: PM1a 0x604");
       Check (D.Reset = (True, PR.System_IO, 16#CF9#, 1) and D.Reset_Value = 6, "q35: reset 0xCF9 = 6");
+      Check (D.SMI_Command = 0, "q35 fixture: no SMI command port");
+
+      --  The IdeaPad Slim 3i (captured FACP): SMI_CMD 0xB2, and the reset
+      --  register is that port, reset value 0xFB (a software-SMI reset).
+      T := Q35; Put (T, 48, 16#B2#, 4); Put_GAS (T, 116, IO_Space, 8, 0, 1, 16#B2#);
+      T (T'First + 128) := 16#FB#; Seal (T, Revision_3_Length);
+      D := Decode (T);
+      Check (D.SMI_Command = 16#B2# and D.Reset = (True, PR.System_IO, 16#B2#, 1)
+             and D.Reset_Value = 16#FB#, "IdeaPad: SMI_CMD 0xB2, reset 0xFB to 0xB2");
+      --  A SMI_CMD past the port space is not a port.
+      T := Q35; Put (T, 48, 16#1_0000#, 4); Seal (T, Revision_3_Length);
+      Check (Decode (T).SMI_Command = 0, "SMI_CMD past 0xFFFF ignored");
 
       --  The extended form wins when it names a register.
       T := Q35; Put_GAS (T, 172, IO_Space, 16, 0, 2, 16#B004#); Seal (T, Revision_3_Length);

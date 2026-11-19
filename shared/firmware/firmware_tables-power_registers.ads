@@ -49,6 +49,11 @@ package Firmware_Tables.Power_Registers with SPARK_Mode, Pure is
       Sleep_Control : Register    := No_Register;
       Reset         : Register    := No_Register;
       Reset_Value   : Byte        := 0;
+      --  The FADT's SMI command port (SMI_CMD; 0 when the firmware has
+      --  none). Some firmware resets through a software SMI: Reset is then
+      --  this port and Reset_Value the SMI command (the IdeaPad Slim 3i:
+      --  0xFB to 0xB2).
+      SMI_Command   : Address_Value := 0;
    end record;
 
    No_Description : constant Description := (others => <>);
@@ -60,6 +65,7 @@ package Firmware_Tables.Power_Registers with SPARK_Mode, Pure is
       and then (if D.PM1B_Control.Present then D.PM1B_Control.Bytes = PM1_Control_Bytes)
       and then (if D.Sleep_Control.Present then D.Sleep_Control.Bytes = Byte_Register_Bytes)
       and then (if D.Reset.Present then D.Reset.Bytes = Byte_Register_Bytes)
+      and then D.SMI_Command <= Port_Space_Last
       and then (case D.Model is
                   when No_Sleep_Registers =>
                     not D.PM1A_Control.Present and not D.PM1B_Control.Present

@@ -20,26 +20,47 @@ procedure Main is
    function IO (Address : Unsigned_64; Bytes : PR.Register_Bytes) return PR.Register is
      (Present => True, Space => PR.System_IO, Address => Address, Bytes => Bytes);
 
-   --  The IdeaPad's ADL-N shape: PM1a control at 0x1804, reset at 0xCF9.
+   --  An ordinary PC: PM1a control at 0x1804, reset at 0xCF9, SMI_CMD at
+   --  0xB2 (a separate port).
    PC : constant PR.Description :=
      (Model => PR.PM1A_Only, PM1A_Control => IO (16#1804#, 2), PM1B_Control => PR.No_Register,
-      Sleep_Control => PR.No_Register, Reset => IO (16#CF9#, 1), Reset_Value => 6);
+      Sleep_Control => PR.No_Register, Reset => IO (16#CF9#, 1), Reset_Value => 6,
+      SMI_Command => 16#B2#);
+   --  The IdeaPad Slim 3i's real FADT (captured facp.dat): PM1a at 0x1804,
+   --  and the reset register IS the SMI command port: 0xFB to 0xB2.
+   IP : constant PR.Description :=
+     (Model => PR.PM1A_Only, PM1A_Control => IO (16#1804#, 2), PM1B_Control => PR.No_Register,
+      Sleep_Control => PR.No_Register, Reset => IO (16#B2#, 1), Reset_Value => 16#FB#,
+      SMI_Command => 16#B2#);
    --  A PM1a + PM1b machine.
    AB : constant PR.Description :=
      (Model => PR.PM1A_And_B, PM1A_Control => IO (16#404#, 2), PM1B_Control => IO (16#408#, 2),
-      Sleep_Control => PR.No_Register, Reset => PR.No_Register, Reset_Value => 0);
+      Sleep_Control => PR.No_Register, Reset => PR.No_Register, Reset_Value => 0,
+      SMI_Command => 0);
    --  Hardware-reduced: a byte sleep control register.
    HR : constant PR.Description :=
      (Model => PR.Hardware_Reduced, PM1A_Control => PR.No_Register, PM1B_Control => PR.No_Register,
-      Sleep_Control => IO (16#610#, 1), Reset => PR.No_Register, Reset_Value => 0);
+      Sleep_Control => IO (16#610#, 1), Reset => PR.No_Register, Reset_Value => 0,
+      SMI_Command => 0);
    --  Memory-mapped registers are not judged on the port path.
    MM : constant PR.Description :=
      (Model => PR.PM1A_Only,
       PM1A_Control => (Present => True, Space => PR.System_Memory, Address => 16#FE00_1804#, Bytes => 2),
       PM1B_Control => PR.No_Register, Sleep_Control => PR.No_Register, Reset => PR.No_Register,
-      Reset_Value => 0);
+      Reset_Value => 0, SMI_Command => 0);
 begin
-   Check (PR.Consistent (PC) and PR.Consistent (AB) and PR.Consistent (HR), "fixtures consistent");
+   Check (PR.Consistent (PC) and PR.Consistent (AB) and PR.Consistent (HR) and PR.Consistent (IP),
+          "fixtures consistent");
+   --  Reset through a software SMI (the IdeaPad): only the reset command is
+   --  refused at the SMI port; ACPI enable (0xA0) and other SMI commands pass.
+   Check (Refuses (IP, 16#B2#, 1, 16#FB#), "IdeaPad: reset SMI 0xFB to 0xB2 refused");
+   Check (not Refuses (IP, 16#B2#, 1, 16#A0#), "IdeaPad: ACPI-enable SMI 0xA0 to 0xB2 passes");
+   Check (not Refuses (IP, 16#B2#, 1, 16#A1#), "IdeaPad: ACPI-disable SMI 0xA1 passes");
+   Check (Refuses (IP, 16#B1#, 2, 16#FB00#), "IdeaPad: 16-bit write putting 0xFB at 0xB2 refused");
+   Check (not Refuses (IP, 16#B1#, 2, 16#A000#), "IdeaPad: 16-bit write putting 0xA0 at 0xB2 passes");
+   Check (Refuses (IP, 16#1804#, 2, 16#3C01#), "IdeaPad: S5 with SLP_EN still refused");
+   --  An ordinary PC: SMI_CMD is its own port, never the reset register.
+   Check (not Refuses (PC, 16#B2#, 1, 16#FB#), "PC: 0xFB to its separate SMI port passes");
    --  PM1a: SLP_EN (bit 13) at any width and offset.
    Check (Refuses (PC, 16#1804#, 2, 16#3C01#), "16-bit S5 with SLP_EN refused");
    Check (not Refuses (PC, 16#1804#, 2, 16#1C01#), "16-bit SLP_TYP without SLP_EN passes");

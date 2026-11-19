@@ -15,7 +15,9 @@ package body Platform_Power_Port_Guard with SPARK_Mode is
                 Q : constant Unsigned_32 := P + Unsigned_32 (I);
                 B : constant Unsigned_8 := Byte_Of (Value, I);
             begin
-                if Is_IO_Port_Byte (D.Reset, Q, 0) then
+                if Is_IO_Port_Byte (D.Reset, Q, 0)
+                  and then (not Reset_Is_SMI_Command (D) or else B = D.Reset_Value)
+                then
                     return True;
                 end if;
                 if (Is_IO_Port_Byte (D.PM1A_Control, Q, PM1_SLP_EN_Byte)

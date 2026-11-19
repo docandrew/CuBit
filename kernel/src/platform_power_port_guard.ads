@@ -14,7 +14,11 @@
 --  - sets SLP_EN (bit 13 of a PM1 control word, byte 1 bit 5) in PM1a or
 --    PM1b control;
 --  - sets SLP_EN (bit 5) in the hardware-reduced sleep control register;
---  - touches any byte of the FADT reset register.
+--  - touches any byte of the FADT reset register, except where that
+--    register is the SMI command port (firmware that resets through a
+--    software SMI, as the IdeaPad Slim 3i does: 0xFB to 0xB2). There only
+--    the reset value is refused, so the ACPI-enable command and AML's own
+--    SMI commands still pass.
 -- Every other write, other bits of the same registers included (SLP_TYP,
 -- GBL_RLS, SCI_EN), passes: AML writes them. Writes are judged byte by byte,
 -- so 8-, 16- and 32-bit writes at any offset into a register are caught. A
@@ -55,6 +59,12 @@ package Platform_Power_Port_Guard with SPARK_Mode is
        and then Offset < R.Bytes
        and then R.Address <= PR.Port_Space_Last
        and then R.Address + Unsigned_64 (Offset) = Unsigned_64 (P));
+
+    --  The reset register is the SMI command port: a byte register in I/O
+    --  space at the FADT's SMI_CMD.
+    function Reset_Is_SMI_Command (D : PR.Description) return Boolean is
+      (D.Reset.Present and then D.Reset.Space = PR.System_IO
+       and then D.SMI_Command /= 0 and then D.Reset.Address = D.SMI_Command);
 
     function Refuses
       (D : PR.Description; P : Port; W : Width; Value : Unsigned_32) return Boolean;

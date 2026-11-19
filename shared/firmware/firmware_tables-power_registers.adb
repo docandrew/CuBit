@@ -6,6 +6,7 @@ package body Firmware_Tables.Power_Registers with SPARK_Mode is
    PM1A_Control_Offset   : constant := 64;
    PM1B_Control_Offset   : constant := 68;
    PM1_Control_Length    : constant := 89;
+   SMI_Command_Offset    : constant := 48;
    Flags_Offset          : constant := 112;
    Reset_Register_Offset : constant := 116;
    Reset_Value_Offset    : constant := 128;
@@ -146,6 +147,17 @@ package body Firmware_Tables.Power_Registers with SPARK_Mode is
       end if;
       Flags := Read_DWord (Data, Flags_Offset);
       Length := Data (Data'First + PM1_Control_Length);
+      --  SMI_CMD is a 32-bit System I/O port; a value past the port space
+      --  is not one, and hardware-reduced firmware has none.
+      if (Flags and Hardware_Reduced_ACPI) = 0 then
+         declare
+            Port : constant Unsigned_32 := Read_DWord (Data, SMI_Command_Offset);
+         begin
+            if Address_Value (Port) <= Port_Space_Last then
+               Result.SMI_Command := Address_Value (Port);
+            end if;
+         end;
+      end if;
 
       if (Flags and Hardware_Reduced_ACPI) /= 0 then
          if Table.Extent >= Sleep_Control_Offset + GAS_Bytes then
