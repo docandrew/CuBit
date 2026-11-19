@@ -9444,13 +9444,16 @@ fi
 # IOMMU-001: DMA protection is a typed boot record, never silent. With
 # --iommu the IOMMU is active and no device faults (generic-launch: its
 # fault probe gives exactly one typed DMA fault); without it the record
-# says DMA is unconfined.
-if [ "$IOMMU" = 1 ]; then
+# says DMA is unconfined. cpu-refusal's kernel halts before IOMMU setup, by
+# design (CPU_Baseline), so it has no record to check.
+if [ "$TEST_NAME" = "cpu-refusal" ]; then
+    IOMMU_CHECK=none
+elif [ "$IOMMU" = 1 ]; then
     if [ "$TEST_NAME" = "generic-launch" ]; then IOMMU_CHECK=fault; else IOMMU_CHECK=active; fi
 else
     IOMMU_CHECK=degraded
 fi
-if ! python3 -I "$ROOT_DIR/tests/headless/check-iommu.py" "$IOMMU_CHECK" "$SERIAL_LOG"; then
+if [ "$IOMMU_CHECK" != none ] && ! python3 -I "$ROOT_DIR/tests/headless/check-iommu.py" "$IOMMU_CHECK" "$SERIAL_LOG"; then
     echo "headless: serial log: $SERIAL_LOG" >&2
     exit 1
 fi
